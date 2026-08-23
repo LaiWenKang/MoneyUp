@@ -28,6 +28,7 @@ items are not promised by the current build.
 - [x] Non-base-currency activity reported explicitly instead of dropped
 - [x] Manually valued holdings and base-currency net worth
 - [x] Privacy-redacted WidgetKit quick-log shortcuts
+- [x] On-device receipt reading, typed-phrase entry, and category suggestions
 - [x] Enriched, formula-safe CSV export through the system file picker
 - [x] English and Simplified Chinese UI
 - [x] CI for Swift tests and the app plus widget Simulator build
@@ -54,7 +55,8 @@ items are not promised by the current build.
 ## Explicitly deferred
 
 - Bank-credential aggregation or third-party account linking
-- Remote generative-AI financial analysis
+- Remote generative-AI financial analysis, including sending receipts or
+  transaction text to a hosted model
 - Shared household books
 - Automatic market prices that disclose a user's symbol list
 - Two-way live spreadsheet editing

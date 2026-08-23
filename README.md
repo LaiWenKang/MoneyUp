@@ -28,6 +28,10 @@ The beta includes:
   listed on its own rather than converted or dropped;
 - bank, cash, e-wallet, card, loan, brokerage, and investment accounts;
 - manually priced investment holdings and base-currency net worth;
+- smart entry that reads a receipt photo or screenshot with on-device text
+  recognition, parses typed phrases such as "lunch 12.50 cash yesterday", and
+  suggests a category from the user's own history, with no image retained and
+  no remote model involved;
 - a privacy-redacted Home Screen widget with expense and income shortcuts;
 - posting-level CSV export with account metadata for Numbers and Excel;
 - English and Simplified Chinese UI and first-run categories;
