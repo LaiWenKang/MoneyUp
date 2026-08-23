@@ -1,0 +1,31 @@
+# macOS and Xcode
+.DS_Store
+DerivedData/
+*.xcworkspace/
+*.xcodeproj/
+xcuserdata/
+*.xcuserstate
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+*.p12
+*.cer
+*.mobileprovision
+
+# Financial exports and backups must never enter source control
+*.moneyup
+*.moneyup-backup
+*.csv
+*.xlsx
+*.xls
+
+# Editor state
+.idea/
+.vscode/

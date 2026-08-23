@@ -1,0 +1,38 @@
+name: MoneyUp
+
+options:
+  bundleIdPrefix: com.laiwenkang
+  createIntermediateGroups: true
+  deploymentTarget:
+    iOS: "18.0"
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    CURRENT_PROJECT_VERSION: 1
+    MARKETING_VERSION: 0.1.0
+
+packages:
+  MoneyUpCore:
+    path: .
+
+targets:
+  MoneyUp:
+    type: application
+    platform: iOS
+    sources:
+      - path: App/MoneyUp
+    dependencies:
+      - package: MoneyUpCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.laiwenkang.MoneyUp
+        PRODUCT_NAME: MoneyUp
+        GENERATE_INFOPLIST_FILE: true
+        INFOPLIST_KEY_CFBundleDisplayName: MoneyUp
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.finance
+        INFOPLIST_KEY_UILaunchScreen_Generation: true
+        CODE_SIGN_STYLE: Automatic
+    scheme:
+      testTargets: []

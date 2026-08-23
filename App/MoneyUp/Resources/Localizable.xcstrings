@@ -1,0 +1,168 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "action.cancel" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Cancel" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "取消" } }
+      }
+    },
+    "action.continue" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Continue" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "继续" } }
+      }
+    },
+    "action.okay" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "OK" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "好" } }
+      }
+    },
+    "action.quick_log" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Quick Log" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "快速记账" } }
+      }
+    },
+    "action.quick_log.hint" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Opens a fast transaction entry form." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "打开快速交易记录表单。" } }
+      }
+    },
+    "dashboard.awaiting_data" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Add accounts and a budget to calculate this locally." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "添加账户和预算后，将在本机计算可安心支配金额。" } }
+      }
+    },
+    "dashboard.monthly_budget" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Monthly budget" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "本月预算" } }
+      }
+    },
+    "dashboard.no_budget" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "No budget configured yet" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "尚未设置预算" } }
+      }
+    },
+    "dashboard.private_by_design" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Private by design" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "隐私优先设计" } }
+      }
+    },
+    "dashboard.privacy_detail" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Your financial data stays on this device unless you choose to export it." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "除非你主动导出，否则财务数据只保留在此设备上。" } }
+      }
+    },
+    "dashboard.safe_to_spend" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Safe to spend" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "可安心支配" } }
+      }
+    },
+    "foundation.notice.message" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "The interface is ready, but encrypted persistence is not connected yet. This draft has not been saved." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "界面已就绪，但加密存储尚未接入。本次草稿没有被保存。" } }
+      }
+    },
+    "foundation.notice.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Foundation build" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "基础版本" } }
+      }
+    },
+    "placeholder.assets" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Track bank accounts, liabilities, cards, investments, and net worth without mixing transfers with spending." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "管理银行账户、负债、卡片、投资与净资产，同时避免把转账误算为支出。" } }
+      }
+    },
+    "placeholder.calendar" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "See actual transactions, scheduled bills, income, and projected cash flow together." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "集中查看实际交易、计划账单、收入与预测现金流。" } }
+      }
+    },
+    "placeholder.insights" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Understand budget variance, spending velocity, category changes, and net-worth trends." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "洞察预算偏差、消费速度、分类变化与净资产趋势。" } }
+      }
+    },
+    "placeholder.plan" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Build nested budgets whose spending rolls up from subcategories to parent limits." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "创建多层预算，让子分类支出自动汇总到上级限额。" } }
+      }
+    },
+    "quick_log.amount" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Amount" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "金额" } }
+      }
+    },
+    "quick_log.date" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Date" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "日期" } }
+      }
+    },
+    "quick_log.foundation_note" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Account and category selection will be enabled with encrypted persistence in the next increment." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "下一阶段接入加密存储后，将启用账户和分类选择。" } }
+      }
+    },
+    "quick_log.note" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Note (optional)" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "备注（可选）" } }
+      }
+    },
+    "quick_log.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Record transaction" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "记录交易" } }
+      }
+    },
+    "tab.assets" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Assets" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "资产" } }
+      }
+    },
+    "tab.calendar" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Calendar" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "财务日历" } }
+      }
+    },
+    "tab.insights" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Insights" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "洞察" } }
+      }
+    },
+    "tab.plan" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Plan" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "预算" } }
+      }
+    },
+    "tab.today" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Today" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "今日" } }
+      }
+    }
+  },
+  "version" : "1.0"
+}

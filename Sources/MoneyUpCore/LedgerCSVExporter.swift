@@ -1,0 +1,71 @@
+import Foundation
+
+/// Deterministic, human-readable ledger export for Numbers, Excel, and other
+/// spreadsheet tools. One CSV row represents one posting, preserving the
+/// balanced accounting representation instead of flattening away transfers.
+public enum LedgerCSVExporter {
+    public static func export(_ entries: [JournalEntry]) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+
+        var rows = [[
+            "entry_id",
+            "entry_kind",
+            "occurred_at",
+            "created_at",
+            "payee",
+            "entry_note",
+            "posting_id",
+            "account_id",
+            "amount",
+            "currency",
+            "posting_memo"
+        ]]
+
+        for entry in entries {
+            for posting in entry.postings {
+                rows.append([
+                    entry.id.uuidString.lowercased(),
+                    entry.kind.rawValue,
+                    formatter.string(from: entry.occurredAt),
+                    formatter.string(from: entry.createdAt),
+                    spreadsheetSafeText(entry.payee ?? ""),
+                    spreadsheetSafeText(entry.note ?? ""),
+                    posting.id.uuidString.lowercased(),
+                    posting.accountID.uuidString.lowercased(),
+                    NSDecimalNumber(decimal: posting.money.amount).stringValue,
+                    posting.money.currency.value,
+                    spreadsheetSafeText(posting.memo ?? "")
+                ])
+            }
+        }
+
+        return rows
+            .map { $0.map(escape).joined(separator: ",") }
+            .joined(separator: "\r\n") + "\r\n"
+    }
+
+    private static func escape(_ value: String) -> String {
+        let requiresQuotes = value.contains(",")
+            || value.contains("\"")
+            || value.contains("\n")
+            || value.contains("\r")
+
+        guard requiresQuotes else { return value }
+        return "\"\(value.replacingOccurrences(of: "\"", with: "\"\""))\""
+    }
+
+    /// Prevents user-controlled text from being interpreted as a spreadsheet
+    /// formula. Quoting a CSV cell alone does not reliably prevent execution.
+    private static func spreadsheetSafeText(_ value: String) -> String {
+        let firstMeaningfulCharacter = value.first { !$0.isWhitespace }
+        let formulaPrefixes: Set<Character> = ["=", "+", "-", "@"]
+
+        guard let firstMeaningfulCharacter,
+              formulaPrefixes.contains(firstMeaningfulCharacter) else {
+            return value
+        }
+
+        return "'" + value
+    }
+}
