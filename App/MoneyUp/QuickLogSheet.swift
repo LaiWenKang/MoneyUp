@@ -2,27 +2,27 @@ import Foundation
 import MoneyUpCore
 import SwiftUI
 
-struct QuickLogSheet: View {
-    private enum LogKind: String, CaseIterable, Identifiable {
-        case expense
-        case income
-        case transfer
+enum QuickLogKind: String, CaseIterable, Identifiable {
+    case expense
+    case income
+    case transfer
 
-        var id: String { rawValue }
-        var title: LocalizedStringKey {
-            switch self {
-            case .expense: "transaction.expense"
-            case .income: "transaction.income"
-            case .transfer: "transaction.transfer"
-            }
+    var id: String { rawValue }
+    var title: LocalizedStringKey {
+        switch self {
+        case .expense: "transaction.expense"
+        case .income: "transaction.income"
+        case .transfer: "transaction.transfer"
         }
     }
+}
 
+struct QuickLogSheet: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var model: AppModel
     @FocusState private var isAmountFocused: Bool
 
-    @State private var kind: LogKind = .expense
+    @State private var kind: QuickLogKind
     @State private var amountText = ""
     @State private var accountID: UUID?
     @State private var destinationAccountID: UUID?
@@ -32,6 +32,10 @@ struct QuickLogSheet: View {
     @State private var note = ""
     @State private var isSaving = false
     @State private var errorMessage: String?
+
+    init(initialKind: QuickLogKind = .expense) {
+        _kind = State(initialValue: initialKind)
+    }
 
     private var amount: Decimal? {
         guard let value = decimalAmount(from: amountText), value > .zero else { return nil }
@@ -56,7 +60,7 @@ struct QuickLogSheet: View {
         NavigationStack {
             Form {
                 Picker("transaction.kind", selection: $kind) {
-                    ForEach(LogKind.allCases) { item in
+                    ForEach(QuickLogKind.allCases) { item in
                         Text(item.title).tag(item)
                     }
                 }

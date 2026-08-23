@@ -13,6 +13,9 @@ struct MoneyUpApp: App {
                 .task {
                     await model.start()
                 }
+                .onOpenURL { url in
+                    model.handleDeepLink(url)
+                }
                 .onChange(of: scenePhase) { _, newPhase in
                     guard newPhase == .background else { return }
                     model.lock()

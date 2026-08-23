@@ -117,8 +117,10 @@ private enum MoneyUpSection: Hashable {
 }
 
 private struct MainTabView: View {
+    @EnvironmentObject private var model: AppModel
     @State private var selectedSection: MoneyUpSection = .today
     @State private var isPresentingQuickLog = false
+    @State private var quickLogKind: QuickLogKind = .expense
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
@@ -145,6 +147,7 @@ private struct MainTabView: View {
             }
 
             Button {
+                quickLogKind = .expense
                 isPresentingQuickLog = true
             } label: {
                 Label("action.quick_log", systemImage: "plus")
@@ -159,7 +162,18 @@ private struct MainTabView: View {
             .accessibilityHint("action.quick_log.hint")
         }
         .sheet(isPresented: $isPresentingQuickLog) {
-            QuickLogSheet()
+            QuickLogSheet(initialKind: quickLogKind)
         }
+        .onAppear { presentRequestedQuickLog() }
+        .onChange(of: model.requestedQuickLogKind) { _, _ in
+            presentRequestedQuickLog()
+        }
+    }
+
+    private func presentRequestedQuickLog() {
+        guard let requestedKind = model.requestedQuickLogKind else { return }
+        quickLogKind = requestedKind
+        isPresentingQuickLog = true
+        model.consumeQuickLogRequest()
     }
 }

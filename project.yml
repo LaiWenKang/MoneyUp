@@ -28,15 +28,42 @@ targets:
         product: MoneyUpCore
       - package: MoneyUpPackage
         product: MoneyUpPersistence
+      - target: MoneyUpWidget
+        embed: true
+    info:
+      path: App/MoneyUp/Info.plist
+      properties:
+        CFBundleDisplayName: MoneyUp
+        CFBundleURLTypes:
+          - CFBundleURLName: com.laiwenkang.MoneyUp
+            CFBundleURLSchemes:
+              - moneyup
+        LSApplicationCategoryType: public.app-category.finance
+        NSFaceIDUsageDescription: Unlock your private MoneyUp financial data.
+        UILaunchScreen: {}
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.laiwenkang.MoneyUp
         PRODUCT_NAME: MoneyUp
-        GENERATE_INFOPLIST_FILE: true
-        INFOPLIST_KEY_CFBundleDisplayName: MoneyUp
-        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.finance
-        INFOPLIST_KEY_UILaunchScreen_Generation: true
+        GENERATE_INFOPLIST_FILE: false
         CODE_SIGN_STYLE: Automatic
-        INFOPLIST_KEY_NSFaceIDUsageDescription: Unlock your private MoneyUp financial data.
     scheme:
       testTargets: []
+
+  MoneyUpWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: App/MoneyUpWidget
+    info:
+      path: App/MoneyUpWidget/Info.plist
+      properties:
+        CFBundleDisplayName: MoneyUp
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.laiwenkang.MoneyUp.Widget
+        PRODUCT_NAME: MoneyUpWidget
+        GENERATE_INFOPLIST_FILE: false
+        SKIP_INSTALL: true

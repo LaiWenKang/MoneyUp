@@ -1,0 +1,14 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "widget.description" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Open a private fast log without exposing financial data on your Home Screen." } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "快速打开私密记账，不在主屏幕暴露财务数据。" } } } },
+    "widget.detail" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Balances and insights stay behind device authentication." } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "余额与洞察始终受设备身份验证保护。" } } } },
+    "widget.display_name" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Private Quick Log" } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "私密快速记账" } } } },
+    "widget.expense" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Expense" } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "支出" } } } },
+    "widget.income" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Income" } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "收入" } } } },
+    "widget.private" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Financial insights remain locked." } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "财务洞察保持锁定。" } } } },
+    "widget.quick_expense" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Log expense" } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "记录支出" } } } },
+    "widget.title" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "MoneyUp" } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "MoneyUp" } } } }
+  },
+  "version" : "1.0"
+}

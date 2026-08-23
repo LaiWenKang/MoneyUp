@@ -21,6 +21,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var scheduledTransactions: [ScheduledTransaction] = []
     @Published private(set) var investmentHoldings: [InvestmentHolding] = []
     @Published private(set) var isWorking = false
+    @Published private(set) var requestedQuickLogKind: QuickLogKind?
 
     private var store: EncryptedRecordStore?
 
@@ -80,6 +81,17 @@ final class AppModel: ObservableObject {
         Task {
             await storeToClose?.close()
         }
+    }
+
+    func handleDeepLink(_ url: URL) {
+        guard url.scheme?.lowercased() == "moneyup",
+              url.host?.lowercased() == "quick-log" else { return }
+        let rawKind = url.pathComponents.dropFirst().first?.lowercased()
+        requestedQuickLogKind = rawKind.flatMap(QuickLogKind.init(rawValue:)) ?? .expense
+    }
+
+    func consumeQuickLogRequest() {
+        requestedQuickLogKind = nil
     }
 
     func completeOnboarding(
