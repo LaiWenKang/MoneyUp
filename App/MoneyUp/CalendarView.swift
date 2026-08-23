@@ -29,21 +29,19 @@ struct CalendarView: View {
         }
     }
 
-    private var dayTotals: (income: Money, expense: Money)? {
-        guard let currency = model.profile?.baseCurrency else { return nil }
-        let income = (try? FinanceCalculator.total(
-            for: .income,
-            accounts: model.accounts,
-            entries: selectedEntries,
-            currency: currency
-        )) ?? Money.zero(currency: currency)
-        let expense = (try? FinanceCalculator.total(
-            for: .expense,
-            accounts: model.accounts,
-            entries: selectedEntries,
-            currency: currency
-        )) ?? Money.zero(currency: currency)
-        return (income, expense)
+    /// The day's money flow, one line per currency. A day spent abroad used to
+    /// read as zero because everything outside the base currency was filtered
+    /// out before the totals were taken.
+    private var dayFlows: [CurrencyFlow] {
+        guard let currency = model.profile?.baseCurrency,
+              let interval = Calendar.current.dateInterval(of: .day, for: selectedDate),
+              let report = try? FinanceCalculator.report(
+                  interval: interval,
+                  accounts: model.accounts,
+                  entries: selectedEntries,
+                  baseCurrency: currency
+              ) else { return [] }
+        return [report.baseFlow] + report.foreignFlows
     }
 
     var body: some View {
@@ -56,10 +54,18 @@ struct CalendarView: View {
                 )
                 .datePickerStyle(.graphical)
 
-                if let totals = dayTotals {
+                if !dayFlows.isEmpty {
                     Section("calendar.money_flow") {
-                        LabeledContent("transaction.income", value: formattedMoney(totals.income))
-                        LabeledContent("transaction.expense", value: formattedMoney(totals.expense))
+                        ForEach(dayFlows) { flow in
+                            LabeledContent(
+                                "transaction.income",
+                                value: formattedMoney(flow.income)
+                            )
+                            LabeledContent(
+                                "transaction.expense",
+                                value: formattedMoney(flow.expense)
+                            )
+                        }
                     }
                 }
 

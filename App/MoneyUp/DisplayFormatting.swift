@@ -11,6 +11,14 @@ func formattedMoney(_ money: Money) -> String {
         ?? "\(money.currency.value) \(NSDecimalNumber(decimal: money.amount).stringValue)"
 }
 
+/// Formats a fraction such as `0.32` as a locale-aware percentage.
+func formattedPercent(_ value: Decimal, fractionDigits: Int = 0) -> String {
+    let number = NSDecimalNumber(decimal: value).doubleValue
+    return number.formatted(
+        .percent.precision(.fractionLength(0...max(0, fractionDigits)))
+    )
+}
+
 func decimalAmount(from text: String) -> Decimal? {
     Decimal(string: text.trimmingCharacters(in: .whitespacesAndNewlines), locale: .current)
 }
@@ -50,6 +58,19 @@ extension FinancialAccountType {
         case .loan: "calendar.badge.exclamationmark"
         case .brokerage, .investment: "chart.line.uptrend.xyaxis"
         case .other: "wallet.bifold"
+        }
+    }
+}
+
+extension ReportPeriod {
+    var localizedTitle: LocalizedStringKey {
+        switch self {
+        case .thisMonth: "period.this_month"
+        case .lastMonth: "period.last_month"
+        case .threeMonths: "period.three_months"
+        case .sixMonths: "period.six_months"
+        case .twelveMonths: "period.twelve_months"
+        case .yearToDate: "period.year_to_date"
         }
     }
 }

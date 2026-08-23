@@ -4,17 +4,44 @@ import SwiftUI
 struct DashboardView: View {
     @EnvironmentObject private var model: AppModel
 
+    private var spendableAccounts: [LedgerAccount] {
+        model.userAccounts.filter {
+            $0.accountType != .brokerage && $0.accountType != .investment
+        }
+    }
+
     private var availableBalance: Money? {
         guard let currency = model.profile?.baseCurrency else { return nil }
         var total = Decimal.zero
-        for account in model.userAccounts
-        where account.currency == currency
-            && account.accountType != .brokerage
-            && account.accountType != .investment {
+        for account in spendableAccounts where account.currency == currency {
             guard let balance = model.displayBalance(for: account) else { continue }
             total += account.kind == .liability ? -balance.amount : balance.amount
         }
         return try? Money(total, currency: currency)
+    }
+
+    /// Spendable money held outside the base currency. MoneyUp stores no
+    /// exchange rates, so these balances are shown beside the headline figure
+    /// instead of being folded into it.
+    private var otherCurrencyBalances: [Money] {
+        guard let base = model.profile?.baseCurrency else { return [] }
+        var totals: [CurrencyCode: Decimal] = [:]
+
+        for account in spendableAccounts {
+            guard let currency = account.currency, currency != base,
+                  let balance = model.displayBalance(for: account) else { continue }
+            totals[currency, default: .zero] +=
+                account.kind == .liability ? -balance.amount : balance.amount
+        }
+
+        return totals
+            .compactMap { try? Money($0.value, currency: $0.key) }
+            .filter { !$0.isZero }
+            .sorted { $0.currency < $1.currency }
+    }
+
+    private var nextScheduledTransaction: ScheduledTransaction? {
+        model.scheduledTransactions.min { $0.nextOccurrence < $1.nextOccurrence }
     }
 
     private var rootBudgetSummary: (spent: Money, limit: Money, ratio: Double)? {
@@ -47,6 +74,21 @@ struct DashboardView: View {
                             Text("dashboard.available_detail")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
+
+                            if !otherCurrencyBalances.isEmpty {
+                                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                                    Text("dashboard.other_currencies")
+                                    Text(
+                                        otherCurrencyBalances
+                                            .map(formattedMoney)
+                                            .joined(separator: " · ")
+                                    )
+                                    .monospacedDigit()
+                                }
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                                .accessibilityElement(children: .combine)
+                            }
                         }
                     }
 
@@ -70,14 +112,14 @@ struct DashboardView: View {
                         }
                     }
 
-                    if !model.scheduledTransactions.isEmpty {
+                    if let upcoming = nextScheduledTransaction {
                         DashboardCard {
                             Label {
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text("dashboard.upcoming")
                                         .font(.headline)
                                     Text(
-                                        model.scheduledTransactions[0].nextOccurrence,
+                                        upcoming.nextOccurrence,
                                         format: .dateTime.month().day()
                                     )
                                     .foregroundStyle(.secondary)

@@ -22,7 +22,10 @@ The beta includes:
 - account balance reconciliation that does not distort income or spending;
 - arbitrary-depth categories and monthly limits with correct roll-up;
 - actual and recurring projected money flow in the finance calendar;
-- category and six-month cash-flow charts calculated on device;
+- selectable report periods with category and monthly cash-flow charts, plus
+  deterministic readings, all calculated on device;
+- explicit reporting of money held or spent outside the base currency, which is
+  listed on its own rather than converted or dropped;
 - bank, cash, e-wallet, card, loan, brokerage, and investment accounts;
 - manually priced investment holdings and base-currency net worth;
 - a privacy-redacted Home Screen widget with expense and income shortcuts;
