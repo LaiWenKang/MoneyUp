@@ -1,4 +1,5 @@
 import Foundation
+import LocalAuthentication
 import Security
 
 enum DatabaseKeyStoreError: Error, Equatable {
@@ -57,7 +58,9 @@ enum DatabaseKeyStore {
         var query = baseQuery
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
-        query[kSecUseOperationPrompt as String] = String(localized: "lock.authentication_reason")
+        let context = LAContext()
+        context.localizedReason = String(localized: "lock.authentication_reason")
+        query[kSecUseAuthenticationContext as String] = context
 
         var result: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
@@ -118,8 +121,6 @@ enum DatabaseKeyStore {
         switch status {
         case errSecUserCanceled, errSecAuthFailed, errSecInteractionNotAllowed:
             return .authenticationCancelled
-        case errSecPasscodeRequired:
-            return .devicePasscodeRequired
         default:
             return .unexpectedStatus(status)
         }
