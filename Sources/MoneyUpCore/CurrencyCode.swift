@@ -9,7 +9,7 @@ public enum CurrencyCodeError: Error, Equatable {
 /// ISO 4217 fiat codes contain three letters, while commonly used digital
 /// asset codes may be longer. MoneyUp therefore accepts three to eight ASCII
 /// letters or digits and stores the normalized uppercase representation.
-public struct CurrencyCode: Codable, Hashable, Comparable, CustomStringConvertible {
+public struct CurrencyCode: Codable, Hashable, Comparable, CustomStringConvertible, Sendable {
     public let value: String
 
     public init(_ rawValue: String) throws {

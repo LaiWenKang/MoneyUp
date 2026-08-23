@@ -10,7 +10,7 @@ public enum MoneyError: Error, Equatable {
 /// Financial values must never be represented by binary floating-point types
 /// such as `Double`. `Decimal` avoids the common representation drift that
 /// would otherwise corrupt ledger and budget totals.
-public struct Money: Codable, Equatable {
+public struct Money: Codable, Equatable, Sendable {
     public let amount: Decimal
     public let currency: CurrencyCode
 

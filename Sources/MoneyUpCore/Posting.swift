@@ -5,7 +5,7 @@ import Foundation
 /// A positive or negative sign is interpreted according to the account kind by
 /// reporting code. Journal validation is intentionally simpler: postings in
 /// every currency must sum to exactly zero.
-public struct Posting: Codable, Equatable, Identifiable {
+public struct Posting: Codable, Equatable, Identifiable, Sendable {
     public let id: UUID
     public let accountID: UUID
     public let money: Money

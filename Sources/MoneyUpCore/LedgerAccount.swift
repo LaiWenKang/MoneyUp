@@ -1,6 +1,6 @@
 import Foundation
 
-public enum LedgerAccountKind: String, Codable, CaseIterable {
+public enum LedgerAccountKind: String, Codable, CaseIterable, Sendable {
     case asset
     case liability
     case income
@@ -11,7 +11,7 @@ public enum LedgerAccountKind: String, Codable, CaseIterable {
 
 /// The accounting account behind a user-facing bank account, liability,
 /// category, investment account, or foreign-exchange clearing account.
-public struct LedgerAccount: Codable, Equatable, Identifiable {
+public struct LedgerAccount: Codable, Equatable, Identifiable, Sendable {
     public let id: UUID
     public var name: String
     public var kind: LedgerAccountKind

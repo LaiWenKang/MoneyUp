@@ -1,6 +1,6 @@
 import Foundation
 
-public struct BudgetNode: Codable, Equatable, Identifiable {
+public struct BudgetNode: Codable, Equatable, Identifiable, Sendable {
     public let id: UUID
     public var parentID: UUID?
     public var name: String
@@ -19,7 +19,7 @@ public struct BudgetNode: Codable, Equatable, Identifiable {
     }
 }
 
-public struct BudgetProgress: Equatable {
+public struct BudgetProgress: Equatable, Sendable {
     public let node: BudgetNode
     public let spent: Money
     public let remaining: Money?
@@ -54,7 +54,7 @@ public enum BudgetTreeError: Error, Equatable {
 /// Limits belong to individual nodes. A parent limit is a cap over all
 /// descendant spending; child limits are allocations within it and are never
 /// added to the parent's limit.
-public struct BudgetTree: Codable, Equatable {
+public struct BudgetTree: Codable, Equatable, Sendable {
     public let currency: CurrencyCode
     public let nodes: [BudgetNode]
 

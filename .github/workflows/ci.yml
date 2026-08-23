@@ -21,7 +21,7 @@ jobs:
       - name: Show Swift version
         run: swift --version
       - name: Run domain tests
-        run: swift test --parallel
+        run: swift test --parallel -Xswiftc -warnings-as-errors
 
   ios-build:
     name: iOS Simulator build

@@ -1,6 +1,6 @@
 import Foundation
 
-public enum JournalEntryKind: String, Codable, CaseIterable {
+public enum JournalEntryKind: String, Codable, CaseIterable, Sendable {
     case expense
     case income
     case transfer
@@ -20,7 +20,7 @@ public enum JournalEntryValidationError: Error, Equatable {
 /// Edits should be implemented by replacing an entry through the persistence
 /// layer while retaining revision metadata. Mutating postings directly would
 /// make audit and reconciliation behavior ambiguous.
-public struct JournalEntry: Codable, Equatable, Identifiable {
+public struct JournalEntry: Codable, Equatable, Identifiable, Sendable {
     public let id: UUID
     public let kind: JournalEntryKind
     public let occurredAt: Date
