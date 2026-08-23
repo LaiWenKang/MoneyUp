@@ -14,7 +14,7 @@ settings:
     MARKETING_VERSION: 0.1.0
 
 packages:
-  MoneyUpCore:
+  MoneyUpPackage:
     path: .
 
 targets:
@@ -24,7 +24,10 @@ targets:
     sources:
       - path: App/MoneyUp
     dependencies:
-      - package: MoneyUpCore
+      - package: MoneyUpPackage
+        product: MoneyUpCore
+      - package: MoneyUpPackage
+        product: MoneyUpPersistence
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.laiwenkang.MoneyUp
@@ -34,5 +37,6 @@ targets:
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.finance
         INFOPLIST_KEY_UILaunchScreen_Generation: true
         CODE_SIGN_STYLE: Automatic
+        INFOPLIST_KEY_NSFaceIDUsageDescription: Unlock your private MoneyUp financial data.
     scheme:
       testTargets: []
