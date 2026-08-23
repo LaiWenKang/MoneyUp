@@ -37,7 +37,7 @@ jobs:
           xcodebuild
           -project MoneyUp.xcodeproj
           -scheme MoneyUp
-          -configuration Debug
+          -configuration Release
           -destination 'generic/platform=iOS Simulator'
           CODE_SIGNING_ALLOWED=NO
           build

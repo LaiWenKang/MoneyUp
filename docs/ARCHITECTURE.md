@@ -4,61 +4,62 @@
 
 ```mermaid
 flowchart TD
-    UI["SwiftUI app"] --> Domain["MoneyUpCore"]
-    Widget["Widget and App Intents"] --> Domain
-    Domain --> Store["Encrypted ledger store"]
-    Store --> Insight["On-device insights"]
-    Store --> Portability["Export or encrypted backup"]
+    Widget["Redacted widget"] --> App["Authenticated SwiftUI app"]
+    App --> Core["MoneyUpCore"]
+    App --> Store["MoneyUpPersistence"]
+    Store --> Cipher["SQLCipher database"]
+    App --> Export["User-selected CSV export"]
 ```
 
-`MoneyUpCore` has no UI, database, network, or Apple-framework dependency beyond
-Foundation. This keeps the financial rules independently testable and prevents
-view code from bypassing invariants.
+The widget owns no financial snapshot and deep-links only to the authenticated
+quick-log flow. `MoneyUpCore` has no UI, database, network, or Apple-framework
+dependency beyond Foundation, so financial invariants remain independently
+testable.
 
 ## Module boundaries
 
-| Module | Responsibility | Status |
+| Module | Responsibility | Local Beta 0.1.0 |
 |---|---|---|
-| MoneyUp app | Navigation, accessible bilingual UI, composition | Shell implemented |
-| MoneyUpCore | Money, ledger, hierarchy, deterministic export rules | Implemented |
-| Persistence | SQLCipher schema, transactions, migrations, repositories | Next |
-| Security | Keychain key lifecycle, local authentication, app locking | Next |
-| Planning | Periods, allocations, rollover, recurring forecasts | Planned |
-| Insights | Local aggregates, safe-to-spend, anomaly and trend rules | Planned |
-| Widget | Minimal privacy-scoped snapshots and App Intents | Planned |
-| Portability | CSV/XLSX, encrypted archive, validated restore | CSV encoder started |
+| MoneyUp app | State machine, lock lifecycle, bilingual SwiftUI, local insights | Implemented |
+| MoneyUpCore | Money, ledger, hierarchy, recurrence, holdings, export rules | Implemented |
+| MoneyUpPersistence | SQLCipher schema, record encoding, migrations, atomic batches | Implemented |
+| Widget | Redacted presentation and authenticated quick-log deep links | Implemented |
+| Portability | Readable enriched CSV | Implemented |
+| Portable recovery | Encrypted archive and transactional restore | Planned |
 
-## Dependency direction
+## State and lock lifecycle
 
-- UI depends on domain protocols and values.
-- Persistence implements domain repository protocols; the domain never imports
-  SQLCipher.
-- Widgets receive a deliberately minimal, redacted snapshot rather than broad
-  access to the entire financial database whenever practical.
-- Export reads immutable domain snapshots. It cannot mutate the ledger.
-- Network adapters are optional leaf modules. Domain behavior never requires a
-  network connection.
+The application moves between launching, locked, onboarding, ready, and failed
+states. Only `ready` retains decoded records. Entering the background closes the
+actor-isolated database and clears all decoded arrays before showing the locked
+screen. The inactive phase overlays a material privacy cover so the app-switcher
+snapshot cannot capture balances or transactions.
 
-## Persistence decision
+On unlock, Keychain enforces local user presence before returning the SQLCipher
+key. The app loads records, validates cross-record references and the complete
+budget tree, then exposes ready state. A failed integrity check does not mutate
+or repair data automatically.
 
-SwiftData is convenient but does not itself provide the application-controlled
-full-database encryption required by MoneyUp's privacy promise. The planned
-store is SQLite encrypted with SQLCipher. A random database key is retained in
-Keychain behind local user-presence controls.
+## Ledger and persistence
 
-The integration must be proved with tests for incorrect keys, locked devices,
-database migration, interrupted writes, and backup restoration before the app
-accepts real records.
+Normal views do not create postings directly. `TransactionFactory` creates
+balanced expense, income, transfer, foreign-exchange, refund, and reconciliation
+entries. `JournalEntry` validates each currency independently at initialization
+and again during decoding.
 
-## Spreadsheet decision
+The store encodes each record as deterministic JSON inside an encrypted SQLite
+table. Related setup records are committed with `BEGIN IMMEDIATE` and either all
+persist or all roll back. The app uses the profile record as the completed-book
+marker when recovering an interrupted legacy onboarding.
 
-MoneyUp will expose two distinct artifacts:
+## Spreadsheet boundary
 
-1. **Readable export:** multiple normalized CSV files first, XLSX later. This is
-   intentionally plaintext and requires an explicit warning.
-2. **Restorable archive:** a versioned, authenticated, encrypted `.moneyup`
-   package containing records and a manifest.
+CSV is an explicit, readable export. It retains stable entry, posting, and
+account identifiers, exact decimals, currency codes, timestamps, account names,
+types, and hierarchy identifiers. Potential spreadsheet-formula prefixes in
+user text are neutralized. The app warns that the resulting file is unencrypted
+before opening the system file picker.
 
-Live two-way spreadsheet synchronization is excluded from the initial design
-because arbitrary cell edits cannot reliably preserve balanced transactions,
-identifiers, migrations, and conflict semantics.
+CSV is not the database and is not accepted as an automatic source of truth.
+Portable restore remains blocked on a versioned authenticated archive, recovery
+secret, validation preview, and rollback tests.

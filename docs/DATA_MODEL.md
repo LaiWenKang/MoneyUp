@@ -43,10 +43,13 @@ four postings.
 - Liability accounts include credit cards and loans.
 - Income and expense accounts power reports and categories.
 - Trading accounts balance exchanges between currencies or assets.
+- A hidden equity account balances opening values and later reconciliations so
+  they never masquerade as income or spending.
 - A payment card is metadata linked to its underlying account; it is not an
   independent asset unless it owns a distinct balance.
-- Investment holdings have quantities, instruments, lots, and dated valuation
-  snapshots. Market value changes do not silently rewrite historical spending.
+- Investment holdings have quantities, instruments, and a dated manual price.
+  Lots and valuation history are planned. Market value changes do not silently
+  rewrite historical spending.
 
 ## Budget tree
 
@@ -72,9 +75,8 @@ more than three visible levels and use tags for orthogonal context.
 - Store timestamps as absolute instants and retain the user's relevant calendar
   context separately when day-level reporting depends on it.
 - A recurring template predicts future money movement.
-- Posting or matching an actual entry satisfies the occurrence rather than
-  creating a second transaction.
-- Editing a series and editing one occurrence are separate operations.
+- The local beta projects recurring occurrences without posting them. Matching
+  actual entries and editing a series or one occurrence remain planned.
 
 ## Export identity
 

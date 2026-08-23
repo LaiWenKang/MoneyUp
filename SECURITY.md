@@ -1,77 +1,85 @@
 # MoneyUp Security Policy and Threat Model
 
-MoneyUp handles highly sensitive personal finance data. Security claims in the
-product, documentation, and code must distinguish between controls that are
-implemented and controls that are planned.
+MoneyUp handles sensitive financial data. Security claims here distinguish
+implemented controls from planned work and known limits.
 
-## Current status
-
-Foundation 0.1 contains only the finance domain, tests, export encoder, and a
-non-persistent UI shell. It is **not ready for real financial data**.
+## Local Beta 0.1.0 controls
 
 | Control | Status |
 |---|---|
-| Balanced domain model and validated decoding | Implemented |
-| No analytics, ads, remote AI, or application backend | Implemented |
-| Repository ignores common financial export and credential files | Implemented |
-| SQLCipher database encryption | Planned next |
-| Random per-installation database key | Planned next |
-| Keychain and Face ID/passcode protection | Planned next |
-| App-switcher blur and configurable automatic lock | Planned next |
-| Privacy-redacted widgets | Planned |
-| Password-protected encrypted backup and restore | Planned |
-| End-to-end-encrypted device sync | Future and optional |
+| Balanced domain model and validated decoding | Implemented and tested |
+| No ads, financial telemetry, remote AI, or application backend | Implemented |
+| SQLCipher 4.18 full-database encryption | Implemented and pinned |
+| Random 256-bit per-installation database key | Implemented |
+| Non-synchronizing Keychain item with `WhenPasscodeSetThisDeviceOnly` and user presence | Implemented |
+| Close database and clear decoded state on background | Implemented |
+| App-switcher privacy cover while inactive | Implemented |
+| iOS file protection for the database | Implemented |
+| Privacy-redacted widget with no financial values | Implemented |
+| Plaintext CSV warning and user-selected destination | Implemented |
+| Destructive recovery reset with explicit confirmation | Implemented |
+| Wrong-key, plaintext-leak, decimal round-trip, and atomic-rollback tests | Implemented |
+| Password-protected portable backup and restore | Planned |
+| Optional end-to-end-encrypted device sync | Not implemented |
 
-## Intended privacy guarantee
+## Privacy guarantee
 
-MoneyUp should be able to make this verifiable statement:
-
-> Raw financial records are processed locally. MoneyUp does not operate a
-> service that receives them. Data leaves the device only through an explicit
-> user action, and optional remote backups contain ciphertext encrypted with a
-> key MoneyUp does not possess.
+MoneyUp does not operate a runtime service that receives raw financial records.
+The app processes records locally and makes no financial-data network request.
+Data leaves the app only when the user invokes an export and chooses a
+destination.
 
 The guarantee does not cover:
 
 - a compromised, jailbroken, or maliciously managed operating system;
-- another person using the device while it is unlocked and MoneyUp is open;
-- screenshots, screen recordings, or plaintext exports created by the user;
-- disclosure performed by the spreadsheet, cloud drive, or recipient chosen
-  by the user after export;
-- traffic metadata from optional market-price lookup, even when holdings are
-  not uploaded directly.
+- another person looking at the device while it is unlocked and MoneyUp is
+  already open;
+- screenshots, screen recordings, or readable CSV exports created by the user;
+- disclosure by the spreadsheet, cloud drive, or recipient selected after
+  export;
+- device passcodes or biometrics shared with another person;
+- source-build or dependency modifications made outside this repository.
 
-## Threats and required controls
+## Key lifecycle
 
-| Threat | Required mitigation |
-|---|---|
-| Device backup or file extraction | SQLCipher plus iOS file protection |
-| Database key theft | Random 256-bit key in Keychain; never source code or preferences |
-| Casual physical access | Face ID/passcode gate and inactivity timeout |
-| Lock-screen disclosure | Privacy-sensitive widget redaction; values hidden by default |
-| App-switcher snapshot | Replace sensitive UI with a privacy cover when inactive |
-| Logs and crash reports | Never log amounts, payees, notes, holdings, or encryption material |
-| Plaintext export | Explicit warning, recent authentication, and user-selected destination |
-| Malicious or malformed import | Versioned schema, size limits, validation, and transactional import |
-| Supply-chain compromise | Minimize dependencies, pin reviewed versions, run CI and dependency review |
-| Developer/operator access | No raw-data backend and no financial telemetry endpoint |
+1. On first launch, MoneyUp generates 32 random bytes with the system secure
+   random generator.
+2. The key is stored in the app's Keychain namespace. It does not synchronize
+   and becomes unavailable if the device passcode is removed.
+3. Subsequent reads require Face ID, Touch ID, or the device passcode through a
+   local-authentication context.
+4. The key opens SQLCipher only after authentication. The temporary Swift
+   buffer is overwritten immediately after the store opens.
+5. When the app enters the background, it closes SQLCipher, drops all decoded
+   models from application state, and returns to the locked screen.
+6. If the protected key and database no longer match, the app refuses to read
+   records. A separately confirmed reset removes the inaccessible database and
+   key; it never guesses, downgrades encryption, or silently overwrites data.
 
-## Planned key lifecycle
+## Storage and integrity
 
-1. Generate a cryptographically random database key on the device.
-2. Store it in Keychain with an accessibility policy equivalent to
-   `WhenUnlockedThisDeviceOnly` and local user-presence access control.
-3. Open the SQLCipher database only after successful local authentication.
-4. Remove decrypted key material from long-lived application state when the
-   app locks.
-5. Do not synchronize this device key. Portable backups use an independent key
-   derived from a user-held recovery secret and authenticated encryption.
-6. Test first launch, lockout, biometric changes, reinstall, backup recovery,
-   key rotation, and interrupted migration.
+- SQLCipher is configured with cipher memory security, full synchronous writes,
+  WAL journaling, secure deletion, and foreign-key enforcement.
+- The database uses a versioned schema and rejects a schema newer than the app
+  supports.
+- Multi-record setup and reconciliation operations use a single immediate
+  transaction and roll back as a unit on failure.
+- Decoding revalidates monetary and ledger invariants. App startup additionally
+  checks category hierarchy and all account references before showing data.
+- User-controlled CSV cells that could be interpreted as spreadsheet formulas
+  are neutralized before export.
+
+## Current recovery limit
+
+The Keychain key uses a this-device-only policy. Deleting the app, erasing its
+data, or losing that key can make the database permanently unreadable. Local
+Beta 0.1.0 does not yet provide a restorable encrypted archive. CSV export is
+readable and useful in Numbers or Excel, but it is not a full-fidelity restore
+format.
 
 ## Reporting a vulnerability
 
 Do not open a public issue containing exploit details, keys, financial data, or
-screenshots of private records. Use GitHub private vulnerability reporting for
-this repository when available. Otherwise, contact the repository owner through
-their GitHub profile first and exchange details privately.
+private screenshots. Use GitHub private vulnerability reporting for this
+repository when available. Otherwise, contact the repository owner through
+their GitHub profile and exchange details privately.

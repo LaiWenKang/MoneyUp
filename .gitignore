@@ -5,6 +5,8 @@ DerivedData/
 *.xcodeproj/
 xcuserdata/
 *.xcuserstate
+App/MoneyUp/Info.plist
+App/MoneyUpWidget/Info.plist
 
 # Swift Package Manager
 .build/

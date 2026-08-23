@@ -1,64 +1,57 @@
 # Delivery Roadmap
 
-The milestones are ordered by risk. Privacy, key recovery, ledger integrity,
-and migration behavior are completed before broad feature work.
+Completed checkboxes describe Local Beta 0.1.0 behavior on `main`; unchecked
+items are not promised by the current build.
 
-## Foundation 0.1 — repository baseline
+## Foundation — finance and secure storage
 
-- [x] Product principles and explicit threat model
-- [x] Swift package with money and currency value types
-- [x] Balanced multi-currency journal entries
-- [x] Validated hierarchical budget roll-up
-- [x] Deterministic posting-level CSV encoder
-- [x] Bilingual SwiftUI navigation and quick-log shell
-- [x] CI for core tests and unsigned iOS build
+- [x] Exact decimal money and normalized currencies
+- [x] Balanced multi-currency journal entries and validated decoding
+- [x] Arbitrary-depth budget roll-up
+- [x] SQLCipher encrypted store with pinned dependency
+- [x] Versioned schema and transactional writes
+- [x] Random Keychain key with local user-presence control
+- [x] Automatic background lock, decoded-state clearing, and privacy cover
+- [x] Wrong-key, plaintext-leak, migration-compatibility, and rollback tests
+- [x] Destructive failed-recovery path with explicit confirmation
 
-## Foundation 0.2 — secure local store
+## Daily use — Local Beta 0.1.0
 
-- [ ] SQLCipher integration behind a repository protocol
-- [ ] Versioned schema and transactional migrations
-- [ ] Key generation and Keychain lifecycle
-- [ ] Face ID/passcode gate, inactivity lock, and privacy cover
-- [ ] Destructive reset and failed-recovery behavior
-- [ ] Tests proving the database is unreadable without the key
+- [x] Onboarding with base currency, first account, and opening balance
+- [x] Expense, income, same-currency, and foreign-currency transfer logging
+- [x] Multiple account types, cards, loans, and balance reconciliation
+- [x] Default categories plus arbitrary-depth custom expense categories
+- [x] Monthly limits with descendant spending roll-up
+- [x] Recurring income and expense templates
+- [x] Finance calendar with actual and projected money flow
+- [x] Category-spending and six-month cash-flow charts
+- [x] Manually valued holdings and base-currency net worth
+- [x] Privacy-redacted WidgetKit quick-log shortcuts
+- [x] Enriched, formula-safe CSV export through the system file picker
+- [x] English and Simplified Chinese UI
+- [x] CI for Swift tests and the app plus widget Simulator build
 
-## Daily Loop 0.3 — real logging
+## Beta hardening
 
-- [ ] Onboarding with locale, base currency, and first account
-- [ ] Expense, income, transfer, refund, and split transaction flows
-- [ ] Account and category management
-- [ ] Recurring transaction templates
-- [ ] Recent-record search, edit history, and reconciliation
-- [ ] CSV export through the system file picker
+- [ ] Search, transaction editing, refunds, and split transactions in the UI
+- [ ] Scheduled-versus-actual matching and recurrence editing
+- [ ] Budget rollover, sinking funds, and savings goals
+- [ ] Historical net-worth series and investment lots
+- [ ] Accessibility and bilingual UI automation on physical form factors
+- [ ] Performance tests for large ledgers and long recurrence histories
 
-## Planning 0.4 — budgets and calendar
+## Portability and distribution
 
-- [ ] Period plans and nested limits
-- [ ] Rollover, sinking funds, and goals
-- [ ] Scheduled-versus-actual matching
-- [ ] Finance calendar with daily money flow
-- [ ] Explainable safe-to-spend and spending-velocity forecast
-
-## Understanding 0.5 — widgets, insights, and assets
-
-- [ ] Privacy-redacted interactive widgets and App Intents
-- [ ] Budget variance and category trend charts
-- [ ] Cash-flow and net-worth history
-- [ ] Cards as payment instruments linked to accounts
-- [ ] Holdings, lots, and manual investment valuations
-- [ ] Optional on-device merchant/category suggestions
-
-## Portability 0.6 — backup and optional sync
-
-- [ ] Versioned authenticated `.moneyup` archive
-- [ ] Recovery-secret design and restore drills
-- [ ] XLSX workbook export
-- [ ] Validated, previewable imports with duplicate detection
-- [ ] Evaluate optional end-to-end-encrypted device sync
+- [ ] Versioned authenticated `.moneyup` backup archive
+- [ ] Recovery-secret design, transactional restore, and restore drills
+- [ ] Previewable CSV import with duplicate detection
+- [ ] Native XLSX workbook export
+- [ ] Signed TestFlight beta and App Store compliance work
+- [ ] Evaluate optional end-to-end-encrypted multi-device sync
 
 ## Explicitly deferred
 
-- Bank credential aggregation or third-party account linking
+- Bank-credential aggregation or third-party account linking
 - Remote generative-AI financial analysis
 - Shared household books
 - Automatic market prices that disclose a user's symbol list

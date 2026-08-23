@@ -11,7 +11,8 @@ The daily loop is:
 1. Record an expense, income, or transfer in seconds.
 2. See its effect on account balances and nested budgets immediately.
 3. Understand what is safe to spend now and what is scheduled next.
-4. Retain full ownership through documented exports and encrypted backups.
+4. Retain ownership through documented exports; add portable encrypted backup
+   before public release.
 
 ## Target user
 
@@ -22,16 +23,16 @@ approved.
 
 ## Core capabilities
 
-| Capability | First complete behavior |
+| Capability | Local Beta 0.1.0 behavior |
 |---|---|
 | Privacy and security | No account or backend; encrypted local database; local authentication |
-| Budget planner | Period budgets, rollover, sinking funds, and safe-to-spend |
-| Widgets | Privacy-redacted insight and authenticated quick-log entry points |
+| Budget planner | Monthly nested limits, roll-up, progress, and liquid availability |
+| Widgets | Privacy-redacted, authenticated quick-log entry points |
 | Hierarchy | Arbitrary-depth model with group/category/subcategory roll-up |
-| Insights | Budget variance, velocity, category trend, cash flow, net worth |
-| Finance calendar | Actual, scheduled, and forecast transactions without duplicates |
-| Assets | Assets, liabilities, payment instruments, holdings, and valuations |
-| Portability | CSV workbook set plus versioned encrypted MoneyUp archive |
+| Insights | Current category distribution and six-month cash flow |
+| Finance calendar | Actual transactions and recurring projected occurrences |
+| Assets | Assets, liabilities, cards, loans, accounts, and manual holdings |
+| Portability | Enriched posting-level CSV; encrypted archive remains planned |
 | Easy logging | Amount first, smart defaults, progressive optional detail |
 | Languages | English and Simplified Chinese with locale-correct dates and amounts |
 
