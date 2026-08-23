@@ -34,6 +34,7 @@ approved.
 | Assets | Assets, liabilities, cards, loans, accounts, and manual holdings |
 | Portability | Enriched posting-level CSV; encrypted archive remains planned |
 | Easy logging | Amount first, smart defaults, progressive optional detail |
+| Smart entry | On-device receipt and screenshot reading, typed-phrase parsing, and category suggestions learned from the user's own history |
 | Languages | English and Simplified Chinese with locale-correct dates and amounts |
 
 ## Product rules

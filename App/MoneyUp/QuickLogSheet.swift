@@ -1,5 +1,6 @@
 import Foundation
 import MoneyUpCore
+import PhotosUI
 import SwiftUI
 
 enum QuickLogKind: String, CaseIterable, Identifiable {
@@ -33,6 +34,10 @@ struct QuickLogSheet: View {
     @State private var note = ""
     @State private var isSaving = false
     @State private var errorMessage: String?
+    @State private var smartText = ""
+    @State private var photoItem: PhotosPickerItem?
+    @State private var isScanning = false
+    @State private var smartMessage: String?
 
     init(initialKind: QuickLogKind = .expense) {
         _kind = State(initialValue: initialKind)
@@ -90,6 +95,10 @@ struct QuickLogSheet: View {
                     }
                 }
                 .pickerStyle(.segmented)
+
+                if kind != .transfer {
+                    smartEntrySection
+                }
 
                 Section {
                     TextField("quick_log.amount", text: $amountText)
@@ -184,6 +193,9 @@ struct QuickLogSheet: View {
                 isAmountFocused = true
             }
             .onChange(of: kind) { _, _ in selectDefaults() }
+            .onChange(of: photoItem) { _, item in
+                Task { await scanReceipt(item) }
+            }
             .onChange(of: accountID) { _, _ in
                 if destinationAccountID == accountID {
                     destinationAccountID = model.userAccounts.first { $0.id != accountID }?.id
@@ -194,16 +206,143 @@ struct QuickLogSheet: View {
         .presentationDetents([.large])
     }
 
+    private var smartEntrySection: some View {
+        Section {
+            HStack(alignment: .top, spacing: 8) {
+                TextField("quick_log.smart_placeholder", text: $smartText, axis: .vertical)
+                    .lineLimit(1...3)
+                Button("quick_log.smart_fill") { applyTypedPhrase() }
+                    .buttonStyle(.borderless)
+                    .disabled(
+                        smartText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    )
+            }
+
+            PhotosPicker(selection: $photoItem, matching: .images) {
+                Label("quick_log.scan_receipt", systemImage: "doc.text.viewfinder")
+            }
+            .disabled(isScanning)
+
+            if isScanning {
+                HStack(spacing: 8) {
+                    ProgressView()
+                    Text("quick_log.scanning").foregroundStyle(.secondary)
+                }
+            }
+
+            if let smartMessage {
+                Text(smartMessage)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        } header: {
+            Text("quick_log.smart_entry")
+        } footer: {
+            Text("quick_log.smart_footer")
+        }
+    }
+
+    /// `dd/mm` and `mm/dd` cannot be told apart from the digits alone, so the
+    /// reader follows whatever order this locale writes dates in.
+    private static var localePrefersDayFirst: Bool {
+        let format = DateFormatter.dateFormat(
+            fromTemplate: "yMd",
+            options: 0,
+            locale: .current
+        ) ?? "d/M/y"
+        guard let day = format.firstIndex(of: "d"),
+              let month = format.firstIndex(of: "M") else { return true }
+        return day < month
+    }
+
+    private func applyTypedPhrase() {
+        let draft = NaturalLanguageEntryParser.draft(
+            from: smartText,
+            accounts: model.accounts,
+            prefersDayFirst: Self.localePrefersDayFirst
+        )
+        if apply(draft) { smartText = "" }
+    }
+
+    private func scanReceipt(_ item: PhotosPickerItem?) async {
+        guard let item else { return }
+        isScanning = true
+        smartMessage = nil
+        defer {
+            isScanning = false
+            photoItem = nil
+        }
+
+        do {
+            guard let data = try await item.loadTransferable(type: Data.self) else {
+                throw ReceiptScannerError.unreadableImage
+            }
+            let lines = try await ReceiptScanner.recognizeLines(inImageData: data)
+            _ = apply(
+                ReceiptTextParser.draft(
+                    fromLines: lines,
+                    prefersDayFirst: Self.localePrefersDayFirst
+                )
+            )
+        } catch {
+            smartMessage = error.localizedDescription
+        }
+    }
+
+    /// Applies whatever the reader was sure about and leaves the rest alone.
+    /// Returns false when nothing was recognized, so the caller can keep the
+    /// user's input instead of clearing it.
+    @discardableResult
+    private func apply(_ draft: TransactionDraft) -> Bool {
+        guard !draft.isEmpty else {
+            smartMessage = String(localized: "quick_log.smart_nothing_found")
+            return false
+        }
+
+        kind = draft.kind == .income ? .income : .expense
+        if let amount = draft.amount {
+            amountText = amount.formatted(
+                .number.precision(.fractionLength(0...2)).grouping(.never)
+            )
+        }
+        if let parsedDate = draft.occurredAt { occurredAt = parsedDate }
+        if let parsedPayee = draft.payee { payee = parsedPayee }
+        if let parsedAccount = draft.accountID { accountID = parsedAccount }
+
+        if let parsedCategory = draft.categoryID {
+            categoryID = parsedCategory
+        } else if let parsedPayee = draft.payee,
+                  let learned = CategorySuggester.suggestedCategory(
+                      forPayee: parsedPayee,
+                      kind: draft.kind == .income ? .income : .expense,
+                      entries: model.entries,
+                      accounts: model.accounts
+                  ) {
+            categoryID = learned
+        }
+
+        smartMessage = nil
+        isAmountFocused = false
+        return true
+    }
+
+    /// Fills what is still unset. It must not overwrite a value the user or a
+    /// parsed draft already chose, because it also runs when the kind changes.
     private func selectDefaults() {
         accountID = accountID ?? model.userAccounts.first?.id
         switch kind {
         case .expense:
-            categoryID = model.expenseCategories.first { $0.parentID != nil }?.id
-                ?? model.expenseCategories.first?.id
+            if !model.expenseCategories.contains(where: { $0.id == categoryID }) {
+                categoryID = model.expenseCategories.first { $0.parentID != nil }?.id
+                    ?? model.expenseCategories.first?.id
+            }
         case .income:
-            categoryID = model.incomeCategories.first?.id
+            if !model.incomeCategories.contains(where: { $0.id == categoryID }) {
+                categoryID = model.incomeCategories.first?.id
+            }
         case .transfer:
-            destinationAccountID = model.userAccounts.first { $0.id != accountID }?.id
+            destinationAccountID = destinationAccountID
+                ?? model.userAccounts.first { $0.id != accountID }?.id
         }
     }
 

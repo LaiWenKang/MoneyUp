@@ -16,6 +16,7 @@ implemented controls from planned work and known limits.
 | App-switcher privacy cover while inactive | Implemented |
 | iOS file protection for the database | Implemented |
 | Privacy-redacted widget with no financial values | Implemented |
+| On-device receipt reading with no image retention or upload | Implemented |
 | Plaintext CSV warning and user-selected destination | Implemented |
 | Destructive recovery reset with explicit confirmation | Implemented |
 | Wrong-key, plaintext-leak, decimal round-trip, and atomic-rollback tests | Implemented |
@@ -28,6 +29,13 @@ MoneyUp does not operate a runtime service that receives raw financial records.
 The app processes records locally and makes no financial-data network request.
 Data leaves the app only when the user invokes an export and chooses a
 destination.
+
+Smart entry does not change this. Receipt text recognition runs through the
+on-device Vision framework, the selected image is held only long enough to
+read it and is never written to the database or transmitted, and typed-phrase
+parsing and category suggestions are plain arithmetic and string matching over
+the user's own records. No remote model receives a receipt, an amount, or a
+payee.
 
 The guarantee does not cover:
 
