@@ -14,9 +14,15 @@ final class AppModel: ObservableObject {
     }
 
     @Published private(set) var state: State = .launching
-    @Published private(set) var profile: UserProfile?
-    @Published private(set) var accounts: [LedgerAccount] = []
-    @Published private(set) var entries: [JournalEntry] = []
+    @Published private(set) var profile: UserProfile? {
+        didSet { invalidateDerivedData() }
+    }
+    @Published private(set) var accounts: [LedgerAccount] = [] {
+        didSet { invalidateDerivedData() }
+    }
+    @Published private(set) var entries: [JournalEntry] = [] {
+        didSet { invalidateDerivedData() }
+    }
     @Published private(set) var budgetNodes: [BudgetNode] = []
     @Published private(set) var scheduledTransactions: [ScheduledTransaction] = []
     @Published private(set) var investmentHoldings: [InvestmentHolding] = []
@@ -24,6 +30,9 @@ final class AppModel: ObservableObject {
     @Published private(set) var requestedQuickLogKind: QuickLogKind?
 
     private var store: EncryptedRecordStore?
+    private var reportCache: [ReportPeriod: PeriodReport] = [:]
+    private var reportCacheDay: Date?
+    private var balanceCache: [UUID: [CurrencyCode: Money]]?
 
     var userAccounts: [LedgerAccount] {
         accounts.filter {
@@ -452,20 +461,47 @@ final class AppModel: ObservableObject {
     }
 
     func displayBalance(for account: LedgerAccount) -> Money? {
-        try? FinanceCalculator.displayBalance(for: account, entries: entries)
+        guard let currency = account.currency else { return nil }
+        let raw = accountBalances()[account.id]?[currency]
+            ?? Money.zero(currency: currency)
+        return account.kind == .liability ? raw.negated : raw
+    }
+
+    /// The period report used by every reporting screen. Results are cached
+    /// until the journal changes or the calendar day rolls over, so a SwiftUI
+    /// body evaluation never rescans the whole journal.
+    func report(for period: ReportPeriod) -> PeriodReport? {
+        let today = Calendar.current.startOfDay(for: Date())
+        if reportCacheDay != today {
+            reportCache.removeAll()
+            reportCacheDay = today
+        }
+        if let cached = reportCache[period] { return cached }
+
+        guard let currency = profile?.baseCurrency,
+              let interval = period.interval(containing: Date()) else { return nil }
+        let trend = period.monthSpan >= ReportPeriod.sixMonths.monthSpan
+            ? interval
+            : ReportPeriod.sixMonths.interval(containing: Date()) ?? interval
+        guard let built = try? FinanceCalculator.report(
+            interval: interval,
+            trendInterval: trend,
+            accounts: accounts,
+            entries: entries,
+            baseCurrency: currency
+        ) else { return nil }
+
+        reportCache[period] = built
+        return built
     }
 
     func spendingThisMonth() -> [UUID: Money] {
-        guard let currency = profile?.baseCurrency,
-              let interval = Calendar.current.dateInterval(of: .month, for: Date()) else {
-            return [:]
-        }
-        return (try? FinanceCalculator.spendingByCategory(
-            accounts: accounts,
-            entries: entries,
-            currency: currency,
-            interval: interval
-        )) ?? [:]
+        guard let report = report(for: .thisMonth) else { return [:] }
+        return Dictionary(
+            uniqueKeysWithValues: report.categorySpending.map {
+                ($0.accountID, $0.amount)
+            }
+        )
     }
 
     func budgetProgressThisMonth() -> [BudgetProgress] {
@@ -481,6 +517,19 @@ final class AppModel: ObservableObject {
             entries.sorted { $0.occurredAt < $1.occurredAt },
             accounts: accounts
         )
+    }
+
+    private func invalidateDerivedData() {
+        reportCache.removeAll()
+        balanceCache = nil
+    }
+
+    private func accountBalances() -> [UUID: [CurrencyCode: Money]] {
+        if let balanceCache { return balanceCache }
+        let computed = (try? FinanceCalculator.balancesByAccount(entries: entries))
+            ?? [:]
+        balanceCache = computed
+        return computed
     }
 
     private func save(_ entry: JournalEntry) async throws {

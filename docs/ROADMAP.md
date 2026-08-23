@@ -24,7 +24,8 @@ items are not promised by the current build.
 - [x] Monthly limits with descendant spending roll-up
 - [x] Recurring income and expense templates
 - [x] Finance calendar with actual and projected money flow
-- [x] Category-spending and six-month cash-flow charts
+- [x] Category-spending and monthly cash-flow charts over a selectable period
+- [x] Non-base-currency activity reported explicitly instead of dropped
 - [x] Manually valued holdings and base-currency net worth
 - [x] Privacy-redacted WidgetKit quick-log shortcuts
 - [x] Enriched, formula-safe CSV export through the system file picker
@@ -37,6 +38,7 @@ items are not promised by the current build.
 - [ ] Scheduled-versus-actual matching and recurrence editing
 - [ ] Budget rollover, sinking funds, and savings goals
 - [ ] Historical net-worth series and investment lots
+- [ ] User-set exchange rates so multi-currency reports can show one total
 - [ ] Accessibility and bilingual UI automation on physical form factors
 - [ ] Performance tests for large ledgers and long recurrence histories
 

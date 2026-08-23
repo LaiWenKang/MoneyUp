@@ -29,7 +29,7 @@ approved.
 | Budget planner | Monthly nested limits, roll-up, progress, and liquid availability |
 | Widgets | Privacy-redacted, authenticated quick-log entry points |
 | Hierarchy | Arbitrary-depth model with group/category/subcategory roll-up |
-| Insights | Current category distribution and six-month cash flow |
+| Insights | Category distribution, monthly cash flow, and plain-language readings over a selectable period |
 | Finance calendar | Actual transactions and recurring projected occurrences |
 | Assets | Assets, liabilities, cards, loans, accounts, and manual holdings |
 | Portability | Enriched posting-level CSV; encrypted archive remains planned |
