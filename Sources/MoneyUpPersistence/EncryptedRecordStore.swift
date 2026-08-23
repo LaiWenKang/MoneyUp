@@ -106,15 +106,12 @@ public actor EncryptedRecordStore {
 
     private static func makeEncoder() -> JSONEncoder {
         let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .millisecondsSince1970
         encoder.outputFormatting = [.sortedKeys]
         return encoder
     }
 
     private static func makeDecoder() -> JSONDecoder {
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .millisecondsSince1970
-        return decoder
+        JSONDecoder()
     }
 }
 
