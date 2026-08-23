@@ -97,7 +97,8 @@ final class AppModel: ObservableObject {
     func completeOnboarding(
         baseCurrencyCode: String,
         accountName: String,
-        accountType: FinancialAccountType
+        accountType: FinancialAccountType,
+        startingBalance: Decimal
     ) async throws {
         guard !isWorking else { return }
         isWorking = true
@@ -105,6 +106,7 @@ final class AppModel: ObservableObject {
 
         let store = try requireStore()
         let currency = try CurrencyCode(baseCurrencyCode)
+        guard startingBalance >= .zero else { throw AppModelError.negativeAmount }
         let normalizedName = accountName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedName.isEmpty else {
             throw AppModelError.emptyName
@@ -117,35 +119,55 @@ final class AppModel: ObservableObject {
             accountType: accountType
         )
         let defaults = Self.defaultBook(mainAccount: mainAccount)
-
-        for account in defaults.accounts {
-            try await store.upsert(account, id: account.id.uuidString, in: .accounts)
-        }
-        for node in defaults.budgetNodes {
-            try await store.upsert(node, id: node.id.uuidString, in: .budgetNodes)
-        }
-
-        // The profile is the onboarding commit marker and is intentionally last.
         let newProfile = UserProfile(baseCurrency: currency)
-        try await store.upsert(
-            newProfile,
-            id: UserProfile.primaryRecordID,
-            in: .profile
+        var writes = try defaults.accounts.map {
+            try RecordWrite($0, id: $0.id.uuidString, in: .accounts)
+        }
+        writes += try defaults.budgetNodes.map {
+            try RecordWrite($0, id: $0.id.uuidString, in: .budgetNodes)
+        }
+        writes.append(
+            try RecordWrite(
+                newProfile,
+                id: UserProfile.primaryRecordID,
+                in: .profile
+            )
         )
+
+        var openingEntry: JournalEntry?
+        if startingBalance > .zero,
+           let equity = defaults.accounts.first(where: { $0.systemRole == .openingBalances }) {
+            let entry = try TransactionFactory.balanceAdjustment(
+                displayBalanceDelta: try Money(startingBalance, currency: currency),
+                accountID: mainAccount.id,
+                equityAccountID: equity.id,
+                accountIsLiability: mainAccount.kind == .liability,
+                note: String(localized: "account.opening_balance_note")
+            )
+            writes.append(
+                try RecordWrite(entry, id: entry.id.uuidString, in: .journalEntries)
+            )
+            openingEntry = entry
+        }
+
+        try await store.write(writes)
 
         profile = newProfile
         accounts = defaults.accounts
         budgetNodes = defaults.budgetNodes
+        entries = openingEntry.map { [$0] } ?? []
         state = .ready
     }
 
     func addAccount(
         name: String,
         type: FinancialAccountType,
-        currencyCode: String
+        currencyCode: String,
+        startingBalance: Decimal = .zero
     ) async throws {
         let normalizedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedName.isEmpty else { throw AppModelError.emptyName }
+        guard startingBalance >= .zero else { throw AppModelError.negativeAmount }
         let currency = try CurrencyCode(currencyCode)
         let account = LedgerAccount(
             name: normalizedName,
@@ -153,8 +175,36 @@ final class AppModel: ObservableObject {
             currency: currency,
             accountType: type
         )
-        try await requireStore().upsert(account, id: account.id.uuidString, in: .accounts)
-        accounts.append(account)
+        var accountsToAdd = [account]
+        var writes = [
+            try RecordWrite(account, id: account.id.uuidString, in: .accounts)
+        ]
+        var openingEntry: JournalEntry?
+
+        if startingBalance > .zero {
+            let equity = openingBalancesAccount()
+            if !accounts.contains(where: { $0.id == equity.id }) {
+                accountsToAdd.append(equity)
+                writes.append(
+                    try RecordWrite(equity, id: equity.id.uuidString, in: .accounts)
+                )
+            }
+            let entry = try TransactionFactory.balanceAdjustment(
+                displayBalanceDelta: try Money(startingBalance, currency: currency),
+                accountID: account.id,
+                equityAccountID: equity.id,
+                accountIsLiability: account.kind == .liability,
+                note: String(localized: "account.opening_balance_note")
+            )
+            writes.append(
+                try RecordWrite(entry, id: entry.id.uuidString, in: .journalEntries)
+            )
+            openingEntry = entry
+        }
+
+        try await requireStore().write(writes)
+        accounts.append(contentsOf: accountsToAdd)
+        if let openingEntry { entries.insert(openingEntry, at: 0) }
     }
 
     func addCategory(
@@ -173,7 +223,6 @@ final class AppModel: ObservableObject {
             parentID: parentID
         )
         let store = try requireStore()
-        try await store.upsert(category, id: category.id.uuidString, in: .accounts)
 
         if kind == .expense, let currency = profile?.baseCurrency {
             let node = BudgetNode(
@@ -182,11 +231,49 @@ final class AppModel: ObservableObject {
                 name: normalizedName,
                 limit: nil
             )
-            _ = try BudgetTree(currency: currency, nodes: budgetNodes + [node])
-            try await store.upsert(node, id: node.id.uuidString, in: .budgetNodes)
+            let candidate = budgetNodes + [node]
+            _ = try BudgetTree(currency: currency, nodes: candidate)
+            try await store.write([
+                try RecordWrite(category, id: category.id.uuidString, in: .accounts),
+                try RecordWrite(node, id: node.id.uuidString, in: .budgetNodes)
+            ])
             budgetNodes.append(node)
+        } else {
+            try await store.upsert(category, id: category.id.uuidString, in: .accounts)
         }
         accounts.append(category)
+    }
+
+    func setAccountBalance(accountID: UUID, displayBalance: Decimal) async throws {
+        guard let account = accounts.first(where: { $0.id == accountID }),
+              let currency = account.currency else {
+            throw AppModelError.missingRecord
+        }
+        let current = self.displayBalance(for: account)?.amount ?? .zero
+        let delta = displayBalance - current
+        guard delta != .zero else { return }
+
+        let equity = openingBalancesAccount()
+        let shouldAddEquity = !accounts.contains(where: { $0.id == equity.id })
+        let entry = try TransactionFactory.balanceAdjustment(
+            displayBalanceDelta: try Money(delta, currency: currency),
+            accountID: account.id,
+            equityAccountID: equity.id,
+            accountIsLiability: account.kind == .liability,
+            note: String(localized: "account.balance_adjustment_note")
+        )
+        var writes = [
+            try RecordWrite(entry, id: entry.id.uuidString, in: .journalEntries)
+        ]
+        if shouldAddEquity {
+            writes.append(
+                try RecordWrite(equity, id: equity.id.uuidString, in: .accounts)
+            )
+        }
+
+        try await requireStore().write(writes)
+        if shouldAddEquity { accounts.append(equity) }
+        entries.insert(entry, at: 0)
     }
 
     func logExpense(
@@ -415,6 +502,15 @@ final class AppModel: ObservableObject {
         return currency
     }
 
+    private func openingBalancesAccount() -> LedgerAccount {
+        accounts.first(where: { $0.systemRole == .openingBalances })
+            ?? LedgerAccount(
+                name: String(localized: "account.opening_balances"),
+                kind: .equity,
+                systemRole: .openingBalances
+            )
+    }
+
     private func clearDecodedState() {
         profile = nil
         accounts = []
@@ -444,6 +540,11 @@ final class AppModel: ObservableObject {
     private static func defaultBook(
         mainAccount: LedgerAccount
     ) -> (accounts: [LedgerAccount], budgetNodes: [BudgetNode]) {
+        let openingBalances = LedgerAccount(
+            name: String(localized: "account.opening_balances"),
+            kind: .equity,
+            systemRole: .openingBalances
+        )
         let essentials = LedgerAccount(name: String(localized: "category.essentials"), kind: .expense)
         let food = LedgerAccount(
             name: String(localized: "category.food"),
@@ -486,7 +587,10 @@ final class AppModel: ObservableObject {
         let nodes = expenseAccounts.map {
             BudgetNode(id: $0.id, parentID: $0.parentID, name: $0.name)
         }
-        return ([mainAccount] + expenseAccounts + [salary, otherIncome], nodes)
+        return (
+            [mainAccount, openingBalances] + expenseAccounts + [salary, otherIncome],
+            nodes
+        )
     }
 }
 

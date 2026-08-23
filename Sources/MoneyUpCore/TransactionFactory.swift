@@ -2,6 +2,7 @@ import Foundation
 
 public enum TransactionFactoryError: Error, Equatable, Sendable {
     case amountMustBePositive
+    case amountMustBeNonZero
     case accountsMustDiffer
 }
 
@@ -122,6 +123,35 @@ public enum TransactionFactory {
             postings: [
                 Posting(accountID: categoryAccountID, money: amount.negated),
                 Posting(accountID: accountID, money: amount)
+            ]
+        )
+    }
+
+    /// Records an opening balance or later reconciliation without treating it
+    /// as income or spending. `displayBalanceDelta` uses the user-facing sign:
+    /// positive increases cash and also increases debt for liability accounts.
+    public static func balanceAdjustment(
+        displayBalanceDelta: Money,
+        accountID: UUID,
+        equityAccountID: UUID,
+        accountIsLiability: Bool,
+        occurredAt: Date = Date(),
+        note: String? = nil
+    ) throws -> JournalEntry {
+        guard !displayBalanceDelta.isZero else {
+            throw TransactionFactoryError.amountMustBeNonZero
+        }
+        let ledgerDelta = accountIsLiability
+            ? displayBalanceDelta.negated
+            : displayBalanceDelta
+
+        return try JournalEntry(
+            kind: .adjustment,
+            occurredAt: occurredAt,
+            note: normalized(note),
+            postings: [
+                Posting(accountID: accountID, money: ledgerDelta),
+                Posting(accountID: equityAccountID, money: ledgerDelta.negated)
             ]
         )
     }

@@ -20,6 +20,11 @@ public enum FinancialAccountType: String, Codable, CaseIterable, Sendable {
     case other
 }
 
+public enum SystemAccountRole: String, Codable, Sendable {
+    case openingBalances = "opening_balances"
+    case foreignExchange = "foreign_exchange"
+}
+
 /// The accounting account behind a user-facing bank account, liability,
 /// category, investment account, or foreign-exchange clearing account.
 public struct LedgerAccount: Codable, Equatable, Identifiable, Sendable {
@@ -28,6 +33,7 @@ public struct LedgerAccount: Codable, Equatable, Identifiable, Sendable {
     public var kind: LedgerAccountKind
     public var currency: CurrencyCode?
     public var accountType: FinancialAccountType?
+    public var systemRole: SystemAccountRole?
     public var parentID: UUID?
     public var isArchived: Bool
 
@@ -37,6 +43,7 @@ public struct LedgerAccount: Codable, Equatable, Identifiable, Sendable {
         kind: LedgerAccountKind,
         currency: CurrencyCode? = nil,
         accountType: FinancialAccountType? = nil,
+        systemRole: SystemAccountRole? = nil,
         parentID: UUID? = nil,
         isArchived: Bool = false
     ) {
@@ -45,6 +52,7 @@ public struct LedgerAccount: Codable, Equatable, Identifiable, Sendable {
         self.kind = kind
         self.currency = currency
         self.accountType = accountType
+        self.systemRole = systemRole
         self.parentID = parentID
         self.isArchived = isArchived
     }

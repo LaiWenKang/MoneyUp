@@ -110,6 +110,35 @@ final class EncryptedRecordStoreTests: XCTestCase {
         XCTAssertEqual(loaded, [entry])
         await store.close()
     }
+
+    func testBatchWriteRollsBackEveryRecordWhenOneRecordFails() async throws {
+        let fixture = try TemporaryDatabaseFixture()
+        let store = try EncryptedRecordStore(
+            databaseURL: fixture.databaseURL,
+            key: fixture.key
+        )
+        let account = LedgerAccount(name: "Atomic", kind: .asset)
+        let valid = try RecordWrite(
+            account,
+            id: account.id.uuidString,
+            in: .accounts
+        )
+        let invalid = RecordWrite(
+            collection: .accounts,
+            id: "empty-payload",
+            payload: Data()
+        )
+
+        do {
+            try await store.write([valid, invalid])
+            XCTFail("Expected the payload constraint to reject the batch")
+        } catch {
+            // The first write must have been rolled back with the second one.
+        }
+        let count = try await store.count(in: .accounts)
+        XCTAssertEqual(count, 0)
+        await store.close()
+    }
 }
 
 private struct TemporaryDatabaseFixture {

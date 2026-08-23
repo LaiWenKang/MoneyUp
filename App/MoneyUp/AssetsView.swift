@@ -6,6 +6,7 @@ struct AssetsView: View {
     @EnvironmentObject private var model: AppModel
     @State private var isAddingAccount = false
     @State private var isAddingHolding = false
+    @State private var editingAccount: LedgerAccount?
     @State private var isConfirmingExport = false
     @State private var isExporting = false
     @State private var exportDocument = CSVDocument(text: "")
@@ -49,22 +50,27 @@ struct AssetsView: View {
 
                 Section("assets.accounts") {
                     ForEach(model.userAccounts) { account in
-                        HStack(spacing: 12) {
-                            Image(systemName: account.accountType?.systemImage ?? "wallet.bifold")
-                                .foregroundStyle(.tint)
-                                .frame(width: 30)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(account.name)
-                                Text(account.currency?.value ?? "")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            if let balance = model.displayBalance(for: account) {
-                                Text(formattedMoney(balance))
-                                    .font(.subheadline.monospacedDigit())
+                        Button {
+                            editingAccount = account
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: account.accountType?.systemImage ?? "wallet.bifold")
+                                    .foregroundStyle(.tint)
+                                    .frame(width: 30)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(account.name)
+                                    Text(account.currency?.value ?? "")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                if let balance = model.displayBalance(for: account) {
+                                    Text(formattedMoney(balance))
+                                        .font(.subheadline.monospacedDigit())
+                                }
                             }
                         }
+                        .buttonStyle(.plain)
                     }
 
                     Button {
@@ -144,6 +150,9 @@ struct AssetsView: View {
             .sheet(isPresented: $isAddingHolding) {
                 AddHoldingSheet(accounts: investmentAccounts)
             }
+            .sheet(item: $editingAccount) { account in
+                AccountBalanceSheet(account: account)
+            }
             .confirmationDialog(
                 "export.warning_title",
                 isPresented: $isConfirmingExport,
@@ -178,8 +187,16 @@ private struct AddAccountSheet: View {
     @State private var name = ""
     @State private var type: FinancialAccountType = .bank
     @State private var currencyCode = "SGD"
+    @State private var startingBalanceText = ""
     @State private var isSaving = false
     @State private var errorMessage: String?
+
+    private var startingBalance: Decimal? {
+        let trimmed = startingBalanceText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return .zero }
+        guard let value = decimalAmount(from: trimmed), value >= .zero else { return nil }
+        return value
+    }
 
     var body: some View {
         NavigationStack {
@@ -193,6 +210,8 @@ private struct AddAccountSheet: View {
                 TextField("account.currency", text: $currencyCode)
                     .textInputAutocapitalization(.characters)
                     .autocorrectionDisabled()
+                TextField("account.starting_balance", text: $startingBalanceText)
+                    .keyboardType(.decimalPad)
                 if let errorMessage {
                     Text(errorMessage).foregroundStyle(.red)
                 }
@@ -205,7 +224,11 @@ private struct AddAccountSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("action.save") { Task { await save() } }
-                        .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSaving)
+                        .disabled(
+                            name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                || startingBalance == nil
+                                || isSaving
+                        )
                 }
             }
             .onAppear {
@@ -215,11 +238,81 @@ private struct AddAccountSheet: View {
     }
 
     private func save() async {
+        guard let startingBalance else {
+            errorMessage = String(localized: "error.invalid_amount")
+            return
+        }
         isSaving = true
         errorMessage = nil
         defer { isSaving = false }
         do {
-            try await model.addAccount(name: name, type: type, currencyCode: currencyCode)
+            try await model.addAccount(
+                name: name,
+                type: type,
+                currencyCode: currencyCode,
+                startingBalance: startingBalance
+            )
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+}
+
+private struct AccountBalanceSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var model: AppModel
+    let account: LedgerAccount
+
+    @State private var balanceText: String
+    @State private var isSaving = false
+    @State private var errorMessage: String?
+
+    init(account: LedgerAccount) {
+        self.account = account
+        _balanceText = State(initialValue: "")
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("account.current_balance", text: $balanceText)
+                        .keyboardType(.numbersAndPunctuation)
+                } footer: {
+                    Text("account.adjustment_detail")
+                }
+                if let errorMessage {
+                    Section { Text(errorMessage).foregroundStyle(.red) }
+                }
+            }
+            .navigationTitle(account.name)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("action.cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("action.save") { Task { await save() } }
+                        .disabled(decimalAmount(from: balanceText) == nil || isSaving)
+                }
+            }
+            .onAppear {
+                if balanceText.isEmpty, let balance = model.displayBalance(for: account) {
+                    balanceText = NSDecimalNumber(decimal: balance.amount).stringValue
+                }
+            }
+        }
+        .presentationDetents([.medium])
+    }
+
+    private func save() async {
+        guard let balance = decimalAmount(from: balanceText) else { return }
+        isSaving = true
+        errorMessage = nil
+        defer { isSaving = false }
+        do {
+            try await model.setAccountBalance(accountID: account.id, displayBalance: balance)
             dismiss()
         } catch {
             errorMessage = error.localizedDescription

@@ -6,12 +6,20 @@ struct OnboardingView: View {
     @State private var currencyCode = "SGD"
     @State private var accountName = ""
     @State private var accountType: FinancialAccountType = .bank
+    @State private var startingBalanceText = ""
     @State private var errorMessage: String?
     @FocusState private var isNameFocused: Bool
 
     private let supportedCurrencies = [
         "SGD", "CNY", "USD", "EUR", "GBP", "JPY", "HKD", "AUD", "CAD"
     ]
+
+    private var startingBalance: Decimal? {
+        let trimmed = startingBalanceText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return .zero }
+        guard let value = decimalAmount(from: trimmed), value >= .zero else { return nil }
+        return value
+    }
 
     var body: some View {
         NavigationStack {
@@ -43,6 +51,8 @@ struct OnboardingView: View {
                             Text(type.localizedTitle).tag(type)
                         }
                     }
+                    TextField("account.starting_balance", text: $startingBalanceText)
+                        .keyboardType(.decimalPad)
                 } header: {
                     Text("onboarding.first_account")
                 } footer: {
@@ -71,7 +81,10 @@ struct OnboardingView: View {
                             Spacer()
                         }
                     }
-                    .disabled(accountName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(
+                        accountName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                            || startingBalance == nil
+                    )
                 }
             }
             .navigationTitle("onboarding.title")
@@ -81,11 +94,16 @@ struct OnboardingView: View {
 
     private func completeOnboarding() async {
         errorMessage = nil
+        guard let startingBalance else {
+            errorMessage = String(localized: "error.invalid_amount")
+            return
+        }
         do {
             try await model.completeOnboarding(
                 baseCurrencyCode: currencyCode,
                 accountName: accountName,
-                accountType: accountType
+                accountType: accountType,
+                startingBalance: startingBalance
             )
         } catch {
             errorMessage = error.localizedDescription

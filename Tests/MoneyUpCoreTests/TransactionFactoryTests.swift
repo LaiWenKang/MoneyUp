@@ -66,4 +66,23 @@ final class TransactionFactoryTests: XCTestCase {
             XCTAssertEqual(error as? TransactionFactoryError, .amountMustBePositive)
         }
     }
+
+    func testBalanceAdjustmentUsesUserFacingLiabilitySign() throws {
+        let sgd = try CurrencyCode("SGD")
+        let cardID = UUID()
+        let equityID = UUID()
+        let entry = try TransactionFactory.balanceAdjustment(
+            displayBalanceDelta: try Money(500, currency: sgd),
+            accountID: cardID,
+            equityAccountID: equityID,
+            accountIsLiability: true
+        )
+
+        XCTAssertEqual(entry.kind, .adjustment)
+        XCTAssertEqual(entry.postings[0].accountID, cardID)
+        XCTAssertEqual(entry.postings[0].money.amount, -500)
+        XCTAssertEqual(entry.postings[1].accountID, equityID)
+        XCTAssertEqual(entry.postings[1].money.amount, 500)
+        XCTAssertEqual(entry.balanceByCurrency[sgd], Decimal.zero)
+    }
 }
