@@ -34,7 +34,7 @@ struct OnboardingView: View {
                     }
                 }
 
-                Section("onboarding.first_account") {
+                Section {
                     TextField("account.name", text: $accountName)
                         .textContentType(.organizationName)
                         .focused($isNameFocused)
@@ -43,6 +43,8 @@ struct OnboardingView: View {
                             Text(type.localizedTitle).tag(type)
                         }
                     }
+                } header: {
+                    Text("onboarding.first_account")
                 } footer: {
                     Text("onboarding.account_detail")
                 }

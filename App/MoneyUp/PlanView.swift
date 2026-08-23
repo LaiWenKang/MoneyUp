@@ -152,9 +152,11 @@ private struct BudgetEditorSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("plan.monthly_limit") {
+                Section {
                     TextField("quick_log.amount", text: $amountText)
                         .keyboardType(.decimalPad)
+                } header: {
+                    Text("plan.monthly_limit")
                 } footer: {
                     Text("plan.blank_removes_limit")
                 }
