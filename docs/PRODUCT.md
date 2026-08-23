@@ -23,7 +23,7 @@ approved.
 
 ## Core capabilities
 
-| Capability | Local Beta 0.1.0 behavior |
+| Capability | Local Beta 0.2.0 behavior |
 |---|---|
 | Privacy and security | No account or backend; encrypted local database; local authentication |
 | Budget planner | Monthly nested limits, roll-up, progress, and liquid availability |

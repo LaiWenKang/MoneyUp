@@ -3,7 +3,7 @@
 MoneyUp handles sensitive financial data. Security claims here distinguish
 implemented controls from planned work and known limits.
 
-## Local Beta 0.1.0 controls
+## Local Beta 0.2.0 controls
 
 | Control | Status |
 |---|---|
@@ -81,7 +81,7 @@ The guarantee does not cover:
 
 The Keychain key uses a this-device-only policy. Deleting the app, erasing its
 data, or losing that key can make the database permanently unreadable. Local
-Beta 0.1.0 does not yet provide a restorable encrypted archive. CSV export is
+Beta 0.2.0 does not yet provide a restorable encrypted archive. CSV export is
 readable and useful in Numbers or Excel, but it is not a full-fidelity restore
 format.
 

@@ -1,4 +1,4 @@
-# Install and Use Local Beta 0.1.0
+# Install and Use Local Beta 0.2.0
 
 MoneyUp is ready for local source installation. It is not yet a signed
 TestFlight or App Store download.
@@ -66,7 +66,7 @@ MoneyUp after they leave the app.
 
 The SQLCipher key is intentionally this-device-only. Deleting MoneyUp, using
 the in-app destructive reset, or losing the protected key can permanently make
-the local database unreadable. Local Beta 0.1.0 does not yet have portable
+the local database unreadable. Local Beta 0.2.0 does not yet have portable
 encrypted backup/restore, and CSV is not a complete restore format. Export
 snapshots regularly and do not use this beta as the sole record of information
 you cannot afford to lose.
