@@ -1,5 +1,113 @@
 import SwiftUI
 
+struct RootView: View {
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        switch model.state {
+        case .launching:
+            LaunchingView()
+        case .locked:
+            LockedView()
+        case .onboarding:
+            OnboardingView()
+        case .ready:
+            MainTabView()
+        case let .failed(message):
+            RecoveryView(message: message)
+        }
+    }
+}
+
+private struct LaunchingView: View {
+    var body: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "lock.shield.fill")
+                .font(.system(size: 48))
+                .foregroundStyle(.tint)
+            ProgressView()
+            Text("lock.opening")
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(.systemGroupedBackground))
+    }
+}
+
+private struct LockedView: View {
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "lock.fill")
+                .font(.system(size: 52))
+                .foregroundStyle(.tint)
+            Text("lock.title")
+                .font(.largeTitle.bold())
+            Text("lock.detail")
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.secondary)
+            Button {
+                Task { await model.start() }
+            } label: {
+                Label("lock.unlock", systemImage: "faceid")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .disabled(model.isWorking)
+        }
+        .padding(32)
+        .frame(maxWidth: 480, maxHeight: .infinity)
+        .frame(maxWidth: .infinity)
+        .background(Color(.systemGroupedBackground))
+    }
+}
+
+private struct RecoveryView: View {
+    @EnvironmentObject private var model: AppModel
+    let message: String
+    @State private var isConfirmingReset = false
+
+    var body: some View {
+        VStack(spacing: 18) {
+            Image(systemName: "exclamationmark.shield.fill")
+                .font(.system(size: 48))
+                .foregroundStyle(.orange)
+            Text("error.could_not_open")
+                .font(.title2.bold())
+            Text(message)
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.secondary)
+            Button("action.try_again") {
+                Task { await model.start() }
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(model.isWorking)
+
+            Button("recovery.erase", role: .destructive) {
+                isConfirmingReset = true
+            }
+            .disabled(model.isWorking)
+        }
+        .padding(32)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(.systemGroupedBackground))
+        .confirmationDialog(
+            "recovery.erase_title",
+            isPresented: $isConfirmingReset,
+            titleVisibility: .visible
+        ) {
+            Button("recovery.erase_confirm", role: .destructive) {
+                Task { await model.eraseAllDataAndRestart() }
+            }
+            Button("action.cancel", role: .cancel) {}
+        } message: {
+            Text("recovery.erase_detail")
+        }
+    }
+}
+
 private enum MoneyUpSection: Hashable {
     case today
     case plan
@@ -8,7 +116,7 @@ private enum MoneyUpSection: Hashable {
     case assets
 }
 
-struct RootView: View {
+private struct MainTabView: View {
     @State private var selectedSection: MoneyUpSection = .today
     @State private var isPresentingQuickLog = false
 
@@ -16,50 +124,24 @@ struct RootView: View {
         ZStack(alignment: .bottomTrailing) {
             TabView(selection: $selectedSection) {
                 DashboardView()
-                    .tabItem {
-                        Label("tab.today", systemImage: "house.fill")
-                    }
+                    .tabItem { Label("tab.today", systemImage: "house.fill") }
                     .tag(MoneyUpSection.today)
 
-                FeaturePlaceholderView(
-                    titleKey: "tab.plan",
-                    detailKey: "placeholder.plan",
-                    systemImage: "list.bullet.indent"
-                )
-                .tabItem {
-                    Label("tab.plan", systemImage: "target")
-                }
-                .tag(MoneyUpSection.plan)
+                PlanView()
+                    .tabItem { Label("tab.plan", systemImage: "target") }
+                    .tag(MoneyUpSection.plan)
 
-                FeaturePlaceholderView(
-                    titleKey: "tab.calendar",
-                    detailKey: "placeholder.calendar",
-                    systemImage: "calendar"
-                )
-                .tabItem {
-                    Label("tab.calendar", systemImage: "calendar")
-                }
-                .tag(MoneyUpSection.calendar)
+                CalendarView()
+                    .tabItem { Label("tab.calendar", systemImage: "calendar") }
+                    .tag(MoneyUpSection.calendar)
 
-                FeaturePlaceholderView(
-                    titleKey: "tab.insights",
-                    detailKey: "placeholder.insights",
-                    systemImage: "chart.xyaxis.line"
-                )
-                .tabItem {
-                    Label("tab.insights", systemImage: "chart.bar.fill")
-                }
-                .tag(MoneyUpSection.insights)
+                InsightsView()
+                    .tabItem { Label("tab.insights", systemImage: "chart.bar.fill") }
+                    .tag(MoneyUpSection.insights)
 
-                FeaturePlaceholderView(
-                    titleKey: "tab.assets",
-                    detailKey: "placeholder.assets",
-                    systemImage: "building.columns"
-                )
-                .tabItem {
-                    Label("tab.assets", systemImage: "creditcard.fill")
-                }
-                .tag(MoneyUpSection.assets)
+                AssetsView()
+                    .tabItem { Label("tab.assets", systemImage: "creditcard.fill") }
+                    .tag(MoneyUpSection.assets)
             }
 
             Button {
