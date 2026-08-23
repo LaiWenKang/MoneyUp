@@ -1,0 +1,180 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "holding.delete_detail" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "This removes the holding and its manual valuation. It does not change account transactions." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "这将移除该持仓及其手动估值，不会更改账户交易。" } }
+      }
+    },
+    "holding.delete_title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Delete this holding?" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "删除此持仓？" } }
+      }
+    },
+    "privacy.export_detail" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Only an export you start can send data outside MoneyUp. CSV files are readable and are no longer protected by MoneyUp after export." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "只有你主动发起导出时，数据才会离开 MoneyUp。CSV 文件可直接读取，导出后不再受 MoneyUp 保护。" } }
+      }
+    },
+    "privacy.export_title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "You control exports" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "导出由你掌控" } }
+      }
+    },
+    "privacy.local_detail" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "MoneyUp has no user account or finance backend. Transactions, budgets, and receipt text are processed on this iPhone." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "MoneyUp 无需注册，也没有财务数据后端。交易、预算和收据文字均在此 iPhone 上处理。" } }
+      }
+    },
+    "privacy.local_title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Local by default" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "默认仅存本机" } }
+      }
+    },
+    "privacy.no_tracking_detail" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "There are no ads, analytics SDKs, remote AI calls, or financial-data network requests." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "不含广告、分析 SDK、远程 AI 调用或财务数据网络请求。" } }
+      }
+    },
+    "privacy.no_tracking_title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "No tracking" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "不追踪" } }
+      }
+    },
+    "privacy.protected_detail" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "The database is encrypted with a random key protected by your device passcode, Face ID, or Touch ID. MoneyUp locks when it enters the background." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "数据库使用随机密钥加密，并由设备密码、面容 ID 或触控 ID 保护。MoneyUp 进入后台时会锁定。" } }
+      }
+    },
+    "privacy.protected_title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Protected on device" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "本机加密保护" } }
+      }
+    },
+    "privacy.read_policy" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Read the full privacy policy" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "阅读完整隐私政策" } }
+      }
+    },
+    "privacy.recovery_detail" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "This beta cannot restore its encrypted book after deletion or device loss. Export CSV snapshots and do not make the beta your only irreplaceable record." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "此测试版在应用被删除或设备丢失后无法恢复加密账本。请定期导出 CSV，且不要将测试版作为无法替代的唯一记录。" } }
+      }
+    },
+    "privacy.recovery_title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Beta recovery limit" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "测试版恢复限制" } }
+      }
+    },
+    "privacy.summary" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "How your data is handled" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "数据处理方式" } }
+      }
+    },
+    "privacy.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Privacy and beta" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "隐私与测试" } }
+      }
+    },
+    "privacy.your_choices" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Your choices" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "你的选择" } }
+      }
+    },
+    "schedule.delete_detail" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "This stops all future projections from this schedule. Transactions already recorded are unchanged." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "这会停止此计划的所有未来预测，已记录的交易不会更改。" } }
+      }
+    },
+    "schedule.delete_title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Delete this schedule?" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "删除此计划？" } }
+      }
+    },
+    "testing.feedback_detail" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Use Send Beta Feedback in TestFlight. Describe the steps and version, but hide real balances, receipts, and names in screenshots." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请使用 TestFlight 中的“发送 Beta 版反馈”。说明操作步骤和版本，但请在截图中遮盖真实余额、收据和姓名。" } }
+      }
+    },
+    "testing.feedback_title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Private feedback" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "保护隐私的反馈" } }
+      }
+    },
+    "testing.first_detail" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Start with small sample amounts. Test quick logging, corrections, budgets, the calendar, background locking, the widget, and CSV export before entering a full month." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请先使用小额样例，测试快速记账、更正、预算、日历、后台锁定、小组件和 CSV 导出，再录入完整月份。" } }
+      }
+    },
+    "testing.first_title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Founders test" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "首轮测试" } }
+      }
+    },
+    "testing.read_support" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Open support guidance" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "打开支持说明" } }
+      }
+    },
+    "testing.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "TestFlight beta" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "TestFlight 测试版" } }
+      }
+    },
+    "transaction.delete_detail" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "This permanently removes the transaction and reverses its effect on balances, budgets, and reports." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "这会永久移除该交易，并撤销其对余额、预算和报表的影响。" } }
+      }
+    },
+    "transaction.delete_title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Delete this transaction?" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "删除此交易？" } }
+      }
+    },
+    "whats_new.0_3_0.beta" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "A founders-test guide now explains the safest way to try each core workflow and send private TestFlight feedback." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "新增首轮测试指南，说明如何安全体验核心流程并通过 TestFlight 反馈。" } }
+      }
+    },
+    "whats_new.0_3_0.deletion" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Transactions, schedules, and holdings now require confirmation before permanent deletion." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "永久删除交易、计划收支和持仓前，现在都会要求确认。" } }
+      }
+    },
+    "whats_new.0_3_0.privacy" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Privacy and beta information is available in the app, with clearer export and recovery limits." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "应用内现已提供隐私与测试说明，并更清楚地说明导出和恢复限制。" } }
+      }
+    }
+  },
+  "version" : "1.0"
+}

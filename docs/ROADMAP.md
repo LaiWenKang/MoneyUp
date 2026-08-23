@@ -1,6 +1,6 @@
 # Delivery Roadmap
 
-Completed checkboxes describe Local Beta 0.2.0 behavior on `main`; unchecked
+Completed checkboxes describe Founders Beta 0.3.0 behavior on `main`; unchecked
 items are not promised by the current build.
 
 ## Foundation — finance and secure storage
@@ -15,7 +15,7 @@ items are not promised by the current build.
 - [x] Wrong-key, plaintext-leak, migration-compatibility, and rollback tests
 - [x] Destructive failed-recovery path with explicit confirmation
 
-## Daily use — Local Beta 0.2.0
+## Daily use — Founders Beta 0.3.0
 
 - [x] Onboarding with base currency, first account, and opening balance
 - [x] Expense, income, same-currency, and foreign-currency transfer logging
@@ -33,6 +33,9 @@ items are not promised by the current build.
 - [x] Enriched, formula-safe CSV export through the system file picker
 - [x] English and Simplified Chinese UI
 - [x] CI for Swift tests and the app plus widget Simulator build
+- [x] App privacy manifest and bilingual in-app privacy/beta disclosure
+- [x] Confirmed deletion for transactions, schedules, and manual holdings
+- [x] Exclude non-restorable encrypted database files from system backup
 
 ## Beta hardening
 

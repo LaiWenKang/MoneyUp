@@ -413,6 +413,11 @@ final class AppModel: ObservableObject {
         scheduledTransactions.sort { $0.nextOccurrence < $1.nextOccurrence }
     }
 
+    func deleteScheduledTransaction(id: UUID) async throws {
+        try await requireStore().remove(id: id.uuidString, from: .scheduledTransactions)
+        scheduledTransactions.removeAll { $0.id == id }
+    }
+
     func addInvestmentHolding(_ holding: InvestmentHolding) async throws {
         try await requireStore().upsert(
             holding,
@@ -420,6 +425,11 @@ final class AppModel: ObservableObject {
             in: .investmentHoldings
         )
         investmentHoldings.append(holding)
+    }
+
+    func deleteInvestmentHolding(id: UUID) async throws {
+        try await requireStore().remove(id: id.uuidString, from: .investmentHoldings)
+        investmentHoldings.removeAll { $0.id == id }
     }
 
     func updateLockWhenBackgrounded(_ enabled: Bool) async throws {

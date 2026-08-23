@@ -23,7 +23,7 @@ approved.
 
 ## Core capabilities
 
-| Capability | Local Beta 0.2.0 behavior |
+| Capability | Founders Beta 0.3.0 behavior |
 |---|---|
 | Privacy and security | No account or backend; encrypted local database; local authentication |
 | Budget planner | Monthly nested limits, roll-up, progress, and liquid availability |

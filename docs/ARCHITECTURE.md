@@ -18,7 +18,7 @@ testable.
 
 ## Module boundaries
 
-| Module | Responsibility | Local Beta 0.2.0 |
+| Module | Responsibility | Founders Beta 0.3.0 |
 |---|---|---|
 | MoneyUp app | State machine, lock lifecycle, bilingual SwiftUI, local insights | Implemented |
 | MoneyUpCore | Money, ledger, hierarchy, recurrence, holdings, export rules | Implemented |

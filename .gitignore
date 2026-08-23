@@ -31,3 +31,7 @@ Package.resolved
 # Editor state
 .idea/
 .vscode/
+
+# Release validation script cache
+__pycache__/
+*.pyc

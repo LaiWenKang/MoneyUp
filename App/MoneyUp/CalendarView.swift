@@ -6,6 +6,8 @@ struct CalendarView: View {
     @State private var selectedDate = Date()
     @State private var isAddingSchedule = false
     @State private var errorMessage: String?
+    @State private var entryPendingDeletion: JournalEntry?
+    @State private var schedulePendingDeletion: ScheduledTransaction?
 
     private var selectedEntries: [JournalEntry] {
         model.entries.filter { Calendar.current.isDate($0.occurredAt, inSameDayAs: selectedDate) }
@@ -78,7 +80,7 @@ struct CalendarView: View {
                             TransactionRow(entry: entry)
                                 .swipeActions {
                                     Button(role: .destructive) {
-                                        Task { await delete(entry) }
+                                        entryPendingDeletion = entry
                                     } label: {
                                         Label("action.delete", systemImage: "trash")
                                     }
@@ -98,6 +100,13 @@ struct CalendarView: View {
                                 Spacer()
                                 Text(formattedMoney(item.amount))
                                     .font(.subheadline.monospacedDigit())
+                            }
+                            .swipeActions {
+                                Button(role: .destructive) {
+                                    schedulePendingDeletion = item
+                                } label: {
+                                    Label("action.delete", systemImage: "trash")
+                                }
                             }
                         }
                     }
@@ -120,12 +129,59 @@ struct CalendarView: View {
             .sheet(isPresented: $isAddingSchedule) {
                 AddScheduleSheet()
             }
+            .confirmationDialog(
+                "transaction.delete_title",
+                isPresented: deletionBinding(for: $entryPendingDeletion),
+                titleVisibility: .visible,
+                presenting: entryPendingDeletion
+            ) { entry in
+                Button("action.delete", role: .destructive) {
+                    entryPendingDeletion = nil
+                    Task { await delete(entry) }
+                }
+                Button("action.cancel", role: .cancel) {
+                    entryPendingDeletion = nil
+                }
+            } message: { _ in
+                Text("transaction.delete_detail")
+            }
+            .confirmationDialog(
+                "schedule.delete_title",
+                isPresented: deletionBinding(for: $schedulePendingDeletion),
+                titleVisibility: .visible,
+                presenting: schedulePendingDeletion
+            ) { item in
+                Button("action.delete", role: .destructive) {
+                    schedulePendingDeletion = nil
+                    Task { await delete(item) }
+                }
+                Button("action.cancel", role: .cancel) {
+                    schedulePendingDeletion = nil
+                }
+            } message: { _ in
+                Text("schedule.delete_detail")
+            }
         }
+    }
+
+    private func deletionBinding<Value>(for value: Binding<Value?>) -> Binding<Bool> {
+        Binding(
+            get: { value.wrappedValue != nil },
+            set: { if !$0 { value.wrappedValue = nil } }
+        )
     }
 
     private func delete(_ entry: JournalEntry) async {
         do {
             try await model.deleteEntry(id: entry.id)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func delete(_ item: ScheduledTransaction) async {
+        do {
+            try await model.deleteScheduledTransaction(id: item.id)
         } catch {
             errorMessage = error.localizedDescription
         }
