@@ -68,7 +68,7 @@ struct WhatsNewSheet: View {
                             Text(entry.element)
                         } icon: {
                             Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(.tint)
+                                .foregroundStyle(Color.moneyUpGold)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }

@@ -83,7 +83,7 @@ struct InsightsView: View {
             MetricCard(
                 title: "transaction.expense",
                 value: formattedMoney(report.baseFlow.expense),
-                color: .orange
+                color: .moneyUpGold
             )
             MetricCard(
                 title: "insights.net",
@@ -179,7 +179,7 @@ struct InsightsView: View {
                     .frame(height: 240)
                     .chartForegroundStyleScale([
                         String(localized: "transaction.income"): Color.green,
-                        String(localized: "transaction.expense"): Color.orange
+                        String(localized: "transaction.expense"): Color.moneyUpGold
                     ])
                     .accessibilityLabel(Text("insights.flow_chart"))
                 } else {

@@ -35,7 +35,7 @@ The beta includes:
 - a privacy-redacted Home Screen widget with expense and income shortcuts;
 - posting-level CSV export with account metadata for Numbers and Excel;
 - English and Simplified Chinese UI and first-run categories;
-- an app icon and accent colour, a lock screen that names the biometry the
+- a royal blue and gold app icon and accent colour, a lock screen that names the biometry the
   device actually has, and an in-app version with release notes on update;
 - Swift tests plus a clean unsigned iOS Simulator build in CI.
 
