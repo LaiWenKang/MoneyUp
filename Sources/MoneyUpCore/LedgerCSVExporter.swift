@@ -4,9 +4,15 @@ import Foundation
 /// spreadsheet tools. One CSV row represents one posting, preserving the
 /// balanced accounting representation instead of flattening away transfers.
 public enum LedgerCSVExporter {
-    public static func export(_ entries: [JournalEntry]) -> String {
+    public static func export(
+        _ entries: [JournalEntry],
+        accounts: [LedgerAccount] = []
+    ) -> String {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let accountsByID = accounts.reduce(into: [UUID: LedgerAccount]()) {
+            $0[$1.id] = $1
+        }
 
         var rows = [[
             "entry_id",
@@ -17,6 +23,10 @@ public enum LedgerCSVExporter {
             "entry_note",
             "posting_id",
             "account_id",
+            "account_name",
+            "account_kind",
+            "account_type",
+            "parent_account_id",
             "amount",
             "currency",
             "posting_memo"
@@ -24,6 +34,7 @@ public enum LedgerCSVExporter {
 
         for entry in entries {
             for posting in entry.postings {
+                let account = accountsByID[posting.accountID]
                 rows.append([
                     entry.id.uuidString.lowercased(),
                     entry.kind.rawValue,
@@ -33,6 +44,10 @@ public enum LedgerCSVExporter {
                     spreadsheetSafeText(entry.note ?? ""),
                     posting.id.uuidString.lowercased(),
                     posting.accountID.uuidString.lowercased(),
+                    spreadsheetSafeText(account?.name ?? ""),
+                    account?.kind.rawValue ?? "",
+                    account?.accountType?.rawValue ?? "",
+                    account?.parentID?.uuidString.lowercased() ?? "",
                     NSDecimalNumber(decimal: posting.money.amount).stringValue,
                     posting.money.currency.value,
                     spreadsheetSafeText(posting.memo ?? "")

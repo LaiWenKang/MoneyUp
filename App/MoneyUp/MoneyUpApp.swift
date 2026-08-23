@@ -8,8 +8,16 @@ struct MoneyUpApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootView()
-                .environmentObject(model)
+            ZStack {
+                RootView()
+                    .environmentObject(model)
+
+                if scenePhase != .active {
+                    PrivacyCoverView()
+                        .transition(.opacity)
+                        .zIndex(100)
+                }
+            }
                 .task {
                     await model.start()
                 }
@@ -21,5 +29,20 @@ struct MoneyUpApp: App {
                     model.lock()
                 }
         }
+    }
+}
+
+private struct PrivacyCoverView: View {
+    var body: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "lock.shield.fill")
+                .font(.system(size: 48))
+                .foregroundStyle(.tint)
+            Text("privacy.cover")
+                .font(.headline)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(.regularMaterial)
+        .accessibilityElement(children: .combine)
     }
 }

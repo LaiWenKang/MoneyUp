@@ -60,6 +60,7 @@ final class AppModel: ObservableObject {
                 try await discardIncompleteOnboarding(from: openedStore)
                 state = .onboarding
             } else {
+                try validateLoadedBook()
                 state = .ready
             }
         } catch let error as DatabaseKeyStoreError where error == .authenticationCancelled {
@@ -318,6 +319,7 @@ final class AppModel: ObservableObject {
 
     func logTransfer(
         amount: Decimal,
+        destinationAmount: Decimal? = nil,
         sourceAccountID: UUID,
         destinationAccountID: UUID,
         occurredAt: Date,
@@ -325,17 +327,45 @@ final class AppModel: ObservableObject {
     ) async throws {
         let sourceCurrency = try currency(for: sourceAccountID)
         let destinationCurrency = try currency(for: destinationAccountID)
-        guard sourceCurrency == destinationCurrency else {
+        if sourceCurrency == destinationCurrency {
+            let entry = try TransactionFactory.transfer(
+                amount: try Money(amount, currency: sourceCurrency),
+                from: sourceAccountID,
+                to: destinationAccountID,
+                occurredAt: occurredAt,
+                note: note
+            )
+            try await save(entry)
+            return
+        }
+
+        guard let destinationAmount, destinationAmount > .zero else {
             throw AppModelError.foreignCurrencyTransferRequiresExchangeRate
         }
-        let entry = try TransactionFactory.transfer(
-            amount: try Money(amount, currency: sourceCurrency),
+        let sourceTrading = foreignExchangeAccount(for: sourceCurrency)
+        let destinationTrading = foreignExchangeAccount(for: destinationCurrency)
+        let newTradingAccounts = [sourceTrading, destinationTrading].filter { candidate in
+            !accounts.contains(where: { $0.id == candidate.id })
+        }
+        let entry = try TransactionFactory.foreignCurrencyTransfer(
+            sourceAmount: try Money(amount, currency: sourceCurrency),
+            destinationAmount: try Money(destinationAmount, currency: destinationCurrency),
             from: sourceAccountID,
             to: destinationAccountID,
+            sourceTradingAccountID: sourceTrading.id,
+            destinationTradingAccountID: destinationTrading.id,
             occurredAt: occurredAt,
             note: note
         )
-        try await save(entry)
+        var writes = try newTradingAccounts.map {
+            try RecordWrite($0, id: $0.id.uuidString, in: .accounts)
+        }
+        writes.append(
+            try RecordWrite(entry, id: entry.id.uuidString, in: .journalEntries)
+        )
+        try await requireStore().write(writes)
+        accounts.append(contentsOf: newTradingAccounts)
+        entries.insert(entry, at: 0)
     }
 
     func deleteEntry(id: UUID) async throws {
@@ -447,7 +477,10 @@ final class AppModel: ObservableObject {
     }
 
     func csvExport() -> String {
-        LedgerCSVExporter.export(entries.sorted { $0.occurredAt < $1.occurredAt })
+        LedgerCSVExporter.export(
+            entries.sorted { $0.occurredAt < $1.occurredAt },
+            accounts: accounts
+        )
     }
 
     private func save(_ entry: JournalEntry) async throws {
@@ -511,6 +544,17 @@ final class AppModel: ObservableObject {
             )
     }
 
+    private func foreignExchangeAccount(for currency: CurrencyCode) -> LedgerAccount {
+        accounts.first {
+            $0.systemRole == .foreignExchange && $0.currency == currency
+        } ?? LedgerAccount(
+            name: "\(String(localized: "account.fx_clearing")) \(currency.value)",
+            kind: .trading,
+            currency: currency,
+            systemRole: .foreignExchange
+        )
+    }
+
     private func clearDecodedState() {
         profile = nil
         accounts = []
@@ -518,6 +562,38 @@ final class AppModel: ObservableObject {
         budgetNodes = []
         scheduledTransactions = []
         investmentHoldings = []
+    }
+
+    private func validateLoadedBook() throws {
+        guard let profile else { return }
+        let accountIDs = Set(accounts.map(\.id))
+        guard accountIDs.count == accounts.count else { throw AppModelError.invalidBook }
+
+        for account in accounts {
+            if let parentID = account.parentID, !accountIDs.contains(parentID) {
+                throw AppModelError.invalidBook
+            }
+        }
+        let expenseIDs = Set(accounts.filter { $0.kind == .expense }.map(\.id))
+        guard budgetNodes.allSatisfy({ expenseIDs.contains($0.id) }) else {
+            throw AppModelError.invalidBook
+        }
+        _ = try BudgetTree(currency: profile.baseCurrency, nodes: budgetNodes)
+
+        guard entries.allSatisfy({ entry in
+            entry.postings.allSatisfy { accountIDs.contains($0.accountID) }
+        }) else {
+            throw AppModelError.invalidBook
+        }
+        guard scheduledTransactions.allSatisfy({ item in
+            accountIDs.contains(item.accountID)
+                && accountIDs.contains(item.categoryAccountID)
+        }) else {
+            throw AppModelError.invalidBook
+        }
+        guard investmentHoldings.allSatisfy({ accountIDs.contains($0.accountID) }) else {
+            throw AppModelError.invalidBook
+        }
     }
 
     private static func databaseURL() throws -> URL {
@@ -602,6 +678,7 @@ enum AppModelError: Error {
     case negativeAmount
     case accountHasNoCurrency
     case foreignCurrencyTransferRequiresExchangeRate
+    case invalidBook
 }
 
 extension AppModelError: LocalizedError {
@@ -615,6 +692,7 @@ extension AppModelError: LocalizedError {
         case .accountHasNoCurrency: String(localized: "error.account_currency")
         case .foreignCurrencyTransferRequiresExchangeRate:
             String(localized: "error.fx_transfer_not_supported")
+        case .invalidBook: String(localized: "error.invalid_book")
         }
     }
 }

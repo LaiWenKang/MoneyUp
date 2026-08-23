@@ -12,8 +12,20 @@ struct CalendarView: View {
     }
 
     private var scheduledForDay: [ScheduledTransaction] {
-        model.scheduledTransactions.filter {
-            Calendar.current.isDate($0.nextOccurrence, inSameDayAs: selectedDate)
+        let calendar = Calendar.current
+        guard let endOfDay = calendar.date(
+            byAdding: .day,
+            value: 1,
+            to: calendar.startOfDay(for: selectedDate)
+        )?.addingTimeInterval(-1) else { return [] }
+        return model.scheduledTransactions.filter { item in
+            item.occurrences(
+                through: endOfDay,
+                calendar: calendar,
+                maximumCount: 2_000
+            ).contains {
+                calendar.isDate($0, inSameDayAs: selectedDate)
+            }
         }
     }
 

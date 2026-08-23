@@ -24,6 +24,7 @@ struct QuickLogSheet: View {
 
     @State private var kind: QuickLogKind
     @State private var amountText = ""
+    @State private var destinationAmountText = ""
     @State private var accountID: UUID?
     @State private var destinationAccountID: UUID?
     @State private var categoryID: UUID?
@@ -46,13 +47,37 @@ struct QuickLogSheet: View {
         kind == .income ? model.incomeCategories : model.expenseCategories
     }
 
+    private var selectedAccountCurrency: CurrencyCode? {
+        model.userAccounts.first(where: { $0.id == accountID })?.currency
+    }
+
+    private var selectedDestinationCurrency: CurrencyCode? {
+        model.userAccounts.first(where: { $0.id == destinationAccountID })?.currency
+    }
+
+    private var isForeignCurrencyTransfer: Bool {
+        kind == .transfer
+            && selectedAccountCurrency != nil
+            && selectedDestinationCurrency != nil
+            && selectedAccountCurrency != selectedDestinationCurrency
+    }
+
+    private var destinationAmount: Decimal? {
+        guard let value = decimalAmount(from: destinationAmountText), value > .zero else {
+            return nil
+        }
+        return value
+    }
+
     private var canSave: Bool {
         guard amount != nil, accountID != nil else { return false }
         switch kind {
         case .expense, .income:
             return categoryID != nil
         case .transfer:
-            return destinationAccountID != nil && destinationAccountID != accountID
+            return destinationAccountID != nil
+                && destinationAccountID != accountID
+                && (!isForeignCurrencyTransfer || destinationAmount != nil)
         }
     }
 
@@ -85,6 +110,19 @@ struct QuickLogSheet: View {
                         Picker("transaction.to_account", selection: $destinationAccountID) {
                             ForEach(model.userAccounts.filter { $0.id != accountID }) { account in
                                 Text(account.name).tag(Optional(account.id))
+                            }
+                        }
+                        if isForeignCurrencyTransfer {
+                            HStack {
+                                TextField(
+                                    "transaction.received_amount",
+                                    text: $destinationAmountText
+                                )
+                                .keyboardType(.decimalPad)
+                                if let currency = selectedDestinationCurrency {
+                                    Text(currency.value)
+                                        .foregroundStyle(.secondary)
+                                }
                             }
                         }
                     } else {
@@ -201,6 +239,7 @@ struct QuickLogSheet: View {
                 guard let destinationAccountID else { return }
                 try await model.logTransfer(
                     amount: amount,
+                    destinationAmount: isForeignCurrencyTransfer ? destinationAmount : nil,
                     sourceAccountID: accountID,
                     destinationAccountID: destinationAccountID,
                     occurredAt: occurredAt,

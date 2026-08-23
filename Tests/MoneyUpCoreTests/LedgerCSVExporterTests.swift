@@ -66,4 +66,26 @@ final class LedgerCSVExporterTests: XCTestCase {
         XCTAssertTrue(csv.contains("'=HYPERLINK"))
         XCTAssertTrue(csv.contains("'@malicious"))
     }
+
+    func testExportIncludesReadableAccountMetadata() throws {
+        let sgd = try CurrencyCode("SGD")
+        let bank = LedgerAccount(
+            name: "Everyday Bank",
+            kind: .asset,
+            currency: sgd,
+            accountType: .bank
+        )
+        let dining = LedgerAccount(name: "Dining", kind: .expense)
+        let entry = try TransactionFactory.expense(
+            amount: try Money(9.75, currency: sgd),
+            paidFrom: bank.id,
+            category: dining.id
+        )
+
+        let csv = LedgerCSVExporter.export([entry], accounts: [bank, dining])
+
+        XCTAssertTrue(csv.contains("account_name,account_kind,account_type"))
+        XCTAssertTrue(csv.contains("Everyday Bank,asset,bank"))
+        XCTAssertTrue(csv.contains("Dining,expense"))
+    }
 }
