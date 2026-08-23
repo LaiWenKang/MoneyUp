@@ -8,7 +8,7 @@ on-device charts, accounts and holdings, and spreadsheet-friendly export.
 
 ## Project status
 
-MoneyUp is at **Local Beta 0.1.0**. The app is functional and can be installed
+MoneyUp is at **Local Beta 0.2.0**. The app is functional and can be installed
 from source on an iOS 18 device through Xcode. It is not yet distributed as a
 signed TestFlight or App Store build.
 
@@ -35,6 +35,8 @@ The beta includes:
 - a privacy-redacted Home Screen widget with expense and income shortcuts;
 - posting-level CSV export with account metadata for Numbers and Excel;
 - English and Simplified Chinese UI and first-run categories;
+- an app icon and accent colour, a lock screen that names the biometry the
+  device actually has, and an in-app version with release notes on update;
 - Swift tests plus a clean unsigned iOS Simulator build in CI.
 
 Portable encrypted backup/restore, imports, and signed public distribution are

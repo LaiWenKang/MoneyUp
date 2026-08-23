@@ -137,6 +137,12 @@ struct AssetsView: View {
                     } label: {
                         Label("lock.lock_now", systemImage: "lock.fill")
                     }
+
+                    LabeledContent {
+                        Text(AppVersion.display).monospacedDigit()
+                    } label: {
+                        Label("assets.version", systemImage: "info.circle")
+                    }
                 }
 
                 if let errorMessage {

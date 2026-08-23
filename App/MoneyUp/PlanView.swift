@@ -12,6 +12,17 @@ struct PlanView: View {
     @State private var editingNode: BudgetNode?
     @State private var isAddingCategory = false
 
+    /// How far through the month we are, drawn on every bar so a number can be
+    /// read as ahead or behind rather than just large.
+    private var monthElapsed: Double {
+        let calendar = Calendar.current
+        let now = Date()
+        guard let month = calendar.dateInterval(of: .month, for: now) else { return 0 }
+        let span = month.end.timeIntervalSince(month.start)
+        guard span > 0 else { return 0 }
+        return min(max(now.timeIntervalSince(month.start) / span, 0), 1)
+    }
+
     private var orderedNodes: [IndentedNode] {
         var result: [IndentedNode] = []
         let children = Dictionary(grouping: model.budgetNodes, by: \.parentID)
@@ -26,20 +37,56 @@ struct PlanView: View {
         return result
     }
 
-    private var progressByID: [UUID: BudgetProgress] {
-        Dictionary(uniqueKeysWithValues: model.budgetProgressThisMonth().map { ($0.node.id, $0) })
+    private func progressByID() -> [UUID: BudgetProgress] {
+        Dictionary(
+            uniqueKeysWithValues: model.budgetProgressThisMonth().map { ($0.node.id, $0) }
+        )
+    }
+
+    /// Budgeted, spent, and remaining across the top-level categories. Child
+    /// limits are allocations inside their parent, so summing roots avoids
+    /// counting the same money twice.
+    private func summary(
+        _ progress: [UUID: BudgetProgress]
+    ) -> (limit: Money, spent: Money, remaining: Money)? {
+        guard let currency = model.profile?.baseCurrency else { return nil }
+        let roots = model.budgetNodes.filter { $0.parentID == nil }
+        let limit = roots.compactMap(\.limit).reduce(Decimal.zero) { $0 + $1.amount }
+        guard limit > .zero else { return nil }
+
+        let spent = roots
+            .filter { $0.limit != nil }
+            .compactMap { progress[$0.id]?.spent.amount }
+            .reduce(Decimal.zero, +)
+
+        guard let limitMoney = try? Money(limit, currency: currency),
+              let spentMoney = try? Money(spent, currency: currency),
+              let remainingMoney = try? Money(limit - spent, currency: currency) else {
+            return nil
+        }
+        return (limitMoney, spentMoney, remainingMoney)
     }
 
     var body: some View {
-        NavigationStack {
+        // Resolved once per update. Reading it inside the row loop recomputed
+        // the whole budget tree for every category on screen.
+        let progress = progressByID()
+        let elapsed = monthElapsed
+
+        return NavigationStack {
             List {
-                Section {
-                    Text("plan.rollup_detail")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                if let summary = summary(progress) {
+                    Section {
+                        BudgetSummaryCard(
+                            limit: summary.limit,
+                            spent: summary.spent,
+                            remaining: summary.remaining,
+                            elapsed: elapsed
+                        )
+                    }
                 }
 
-                Section("plan.this_month") {
+                Section {
                     ForEach(orderedNodes) { item in
                         Button {
                             editingNode = item.node
@@ -47,18 +94,23 @@ struct PlanView: View {
                             BudgetRow(
                                 node: item.node,
                                 depth: item.depth,
-                                progress: progressByID[item.node.id]
+                                progress: progress[item.node.id],
+                                elapsed: elapsed
                             )
                         }
                         .buttonStyle(.plain)
                     }
+                } header: {
+                    Text("plan.this_month")
+                } footer: {
+                    Text("plan.rollup_detail")
                 }
             }
             .overlay {
                 if model.budgetNodes.isEmpty {
                     ContentUnavailableView(
                         "plan.empty",
-                        systemImage: "target",
+                        systemImage: "chart.pie",
                         description: Text("plan.empty_detail")
                     )
                 }
@@ -83,41 +135,85 @@ struct PlanView: View {
     }
 }
 
+/// A track showing spending against a limit, with a marker for how far
+/// through the month we are. The marker is what turns "$420 of $600" into
+/// "ahead" or "behind" without the reader doing the arithmetic.
+private struct BudgetBar: View {
+    let ratio: Double
+    let elapsed: Double
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(Color(.tertiarySystemFill))
+
+                Capsule()
+                    .fill(ratio > 1 ? Color.red : Color.accentColor)
+                    .frame(width: proxy.size.width * min(max(ratio, 0), 1))
+
+                Capsule()
+                    .fill(Color.primary.opacity(0.45))
+                    .frame(width: 2)
+                    .offset(x: proxy.size.width * min(max(elapsed, 0), 1) - 1)
+            }
+        }
+        .frame(height: 8)
+        .accessibilityHidden(true)
+    }
+}
+
 private struct BudgetRow: View {
     let node: BudgetNode
     let depth: Int
     let progress: BudgetProgress?
+    let elapsed: Double
+
+    private var spent: Money? { progress?.spent }
 
     private var ratio: Double? {
         guard let limit = node.limit?.amount, limit > .zero,
-              let spent = progress?.spent.amount else { return nil }
-        return min(max(NSDecimalNumber(decimal: spent / limit).doubleValue, 0), 1)
+              let spent = spent?.amount else { return nil }
+        return NSDecimalNumber(decimal: spent / limit).doubleValue
+    }
+
+    private var remaining: Money? { progress?.remaining }
+
+    private var isOverspent: Bool {
+        guard let remaining else { return false }
+        return remaining.amount < .zero
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            HStack {
-                if depth > 0 {
-                    Image(systemName: "arrow.turn.down.right")
-                        .foregroundStyle(.tertiary)
-                        .padding(.leading, CGFloat(min(depth, 4)) * 10)
-                }
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(node.name)
                     .fontWeight(depth == 0 ? .semibold : .regular)
-                Spacer()
-                if let spent = progress?.spent {
+                    .foregroundStyle(depth == 0 ? .primary : .secondary)
+                Spacer(minLength: 8)
+
+                if let remaining {
+                    Text(formattedMoney(isOverspent ? remaining.negated : remaining))
+                        .font(.subheadline.monospacedDigit().weight(.semibold))
+                        .foregroundStyle(isOverspent ? Color.red : Color.primary)
+                    Text(isOverspent ? "plan.over" : "plan.left")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else if let spent, !spent.isZero {
                     Text(formattedMoney(spent))
                         .font(.subheadline.monospacedDigit())
                 }
             }
-            if let ratio, let limit = node.limit {
-                ProgressView(value: ratio)
-                    .tint(ratio >= 1 ? .red : .accentColor)
-                HStack {
-                    Text("plan.limit")
-                    Spacer()
-                    Text(formattedMoney(limit))
-                }
+
+            if let ratio, let limit = node.limit, let spent {
+                BudgetBar(ratio: ratio, elapsed: elapsed)
+                Text(
+                    String(
+                        format: String(localized: "plan.spent_of_limit"),
+                        formattedMoney(spent),
+                        formattedMoney(limit)
+                    )
+                )
                 .font(.caption)
                 .foregroundStyle(.secondary)
             } else {
@@ -126,8 +222,55 @@ private struct BudgetRow: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 5)
+        .padding(.leading, CGFloat(min(depth, 4)) * 16)
         .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct BudgetSummaryCard: View {
+    let limit: Money
+    let spent: Money
+    let remaining: Money
+    let elapsed: Double
+
+    private var ratio: Double {
+        guard limit.amount > .zero else { return 0 }
+        return NSDecimalNumber(decimal: spent.amount / limit.amount).doubleValue
+    }
+
+    private var isOverspent: Bool { remaining.amount < .zero }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(isOverspent ? "plan.total_over" : "plan.total_left")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+
+            Text(formattedMoney(isOverspent ? remaining.negated : remaining))
+                .font(.system(.largeTitle, design: .rounded, weight: .bold))
+                .foregroundStyle(isOverspent ? Color.red : Color.primary)
+                .contentTransition(.numericText())
+
+            BudgetBar(ratio: ratio, elapsed: elapsed)
+
+            Text(
+                String(
+                    format: String(localized: "plan.spent_of_limit"),
+                    formattedMoney(spent),
+                    formattedMoney(limit)
+                )
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+
+            Label("plan.pace_hint", systemImage: "line.diagonal")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.vertical, 6)
+        .accessibilityElement(children: .combine)
     }
 }
 

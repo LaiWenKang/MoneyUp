@@ -36,26 +36,37 @@ private struct LaunchingView: View {
 
 private struct LockedView: View {
     @EnvironmentObject private var model: AppModel
+    private let method = UnlockMethod.current
 
     var body: some View {
         VStack(spacing: 20) {
-            Image(systemName: "lock.fill")
+            Image(systemName: method.systemImage)
                 .font(.system(size: 52))
-                .foregroundStyle(.tint)
+                .foregroundStyle(method.isAvailable ? Color.accentColor : Color.orange)
+                .accessibilityHidden(true)
             Text("lock.title")
                 .font(.largeTitle.bold())
-            Text("lock.detail")
-                .multilineTextAlignment(.center)
-                .foregroundStyle(.secondary)
-            Button {
-                Task { await model.start() }
-            } label: {
-                Label("lock.unlock", systemImage: "faceid")
-                    .frame(maxWidth: .infinity)
+
+            if method.isAvailable {
+                Text("lock.detail")
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.secondary)
+                Button {
+                    Task { await model.start() }
+                } label: {
+                    Label(method.unlockTitle, systemImage: method.systemImage)
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .disabled(model.isWorking)
+            } else {
+                // The database key is stored WhenPasscodeSetThisDeviceOnly, so
+                // without a device passcode there is nothing to unlock with.
+                Text("lock.no_passcode")
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.secondary)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .disabled(model.isWorking)
         }
         .padding(32)
         .frame(maxWidth: 480, maxHeight: .infinity)
@@ -121,6 +132,8 @@ private struct MainTabView: View {
     @State private var selectedSection: MoneyUpSection = .today
     @State private var isPresentingQuickLog = false
     @State private var quickLogKind: QuickLogKind = .expense
+    @State private var isShowingWhatsNew = false
+    @State private var hasCheckedForUpdate = false
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
@@ -130,7 +143,7 @@ private struct MainTabView: View {
                     .tag(MoneyUpSection.today)
 
                 PlanView()
-                    .tabItem { Label("tab.plan", systemImage: "target") }
+                    .tabItem { Label("tab.plan", systemImage: "chart.pie.fill") }
                     .tag(MoneyUpSection.plan)
 
                 CalendarView()
@@ -142,7 +155,7 @@ private struct MainTabView: View {
                     .tag(MoneyUpSection.insights)
 
                 AssetsView()
-                    .tabItem { Label("tab.assets", systemImage: "creditcard.fill") }
+                    .tabItem { Label("tab.assets", systemImage: "wallet.bifold.fill") }
                     .tag(MoneyUpSection.assets)
             }
 
@@ -164,10 +177,27 @@ private struct MainTabView: View {
         .sheet(isPresented: $isPresentingQuickLog) {
             QuickLogSheet(initialKind: quickLogKind)
         }
-        .onAppear { presentRequestedQuickLog() }
+        .sheet(isPresented: $isShowingWhatsNew) {
+            WhatsNewSheet()
+        }
+        .onAppear {
+            presentRequestedQuickLog()
+            checkForUpdate()
+        }
         .onChange(of: model.requestedQuickLogKind) { _, _ in
             presentRequestedQuickLog()
         }
+    }
+
+    /// MoneyUp is installed from source, so nothing else tells the user a new
+    /// version is running. Shown once per version.
+    private func checkForUpdate() {
+        guard !hasCheckedForUpdate else { return }
+        hasCheckedForUpdate = true
+        guard AppVersion.consumeUpdateFlag(), !ReleaseNotes.highlights().isEmpty else {
+            return
+        }
+        isShowingWhatsNew = true
     }
 
     private func presentRequestedQuickLog() {
