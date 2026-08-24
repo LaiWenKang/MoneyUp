@@ -14,7 +14,8 @@ signed TestFlight or App Store build.
 
 The beta includes:
 
-- an encrypted SQLCipher database with a random 256-bit per-installation key;
+- an encrypted SQLCipher database with a random 256-bit app-generated,
+  device-bound key;
 - Keychain protection requiring device-owner presence, automatic background
   locking, and an app-switcher privacy cover;
 - onboarding with base currency, first account, and opening balance;
@@ -35,8 +36,9 @@ The beta includes:
 - a privacy-redacted Home Screen widget with expense and income shortcuts;
 - posting-level CSV export with account metadata for Numbers and Excel;
 - English and Simplified Chinese UI and first-run categories;
-- a royal blue and gold app icon and accent colour, a lock screen that names the biometry the
-  device actually has, and an in-app version with release notes on update;
+- a royal-blue app icon and accent colour with restrained gold highlights, a
+  lock screen that names the biometry the device actually has, and an in-app
+  version with release notes on update;
 - an App Store privacy manifest, an in-app bilingual privacy and beta guide,
   backup exclusion for non-restorable ciphertext, and confirmations before
   permanent transaction, schedule, or holding deletion;

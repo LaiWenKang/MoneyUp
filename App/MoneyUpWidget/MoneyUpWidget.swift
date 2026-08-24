@@ -73,12 +73,23 @@ private struct MoneyUpWidgetView: View {
             }
         }
         .containerBackground(.fill.tertiary, for: .widget)
+        .tint(.moneyUpRoyalBlue)
         .widgetURL(
             family == .systemSmall
                 ? URL(string: "moneyup://quick-log/expense")
                 : nil
         )
     }
+}
+
+private extension Color {
+    /// Mirrors the full-colour app accent. In tinted widget mode iOS still
+    /// applies the user's selected system tint, as expected.
+    static let moneyUpRoyalBlue = Color(
+        red: 38.0 / 255.0,
+        green: 71.0 / 255.0,
+        blue: 196.0 / 255.0
+    )
 }
 
 private struct MoneyUpQuickLogWidget: Widget {

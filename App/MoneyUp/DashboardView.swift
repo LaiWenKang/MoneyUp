@@ -61,11 +61,11 @@ struct DashboardView: View {
         NavigationStack {
             ScrollView {
                 LazyVStack(spacing: 16) {
-                    DashboardCard {
+                    DashboardCard(backgroundColor: Color.accentColor.opacity(0.07)) {
                         VStack(alignment: .leading, spacing: 8) {
                             Label("dashboard.safe_to_spend", systemImage: "checkmark.shield.fill")
                                 .font(.headline)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(.tint)
 
                             Text(availableBalance.map(formattedMoney) ?? "—")
                                 .font(.system(.largeTitle, design: .rounded, weight: .bold))
@@ -177,8 +177,13 @@ struct DashboardView: View {
 
 struct DashboardCard<Content: View>: View {
     let content: Content
+    let backgroundColor: Color
 
-    init(@ViewBuilder content: () -> Content) {
+    init(
+        backgroundColor: Color = Color(.secondarySystemGroupedBackground),
+        @ViewBuilder content: () -> Content
+    ) {
+        self.backgroundColor = backgroundColor
         self.content = content()
     }
 
@@ -186,7 +191,7 @@ struct DashboardCard<Content: View>: View {
         content
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(18)
-            .background(Color(.secondarySystemGroupedBackground))
+            .background(backgroundColor)
             .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
             .accessibilityElement(children: .contain)
     }

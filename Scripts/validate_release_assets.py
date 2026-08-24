@@ -95,6 +95,25 @@ def validate_privacy_manifest() -> None:
     print("Validated PrivacyInfo.xcprivacy")
 
 
+def validate_info_plist_localizations() -> None:
+    expected = {
+        "en": "Unlock your private MoneyUp financial data.",
+        "zh-Hans": "解锁你在 MoneyUp 中的私密财务数据。",
+    }
+    for language, value in expected.items():
+        path = ROOT / "App" / "MoneyUp" / f"{language}.lproj" / "InfoPlist.strings"
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError as error:
+            fail(f"cannot read {path.relative_to(ROOT)}: {error}")
+        declaration = f'"NSFaceIDUsageDescription" = "{value}";'
+        if declaration not in text:
+            fail(
+                f"{path.relative_to(ROOT)} must localize NSFaceIDUsageDescription"
+            )
+    print("Validated bilingual Face ID purpose strings")
+
+
 def png_dimensions(path: Path) -> tuple[int, int]:
     try:
         data = path.read_bytes()[:24]
@@ -131,6 +150,7 @@ def validate_public_documents() -> None:
 def main() -> None:
     validate_localizations()
     validate_privacy_manifest()
+    validate_info_plist_localizations()
     validate_icons()
     validate_public_documents()
     print("Release asset validation passed")

@@ -18,7 +18,8 @@ On each iPhone:
 1. Install Apple's **TestFlight** app from the App Store.
 2. Open the Apple invitation and accept it with the intended Apple Account.
 3. Install MoneyUp in TestFlight.
-4. Open MoneyUp and authenticate with the device passcode, Face ID, or Touch ID.
+4. Open MoneyUp. First setup requires a device passcode; later unlocks use the
+   device passcode, Face ID, or Touch ID.
 
 MoneyUp itself has no login. The invitation must open TestFlight, not ask for a
 ChatGPT account. Gmail is only one possible email inbox; it is not required.

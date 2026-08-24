@@ -327,7 +327,13 @@ private struct AccountBalanceSheet: View {
                     TextField("account.current_balance", text: $balanceText)
                         .keyboardType(.numbersAndPunctuation)
                 } footer: {
-                    Text("account.adjustment_detail")
+                    VStack(alignment: .leading, spacing: 6) {
+                        if account.accountType == .brokerage
+                            || account.accountType == .investment {
+                            Text("account.investment_cash_detail")
+                        }
+                        Text("account.adjustment_detail")
+                    }
                 }
                 if let errorMessage {
                     Section { Text(errorMessage).foregroundStyle(.red) }

@@ -132,9 +132,10 @@ What to test:
 ## App Review notes
 
 > MoneyUp does not require an account, credentials, subscription, bank login,
-> or network connection. On first launch, authenticate with the device and
-> create a local sample book by choosing a base currency, first account, and
-> optional opening balance.
+> or network connection. On first launch, MoneyUp creates a protected local
+> book after confirming that the iPhone has a device passcode; choose a base
+> currency, first account, and optional opening balance. After setup, reopening
+> the protected book requires Face ID, Touch ID, or the device passcode.
 >
 > Suggested review path: add a small expense with Quick Log; set a monthly
 > limit in Plan; verify the transaction in Calendar and Insights; background

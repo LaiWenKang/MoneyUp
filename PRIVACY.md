@@ -34,10 +34,11 @@ policy. MoneyUp does not add a separate crash-reporting service.
 
 ## Storage and security
 
-The local database is encrypted with SQLCipher. A random per-installation key
-is protected by the iOS Keychain, requires device-owner presence, does not sync,
-and is restricted to that device. MoneyUp closes the database, clears decoded
-state, and hides financial content when the app enters the background.
+The local database is encrypted with SQLCipher. A random app-generated,
+device-bound key is protected by the iOS Keychain, requires device-owner
+presence, does not sync, and is restricted to that device. MoneyUp closes the
+database, clears decoded state, and hides financial content when the app enters
+the background.
 
 Because the device-bound key cannot migrate, MoneyUp excludes its database
 directory from system backup. The founders beta does not yet provide a

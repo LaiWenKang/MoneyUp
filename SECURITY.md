@@ -10,7 +10,7 @@ implemented controls from planned work and known limits.
 | Balanced domain model and validated decoding | Implemented and tested |
 | No ads, financial telemetry, remote AI, or application backend | Implemented |
 | SQLCipher 4.18 full-database encryption | Implemented and pinned |
-| Random 256-bit per-installation database key | Implemented |
+| Random 256-bit app-generated, device-bound database key | Implemented |
 | Non-synchronizing Keychain item with `WhenPasscodeSetThisDeviceOnly` and user presence | Implemented |
 | Close database and clear decoded state on background | Implemented |
 | App-switcher privacy cover while inactive | Implemented |
