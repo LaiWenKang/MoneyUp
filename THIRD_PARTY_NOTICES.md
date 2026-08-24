@@ -3,7 +3,9 @@
 ## SQLCipher
 
 MoneyUp uses the official SQLCipher Swift package distributed by Zetetic LLC.
-SQLCipher provides encrypted SQLite database storage.
+SQLCipher provides encrypted SQLite database storage. Release builds pin
+SQLCipher.swift 4.18.0 to commit
+`f879fffaaa3ad3541a77830daad4a28726dfa927`.
 
 Copyright (c) 2025, ZETETIC LLC
 All rights reserved.

@@ -1,0 +1,495 @@
+name: TestFlight
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Validate the signed IPA or upload it to TestFlight
+        required: true
+        default: validate
+        type: choice
+        options:
+          - validate
+          - upload
+      confirmation:
+        description: Type UPLOAD when operation is upload
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: moneyup-testflight
+  cancel-in-progress: false
+
+env:
+  XCODEGEN_VERSION: 2.46.0
+  XCODEGEN_SHA256: 4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806
+  MARKETING_VERSION: 0.3.0
+  APP_BUNDLE_ID: com.laiwenkang.MoneyUp
+  WIDGET_BUNDLE_ID: com.laiwenkang.MoneyUp.Widget
+
+jobs:
+  preflight:
+    name: Secretless release preflight
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - name: Require main and explicit upload confirmation
+        shell: bash
+        env:
+          OPERATION: ${{ inputs.operation }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "::error::TestFlight runs are allowed only from the main branch."
+            exit 1
+          fi
+          if [[ "$OPERATION" == "upload" && "$CONFIRMATION" != "UPLOAD" ]]; then
+            echo "::error::Choose upload and type UPLOAD to authorize the upload."
+            exit 1
+          fi
+
+      - name: Check out the dispatched commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Verify the Apple upload toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          XCODE_MAJOR="$(xcodebuild -version | awk 'NR == 1 { split($2, part, "."); print part[1] }')"
+          SDK_VERSION="$(xcrun --sdk iphoneos --show-sdk-version)"
+          SDK_MAJOR="${SDK_VERSION%%.*}"
+          if (( XCODE_MAJOR < 26 || SDK_MAJOR < 26 )); then
+            echo "::error::Apple uploads require Xcode 26+ with the iOS 26+ SDK."
+            exit 1
+          fi
+          echo "Using iPhoneOS SDK $SDK_VERSION"
+
+      - name: Install checksum-verified XcodeGen
+        shell: bash
+        run: |
+          set -euo pipefail
+          ARCHIVE="$RUNNER_TEMP/xcodegen.zip"
+          curl --fail --location --silent --show-error \
+            --output "$ARCHIVE" \
+            "https://github.com/yonaskolb/XcodeGen/releases/download/${XCODEGEN_VERSION}/xcodegen.zip"
+          printf '%s  %s\n' "$XCODEGEN_SHA256" "$ARCHIVE" | shasum -a 256 -c -
+          ditto -x -k "$ARCHIVE" "$RUNNER_TEMP/xcodegen-release"
+          echo "$RUNNER_TEMP/xcodegen-release/xcodegen/bin" >> "$GITHUB_PATH"
+
+      - name: Validate release assets
+        run: python3 Scripts/validate_release_assets.py
+
+      - name: Run domain tests
+        run: swift test --parallel -Xswiftc -warnings-as-errors
+
+      - name: Generate the Xcode project
+        run: |
+          xcodegen --version
+          xcodegen generate
+
+      - name: Resolve the immutable package graph
+        run: >-
+          xcodebuild
+          -resolvePackageDependencies
+          -project MoneyUp.xcodeproj
+          -scheme MoneyUp
+
+      - name: Build the app and widget without signing
+        run: >-
+          xcodebuild
+          -project MoneyUp.xcodeproj
+          -scheme MoneyUp
+          -configuration Release
+          -destination 'generic/platform=iOS Simulator'
+          -disableAutomaticPackageResolution
+          CODE_SIGNING_ALLOWED=NO
+          build
+
+      - name: Reject compiler-extracted untranslated strings
+        run: >-
+          git diff --exit-code --
+          App/MoneyUp/Resources/Localizable.xcstrings
+          App/MoneyUpWidget/Localizable.xcstrings
+
+  testflight:
+    name: Sign and deliver
+    needs: preflight
+    runs-on: macos-26
+    timeout-minutes: 60
+    environment: testflight
+    env:
+      APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+      ASC_KEY_ID: ${{ vars.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ vars.ASC_ISSUER_ID }}
+    steps:
+      - name: Check out the preflighted commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Verify release configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$APPLE_TEAM_ID" =~ ^[A-Z0-9]{10}$ ]]; then
+            echo "::error::Set the 10-character APPLE_TEAM_ID variable in the testflight environment."
+            exit 1
+          fi
+          if [[ ! "$ASC_KEY_ID" =~ ^[A-Z0-9]{10}$ ]]; then
+            echo "::error::Set the 10-character ASC_KEY_ID variable in the testflight environment."
+            exit 1
+          fi
+          if [[ ! "$ASC_ISSUER_ID" =~ ^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$ ]]; then
+            echo "::error::Set the App Store Connect ASC_ISSUER_ID variable in the testflight environment."
+            exit 1
+          fi
+
+      - name: Verify the Apple upload toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          XCODE_MAJOR="$(xcodebuild -version | awk 'NR == 1 { split($2, part, "."); print part[1] }')"
+          SDK_VERSION="$(xcrun --sdk iphoneos --show-sdk-version)"
+          SDK_MAJOR="${SDK_VERSION%%.*}"
+          if (( XCODE_MAJOR < 26 || SDK_MAJOR < 26 )); then
+            echo "::error::Apple uploads require Xcode 26+ with the iOS 26+ SDK."
+            exit 1
+          fi
+          echo "Using iPhoneOS SDK $SDK_VERSION"
+
+      - name: Install checksum-verified XcodeGen
+        shell: bash
+        run: |
+          set -euo pipefail
+          ARCHIVE="$RUNNER_TEMP/xcodegen.zip"
+          curl --fail --location --silent --show-error \
+            --output "$ARCHIVE" \
+            "https://github.com/yonaskolb/XcodeGen/releases/download/${XCODEGEN_VERSION}/xcodegen.zip"
+          printf '%s  %s\n' "$XCODEGEN_SHA256" "$ARCHIVE" | shasum -a 256 -c -
+          ditto -x -k "$ARCHIVE" "$RUNNER_TEMP/xcodegen-release"
+          echo "$RUNNER_TEMP/xcodegen-release/xcodegen/bin" >> "$GITHUB_PATH"
+
+      - name: Generate the Xcode project and build number
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodegen --version
+          xcodegen generate
+          xcodebuild \
+            -resolvePackageDependencies \
+            -project MoneyUp.xcodeproj \
+            -scheme MoneyUp
+          BUILD_MAJOR=$((1000 + GITHUB_RUN_NUMBER))
+          if (( BUILD_MAJOR > 9999 || GITHUB_RUN_ATTEMPT > 99 )); then
+            echo "::error::The automatic CFBundleVersion range is exhausted."
+            exit 1
+          fi
+          BUILD_NUMBER="${BUILD_MAJOR}.${GITHUB_RUN_ATTEMPT}"
+          {
+            echo "ARCHIVE_PATH=$RUNNER_TEMP/MoneyUp.xcarchive"
+            echo "EXPORT_DIRECTORY=$RUNNER_TEMP/MoneyUp-export"
+            echo "IPA_EXPANDED_DIRECTORY=$RUNNER_TEMP/MoneyUp-ipa"
+            echo "EXPORT_OPTIONS_PATH=$RUNNER_TEMP/MoneyUp-ExportOptions.plist"
+            echo "BUILD_NUMBER=$BUILD_NUMBER"
+          } >> "$GITHUB_ENV"
+          {
+            echo "### MoneyUp TestFlight candidate"
+            echo
+            echo "- Commit: \`$GITHUB_SHA\`"
+            echo "- Version: $MARKETING_VERSION ($BUILD_NUMBER)"
+            echo "- Operation: ${{ inputs.operation }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Materialize the App Store Connect key
+        shell: bash
+        env:
+          ASC_API_KEY_P8: ${{ secrets.ASC_API_KEY_P8 }}
+        run: |
+          set -euo pipefail
+          umask 077
+          if [[ -z "$ASC_API_KEY_P8" ]]; then
+            echo "::error::Set ASC_API_KEY_P8 in the testflight environment secrets."
+            exit 1
+          fi
+          KEY_DIRECTORY="$HOME/.appstoreconnect/private_keys"
+          KEY_PATH="$KEY_DIRECTORY/AuthKey_${ASC_KEY_ID}.p8"
+          mkdir -p "$KEY_DIRECTORY"
+          echo "ASC_KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
+          printf '%s\n' "$ASC_API_KEY_P8" > "$KEY_PATH"
+          chmod 600 "$KEY_PATH"
+          if ! openssl pkey -in "$KEY_PATH" -noout >/dev/null 2>&1; then
+            echo "::error::ASC_API_KEY_P8 is not a valid private-key file."
+            exit 1
+          fi
+
+      - name: Archive with Apple automatic signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project MoneyUp.xcodeproj \
+            -scheme MoneyUp \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$ARCHIVE_PATH" \
+            -disableAutomaticPackageResolution \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            CODE_SIGN_STYLE=Automatic \
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+            clean archive
+
+      - name: Inspect the archived app
+        run: >-
+          python3 Scripts/validate_built_bundle.py
+          --app "$ARCHIVE_PATH/Products/Applications/MoneyUp.app"
+          --marketing-version "$MARKETING_VERSION"
+          --build-number "$BUILD_NUMBER"
+          --app-bundle-id "$APP_BUNDLE_ID"
+          --widget-bundle-id "$WIDGET_BUNDLE_ID"
+
+      - name: Verify archive debug symbols
+        shell: bash
+        run: |
+          set -euo pipefail
+          for DSYM_NAME in MoneyUp.app.dSYM MoneyUpWidget.appex.dSYM; do
+            if [[ ! -d "$ARCHIVE_PATH/dSYMs/$DSYM_NAME" ]]; then
+              echo "::error::The archive is missing $DSYM_NAME."
+              exit 1
+            fi
+          done
+
+      - name: Export an App Store Connect IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          plutil -create xml1 "$EXPORT_OPTIONS_PATH"
+          plutil -insert method -string app-store-connect "$EXPORT_OPTIONS_PATH"
+          plutil -insert destination -string export "$EXPORT_OPTIONS_PATH"
+          plutil -insert signingStyle -string automatic "$EXPORT_OPTIONS_PATH"
+          plutil -insert teamID -string "$APPLE_TEAM_ID" "$EXPORT_OPTIONS_PATH"
+          plutil -insert manageAppVersionAndBuildNumber -bool false "$EXPORT_OPTIONS_PATH"
+          plutil -insert stripSwiftSymbols -bool true "$EXPORT_OPTIONS_PATH"
+          plutil -insert uploadSymbols -bool true "$EXPORT_OPTIONS_PATH"
+          xcodebuild \
+            -exportArchive \
+            -archivePath "$ARCHIVE_PATH" \
+            -exportPath "$EXPORT_DIRECTORY" \
+            -exportOptionsPlist "$EXPORT_OPTIONS_PATH" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+          IPA_PATH="$(find "$EXPORT_DIRECTORY" -maxdepth 1 -type f -name '*.ipa' -print -quit)"
+          if [[ -z "$IPA_PATH" ]]; then
+            echo "::error::Xcode did not export an IPA."
+            exit 1
+          fi
+          echo "IPA_PATH=$IPA_PATH" >> "$GITHUB_ENV"
+
+      - name: Inspect distribution signing and contents
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$IPA_EXPANDED_DIRECTORY"
+          ditto -x -k "$IPA_PATH" "$IPA_EXPANDED_DIRECTORY"
+          APP_PATH="$IPA_EXPANDED_DIRECTORY/Payload/MoneyUp.app"
+          WIDGET_PATH="$APP_PATH/PlugIns/MoneyUpWidget.appex"
+          python3 Scripts/validate_built_bundle.py \
+            --app "$APP_PATH" \
+            --marketing-version "$MARKETING_VERSION" \
+            --build-number "$BUILD_NUMBER" \
+            --app-bundle-id "$APP_BUNDLE_ID" \
+            --widget-bundle-id "$WIDGET_BUNDLE_ID"
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+          codesign --verify --strict --verbose=2 "$WIDGET_PATH"
+          for BUNDLE_PATH in "$APP_PATH" "$WIDGET_PATH"; do
+            PROFILE_PATH="$BUNDLE_PATH/embedded.mobileprovision"
+            if [[ ! -f "$PROFILE_PATH" ]]; then
+              echo "::error::$(basename "$BUNDLE_PATH") has no embedded provisioning profile."
+              exit 1
+            fi
+            PROFILE_PLIST="$IPA_EXPANDED_DIRECTORY/$(basename "$BUNDLE_PATH").profile.plist"
+            security cms -D -i "$PROFILE_PATH" > "$PROFILE_PLIST"
+            PROFILE_TEAM="$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "$PROFILE_PLIST")"
+            if [[ "$PROFILE_TEAM" != "$APPLE_TEAM_ID" ]]; then
+              echo "::error::$(basename "$BUNDLE_PATH") was signed for an unexpected Apple team."
+              exit 1
+            fi
+            BUNDLE_IDENTIFIER="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$BUNDLE_PATH/Info.plist")"
+            PROFILE_PREFIX="$(/usr/libexec/PlistBuddy -c 'Print :ApplicationIdentifierPrefix:0' "$PROFILE_PLIST")"
+            EXPECTED_APPLICATION_IDENTIFIER="${PROFILE_PREFIX}.${BUNDLE_IDENTIFIER}"
+            PROFILE_APPLICATION_IDENTIFIER="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$PROFILE_PLIST")"
+            if [[ "$PROFILE_APPLICATION_IDENTIFIER" != "$EXPECTED_APPLICATION_IDENTIFIER" ]]; then
+              echo "::error::$(basename "$BUNDLE_PATH") provisioning profile has an unexpected App ID."
+              exit 1
+            fi
+            SIGNED_ENTITLEMENTS="$IPA_EXPANDED_DIRECTORY/$(basename "$BUNDLE_PATH").signed-entitlements.plist"
+            codesign -d --entitlements :- "$BUNDLE_PATH" > "$SIGNED_ENTITLEMENTS"
+            plutil -lint "$SIGNED_ENTITLEMENTS"
+            SIGNED_APPLICATION_IDENTIFIER="$(/usr/libexec/PlistBuddy -c 'Print :application-identifier' "$SIGNED_ENTITLEMENTS")"
+            SIGNED_TEAM="$(/usr/libexec/PlistBuddy -c 'Print :com.apple.developer.team-identifier' "$SIGNED_ENTITLEMENTS")"
+            if [[ "$SIGNED_APPLICATION_IDENTIFIER" != "$PROFILE_APPLICATION_IDENTIFIER" || "$SIGNED_TEAM" != "$APPLE_TEAM_ID" ]]; then
+              echo "::error::$(basename "$BUNDLE_PATH") signed entitlements do not match its distribution profile."
+              exit 1
+            fi
+            GET_TASK_ALLOW="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:get-task-allow' "$PROFILE_PLIST" 2>/dev/null || true)"
+            if [[ "$GET_TASK_ALLOW" == "true" ]]; then
+              echo "::error::$(basename "$BUNDLE_PATH") has a development provisioning profile."
+              exit 1
+            fi
+            SIGNED_GET_TASK_ALLOW="$(/usr/libexec/PlistBuddy -c 'Print :get-task-allow' "$SIGNED_ENTITLEMENTS" 2>/dev/null || true)"
+            if [[ "$SIGNED_GET_TASK_ALLOW" == "true" ]]; then
+              echo "::error::$(basename "$BUNDLE_PATH") was signed with get-task-allow enabled."
+              exit 1
+            fi
+            if /usr/libexec/PlistBuddy -c 'Print :ProvisionedDevices' "$PROFILE_PLIST" >/dev/null 2>&1; then
+              echo "::error::$(basename "$BUNDLE_PATH") has a device-limited provisioning profile."
+              exit 1
+            fi
+            PROVISIONS_ALL_DEVICES="$(/usr/libexec/PlistBuddy -c 'Print :ProvisionsAllDevices' "$PROFILE_PLIST" 2>/dev/null || true)"
+            if [[ "$PROVISIONS_ALL_DEVICES" == "true" ]]; then
+              echo "::error::$(basename "$BUNDLE_PATH") has an enterprise provisioning profile."
+              exit 1
+            fi
+            python3 - "$PROFILE_PLIST" "$(basename "$BUNDLE_PATH")" <<'PY'
+          import datetime
+          import plistlib
+          import sys
+
+          with open(sys.argv[1], "rb") as profile_file:
+              profile = plistlib.load(profile_file)
+          expiration = profile.get("ExpirationDate")
+          now = datetime.datetime.now(datetime.timezone.utc)
+          if not isinstance(expiration, datetime.datetime):
+              raise SystemExit(f"error: {sys.argv[2]} profile has no expiration date")
+          if expiration.tzinfo is None:
+              expiration = expiration.replace(tzinfo=datetime.timezone.utc)
+          if expiration <= now:
+              raise SystemExit(f"error: {sys.argv[2]} provisioning profile is expired")
+          PY
+            rm -f -- "$PROFILE_PLIST" "$SIGNED_ENTITLEMENTS"
+          done
+
+      - name: Ask Apple to validate the IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcrun altool \
+            --validate-app \
+            --file "$IPA_PATH" \
+            --type ios \
+            --apiKey "$ASC_KEY_ID" \
+            --apiIssuer "$ASC_ISSUER_ID"
+
+      - name: Encrypt the distributed archive backup
+        if: ${{ inputs.operation == 'upload' }}
+        shell: bash
+        env:
+          ARCHIVE_ENCRYPTION_PASSWORD: ${{ secrets.ARCHIVE_ENCRYPTION_PASSWORD }}
+        run: |
+          set -euo pipefail
+          umask 077
+          if (( ${#ARCHIVE_ENCRYPTION_PASSWORD} < 32 )); then
+            echo "::error::Set ARCHIVE_ENCRYPTION_PASSWORD to a random value of at least 32 characters."
+            exit 1
+          fi
+          MANIFEST_PATH="$RUNNER_TEMP/MoneyUp-Archive-Manifest.txt"
+          ENCRYPTED_PATH="$RUNNER_TEMP/MoneyUp-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.xcarchive.tar.gz.enc"
+          {
+            echo "MoneyUp archive backup"
+            echo "Commit: $GITHUB_SHA"
+            echo "Version: $MARKETING_VERSION"
+            echo "Build: $BUILD_NUMBER"
+            xcodebuild -version
+            echo "iPhoneOS SDK: $(xcrun --sdk iphoneos --show-sdk-version)"
+          } > "$MANIFEST_PATH"
+          tar -C "$RUNNER_TEMP" -czf - \
+            "$(basename "$ARCHIVE_PATH")" \
+            "$(basename "$MANIFEST_PATH")" | \
+            openssl enc -aes-256-cbc -salt -pbkdf2 -iter 600000 -md sha256 \
+              -pass env:ARCHIVE_ENCRYPTION_PASSWORD \
+              -out "$ENCRYPTED_PATH"
+          ENCRYPTED_SHA256="$(shasum -a 256 "$ENCRYPTED_PATH" | awk '{print $1}')"
+          {
+            echo
+            echo "Encrypted archive SHA-256: \`$ENCRYPTED_SHA256\`"
+            echo "Download the encrypted archive artifact to durable private storage before its 90-day expiry."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Retain the encrypted archive and dSYMs
+        if: ${{ inputs.operation == 'upload' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: MoneyUp-encrypted-xcarchive-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/MoneyUp-${{ github.run_id }}-${{ github.run_attempt }}.xcarchive.tar.gz.enc
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0
+
+      - name: Upload the archive and symbols to TestFlight
+        if: ${{ inputs.operation == 'upload' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          UPLOAD_OPTIONS_PATH="$RUNNER_TEMP/MoneyUp-UploadOptions.plist"
+          UPLOAD_DIRECTORY="$RUNNER_TEMP/MoneyUp-upload"
+          cp "$EXPORT_OPTIONS_PATH" "$UPLOAD_OPTIONS_PATH"
+          plutil -replace destination -string upload "$UPLOAD_OPTIONS_PATH"
+          {
+            echo "UPLOAD_OPTIONS_PATH=$UPLOAD_OPTIONS_PATH"
+            echo "UPLOAD_DIRECTORY=$UPLOAD_DIRECTORY"
+          } >> "$GITHUB_ENV"
+          xcodebuild \
+            -exportArchive \
+            -archivePath "$ARCHIVE_PATH" \
+            -exportPath "$UPLOAD_DIRECTORY" \
+            -exportOptionsPlist "$UPLOAD_OPTIONS_PATH" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+          {
+            echo
+            echo "Apple accepted the archive and symbols. App Store Connect processing is now separate."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove credentials and temporary release products
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${ASC_KEY_PATH:-}" ]]; then
+            rm -f -- "$ASC_KEY_PATH"
+          fi
+          if [[ -n "${EXPORT_OPTIONS_PATH:-}" ]]; then
+            rm -f -- "$EXPORT_OPTIONS_PATH"
+          fi
+          if [[ -n "${UPLOAD_OPTIONS_PATH:-}" ]]; then
+            rm -f -- "$UPLOAD_OPTIONS_PATH"
+          fi
+          rm -f -- \
+            "$RUNNER_TEMP/MoneyUp-Archive-Manifest.txt" \
+            "$RUNNER_TEMP/MoneyUp-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.xcarchive.tar.gz.enc"
+          for RELEASE_PATH in "${ARCHIVE_PATH:-}" "${EXPORT_DIRECTORY:-}" "${IPA_EXPANDED_DIRECTORY:-}" "${UPLOAD_DIRECTORY:-}"; do
+            if [[ -z "$RELEASE_PATH" ]]; then
+              continue
+            fi
+            case "$RELEASE_PATH" in
+              "$RUNNER_TEMP"/*) rm -rf -- "$RELEASE_PATH" ;;
+              *) echo "::warning::Skipped cleanup outside RUNNER_TEMP." ;;
+            esac
+          done

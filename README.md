@@ -58,8 +58,12 @@ open the private MoneyUp invitation, and tap Install. MoneyUp itself has no
 login; the invitation uses an Apple Account through TestFlight and never needs
 a ChatGPT account. See the [first-test runbook](docs/FIRST_TEST.md).
 
-The TestFlight build is not available until Apple activates the developer
-membership and build 0.3.0 is signed and uploaded.
+The Apple Developer membership is active, both bundle identifiers and the App
+Store Connect record exist, and the protected GitHub environment has been
+configured by the account holder. The first TestFlight build now waits for the
+signed validation and upload workflows. The
+[iPhone-only Apple setup guide](docs/APPLE_SETUP.md) gives the exact steps and
+keeps every private key out of the repository and chat.
 
 ### Developer source install
 
@@ -82,6 +86,10 @@ See [Beta installation and use](docs/BETA_INSTALL.md) for the complete setup,
 first-run checklist, widget steps, and data-retention caveats.
 The release gates and two-person TestFlight protocol are in the
 [launch plan](docs/LAUNCH_PLAN.md) and [first-test runbook](docs/FIRST_TEST.md).
+Signed archives use the protected, manual
+[TestFlight workflow](.github/workflows/testflight.yml), which requires Xcode
+26, the iOS 26 SDK, immutable dependencies, explicit confirmation, and
+encrypted archive/dSYM retention before Apple receives an upload.
 
 ## Product principles
 

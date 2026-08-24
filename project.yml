@@ -10,6 +10,8 @@ settings:
   base:
     SWIFT_VERSION: "6.0"
     SWIFT_STRICT_CONCURRENCY: complete
+    SWIFT_EMIT_LOC_STRINGS: YES
+    DEBUG_INFORMATION_FORMAT: dwarf-with-dsym
     CURRENT_PROJECT_VERSION: 3
     MARKETING_VERSION: 0.3.0
 
@@ -64,6 +66,8 @@ targets:
       path: App/MoneyUpWidget/Info.plist
       properties:
         CFBundleDisplayName: MoneyUp
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     settings:
@@ -72,4 +76,6 @@ targets:
         PRODUCT_NAME: MoneyUpWidget
         TARGETED_DEVICE_FAMILY: "1"
         GENERATE_INFOPLIST_FILE: false
+        CODE_SIGN_STYLE: Automatic
+        APPLICATION_EXTENSION_API_ONLY: YES
         SKIP_INSTALL: true

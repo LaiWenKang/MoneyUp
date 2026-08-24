@@ -1,16 +1,23 @@
 # Install and Use Founders Beta 0.3.0
 
-MoneyUp is ready for local source installation. It is not yet a signed
-TestFlight or App Store download.
+MoneyUp is ready for local source installation and its Apple Developer
+membership is active. It is not a TestFlight download until the protected
+release workflow completes the first signed upload.
 
 ## iPhone-only TestFlight installation
 
-After Apple activates the developer membership and a signed build is uploaded,
-the account holder installs from the private Founders Internal TestFlight group.
+After a signed build is uploaded, the account holder installs from the private
+Founders Internal TestFlight group.
 The second tester receives a private email invitation to the Founders External
 group after TestFlight Beta App Review. Both testers install through Apple's
 TestFlight app. MoneyUp has no account and the invitation does not require
 ChatGPT or Gmail specifically.
+TestFlight builds remain available for testing for up to 90 days; the app shows
+the exact remaining time, and a newer build is required after expiry.
+
+The complete account setup and cloud-signing sequence is in
+[`APPLE_SETUP.md`](APPLE_SETUP.md). It can be completed from Safari on an
+iPhone and does not require a personal Mac.
 
 Until that signed build exists, the steps below are for a developer source
 install and require access to a Mac.
