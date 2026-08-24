@@ -296,6 +296,11 @@ def validate_project_configuration() -> None:
         fail("project.yml must enable compiler extraction of Swift strings")
     if "DEBUG_INFORMATION_FORMAT: dwarf-with-dsym" not in spec:
         fail("project.yml must emit dSYMs for release crash diagnosis")
+    if spec.count("CODE_SIGN_IDENTITY: Apple Distribution") != 2:
+        fail(
+            "MoneyUp and MoneyUpWidget must use Apple Distribution signing "
+            "for Release builds"
+        )
 
     lines = spec.splitlines()
     try:
@@ -342,6 +347,7 @@ def validate_testflight_workflow() -> None:
         "-allowProvisioningUpdates",
         "-authenticationKeyPath",
         "CODE_SIGN_STYLE=Automatic",
+        'CODE_SIGN_IDENTITY="Apple Distribution"',
         "--validate-app",
         "destination -string upload",
         "uploadSymbols -bool true",
@@ -373,7 +379,7 @@ def validate_testflight_workflow() -> None:
     ):
         fail("TestFlight workflow marketing version must match project.yml")
 
-    print("Validated protected, pinned TestFlight workflow structure")
+    print("Validated protected, pinned TestFlight distribution workflow structure")
 
 
 def main() -> None:

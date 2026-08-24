@@ -146,6 +146,13 @@ the temporary private key and release products before the runner is destroyed.
 Because this repository is public, treat the GitHub artifact as potentially
 public ciphertext: the strong, separately stored archive password is required.
 
+If the archive log mentions **iOS App Development**, **no devices**, or a
+development provisioning profile, do not register a device or create a manual
+profile. A TestFlight archive must use **Apple Distribution** and App Store
+Connect distribution profiles for both the app and widget. That message means
+the release-signing configuration has regressed; correct the workflow before
+trying again.
+
 If an upload step loses its connection after transfer begins, check App Store
 Connect **Build Uploads** before running it again. Never try to reuse an old
 build number.
