@@ -21,7 +21,7 @@ let package = Package(
     dependencies: [
         .package(
             url: "https://github.com/sqlcipher/SQLCipher.swift.git",
-            exact: "4.18.0"
+            revision: "f879fffaaa3ad3541a77830daad4a28726dfa927"
         )
     ],
     targets: [

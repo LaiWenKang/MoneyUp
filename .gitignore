@@ -5,6 +5,9 @@ DerivedData/
 *.xcodeproj/
 xcuserdata/
 *.xcuserstate
+*.xcarchive/
+*.ipa
+*.dSYM/
 App/MoneyUp/Info.plist
 App/MoneyUpWidget/Info.plist
 

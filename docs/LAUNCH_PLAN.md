@@ -21,20 +21,16 @@ retention and reliability are proven.
 | Product | Founders Beta 0.3.0 | Core budget, ledger, calendar, insights, assets, widget, export, and bilingual flows exist |
 | Privacy | Ready for founders beta | Local encrypted database, protected key, privacy cover, no tracking, privacy manifest, and public policy |
 | CI | Active | Domain tests and unsigned app/widget Simulator build run on GitHub's macOS runner |
-| Distribution | Blocked by Apple activation | Apple Developer Program was purchased and is awaiting confirmation |
+| Distribution | Apple/GitHub connected | Membership, identifiers, `MoneyUp: CowCome` record, API key, and protected environment exist; signed validation and first upload remain |
 | Recovery | Public-release blocker | CSV export exists; authenticated encrypted backup/restore does not |
 | Physical QA | Not yet complete | The user and his girlfriend are the first planned iPhone testers |
-
-Apple says that an individual who does not receive membership confirmation
-within 24 hours of purchase should contact Apple Developer Support and include
-the Enrollment ID: <https://developer.apple.com/help/account/membership/program-enrollment/>.
 
 ## Rollout stages and gates
 
 ### Stage 0 — Founders build preparation
 
-Target: a green, reviewable 0.3.0 build that can be uploaded immediately after
-membership activation.
+Target: a green, reviewable 0.3.0 build that can be signed and uploaded through
+the configured Apple and GitHub connection.
 
 Completed:
 
@@ -47,20 +43,29 @@ Completed:
 - bilingual in-app privacy and beta guidance plus public privacy/support pages;
 - confirmed deletion of transactions, schedules, and manual holdings;
 - release-asset CI validation for localizations, icons, privacy, and documents;
-- non-restorable database ciphertext excluded from system backup.
+- non-restorable database ciphertext excluded from system backup;
+- a manual, protected TestFlight workflow using Xcode 26, checksum-pinned
+  XcodeGen, App Store Connect API authentication, Apple automatic cloud
+  signing, archive/IPA inspection, validation, encrypted archive retention,
+  symbol upload, and explicit upload approval.
+- both explicit bundle identifiers, the `MoneyUp: CowCome` App Store Connect
+  record, dedicated team API key, and protected GitHub environment configured
+  by the account holder.
 
 Required before uploading 0.3.0:
 
 - CI must pass on the exact commit to upload;
-- configure the protected GitHub release environment with the active Apple
-  team, distribution certificate, app and widget profiles, and a scoped App
-  Store Connect API key;
-- generate the Xcode project and archive on a GitHub-hosted macOS runner;
+- verify current agreements remain accepted and let the signed validation run
+  confirm the protected GitHub `testflight` environment values;
+- verify the existing identifiers and `MoneyUp: CowCome` record still match
+  the workflow;
+- run the workflow's signed validation mode, then its confirmed upload mode;
 - confirm both app and widget bundle identifiers are registered and signable;
-- run the 15-minute archive smoke test on a physical iPhone;
 - confirm the archive contains `PrivacyInfo.xcprivacy`, both localizations, the
-  widget extension, and version/build `0.3.0 (3)`;
+  widget extension, and matching app/widget version and generated build;
 - answer App Store Connect encryption questions accurately for SQLCipher;
+- download each encrypted `.xcarchive` workflow artifact to durable private
+  storage before GitHub's 90-day public-repository retention limit;
 - never commit certificates, provisioning profiles, API keys, or passwords.
 
 ### Stage 1 — First TestFlight distribution
@@ -70,12 +75,17 @@ to the second tester.
 
 1. Accept current Apple Developer and App Store Connect agreements.
 2. Register `com.laiwenkang.MoneyUp` and
-   `com.laiwenkang.MoneyUp.Widget`, or select final unused equivalents before
-   the first upload. After release, treat these identifiers as permanent.
-3. Create the MoneyUp app record in App Store Connect with English and
-   Simplified Chinese localizations and the Finance category.
-4. Dispatch the protected GitHub release workflow to archive and upload build
-   3. Do not use a ChatGPT-hosted preview link as distribution.
+   `com.laiwenkang.MoneyUp.Widget`. If either is unavailable, stop and update
+   the repository and workflow together before creating the app record. After
+   release, treat these identifiers as permanent.
+3. Verify the existing `MoneyUp: CowCome` record, then add Simplified Chinese
+   localization and the Finance category before public submission.
+4. Dispatch the protected GitHub TestFlight workflow first in `validate` mode,
+   then in `upload` mode with explicit confirmation. The workflow assigns a
+   unique build number, retains an encrypted archive and dSYMs, and uploads
+   symbols to Apple. Download the encrypted artifact into private iCloud Drive
+   after every successful upload. Do not use a ChatGPT-hosted preview link as
+   distribution.
 5. Complete export-compliance processing and wait for build processing.
 6. Create the internal TestFlight group **Founders Internal** and add the
    account holder.
@@ -95,29 +105,27 @@ Apple's current TestFlight documentation is here:
 ### iPhone-only release administration
 
 The account holder does not need to buy a Mac for the chosen release path.
-After membership activation, Apple account actions can be completed in Safari
-on the iPhone, and GitHub's macOS runner can perform the Xcode archive. The
-bootstrap sequence is:
+Apple account actions can be completed in Safari on the iPhone, and GitHub's
+macOS 26 runner performs the Xcode archive. The bootstrap sequence is:
 
-1. Request App Store Connect API access, then create a least-privilege API key.
-2. Generate a private key and certificate-signing request offline.
-3. In the Apple Developer portal, issue one Apple Distribution certificate and
-   create App Store profiles for the app and widget identifiers.
-4. Convert the certificate to a password-protected PKCS#12 file and store the
-   certificate, profiles, API key, team ID, and passwords only as protected
-   GitHub environment secrets.
-5. Add a manual release workflow that imports those secrets into an ephemeral
-   macOS keychain, generates the project, runs tests, archives, validates, and
-   uploads. Require environment approval and allow it only from a protected
-   commit or tag.
-6. Delete temporary local credential files after the secrets are stored and
-   retain an offline recovery copy controlled by the account holder.
+1. Accept agreements, register the app and widget identifiers, and create the
+   main app record.
+2. Request App Store Connect API access, then create a dedicated team key.
+3. Put only Team ID, Key ID, Issuer ID, the `.p8` contents, and the independent
+   archive-encryption password in the protected GitHub `testflight`
+   environment. Never commit or paste either secret into chat.
+4. Dispatch the manual workflow from `main`. It reruns validation and tests,
+   generates the project, uses API-key-authenticated automatic signing,
+   verifies the signed app and widget, asks Apple to validate the IPA, and
+   uploads the archive and symbols only after an encrypted recovery artifact
+   is retained and the typed `UPLOAD` confirmation is present.
+5. Let Apple manage the distribution certificate and both provisioning
+   profiles in the cloud. A `.p12`, certificate password, CSR, and manually
+   downloaded profiles are not part of the primary design.
 
-Exact certificate/profile identifiers do not exist until membership and bundle
-registration are active, so the upload workflow is deliberately enabled only
-after those values can be verified. Xcode Cloud is not the bootstrap choice:
-Apple currently requires the first Xcode Cloud workflow to be configured from
-Xcode on a Mac. It remains an optional later migration.
+The exact iPhone instructions are in `APPLE_SETUP.md`. Xcode Cloud is not the
+bootstrap choice because its first workflow is normally configured from Xcode
+on a Mac. It remains an optional later migration.
 
 ### Stage 2 — Two-person founders test
 
@@ -187,8 +195,9 @@ Public release is blocked until these are complete:
   import, older supported archive, and unsupported future archive;
 - final accessibility test matrix and honest Accessibility Nutrition Labels;
 - final performance and energy check on the oldest supported iPhone class;
-- app privacy, privacy-policy URL, support URL, age rating, content rights,
-  export compliance, and EU Digital Services Act trader-status declaration;
+- app privacy, privacy-policy URL, support URL with a monitored direct contact,
+  age rating, content rights, export compliance, and EU Digital Services Act
+  trader-status declaration;
 - localized store description, keywords, review notes, and 1–10 screenshots in
   an accepted current iPhone size without real financial information;
 - App Review receives complete access instructions explaining that no account
@@ -252,15 +261,15 @@ are the correct mechanisms when access is eventually needed.
 | Incorrect finance calculations | Exact decimals, balanced entries, unit tests, manual sample reconciliation | Blocks every candidate |
 | Privacy claim drifts from binary | Manifest/document CI and no network dependencies | Blocks every candidate |
 | Accidental deletion | Confirmation dialogs and sample-only destructive testing | Verified in founders test |
-| Apple membership or review delay | Finish code, metadata, policy, and QA in parallel | Distribution waits; engineering continues |
+| Apple API access, build processing, or review delay | Finish code, metadata, policy, and QA in parallel | Distribution waits; engineering continues |
 | Certificate or secret exposure | Keep secrets out of Git and use Apple/GitHub secret stores | Immediate P0 response |
 | App update corrupts data | Versioned schema, migration fixtures, physical update test | Blocks broader beta |
 | Accessibility claim is inaccurate | Common-task matrix before publishing labels | Blocks App Store submission |
 
 ## Definition of ready
 
-MoneyUp is ready for the two founders when membership is active, CI is green,
-a signed 0.3.0 build passes the physical smoke test, and TestFlight has finished
-processing it. It is ready for the public only after encrypted restore is
-proven, all P0/P1 gates above pass, and the exact submitted binary matches the
-reviewed privacy and store declarations.
+MoneyUp is ready for the two founders when CI is green, a signed 0.3.0 build
+passes the physical smoke test, and TestFlight has finished processing it. It
+is ready for the public only after encrypted restore is proven, all P0/P1 gates
+above pass, and the exact submitted binary matches the reviewed privacy and
+store declarations.

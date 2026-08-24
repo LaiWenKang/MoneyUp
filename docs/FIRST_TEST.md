@@ -1,6 +1,7 @@
 # MoneyUp Founders Test Runbook
 
-Version target: 0.3.0 (build 3)
+Version target: 0.3.0 (source build 3; the GitHub workflow assigns a newer
+unique TestFlight build)
 
 This runbook is for the user and his girlfriend, MoneyUp's first two iPhone
 testers. Use small sample values during the first session. The beta is not yet
@@ -23,6 +24,8 @@ On each iPhone:
 
 MoneyUp itself has no login. The invitation must open TestFlight, not ask for a
 ChatGPT account. Gmail is only one possible email inbox; it is not required.
+Each TestFlight build expires after 90 days, so install and complete this test
+well before the expiry date shown in TestFlight.
 
 ## Before starting
 

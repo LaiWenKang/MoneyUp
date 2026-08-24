@@ -16,15 +16,18 @@ claim against the exact archived binary before submission.
 - Languages: English and Simplified Chinese
 - Bundle ID: `com.laiwenkang.MoneyUp`
 - Widget bundle ID: `com.laiwenkang.MoneyUp.Widget`
+- App Store record name: `MoneyUp: CowCome`
+- Installed Home Screen name: `MoneyUp`
 - Privacy policy: <https://github.com/LaiWenKang/MoneyUp/blob/main/PRIVACY.md>
 - Support: <https://github.com/LaiWenKang/MoneyUp/blob/main/SUPPORT.md>
 
-Do not create the App Store record until the bundle ID has been confirmed on
-the activated team. Do not change the bundle ID after users install a release.
+The App Store record and both explicit identifiers were created on the
+activated team on 24 August 2026. Do not create a duplicate record or change
+either bundle ID after users install a release.
 
 ## English metadata
 
-Name: **MoneyUp**
+Name: **MoneyUp: CowCome**
 
 Subtitle: **Private budget & spending**
 
@@ -76,7 +79,7 @@ Version 1.0 release notes:
 
 ## Simplified Chinese metadata
 
-名称：**MoneyUp**
+名称：**MoneyUp: CowCome**
 
 副标题：**私密预算与支出记录**
 
@@ -128,6 +131,18 @@ What to test:
 > locking, expense/income/transfer logging, nested budget roll-up, schedule
 > projections, charts, holdings, widget shortcuts, confirmed deletion, update
 > data retention, and CSV export. Hide all private values in feedback images.
+
+Private TestFlight fields are entered by the Account Holder directly in App
+Store Connect and are intentionally not stored in Git:
+
+- a monitored feedback email, preferably a dedicated MoneyUp support mailbox;
+- the Beta App Review contact's real name and email;
+- a reachable review phone number in international `+country-code` format.
+
+Before a public App Store submission, publish a monitored direct contact on the
+Support URL and verify that both English and Simplified Chinese users can find
+it. TestFlight's private feedback email is sufficient for the two-founder beta
+but is not a replacement for a public support contact.
 
 ## App Review notes
 
@@ -197,12 +212,15 @@ not visible in the app.
 - bundle identifiers and signing valid for app and widget;
 - CI green on submitted commit;
 - archive version/build unique and matches release notes;
+- exact encrypted `.xcarchive` and dSYMs saved in durable private storage, with
+  symbols uploaded to Apple;
 - export compliance complete;
 - privacy policy/support links publicly accessible without sign-in;
 - App Privacy and age-rating answers complete;
 - content-rights and trader-status declarations complete;
 - accessibility common-task matrix tested before declaring any labels;
 - screenshots and metadata localized;
-- support and review contact information current;
+- support URL publishes a monitored direct contact and private review contact
+  information is current;
 - encrypted backup/restore release gate passed;
 - manual release selected for 1.0.
