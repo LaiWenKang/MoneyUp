@@ -296,10 +296,28 @@ def validate_project_configuration() -> None:
         fail("project.yml must enable compiler extraction of Swift strings")
     if "DEBUG_INFORMATION_FORMAT: dwarf-with-dsym" not in spec:
         fail("project.yml must emit dSYMs for release crash diagnosis")
-    if spec.count("CODE_SIGN_IDENTITY: Apple Distribution") != 2:
+    if spec.count("CODE_SIGN_STYLE: Automatic") != 2:
         fail(
-            "MoneyUp and MoneyUpWidget must use Apple Distribution signing "
-            "for Release builds"
+            "MoneyUp and MoneyUpWidget must use automatic signing"
+        )
+    if "CODE_SIGN_IDENTITY:" in spec:
+        fail(
+            "automatic signing must not force a code-sign identity; "
+            "Apple Distribution signing occurs during export"
+        )
+    if "CODE_SIGN_ENTITLEMENTS" in spec or any(
+        (ROOT / "App").rglob("*.entitlements")
+    ):
+        fail(
+            "custom entitlements require a signing-flow review before the "
+            "unsigned archive path can be used"
+        )
+    if "SystemCapabilities" in spec or re.search(
+        r"^\s+capabilities:\s*$", spec, re.MULTILINE
+    ):
+        fail(
+            "Xcode capabilities require a signing-flow review before the "
+            "unsigned archive path can be used"
         )
 
     lines = spec.splitlines()
@@ -346,12 +364,18 @@ def validate_testflight_workflow() -> None:
         "cancel-in-progress: false",
         "-allowProvisioningUpdates",
         "-authenticationKeyPath",
-        "CODE_SIGN_STYLE=Automatic",
-        'CODE_SIGN_IDENTITY="Apple Distribution"',
+        "method -string app-store-connect",
+        "signingStyle -string automatic",
         "--validate-app",
         "destination -string upload",
         "uploadSymbols -bool true",
         "Scripts/validate_built_bundle.py",
+        "Confirm the archive is unsigned",
+        "codesign --verify",
+        "embedded.mobileprovision",
+        "get-task-allow",
+        "ProvisionedDevices",
+        "ProvisionsAllDevices",
         "-disableAutomaticPackageResolution",
         "actions/upload-artifact@",
         "ARCHIVE_ENCRYPTION_PASSWORD",
@@ -359,6 +383,58 @@ def validate_testflight_workflow() -> None:
     for declaration in required:
         if declaration not in workflow:
             fail(f"TestFlight workflow is missing {declaration}")
+
+    archive_step = re.search(
+        r"(?ms)^      - name: Create an unsigned release archive\n"
+        r"(?P<body>.*?)(?=^      - name: |\Z)",
+        workflow,
+    )
+    if archive_step is None:
+        fail("TestFlight workflow is missing the unsigned archive step")
+    archive_body = archive_step.group("body")
+    for declaration in [
+        "CODE_SIGNING_ALLOWED=NO",
+        "CODE_SIGNING_REQUIRED=NO",
+        "clean archive",
+    ]:
+        if declaration not in archive_body:
+            fail(f"unsigned archive step is missing {declaration}")
+    for declaration in [
+        "-allowProvisioningUpdates",
+        "-authenticationKey",
+        "CODE_SIGN_STYLE=",
+        "CODE_SIGN_IDENTITY=",
+    ]:
+        if declaration in archive_body:
+            fail(f"unsigned archive step must not contain {declaration}")
+
+    export_step = re.search(
+        r"(?ms)^      - name: Export an App Store Connect IPA\n"
+        r"(?P<body>.*?)(?=^      - name: |\Z)",
+        workflow,
+    )
+    if export_step is None:
+        fail("TestFlight workflow is missing the App Store Connect export step")
+    export_body = export_step.group("body")
+    for declaration in [
+        "method -string app-store-connect",
+        "signingStyle -string automatic",
+        "-allowProvisioningUpdates",
+        "-authenticationKeyPath",
+        "-authenticationKeyID",
+        "-authenticationKeyIssuerID",
+    ]:
+        if declaration not in export_body:
+            fail(f"App Store Connect export step is missing {declaration}")
+
+    key_step_position = workflow.find("- name: Materialize the App Store Connect key")
+    unsigned_check_position = workflow.find("- name: Confirm the archive is unsigned")
+    export_step_position = workflow.find("- name: Export an App Store Connect IPA")
+    if not unsigned_check_position < key_step_position < export_step_position:
+        fail(
+            "the App Store Connect key must be materialized after the unsigned "
+            "archive checks and immediately before export"
+        )
 
     if not re.search(r"actions/checkout@[0-9a-f]{40}", workflow):
         fail("TestFlight workflow must pin actions/checkout to a full commit")

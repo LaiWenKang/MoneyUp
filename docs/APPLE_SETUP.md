@@ -116,8 +116,10 @@ GitHub secret, and use the replacement key for the next run.
 
 GitHub never needs an Apple password, a `.p12` certificate, a certificate
 password, or manually downloaded provisioning profiles for this design.
-The archive password encrypts the exact Xcode archive and dSYMs before they
-leave the temporary runner; it never appears in the artifact or workflow log.
+The archive password encrypts the exact unsigned Xcode release archive and its
+dSYMs before they leave the temporary runner; it never appears in the artifact
+or workflow log. The signed IPA is validated separately and is not included in
+this recovery artifact.
 
 ## 6. Validate, then upload
 
@@ -135,8 +137,8 @@ Open the repository's **Actions** tab and choose **TestFlight**.
    `MoneyUp-encrypted-xcarchive-...` artifact, and save it in a private iCloud
    Drive folder. GitHub deletes public-repository workflow artifacts after at
    most 90 days, so do this immediately. Keep its password in the Passwords
-   app. The saved ciphertext is the recovery copy of the exact archive and
-   dSYMs; it does not need to be opened on the iPhone.
+   app. The saved ciphertext is the recovery copy of the exact unsigned release
+   archive and dSYMs; it does not need to be opened on the iPhone.
 
 The workflow creates a unique build number for every attempt, verifies Xcode
 26 and the iOS 26 SDK, checks the app and widget versions and identifiers,
@@ -146,12 +148,14 @@ the temporary private key and release products before the runner is destroyed.
 Because this repository is public, treat the GitHub artifact as potentially
 public ciphertext: the strong, separately stored archive password is required.
 
-If the archive log mentions **iOS App Development**, **no devices**, or a
-development provisioning profile, do not register a device or create a manual
-profile. A TestFlight archive must use **Apple Distribution** and App Store
-Connect distribution profiles for both the app and widget. That message means
-the release-signing configuration has regressed; correct the workflow before
-trying again.
+The hosted runner deliberately creates an unsigned release archive because it
+has no development device or development provisioning profile. The authenticated
+`exportArchive` step applies Apple Distribution signing and App Store Connect
+distribution profiles to both the app and widget. Only the exported IPA is a
+distribution artifact; its signatures and embedded profiles must pass every
+workflow check before validation or upload. If MoneyUp later adds a custom
+entitlement or capability, review this signing design before releasing it; the
+release validator intentionally blocks that change until it is handled.
 
 If an upload step loses its connection after transfer begins, check App Store
 Connect **Build Uploads** before running it again. Never try to reuse an old
