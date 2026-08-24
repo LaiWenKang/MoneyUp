@@ -210,6 +210,58 @@ jobs:
             echo "- Operation: ${{ inputs.operation }}"
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Create an unsigned release archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          # A hosted runner has no development device/profile. Distribution
+          # signing is applied by the authenticated exportArchive step below.
+          xcodebuild \
+            -project MoneyUp.xcodeproj \
+            -scheme MoneyUp \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$ARCHIVE_PATH" \
+            -disableAutomaticPackageResolution \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            clean archive
+
+      - name: Inspect the archived app
+        run: >-
+          python3 Scripts/validate_built_bundle.py
+          --app "$ARCHIVE_PATH/Products/Applications/MoneyUp.app"
+          --marketing-version "$MARKETING_VERSION"
+          --build-number "$BUILD_NUMBER"
+          --app-bundle-id "$APP_BUNDLE_ID"
+          --widget-bundle-id "$WIDGET_BUNDLE_ID"
+
+      - name: Confirm the archive is unsigned
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP_PATH="$ARCHIVE_PATH/Products/Applications/MoneyUp.app"
+          WIDGET_PATH="$APP_PATH/PlugIns/MoneyUpWidget.appex"
+          for BUNDLE_PATH in "$APP_PATH" "$WIDGET_PATH"; do
+            if [[ -e "$BUNDLE_PATH/_CodeSignature" || -e "$BUNDLE_PATH/embedded.mobileprovision" ]]; then
+              echo "::error::$(basename "$BUNDLE_PATH") was unexpectedly signed during archive creation."
+              exit 1
+            fi
+          done
+
+      - name: Verify archive debug symbols
+        shell: bash
+        run: |
+          set -euo pipefail
+          for DSYM_NAME in MoneyUp.app.dSYM MoneyUpWidget.appex.dSYM; do
+            if [[ ! -d "$ARCHIVE_PATH/dSYMs/$DSYM_NAME" ]]; then
+              echo "::error::The archive is missing $DSYM_NAME."
+              exit 1
+            fi
+          done
+
       - name: Materialize the App Store Connect key
         shell: bash
         env:
@@ -231,47 +283,6 @@ jobs:
             echo "::error::ASC_API_KEY_P8 is not a valid private-key file."
             exit 1
           fi
-
-      - name: Archive with Apple automatic signing
-        shell: bash
-        run: |
-          set -euo pipefail
-          xcodebuild \
-            -project MoneyUp.xcodeproj \
-            -scheme MoneyUp \
-            -configuration Release \
-            -destination 'generic/platform=iOS' \
-            -archivePath "$ARCHIVE_PATH" \
-            -disableAutomaticPackageResolution \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath "$ASC_KEY_PATH" \
-            -authenticationKeyID "$ASC_KEY_ID" \
-            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
-            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
-            CODE_SIGN_STYLE=Automatic \
-            CODE_SIGN_IDENTITY="Apple Distribution" \
-            CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
-            clean archive
-
-      - name: Inspect the archived app
-        run: >-
-          python3 Scripts/validate_built_bundle.py
-          --app "$ARCHIVE_PATH/Products/Applications/MoneyUp.app"
-          --marketing-version "$MARKETING_VERSION"
-          --build-number "$BUILD_NUMBER"
-          --app-bundle-id "$APP_BUNDLE_ID"
-          --widget-bundle-id "$WIDGET_BUNDLE_ID"
-
-      - name: Verify archive debug symbols
-        shell: bash
-        run: |
-          set -euo pipefail
-          for DSYM_NAME in MoneyUp.app.dSYM MoneyUpWidget.appex.dSYM; do
-            if [[ ! -d "$ARCHIVE_PATH/dSYMs/$DSYM_NAME" ]]; then
-              echo "::error::The archive is missing $DSYM_NAME."
-              exit 1
-            fi
-          done
 
       - name: Export an App Store Connect IPA
         shell: bash
@@ -396,7 +407,7 @@ jobs:
             --apiKey "$ASC_KEY_ID" \
             --apiIssuer "$ASC_ISSUER_ID"
 
-      - name: Encrypt the distributed archive backup
+      - name: Encrypt the unsigned release archive backup
         if: ${{ inputs.operation == 'upload' }}
         shell: bash
         env:
@@ -411,7 +422,7 @@ jobs:
           MANIFEST_PATH="$RUNNER_TEMP/MoneyUp-Archive-Manifest.txt"
           ENCRYPTED_PATH="$RUNNER_TEMP/MoneyUp-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.xcarchive.tar.gz.enc"
           {
-            echo "MoneyUp archive backup"
+            echo "MoneyUp unsigned release archive backup"
             echo "Commit: $GITHUB_SHA"
             echo "Version: $MARKETING_VERSION"
             echo "Build: $BUILD_NUMBER"

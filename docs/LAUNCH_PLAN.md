@@ -45,9 +45,10 @@ Completed:
 - release-asset CI validation for localizations, icons, privacy, and documents;
 - non-restorable database ciphertext excluded from system backup;
 - a manual, protected TestFlight workflow using Xcode 26, checksum-pinned
-  XcodeGen, App Store Connect API authentication, Apple automatic cloud
-  signing, archive/IPA inspection, validation, encrypted archive retention,
-  symbol upload, and explicit upload approval.
+  XcodeGen, an unsigned release archive, App Store Connect API authentication,
+  Apple automatic cloud signing during IPA export, archive/IPA inspection,
+  validation, encrypted unsigned-archive retention, symbol upload, and explicit
+  upload approval.
 - both explicit bundle identifiers, the `MoneyUp: CowCome` App Store Connect
   record, dedicated team API key, and protected GitHub environment configured
   by the account holder.
@@ -82,7 +83,7 @@ to the second tester.
    localization and the Finance category before public submission.
 4. Dispatch the protected GitHub TestFlight workflow first in `validate` mode,
    then in `upload` mode with explicit confirmation. The workflow assigns a
-   unique build number, retains an encrypted archive and dSYMs, and uploads
+   unique build number, retains an encrypted unsigned archive and dSYMs, and uploads
    symbols to Apple. Download the encrypted artifact into private iCloud Drive
    after every successful upload. Do not use a ChatGPT-hosted preview link as
    distribution.
@@ -115,7 +116,8 @@ macOS 26 runner performs the Xcode archive. The bootstrap sequence is:
    archive-encryption password in the protected GitHub `testflight`
    environment. Never commit or paste either secret into chat.
 4. Dispatch the manual workflow from `main`. It reruns validation and tests,
-   generates the project, uses API-key-authenticated automatic signing,
+   generates the project, creates an unsigned archive, uses API-key-authenticated
+   automatic distribution signing during IPA export,
    verifies the signed app and widget, asks Apple to validate the IPA, and
    uploads the archive and symbols only after an encrypted recovery artifact
    is retained and the typed `UPLOAD` confirmation is present.

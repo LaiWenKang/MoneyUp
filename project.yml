@@ -54,9 +54,6 @@ targets:
         CODE_SIGN_STYLE: Automatic
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
-      configs:
-        Release:
-          CODE_SIGN_IDENTITY: Apple Distribution
     scheme:
       testTargets: []
 
@@ -82,6 +79,3 @@ targets:
         CODE_SIGN_STYLE: Automatic
         APPLICATION_EXTENSION_API_ONLY: YES
         SKIP_INSTALL: true
-      configs:
-        Release:
-          CODE_SIGN_IDENTITY: Apple Distribution
