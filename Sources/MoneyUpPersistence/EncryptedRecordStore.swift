@@ -22,6 +22,22 @@ public actor EncryptedRecordStore {
             withIntermediateDirectories: true
         )
 
+        #if os(iOS)
+        // The database key is deliberately ThisDeviceOnly and cannot be
+        // restored on another device. Excluding the ciphertext directory from
+        // system backups prevents an unusable database from being restored
+        // without its key. Portable recovery is provided separately by an
+        // authenticated MoneyUp archive once that feature ships.
+        var protectedDirectory = directory
+        var resourceValues = URLResourceValues()
+        resourceValues.isExcludedFromBackup = true
+        try protectedDirectory.setResourceValues(resourceValues)
+        try FileManager.default.setAttributes(
+            [.protectionKey: FileProtectionType.completeUnlessOpen],
+            ofItemAtPath: directory.path
+        )
+        #endif
+
         connection = try SQLCipherConnection(
             databaseURL: databaseURL,
             key: key,

@@ -1,7 +1,19 @@
-# Install and Use Local Beta 0.2.0
+# Install and Use Founders Beta 0.3.0
 
 MoneyUp is ready for local source installation. It is not yet a signed
 TestFlight or App Store download.
+
+## iPhone-only TestFlight installation
+
+After Apple activates the developer membership and a signed build is uploaded,
+the account holder installs from the private Founders Internal TestFlight group.
+The second tester receives a private email invitation to the Founders External
+group after TestFlight Beta App Review. Both testers install through Apple's
+TestFlight app. MoneyUp has no account and the invitation does not require
+ChatGPT or Gmail specifically.
+
+Until that signed build exists, the steps below are for a developer source
+install and require access to a Mac.
 
 ## Requirements
 
@@ -66,7 +78,7 @@ MoneyUp after they leave the app.
 
 The SQLCipher key is intentionally this-device-only. Deleting MoneyUp, using
 the in-app destructive reset, or losing the protected key can permanently make
-the local database unreadable. Local Beta 0.2.0 does not yet have portable
+the local database unreadable. Founders Beta 0.3.0 does not yet have portable
 encrypted backup/restore, and CSV is not a complete restore format. Export
 snapshots regularly and do not use this beta as the sole record of information
 you cannot afford to lose.

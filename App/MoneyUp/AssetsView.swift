@@ -11,6 +11,7 @@ struct AssetsView: View {
     @State private var isExporting = false
     @State private var exportDocument = CSVDocument(text: "")
     @State private var errorMessage: String?
+    @State private var holdingPendingDeletion: InvestmentHolding?
 
     private var investmentAccounts: [LedgerAccount] {
         model.userAccounts.filter {
@@ -108,6 +109,13 @@ struct AssetsView: View {
                                     .foregroundStyle(.secondary)
                                 }
                             }
+                            .swipeActions {
+                                Button(role: .destructive) {
+                                    holdingPendingDeletion = holding
+                                } label: {
+                                    Label("action.delete", systemImage: "trash")
+                                }
+                            }
                         }
                     }
 
@@ -143,6 +151,12 @@ struct AssetsView: View {
                     } label: {
                         Label("assets.version", systemImage: "info.circle")
                     }
+
+                    NavigationLink {
+                        PrivacyAndBetaView()
+                    } label: {
+                        Label("privacy.title", systemImage: "hand.raised.fill")
+                    }
                 }
 
                 if let errorMessage {
@@ -172,6 +186,25 @@ struct AssetsView: View {
             } message: {
                 Text("export.warning_detail")
             }
+            .confirmationDialog(
+                "holding.delete_title",
+                isPresented: Binding(
+                    get: { holdingPendingDeletion != nil },
+                    set: { if !$0 { holdingPendingDeletion = nil } }
+                ),
+                titleVisibility: .visible,
+                presenting: holdingPendingDeletion
+            ) { holding in
+                Button("action.delete", role: .destructive) {
+                    holdingPendingDeletion = nil
+                    Task { await delete(holding) }
+                }
+                Button("action.cancel", role: .cancel) {
+                    holdingPendingDeletion = nil
+                }
+            } message: { _ in
+                Text("holding.delete_detail")
+            }
             .fileExporter(
                 isPresented: $isExporting,
                 document: exportDocument,
@@ -182,6 +215,14 @@ struct AssetsView: View {
                     errorMessage = error.localizedDescription
                 }
             }
+        }
+    }
+
+    private func delete(_ holding: InvestmentHolding) async {
+        do {
+            try await model.deleteInvestmentHolding(id: holding.id)
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 
@@ -286,7 +327,13 @@ private struct AccountBalanceSheet: View {
                     TextField("account.current_balance", text: $balanceText)
                         .keyboardType(.numbersAndPunctuation)
                 } footer: {
-                    Text("account.adjustment_detail")
+                    VStack(alignment: .leading, spacing: 6) {
+                        if account.accountType == .brokerage
+                            || account.accountType == .investment {
+                            Text("account.investment_cash_detail")
+                        }
+                        Text("account.adjustment_detail")
+                    }
                 }
                 if let errorMessage {
                     Section { Text(errorMessage).foregroundStyle(.red) }

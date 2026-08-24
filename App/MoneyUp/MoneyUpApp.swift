@@ -34,15 +34,21 @@ struct MoneyUpApp: App {
 
 private struct PrivacyCoverView: View {
     var body: some View {
-        VStack(spacing: 14) {
-            Image(systemName: "lock.shield.fill")
-                .font(.system(size: 48))
-                .foregroundStyle(.tint)
-            Text("privacy.cover")
-                .font(.headline)
+        ZStack {
+            // Keep the app-switcher snapshot fully opaque. A material can
+            // reveal the shape of balances or charts beneath it.
+            Color(.systemBackground)
+                .ignoresSafeArea()
+
+            VStack(spacing: 14) {
+                Image(systemName: "lock.shield.fill")
+                    .font(.system(size: 48))
+                    .foregroundStyle(.tint)
+                Text("privacy.cover")
+                    .font(.headline)
+            }
+            .accessibilityElement(children: .combine)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(.regularMaterial)
-        .accessibilityElement(children: .combine)
     }
 }

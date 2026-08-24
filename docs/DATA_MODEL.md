@@ -75,7 +75,7 @@ more than three visible levels and use tags for orthogonal context.
 - Store timestamps as absolute instants and retain the user's relevant calendar
   context separately when day-level reporting depends on it.
 - A recurring template predicts future money movement.
-- The local beta projects recurring occurrences without posting them. Matching
+- The founders beta projects recurring occurrences without posting them. Matching
   actual entries and editing a series or one occurrence remain planned.
 
 ## Export identity

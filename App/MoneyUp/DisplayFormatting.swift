@@ -63,8 +63,8 @@ extension FinancialAccountType {
 }
 
 extension Color {
-    /// The gold half of the royal palette. Used for the expense side of the
-    /// ledger and for highlights, against the royal blue accent.
+    /// A restrained premium highlight against the royal-blue brand colour.
+    /// Keep this rare so blue remains unmistakably dominant.
     static var moneyUpGold: Color { Color("GoldAccent") }
 }
 

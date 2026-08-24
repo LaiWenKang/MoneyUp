@@ -8,13 +8,14 @@ on-device charts, accounts and holdings, and spreadsheet-friendly export.
 
 ## Project status
 
-MoneyUp is at **Local Beta 0.2.0**. The app is functional and can be installed
+MoneyUp is at **Founders Beta 0.3.0**. The app is functional and can be installed
 from source on an iOS 18 device through Xcode. It is not yet distributed as a
 signed TestFlight or App Store build.
 
 The beta includes:
 
-- an encrypted SQLCipher database with a random 256-bit per-installation key;
+- an encrypted SQLCipher database with a random 256-bit app-generated,
+  device-bound key;
 - Keychain protection requiring device-owner presence, automatic background
   locking, and an app-switcher privacy cover;
 - onboarding with base currency, first account, and opening balance;
@@ -35,8 +36,12 @@ The beta includes:
 - a privacy-redacted Home Screen widget with expense and income shortcuts;
 - posting-level CSV export with account metadata for Numbers and Excel;
 - English and Simplified Chinese UI and first-run categories;
-- a royal blue and gold app icon and accent colour, a lock screen that names the biometry the
-  device actually has, and an in-app version with release notes on update;
+- a royal-blue app icon and accent colour with restrained gold highlights, a
+  lock screen that names the biometry the device actually has, and an in-app
+  version with release notes on update;
+- an App Store privacy manifest, an in-app bilingual privacy and beta guide,
+  backup exclusion for non-restorable ciphertext, and confirmations before
+  permanent transaction, schedule, or holding deletion;
 - Swift tests plus a clean unsigned iOS Simulator build in CI.
 
 Portable encrypted backup/restore, imports, and signed public distribution are
@@ -45,6 +50,18 @@ of information you cannot afford to lose; export CSV snapshots regularly and
 protect them because they are readable plaintext.
 
 ## Install the beta
+
+### iPhone-only tester
+
+Once the signed founders build is available, install Apple's TestFlight app,
+open the private MoneyUp invitation, and tap Install. MoneyUp itself has no
+login; the invitation uses an Apple Account through TestFlight and never needs
+a ChatGPT account. See the [first-test runbook](docs/FIRST_TEST.md).
+
+The TestFlight build is not available until Apple activates the developer
+membership and build 0.3.0 is signed and uploaded.
+
+### Developer source install
 
 You need a Mac with Xcode 16 or later, XcodeGen, and an iPhone running iOS 18 or
 later with a device passcode enabled.
@@ -63,6 +80,8 @@ both identifiers in `project.yml`, regenerate the project, and try again.
 
 See [Beta installation and use](docs/BETA_INSTALL.md) for the complete setup,
 first-run checklist, widget steps, and data-retention caveats.
+The release gates and two-person TestFlight protocol are in the
+[launch plan](docs/LAUNCH_PLAN.md) and [first-test runbook](docs/FIRST_TEST.md).
 
 ## Product principles
 

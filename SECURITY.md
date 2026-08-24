@@ -3,14 +3,14 @@
 MoneyUp handles sensitive financial data. Security claims here distinguish
 implemented controls from planned work and known limits.
 
-## Local Beta 0.2.0 controls
+## Founders Beta 0.3.0 controls
 
 | Control | Status |
 |---|---|
 | Balanced domain model and validated decoding | Implemented and tested |
 | No ads, financial telemetry, remote AI, or application backend | Implemented |
 | SQLCipher 4.18 full-database encryption | Implemented and pinned |
-| Random 256-bit per-installation database key | Implemented |
+| Random 256-bit app-generated, device-bound database key | Implemented |
 | Non-synchronizing Keychain item with `WhenPasscodeSetThisDeviceOnly` and user presence | Implemented |
 | Close database and clear decoded state on background | Implemented |
 | App-switcher privacy cover while inactive | Implemented |
@@ -19,6 +19,9 @@ implemented controls from planned work and known limits.
 | On-device receipt reading with no image retention or upload | Implemented |
 | Plaintext CSV warning and user-selected destination | Implemented |
 | Destructive recovery reset with explicit confirmation | Implemented |
+| App privacy manifest with no tracking or collected-data declarations | Implemented |
+| System-backup exclusion for ciphertext whose key cannot migrate | Implemented |
+| Confirmed deletion for transactions, schedules, and holdings | Implemented |
 | Wrong-key, plaintext-leak, decimal round-trip, and atomic-rollback tests | Implemented |
 | Password-protected portable backup and restore | Planned |
 | Optional end-to-end-encrypted device sync | Not implemented |
@@ -80,10 +83,12 @@ The guarantee does not cover:
 ## Current recovery limit
 
 The Keychain key uses a this-device-only policy. Deleting the app, erasing its
-data, or losing that key can make the database permanently unreadable. Local
-Beta 0.2.0 does not yet provide a restorable encrypted archive. CSV export is
+data, or losing that key can make the database permanently unreadable. Founders
+Beta 0.3.0 does not yet provide a restorable encrypted archive. CSV export is
 readable and useful in Numbers or Excel, but it is not a full-fidelity restore
-format.
+format. Because the protected key cannot migrate, the app excludes the
+database directory from system backup rather than allowing unrestorable
+ciphertext to be copied to another device.
 
 ## Reporting a vulnerability
 
