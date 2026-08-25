@@ -30,6 +30,38 @@ public struct CurrencyCode: Codable, Hashable, Comparable, CustomStringConvertib
 
     public var description: String { value }
 
+    /// ISO 4217 minor units for currencies whose scale differs from the common
+    /// two-decimal convention, plus explicit digital-asset display scales.
+    /// Unknown private or future codes remain usable and conservatively use 2.
+    public var minorUnits: Int {
+        switch value {
+        case "BIF", "CLP", "DJF", "GNF", "ISK", "JPY", "KMF", "KRW",
+             "PYG", "RWF", "UGX", "UYI", "VND", "VUV", "XAF", "XOF", "XPF":
+            0
+        case "BHD", "IQD", "JOD", "KWD", "LYD", "OMR", "TND":
+            3
+        case "CLF", "UYW":
+            4
+        case "BTC":
+            8
+        case "ETH":
+            8
+        default:
+            2
+        }
+    }
+
+    public func supports(_ amount: Decimal) -> Bool {
+        rounded(amount) == amount
+    }
+
+    public func rounded(_ amount: Decimal) -> Decimal {
+        var source = amount
+        var result = Decimal.zero
+        NSDecimalRound(&result, &source, minorUnits, .bankers)
+        return result
+    }
+
     public static func < (lhs: CurrencyCode, rhs: CurrencyCode) -> Bool {
         lhs.value < rhs.value
     }

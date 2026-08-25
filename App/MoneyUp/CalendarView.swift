@@ -15,19 +15,8 @@ struct CalendarView: View {
 
     private var scheduledForDay: [ScheduledTransaction] {
         let calendar = Calendar.current
-        guard let endOfDay = calendar.date(
-            byAdding: .day,
-            value: 1,
-            to: calendar.startOfDay(for: selectedDate)
-        )?.addingTimeInterval(-1) else { return [] }
         return model.scheduledTransactions.filter { item in
-            item.occurrences(
-                through: endOfDay,
-                calendar: calendar,
-                maximumCount: 2_000
-            ).contains {
-                calendar.isDate($0, inSameDayAs: selectedDate)
-            }
+            item.occurs(on: selectedDate, calendar: calendar)
         }
     }
 
@@ -43,7 +32,7 @@ struct CalendarView: View {
                   entries: selectedEntries,
                   baseCurrency: currency
               ) else { return [] }
-        return [report.baseFlow] + report.foreignFlows
+        return ([report.baseFlow] + report.foreignFlows).filter { !$0.isEmpty }
     }
 
     var body: some View {
@@ -59,14 +48,16 @@ struct CalendarView: View {
                 if !dayFlows.isEmpty {
                     Section("calendar.money_flow") {
                         ForEach(dayFlows) { flow in
-                            LabeledContent(
-                                "transaction.income",
-                                value: formattedMoney(flow.income)
-                            )
-                            LabeledContent(
-                                "transaction.expense",
-                                value: formattedMoney(flow.expense)
-                            )
+                            LabeledContent {
+                                Text(formattedMoney(flow.income))
+                            } label: {
+                                Text("\(String(localized: "transaction.income")) (\(flow.currency.value))")
+                            }
+                            LabeledContent {
+                                Text(formattedMoney(flow.expense))
+                            } label: {
+                                Text("\(String(localized: "transaction.expense")) (\(flow.currency.value))")
+                            }
                         }
                     }
                 }

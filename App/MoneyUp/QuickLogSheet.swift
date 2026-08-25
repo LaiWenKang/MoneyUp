@@ -7,6 +7,7 @@ enum QuickLogKind: String, CaseIterable, Codable, Identifiable, Sendable {
     case expense
     case income
     case transfer
+    case refund
 
     var id: String { rawValue }
     var title: LocalizedStringKey {
@@ -14,6 +15,7 @@ enum QuickLogKind: String, CaseIterable, Codable, Identifiable, Sendable {
         case .expense: "transaction.expense"
         case .income: "transaction.income"
         case .transfer: "transaction.transfer"
+        case .refund: "transaction.refund"
         }
     }
 }
@@ -142,7 +144,7 @@ private struct QuickLogEntryView: View {
             return false
         }
         switch kind {
-        case .expense, .income:
+        case .expense, .income, .refund:
             return categories.contains { $0.id == categoryID }
         case .transfer:
             return destinationAccountID != nil
@@ -169,13 +171,21 @@ private struct QuickLogEntryView: View {
                 .pickerStyle(.segmented)
 
                 Section {
-                    TextField(
-                        "quick_log.amount",
-                        text: trackedBinding($amountText, \.amountText)
-                    )
+                    HStack {
+                        TextField(
+                            "quick_log.amount",
+                            text: trackedBinding($amountText, \.amountText)
+                        )
                         .keyboardType(.decimalPad)
                         .font(.title2.monospacedDigit())
                         .focused($isAmountFocused)
+                        if let currency = selectedAccountCurrency {
+                            Text(currency.value)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .accessibilityLabel("transaction.currency")
+                        }
+                    }
 
                     Picker(
                         kind == .transfer ? "transaction.from_account" : "transaction.account",
@@ -301,16 +311,9 @@ private struct QuickLogEntryView: View {
                 selectDefaults()
                 hasRestoredDraft = true
                 handleRequestedLaunch()
-                if handledRequestSequence == 0 {
-                    isAmountFocused = isActive
-                }
             }
             .onChange(of: isActive) { _, newValue in
-                if newValue {
-                    if !isHandlingFocusedLaunch {
-                        isAmountFocused = true
-                    }
-                } else {
+                if !newValue {
                     isAmountFocused = false
                     isSmartEntryFocused = false
                     isHandlingFocusedLaunch = false
@@ -318,9 +321,6 @@ private struct QuickLogEntryView: View {
             }
             .onChange(of: kind) { _, _ in
                 selectDefaults()
-                if isActive, !isHandlingFocusedLaunch {
-                    isAmountFocused = true
-                }
             }
             .onChange(of: requestSequence) { _, _ in
                 handleRequestedLaunch()
@@ -358,6 +358,7 @@ private struct QuickLogEntryView: View {
                 receiptScanTask = nil
                 isScanning = false
             }
+            .scrollDismissesKeyboard(.interactively)
         }
         .safeAreaInset(edge: .bottom) {
             if let lastSavedEntryID {
@@ -579,7 +580,7 @@ private struct QuickLogEntryView: View {
                 await Task.yield()
                 isPresentingReceiptPicker = true
             }
-        case .expense, .income, .transfer:
+        case .expense, .income, .transfer, .refund:
             isHandlingFocusedLaunch = false
             isSmartEntryFocused = false
             isAmountFocused = true
@@ -657,11 +658,13 @@ private struct QuickLogEntryView: View {
             return false
         }
 
-        kind = draft.kind == .income ? .income : .expense
+        switch draft.kind {
+        case .expense: kind = .expense
+        case .income: kind = .income
+        case .refund: kind = .refund
+        }
         if let amount = draft.amount {
-            amountText = amount.formatted(
-                .number.precision(.fractionLength(0...2)).grouping(.never)
-            )
+            amountText = editableAmount(amount)
         }
         if let parsedDate = draft.occurredAt {
             occurredAt = parsedDate
@@ -692,17 +695,37 @@ private struct QuickLogEntryView: View {
     /// parsed draft already chose, because it also runs when the kind changes.
     private func selectDefaults() {
         if !model.userAccounts.contains(where: { $0.id == accountID }) {
-            accountID = model.userAccounts.first?.id
+            accountID = validPreferred(
+                model.profile?.preferredAccountID,
+                in: model.userAccounts
+            ) ?? recentAccountID() ?? model.userAccounts.first?.id
         }
         switch kind {
         case .expense:
             if !model.expenseCategories.contains(where: { $0.id == categoryID }) {
-                categoryID = model.expenseCategories.first { $0.parentID != nil }?.id
+                categoryID = validPreferred(
+                    model.profile?.preferredExpenseCategoryID,
+                    in: model.expenseCategories
+                ) ?? recentCategoryID(kind: .expense)
+                    ?? model.expenseCategories.first { $0.parentID != nil }?.id
                     ?? model.expenseCategories.first?.id
             }
         case .income:
             if !model.incomeCategories.contains(where: { $0.id == categoryID }) {
-                categoryID = model.incomeCategories.first?.id
+                categoryID = validPreferred(
+                    model.profile?.preferredIncomeCategoryID,
+                    in: model.incomeCategories
+                ) ?? recentCategoryID(kind: .income)
+                    ?? model.incomeCategories.first?.id
+            }
+        case .refund:
+            if !model.expenseCategories.contains(where: { $0.id == categoryID }) {
+                categoryID = validPreferred(
+                    model.profile?.preferredExpenseCategoryID,
+                    in: model.expenseCategories
+                ) ?? recentCategoryID(kind: .expense)
+                    ?? model.expenseCategories.first { $0.parentID != nil }?.id
+                    ?? model.expenseCategories.first?.id
             }
         case .transfer:
             if !model.userAccounts.contains(where: {
@@ -713,6 +736,56 @@ private struct QuickLogEntryView: View {
         }
         if hasRestoredDraft, !dismissAfterSave {
             model.updateQuickLogDraft(draftSnapshot)
+        }
+    }
+
+    private func validPreferred(
+        _ id: UUID?,
+        in choices: [LedgerAccount]
+    ) -> UUID? {
+        guard let id, choices.contains(where: { $0.id == id }) else { return nil }
+        return id
+    }
+
+    private func recentAccountID() -> UUID? {
+        let validIDs = Set(model.userAccounts.map(\.id))
+        return model.entries.lazy
+            .filter { entry in
+                switch kind {
+                case .expense: entry.kind == .expense
+                case .income: entry.kind == .income
+                case .transfer: entry.kind == .transfer
+                case .refund: entry.kind == .expense
+                }
+            }
+            .flatMap(\.postings)
+            .first { validIDs.contains($0.accountID) }?
+            .accountID
+    }
+
+    private func recentCategoryID(kind: LedgerAccountKind) -> UUID? {
+        let choices = kind == .income ? model.incomeCategories : model.expenseCategories
+        let validIDs = Set(choices.map(\.id))
+        let cutoff = Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? .distantPast
+        var counts: [UUID: Int] = [:]
+        var firstSeenOrder: [UUID: Int] = [:]
+
+        for (index, entry) in model.entries.enumerated() where entry.occurredAt >= cutoff {
+            guard accountID == nil || entry.postings.contains(where: { $0.accountID == accountID })
+            else { continue }
+            for posting in entry.postings where validIDs.contains(posting.accountID) {
+                counts[posting.accountID, default: 0] += 1
+                firstSeenOrder[posting.accountID] = firstSeenOrder[posting.accountID] ?? index
+            }
+        }
+        return counts.keys.max { first, second in
+            let firstCount = counts[first, default: 0]
+            let secondCount = counts[second, default: 0]
+            if firstCount == secondCount {
+                return firstSeenOrder[first, default: .max]
+                    > firstSeenOrder[second, default: .max]
+            }
+            return firstCount < secondCount
         }
     }
 
@@ -738,6 +811,16 @@ private struct QuickLogEntryView: View {
             case .income:
                 guard let categoryID else { return }
                 savedEntryID = try await model.logIncome(
+                    amount: amount,
+                    accountID: accountID,
+                    categoryID: categoryID,
+                    occurredAt: occurredAt,
+                    payee: payee,
+                    note: note
+                )
+            case .refund:
+                guard let categoryID else { return }
+                savedEntryID = try await model.logRefund(
                     amount: amount,
                     accountID: accountID,
                     categoryID: categoryID,

@@ -3,6 +3,7 @@ import Foundation
 public enum DraftKind: String, Equatable, Sendable {
     case expense
     case income
+    case refund
 }
 
 public enum DraftSource: String, Equatable, Sendable {

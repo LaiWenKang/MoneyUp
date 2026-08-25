@@ -55,7 +55,9 @@ public enum LedgerCSVExporter {
             }
         }
 
-        return rows
+        // UTF-8 BOM keeps Chinese account, payee, and category names readable
+        // when the CSV is opened directly in Excel on Windows.
+        return "\u{feff}" + rows
             .map { $0.map(escape).joined(separator: ",") }
             .joined(separator: "\r\n") + "\r\n"
     }

@@ -124,13 +124,84 @@ public struct ScheduledTransaction: Codable, Equatable, Identifiable, Sendable {
         calendar: Calendar = .current
     ) -> Date? {
         guard isActive else { return nil }
+        guard referenceDate > nextOccurrence else { return nextOccurrence }
 
-        var offset = 0
-        while let candidate = occurrence(offset: offset, calendar: calendar) {
-            if candidate >= referenceDate { return candidate }
-            offset += 1
+        let offset: Int
+        switch frequency {
+        case .weekly:
+            let days = calendar.dateComponents(
+                [.day],
+                from: calendar.startOfDay(for: nextOccurrence),
+                to: calendar.startOfDay(for: referenceDate)
+            ).day ?? 0
+            offset = max(0, days / 7)
+        case .monthly, .yearly:
+            guard let anchorMonth = calendar.dateInterval(
+                of: .month,
+                for: nextOccurrence
+            )?.start,
+            let referenceMonth = calendar.dateInterval(
+                of: .month,
+                for: referenceDate
+            )?.start else { return nil }
+            let months = calendar.dateComponents(
+                [.month],
+                from: anchorMonth,
+                to: referenceMonth
+            ).month ?? 0
+            offset = frequency == .monthly ? max(0, months) : max(0, months / 12)
         }
-        return nil
+
+        guard let candidate = occurrence(offset: offset, calendar: calendar) else {
+            return nil
+        }
+        if candidate >= referenceDate { return candidate }
+        return occurrence(offset: offset + 1, calendar: calendar)
+    }
+
+    /// Direct day predicate used by the interactive calendar. It performs at
+    /// most one anchored date calculation instead of generating thousands of
+    /// historical occurrences for every SwiftUI render.
+    public func occurs(on date: Date, calendar: Calendar = .current) -> Bool {
+        guard isActive,
+              calendar.startOfDay(for: date) >= calendar.startOfDay(for: nextOccurrence)
+        else { return false }
+
+        let offset: Int
+        switch frequency {
+        case .weekly:
+            let days = calendar.dateComponents(
+                [.day],
+                from: calendar.startOfDay(for: nextOccurrence),
+                to: calendar.startOfDay(for: date)
+            ).day ?? -1
+            guard days >= 0, days.isMultiple(of: 7) else { return false }
+            offset = days / 7
+        case .monthly, .yearly:
+            guard let anchorMonth = calendar.dateInterval(
+                of: .month,
+                for: nextOccurrence
+            )?.start,
+            let targetMonth = calendar.dateInterval(of: .month, for: date)?.start else {
+                return false
+            }
+            let months = calendar.dateComponents(
+                [.month],
+                from: anchorMonth,
+                to: targetMonth
+            ).month ?? -1
+            guard months >= 0 else { return false }
+            if frequency == .yearly {
+                guard months.isMultiple(of: 12) else { return false }
+                offset = months / 12
+            } else {
+                offset = months
+            }
+        }
+        guard let candidate = occurrence(offset: offset, calendar: calendar) else {
+            return false
+        }
+        return calendar.isDate(candidate, inSameDayAs: date)
     }
 
     /// Every recurrence is calculated from the original anchor, not from the

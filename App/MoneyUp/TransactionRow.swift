@@ -19,9 +19,17 @@ struct TransactionRow: View {
         entry.payee ?? categoryName ?? String(localized: entry.kind.localizedKey)
     }
 
+    private var isRefund: Bool {
+        guard entry.kind == .expense else { return false }
+        let expenseIDs = Set(model.expenseCategories.map(\.id))
+        return entry.postings.contains {
+            expenseIDs.contains($0.accountID) && $0.money.amount < .zero
+        }
+    }
+
     private var icon: String {
         switch entry.kind {
-        case .expense: "arrow.up.right"
+        case .expense: isRefund ? "arrow.uturn.backward.circle" : "arrow.up.right"
         case .income: "arrow.down.left"
         case .transfer: "arrow.left.arrow.right"
         case .adjustment: "slider.horizontal.3"
@@ -52,9 +60,9 @@ struct TransactionRow: View {
             }
             Spacer()
             if let money = displayMoney(for: entry, accounts: model.accounts) {
-                Text(formattedMoney(money))
+                Text(formattedMoney(isRefund ? money.negated : money))
                     .font(.subheadline.monospacedDigit().weight(.semibold))
-                    .foregroundStyle(entry.kind == .income ? .green : .primary)
+                    .foregroundStyle(entry.kind == .income || isRefund ? .green : .primary)
             } else {
                 Text("transaction.transfer")
                     .font(.caption)

@@ -67,4 +67,32 @@ final class FinanceCalculatorTests: XCTestCase {
         XCTAssertEqual(spending[food.id]?.amount, 8)
         XCTAssertEqual(spending.count, 1)
     }
+
+    func testPeriodEndIsExcludedFromLegacyCalculators() throws {
+        let sgd = try CurrencyCode("SGD")
+        let bank = LedgerAccount(name: "Bank", kind: .asset, currency: sgd)
+        let food = LedgerAccount(name: "Food", kind: .expense)
+        let start = Date(timeIntervalSince1970: 1_000)
+        let end = Date(timeIntervalSince1970: 2_000)
+        let atStart = try TransactionFactory.expense(
+            amount: try Money(10, currency: sgd),
+            paidFrom: bank.id,
+            category: food.id,
+            occurredAt: start
+        )
+        let atEnd = try TransactionFactory.expense(
+            amount: try Money(20, currency: sgd),
+            paidFrom: bank.id,
+            category: food.id,
+            occurredAt: end
+        )
+
+        let spending = try FinanceCalculator.spendingByCategory(
+            accounts: [bank, food],
+            entries: [atStart, atEnd],
+            currency: sgd,
+            interval: DateInterval(start: start, end: end)
+        )
+        XCTAssertEqual(spending[food.id]?.amount, 10)
+    }
 }

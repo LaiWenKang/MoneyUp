@@ -8,7 +8,11 @@ import Foundation
 public enum NaturalLanguageEntryParser {
     private static let incomeKeywords = [
         "salary", "wage", "wages", "income", "bonus", "payout", "received",
-        "refunded", "工资", "薪水", "收入", "奖金", "獎金", "收到", "报销", "報銷"
+        "工资", "薪水", "收入", "奖金", "獎金", "收到"
+    ]
+    private static let refundKeywords = [
+        "refund", "refunded", "returned", "reimbursed", "退款", "退货", "退貨",
+        "报销", "報銷"
     ]
 
     private static let relativeDayOffsets: [(token: String, offset: Int)] = [
@@ -44,13 +48,19 @@ public enum NaturalLanguageEntryParser {
         accounts: [LedgerAccount],
         now: Date = Date(),
         calendar: Calendar = .current,
-        prefersDayFirst: Bool = true
+        prefersDayFirst: Bool = true,
+        locale: Locale = .current
     ) -> TransactionDraft {
         var remainder = text
         let haystack = TextScanner.normalized(text).lowercased()
-        let kind: DraftKind = incomeKeywords.contains(where: { haystack.contains($0) })
-            ? .income
-            : .expense
+        let kind: DraftKind
+        if refundKeywords.contains(where: { haystack.contains($0) }) {
+            kind = .refund
+        } else if incomeKeywords.contains(where: { haystack.contains($0) }) {
+            kind = .income
+        } else {
+            kind = .expense
+        }
 
         let occurredAt = consumeDate(
             from: &remainder,
@@ -58,7 +68,7 @@ public enum NaturalLanguageEntryParser {
             calendar: calendar,
             prefersDayFirst: prefersDayFirst
         )
-        let amount = consumeAmount(from: &remainder)
+        let amount = consumeAmount(from: &remainder, locale: locale)
         let account = consumeName(
             from: &remainder,
             in: accounts.filter { ($0.kind == .asset || $0.kind == .liability) && !$0.isArchived }
@@ -80,8 +90,11 @@ public enum NaturalLanguageEntryParser {
         )
     }
 
-    private static func consumeAmount(from text: inout String) -> Decimal? {
-        guard let match = TextScanner.amounts(in: text).first else { return nil }
+    private static func consumeAmount(
+        from text: inout String,
+        locale: Locale
+    ) -> Decimal? {
+        guard let match = TextScanner.amounts(in: text, locale: locale).first else { return nil }
         remove(match.text, from: &text)
         return match.value
     }
@@ -158,13 +171,29 @@ public enum NaturalLanguageEntryParser {
         let matches = accounts
             .filter { account in
                 let name = TextScanner.normalized(account.name).lowercased()
-                return !name.isEmpty && haystack.contains(name)
+                return !name.isEmpty && containsName(name, in: haystack)
             }
             .sorted { $0.name.count > $1.name.count }
 
         guard let best = matches.first else { return nil }
         remove(best.name, from: &text)
         return best.id
+    }
+
+    private static func containsName(_ name: String, in haystack: String) -> Bool {
+        let containsCJK = name.unicodeScalars.contains { scalar in
+            (0x3400...0x4DBF).contains(scalar.value)
+                || (0x4E00...0x9FFF).contains(scalar.value)
+                || (0xF900...0xFAFF).contains(scalar.value)
+        }
+        if containsCJK { return haystack.contains(name) }
+
+        let escaped = NSRegularExpression.escapedPattern(for: name)
+        guard let regex = try? NSRegularExpression(
+            pattern: "(?<![\\p{L}\\p{N}])\(escaped)(?![\\p{L}\\p{N}])"
+        ) else { return false }
+        let range = NSRange(haystack.startIndex..<haystack.endIndex, in: haystack)
+        return regex.firstMatch(in: haystack, range: range) != nil
     }
 
     private static func remove(_ fragment: String, from text: inout String) {

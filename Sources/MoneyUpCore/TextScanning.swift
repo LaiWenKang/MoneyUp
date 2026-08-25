@@ -18,12 +18,11 @@ public struct AmountMatch: Equatable, Sendable {
 /// device. No model, no network, and the same input always produces the same
 /// output, which is what makes a wrong reading debuggable.
 public enum TextScanner {
-    /// Amounts written with an optional thousands separator and up to two
-    /// decimal places. A leading currency symbol or code is tolerated but not
-    /// required, because receipts and typed notes both omit it constantly.
+    /// Candidate number grammar. Locale-specific interpretation happens only
+    /// after the complete token is isolated, so `12,50` is never silently
+    /// reinterpreted as `1,250` or truncated to `12`.
     private static let amountPattern =
-        "(?<![0-9.,])[0-9]{1,3}(?:,[0-9]{3})+(?:\\.[0-9]{1,2})?(?![0-9.,])"
-        + "|(?<![0-9.,:])[0-9]+(?:\\.[0-9]{1,2})?(?![0-9.,:])"
+        "(?<![0-9.,:])[0-9]+(?:[.,][0-9]+)*(?![0-9.,:])"
 
     /// Dates in the formats that actually turn up on receipts and in typed
     /// notes, including the Chinese form the app already ships a UI for.
@@ -33,7 +32,10 @@ public enum TextScanner {
         "([0-9]{1,2})[-/.]([0-9]{1,2})[-/.]([0-9]{4})"
     ]
 
-    public static func amounts(in text: String) -> [AmountMatch] {
+    public static func amounts(
+        in text: String,
+        locale: Locale = .current
+    ) -> [AmountMatch] {
         guard let regex = try? NSRegularExpression(pattern: amountPattern) else {
             return []
         }
@@ -42,7 +44,7 @@ public enum TextScanner {
         return regex.matches(in: text, range: full).compactMap { match in
             guard let range = Range(match.range, in: text) else { return nil }
             let matched = String(text[range])
-            guard let value = decimal(from: matched) else { return nil }
+            guard let value = decimal(from: matched, locale: locale) else { return nil }
             return AmountMatch(value: value, text: matched)
         }
     }
@@ -106,9 +108,36 @@ public enum TextScanner {
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    static func decimal(from text: String) -> Decimal? {
-        let cleaned = text.replacingOccurrences(of: ",", with: "")
-        guard !cleaned.isEmpty else { return nil }
-        return Decimal(string: cleaned, locale: Locale(identifier: "en_US_POSIX"))
+    static func decimal(from text: String, locale: Locale) -> Decimal? {
+        let decimalSeparator = locale.decimalSeparator ?? "."
+        let groupingSeparator = locale.groupingSeparator
+        let parts = text.components(separatedBy: decimalSeparator)
+        guard parts.count <= 2 else { return nil }
+
+        var integer = parts[0]
+        if let groupingSeparator,
+           !groupingSeparator.isEmpty,
+           integer.contains(groupingSeparator) {
+            let groups = integer.components(separatedBy: groupingSeparator)
+            guard let first = groups.first,
+                  (1...3).contains(first.count),
+                  groups.dropFirst().allSatisfy({ $0.count == 3 }) else {
+                return nil
+            }
+            integer = groups.joined()
+        }
+
+        // A non-locale separator is accepted only when it was a valid grouping
+        // separator above. This makes the ambiguous `1.234` follow the locale.
+        guard !integer.contains("."), !integer.contains(",") else { return nil }
+        guard !integer.isEmpty, integer.allSatisfy(\.isNumber) else { return nil }
+
+        var normalized = integer
+        if parts.count == 2 {
+            let fraction = parts[1]
+            guard !fraction.isEmpty, fraction.allSatisfy(\.isNumber) else { return nil }
+            normalized += "." + fraction
+        }
+        return Decimal(string: normalized, locale: Locale(identifier: "en_US_POSIX"))
     }
 }

@@ -1,6 +1,64 @@
 import Foundation
 import SQLCipher
 
+/// A raw encrypted-store record used by MoneyUp's portable archive.
+///
+/// The payload remains the exact JSON bytes written by the originating build.
+/// Keeping this layer independent of the current domain model means a recovery
+/// archive can preserve a record even when a newer decoder cannot understand it.
+public struct StoredRecordSnapshot: Codable, Equatable, Sendable {
+    public let collection: String
+    public let recordID: String
+    public let payload: Data
+    public let updatedAt: TimeInterval
+
+    public init(
+        collection: String,
+        recordID: String,
+        payload: Data,
+        updatedAt: TimeInterval
+    ) {
+        self.collection = collection
+        self.recordID = recordID
+        self.payload = payload
+        self.updatedAt = updatedAt
+    }
+}
+
+/// A complete point-in-time copy of the logical SQLCipher store.
+public struct DatabaseSnapshot: Codable, Equatable, Sendable {
+    public let schemaVersion: Int32
+    public let createdAt: Date
+    public let records: [StoredRecordSnapshot]
+
+    public init(
+        schemaVersion: Int32,
+        createdAt: Date = Date(),
+        records: [StoredRecordSnapshot]
+    ) {
+        self.schemaVersion = schemaVersion
+        self.createdAt = createdAt
+        self.records = records
+    }
+}
+
+public struct RecordDecodeIssue: Equatable, Sendable, Identifiable {
+    public let collection: RecordCollection
+    public let recordID: String
+
+    public var id: String { "\(collection.rawValue):\(recordID)" }
+}
+
+public struct RecoveredRecords<Value: Sendable>: Sendable {
+    public let values: [Value]
+    public let issues: [RecordDecodeIssue]
+
+    public init(values: [Value], issues: [RecordDecodeIssue]) {
+        self.values = values
+        self.issues = issues
+    }
+}
+
 /// An actor-isolated SQLCipher record store.
 ///
 /// Each record is encoded independently as validated JSON and stored inside an
@@ -110,6 +168,47 @@ public actor EncryptedRecordStore {
                 )
             }
         }
+    }
+
+    /// Decodes every valid row and reports malformed rows individually.
+    /// A single damaged convenience or historical record must not hide the
+    /// remainder of an otherwise readable book.
+    public func fetchAllRecovering<Value: Decodable & Sendable>(
+        _ type: Value.Type,
+        from collection: RecordCollection
+    ) throws -> RecoveredRecords<Value> {
+        var values: [Value] = []
+        var issues: [RecordDecodeIssue] = []
+
+        for record in try connection.fetchAll(collection: collection.rawValue) {
+            do {
+                values.append(try Self.makeDecoder().decode(type, from: record.payload))
+            } catch {
+                issues.append(
+                    RecordDecodeIssue(collection: collection, recordID: record.id)
+                )
+            }
+        }
+        return RecoveredRecords(values: values, issues: issues)
+    }
+
+    public func snapshot() throws -> DatabaseSnapshot {
+        DatabaseSnapshot(
+            schemaVersion: connection.schemaVersion(),
+            records: try connection.fetchAllRecords()
+        )
+    }
+
+    /// Replaces the complete logical store in one SQLite transaction.
+    /// Callers must decrypt and validate the candidate before invoking this.
+    public func restore(_ snapshot: DatabaseSnapshot) throws {
+        guard snapshot.schemaVersion <= Self.currentSchemaVersion else {
+            throw PersistenceError.unsupportedSchema(
+                found: snapshot.schemaVersion,
+                supported: Self.currentSchemaVersion
+            )
+        }
+        try connection.replaceAllRecords(with: snapshot.records)
     }
 
     public func remove(id: String, from collection: RecordCollection) throws {
@@ -318,6 +417,77 @@ private final class SQLCipherConnection: @unchecked Sendable {
             let result = sqlite3_step(statement)
             guard result == SQLITE_ROW else { throw makeError(code: result) }
             return Int(sqlite3_column_int64(statement, 0))
+        }
+    }
+
+    func schemaVersion() -> Int32 {
+        supportedSchemaVersion
+    }
+
+    func fetchAllRecords() throws -> [StoredRecordSnapshot] {
+        try withStatement(
+            """
+            SELECT collection, record_id, payload, updated_at
+            FROM records
+            ORDER BY collection ASC, record_id ASC;
+            """
+        ) { statement in
+            var records: [StoredRecordSnapshot] = []
+            while true {
+                let result = sqlite3_step(statement)
+                if result == SQLITE_DONE { break }
+                guard result == SQLITE_ROW,
+                      let rawCollection = sqlite3_column_text(statement, 0),
+                      let rawID = sqlite3_column_text(statement, 1) else {
+                    throw makeError(code: result == SQLITE_ROW ? SQLITE_CORRUPT : result)
+                }
+                records.append(
+                    StoredRecordSnapshot(
+                        collection: String(cString: rawCollection),
+                        recordID: String(cString: rawID),
+                        payload: data(from: statement, column: 2),
+                        updatedAt: sqlite3_column_double(statement, 3)
+                    )
+                )
+            }
+            return records
+        }
+    }
+
+    func replaceAllRecords(with records: [StoredRecordSnapshot]) throws {
+        let allowedCollections = Set(RecordCollection.allCases.map(\.rawValue))
+        var identities = Set<String>()
+        for record in records {
+            guard allowedCollections.contains(record.collection),
+                  !record.recordID.isEmpty,
+                  !record.payload.isEmpty,
+                  record.updatedAt.isFinite else {
+                throw PersistenceError.invalidSnapshot
+            }
+            let identity = record.collection + "\u{1f}" + record.recordID
+            guard identities.insert(identity).inserted else {
+                throw PersistenceError.duplicateSnapshotRecord(
+                    collection: record.collection,
+                    recordID: record.recordID
+                )
+            }
+        }
+
+        try execute("BEGIN IMMEDIATE;")
+        do {
+            try execute("DELETE FROM records;")
+            for record in records {
+                try upsert(
+                    collection: record.collection,
+                    recordID: record.recordID,
+                    payload: record.payload,
+                    updatedAt: record.updatedAt
+                )
+            }
+            try execute("COMMIT;")
+        } catch {
+            try? execute("ROLLBACK;")
+            throw error
         }
     }
 

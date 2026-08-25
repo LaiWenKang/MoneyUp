@@ -33,8 +33,8 @@ public extension FinanceCalculator {
         var monthlyExpense: [Date: Decimal] = [:]
 
         for entry in entries {
-            let inPeriod = Self.contains(entry.occurredAt, in: interval)
-            let inTrend = Self.contains(entry.occurredAt, in: trend)
+            let inPeriod = interval.containsHalfOpen(entry.occurredAt)
+            let inTrend = trend.containsHalfOpen(entry.occurredAt)
             guard inPeriod || inTrend else { continue }
 
             let month: Date? = inTrend
@@ -176,13 +176,6 @@ public extension FinanceCalculator {
                 balances[pair.key] = try Money(pair.value, currency: pair.key)
             }
         }
-    }
-
-    /// Half-open containment. `DateInterval.contains(_:)` includes its end
-    /// instant, which would count a transaction stamped at midnight on the
-    /// first of a month in both that month and the one before it.
-    private static func contains(_ date: Date, in interval: DateInterval) -> Bool {
-        date >= interval.start && date < interval.end
     }
 
     private static func monthStarts(

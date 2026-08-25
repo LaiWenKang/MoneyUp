@@ -25,7 +25,8 @@ public enum ReceiptTextParser {
         fromLines lines: [String],
         now: Date = Date(),
         calendar: Calendar = .current,
-        prefersDayFirst: Bool = true
+        prefersDayFirst: Bool = true,
+        locale: Locale = .current
     ) -> TransactionDraft {
         let cleaned = lines
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -33,7 +34,7 @@ public enum ReceiptTextParser {
 
         return TransactionDraft(
             kind: .expense,
-            amount: total(in: cleaned),
+            amount: total(in: cleaned, locale: locale),
             occurredAt: date(in: cleaned, now: now, calendar: calendar, prefersDayFirst: prefersDayFirst),
             payee: merchant(in: cleaned),
             source: .receipt
@@ -72,36 +73,37 @@ public enum ReceiptTextParser {
         return nil
     }
 
-    private static func total(in lines: [String]) -> Decimal? {
+    private static func total(in lines: [String], locale: Locale) -> Decimal? {
         // Grand totals sit near the bottom, so the last labelled line wins.
         for index in stride(from: lines.count - 1, through: 0, by: -1) {
             let line = lines[index].lowercased()
             guard !excludedKeywords.contains(where: { line.contains($0) }) else { continue }
             guard totalKeywords.contains(where: { line.contains($0) }) else { continue }
 
-            if let amount = preferredAmount(in: lines[index]) { return amount }
+            if let amount = preferredAmount(in: lines[index], locale: locale) { return amount }
             // Some layouts put the label on one line and the figure below it.
-            if index + 1 < lines.count, let amount = preferredAmount(in: lines[index + 1]) {
+            if index + 1 < lines.count,
+               let amount = preferredAmount(in: lines[index + 1], locale: locale) {
                 return amount
             }
         }
-        return fallbackTotal(in: lines)
+        return fallbackTotal(in: lines, locale: locale)
     }
 
     /// Without a label, only a figure written with decimals is trustworthy —
     /// a bare integer run is as likely to be a card, phone, or invoice number.
-    private static func fallbackTotal(in lines: [String]) -> Decimal? {
+    private static func fallbackTotal(in lines: [String], locale: Locale) -> Decimal? {
         let tail = lines.suffix(max(1, lines.count / 3))
         let candidates = tail
-            .flatMap { TextScanner.amounts(in: $0) }
-            .filter { $0.text.contains(".") }
+            .flatMap { TextScanner.amounts(in: $0, locale: locale) }
+            .filter { $0.text.contains(locale.decimalSeparator ?? ".") }
         return candidates.map(\.value).max()
     }
 
-    private static func preferredAmount(in line: String) -> Decimal? {
-        let matches = TextScanner.amounts(in: line)
+    private static func preferredAmount(in line: String, locale: Locale) -> Decimal? {
+        let matches = TextScanner.amounts(in: line, locale: locale)
         guard !matches.isEmpty else { return nil }
-        let decimals = matches.filter { $0.text.contains(".") }
+        let decimals = matches.filter { $0.text.contains(locale.decimalSeparator ?? ".") }
         return (decimals.isEmpty ? matches : decimals).map(\.value).max()
     }
 }

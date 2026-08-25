@@ -1,6 +1,6 @@
 # MoneyUp Founders Test Runbook
 
-Version target: 0.4.0 (source build 4; the GitHub workflow assigns a newer
+Version target: 0.4.1 (source build 5; the GitHub workflow assigns a newer
 unique TestFlight build)
 
 This runbook is for the user and his girlfriend, MoneyUp's first two iPhone
@@ -10,12 +10,12 @@ the right place for records that cannot be reconstructed.
 ## How installation works
 
 The account holder has already installed an earlier signed beta from the
-private **Founders Internal** TestFlight group. Install the 0.4 candidate from
+private **Founders Internal** TestFlight group. Install the 0.4.1 candidate from
 that same group when it appears. The girlfriend is invited by email to the
 private **Founders External** group after Apple's TestFlight Beta App Review
 accepts the selected build.
 
-Before the account holder updates the installed 0.3 build, pin its old static
+Before the account holder updates the installed 0.4.0 build, pin its existing
 small and medium MoneyUp widgets. Confirm the small widget opens Expense and
 the medium widget's Expense and Income links work, then leave both pinned for
 the migration checks in section 7.
@@ -36,7 +36,7 @@ well before the expiry date shown in TestFlight.
 ## Before starting
 
 - Use an iPhone running iOS 18 or later with a device passcode enabled.
-- Confirm TestFlight shows version 0.4.0 and build 4 or newer.
+- Confirm TestFlight shows version 0.4.1 and build 5 or newer.
 - Decide who tests English and who tests Simplified Chinese first; switch roles
   on a later day.
 - Prepare fictional sample accounts, merchants, balances, and a receipt image.
@@ -120,7 +120,9 @@ the app silently resets, or the opening balance is wrong.
 
 ### 6. Corrections and export
 
-- In Plan > Calendar, swipe a sample transaction.
+- Open History, search by payee, filter to its type, and edit the amount, date,
+  category, and note. Confirm balances, budgets, Today, and reports update once.
+- In Plan > Calendar, swipe a different sample transaction.
 - Cancel the first deletion and confirm nothing changes.
 - Delete it on the second attempt and verify its effects disappear from the
   balance, budget, calendar, and report.
@@ -131,18 +133,36 @@ the app silently resets, or the opening balance is wrong.
 
 ### 7. Widget
 
-- On the account holder's upgraded phone, confirm both pinned 0.3 widgets still
+- On the account holder's upgraded phone, confirm both pinned 0.4.0 widgets still
   render, their legacy expense/income links open correctly, they can be resized
-  and edited, and they survive a reboot. Then choose a 0.4 preferred action. If
+  and edited, and they survive a reboot. Then choose a 0.4.1 preferred action. If
   migration fails, remove and re-add the widget and report both build numbers.
 - Add small and medium MoneyUp widgets to the Home Screen and one MoneyUp widget
   to the Lock Screen.
 - Check inline, circular, and rectangular Lock Screen families where available,
   plus tinted Home Screen rendering.
 - Confirm it shows no balances, payees, or statistics.
-- Configure and test Expense, Income, Transfer, Smart Entry, and Receipt. Each must
-  open the locked MoneyUp app, authenticate, select Log, and show the correct
-  entry mode.
+- Configure and test Expense, Income, Transfer, Refund, Smart Entry, and Receipt.
+  With locked capture enabled, the first four must permit amount/payee/note
+  capture without showing balances; unlock and confirm each pending item moves
+  into the full Log form for account/category review. Smart Entry and Receipt
+  must still authenticate first.
+
+### 8. Upgrade, backup, restore, and import
+
+- Before updating, record the 0.4.0 transaction count and several balances.
+- Update in TestFlight without deleting the app. Confirm onboarding does not
+  reappear and every prior balance, transaction, budget, schedule, and holding
+  remains.
+- Create a password-protected `.moneyup` backup. Add one disposable transaction,
+  restore the backup, and confirm the disposable transaction disappears while
+  the backed-up counts and balances return.
+- Try the same archive with a wrong password and confirm the current book is
+  unchanged. Store the real password separately; MoneyUp cannot recover it.
+- Export a small fictional Qianji or generic CSV, preview it in Settings → Import
+  transactions, review any rejected lines, and import. Import the same file
+  again and confirm all previously accepted rows are reported as duplicates.
+- Do not delete the app until this complete drill passes on the release candidate.
 
 ## Seven-day use test
 
@@ -155,10 +175,11 @@ For seven days, each tester should:
 - background/unlock MoneyUp several times;
 - update to the next TestFlight build when offered and confirm all prior data
   remains readable;
-- export a CSV snapshot at the midpoint and end.
+- create an encrypted `.moneyup` backup at the midpoint and end, and keep CSV
+  only when a readable snapshot is useful.
 
-Do not delete the app as a test until authenticated backup/restore ships.
-Reinstalling currently destroys access to the local encrypted book.
+Deleting the app still destroys the device-bound live key. Reinstall only as a
+separate restore drill after verifying the `.moneyup` archive and password.
 
 ## Feedback template
 

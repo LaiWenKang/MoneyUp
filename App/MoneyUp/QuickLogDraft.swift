@@ -18,6 +18,9 @@ struct QuickLogDraft: Codable, Equatable, Sendable {
     var payee: String
     var note: String
     var smartText: String
+    /// Present only when this draft originated in the no-authentication capture
+    /// inbox. Once copied into SQLCipher the inbox copy is deleted.
+    var sourceCaptureID: UUID? = nil
 
     var hasTransactionContent: Bool {
         !amountText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty

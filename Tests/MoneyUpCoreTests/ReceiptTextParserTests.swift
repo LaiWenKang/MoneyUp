@@ -3,6 +3,15 @@ import Foundation
 import XCTest
 
 final class ReceiptTextParserTests: XCTestCase {
+    func testCommaDecimalReceiptUsesLocaleGrammar() {
+        let draft = ReceiptTextParser.draft(
+            fromLines: ["Boulangerie", "TOTAL 12,50"],
+            locale: Locale(identifier: "fr_FR")
+        )
+
+        XCTAssertEqual(draft.amount, Decimal(string: "12.50"))
+    }
+
     private let calendar: Calendar = {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .current

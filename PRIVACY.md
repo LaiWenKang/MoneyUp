@@ -1,6 +1,6 @@
 # MoneyUp Privacy Policy
 
-Effective: 24 August 2026
+Effective: 25 August 2026
 
 MoneyUp is a local-first personal-finance app. Its core privacy rule is simple:
 financial records are processed on the user's iPhone and are not sent to a
@@ -36,22 +36,24 @@ policy. MoneyUp does not add a separate crash-reporting service.
 
 The local database is encrypted with SQLCipher. A random app-generated,
 device-bound key is protected by the iOS Keychain, requires device-owner
-presence, does not sync, and is restricted to that device. MoneyUp closes the
-database, clears decoded state, and hides financial content when the app enters
-the background.
+presence, does not sync, and is restricted to that device. MoneyUp hides
+financial content immediately when inactive, then closes the database and
+clears decoded state after the user-configured auto-lock delay.
 
-Because the device-bound key cannot migrate, MoneyUp excludes its database
-directory from system backup. The founders beta does not yet provide a
-portable encrypted backup. Deleting MoneyUp, erasing its data, losing the
-device, or losing the protected key can make the database permanently
-unreadable.
+Because the live device-bound key cannot migrate, MoneyUp excludes its database
+directory from system backup. A user can explicitly create a portable
+`.moneyup` archive protected by an independent password and restore it
+transactionally. MoneyUp cannot recover a forgotten archive password. Deleting
+the app before making and verifying an archive can permanently remove the book.
 
 ## Exports and links
 
 MoneyUp shares data only after the user deliberately starts an export and
 chooses a destination in the iOS file picker. CSV exports are readable
-plaintext. After export, the selected spreadsheet app, storage provider, or
-recipient controls the file, and MoneyUp can no longer protect it.
+plaintext; password-protected `.moneyup` archives are encrypted. After export,
+the selected storage provider or recipient controls the file, and MoneyUp can
+no longer protect it. CSV/Qianji import parsing and matching run locally;
+MoneyUp does not upload imported files.
 
 The app may offer a user-initiated link to this policy. Opening an external
 link is governed by the browser and destination site's privacy practices.
@@ -87,7 +89,7 @@ when available.
 
 # MoneyUp 隐私政策（简体中文）
 
-生效日期：2026 年 8 月 24 日
+生效日期：2026 年 8 月 25 日
 
 MoneyUp 是一款本地优先的个人财务应用。核心隐私原则很简单：财务记录在
 用户的 iPhone 上处理，不会发送到 MoneyUp 服务器。
@@ -115,18 +117,19 @@ MoneyUp 不另行接入崩溃报告服务。
 ## 存储与安全
 
 本地数据库使用 SQLCipher 加密。每次安装会生成随机密钥，并由 iOS 钥匙串
-保护；读取密钥需要设备所有者验证，密钥不会同步且仅限此设备。应用进入后台
-时，MoneyUp 会关闭数据库、清除已解码状态并隐藏财务内容。
+保护；读取密钥需要设备所有者验证，密钥不会同步且仅限此设备。应用进入非活跃
+状态时会立即隐藏财务内容，并在用户设置的自动锁定时间后关闭数据库、清除已解码状态。
 
-由于设备绑定密钥无法迁移，MoneyUp 会将数据库目录排除在系统备份之外。
-首轮测试版尚未提供可移植的加密备份。删除 MoneyUp、抹掉数据、丢失设备或
-受保护密钥，均可能导致数据库永久无法读取。
+由于实时数据库的设备绑定密钥无法迁移，MoneyUp 会将数据库目录排除在系统备份
+之外。用户可主动创建由独立密码保护的 `.moneyup` 便携备份，并以事务方式恢复。
+MoneyUp 无法找回遗忘的备份密码。若未先创建并验证备份就删除应用，账本可能永久丢失。
 
 ## 导出与链接
 
 只有用户主动发起导出并在 iOS 文件选择器中指定目标后，MoneyUp 才会分享
-数据。CSV 导出文件是可直接读取的明文。导出后，文件由用户选择的表格应用、
-存储服务或接收方管理，MoneyUp 无法继续保护该文件。
+数据。CSV 导出文件是可直接读取的明文，`.moneyup` 备份则受密码加密。导出后，
+文件由用户选择的存储服务或接收方管理，MoneyUp 无法继续保护该文件。CSV／钱迹
+导入的解析与匹配仅在本机进行，MoneyUp 不会上传导入文件。
 
 应用可提供由用户主动打开的本政策链接。外部链接受浏览器及目标网站的隐私
 规则约束。

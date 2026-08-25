@@ -1,5 +1,6 @@
 import AppIntents
 import SwiftUI
+import UIKit
 import WidgetKit
 
 @main
@@ -13,6 +14,7 @@ enum MoneyUpQuickAction: String, AppEnum, CaseIterable, Identifiable, Sendable {
     case expense
     case income
     case transfer
+    case refund
     case smartEntry
     case scanReceipt
 
@@ -23,6 +25,7 @@ enum MoneyUpQuickAction: String, AppEnum, CaseIterable, Identifiable, Sendable {
         .expense: "widget.action.expense",
         .income: "widget.action.income",
         .transfer: "widget.action.transfer",
+        .refund: "widget.action.refund",
         .smartEntry: "widget.action.smart_entry",
         .scanReceipt: "widget.action.scan_receipt"
     ]
@@ -34,6 +37,7 @@ enum MoneyUpQuickAction: String, AppEnum, CaseIterable, Identifiable, Sendable {
             .expense,
             .income,
             .transfer,
+            .refund,
             .scanReceipt,
             .smartEntry
         ]
@@ -50,6 +54,8 @@ enum MoneyUpQuickAction: String, AppEnum, CaseIterable, Identifiable, Sendable {
             "widget.action.income"
         case .transfer:
             "widget.action.transfer"
+        case .refund:
+            "widget.action.refund"
         case .smartEntry:
             "widget.action.smart_entry"
         case .scanReceipt:
@@ -65,6 +71,8 @@ enum MoneyUpQuickAction: String, AppEnum, CaseIterable, Identifiable, Sendable {
             "arrow.down.left"
         case .transfer:
             "arrow.left.arrow.right"
+        case .refund:
+            "arrow.uturn.backward.circle"
         case .smartEntry:
             "sparkles"
         case .scanReceipt:
@@ -80,6 +88,8 @@ enum MoneyUpQuickAction: String, AppEnum, CaseIterable, Identifiable, Sendable {
             URL(string: "moneyup://quick-log/income")!
         case .transfer:
             URL(string: "moneyup://quick-log/transfer")!
+        case .refund:
+            URL(string: "moneyup://quick-log/refund")!
         case .smartEntry:
             URL(string: "moneyup://quick-log/smart-entry")!
         case .scanReceipt:
@@ -281,9 +291,22 @@ private extension Color {
     /// Mirrors the app accent. In tinted widget mode iOS applies the user's
     /// selected system tint, while full-colour widgets retain MoneyUp blue.
     static let moneyUpRoyalBlue = Color(
-        red: 38.0 / 255.0,
-        green: 71.0 / 255.0,
-        blue: 196.0 / 255.0
+        uiColor: UIColor { traits in
+            if traits.userInterfaceStyle == .dark {
+                return UIColor(
+                    red: 96.0 / 255.0,
+                    green: 128.0 / 255.0,
+                    blue: 1.0,
+                    alpha: 1
+                )
+            }
+            return UIColor(
+                red: 38.0 / 255.0,
+                green: 71.0 / 255.0,
+                blue: 196.0 / 255.0,
+                alpha: 1
+            )
+        }
     )
 }
 
