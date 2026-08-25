@@ -26,6 +26,7 @@ approved.
 | Capability | Founders Beta 0.4.1 behavior |
 |---|---|
 | Privacy and security | No account or backend; encrypted local database; timed local authentication; redacted locked capture |
+| Navigation | Five permanent tabs: Today, History, center Log, Plan, and Assets |
 | Budget planner | Monthly nested limits, roll-up, progress, and explicit unbudgeted spending |
 | Widgets | Configurable, privacy-redacted Home and Lock Screen entry points |
 | Hierarchy | Arbitrary-depth model with group/category/subcategory roll-up |
@@ -33,7 +34,7 @@ approved.
 | Finance calendar | Actual transactions and recurring projected occurrences |
 | Assets | Assets, liabilities, cards, loans, accounts, and manual holdings |
 | Portability | Enriched CSV export, authenticated `.moneyup` backup/restore, and preview-first Qianji/generic CSV import |
-| Easy logging | Leftmost Log tab, amount first, encrypted drafts, smart defaults, refund, History/edit, and Undo |
+| Easy logging | Center Log tab, amount first, encrypted drafts, smart defaults, refund, History/edit, and Undo |
 | Smart entry | On-device receipt and screenshot reading, typed-phrase parsing, and category suggestions learned from the user's own history |
 | Languages | English and Simplified Chinese with locale-correct dates and amounts |
 
