@@ -45,10 +45,23 @@ well before the expiry date shown in TestFlight.
 
 ## 45-minute smoke test
 
-### 1. First launch and lock
+### 1. First launch, guidance, appearance, and lock
 
+- Without outside instructions, follow the four setup steps. Confirm each page
+  explains what the choice means and why it matters, shows progress, and offers
+  an obvious Back or Continue action.
+- Confirm the first-account page clearly says this is a financial account, not
+  a MoneyUp login. Leave the name empty and enter an invalid amount once; the
+  screen must explain the exact correction rather than only disabling a button.
 - Complete onboarding with a base currency, account name, type, and small
-  opening balance.
+  opening balance. For one run, enter a negative bank overdraft; for another,
+  enter a positive card or loan amount owed. Confirm both display with the
+  expected user-facing sign.
+- On Today, confirm **Log money** and **Plan a budget** make the next actions
+  obvious without referring back to this runbook.
+- Check light and dark mode: the identity, upward arrows, icon, and actions are
+  soft green; primary canvases are off-white or deep charcoal rather than pure
+  white/black; text and controls retain clear contrast.
 - Send MoneyUp to the background. Its app-switcher preview must hide financial
   values.
 - Reopen it. MoneyUp must require device-owner authentication before showing
@@ -112,6 +125,8 @@ the app silently resets, or the opening balance is wrong.
 ### 5. Assets and holdings
 
 - Add a bank, card, or investment account.
+- Confirm account creation uses **Current balance** for assets and **Amount
+  owed** for cards/loans, with visible guidance before saving.
 - Reconcile its displayed balance and confirm the adjustment is not counted as
   income or spending.
 - Add a sample holding and verify quantity × price equals its displayed value.

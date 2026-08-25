@@ -96,6 +96,8 @@ struct DataSafetyView: View {
                     .foregroundStyle(.red)
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(Color.moneyUpBackground)
         .navigationTitle("backup.data_safety")
         .navigationBarTitleDisplayMode(.inline)
         .fileExporter(

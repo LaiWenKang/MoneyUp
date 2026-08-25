@@ -51,6 +51,8 @@ struct LockedQuickCaptureView: View {
                     Section { Text(errorMessage).foregroundStyle(.red) }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(Color.moneyUpBackground)
             .disabled(isSaving)
             .navigationTitle("capture.title")
             .navigationBarTitleDisplayMode(.inline)

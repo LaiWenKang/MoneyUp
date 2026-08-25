@@ -77,6 +77,8 @@ struct PrivacyAndBetaView: View {
                 }
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(Color.moneyUpBackground)
         .navigationTitle("privacy.title")
         .navigationBarTitleDisplayMode(.inline)
     }

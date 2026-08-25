@@ -14,6 +14,16 @@ struct DashboardView: View {
     }
 
     @EnvironmentObject private var model: AppModel
+    let onOpenLog: () -> Void
+    let onOpenPlan: () -> Void
+
+    init(
+        onOpenLog: @escaping () -> Void = {},
+        onOpenPlan: @escaping () -> Void = {}
+    ) {
+        self.onOpenLog = onOpenLog
+        self.onOpenPlan = onOpenPlan
+    }
 
     private var spendableAccounts: [LedgerAccount] {
         model.userAccounts.filter {
@@ -105,11 +115,30 @@ struct DashboardView: View {
         NavigationStack {
             ScrollView {
                 LazyVStack(spacing: 16) {
-                    DashboardCard(backgroundColor: Color.accentColor.opacity(0.07)) {
-                        VStack(alignment: .leading, spacing: 8) {
+                    ZStack(alignment: .topTrailing) {
+                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        Color.accentColor.opacity(0.20),
+                                        Color.moneyUpMist.opacity(0.38),
+                                        Color.moneyUpSurfaceElevated
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+
+                        MoneyUpGrowthMark()
+                            .frame(width: 78, height: 78)
+                            .opacity(0.42)
+                            .padding(18)
+
+                        VStack(alignment: .leading, spacing: 10) {
                             Label("dashboard.liquid_position", systemImage: "banknote.fill")
                                 .font(.headline)
                                 .foregroundStyle(.tint)
+                                .padding(.trailing, 84)
 
                             switch liquidPosition {
                             case let .available(position):
@@ -150,8 +179,19 @@ struct DashboardView: View {
                             } else if case let .unavailable(issue) = otherCurrencyBalances {
                                 DerivedValueUnavailableView(issue: issue)
                             }
+
+                            quickActions
+                                .padding(.top, 6)
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(20)
                     }
+                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                            .stroke(Color.accentColor.opacity(0.16), lineWidth: 1)
+                    }
+                    .accessibilityElement(children: .contain)
 
                     DashboardCard {
                         VStack(alignment: .leading, spacing: 12) {
@@ -199,6 +239,13 @@ struct DashboardView: View {
                                 Text("dashboard.no_budget")
                                     .font(.subheadline)
                                     .foregroundStyle(.secondary)
+                                Button {
+                                    onOpenPlan()
+                                } label: {
+                                    Label("dashboard.set_budget", systemImage: "chart.pie.fill")
+                                }
+                                .buttonStyle(.bordered)
+                                .tint(.accentColor)
                             case let .unavailable(issue):
                                 DerivedValueUnavailableView(issue: issue)
                             }
@@ -274,6 +321,14 @@ struct DashboardView: View {
                                     systemImage: "list.bullet.rectangle",
                                     description: Text("dashboard.no_transactions_detail")
                                 )
+                                Button {
+                                    onOpenLog()
+                                } label: {
+                                    Label("dashboard.log_first", systemImage: "plus.circle.fill")
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .tint(.moneyUpAction)
+                                .frame(maxWidth: .infinity)
                             } else {
                                 ForEach(Array(model.entries.prefix(5))) { entry in
                                     TransactionRow(entry: entry)
@@ -302,7 +357,7 @@ struct DashboardView: View {
                 }
                 .padding()
             }
-            .background(Color(.systemGroupedBackground))
+            .background { MoneyUpBackdrop() }
             .navigationTitle("tab.today")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
@@ -315,6 +370,41 @@ struct DashboardView: View {
             }
         }
     }
+
+    private var quickActions: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 10) {
+                logButton
+                planButton
+            }
+            VStack(spacing: 10) {
+                logButton
+                planButton
+            }
+        }
+    }
+
+    private var logButton: some View {
+        Button {
+            onOpenLog()
+        } label: {
+            Label("dashboard.log_money", systemImage: "plus.circle.fill")
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(.moneyUpAction)
+    }
+
+    private var planButton: some View {
+        Button {
+            onOpenPlan()
+        } label: {
+            Label("dashboard.plan_money", systemImage: "chart.pie.fill")
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.bordered)
+        .tint(.accentColor)
+    }
 }
 
 struct DashboardCard<Content: View>: View {
@@ -322,7 +412,7 @@ struct DashboardCard<Content: View>: View {
     let backgroundColor: Color
 
     init(
-        backgroundColor: Color = Color(.secondarySystemGroupedBackground),
+        backgroundColor: Color = .moneyUpSurfaceElevated,
         @ViewBuilder content: () -> Content
     ) {
         self.backgroundColor = backgroundColor
@@ -335,6 +425,10 @@ struct DashboardCard<Content: View>: View {
             .padding(18)
             .background(backgroundColor)
             .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .stroke(Color.accentColor.opacity(0.10), lineWidth: 1)
+            }
             .accessibilityElement(children: .contain)
     }
 }

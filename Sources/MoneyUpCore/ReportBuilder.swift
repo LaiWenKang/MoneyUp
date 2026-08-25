@@ -33,8 +33,14 @@ public extension FinanceCalculator {
         var monthlyExpense: [Date: Decimal] = [:]
 
         for entry in entries {
-            let inPeriod = interval.containsHalfOpen(entry.occurredAt)
-            let inTrend = trend.containsHalfOpen(entry.occurredAt)
+            let inPeriod = FinancialPeriodBoundary.contains(
+                entry.occurredAt,
+                in: interval
+            )
+            let inTrend = FinancialPeriodBoundary.contains(
+                entry.occurredAt,
+                in: trend
+            )
             guard inPeriod || inTrend else { continue }
 
             let month: Date? = inTrend

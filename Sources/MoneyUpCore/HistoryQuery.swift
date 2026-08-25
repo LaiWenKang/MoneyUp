@@ -132,8 +132,11 @@ public struct HistoryQuery: Equatable, Sendable {
         if let categoryID, !entry.postings.contains(where: { $0.accountID == categoryID }) {
             return false
         }
-        if let startDate, entry.occurredAt < startDate { return false }
-        if let endDateExclusive, entry.occurredAt >= endDateExclusive { return false }
+        guard FinancialPeriodBoundary.contains(
+            entry.occurredAt,
+            start: startDate,
+            endExclusive: endDateExclusive
+        ) else { return false }
 
         if minimumAmount != nil || maximumAmount != nil {
             let amounts = userFacingAmounts(in: entry, accountsByID: accountsByID)

@@ -167,6 +167,8 @@ private struct BudgetPlanView: View {
                     Text("plan.rollup_detail")
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(Color.moneyUpBackground)
             .overlay {
                 if model.budgetNodes.isEmpty {
                     ContentUnavailableView(
@@ -370,6 +372,8 @@ private struct BudgetEditorSheet: View {
                     Section { Text(errorMessage).foregroundStyle(.red) }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(Color.moneyUpBackground)
             .navigationTitle(node.name)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -424,6 +428,8 @@ private struct AddCategorySheet: View {
                     Text(errorMessage).foregroundStyle(.red)
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(Color.moneyUpBackground)
             .navigationTitle("category.add")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

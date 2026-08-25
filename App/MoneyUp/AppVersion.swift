@@ -39,6 +39,7 @@ enum ReleaseNotes {
         switch version {
         case "0.4.1":
             [
+                "whats_new.0_4_1.guidance",
                 "whats_new.0_4_1.history",
                 "whats_new.0_4_1.safety",
                 "whats_new.0_4_1.import"
@@ -85,14 +86,14 @@ struct WhatsNewSheet: View {
                             Text(entry.element)
                         } icon: {
                             Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(Color.moneyUpGold)
+                                .foregroundStyle(.tint)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
                 .padding()
             }
-            .background(Color(.systemGroupedBackground))
+            .background { MoneyUpBackdrop() }
             .navigationTitle("whats_new.title")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

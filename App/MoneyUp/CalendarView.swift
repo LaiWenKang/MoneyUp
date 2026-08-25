@@ -9,8 +9,18 @@ struct CalendarView: View {
     @State private var entryPendingDeletion: JournalEntry?
     @State private var schedulePendingDeletion: ScheduledTransaction?
 
+    private var selectedDayInterval: DateInterval? {
+        FinancialPeriodBoundary.inclusiveDayInterval(
+            from: selectedDate,
+            through: selectedDate
+        )
+    }
+
     private var selectedEntries: [JournalEntry] {
-        model.entries.filter { Calendar.current.isDate($0.occurredAt, inSameDayAs: selectedDate) }
+        guard let selectedDayInterval else { return [] }
+        return model.entries.filter {
+            FinancialPeriodBoundary.contains($0.occurredAt, in: selectedDayInterval)
+        }
     }
 
     private var scheduledForDay: [ScheduledTransaction] {
@@ -27,10 +37,7 @@ struct CalendarView: View {
         guard let currency = model.profile?.baseCurrency else {
             return .unavailable(.appNotReady)
         }
-        guard let interval = Calendar.current.dateInterval(
-            of: .day,
-            for: selectedDate
-        ) else {
+        guard let interval = selectedDayInterval else {
             DerivedValueDiagnostics.record(
                 .invalidPeriod,
                 operation: "calendar-day-interval"
@@ -134,6 +141,8 @@ struct CalendarView: View {
                     Section { Text(errorMessage).foregroundStyle(.red) }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(Color.moneyUpBackground)
             .navigationTitle("tab.calendar")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
@@ -269,6 +278,8 @@ private struct AddScheduleSheet: View {
                     Section { Text(errorMessage).foregroundStyle(.red) }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(Color.moneyUpBackground)
             .navigationTitle("schedule.add")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

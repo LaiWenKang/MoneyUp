@@ -1,11 +1,11 @@
 # Golden PRD Execution Plan
 
-Last reconciled: 26 August 2026 against **MoneyUp Golden PRD v1.0**.
+Last reconciled: 26 August 2026 against **MoneyUp Golden PRD v1.1**.
 
 The Golden PRD is the product and release authority. Security/privacy
 invariants come next, followed by founder decisions and Issue #10, then the
-current implementation. The 0.4.0 audit is defect evidence; PRD v1.1 is
-supporting history where it does not conflict. In particular, multi-device
+current implementation. The 0.4.0 audit and earlier PRD are supporting evidence
+where they do not conflict. In particular, multi-device
 sync and monetization are not part of 1.0 without a new approved decision.
 
 Completed checkboxes below describe behavior already present on `main` at
@@ -27,7 +27,8 @@ physical evidence passes on the exact candidate.
 
 ## Daily use — Founders Beta 0.4.1
 
-- [x] Onboarding with base currency, first account, and opening balance
+- [x] Four-step guided onboarding with privacy/purpose, base currency, first
+  account, review, inline explanations, Back/Continue, and explicit next actions
 - [x] Expense, income, same-currency, and foreign-currency transfer logging
 - [x] Multiple account types, cards, loans, and balance reconciliation
 - [x] Default categories plus arbitrary-depth custom expense categories
@@ -41,7 +42,8 @@ physical evidence passes on the exact candidate.
 - [x] Five permanent tabs for Today, History, center Log, Plan, and Assets
 - [x] Center Log tab with encrypted draft recovery and Undo
 - [x] On-device receipt reading, typed-phrase entry, and category suggestions
-- [x] App icon, accent colour, biometry-accurate lock screen, and in-app version
+- [x] Adaptive soft-green semantic palette, reproducible light/dark/tinted app
+  icons, matching widget, biometry-accurate lock screen, and in-app version
 - [x] Enriched, formula-safe CSV export through the system file picker
 - [x] English and Simplified Chinese UI
 - [x] CI for Swift tests and the app plus widget Simulator build
@@ -58,7 +60,11 @@ physical evidence passes on the exact candidate.
 |---|---|---|
 | Enforce minor units on every new write/import while preserving legacy values exactly | Implemented for log, transfer, reconciliation, budget, schedule, holding-price, onboarding/account, and import boundaries | Green core/app suites and a final write-boundary audit |
 | Reject or explicitly convert an edit that changes account currency | Implemented as rejection; same-currency legacy values remain exact | App test and Simulator UI check |
-| Combine account, category, kind, inclusive date, and amount History filters | Implemented with a reusable query and an obvious reset flow | Core tests, Simulator build, bilingual UI review, and 10,000-entry measurement |
+| Combine account, category, kind, inclusive date, and amount History filters | Implemented with a reusable query, obvious reset flow, and 10,000-entry CI guard | Green core test and Simulator build plus bilingual UI review; physical p95 is G2 |
+| Use one half-open financial-period boundary | Implemented in core and used by reporting and History; midnight/DST regression tests added | Green core suite and final date-path audit |
+| Cover locale and extreme manual money input | Explicit-locale comma-decimal, negative, garbage-suffix, and large-Decimal tests added; currency precision gates remain shared | Green app/core suites and bilingual Simulator entry check |
+| Give first-time users an unambiguous setup path | Four-step flow, field-level guidance, review, overdraft/debt language, and visible Today Log/Plan actions implemented | English/Chinese VoiceOver, largest Dynamic Type, light/dark physical walkthrough |
+| Replace the old visual identity | Semantic soft-green/off-white/deep-charcoal tokens, restrained gradients/graphics, icon, widget, and palette CI guard implemented | Light/dark/tinted screenshot and contrast review on physical iPhones |
 | Show filtered totals separately by currency | Implemented as signed movement per currency; same-currency transfers offset and foreign-currency sides remain separate | Product/UI review and filter-result reconciliation |
 | Retain encrypted revisions and invalidate derived caches immediately | Existing atomic write retained; app regression test added | App test must pass in CI |
 | Remove or honor `lockWhenBackgrounded` | Removed from the runtime model and future encoding; legacy JSON remains decodable | Core migration test must pass |
@@ -68,10 +74,11 @@ physical evidence passes on the exact candidate.
 Derived financial failures now propagate an explicit unavailable state, show a
 localized reason plus a redacted diagnostic code, and log no transaction
 content (TOD-06/DAT-08); CI and bilingual Simulator review remain required.
-Additional G1 acceptance work remains open: finish the shared half-open
-financial-period boundary audit (DAT-06), confirm locale/extreme-value
-regression coverage (DAT-05/QA-03), and pass the new concurrency suite. G1 is
-not closed while any of these checks remain open.
+The shared half-open boundary, locale/extreme-value regression coverage, and a
+10,000-entry History CI scale guard are now committed. G1 remains open until
+the complete core/app suites and Simulator build are green on the exact commit,
+then the bilingual light/dark accessibility walkthrough records its physical
+evidence.
 
 ## G2 — after internal upload, before wider testers
 
@@ -94,7 +101,7 @@ not closed while any of these checks remain open.
 ## G3 — before public App Store 1.0
 
 - [ ] Today: Safe to Spend, consumer-language cash/debt position, budget pace,
-  guided empty states, chart drill-through, and a redacted budget widget.
+  chart drill-through, and a redacted budget widget.
 - [ ] Assets: account/category rename/archive/merge/delete-with-reassignment,
   holding repricing/staleness, ledger-linked investments, one currency picker,
   lots, and net-worth history.

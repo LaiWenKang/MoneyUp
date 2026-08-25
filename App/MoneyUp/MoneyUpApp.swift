@@ -11,6 +11,7 @@ struct MoneyUpApp: App {
             ZStack {
                 RootView()
                     .environmentObject(model)
+                    .tint(.accentColor)
 
                 if scenePhase != .active {
                     PrivacyCoverView()
@@ -49,7 +50,7 @@ private struct PrivacyCoverView: View {
         ZStack {
             // Keep the app-switcher snapshot fully opaque. A material can
             // reveal the shape of balances or charts beneath it.
-            Color(.systemBackground)
+            Color.moneyUpBackground
                 .ignoresSafeArea()
 
             VStack(spacing: 14) {

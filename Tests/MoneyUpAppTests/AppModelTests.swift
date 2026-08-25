@@ -5,6 +5,31 @@ import MoneyUpPersistence
 import XCTest
 
 final class AppModelTests: XCTestCase {
+    func testAmountParserUsesLocaleAndRequiresTheWholeString() {
+        let french = Locale(identifier: "fr_FR")
+
+        XCTAssertEqual(
+            decimalAmount(from: "12,50", locale: french),
+            Decimal(string: "12.50")
+        )
+        XCTAssertEqual(
+            decimalAmount(from: "-0,75", locale: french),
+            Decimal(string: "-0.75")
+        )
+        XCTAssertNil(decimalAmount(from: "12,50 EUR", locale: french))
+        XCTAssertNil(decimalAmount(from: "1,2,3", locale: french))
+        XCTAssertNil(decimalAmount(from: "NaN", locale: french))
+    }
+
+    func testAmountParserPreservesLargeDecimalWithoutBinaryConversion() {
+        let text = "9999999999999999999999999999.99"
+
+        XCTAssertEqual(
+            decimalAmount(from: text, locale: Locale(identifier: "en_US_POSIX")),
+            Decimal(string: text, locale: Locale(identifier: "en_US_POSIX"))
+        )
+    }
+
     @MainActor
     func testLockDuringSaveCommitsExactlyOnceWithoutRepopulatingLockedState() async throws {
         let fixture = try AppModelFixture()
@@ -153,6 +178,97 @@ final class AppModelTests: XCTestCase {
         )
         XCTAssertEqual(persisted.map(\.name), ["Secondary wallet"])
         await reopened.close()
+    }
+
+    @MainActor
+    func testOnboardingAcceptsAssetOverdraftAndCreatesItsOpeningEntry() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let model = fixture.model()
+
+        try await model.completeOnboarding(
+            baseCurrencyCode: "SGD",
+            accountName: "Overdraft account",
+            accountType: .bank,
+            startingBalance: -75
+        )
+
+        let account = try XCTUnwrap(
+            model.userAccounts.first { $0.name == "Overdraft account" }
+        )
+        XCTAssertEqual(account.kind, .asset)
+        XCTAssertEqual(
+            model.displayBalanceResult(for: account).value?.amount,
+            -75
+        )
+        XCTAssertEqual(model.entries.count, 1)
+        let storedEntryCount = try await fixture.store.count(in: .journalEntries)
+        XCTAssertEqual(storedEntryCount, 1)
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testAddingLiabilityTreatsPositiveOpeningValueAsAmountOwed() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let model = fixture.model()
+
+        try await model.addAccount(
+            name: "Travel card",
+            type: .creditCard,
+            currencyCode: "SGD",
+            startingBalance: 450
+        )
+
+        let account = try XCTUnwrap(
+            model.userAccounts.first { $0.name == "Travel card" }
+        )
+        XCTAssertEqual(account.kind, .liability)
+        XCTAssertEqual(
+            model.displayBalanceResult(for: account).value?.amount,
+            450
+        )
+        XCTAssertEqual(model.entries.count, 1)
+
+        do {
+            try await model.setAccountBalance(
+                accountID: account.id,
+                displayBalance: -1
+            )
+            XCTFail("Expected a negative amount-owed rejection")
+        } catch AppModelError.negativeAmount {
+            // Expected: balance reconciliation keeps liability semantics too.
+        }
+        XCTAssertEqual(
+            model.displayBalanceResult(for: account).value?.amount,
+            450
+        )
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testAddingLiabilityRejectsNegativeAmountOwedBeforeWriting() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let model = fixture.model()
+
+        do {
+            try await model.addAccount(
+                name: "Invalid card",
+                type: .creditCard,
+                currencyCode: "SGD",
+                startingBalance: -10
+            )
+            XCTFail("Expected a negative amount-owed rejection")
+        } catch AppModelError.negativeAmount {
+            // Expected: liabilities use a non-negative consumer amount owed.
+        }
+
+        let storedAccountCount = try await fixture.store.count(in: .accounts)
+        let storedEntryCount = try await fixture.store.count(in: .journalEntries)
+        XCTAssertEqual(storedAccountCount, 0)
+        XCTAssertEqual(storedEntryCount, 0)
+        await fixture.store.close()
     }
 
     @MainActor
