@@ -33,8 +33,9 @@ The beta includes:
   recognition, parses typed phrases such as "lunch 12.50 cash yesterday", and
   suggests a category from the user's own history, with no image retained and
   no remote model involved;
-- a permanent leftmost Log tab with encrypted draft recovery, retained or
-  configurable smart defaults, success feedback, and Undo;
+- a permanent five-tab layout for Today, History, center Log, Plan, and Assets;
+  Log retains encrypted draft recovery, configurable smart defaults, success
+  feedback, and Undo;
 - a searchable, filterable History tab with refunds and atomic transaction
   editing; prior versions are retained in the encrypted revision collection;
 - configurable privacy-redacted Home and Lock Screen widgets for expense,
