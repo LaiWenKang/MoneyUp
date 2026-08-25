@@ -1,13 +1,14 @@
-# Install and Use Founders Beta 0.3.0
+# Install and Use Founders Beta 0.4.0
 
-MoneyUp is ready for local source installation and its Apple Developer
-membership is active. It is not a TestFlight download until the protected
-release workflow completes the first signed upload.
+MoneyUp is available to approved founders through private TestFlight groups and
+can also be installed from source. New builds still pass through the protected
+release workflow before they appear in TestFlight.
 
 ## iPhone-only TestFlight installation
 
-After a signed build is uploaded, the account holder installs from the private
-Founders Internal TestFlight group.
+The account holder has already installed the initial signed beta from the
+private Founders Internal TestFlight group. New candidates appear in that same
+group after the protected release workflow completes.
 The second tester receives a private email invitation to the Founders External
 group after TestFlight Beta App Review. Both testers install through Apple's
 TestFlight app. MoneyUp has no account and the invitation does not require
@@ -19,8 +20,7 @@ The complete account setup and cloud-signing sequence is in
 [`APPLE_SETUP.md`](APPLE_SETUP.md). It can be completed from Safari on an
 iPhone and does not require a personal Mac.
 
-Until that signed build exists, the steps below are for a developer source
-install and require access to a Mac.
+The steps below are for a developer source install and require access to a Mac.
 
 ## Requirements
 
@@ -61,7 +61,7 @@ Then in Xcode:
 1. Authenticate or let MoneyUp create its protected first-install key.
 2. Choose a base currency, name the first account, choose its type, and enter
    the current starting balance if desired.
-3. Record a small expense with Quick Log and confirm the account balance and
+3. Record a small expense from the leftmost Log tab and confirm the account balance and
    category spending both update.
 4. Add a monthly limit in Plan and confirm child-category spending rolls up.
 5. Send MoneyUp to the background and reopen it; the app should require device
@@ -69,10 +69,11 @@ Then in Xcode:
 
 ## Add the widget
 
-Long-press the Home Screen, add a widget, search for MoneyUp, and choose the
-small or medium Private Quick Log widget. The widget never displays balances,
-payees, holdings, or statistics. Its shortcuts open MoneyUp, require the normal
-device authentication, and present the expense or income form.
+Long-press the Home Screen or Lock Screen, add a widget, and search for MoneyUp.
+The small and Lock Screen widgets can be configured for Expense, Income,
+Transfer, Smart Entry, or Receipt; the medium widget shows four quick actions. No
+widget displays balances, payees, holdings, or statistics. Every action opens
+MoneyUp and requires the normal device authentication.
 
 ## Export to Numbers or Excel
 
@@ -85,7 +86,7 @@ MoneyUp after they leave the app.
 
 The SQLCipher key is intentionally this-device-only. Deleting MoneyUp, using
 the in-app destructive reset, or losing the protected key can permanently make
-the local database unreadable. Founders Beta 0.3.0 does not yet have portable
+the local database unreadable. Founders Beta 0.4.0 does not yet have portable
 encrypted backup/restore, and CSV is not a complete restore format. Export
 snapshots regularly and do not use this beta as the sole record of information
 you cannot afford to lose.

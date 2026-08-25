@@ -120,9 +120,9 @@ private struct RecoveryView: View {
 }
 
 private enum MoneyUpSection: Hashable {
+    case log
     case today
     case plan
-    case calendar
     case insights
     case assets
 }
@@ -130,68 +130,56 @@ private enum MoneyUpSection: Hashable {
 private struct MainTabView: View {
     @EnvironmentObject private var model: AppModel
     @State private var selectedSection: MoneyUpSection = .today
-    @State private var isPresentingQuickLog = false
     @State private var quickLogKind: QuickLogKind = .expense
+    @State private var quickLogLaunchMode: QuickLogLaunchMode?
+    @State private var logRequestSequence = 0
     @State private var isShowingWhatsNew = false
     @State private var hasCheckedForUpdate = false
 
     var body: some View {
-        ZStack(alignment: .bottomTrailing) {
-            TabView(selection: $selectedSection) {
-                DashboardView()
-                    .tabItem { Label("tab.today", systemImage: "house.fill") }
-                    .tag(MoneyUpSection.today)
+        TabView(selection: $selectedSection) {
+            LogView(
+                kind: $quickLogKind,
+                isActive: selectedSection == .log,
+                launchMode: quickLogLaunchMode,
+                requestSequence: logRequestSequence,
+                onRequestHandled: { mode in
+                    model.consumeQuickLogRequest(mode)
+                }
+            )
+                .tabItem { Label("tab.log", systemImage: "plus.circle.fill") }
+                .tag(MoneyUpSection.log)
 
-                PlanView()
-                    .tabItem { Label("tab.plan", systemImage: "chart.pie.fill") }
-                    .tag(MoneyUpSection.plan)
+            DashboardView()
+                .tabItem { Label("tab.today", systemImage: "house.fill") }
+                .tag(MoneyUpSection.today)
 
-                CalendarView()
-                    .tabItem { Label("tab.calendar", systemImage: "calendar") }
-                    .tag(MoneyUpSection.calendar)
+            PlanView()
+                .tabItem { Label("tab.plan", systemImage: "chart.pie.fill") }
+                .tag(MoneyUpSection.plan)
 
-                InsightsView()
-                    .tabItem { Label("tab.insights", systemImage: "chart.bar.fill") }
-                    .tag(MoneyUpSection.insights)
+            InsightsView()
+                .tabItem { Label("tab.insights", systemImage: "chart.bar.fill") }
+                .tag(MoneyUpSection.insights)
 
-                AssetsView()
-                    .tabItem { Label("tab.assets", systemImage: "wallet.bifold.fill") }
-                    .tag(MoneyUpSection.assets)
-            }
-
-            Button {
-                quickLogKind = .expense
-                isPresentingQuickLog = true
-            } label: {
-                Label("action.quick_log", systemImage: "plus")
-                    .font(.headline)
-                    .padding(.horizontal, 4)
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .clipShape(Capsule())
-            .padding(.trailing, 16)
-            .padding(.bottom, 64)
-            .accessibilityHint("action.quick_log.hint")
-        }
-        .sheet(isPresented: $isPresentingQuickLog) {
-            QuickLogSheet(initialKind: quickLogKind)
+            AssetsView()
+                .tabItem { Label("tab.assets", systemImage: "wallet.bifold.fill") }
+                .tag(MoneyUpSection.assets)
         }
         .sheet(isPresented: $isShowingWhatsNew) {
             WhatsNewSheet()
         }
         .onAppear {
-            presentRequestedQuickLog()
-            checkForUpdate()
+            checkForUpdate(suppressPresentation: openRequestedLog())
         }
-        .onChange(of: model.requestedQuickLogKind) { _, _ in
-            presentRequestedQuickLog()
+        .onChange(of: model.requestedQuickLogMode) { _, _ in
+            openRequestedLog()
         }
     }
 
-    /// MoneyUp is installed from source, so nothing else tells the user a new
-    /// version is running. Shown once per version.
-    private func checkForUpdate() {
+    /// Private TestFlight and source installs show these notes once per version.
+    private func checkForUpdate(suppressPresentation: Bool) {
+        guard !suppressPresentation else { return }
         guard !hasCheckedForUpdate else { return }
         hasCheckedForUpdate = true
         guard AppVersion.consumeUpdateFlag(), !ReleaseNotes.highlights().isEmpty else {
@@ -200,10 +188,15 @@ private struct MainTabView: View {
         isShowingWhatsNew = true
     }
 
-    private func presentRequestedQuickLog() {
-        guard let requestedKind = model.requestedQuickLogKind else { return }
-        quickLogKind = requestedKind
-        isPresentingQuickLog = true
-        model.consumeQuickLogRequest()
+    /// Widget, Shortcut, and URL requests now route into the permanent Log tab
+    /// instead of creating a modal on top of whichever screen was open.
+    @discardableResult
+    private func openRequestedLog() -> Bool {
+        guard let requestedMode = model.requestedQuickLogMode else { return false }
+        isShowingWhatsNew = false
+        quickLogLaunchMode = requestedMode
+        logRequestSequence &+= 1
+        selectedSection = .log
+        return true
     }
 }

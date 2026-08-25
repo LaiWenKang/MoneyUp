@@ -2,6 +2,7 @@ import Foundation
 import MoneyUpCore
 import MoneyUpPersistence
 import SwiftUI
+import UIKit
 
 @MainActor
 final class AppModel: ObservableObject {
@@ -11,6 +12,18 @@ final class AppModel: ObservableObject {
         case onboarding
         case ready
         case failed(String)
+    }
+
+    struct MonthToDateExpenseComparison {
+        let previous: Money
+        let current: Money
+        let holdsUnconvertedActivity: Bool
+    }
+
+    private struct PendingQuickLogCommit {
+        let id: UUID
+        let generation: Int
+        let task: Task<Void, Error>
     }
 
     @Published private(set) var state: State = .launching
@@ -27,11 +40,20 @@ final class AppModel: ObservableObject {
     @Published private(set) var scheduledTransactions: [ScheduledTransaction] = []
     @Published private(set) var investmentHoldings: [InvestmentHolding] = []
     @Published private(set) var isWorking = false
-    @Published private(set) var requestedQuickLogKind: QuickLogKind?
+    @Published private(set) var requestedQuickLogMode: QuickLogLaunchMode?
+    @Published private(set) var quickLogDraft: QuickLogDraft?
 
     private var store: EncryptedRecordStore?
+    private var quickLogDraftWriteTask: Task<Void, Never>?
+    private var quickLogCommit: PendingQuickLogCommit?
+    private var storeCloseTask: Task<Void, Never>?
+    private var storeGeneration = 0
+    private var lockAfterStart = false
+    private var isStarting = false
     private var reportCache: [ReportPeriod: PeriodReport] = [:]
     private var reportCacheDay: Date?
+    private var monthToDateComparisonCache: MonthToDateExpenseComparison?
+    private var monthToDateComparisonCacheDay: Date?
     private var balanceCache: [UUID: [CurrencyCode: Money]]?
 
     var userAccounts: [LedgerAccount] {
@@ -51,8 +73,17 @@ final class AppModel: ObservableObject {
     func start() async {
         guard !isWorking else { return }
         isWorking = true
+        isStarting = true
+        defer {
+            isWorking = false
+            isStarting = false
+        }
+
+        if let pendingClose = storeCloseTask {
+            await pendingClose.value
+            storeCloseTask = nil
+        }
         state = .launching
-        defer { isWorking = false }
 
         do {
             var key = try DatabaseKeyStore.loadOrCreateKey()
@@ -62,6 +93,7 @@ final class AppModel: ObservableObject {
                 databaseURL: try Self.databaseURL(),
                 key: key
             )
+            storeGeneration &+= 1
             store = openedStore
             try await load(from: openedStore)
 
@@ -72,36 +104,99 @@ final class AppModel: ObservableObject {
                 try validateLoadedBook()
                 state = .ready
             }
+            if lockAfterStart {
+                lockAfterStart = false
+                isWorking = false
+                isStarting = false
+                lock()
+            }
         } catch let error as DatabaseKeyStoreError where error == .authenticationCancelled {
+            lockAfterStart = false
             state = .locked
         } catch {
+            lockAfterStart = false
+            let failedStore = store
             clearDecodedState()
             store = nil
+            storeGeneration &+= 1
+            await failedStore?.close()
             state = .failed(error.localizedDescription)
         }
     }
 
     func lock() {
+        if isStarting || state == .launching {
+            lockAfterStart = true
+            return
+        }
         guard state == .ready || state == .onboarding else { return }
+        let pendingDraftWrite = quickLogDraftWriteTask
+        let pendingQuickLogCommit = quickLogCommit.flatMap {
+            $0.generation == storeGeneration ? $0.task : nil
+        }
+        pendingDraftWrite?.cancel()
+        quickLogDraftWriteTask = nil
         let storeToClose = store
+        let draftToSave = quickLogDraft
         store = nil
+        storeGeneration &+= 1
         clearDecodedState()
         state = .locked
 
-        Task {
-            await storeToClose?.close()
+        guard let storeToClose else { return }
+        let backgroundTask = UIApplication.shared.beginBackgroundTask(
+            withName: "Secure MoneyUp data",
+            expirationHandler: nil
+        )
+        storeCloseTask = Task {
+            defer {
+                if backgroundTask != .invalid {
+                    UIApplication.shared.endBackgroundTask(backgroundTask)
+                }
+            }
+            await pendingDraftWrite?.value
+            var transactionCommitted = false
+            if let pendingQuickLogCommit {
+                do {
+                    try await pendingQuickLogCommit.value
+                    transactionCommitted = true
+                } catch {
+                    transactionCommitted = false
+                }
+            }
+            if !transactionCommitted {
+                await writeQuickLogDraft(draftToSave, to: storeToClose)
+            }
+            await storeToClose.close()
         }
     }
 
-    func handleDeepLink(_ url: URL) {
+    @discardableResult
+    func handleDeepLink(_ url: URL) -> Bool {
         guard url.scheme?.lowercased() == "moneyup",
-              url.host?.lowercased() == "quick-log" else { return }
-        let rawKind = url.pathComponents.dropFirst().first?.lowercased()
-        requestedQuickLogKind = rawKind.flatMap(QuickLogKind.init(rawValue:)) ?? .expense
+              url.host?.lowercased() == "quick-log" else { return false }
+        let components = url.pathComponents.filter { $0 != "/" }
+        guard components.count == 1,
+              let mode = QuickLogLaunchMode(rawValue: components[0].lowercased()) else {
+            return false
+        }
+        requestedQuickLogMode = mode
+        return true
     }
 
-    func consumeQuickLogRequest() {
-        requestedQuickLogKind = nil
+    func consumeQuickLogRequest(_ mode: QuickLogLaunchMode) {
+        guard requestedQuickLogMode == mode else { return }
+        requestedQuickLogMode = nil
+    }
+
+    /// Keeps the latest form state in memory immediately, then serializes a
+    /// debounced copy into SQLCipher. Background locking cancels the debounce
+    /// and flushes this latest snapshot before closing the store.
+    func updateQuickLogDraft(_ draft: QuickLogDraft) {
+        guard state == .ready else { return }
+        guard quickLogDraft != draft else { return }
+        quickLogDraft = draft
+        scheduleQuickLogDraftWrite(draft)
     }
 
     func completeOnboarding(
@@ -114,6 +209,7 @@ final class AppModel: ObservableObject {
         isWorking = true
         defer { isWorking = false }
 
+        let generation = storeGeneration
         let store = try requireStore()
         let currency = try CurrencyCode(baseCurrencyCode)
         guard startingBalance >= .zero else { throw AppModelError.negativeAmount }
@@ -161,6 +257,7 @@ final class AppModel: ObservableObject {
         }
 
         try await store.write(writes)
+        guard isCurrentStoreGeneration(generation) else { return }
 
         profile = newProfile
         accounts = defaults.accounts
@@ -212,7 +309,10 @@ final class AppModel: ObservableObject {
             openingEntry = entry
         }
 
-        try await requireStore().write(writes)
+        let generation = storeGeneration
+        let accountStore = try requireStore()
+        try await accountStore.write(writes)
+        guard isCurrentStoreGeneration(generation) else { return }
         accounts.append(contentsOf: accountsToAdd)
         if let openingEntry { entries.insert(openingEntry, at: 0) }
     }
@@ -232,6 +332,7 @@ final class AppModel: ObservableObject {
             kind: kind,
             parentID: parentID
         )
+        let generation = storeGeneration
         let store = try requireStore()
 
         if kind == .expense, let currency = profile?.baseCurrency {
@@ -247,9 +348,11 @@ final class AppModel: ObservableObject {
                 try RecordWrite(category, id: category.id.uuidString, in: .accounts),
                 try RecordWrite(node, id: node.id.uuidString, in: .budgetNodes)
             ])
+            guard isCurrentStoreGeneration(generation) else { return }
             budgetNodes.append(node)
         } else {
             try await store.upsert(category, id: category.id.uuidString, in: .accounts)
+            guard isCurrentStoreGeneration(generation) else { return }
         }
         accounts.append(category)
     }
@@ -281,11 +384,15 @@ final class AppModel: ObservableObject {
             )
         }
 
-        try await requireStore().write(writes)
+        let generation = storeGeneration
+        let balanceStore = try requireStore()
+        try await balanceStore.write(writes)
+        guard isCurrentStoreGeneration(generation) else { return }
         if shouldAddEquity { accounts.append(equity) }
         entries.insert(entry, at: 0)
     }
 
+    @discardableResult
     func logExpense(
         amount: Decimal,
         accountID: UUID,
@@ -293,7 +400,7 @@ final class AppModel: ObservableObject {
         occurredAt: Date,
         payee: String?,
         note: String?
-    ) async throws {
+    ) async throws -> UUID? {
         let currency = try currency(for: accountID)
         let entry = try TransactionFactory.expense(
             amount: try Money(amount, currency: currency),
@@ -303,9 +410,10 @@ final class AppModel: ObservableObject {
             payee: payee,
             note: note
         )
-        try await save(entry)
+        return try await save(entry)
     }
 
+    @discardableResult
     func logIncome(
         amount: Decimal,
         accountID: UUID,
@@ -313,7 +421,7 @@ final class AppModel: ObservableObject {
         occurredAt: Date,
         payee: String?,
         note: String?
-    ) async throws {
+    ) async throws -> UUID? {
         let currency = try currency(for: accountID)
         let entry = try TransactionFactory.income(
             amount: try Money(amount, currency: currency),
@@ -323,9 +431,10 @@ final class AppModel: ObservableObject {
             payee: payee,
             note: note
         )
-        try await save(entry)
+        return try await save(entry)
     }
 
+    @discardableResult
     func logTransfer(
         amount: Decimal,
         destinationAmount: Decimal? = nil,
@@ -333,7 +442,7 @@ final class AppModel: ObservableObject {
         destinationAccountID: UUID,
         occurredAt: Date,
         note: String?
-    ) async throws {
+    ) async throws -> UUID? {
         let sourceCurrency = try currency(for: sourceAccountID)
         let destinationCurrency = try currency(for: destinationAccountID)
         if sourceCurrency == destinationCurrency {
@@ -344,8 +453,7 @@ final class AppModel: ObservableObject {
                 occurredAt: occurredAt,
                 note: note
             )
-            try await save(entry)
-            return
+            return try await save(entry)
         }
 
         guard let destinationAmount, destinationAmount > .zero else {
@@ -366,19 +474,21 @@ final class AppModel: ObservableObject {
             occurredAt: occurredAt,
             note: note
         )
-        var writes = try newTradingAccounts.map {
+        let writes = try newTradingAccounts.map {
             try RecordWrite($0, id: $0.id.uuidString, in: .accounts)
         }
-        writes.append(
-            try RecordWrite(entry, id: entry.id.uuidString, in: .journalEntries)
-        )
-        try await requireStore().write(writes)
-        accounts.append(contentsOf: newTradingAccounts)
-        entries.insert(entry, at: 0)
+        let savedEntryID = try await save(entry, additionalWrites: writes)
+        if savedEntryID != nil {
+            accounts.append(contentsOf: newTradingAccounts)
+        }
+        return savedEntryID
     }
 
     func deleteEntry(id: UUID) async throws {
-        try await requireStore().remove(id: id.uuidString, from: .journalEntries)
+        let generation = storeGeneration
+        let entryStore = try requireStore()
+        try await entryStore.remove(id: id.uuidString, from: .journalEntries)
+        guard isCurrentStoreGeneration(generation) else { return }
         entries.removeAll { $0.id == id }
     }
 
@@ -395,59 +505,96 @@ final class AppModel: ObservableObject {
         candidate[index] = updated
         _ = try BudgetTree(currency: currency, nodes: candidate)
 
-        try await requireStore().upsert(
+        let generation = storeGeneration
+        let budgetStore = try requireStore()
+        try await budgetStore.upsert(
             updated,
             id: updated.id.uuidString,
             in: .budgetNodes
         )
+        guard isCurrentStoreGeneration(generation) else { return }
         budgetNodes = candidate
     }
 
     func addScheduledTransaction(_ transaction: ScheduledTransaction) async throws {
-        try await requireStore().upsert(
+        let generation = storeGeneration
+        let scheduleStore = try requireStore()
+        try await scheduleStore.upsert(
             transaction,
             id: transaction.id.uuidString,
             in: .scheduledTransactions
         )
+        guard isCurrentStoreGeneration(generation) else { return }
         scheduledTransactions.append(transaction)
         scheduledTransactions.sort { $0.nextOccurrence < $1.nextOccurrence }
     }
 
     func deleteScheduledTransaction(id: UUID) async throws {
-        try await requireStore().remove(id: id.uuidString, from: .scheduledTransactions)
+        let generation = storeGeneration
+        let scheduleStore = try requireStore()
+        try await scheduleStore.remove(id: id.uuidString, from: .scheduledTransactions)
+        guard isCurrentStoreGeneration(generation) else { return }
         scheduledTransactions.removeAll { $0.id == id }
     }
 
     func addInvestmentHolding(_ holding: InvestmentHolding) async throws {
-        try await requireStore().upsert(
+        let generation = storeGeneration
+        let holdingStore = try requireStore()
+        try await holdingStore.upsert(
             holding,
             id: holding.id.uuidString,
             in: .investmentHoldings
         )
+        guard isCurrentStoreGeneration(generation) else { return }
         investmentHoldings.append(holding)
     }
 
     func deleteInvestmentHolding(id: UUID) async throws {
-        try await requireStore().remove(id: id.uuidString, from: .investmentHoldings)
+        let generation = storeGeneration
+        let holdingStore = try requireStore()
+        try await holdingStore.remove(id: id.uuidString, from: .investmentHoldings)
+        guard isCurrentStoreGeneration(generation) else { return }
         investmentHoldings.removeAll { $0.id == id }
     }
 
     func updateLockWhenBackgrounded(_ enabled: Bool) async throws {
         guard var updated = profile else { throw AppModelError.missingRecord }
         updated.lockWhenBackgrounded = enabled
-        try await requireStore().upsert(
+        let generation = storeGeneration
+        let profileStore = try requireStore()
+        try await profileStore.upsert(
             updated,
             id: UserProfile.primaryRecordID,
             in: .profile
         )
+        guard isCurrentStoreGeneration(generation) else { return }
         profile = updated
     }
 
     func eraseAllDataAndRestart() async {
         guard !isWorking else { return }
         isWorking = true
+        state = .launching
+        lockAfterStart = false
+        let pendingDraftWrite = quickLogDraftWriteTask
+        let pendingCommit = quickLogCommit.flatMap {
+            $0.generation == storeGeneration ? $0.task : nil
+        }
+        pendingDraftWrite?.cancel()
+        quickLogDraftWriteTask = nil
+        quickLogCommit = nil
+        if let pendingClose = storeCloseTask {
+            await pendingClose.value
+            storeCloseTask = nil
+        }
         let storeToClose = store
         store = nil
+        storeGeneration &+= 1
+        clearDecodedState()
+        await pendingDraftWrite?.value
+        if let pendingCommit {
+            _ = try? await pendingCommit.value
+        }
         await storeToClose?.close()
 
         do {
@@ -459,11 +606,10 @@ final class AppModel: ObservableObject {
             }
             try Self.removeIfPresent(databaseURL)
             try DatabaseKeyStore.deleteKey()
-            clearDecodedState()
-            state = .launching
             isWorking = false
             await start()
         } catch {
+            lockAfterStart = false
             clearDecodedState()
             state = .failed(error.localizedDescription)
             isWorking = false
@@ -490,12 +636,9 @@ final class AppModel: ObservableObject {
 
         guard let currency = profile?.baseCurrency,
               let interval = period.interval(containing: Date()) else { return nil }
-        let trend = period.monthSpan >= ReportPeriod.sixMonths.monthSpan
-            ? interval
-            : ReportPeriod.sixMonths.interval(containing: Date()) ?? interval
         guard let built = try? FinanceCalculator.report(
             interval: interval,
-            trendInterval: trend,
+            trendInterval: interval,
             accounts: accounts,
             entries: entries,
             baseCurrency: currency
@@ -522,6 +665,57 @@ final class AppModel: ObservableObject {
         return (try? tree.progress(directSpending: spendingThisMonth())) ?? []
     }
 
+    func budgetPlanSummaryThisMonth() -> BudgetPlanSummary? {
+        guard let currency = profile?.baseCurrency,
+              let tree = try? BudgetTree(currency: currency, nodes: budgetNodes) else {
+            return nil
+        }
+        return try? tree.planSummary(directSpending: spendingThisMonth())
+    }
+
+    /// Compares equal elapsed portions of this month and the prior month.
+    /// A full prior month against a partial current month would produce a
+    /// dramatic but misleading “spending down” sentence early in the month.
+    func monthToDateExpenseComparison() -> MonthToDateExpenseComparison? {
+        let calendar = Calendar.current
+        let now = Date()
+        let today = calendar.startOfDay(for: now)
+        if monthToDateComparisonCacheDay == today,
+           let cached = monthToDateComparisonCache {
+            return cached
+        }
+
+        guard let currency = profile?.baseCurrency,
+              let intervals = MonthToDateComparisonIntervals(
+                  containing: now,
+                  calendar: calendar
+              ) else { return nil }
+
+        guard let currentReport = try? FinanceCalculator.report(
+            interval: intervals.current,
+            accounts: accounts,
+            entries: entries,
+            baseCurrency: currency,
+            calendar: calendar
+        ), let previousReport = try? FinanceCalculator.report(
+            interval: intervals.previous,
+            accounts: accounts,
+            entries: entries,
+            baseCurrency: currency,
+            calendar: calendar
+        ) else { return nil }
+
+        let comparison = MonthToDateExpenseComparison(
+            previous: previousReport.baseFlow.expense,
+            current: currentReport.baseFlow.expense,
+            holdsUnconvertedActivity: currentReport.holdsUnconvertedActivity
+                || previousReport.holdsUnconvertedActivity
+        )
+        monthToDateComparisonCache = comparison
+        monthToDateComparisonCacheDay = today
+        return comparison
+    }
+
     func csvExport() -> String {
         LedgerCSVExporter.export(
             entries.sorted { $0.occurredAt < $1.occurredAt },
@@ -531,6 +725,8 @@ final class AppModel: ObservableObject {
 
     private func invalidateDerivedData() {
         reportCache.removeAll()
+        monthToDateComparisonCache = nil
+        monthToDateComparisonCacheDay = nil
         balanceCache = nil
     }
 
@@ -542,13 +738,100 @@ final class AppModel: ObservableObject {
         return computed
     }
 
-    private func save(_ entry: JournalEntry) async throws {
-        try await requireStore().upsert(
-            entry,
-            id: entry.id.uuidString,
-            in: .journalEntries
+    @discardableResult
+    private func save(
+        _ entry: JournalEntry,
+        additionalWrites: [RecordWrite] = []
+    ) async throws -> UUID? {
+        let generation = storeGeneration
+        if let existingCommit = quickLogCommit {
+            guard existingCommit.generation != generation else {
+                throw AppModelError.transactionInProgress
+            }
+            quickLogCommit = nil
+        }
+        let transactionStore = try requireStore()
+        let pendingDraftWrite = quickLogDraftWriteTask
+        pendingDraftWrite?.cancel()
+        quickLogDraftWriteTask = nil
+        var pendingWrites = additionalWrites
+        pendingWrites.append(
+            try RecordWrite(entry, id: entry.id.uuidString, in: .journalEntries)
         )
+        let writes = pendingWrites
+        let commitTask = Task {
+            await pendingDraftWrite?.value
+            try await transactionStore.write(
+                writes,
+                removing: [
+                    RecordDeletion(
+                        id: QuickLogDraft.primaryRecordID,
+                        from: .quickLogDrafts
+                    )
+                ]
+            )
+        }
+        let commitID = UUID()
+        quickLogCommit = PendingQuickLogCommit(
+            id: commitID,
+            generation: generation,
+            task: commitTask
+        )
+        defer {
+            if quickLogCommit?.id == commitID {
+                quickLogCommit = nil
+            }
+        }
+        try await commitTask.value
+        guard isCurrentStoreGeneration(generation) else { return nil }
+        quickLogDraft = nil
         entries.insert(entry, at: 0)
+        return entry.id
+    }
+
+    private func scheduleQuickLogDraftWrite(_ draft: QuickLogDraft?) {
+        let previousWrite = quickLogDraftWriteTask
+        previousWrite?.cancel()
+        guard let draftStore = store else {
+            quickLogDraftWriteTask = nil
+            return
+        }
+
+        quickLogDraftWriteTask = Task {
+            // Chain revisions so Save/Lock can await one task and know every
+            // older draft write has also finished before deleting or closing.
+            await previousWrite?.value
+            do {
+                try await Task.sleep(for: .milliseconds(250))
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            await writeQuickLogDraft(draft, to: draftStore)
+        }
+    }
+
+    private func writeQuickLogDraft(
+        _ draft: QuickLogDraft?,
+        to draftStore: EncryptedRecordStore
+    ) async {
+        do {
+            if let draft {
+                try await draftStore.upsert(
+                    draft,
+                    id: QuickLogDraft.primaryRecordID,
+                    in: .quickLogDrafts
+                )
+            } else {
+                try await draftStore.remove(
+                    id: QuickLogDraft.primaryRecordID,
+                    from: .quickLogDrafts
+                )
+            }
+        } catch {
+            // A draft is a convenience cache. A write failure must never block
+            // locking or make a completed transaction appear to have failed.
+        }
     }
 
     private func load(from store: EncryptedRecordStore) async throws {
@@ -569,6 +852,21 @@ final class AppModel: ObservableObject {
             InvestmentHolding.self,
             from: .investmentHoldings
         )
+        do {
+            quickLogDraft = try await store.fetch(
+                QuickLogDraft.self,
+                id: QuickLogDraft.primaryRecordID,
+                from: .quickLogDrafts
+            )
+        } catch {
+            // A malformed convenience draft should not lock the user out of
+            // the valid encrypted book. Discard it and continue opening.
+            quickLogDraft = nil
+            try? await store.remove(
+                id: QuickLogDraft.primaryRecordID,
+                from: .quickLogDrafts
+            )
+        }
     }
 
     private func discardIncompleteOnboarding(
@@ -579,12 +877,19 @@ final class AppModel: ObservableObject {
         try await store.removeAll(from: .budgetNodes)
         try await store.removeAll(from: .scheduledTransactions)
         try await store.removeAll(from: .investmentHoldings)
+        try await store.removeAll(from: .quickLogDrafts)
         clearDecodedState()
     }
 
     private func requireStore() throws -> EncryptedRecordStore {
         guard let store else { throw AppModelError.locked }
         return store
+    }
+
+    private func isCurrentStoreGeneration(_ generation: Int) -> Bool {
+        generation == storeGeneration
+            && store != nil
+            && (state == .ready || state == .onboarding)
     }
 
     private func currency(for accountID: UUID) throws -> CurrencyCode {
@@ -615,12 +920,15 @@ final class AppModel: ObservableObject {
     }
 
     private func clearDecodedState() {
+        quickLogDraftWriteTask?.cancel()
+        quickLogDraftWriteTask = nil
         profile = nil
         accounts = []
         entries = []
         budgetNodes = []
         scheduledTransactions = []
         investmentHoldings = []
+        quickLogDraft = nil
     }
 
     private func validateLoadedBook() throws {
@@ -738,6 +1046,7 @@ enum AppModelError: Error {
     case accountHasNoCurrency
     case foreignCurrencyTransferRequiresExchangeRate
     case invalidBook
+    case transactionInProgress
 }
 
 extension AppModelError: LocalizedError {
@@ -752,6 +1061,7 @@ extension AppModelError: LocalizedError {
         case .foreignCurrencyTransferRequiresExchangeRate:
             String(localized: "error.fx_transfer_not_supported")
         case .invalidBook: String(localized: "error.invalid_book")
+        case .transactionInProgress: String(localized: "error.transaction_in_progress")
         }
     }
 }

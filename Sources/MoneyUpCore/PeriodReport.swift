@@ -68,18 +68,6 @@ public enum ReportPeriod: String, CaseIterable, Identifiable, Sendable {
 
     public var id: String { rawValue }
 
-    /// Number of whole months the period spans, used to pick the longer of a
-    /// report window and its trend window.
-    public var monthSpan: Int {
-        switch self {
-        case .thisMonth, .lastMonth: 1
-        case .threeMonths: 3
-        case .sixMonths: 6
-        case .twelveMonths: 12
-        case .yearToDate: 12
-        }
-    }
-
     public func interval(
         containing date: Date,
         calendar: Calendar = .current
@@ -131,13 +119,50 @@ public enum ReportPeriod: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// Equal elapsed portions of the current and prior calendar month.
+///
+/// When the prior month is shorter, its interval stops at that month's end.
+/// This prevents a partial current month from being compared with a full prior
+/// month while still handling dates such as 31 March deterministically.
+public struct MonthToDateComparisonIntervals: Equatable, Sendable {
+    public let current: DateInterval
+    public let previous: DateInterval
+
+    public init?(
+        containing date: Date,
+        calendar: Calendar = .current
+    ) {
+        guard let currentMonth = calendar.dateInterval(of: .month, for: date),
+              date > currentMonth.start,
+              let priorAnchor = calendar.date(
+                  byAdding: .month,
+                  value: -1,
+                  to: currentMonth.start
+              ),
+              let priorMonth = calendar.dateInterval(
+                  of: .month,
+                  for: priorAnchor
+              ) else { return nil }
+
+        let elapsed = date.timeIntervalSince(currentMonth.start)
+        let priorEnd = min(
+            priorMonth.start.addingTimeInterval(elapsed),
+            priorMonth.end
+        )
+        guard priorEnd > priorMonth.start else { return nil }
+
+        current = DateInterval(start: currentMonth.start, end: date)
+        previous = DateInterval(start: priorMonth.start, end: priorEnd)
+    }
+}
+
 /// Everything the reporting screens need about one period, computed in a
 /// single pass over the journal.
 public struct PeriodReport: Equatable, Sendable {
     /// The window the headline totals and category breakdown cover.
     public let interval: DateInterval
-    /// The window the month-by-month series covers. It is at least as long as
-    /// `interval` so a one-month report can still show a trend.
+    /// The window the month-by-month series covers. Callers normally use the
+    /// selected `interval`, but may explicitly request a longer comparison.
     public let trendInterval: DateInterval
     public let baseCurrency: CurrencyCode
     public let baseFlow: CurrencyFlow
@@ -189,9 +214,4 @@ public struct PeriodReport: Equatable, Sendable {
         return (top, top.amount.amount / baseFlow.expense.amount)
     }
 
-    /// The last two months of the trend series, oldest first, when both exist.
-    public var monthOverMonth: (previous: MonthlyFlow, latest: MonthlyFlow)? {
-        guard monthlyFlows.count >= 2 else { return nil }
-        return (monthlyFlows[monthlyFlows.count - 2], monthlyFlows[monthlyFlows.count - 1])
-    }
 }

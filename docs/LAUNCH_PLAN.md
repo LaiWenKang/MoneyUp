@@ -1,6 +1,6 @@
 # MoneyUp Rollout Plan
 
-Last updated: 24 August 2026
+Last updated: 25 August 2026
 
 ## Release decision
 
@@ -18,18 +18,18 @@ retention and reliability are proven.
 
 | Area | Status | Release meaning |
 |---|---|---|
-| Product | Founders Beta 0.3.0 | Core budget, ledger, calendar, insights, assets, widget, export, and bilingual flows exist |
+| Product | Founders Beta 0.4.0 candidate | Log-first entry, core budget, ledger, calendar, insights, assets, configurable widgets, export, and bilingual flows exist |
 | Privacy | Ready for founders beta | Local encrypted database, protected key, privacy cover, no tracking, privacy manifest, and public policy |
 | CI | Active | Domain tests and unsigned app/widget Simulator build run on GitHub's macOS runner |
-| Distribution | Apple/GitHub connected | Membership, identifiers, `MoneyUp: CowCome` record, API key, and protected environment exist; signed validation and first upload remain |
+| Distribution | Internal TestFlight active | Membership, identifiers, `MoneyUp: CowCome` record, API key, protected environment, first signed upload, and account-holder install are complete; 0.4 still needs exact-commit validation and upload |
 | Recovery | Public-release blocker | CSV export exists; authenticated encrypted backup/restore does not |
-| Physical QA | Not yet complete | The user and his girlfriend are the first planned iPhone testers |
+| Physical QA | In progress | The account holder has installed the initial beta; the 0.4 two-person runbook remains |
 
 ## Rollout stages and gates
 
 ### Stage 0 — Founders build preparation
 
-Target: a green, reviewable 0.3.0 build that can be signed and uploaded through
+Target: a green, reviewable 0.4.0 build that can be signed and uploaded through
 the configured Apple and GitHub connection.
 
 Completed:
@@ -53,7 +53,7 @@ Completed:
   record, dedicated team API key, and protected GitHub environment configured
   by the account holder.
 
-Required before uploading 0.3.0:
+Required before uploading 0.4.0:
 
 - CI must pass on the exact commit to upload;
 - verify current agreements remain accepted and let the signed validation run
@@ -69,16 +69,16 @@ Required before uploading 0.3.0:
   storage before GitHub's 90-day public-repository retention limit;
 - never commit certificates, provisioning profiles, API keys, or passwords.
 
-### Stage 1 — First TestFlight distribution
+### Stage 1 — Founders TestFlight distribution
 
-Target: the account holder installs the same signed artifact that will be sent
-to the second tester.
+Status: the first signed build has been uploaded and installed by the account
+holder through **Founders Internal**. For 0.4, the account holder must install
+the same signed artifact that will be sent to the second tester.
 
 1. Accept current Apple Developer and App Store Connect agreements.
-2. Register `com.laiwenkang.MoneyUp` and
-   `com.laiwenkang.MoneyUp.Widget`. If either is unavailable, stop and update
-   the repository and workflow together before creating the app record. After
-   release, treat these identifiers as permanent.
+2. Verify `com.laiwenkang.MoneyUp` and
+   `com.laiwenkang.MoneyUp.Widget` remain registered and match the repository.
+   Treat these identifiers as permanent.
 3. Verify the existing `MoneyUp: CowCome` record, then add Simplified Chinese
    localization and the Finance category before public submission.
 4. Dispatch the protected GitHub TestFlight workflow first in `validate` mode,
@@ -88,9 +88,8 @@ to the second tester.
    after every successful upload. Do not use a ChatGPT-hosted preview link as
    distribution.
 5. Complete export-compliance processing and wait for build processing.
-6. Create the internal TestFlight group **Founders Internal** and add the
-   account holder.
-7. Install through Apple's TestFlight app and complete the smoke section in
+6. Add the processed build to the existing **Founders Internal** group.
+7. Update through Apple's TestFlight app and complete the smoke section in
    `FIRST_TEST.md`.
 
 The girlfriend should be the first **external** tester. This avoids granting
@@ -143,7 +142,7 @@ Each tester should complete:
 - one weekly or monthly scheduled item;
 - one manual investment holding if applicable;
 - receipt/screenshot reading and typed smart entry;
-- widget installation and both quick-log shortcuts;
+- widget installation and all five quick-log actions;
 - background lock/unlock at least ten times;
 - one transaction deletion, one schedule deletion, and one holding deletion
   using sample records;
@@ -270,7 +269,7 @@ are the correct mechanisms when access is eventually needed.
 
 ## Definition of ready
 
-MoneyUp is ready for the two founders when CI is green, a signed 0.3.0 build
+MoneyUp is ready for the two founders when CI is green, a signed 0.4.0 build
 passes the physical smoke test, and TestFlight has finished processing it. It
 is ready for the public only after encrypted restore is proven, all P0/P1 gates
 above pass, and the exact submitted binary matches the reviewed privacy and

@@ -32,12 +32,17 @@ enum AppVersion {
 
 /// What changed in the running version.
 ///
-/// MoneyUp is installed from source, so there is no App Store release note to
-/// read. This is the only place an update announces itself, which is why it
-/// lives beside the version rather than in a changelog the app cannot show.
+/// Private TestFlight and source builds cannot rely on a public App Store page
+/// to explain an update. These in-app notes keep both paths understandable.
 enum ReleaseNotes {
     static func highlights(for version: String = AppVersion.marketing) -> [LocalizedStringKey] {
         switch version {
+        case "0.4.0":
+            [
+                "whats_new.0_4_0.log",
+                "whats_new.0_4_0.widgets",
+                "whats_new.0_4_0.trust"
+            ]
         case "0.3.0":
             [
                 "whats_new.0_3_0.privacy",

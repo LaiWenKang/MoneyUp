@@ -217,6 +217,23 @@ final class PeriodReportTests: XCTestCase {
         XCTAssertTrue(report.isEmpty)
     }
 
+    func testTrendDefaultsToTheSelectedReportingInterval() throws {
+        let sgd = try CurrencyCode("SGD")
+        let selected = try interval(.thisMonth, containing: try date(2026, 6, 15))
+
+        let report = try FinanceCalculator.report(
+            interval: selected,
+            accounts: [],
+            entries: [],
+            baseCurrency: sgd,
+            calendar: calendar
+        )
+
+        XCTAssertEqual(report.trendInterval, selected)
+        XCTAssertEqual(report.monthlyFlows.count, 1)
+        XCTAssertEqual(report.monthlyFlows.first?.month, selected.start)
+    }
+
     func testReadingsDescribeTheSamePeriodTheChartsShow() throws {
         let sgd = try CurrencyCode("SGD")
         let bank = LedgerAccount(name: "Bank", kind: .asset, currency: sgd, accountType: .bank)
@@ -297,6 +314,33 @@ final class PeriodReportTests: XCTestCase {
         XCTAssertEqual(sixMonths.end, thisMonth.end)
         XCTAssertEqual(yearToDate.start, try date(2026, 1, 1, hour: 0))
         XCTAssertEqual(yearToDate.end, thisMonth.end)
+    }
+
+    func testMonthToDateComparisonUsesEqualElapsedWindows() throws {
+        let now = try date(2026, 6, 15)
+        let windows = try XCTUnwrap(
+            MonthToDateComparisonIntervals(containing: now, calendar: calendar)
+        )
+
+        XCTAssertEqual(windows.current.start, try date(2026, 6, 1, hour: 0))
+        XCTAssertEqual(windows.current.end, now)
+        XCTAssertEqual(windows.previous.start, try date(2026, 5, 1, hour: 0))
+        XCTAssertEqual(windows.previous.end, try date(2026, 5, 15))
+        XCTAssertEqual(windows.current.duration, windows.previous.duration)
+    }
+
+    func testMonthToDateComparisonClampsToShorterPriorMonth() throws {
+        let windows = try XCTUnwrap(
+            MonthToDateComparisonIntervals(
+                containing: try date(2026, 3, 31),
+                calendar: calendar
+            )
+        )
+
+        XCTAssertEqual(windows.current.start, try date(2026, 3, 1, hour: 0))
+        XCTAssertEqual(windows.previous.start, try date(2026, 2, 1, hour: 0))
+        XCTAssertEqual(windows.previous.end, try date(2026, 3, 1, hour: 0))
+        XCTAssertLessThan(windows.previous.duration, windows.current.duration)
     }
 
     func testBalancesByAccountMatchesPerAccountBalances() throws {

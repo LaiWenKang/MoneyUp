@@ -51,8 +51,9 @@ Description:
 >
 > Smart entry can read a receipt or screenshot and understand a typed phrase.
 > Recognition and suggestions run on your iPhone; images are not retained or
-> uploaded. A privacy-redacted Home Screen widget opens authenticated expense
-> and income shortcuts without displaying financial values.
+> uploaded. Privacy-redacted Home and Lock Screen widgets open authenticated
+> Expense, Income, Transfer, Smart Entry, or Receipt actions without displaying
+> financial values.
 >
 > MoneyUp requires no account and contains no ads or tracking. Its local
 > SQLCipher database uses a random device-protected key. Data leaves the app
@@ -101,8 +102,8 @@ Version 1.0 release notes:
 > 估值的投资持仓。
 >
 > 智能录入可识别收据或截图，也能理解一句话记账。识别与建议均在 iPhone
-> 本机运行，图片不会被保留或上传。隐私保护小组件不会显示财务金额，只会在
-> 身份验证后打开支出或收入快捷入口。
+> 本机运行，图片不会被保留或上传。主屏幕与锁定屏幕的隐私保护小组件不会显示
+> 财务金额，可在身份验证后打开支出、收入、转账、智能记账或选择小票操作。
 >
 > MoneyUp 无需注册，不含广告或追踪。本地 SQLCipher 数据库使用随机、受设备
 > 保护的密钥。只有你主动导出时，数据才会生成可供 Numbers 或 Excel 打开的
@@ -152,10 +153,11 @@ but is not a replacement for a public support contact.
 > currency, first account, and optional opening balance. After setup, reopening
 > the protected book requires Face ID, Touch ID, or the device passcode.
 >
-> Suggested review path: add a small expense with Quick Log; set a monthly
-> limit in Plan; verify the transaction in Calendar and Insights; background
-> and reopen the app to see authentication; open Assets to export CSV after the
-> plaintext warning; and add the privacy-redacted Home Screen widget.
+> Suggested review path: add a small expense from the leftmost Log tab; set a
+> monthly limit in Plan; verify the transaction in Plan > Calendar and Insights;
+> background and reopen the app to see authentication; open Assets to export
+> CSV after the plaintext warning; and add privacy-redacted Home and Lock Screen
+> widgets.
 >
 > The receipt reader uses PhotosPicker and Apple's on-device Vision framework.
 > The image is not stored or uploaded. The app has no advertising, analytics,
@@ -194,10 +196,10 @@ must not guess it.
 Capture 6.9-inch portrait screenshots in an accepted current size, with no
 alpha channel and no real financial data. Apple currently permits 1–10 images.
 
-1. Today — safe-to-spend summary and recent sample activity
-2. Quick Log — fast, editable entry with smart text
-3. Plan — multi-level budget and remaining amount
-4. Calendar — actual and projected money flow
+1. Today — liquid position, budget progress, and recent sample activity
+2. Log — fast, editable entry with smart text
+3. Plan > Budget — multi-level budget and remaining amount
+4. Plan > Calendar — actual and projected money flow
 5. Insights — category and cash-flow charts
 6. Assets — accounts, cards, holdings, and net worth
 7. Privacy — local encrypted processing and no tracking

@@ -2,6 +2,36 @@ import MoneyUpCore
 import SwiftUI
 
 struct PlanView: View {
+    private enum Section: Hashable {
+        case budget
+        case calendar
+    }
+
+    @State private var selection: Section = .budget
+
+    var body: some View {
+        Group {
+            switch selection {
+            case .budget:
+                BudgetPlanView()
+            case .calendar:
+                CalendarView()
+            }
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            Picker("tab.plan", selection: $selection) {
+                Text("plan.budget").tag(Section.budget)
+                Text("tab.calendar").tag(Section.calendar)
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(.bar)
+        }
+    }
+}
+
+private struct BudgetPlanView: View {
     private struct IndentedNode: Identifiable {
         let node: BudgetNode
         let depth: Int
@@ -43,30 +73,6 @@ struct PlanView: View {
         )
     }
 
-    /// Budgeted, spent, and remaining across the top-level categories. Child
-    /// limits are allocations inside their parent, so summing roots avoids
-    /// counting the same money twice.
-    private func summary(
-        _ progress: [UUID: BudgetProgress]
-    ) -> (limit: Money, spent: Money, remaining: Money)? {
-        guard let currency = model.profile?.baseCurrency else { return nil }
-        let roots = model.budgetNodes.filter { $0.parentID == nil }
-        let limit = roots.compactMap(\.limit).reduce(Decimal.zero) { $0 + $1.amount }
-        guard limit > .zero else { return nil }
-
-        let spent = roots
-            .filter { $0.limit != nil }
-            .compactMap { progress[$0.id]?.spent.amount }
-            .reduce(Decimal.zero, +)
-
-        guard let limitMoney = try? Money(limit, currency: currency),
-              let spentMoney = try? Money(spent, currency: currency),
-              let remainingMoney = try? Money(limit - spent, currency: currency) else {
-            return nil
-        }
-        return (limitMoney, spentMoney, remainingMoney)
-    }
-
     var body: some View {
         // Resolved once per update. Reading it inside the row loop recomputed
         // the whole budget tree for every category on screen.
@@ -75,7 +81,7 @@ struct PlanView: View {
 
         return NavigationStack {
             List {
-                if let summary = summary(progress) {
+                if let summary = model.budgetPlanSummaryThisMonth() {
                     Section {
                         BudgetSummaryCard(
                             limit: summary.limit,
@@ -172,8 +178,10 @@ private struct BudgetRow: View {
     private var spent: Money? { progress?.spent }
 
     private var ratio: Double? {
-        guard let limit = node.limit?.amount, limit > .zero,
+        guard let limit = node.limit?.amount,
               let spent = spent?.amount else { return nil }
+        if limit == .zero { return spent > .zero ? 2 : 0 }
+        guard limit > .zero else { return nil }
         return NSDecimalNumber(decimal: spent / limit).doubleValue
     }
 
@@ -236,7 +244,7 @@ private struct BudgetSummaryCard: View {
     let elapsed: Double
 
     private var ratio: Double {
-        guard limit.amount > .zero else { return 0 }
+        guard limit.amount > .zero else { return spent.amount > .zero ? 2 : 0 }
         return NSDecimalNumber(decimal: spent.amount / limit.amount).doubleValue
     }
 

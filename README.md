@@ -8,9 +8,9 @@ on-device charts, accounts and holdings, and spreadsheet-friendly export.
 
 ## Project status
 
-MoneyUp is at **Founders Beta 0.3.0**. The app is functional and can be installed
-from source on an iOS 18 device through Xcode. It is not yet distributed as a
-signed TestFlight or App Store build.
+MoneyUp is preparing **Founders Beta 0.4.0**. An earlier signed build is already
+installed by the account holder through private TestFlight; developers can also
+install the app from source on an iOS 18 device through Xcode.
 
 The beta includes:
 
@@ -33,7 +33,10 @@ The beta includes:
   recognition, parses typed phrases such as "lunch 12.50 cash yesterday", and
   suggests a category from the user's own history, with no image retained and
   no remote model involved;
-- a privacy-redacted Home Screen widget with expense and income shortcuts;
+- a permanent leftmost Log tab with encrypted draft recovery, retained defaults,
+  success feedback, and Undo;
+- configurable privacy-redacted Home and Lock Screen widgets for expense,
+  income, transfer, smart entry, and receipt scanning;
 - posting-level CSV export with account metadata for Numbers and Excel;
 - English and Simplified Chinese UI and first-run categories;
 - a royal-blue app icon and accent colour with restrained gold highlights, a
@@ -53,15 +56,15 @@ protect them because they are readable plaintext.
 
 ### iPhone-only tester
 
-Once the signed founders build is available, install Apple's TestFlight app,
-open the private MoneyUp invitation, and tap Install. MoneyUp itself has no
+Install Apple's TestFlight app, open the private MoneyUp invitation, and tap
+Install. MoneyUp itself has no
 login; the invitation uses an Apple Account through TestFlight and never needs
 a ChatGPT account. See the [first-test runbook](docs/FIRST_TEST.md).
 
 The Apple Developer membership is active, both bundle identifiers and the App
 Store Connect record exist, and the protected GitHub environment has been
-configured by the account holder. The first TestFlight build now waits for the
-signed validation and upload workflows. The
+configured by the account holder. New candidates go through signed validation
+and the protected upload workflow. The
 [iPhone-only Apple setup guide](docs/APPLE_SETUP.md) gives the exact steps and
 keeps every private key out of the repository and chat.
 

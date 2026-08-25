@@ -5,4 +5,5 @@ public enum RecordCollection: String, CaseIterable, Sendable {
     case budgetNodes = "budget_nodes"
     case scheduledTransactions = "scheduled_transactions"
     case investmentHoldings = "investment_holdings"
+    case quickLogDrafts = "quick_log_drafts"
 }

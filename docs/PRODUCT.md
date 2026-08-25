@@ -10,7 +10,7 @@ The daily loop is:
 
 1. Record an expense, income, or transfer in seconds.
 2. See its effect on account balances and nested budgets immediately.
-3. Understand what is safe to spend now and what is scheduled next.
+3. Understand the current liquid position, budget progress, and what is scheduled next.
 4. Retain ownership through documented exports; add portable encrypted backup
    before public release.
 
@@ -23,17 +23,17 @@ approved.
 
 ## Core capabilities
 
-| Capability | Founders Beta 0.3.0 behavior |
+| Capability | Founders Beta 0.4.0 behavior |
 |---|---|
 | Privacy and security | No account or backend; encrypted local database; local authentication |
-| Budget planner | Monthly nested limits, roll-up, progress, and liquid availability |
-| Widgets | Privacy-redacted, authenticated quick-log entry points |
+| Budget planner | Monthly nested limits, roll-up, progress, and explicit unbudgeted spending |
+| Widgets | Configurable, privacy-redacted Home and Lock Screen entry points |
 | Hierarchy | Arbitrary-depth model with group/category/subcategory roll-up |
 | Insights | Category distribution, monthly cash flow, and plain-language readings over a selectable period |
 | Finance calendar | Actual transactions and recurring projected occurrences |
 | Assets | Assets, liabilities, cards, loans, accounts, and manual holdings |
 | Portability | Enriched posting-level CSV; encrypted archive remains planned |
-| Easy logging | Amount first, smart defaults, progressive optional detail |
+| Easy logging | Leftmost Log tab, amount first, encrypted drafts, retained defaults, and Undo |
 | Smart entry | On-device receipt and screenshot reading, typed-phrase parsing, and category suggestions learned from the user's own history |
 | Languages | English and Simplified Chinese with locale-correct dates and amounts |
 

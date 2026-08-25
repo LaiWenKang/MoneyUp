@@ -281,20 +281,27 @@ struct InsightsView: View {
             )
         }
 
-        if period == .thisMonth, let change = report.monthOverMonth {
-            lines.append(contentsOf: monthOverMonthLine(change))
+        if period == .thisMonth,
+           let comparison = model.monthToDateExpenseComparison(),
+           !comparison.holdsUnconvertedActivity {
+            lines.append(
+                contentsOf: monthToDateComparisonLine(
+                    previous: comparison.previous.amount,
+                    latest: comparison.current.amount
+                )
+            )
         }
 
         return lines.isEmpty ? [String(localized: "insights.no_data")] : lines
     }
 
-    private func monthOverMonthLine(
-        _ change: (previous: MonthlyFlow, latest: MonthlyFlow)
+    private func monthToDateComparisonLine(
+        previous: Decimal,
+        latest: Decimal
     ) -> [String] {
-        let previous = change.previous.expense.amount
         guard previous > .zero else { return [] }
 
-        let delta = (change.latest.expense.amount - previous) / previous
+        let delta = (latest - previous) / previous
         let threshold = Decimal(1) / Decimal(200)
 
         if delta > threshold {

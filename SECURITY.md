@@ -3,7 +3,7 @@
 MoneyUp handles sensitive financial data. Security claims here distinguish
 implemented controls from planned work and known limits.
 
-## Founders Beta 0.3.0 controls
+## Founders Beta 0.4.0 controls
 
 | Control | Status |
 |---|---|
@@ -61,8 +61,10 @@ The guarantee does not cover:
    local-authentication context.
 4. The key opens SQLCipher only after authentication. The temporary Swift
    buffer is overwritten immediately after the store opens.
-5. When the app enters the background, it closes SQLCipher, drops all decoded
-   models from application state, and returns to the locked screen.
+5. When the app enters the background, it flushes the latest Log form/defaults
+   to SQLCipher, closes the store, drops decoded models, and returns to the
+   locked screen. Receipt images are never part of the draft. A transaction
+   commit and removal of its pre-save draft occur in one database transaction.
 6. If the protected key and database no longer match, the app refuses to read
    records. A separately confirmed reset removes the inaccessible database and
    key; it never guesses, downgrades encryption, or silently overwrites data.
@@ -84,7 +86,7 @@ The guarantee does not cover:
 
 The Keychain key uses a this-device-only policy. Deleting the app, erasing its
 data, or losing that key can make the database permanently unreadable. Founders
-Beta 0.3.0 does not yet provide a restorable encrypted archive. CSV export is
+Beta 0.4.0 does not yet provide a restorable encrypted archive. CSV export is
 readable and useful in Numbers or Excel, but it is not a full-fidelity restore
 format. Because the protected key cannot migrate, the app excludes the
 database directory from system backup rather than allowing unrestorable

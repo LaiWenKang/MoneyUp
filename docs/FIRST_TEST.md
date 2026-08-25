@@ -1,24 +1,30 @@
 # MoneyUp Founders Test Runbook
 
-Version target: 0.3.0 (source build 3; the GitHub workflow assigns a newer
+Version target: 0.4.0 (source build 4; the GitHub workflow assigns a newer
 unique TestFlight build)
 
 This runbook is for the user and his girlfriend, MoneyUp's first two iPhone
 testers. Use small sample values during the first session. The beta is not yet
 the right place for records that cannot be reconstructed.
 
-## How installation will work
+## How installation works
 
-The account holder installs from the private **Founders Internal** TestFlight
-group after the first build is uploaded. The girlfriend is invited by email to
-the private **Founders External** group after Apple's first TestFlight Beta App
-Review accepts the build.
+The account holder has already installed an earlier signed beta from the
+private **Founders Internal** TestFlight group. Install the 0.4 candidate from
+that same group when it appears. The girlfriend is invited by email to the
+private **Founders External** group after Apple's TestFlight Beta App Review
+accepts the selected build.
+
+Before the account holder updates the installed 0.3 build, pin its old static
+small and medium MoneyUp widgets. Confirm the small widget opens Expense and
+the medium widget's Expense and Income links work, then leave both pinned for
+the migration checks in section 7.
 
 On each iPhone:
 
 1. Install Apple's **TestFlight** app from the App Store.
 2. Open the Apple invitation and accept it with the intended Apple Account.
-3. Install MoneyUp in TestFlight.
+3. Install or update MoneyUp in TestFlight.
 4. Open MoneyUp. First setup requires a device passcode; later unlocks use the
    device passcode, Face ID, or Touch ID.
 
@@ -30,7 +36,7 @@ well before the expiry date shown in TestFlight.
 ## Before starting
 
 - Use an iPhone running iOS 18 or later with a device passcode enabled.
-- Confirm TestFlight shows version 0.3.0 and build 3 or newer.
+- Confirm TestFlight shows version 0.4.0 and build 4 or newer.
 - Decide who tests English and who tests Simplified Chinese first; switch roles
   on a later day.
 - Prepare fictional sample accounts, merchants, balances, and a receipt image.
@@ -53,7 +59,14 @@ the app silently resets, or the opening balance is wrong.
 
 ### 2. Core logging
 
-- Record a sample expense from Quick Log.
+- Record a sample expense from the leftmost Log tab.
+- Enter part of another transaction, background and unlock MoneyUp, and confirm
+  the encrypted draft returns without being saved as a transaction.
+- Tap Save twice rapidly and confirm exactly one transaction is recorded.
+- Tap Save and immediately background MoneyUp. After unlocking, confirm there
+  is exactly one saved transaction and no stale copy in the draft.
+- Save a sample, use Undo from the six-second confirmation, and confirm the
+  transaction and its effects disappear.
 - Record a sample income.
 - Add a second account and make a same-currency transfer.
 - If relevant, add a different-currency account and record a transfer with the
@@ -63,21 +76,36 @@ the app silently resets, or the opening balance is wrong.
   smart entry, then correct every field before saving.
 - Select a sample receipt or screenshot. Confirm recognized values are
   editable and that the image does not appear anywhere in MoneyUp afterward.
+- Leave an unfinished expense draft, then open the Income widget action.
+  Confirm MoneyUp asks whether to resume or discard the encrypted draft and
+  never silently changes its transaction type.
 
 ### 3. Budgets and insights
 
 - Add a parent and child expense category.
 - Set monthly limits at both levels.
 - Log spending to the child and confirm it rolls up to the parent exactly once.
-- Check Today, Plan, Calendar, and Insights for the same amount and currency.
+- Clear one limit to zero and confirm Plan remains readable without a broken or
+  misleading progress bar.
+- Check Today, Plan (including Calendar), and Insights for the same amount and currency.
 - Change the Insights period and verify that earlier sample entries appear only
   when their dates belong to the selected period.
+- Isolate or delete earlier expense samples, then make total base-currency
+  expenses 100 for last month's equivalent period and 120 for this month so
+  far. Confirm the month-to-date sentence says up 20%. Replace this month's
+  total with 80, then 100, to confirm down 20% and level.
+- Add a foreign-currency expense to either comparison window and confirm the
+  month-to-date comparison sentence is suppressed while that currency remains
+  listed separately.
 
 ### 4. Calendar and schedules
 
 - Add a weekly or monthly scheduled expense.
 - Move the calendar to its next date and confirm the projection appears without
   changing the actual balance.
+- Add a schedule dated on the 29th, 30th, or 31st and verify a short month uses
+  its last valid day before returning to the original day when possible (for
+  example, 31 January → 28 February → 31 March).
 - Swipe the schedule, cancel deletion once, then delete the sample. Future
   projections should disappear; actual transactions should remain.
 
@@ -92,7 +120,7 @@ the app silently resets, or the opening balance is wrong.
 
 ### 6. Corrections and export
 
-- In Calendar, swipe a sample transaction.
+- In Plan > Calendar, swipe a sample transaction.
 - Cancel the first deletion and confirm nothing changes.
 - Delete it on the second attempt and verify its effects disappear from the
   balance, budget, calendar, and report.
@@ -103,10 +131,18 @@ the app silently resets, or the opening balance is wrong.
 
 ### 7. Widget
 
-- Add the small or medium MoneyUp widget to the Home Screen.
+- On the account holder's upgraded phone, confirm both pinned 0.3 widgets still
+  render, their legacy expense/income links open correctly, they can be resized
+  and edited, and they survive a reboot. Then choose a 0.4 preferred action. If
+  migration fails, remove and re-add the widget and report both build numbers.
+- Add small and medium MoneyUp widgets to the Home Screen and one MoneyUp widget
+  to the Lock Screen.
+- Check inline, circular, and rectangular Lock Screen families where available,
+  plus tinted Home Screen rendering.
 - Confirm it shows no balances, payees, or statistics.
-- Use both expense and income shortcuts. Each must open the locked MoneyUp app,
-  authenticate, and then show the correct entry type.
+- Configure and test Expense, Income, Transfer, Smart Entry, and Receipt. Each must
+  open the locked MoneyUp app, authenticate, select Log, and show the correct
+  entry mode.
 
 ## Seven-day use test
 
