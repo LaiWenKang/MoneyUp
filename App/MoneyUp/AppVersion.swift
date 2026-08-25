@@ -39,7 +39,6 @@ enum ReleaseNotes {
         switch version {
         case "0.4.1":
             [
-                "whats_new.0_4_1.speed",
                 "whats_new.0_4_1.history",
                 "whats_new.0_4_1.safety",
                 "whats_new.0_4_1.import"
