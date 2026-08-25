@@ -1,0 +1,12 @@
+{
+  "name": "moneyup-web",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "MoneyUp for the browser: a local-first, encrypted budget book.",
+  "license": "MIT",
+  "scripts": {
+    "test": "node --test \"test/*.test.js\"",
+    "serve": "python3 -m http.server 8080"
+  }
+}

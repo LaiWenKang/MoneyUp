@@ -44,6 +44,16 @@ items are not promised by the current build.
 - [ ] Accessibility and bilingual UI automation on physical form factors
 - [ ] Performance tests for large ledgers and long recurrence histories
 
+## Browser app
+
+- [x] Local-first PWA with the ledger, budgets, and reporting ported
+- [x] AES-GCM records in IndexedDB under a passphrase-derived key
+- [x] Typed-phrase entry, category suggestions, and CSV export
+- [ ] Receipt OCR in the browser through a WASM engine
+- [ ] Finance calendar, investment holdings, and recurring transactions
+- [ ] Passkey unlock as an alternative to the passphrase
+- [ ] A shared conformance suite run against both the Swift and the JS domain
+
 ## Portability and distribution
 
 - [ ] Versioned authenticated `.moneyup` backup archive

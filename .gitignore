@@ -31,3 +31,7 @@ Package.resolved
 # Editor state
 .idea/
 .vscode/
+
+# Web app
+web/node_modules/
+web/*.local.mjs

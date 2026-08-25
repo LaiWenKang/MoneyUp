@@ -30,6 +30,16 @@ The app processes records locally and makes no financial-data network request.
 Data leaves the app only when the user invokes an export and chooses a
 destination.
 
+The browser app is a second platform with a different, weaker key protection,
+documented in full in `web/README.md`. It generates the same kind of random
+256-bit data key, but wraps it with a passphrase-derived key (PBKDF2-SHA256,
+600,000 iterations) instead of the Keychain, because a browser has neither a
+Keychain nor a Secure Enclave. Records are AES-GCM encrypted in IndexedDB and
+nothing is uploaded, but the passphrase is the whole of the protection, it
+cannot be recovered, and same-origin script access is a real exposure the iOS
+app does not have. Claims made for iOS in this document should not be read as
+covering the browser app.
+
 Smart entry does not change this. Receipt text recognition runs through the
 on-device Vision framework, the selected image is held only long enough to
 read it and is never written to the database or transmitted, and typed-phrase

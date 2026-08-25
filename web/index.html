@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MoneyUp</title>
+<meta name="description" content="Private money, clearly understood. A local-first, encrypted budget and personal-finance book that runs entirely in your browser.">
+<meta name="theme-color" content="#101E52">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" href="./icons/icon-192.png">
+<link rel="apple-touch-icon" href="./icons/icon-192.png">
+<style>
+:root {
+  color-scheme: light dark;
+  --royal: #2647C4;
+  --royal-deep: #101E52;
+  --gold: #B08420;
+  --bg: #F2F4F9;
+  --surface: #FFFFFF;
+  --surface-2: #EBEEF6;
+  --text: #131727;
+  --text-dim: #5B6178;
+  --line: #DFE3EE;
+  --positive: #17794A;
+  --negative: #B3261E;
+  --radius: 16px;
+  --shadow: 0 1px 2px rgba(16, 30, 82, .06), 0 8px 24px rgba(16, 30, 82, .06);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --royal: #7E9BFF;
+    --royal-deep: #070F33;
+    --gold: #E9C765;
+    --bg: #0B0F1E;
+    --surface: #151A2E;
+    --surface-2: #1E2440;
+    --text: #ECEEF6;
+    --text-dim: #9AA2BE;
+    --line: #262D48;
+    --positive: #5BD39B;
+    --negative: #FF8A80;
+    --shadow: none;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+#root { min-height: 100%; }
+
+/* ---------- gate (setup / lock / onboarding) ---------- */
+.gate {
+  max-width: 26rem;
+  margin: 0 auto;
+  padding: max(3rem, env(safe-area-inset-top)) 1.25rem 3rem;
+  display: flex; flex-direction: column; gap: .9rem;
+}
+.brand { display: flex; align-items: center; gap: .7rem; margin-bottom: .5rem; }
+.brand h1 { font-size: 1.35rem; margin: 0; letter-spacing: -.01em; }
+.mark {
+  width: 40px; height: 40px; border-radius: 11px; flex: none;
+  background: linear-gradient(160deg, var(--royal-deep), var(--royal));
+  position: relative;
+}
+.mark::after {
+  content: ""; position: absolute; inset: 0;
+  background:
+    linear-gradient(var(--gold), var(--gold)) 9px 22px / 5px 9px no-repeat,
+    linear-gradient(var(--gold), var(--gold)) 17px 17px / 5px 14px no-repeat,
+    linear-gradient(var(--gold), var(--gold)) 25px 12px / 5px 19px no-repeat;
+  border-radius: inherit;
+}
+.gate h2 { margin: 0; font-size: 1.5rem; letter-spacing: -.02em; }
+
+/* ---------- layout ---------- */
+.content {
+  max-width: 44rem; margin: 0 auto;
+  padding: max(1rem, env(safe-area-inset-top)) 1rem 7.5rem;
+}
+.stack { display: flex; flex-direction: column; gap: 1rem; }
+.stack-tight { display: flex; flex-direction: column; gap: .75rem; }
+.row { display: flex; align-items: center; justify-content: space-between; gap: .75rem; }
+.grow { flex: 1; min-width: 0; }
+.actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1rem;
+  box-shadow: var(--shadow);
+}
+.card-label { margin: 0 0 .5rem; font-weight: 600; font-size: .95rem; }
+.headline {
+  margin: .1rem 0 .35rem; font-size: 2.1rem; font-weight: 700;
+  letter-spacing: -.03em; font-variant-numeric: tabular-nums;
+}
+.headline.negative { color: var(--negative); }
+.muted, .small, .tiny { color: var(--text-dim); margin: .35rem 0 0; }
+.small { font-size: .875rem; }
+.tiny { font-size: .78rem; }
+.strong { font-weight: 600; margin: 0; }
+.mono { font-variant-numeric: tabular-nums; }
+.error { color: var(--negative); margin: 0; font-size: .9rem; min-height: 1.2em; }
+
+/* ---------- lists ---------- */
+.list { list-style: none; margin: .25rem 0 0; padding: 0; }
+.list-row {
+  display: flex; align-items: center; justify-content: space-between; gap: .75rem;
+  padding: .6rem 0; border-top: 1px solid var(--line);
+}
+.list-row:first-child { border-top: none; }
+.list-row p { margin: 0; }
+.tappable { cursor: pointer; }
+.tappable:hover { background: var(--surface-2); }
+.amount { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
+.amount.positive { color: var(--positive); }
+.amount.negative { color: var(--negative); }
+.suffix { font-weight: 400; color: var(--text-dim); font-size: .8rem; }
+
+/* ---------- budget bar ---------- */
+.bar {
+  position: relative; height: 8px; border-radius: 99px;
+  background: var(--surface-2); overflow: hidden; margin: .5rem 0 .35rem;
+}
+.bar-fill { position: absolute; inset: 0 auto 0 0; background: var(--royal); border-radius: 99px; }
+.bar-fill.over { background: var(--negative); }
+.bar-pace { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--text); opacity: .45; }
+
+/* ---------- metrics ---------- */
+.metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: .6rem; }
+.metric {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: 14px; padding: .7rem .75rem; display: flex; flex-direction: column; gap: .2rem;
+}
+.metric-label { font-size: .75rem; color: var(--text-dim); }
+.metric-value { font-weight: 700; font-variant-numeric: tabular-nums; font-size: .95rem; }
+.metric.income .metric-value { color: var(--positive); }
+.metric.expense .metric-value { color: var(--gold); }
+.metric.net .metric-value { color: var(--royal); }
+.metric.negative .metric-value { color: var(--negative); }
+
+/* ---------- charts ---------- */
+.chart { display: flex; flex-direction: column; gap: .45rem; margin-top: .5rem; }
+.chart-row { display: grid; grid-template-columns: 7rem 1fr auto; align-items: center; gap: .6rem; }
+.chart-name { font-size: .85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chart-track { background: var(--surface-2); border-radius: 99px; height: 12px; }
+.chart-fill { display: block; height: 100%; border-radius: 99px; background: var(--royal); }
+.chart-fill.other { background: var(--text-dim); }
+.chart-value { font-size: .8rem; font-variant-numeric: tabular-nums; color: var(--text-dim); }
+
+.columns { display: flex; gap: .5rem; align-items: flex-end; height: 170px; margin-top: .6rem; }
+.column { flex: 1; display: flex; flex-direction: column; align-items: center; gap: .3rem; height: 100%; }
+.column-pair { flex: 1; display: flex; align-items: flex-end; gap: 3px; width: 100%; justify-content: center; }
+.column-bar { width: 42%; border-radius: 4px 4px 0 0; }
+.column-bar.income { background: var(--positive); }
+.column-bar.expense { background: var(--gold); }
+.column-label { font-size: .7rem; color: var(--text-dim); }
+
+.readings { margin: .4rem 0 0; padding-left: 1.1rem; color: var(--text-dim); }
+.readings li { margin: .25rem 0; }
+
+/* ---------- controls ---------- */
+.field { display: flex; flex-direction: column; gap: .3rem; }
+.field-label { font-size: .82rem; color: var(--text-dim); }
+input, select, textarea {
+  font: inherit; color: var(--text); background: var(--surface);
+  border: 1px solid var(--line); border-radius: 11px; padding: .6rem .7rem; width: 100%;
+}
+input:focus-visible, select:focus-visible, .btn:focus-visible, .tab:focus-visible {
+  outline: 2px solid var(--royal); outline-offset: 2px;
+}
+.btn {
+  font: inherit; font-weight: 600; cursor: pointer;
+  background: var(--surface-2); color: var(--text);
+  border: 1px solid var(--line); border-radius: 11px; padding: .55rem .9rem;
+}
+.btn:hover { border-color: var(--royal); }
+.btn.primary { background: var(--royal); border-color: var(--royal); color: #fff; }
+.btn.danger { color: var(--negative); }
+.btn.danger.wide { background: var(--negative); border-color: var(--negative); color: #fff; }
+.btn.wide { width: 100%; padding: .8rem; }
+.btn[disabled] { opacity: .6; cursor: default; }
+.segmented { display: flex; gap: .25rem; background: var(--surface-2); padding: .25rem; border-radius: 12px; }
+.segment {
+  flex: 1; font: inherit; font-weight: 600; cursor: pointer;
+  border: none; background: transparent; color: var(--text-dim);
+  border-radius: 9px; padding: .45rem;
+}
+.segment.active { background: var(--surface); color: var(--royal); }
+.icon {
+  font: inherit; cursor: pointer; background: none; border: none;
+  color: var(--text-dim); font-size: 1.1rem; padding: .25rem .5rem;
+}
+
+/* ---------- tabs and fab ---------- */
+.tabs {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
+  display: flex; background: var(--surface);
+  border-top: 1px solid var(--line);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.tab {
+  flex: 1; font: inherit; font-size: .8rem; font-weight: 600; cursor: pointer;
+  background: none; border: none; color: var(--text-dim); padding: .75rem .25rem;
+}
+.tab.active { color: var(--royal); }
+.fab {
+  position: fixed; right: 1rem; z-index: 6;
+  bottom: calc(4.5rem + env(safe-area-inset-bottom));
+  width: 56px; height: 56px; border-radius: 50%; border: none; cursor: pointer;
+  background: var(--royal); color: #fff; font-size: 1.9rem; line-height: 1;
+  box-shadow: 0 6px 20px rgba(38, 71, 196, .38);
+}
+
+/* ---------- sheets ---------- */
+.scrim {
+  position: fixed; inset: 0; z-index: 10;
+  background: rgba(9, 14, 34, .45);
+  display: flex; align-items: flex-end; justify-content: center;
+}
+.sheet {
+  background: var(--bg); width: min(36rem, 100%);
+  border-radius: 20px 20px 0 0; max-height: 92vh;
+  display: flex; flex-direction: column;
+}
+.sheet-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 1rem 1rem .5rem; border-bottom: 1px solid var(--line);
+}
+.sheet-head h2 { margin: 0; font-size: 1.05rem; }
+.sheet-body {
+  padding: 1rem; overflow-y: auto;
+  padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+  display: flex; flex-direction: column; gap: .75rem;
+}
+@media (min-width: 40rem) {
+  .scrim { align-items: center; }
+  .sheet { border-radius: 20px; }
+}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<noscript>MoneyUp needs JavaScript: the ledger, the encryption, and the reports all run in your browser.</noscript>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>

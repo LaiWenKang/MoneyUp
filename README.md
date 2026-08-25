@@ -77,6 +77,21 @@ first-run checklist, widget steps, and data-retention caveats.
    accounting detail.
 6. **Bilingual by design:** English and Simplified Chinese ship together.
 
+## Run it in a browser
+
+MoneyUp also ships as a local-first web app with the same ledger rules, so it
+runs without a Mac or an iPhone:
+
+```bash
+cd web && python3 -m http.server 8080
+```
+
+Records are encrypted with AES-GCM under a key derived from a passphrase you
+choose, and stored in IndexedDB. Nothing is uploaded. The browser has no
+Keychain and no Secure Enclave, so that passphrase is the whole of the
+protection and a forgotten one cannot be recovered — see
+[web/README.md](web/README.md) for the full comparison.
+
 ## Repository layout
 
 ```text
@@ -85,6 +100,7 @@ App/MoneyUpWidget/              Privacy-safe WidgetKit extension
 Sources/MoneyUpCore/            Finance domain and export rules
 Sources/MoneyUpPersistence/     SQLCipher encrypted record store
 Tests/                          Domain and encrypted-store tests
+web/                            Browser app: same ledger, encrypted in IndexedDB
 docs/                           Product, architecture, data, and roadmap
 project.yml                     Reproducible XcodeGen definition
 Package.swift                   Swift package and pinned dependency
@@ -105,7 +121,8 @@ xcodebuild \
 ```
 
 The generated Xcode project is intentionally ignored. CI repeats both commands
-on every change to `main` and on pull requests.
+on every change to `main` and on pull requests, and runs the browser app's
+tests with `node --test` alongside them.
 
 ## Security
 
