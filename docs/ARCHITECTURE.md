@@ -18,7 +18,7 @@ testable.
 
 ## Module boundaries
 
-| Module | Responsibility | Founders Beta 0.3.0 |
+| Module | Responsibility | Founders Beta 0.4.0 |
 |---|---|---|
 | MoneyUp app | State machine, lock lifecycle, bilingual SwiftUI, local insights | Implemented |
 | MoneyUpCore | Money, ledger, hierarchy, recurrence, holdings, export rules | Implemented |
@@ -32,8 +32,12 @@ testable.
 The application moves between launching, locked, onboarding, ready, and failed
 states. Only `ready` retains decoded records. Entering the background closes the
 actor-isolated database and clears all decoded arrays before showing the locked
-screen. The inactive phase overlays a material privacy cover so the app-switcher
-snapshot cannot capture balances or transactions.
+screen. If Log contains an unfinished transaction, its latest text fields and
+selections are flushed to SQLCipher first; receipt images are never retained.
+Saving a transaction atomically commits the journal entry and removes its draft;
+the cleared form may subsequently retain only useful encrypted defaults.
+The inactive phase overlays an opaque privacy cover so the app-switcher snapshot
+cannot capture balances or transactions.
 
 On unlock, Keychain enforces local user presence before returning the SQLCipher
 key. The app loads records, validates cross-record references and the complete

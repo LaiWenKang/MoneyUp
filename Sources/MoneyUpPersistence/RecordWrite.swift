@@ -24,3 +24,14 @@ public struct RecordWrite: Sendable {
         self.payload = payload
     }
 }
+
+/// A deletion that can be committed atomically with one or more record writes.
+public struct RecordDeletion: Sendable {
+    let collection: RecordCollection
+    let id: String
+
+    public init(id: String, from collection: RecordCollection) {
+        self.collection = collection
+        self.id = id
+    }
+}

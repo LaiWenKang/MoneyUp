@@ -2,6 +2,16 @@ import MoneyUpCore
 import SwiftUI
 
 struct DashboardView: View {
+    private struct UpcomingSchedule {
+        let transaction: ScheduledTransaction
+        let occurrence: Date
+
+        var signedAmount: String {
+            let sign = transaction.kind == .expense ? "−" : "+"
+            return sign + formattedMoney(transaction.amount)
+        }
+    }
+
     @EnvironmentObject private var model: AppModel
 
     private var spendableAccounts: [LedgerAccount] {
@@ -10,7 +20,7 @@ struct DashboardView: View {
         }
     }
 
-    private var availableBalance: Money? {
+    private var liquidPosition: Money? {
         guard let currency = model.profile?.baseCurrency else { return nil }
         var total = Decimal.zero
         for account in spendableAccounts where account.currency == currency {
@@ -20,9 +30,9 @@ struct DashboardView: View {
         return try? Money(total, currency: currency)
     }
 
-    /// Spendable money held outside the base currency. MoneyUp stores no
-    /// exchange rates, so these balances are shown beside the headline figure
-    /// instead of being folded into it.
+    /// Liquid positions outside the base currency. MoneyUp stores no exchange
+    /// rates, so these balances are shown beside the headline figure instead
+    /// of being folded into it.
     private var otherCurrencyBalances: [Money] {
         guard let base = model.profile?.baseCurrency else { return [] }
         var totals: [CurrencyCode: Decimal] = [:]
@@ -40,21 +50,28 @@ struct DashboardView: View {
             .sorted { $0.currency < $1.currency }
     }
 
-    private var nextScheduledTransaction: ScheduledTransaction? {
-        model.scheduledTransactions.min { $0.nextOccurrence < $1.nextOccurrence }
+    private var nextScheduledTransaction: UpcomingSchedule? {
+        let now = Date()
+        return model.scheduledTransactions
+            .compactMap { transaction in
+                transaction.occurrence(onOrAfter: now).map {
+                    UpcomingSchedule(transaction: transaction, occurrence: $0)
+                }
+            }
+            .min { $0.occurrence < $1.occurrence }
     }
 
-    private var rootBudgetSummary: (spent: Money, limit: Money, ratio: Double)? {
-        guard let currency = model.profile?.baseCurrency else { return nil }
-        let rootIDs = Set(model.budgetNodes.filter { $0.parentID == nil }.map(\.id))
-        let progress = model.budgetProgressThisMonth().filter { rootIDs.contains($0.node.id) }
-        let limit = progress.compactMap(\.node.limit).reduce(Decimal.zero) { $0 + $1.amount }
-        guard limit > .zero else { return nil }
-        let spent = progress.reduce(Decimal.zero) { $0 + $1.spent.amount }
-        let ratio = min(max(NSDecimalNumber(decimal: spent / limit).doubleValue, 0), 1)
-        guard let spentMoney = try? Money(spent, currency: currency),
-              let limitMoney = try? Money(limit, currency: currency) else { return nil }
-        return (spentMoney, limitMoney, ratio)
+    private var budgetSummary: BudgetPlanSummary? {
+        model.budgetPlanSummaryThisMonth()
+    }
+
+    private func budgetRatio(_ summary: BudgetPlanSummary) -> Double {
+        guard summary.limit.amount > .zero else {
+            return summary.spent.amount > .zero ? 1 : 0
+        }
+        return NSDecimalNumber(
+            decimal: summary.spent.amount / summary.limit.amount
+        ).doubleValue
     }
 
     var body: some View {
@@ -63,11 +80,11 @@ struct DashboardView: View {
                 LazyVStack(spacing: 16) {
                     DashboardCard(backgroundColor: Color.accentColor.opacity(0.07)) {
                         VStack(alignment: .leading, spacing: 8) {
-                            Label("dashboard.safe_to_spend", systemImage: "checkmark.shield.fill")
+                            Label("dashboard.liquid_position", systemImage: "banknote.fill")
                                 .font(.headline)
                                 .foregroundStyle(.tint)
 
-                            Text(availableBalance.map(formattedMoney) ?? "—")
+                            Text(liquidPosition.map(formattedMoney) ?? "—")
                                 .font(.system(.largeTitle, design: .rounded, weight: .bold))
                                 .contentTransition(.numericText())
 
@@ -96,14 +113,27 @@ struct DashboardView: View {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("dashboard.monthly_budget")
                                 .font(.headline)
-                            if let summary = rootBudgetSummary {
-                                ProgressView(value: summary.ratio)
-                                    .tint(summary.ratio >= 1 ? .red : .accentColor)
+                            if let summary = budgetSummary {
+                                let ratio = budgetRatio(summary)
+                                ProgressView(value: min(max(ratio, 0), 1))
+                                    .tint(ratio >= 1 ? .red : .accentColor)
                                 Text(
                                     "\(formattedMoney(summary.spent)) / \(formattedMoney(summary.limit))"
                                 )
                                 .font(.subheadline.monospacedDigit())
                                 .foregroundStyle(.secondary)
+
+                                if summary.unbudgetedSpent.amount > .zero {
+                                    HStack {
+                                        Text("dashboard.unbudgeted_spending")
+                                        Spacer()
+                                        Text(formattedMoney(summary.unbudgetedSpent))
+                                            .monospacedDigit()
+                                    }
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                                    .accessibilityElement(children: .combine)
+                                }
                             } else {
                                 Text("dashboard.no_budget")
                                     .font(.subheadline)
@@ -114,20 +144,36 @@ struct DashboardView: View {
 
                     if let upcoming = nextScheduledTransaction {
                         DashboardCard {
-                            Label {
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text("dashboard.upcoming")
-                                        .font(.headline)
-                                    Text(
-                                        upcoming.nextOccurrence,
-                                        format: .dateTime.month().day()
-                                    )
-                                    .foregroundStyle(.secondary)
+                            VStack(alignment: .leading, spacing: 12) {
+                                Label(
+                                    "dashboard.upcoming",
+                                    systemImage: "calendar.badge.clock"
+                                )
+                                .font(.headline)
+
+                                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(upcoming.transaction.name)
+                                            .fontWeight(.semibold)
+                                            .lineLimit(1)
+                                        Text(
+                                            upcoming.occurrence,
+                                            format: .dateTime.month().day().year()
+                                        )
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
+                                    }
+                                    Spacer(minLength: 8)
+                                    Text(upcoming.signedAmount)
+                                        .font(.subheadline.monospacedDigit().weight(.semibold))
+                                        .foregroundStyle(
+                                            upcoming.transaction.kind == .income
+                                                ? Color.green
+                                                : Color.primary
+                                        )
                                 }
-                            } icon: {
-                                Image(systemName: "calendar.badge.clock")
-                                    .font(.title2)
                             }
+                            .accessibilityElement(children: .combine)
                         }
                     }
 

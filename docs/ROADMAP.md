@@ -1,6 +1,6 @@
 # Delivery Roadmap
 
-Completed checkboxes describe Founders Beta 0.3.0 behavior on `main`; unchecked
+Completed checkboxes describe Founders Beta 0.4.0 behavior; unchecked
 items are not promised by the current build.
 
 ## Foundation — finance and secure storage
@@ -15,7 +15,7 @@ items are not promised by the current build.
 - [x] Wrong-key, plaintext-leak, migration-compatibility, and rollback tests
 - [x] Destructive failed-recovery path with explicit confirmation
 
-## Daily use — Founders Beta 0.3.0
+## Daily use — Founders Beta 0.4.0
 
 - [x] Onboarding with base currency, first account, and opening balance
 - [x] Expense, income, same-currency, and foreign-currency transfer logging
@@ -27,7 +27,8 @@ items are not promised by the current build.
 - [x] Category-spending and monthly cash-flow charts over a selectable period
 - [x] Non-base-currency activity reported explicitly instead of dropped
 - [x] Manually valued holdings and base-currency net worth
-- [x] Privacy-redacted WidgetKit quick-log shortcuts
+- [x] Configurable privacy-redacted Home and Lock Screen quick-log shortcuts
+- [x] Persistent leftmost Log tab with encrypted draft recovery and Undo
 - [x] On-device receipt reading, typed-phrase entry, and category suggestions
 - [x] App icon, accent colour, biometry-accurate lock screen, and in-app version
 - [x] Enriched, formula-safe CSV export through the system file picker
@@ -53,7 +54,8 @@ items are not promised by the current build.
 - [ ] Recovery-secret design, transactional restore, and restore drills
 - [ ] Previewable CSV import with duplicate detection
 - [ ] Native XLSX workbook export
-- [ ] Signed TestFlight beta and App Store compliance work
+- [x] Signed private TestFlight beta
+- [ ] App Store submission compliance and review work
 - [ ] Evaluate optional end-to-end-encrypted multi-device sync
 
 ## Explicitly deferred

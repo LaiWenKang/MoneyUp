@@ -1,14 +1,230 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
-    "widget.description" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Open a private fast log without exposing financial data on your Home Screen." } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "快速打开私密记账，不在主屏幕暴露财务数据。" } } } },
-    "widget.detail" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Balances and insights stay behind device authentication." } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "余额与洞察始终受设备身份验证保护。" } } } },
-    "widget.display_name" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Private Quick Log" } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "私密快速记账" } } } },
-    "widget.expense" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Expense" } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "支出" } } } },
-    "widget.income" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Income" } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "收入" } } } },
-    "widget.private" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Financial insights remain locked." } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "财务洞察保持锁定。" } } } },
-    "widget.quick_expense" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Log expense" } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "记录支出" } } } },
-    "widget.title" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "MoneyUp" } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "MoneyUp" } } } }
+    "widget.action.expense" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Expense"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "支出"
+          }
+        }
+      }
+    },
+    "widget.action.income" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Income"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "收入"
+          }
+        }
+      }
+    },
+    "widget.action.scan_receipt" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Receipt"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择小票"
+          }
+        }
+      }
+    },
+    "widget.action.smart_entry" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Smart Entry"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "智能记账"
+          }
+        }
+      }
+    },
+    "widget.action.transfer" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transfer"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "转账"
+          }
+        }
+      }
+    },
+    "widget.configuration.action_type" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quick action"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "快捷操作"
+          }
+        }
+      }
+    },
+    "widget.configuration.default_action" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preferred action"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "首选操作"
+          }
+        }
+      }
+    },
+    "widget.configuration.description" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose the small and Lock Screen action, and the first action in medium widgets."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择小号和锁定屏幕小组件的操作，以及中号小组件的首个操作。"
+          }
+        }
+      }
+    },
+    "widget.configuration.title" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Configure Quick Action"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "配置快捷操作"
+          }
+        }
+      }
+    },
+    "widget.description" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open fast logging actions without displaying financial information."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "快速打开记账操作，不显示任何财务信息。"
+          }
+        }
+      }
+    },
+    "widget.display_name" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Private Quick Actions"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "私密快捷记账"
+          }
+        }
+      }
+    },
+    "widget.quick_actions" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quick actions"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "快捷操作"
+          }
+        }
+      }
+    },
+    "widget.tap_to_open" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tap to open"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "点按打开"
+          }
+        }
+      }
+    },
+    "widget.title" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MoneyUp"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MoneyUp"
+          }
+        }
+      }
+    }
   },
   "version" : "1.0"
 }

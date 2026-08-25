@@ -75,8 +75,22 @@ more than three visible levels and use tags for orthogonal context.
 - Store timestamps as absolute instants and retain the user's relevant calendar
   context separately when day-level reporting depends on it.
 - A recurring template predicts future money movement.
+- Weekly, monthly, and yearly recurrences stay anchored to the original date.
+  If a month or year lacks that day, MoneyUp uses its last valid day and then
+  returns to the original day when it exists again (31 January → 28 February →
+  31 March, for example).
 - The founders beta projects recurring occurrences without posting them. Matching
   actual entries and editing a series or one occurrence remain planned.
+
+## Quick-log draft
+
+One optional in-progress Log draft is stored as a separate SQLCipher record so
+background locking does not discard typed text. It contains only editable form
+values and stable account/category identifiers. Receipt images and picker
+objects are never persisted, and the draft record is removed after a successful
+transaction commit. The cleared form may then store a new encrypted preference
+snapshot containing only the selected kind, account, category, and current
+date so routine entries keep useful defaults without reviving the saved amount.
 
 ## Export identity
 

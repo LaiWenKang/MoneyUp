@@ -31,6 +31,30 @@ public struct BudgetProgress: Equatable, Sendable {
     }
 }
 
+/// A non-overlapping summary of the configured monthly plan.
+///
+/// A limited node is counted only when none of its ancestors has a limit. This
+/// supports a budget set directly on a child category while preventing a child
+/// allocation from being added again beneath a capped parent.
+public struct BudgetPlanSummary: Equatable, Sendable {
+    public let limit: Money
+    public let spent: Money
+    public let remaining: Money
+    public let unbudgetedSpent: Money
+
+    public init(
+        limit: Money,
+        spent: Money,
+        remaining: Money,
+        unbudgetedSpent: Money
+    ) {
+        self.limit = limit
+        self.spent = spent
+        self.remaining = remaining
+        self.unbudgetedSpent = unbudgetedSpent
+    }
+}
+
 public enum BudgetTreeError: Error, Equatable {
     case duplicateNode(UUID)
     case missingParent(nodeID: UUID, parentID: UUID)
@@ -143,6 +167,44 @@ public struct BudgetTree: Codable, Equatable, Sendable {
                 remaining: remaining
             )
         }
+    }
+
+    public func planSummary(
+        directSpending: [UUID: Money]
+    ) throws -> BudgetPlanSummary? {
+        let progress = try progress(directSpending: directSpending)
+        let progressByID = Dictionary(
+            uniqueKeysWithValues: progress.map { ($0.node.id, $0) }
+        )
+        let topmostLimits = nodes.filter { node in
+            guard node.limit != nil else { return false }
+            var parentID = node.parentID
+            while let id = parentID, let parent = nodesByID[id] {
+                if parent.limit != nil { return false }
+                parentID = parent.parentID
+            }
+            return true
+        }
+        guard !topmostLimits.isEmpty else { return nil }
+
+        let limit = topmostLimits
+            .compactMap(\.limit)
+            .reduce(Decimal.zero) { $0 + $1.amount }
+        let spent = topmostLimits.reduce(Decimal.zero) {
+            $0 + (progressByID[$1.id]?.spent.amount ?? .zero)
+        }
+        let totalSpent = nodes
+            .filter { $0.parentID == nil }
+            .reduce(Decimal.zero) {
+                $0 + (progressByID[$1.id]?.spent.amount ?? .zero)
+            }
+
+        return BudgetPlanSummary(
+            limit: try Money(limit, currency: currency),
+            spent: try Money(spent, currency: currency),
+            remaining: try Money(limit - spent, currency: currency),
+            unbudgetedSpent: try Money(totalSpent - spent, currency: currency)
+        )
     }
 
     private static func validateAcyclic(

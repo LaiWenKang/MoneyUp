@@ -128,15 +128,73 @@ final class EncryptedRecordStoreTests: XCTestCase {
             id: "empty-payload",
             payload: Data()
         )
+        let draftMarker = "draft-must-survive-rollback"
+        try await store.upsert(
+            draftMarker,
+            id: "current",
+            in: .quickLogDrafts
+        )
 
         do {
-            try await store.write([valid, invalid])
+            try await store.write(
+                [valid, invalid],
+                removing: [
+                    RecordDeletion(id: "current", from: .quickLogDrafts)
+                ]
+            )
             XCTFail("Expected the payload constraint to reject the batch")
         } catch {
             // The first write must have been rolled back with the second one.
         }
         let count = try await store.count(in: .accounts)
         XCTAssertEqual(count, 0)
+        let retainedDraft = try await store.fetch(
+            String.self,
+            id: "current",
+            from: .quickLogDrafts
+        )
+        XCTAssertEqual(retainedDraft, draftMarker)
+        await store.close()
+    }
+
+    func testEncryptedQuickLogDraftCollectionRoundTripsAndClears() async throws {
+        struct DraftRecord: Codable, Equatable, Sendable {
+            let amountText: String
+            let note: String
+        }
+
+        let fixture = try TemporaryDatabaseFixture()
+        let store = try EncryptedRecordStore(
+            databaseURL: fixture.databaseURL,
+            key: fixture.key
+        )
+        let draft = DraftRecord(amountText: "12.34", note: "unfinished lunch")
+
+        try await store.upsert(draft, id: "current", in: .quickLogDrafts)
+        let loaded = try await store.fetch(
+            DraftRecord.self,
+            id: "current",
+            from: .quickLogDrafts
+        )
+        XCTAssertEqual(loaded, draft)
+
+        let account = LedgerAccount(name: "Committed with draft clear", kind: .asset)
+        try await store.write(
+            [try RecordWrite(account, id: account.id.uuidString, in: .accounts)],
+            removing: [RecordDeletion(id: "current", from: .quickLogDrafts)]
+        )
+        let cleared = try await store.fetch(
+            DraftRecord.self,
+            id: "current",
+            from: .quickLogDrafts
+        )
+        XCTAssertNil(cleared)
+        let committed = try await store.fetch(
+            LedgerAccount.self,
+            id: account.id.uuidString,
+            from: .accounts
+        )
+        XCTAssertEqual(committed, account)
         await store.close()
     }
 }

@@ -101,23 +101,97 @@ public struct ScheduledTransaction: Codable, Equatable, Identifiable, Sendable {
         }
 
         var dates: [Date] = []
-        var candidate = nextOccurrence
+        var offset = 0
 
-        while candidate <= endDate, dates.count < maximumCount {
+        while dates.count < maximumCount,
+              let candidate = occurrence(offset: offset, calendar: calendar),
+              candidate <= endDate {
             dates.append(candidate)
-            let component: Calendar.Component
-            switch frequency {
-            case .weekly: component = .weekOfYear
-            case .monthly: component = .month
-            case .yearly: component = .year
-            }
-            guard let next = calendar.date(byAdding: component, value: 1, to: candidate),
-                  next > candidate else {
-                break
-            }
-            candidate = next
+            offset += 1
         }
 
         return dates
+    }
+
+    /// Returns the first active occurrence that has not already passed.
+    ///
+    /// `nextOccurrence` is the recurrence anchor stored in the book. It may be
+    /// in the past when a schedule has not been advanced after each occurrence,
+    /// so presentation code should use this helper instead of displaying the
+    /// anchor as though it were still upcoming.
+    public func occurrence(
+        onOrAfter referenceDate: Date,
+        calendar: Calendar = .current
+    ) -> Date? {
+        guard isActive else { return nil }
+
+        var offset = 0
+        while let candidate = occurrence(offset: offset, calendar: calendar) {
+            if candidate >= referenceDate { return candidate }
+            offset += 1
+        }
+        return nil
+    }
+
+    /// Every recurrence is calculated from the original anchor, not from the
+    /// prior shortened month. A schedule anchored on 31 January therefore uses
+    /// February's last valid day and returns to the 31st in March.
+    private func occurrence(offset: Int, calendar: Calendar) -> Date? {
+        guard offset >= 0 else { return nil }
+        if offset == 0 { return nextOccurrence }
+        switch frequency {
+        case .weekly:
+            return calendar.date(
+                byAdding: .weekOfYear,
+                value: offset,
+                to: nextOccurrence
+            )
+        case .monthly:
+            return monthAnchoredOccurrence(
+                monthOffset: offset,
+                calendar: calendar
+            )
+        case .yearly:
+            let multiplication = offset.multipliedReportingOverflow(by: 12)
+            guard !multiplication.overflow else { return nil }
+            return monthAnchoredOccurrence(
+                monthOffset: multiplication.partialValue,
+                calendar: calendar
+            )
+        }
+    }
+
+    private func monthAnchoredOccurrence(
+        monthOffset: Int,
+        calendar: Calendar
+    ) -> Date? {
+        guard let anchorMonth = calendar.dateInterval(
+            of: .month,
+            for: nextOccurrence
+        )?.start,
+        let targetMonth = calendar.date(
+            byAdding: .month,
+            value: monthOffset,
+            to: anchorMonth
+        ),
+        let validDays = calendar.range(of: .day, in: .month, for: targetMonth),
+        let lastDay = validDays.last else { return nil }
+
+        let anchor = calendar.dateComponents(
+            [.day, .hour, .minute, .second, .nanosecond],
+            from: nextOccurrence
+        )
+        guard let anchorDay = anchor.day else { return nil }
+
+        var target = calendar.dateComponents(
+            [.era, .year, .month],
+            from: targetMonth
+        )
+        target.day = min(anchorDay, lastDay)
+        target.hour = anchor.hour
+        target.minute = anchor.minute
+        target.second = anchor.second
+        target.nanosecond = anchor.nanosecond
+        return calendar.date(from: target)
     }
 }

@@ -66,9 +66,12 @@ public actor EncryptedRecordStore {
         )
     }
 
-    /// Commits all writes together or rolls every one of them back.
-    public func write(_ records: [RecordWrite]) throws {
-        try connection.write(records)
+    /// Commits all writes and deletions together or rolls every one back.
+    public func write(
+        _ records: [RecordWrite],
+        removing deletions: [RecordDeletion] = []
+    ) throws {
+        try connection.write(records, removing: deletions)
     }
 
     public func fetch<Value: Decodable & Sendable>(
@@ -216,8 +219,11 @@ private final class SQLCipherConnection: @unchecked Sendable {
         }
     }
 
-    func write(_ records: [RecordWrite]) throws {
-        guard !records.isEmpty else { return }
+    func write(
+        _ records: [RecordWrite],
+        removing deletions: [RecordDeletion]
+    ) throws {
+        guard !records.isEmpty || !deletions.isEmpty else { return }
         try execute("BEGIN IMMEDIATE;")
         do {
             let updatedAt = Date().timeIntervalSince1970
@@ -227,6 +233,12 @@ private final class SQLCipherConnection: @unchecked Sendable {
                     recordID: record.id,
                     payload: record.payload,
                     updatedAt: updatedAt
+                )
+            }
+            for deletion in deletions {
+                try remove(
+                    collection: deletion.collection.rawValue,
+                    recordID: deletion.id
                 )
             }
             try execute("COMMIT;")
