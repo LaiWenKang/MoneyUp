@@ -377,7 +377,7 @@ private struct AddAccountSheet: View {
                     Section {
                         Label(errorMessage, systemImage: "exclamationmark.circle.fill")
                             .foregroundStyle(.red)
-                            .accessibilityLiveRegion(.assertive)
+                            .accessibilityAddTraits(.isStaticText)
                     }
                 }
             }

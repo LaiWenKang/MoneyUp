@@ -15,7 +15,7 @@ extension Color {
 /// intentionally restrained when transparency is reduced.
 struct MoneyUpBackdrop: View {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @Environment(\.accessibilityContrast) private var accessibilityContrast
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
 
     var body: some View {
         ZStack {
@@ -23,7 +23,7 @@ struct MoneyUpBackdrop: View {
 
             LinearGradient(
                 colors: [
-                    Color.accentColor.opacity(accessibilityContrast == .increased ? 0.10 : 0.16),
+                    Color.accentColor.opacity(colorSchemeContrast == .increased ? 0.10 : 0.16),
                     Color.moneyUpMist.opacity(reduceTransparency ? 0.08 : 0.20),
                     Color.moneyUpBackground.opacity(0.25)
                 ],

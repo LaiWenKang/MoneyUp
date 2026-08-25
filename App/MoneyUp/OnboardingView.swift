@@ -323,7 +323,7 @@ struct OnboardingView: View {
                     .font(.footnote)
                     .foregroundStyle(.red)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .accessibilityLiveRegion(.assertive)
+                    .accessibilityAddTraits(.isStaticText)
             }
 
             HStack(spacing: 12) {
@@ -470,7 +470,7 @@ struct OnboardingView: View {
         Label(key, systemImage: "exclamationmark.circle.fill")
             .font(.footnote)
             .foregroundStyle(.red)
-            .accessibilityLiveRegion(.assertive)
+            .accessibilityAddTraits(.isStaticText)
     }
 
     private func reviewRow(_ title: LocalizedStringKey, value: String) -> some View {
