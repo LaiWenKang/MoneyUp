@@ -202,10 +202,8 @@ final class AppModelTests: XCTestCase {
             -75
         )
         XCTAssertEqual(model.entries.count, 1)
-        XCTAssertEqual(
-            try await fixture.store.count(in: .journalEntries),
-            1
-        )
+        let storedEntryCount = try await fixture.store.count(in: .journalEntries)
+        XCTAssertEqual(storedEntryCount, 1)
         await fixture.store.close()
     }
 
@@ -266,14 +264,10 @@ final class AppModelTests: XCTestCase {
             // Expected: liabilities use a non-negative consumer amount owed.
         }
 
-        XCTAssertEqual(
-            try await fixture.store.count(in: .accounts),
-            0
-        )
-        XCTAssertEqual(
-            try await fixture.store.count(in: .journalEntries),
-            0
-        )
+        let storedAccountCount = try await fixture.store.count(in: .accounts)
+        let storedEntryCount = try await fixture.store.count(in: .journalEntries)
+        XCTAssertEqual(storedAccountCount, 0)
+        XCTAssertEqual(storedEntryCount, 0)
         await fixture.store.close()
     }
 
