@@ -28,7 +28,8 @@ items are not promised by the current build.
 - [x] Non-base-currency activity reported explicitly instead of dropped
 - [x] Manually valued holdings and base-currency net worth
 - [x] Configurable privacy-redacted Home and Lock Screen quick-log shortcuts
-- [x] Persistent leftmost Log tab with encrypted draft recovery and Undo
+- [x] Five permanent tabs for Today, History, center Log, Plan, and Assets
+- [x] Center Log tab with encrypted draft recovery and Undo
 - [x] On-device receipt reading, typed-phrase entry, and category suggestions
 - [x] App icon, accent colour, biometry-accurate lock screen, and in-app version
 - [x] Enriched, formula-safe CSV export through the system file picker
@@ -38,12 +39,15 @@ items are not promised by the current build.
 - [x] Confirmed deletion for transactions, schedules, and manual holdings
 - [x] Exclude non-restorable encrypted database files from system backup
 - [x] Configurable one-minute-default auto-lock and locked Quick Capture inbox
-- [x] Searchable/filterable History with refunds and atomic transaction editing
-- [x] Minor-unit validation and locale-safe manual amount fields
+- [x] Searchable History with kind filters, refunds, and atomic transaction editing
+- [x] Locale-safe manual amount fields
 
 ## Beta hardening
 
 - [x] Search, transaction editing, and refunds in the UI
+- [ ] Account, category, date, and amount History filters with filtered totals
+- [ ] Enforce currency minor units at every domain, decode, and import boundary
+- [ ] App-level state and concurrency tests for locking, saves, deep links, and capture promotion
 - [ ] Split transactions in the UI
 - [ ] Scheduled-versus-actual matching and recurrence editing
 - [ ] Budget rollover, sinking funds, and savings goals
