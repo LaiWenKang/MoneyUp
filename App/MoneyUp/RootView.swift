@@ -145,10 +145,11 @@ private struct RecoveryView: View {
 }
 
 private enum MoneyUpSection: Hashable {
-    case log
     case today
     case history
+    case log
     case plan
+    case assets
 }
 
 private struct MainTabView: View {
@@ -162,6 +163,14 @@ private struct MainTabView: View {
 
     var body: some View {
         TabView(selection: $selectedSection) {
+            DashboardView()
+                .tabItem { Label("tab.today", systemImage: "house.fill") }
+                .tag(MoneyUpSection.today)
+
+            HistoryView()
+                .tabItem { Label("tab.history", systemImage: "clock.arrow.circlepath") }
+                .tag(MoneyUpSection.history)
+
             LogView(
                 kind: $quickLogKind,
                 isActive: selectedSection == .log,
@@ -174,17 +183,13 @@ private struct MainTabView: View {
                 .tabItem { Label("tab.log", systemImage: "plus.circle.fill") }
                 .tag(MoneyUpSection.log)
 
-            DashboardView()
-                .tabItem { Label("tab.today", systemImage: "house.fill") }
-                .tag(MoneyUpSection.today)
-
-            HistoryView()
-                .tabItem { Label("tab.history", systemImage: "clock.arrow.circlepath") }
-                .tag(MoneyUpSection.history)
-
             PlanView()
                 .tabItem { Label("tab.plan", systemImage: "chart.pie.fill") }
                 .tag(MoneyUpSection.plan)
+
+            AssetsView()
+                .tabItem { Label("tab.assets", systemImage: "wallet.bifold.fill") }
+                .tag(MoneyUpSection.assets)
         }
         .sheet(isPresented: $isShowingWhatsNew) {
             WhatsNewSheet()
@@ -208,7 +213,7 @@ private struct MainTabView: View {
         isShowingWhatsNew = true
     }
 
-    /// Widget, Shortcut, and URL requests now route into the permanent Log tab
+    /// Widget, Shortcut, and URL requests route into the permanent Log tab
     /// instead of creating a modal on top of whichever screen was open.
     @discardableResult
     private func openRequestedLog() -> Bool {
