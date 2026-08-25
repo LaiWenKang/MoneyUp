@@ -61,7 +61,7 @@ Then in Xcode:
 1. Authenticate or let MoneyUp create its protected first-install key.
 2. Choose a base currency, name the first account, choose its type, and enter
    the current starting balance if desired.
-3. Record a small expense from the leftmost Log tab and confirm the account balance and
+3. Record a small expense from the center Log tab and confirm the account balance and
    category spending both update.
 4. Add a monthly limit in Plan and confirm child-category spending rolls up.
 5. Send MoneyUp to the background. The switcher preview should hide data

@@ -5,7 +5,6 @@ public struct UserProfile: Codable, Equatable, Sendable {
 
     public var baseCurrency: CurrencyCode
     public var createdAt: Date
-    public var lockWhenBackgrounded: Bool
     /// Seconds spent away from the active app before protected book data is
     /// cleared from memory. The privacy cover appears immediately regardless.
     public var autoLockDelay: TimeInterval
@@ -17,7 +16,6 @@ public struct UserProfile: Codable, Equatable, Sendable {
     public init(
         baseCurrency: CurrencyCode,
         createdAt: Date = Date(),
-        lockWhenBackgrounded: Bool = true,
         autoLockDelay: TimeInterval = 60,
         allowLockedQuickCapture: Bool = true,
         preferredAccountID: UUID? = nil,
@@ -26,7 +24,6 @@ public struct UserProfile: Codable, Equatable, Sendable {
     ) {
         self.baseCurrency = baseCurrency
         self.createdAt = createdAt
-        self.lockWhenBackgrounded = lockWhenBackgrounded
         self.autoLockDelay = max(0, autoLockDelay)
         self.allowLockedQuickCapture = allowLockedQuickCapture
         self.preferredAccountID = preferredAccountID
@@ -37,7 +34,6 @@ public struct UserProfile: Codable, Equatable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case baseCurrency
         case createdAt
-        case lockWhenBackgrounded
         case autoLockDelay
         case allowLockedQuickCapture
         case preferredAccountID
@@ -49,10 +45,6 @@ public struct UserProfile: Codable, Equatable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         baseCurrency = try container.decode(CurrencyCode.self, forKey: .baseCurrency)
         createdAt = try container.decode(Date.self, forKey: .createdAt)
-        lockWhenBackgrounded = try container.decodeIfPresent(
-            Bool.self,
-            forKey: .lockWhenBackgrounded
-        ) ?? true
         autoLockDelay = max(
             0,
             try container.decodeIfPresent(TimeInterval.self, forKey: .autoLockDelay) ?? 60

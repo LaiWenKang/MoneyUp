@@ -59,7 +59,7 @@ the app silently resets, or the opening balance is wrong.
 
 ### 2. Core logging
 
-- Record a sample expense from the leftmost Log tab.
+- Record a sample expense from the center Log tab.
 - Enter part of another transaction, background and unlock MoneyUp, and confirm
   the encrypted draft returns without being saved as a transaction.
 - Tap Save twice rapidly and confirm exactly one transaction is recorded.

@@ -159,7 +159,7 @@ but is not a replacement for a public support contact.
 > currency, first account, and optional opening balance. After setup, reopening
 > the protected book requires Face ID, Touch ID, or the device passcode.
 >
-> Suggested review path: add a small expense from the leftmost Log tab; set a
+> Suggested review path: add a small expense from the center Log tab; set a
 > monthly limit in Plan; verify the transaction in Plan > Calendar and Insights;
 > background long enough to reach the configured auto-lock delay and reopen to
 > see authentication; use Settings to create an encrypted backup and preview an

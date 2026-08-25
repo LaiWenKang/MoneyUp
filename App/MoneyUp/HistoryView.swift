@@ -1,16 +1,7 @@
 import MoneyUpCore
 import SwiftUI
 
-private enum HistoryFilter: String, CaseIterable, Identifiable {
-    case all
-    case expense
-    case income
-    case transfer
-    case refund
-    case adjustment
-
-    var id: String { rawValue }
-
+private extension HistoryKindFilter {
     var title: LocalizedStringKey {
         switch self {
         case .all: "history.filter.all"
@@ -23,6 +14,73 @@ private enum HistoryFilter: String, CaseIterable, Identifiable {
     }
 }
 
+private struct HistoryFilterDraft: Equatable {
+    var kind: HistoryKindFilter = .all
+    var accountID: UUID?
+    var categoryID: UUID?
+    var includesStartDate = false
+    var startDate: Date
+    var includesEndDate = false
+    var endDate: Date
+    var minimumAmountText = ""
+    var maximumAmountText = ""
+
+    init(now: Date = Date(), calendar: Calendar = .current) {
+        startDate = calendar.dateInterval(of: .month, for: now)?.start ?? now
+        endDate = now
+    }
+
+    var hasActiveFilters: Bool {
+        kind != .all || accountID != nil || categoryID != nil
+            || includesStartDate || includesEndDate
+            || !minimumAmountText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !maximumAmountText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var isValid: Bool {
+        let minimumText = minimumAmountText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let maximumText = maximumAmountText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !minimumText.isEmpty, minimumAmount == nil { return false }
+        if !maximumText.isEmpty, maximumAmount == nil { return false }
+        if let minimumAmount, minimumAmount < .zero { return false }
+        if let maximumAmount, maximumAmount < .zero { return false }
+        if let minimumAmount, let maximumAmount, minimumAmount > maximumAmount {
+            return false
+        }
+        if includesStartDate, includesEndDate,
+           Calendar.current.startOfDay(for: startDate)
+            > Calendar.current.startOfDay(for: endDate) {
+            return false
+        }
+        return true
+    }
+
+    private var minimumAmount: Decimal? {
+        decimalAmount(from: minimumAmountText)
+    }
+
+    private var maximumAmount: Decimal? {
+        decimalAmount(from: maximumAmountText)
+    }
+
+    func query(searchText: String, calendar: Calendar = .current) -> HistoryQuery {
+        let start = includesStartDate ? calendar.startOfDay(for: startDate) : nil
+        let end = includesEndDate
+            ? calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: endDate))
+            : nil
+        return HistoryQuery(
+            searchText: searchText,
+            kind: kind,
+            accountID: accountID,
+            categoryID: categoryID,
+            startDate: start,
+            endDateExclusive: end,
+            minimumAmount: minimumAmount,
+            maximumAmount: maximumAmount
+        )
+    }
+}
+
 private struct HistoryDayGroup: Identifiable {
     let date: Date
     let entries: [JournalEntry]
@@ -32,17 +90,20 @@ private struct HistoryDayGroup: Identifiable {
 struct HistoryView: View {
     @EnvironmentObject private var model: AppModel
     @State private var searchText = ""
-    @State private var filter: HistoryFilter = .all
+    @State private var appliedSearchText = ""
+    @State private var filters = HistoryFilterDraft()
+    @State private var showingFilters = false
     @State private var selectedEntry: JournalEntry?
     @State private var entryPendingDeletion: JournalEntry?
     @State private var errorMessage: String?
 
     private var filteredEntries: [JournalEntry] {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        return model.entries.filter { entry in
-            matchesFilter(entry) && (query.isEmpty || searchableText(for: entry)
-                .localizedCaseInsensitiveContains(query))
-        }
+        filters.query(searchText: appliedSearchText)
+            .filteredEntries(model.entries, accounts: model.accounts)
+    }
+
+    private var summary: HistorySummary {
+        HistoryQuery().summary(for: filteredEntries, accounts: model.accounts)
     }
 
     private var dayGroups: [HistoryDayGroup] {
@@ -54,61 +115,104 @@ struct HistoryView: View {
     }
 
     private var unavailableTitle: LocalizedStringKey {
-        searchText.isEmpty ? "history.empty" : "history.no_results"
+        model.entries.isEmpty && appliedSearchText.isEmpty && !filters.hasActiveFilters
+            ? "history.empty" : "history.no_results"
     }
 
     private var unavailableDetail: LocalizedStringKey {
-        searchText.isEmpty ? "history.empty_detail" : "history.no_results_detail"
+        model.entries.isEmpty && appliedSearchText.isEmpty && !filters.hasActiveFilters
+            ? "history.empty_detail" : "history.no_results_detail"
     }
 
     var body: some View {
         NavigationStack {
-            Group {
+            List {
+                if filters.hasActiveFilters {
+                    Section {
+                        HStack {
+                            Label(
+                                "history.filters_active",
+                                systemImage: "line.3.horizontal.decrease.circle.fill"
+                            )
+                            Spacer()
+                            Button("action.reset") {
+                                filters = HistoryFilterDraft()
+                            }
+                        }
+                    }
+                }
+
+                Section {
+                    HistorySummaryView(summary: summary)
+                }
+
                 if dayGroups.isEmpty {
                     ContentUnavailableView(
                         unavailableTitle,
                         systemImage: "clock.arrow.circlepath",
                         description: Text(unavailableDetail)
                     )
+                    .listRowBackground(Color.clear)
                 } else {
-                    List {
-                        ForEach(dayGroups) { group in
-                            Section {
-                                ForEach(group.entries) { entry in
-                                    Button {
-                                        selectedEntry = entry
+                    ForEach(dayGroups) { group in
+                        Section {
+                            ForEach(group.entries) { entry in
+                                Button {
+                                    selectedEntry = entry
+                                } label: {
+                                    TransactionRow(entry: entry)
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .swipeActions(edge: .trailing) {
+                                    Button(role: .destructive) {
+                                        entryPendingDeletion = entry
                                     } label: {
-                                        TransactionRow(entry: entry)
-                                            .contentShape(Rectangle())
-                                    }
-                                    .buttonStyle(.plain)
-                                    .swipeActions(edge: .trailing) {
-                                        Button(role: .destructive) {
-                                            entryPendingDeletion = entry
-                                        } label: {
-                                            Label("action.delete", systemImage: "trash")
-                                        }
+                                        Label("action.delete", systemImage: "trash")
                                     }
                                 }
-                            } header: {
-                                Text(group.date, format: .dateTime.weekday(.wide).month().day().year())
                             }
+                        } header: {
+                            Text(group.date, format: .dateTime.weekday(.wide).month().day().year())
                         }
                     }
-                    .listStyle(.insetGrouped)
                 }
             }
+            .listStyle(.insetGrouped)
             .navigationTitle("tab.history")
             .searchable(text: $searchText, prompt: "history.search")
+            .task(id: searchText) {
+                do {
+                    try await Task.sleep(for: .milliseconds(250))
+                    appliedSearchText = searchText
+                } catch {
+                    // A newer keystroke superseded this search.
+                }
+            }
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
-                    Picker("history.filter", selection: $filter) {
-                        ForEach(HistoryFilter.allCases) { option in
-                            Text(option.title).tag(option)
-                        }
+                    Button {
+                        showingFilters = true
+                    } label: {
+                        Image(
+                            systemName: filters.hasActiveFilters
+                                ? "line.3.horizontal.decrease.circle.fill"
+                                : "line.3.horizontal.decrease.circle"
+                        )
                     }
-                    .pickerStyle(.menu)
+                    .accessibilityLabel("history.filter")
                 }
+            }
+            .sheet(isPresented: $showingFilters) {
+                HistoryFilterSheet(
+                    filters: filters,
+                    accounts: model.accounts.filter {
+                        $0.kind == .asset || $0.kind == .liability
+                    },
+                    categories: model.accounts.filter {
+                        $0.kind == .expense || $0.kind == .income
+                    }
+                ) { filters = $0 }
             }
             .sheet(item: $selectedEntry) { entry in
                 TransactionEditView(entry: entry)
@@ -141,34 +245,155 @@ struct HistoryView: View {
         }
     }
 
-    private func matchesFilter(_ entry: JournalEntry) -> Bool {
-        switch filter {
-        case .all: true
-        case .expense: entry.kind == .expense && !entry.isRefund(in: model.accounts)
-        case .income: entry.kind == .income
-        case .transfer: entry.kind == .transfer
-        case .refund: entry.isRefund(in: model.accounts)
-        case .adjustment: entry.kind == .adjustment || entry.kind == .investment
-        }
-    }
-
-    private func searchableText(for entry: JournalEntry) -> String {
-        let accountNames = entry.postings.compactMap { posting in
-            model.accounts.first(where: { $0.id == posting.accountID })?.name
-        }
-        let amounts = entry.postings.map {
-            NSDecimalNumber(decimal: $0.money.amount).stringValue
-                + " " + $0.money.currency.value
-        }
-        return ([entry.payee, entry.note].compactMap { $0 } + accountNames + amounts)
-            .joined(separator: " ")
-    }
-
     private func delete(_ entry: JournalEntry) async {
         do {
             try await model.deleteEntry(id: entry.id)
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+}
+
+private struct HistorySummaryView: View {
+    let summary: HistorySummary
+
+    private var currencies: [CurrencyCode] {
+        summary.amountsByCurrency.keys.sorted()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            LabeledContent("history.transactions") {
+                Text(summary.transactionCount, format: .number)
+                    .monospacedDigit()
+            }
+            if currencies.isEmpty {
+                Text("history.no_filtered_total")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(currencies, id: \.self) { currency in
+                    LabeledContent {
+                        if let amount = summary.amountsByCurrency[currency],
+                           let money = try? Money(amount, currency: currency) {
+                            Text(formattedMoney(money))
+                                .monospacedDigit()
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text("history.filtered_total")
+                            Text(currency.value)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+            Text("history.total_explanation")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .accessibilityElement(children: .contain)
+    }
+}
+
+private struct HistoryFilterSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var draft: HistoryFilterDraft
+
+    let accounts: [LedgerAccount]
+    let categories: [LedgerAccount]
+    let onApply: (HistoryFilterDraft) -> Void
+
+    init(
+        filters: HistoryFilterDraft,
+        accounts: [LedgerAccount],
+        categories: [LedgerAccount],
+        onApply: @escaping (HistoryFilterDraft) -> Void
+    ) {
+        _draft = State(initialValue: filters)
+        self.accounts = accounts
+        self.categories = categories
+        self.onApply = onApply
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Picker("history.filter.kind", selection: $draft.kind) {
+                        ForEach(HistoryKindFilter.allCases, id: \.self) { option in
+                            Text(option.title).tag(option)
+                        }
+                    }
+                    Picker("history.filter.account", selection: $draft.accountID) {
+                        Text("history.filter.any_account").tag(nil as UUID?)
+                        ForEach(accounts) { account in
+                            Text(account.name).tag(Optional(account.id))
+                        }
+                    }
+                    Picker("history.filter.category", selection: $draft.categoryID) {
+                        Text("history.filter.any_category").tag(nil as UUID?)
+                        ForEach(categories) { category in
+                            Text(category.name).tag(Optional(category.id))
+                        }
+                    }
+                }
+
+                Section("history.filter.date") {
+                    Toggle("history.filter.start_date", isOn: $draft.includesStartDate)
+                    if draft.includesStartDate {
+                        DatePicker(
+                            "history.filter.start_date",
+                            selection: $draft.startDate,
+                            displayedComponents: .date
+                        )
+                    }
+                    Toggle("history.filter.end_date", isOn: $draft.includesEndDate)
+                    if draft.includesEndDate {
+                        DatePicker(
+                            "history.filter.end_date",
+                            selection: $draft.endDate,
+                            displayedComponents: .date
+                        )
+                    }
+                }
+
+                Section {
+                    TextField("history.filter.minimum", text: $draft.minimumAmountText)
+                        .keyboardType(.decimalPad)
+                    TextField("history.filter.maximum", text: $draft.maximumAmountText)
+                        .keyboardType(.decimalPad)
+                    if !draft.isValid {
+                        Text("history.filter.invalid_range")
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+                } header: {
+                    Text("history.filter.amount")
+                } footer: {
+                    Text("history.filter.amount_note")
+                }
+
+                Section {
+                    Button("action.reset", role: .destructive) {
+                        draft = HistoryFilterDraft()
+                    }
+                }
+            }
+            .navigationTitle("history.filter")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("action.cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("action.apply") {
+                        onApply(draft)
+                        dismiss()
+                    }
+                    .disabled(!draft.isValid)
+                }
+            }
         }
     }
 }
@@ -477,16 +702,6 @@ private struct TransactionEditView: View {
             dismiss()
         } catch {
             errorMessage = error.localizedDescription
-        }
-    }
-}
-
-extension JournalEntry {
-    func isRefund(in accounts: [LedgerAccount]) -> Bool {
-        guard kind == .expense else { return false }
-        let expenseIDs = Set(accounts.filter { $0.kind == .expense }.map(\.id))
-        return postings.contains {
-            expenseIDs.contains($0.accountID) && $0.money.amount < .zero
         }
     }
 }

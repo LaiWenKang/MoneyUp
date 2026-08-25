@@ -16,6 +16,23 @@ final class MoneyTests: XCTestCase {
         XCTAssertNil(decoded.preferredAccountID)
     }
 
+    func testRetiredBackgroundLockFlagIsIgnoredAndNotReencoded() throws {
+        let legacy = Data(
+            """
+            {"baseCurrency":"SGD","createdAt":0,"lockWhenBackgrounded":false}
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(UserProfile.self, from: legacy)
+        let encoded = try JSONEncoder().encode(decoded)
+        let object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+        )
+
+        XCTAssertNil(object["lockWhenBackgrounded"])
+        XCTAssertEqual(decoded.autoLockDelay, 60)
+    }
+
     func testCurrencyCodeNormalizesCaseAndWhitespace() throws {
         let code = try CurrencyCode("  sgd\n")
         XCTAssertEqual(code.value, "SGD")
@@ -35,11 +52,14 @@ final class MoneyTests: XCTestCase {
         let jpy = try CurrencyCode("JPY")
         let kwd = try CurrencyCode("KWD")
         let sgd = try CurrencyCode("SGD")
+        let btc = try CurrencyCode("BTC")
 
         XCTAssertTrue(jpy.supports(Decimal(125)))
         XCTAssertFalse(jpy.supports(Decimal(string: "125.5")!))
         XCTAssertTrue(kwd.supports(Decimal(string: "1.234")!))
         XCTAssertFalse(kwd.supports(Decimal(string: "1.2345")!))
+        XCTAssertTrue(btc.supports(Decimal(string: "0.12345678")!))
+        XCTAssertFalse(btc.supports(Decimal(string: "0.123456789")!))
         XCTAssertEqual(sgd.rounded(Decimal(string: "1.005")!), Decimal(string: "1.00")!)
 
         // Existing decoded values are preserved exactly. Input boundaries, not
