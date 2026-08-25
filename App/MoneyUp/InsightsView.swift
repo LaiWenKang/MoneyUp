@@ -34,7 +34,8 @@ struct InsightsView: View {
                 LazyVStack(spacing: 16) {
                     periodCard
 
-                    if let report = model.report(for: period) {
+                    switch model.reportResult(for: period) {
+                    case let .available(report):
                         totalsRow(report)
                         if report.holdsUnconvertedActivity {
                             foreignCurrencyCard(report)
@@ -42,10 +43,12 @@ struct InsightsView: View {
                         categoryCard(report)
                         cashFlowCard(report)
                         insightCard(report)
-                    } else {
+                    case let .unavailable(issue):
                         DashboardCard {
-                            Text("insights.no_data")
-                                .foregroundStyle(.secondary)
+                            DerivedValueUnavailableView(
+                                issue: issue,
+                                prominent: true
+                            )
                         }
                     }
                 }
@@ -119,17 +122,18 @@ struct InsightsView: View {
     }
 
     private func categoryCard(_ report: PeriodReport) -> some View {
-        let points = categoryPoints(report)
+        let pointsResult = categoryPointsResult(report)
 
         return DashboardCard {
             VStack(alignment: .leading, spacing: 14) {
                 Text("insights.category_spending")
                     .font(.headline)
 
-                if points.isEmpty {
+                if case let .available(points) = pointsResult,
+                   points.isEmpty {
                     Text("insights.no_spending")
                         .foregroundStyle(.secondary)
-                } else {
+                } else if case let .available(points) = pointsResult {
                     Chart(points) { point in
                         BarMark(
                             x: .value("Amount", point.amount),
@@ -151,6 +155,8 @@ struct InsightsView: View {
                     .chartXAxis(.hidden)
                     .frame(height: max(190, CGFloat(points.count) * 34))
                     .accessibilityLabel(Text("insights.category_chart"))
+                } else if case let .unavailable(issue) = pointsResult {
+                    DerivedValueUnavailableView(issue: issue)
                 }
             }
         }
@@ -191,22 +197,36 @@ struct InsightsView: View {
     }
 
     private func insightCard(_ report: PeriodReport) -> some View {
-        DashboardCard {
+        let reading = insightReading(report)
+
+        return DashboardCard {
             VStack(alignment: .leading, spacing: 10) {
                 Text("insights.reading")
                     .font(.headline)
 
-                ForEach(insightLines(report), id: \.self) { line in
+                ForEach(reading.lines, id: \.self) { line in
                     Text(line)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
+
+                if let issue = reading.issue {
+                    DerivedValueUnavailableView(issue: issue)
+                }
+
+                if period == .thisMonth,
+                   case let .unavailable(issue) =
+                       model.monthToDateExpenseComparisonResult() {
+                    DerivedValueUnavailableView(issue: issue)
+                }
             }
         }
     }
 
-    private func categoryPoints(_ report: PeriodReport) -> [CategoryPoint] {
+    private func categoryPointsResult(
+        _ report: PeriodReport
+    ) -> DerivedValue<[CategoryPoint]> {
         let spending = report.categorySpending.filter { $0.amount.amount > .zero }
         var points = spending.prefix(Self.visibleCategoryCount).map {
             CategoryPoint(id: $0.accountID, name: $0.name, money: $0.amount)
@@ -215,7 +235,12 @@ struct InsightsView: View {
         let remainder = spending.dropFirst(Self.visibleCategoryCount)
         if !remainder.isEmpty {
             let total = remainder.reduce(Decimal.zero) { $0 + $1.amount.amount }
-            if let money = try? Money(total, currency: report.baseCurrency) {
+            switch DerivedValue<Money>.money(
+                total,
+                currency: report.baseCurrency,
+                operation: "insights-other-category"
+            ) {
+            case let .available(money):
                 points.append(
                     CategoryPoint(
                         id: Self.otherCategoryID,
@@ -223,9 +248,11 @@ struct InsightsView: View {
                         money: money
                     )
                 )
+            case let .unavailable(issue):
+                return .unavailable(issue)
             }
         }
-        return points
+        return .available(points)
     }
 
     private func flowPoints(_ report: PeriodReport) -> [FlowPoint] {
@@ -242,9 +269,14 @@ struct InsightsView: View {
 
     /// Deterministic, on-device readings. Every line is arithmetic over the
     /// selected period, so it can be checked against the charts above it.
-    private func insightLines(_ report: PeriodReport) -> [String] {
-        guard !report.isEmpty else { return [String(localized: "insights.no_data")] }
+    private func insightReading(
+        _ report: PeriodReport
+    ) -> (lines: [String], issue: DerivedValueIssue?) {
+        guard !report.isEmpty else {
+            return ([String(localized: "insights.no_data")], nil)
+        }
         var lines: [String] = []
+        var issue: DerivedValueIssue?
 
         // Suppressed when foreign spending exists: the card above already
         // shows it, and calling the period empty would read as wrong.
@@ -260,14 +292,24 @@ struct InsightsView: View {
                         formattedPercent(rate)
                     )
                 )
-            } else if let gap = try? report.baseFlow.expense
-                .subtracting(report.baseFlow.income) {
-                lines.append(
-                    String(
-                        format: String(localized: "insights.overspend_format"),
-                        formattedMoney(gap)
+            } else {
+                do {
+                    let gap = try report.baseFlow.expense
+                        .subtracting(report.baseFlow.income)
+                    lines.append(
+                        String(
+                            format: String(localized: "insights.overspend_format"),
+                            formattedMoney(gap)
+                        )
                     )
-                )
+                } catch {
+                    DerivedValueDiagnostics.record(
+                        .amountCalculationFailed,
+                        operation: "insights-overspend-gap",
+                        error: error
+                    )
+                    issue = .amountCalculationFailed
+                }
             }
         }
 
@@ -281,18 +323,23 @@ struct InsightsView: View {
             )
         }
 
-        if period == .thisMonth,
-           let comparison = model.monthToDateExpenseComparison(),
-           !comparison.holdsUnconvertedActivity {
-            lines.append(
-                contentsOf: monthToDateComparisonLine(
-                    previous: comparison.previous.amount,
-                    latest: comparison.current.amount
+        if period == .thisMonth {
+            if case let .available(comparison) =
+                model.monthToDateExpenseComparisonResult(),
+               !comparison.holdsUnconvertedActivity {
+                lines.append(
+                    contentsOf: monthToDateComparisonLine(
+                        previous: comparison.previous.amount,
+                        latest: comparison.current.amount
+                    )
                 )
-            )
+            }
         }
 
-        return lines.isEmpty ? [String(localized: "insights.no_data")] : lines
+        return (
+            lines.isEmpty ? [String(localized: "insights.no_data")] : lines,
+            issue
+        )
     }
 
     private func monthToDateComparisonLine(

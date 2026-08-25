@@ -21,34 +21,60 @@ struct DashboardView: View {
         }
     }
 
-    private var liquidPosition: Money? {
-        guard let currency = model.profile?.baseCurrency else { return nil }
+    private var liquidPosition: DerivedValue<Money> {
+        guard let currency = model.profile?.baseCurrency else {
+            return .unavailable(.appNotReady)
+        }
         var total = Decimal.zero
         for account in spendableAccounts where account.currency == currency {
-            guard let balance = model.displayBalance(for: account) else { continue }
-            total += account.kind == .liability ? -balance.amount : balance.amount
+            switch model.displayBalanceResult(for: account) {
+            case let .available(balance):
+                total += account.kind == .liability ? -balance.amount : balance.amount
+            case let .unavailable(issue):
+                return .unavailable(issue)
+            }
         }
-        return try? Money(total, currency: currency)
+        return .money(
+            total,
+            currency: currency,
+            operation: "dashboard-liquid-position"
+        )
     }
 
     /// Liquid positions outside the base currency. MoneyUp stores no exchange
     /// rates, so these balances are shown beside the headline figure instead
     /// of being folded into it.
-    private var otherCurrencyBalances: [Money] {
-        guard let base = model.profile?.baseCurrency else { return [] }
+    private var otherCurrencyBalances: DerivedValue<[Money]> {
+        guard let base = model.profile?.baseCurrency else {
+            return .unavailable(.appNotReady)
+        }
         var totals: [CurrencyCode: Decimal] = [:]
 
         for account in spendableAccounts {
-            guard let currency = account.currency, currency != base,
-                  let balance = model.displayBalance(for: account) else { continue }
-            totals[currency, default: .zero] +=
-                account.kind == .liability ? -balance.amount : balance.amount
+            guard let currency = account.currency, currency != base else { continue }
+            switch model.displayBalanceResult(for: account) {
+            case let .available(balance):
+                totals[currency, default: .zero] +=
+                    account.kind == .liability ? -balance.amount : balance.amount
+            case let .unavailable(issue):
+                return .unavailable(issue)
+            }
         }
 
-        return totals
-            .compactMap { try? Money($0.value, currency: $0.key) }
-            .filter { !$0.isZero }
-            .sorted { $0.currency < $1.currency }
+        var balances: [Money] = []
+        for (currency, amount) in totals.sorted(by: { $0.key < $1.key }) {
+            switch DerivedValue<Money>.money(
+                amount,
+                currency: currency,
+                operation: "dashboard-other-currency-position"
+            ) {
+            case let .available(money):
+                if !money.isZero { balances.append(money) }
+            case let .unavailable(issue):
+                return .unavailable(issue)
+            }
+        }
+        return .available(balances)
     }
 
     private var nextScheduledTransaction: UpcomingSchedule? {
@@ -62,8 +88,8 @@ struct DashboardView: View {
             .min { $0.occurrence < $1.occurrence }
     }
 
-    private var budgetSummary: BudgetPlanSummary? {
-        model.budgetPlanSummaryThisMonth()
+    private var budgetSummary: DerivedValue<BudgetPlanSummary?> {
+        model.budgetPlanSummaryThisMonthResult()
     }
 
     private func budgetRatio(_ summary: BudgetPlanSummary) -> Double {
@@ -85,19 +111,34 @@ struct DashboardView: View {
                                 .font(.headline)
                                 .foregroundStyle(.tint)
 
-                            Text(liquidPosition.map(formattedMoney) ?? "—")
-                                .font(.system(.largeTitle, design: .rounded, weight: .bold))
-                                .contentTransition(.numericText())
+                            switch liquidPosition {
+                            case let .available(position):
+                                Text(formattedMoney(position))
+                                    .font(
+                                        .system(
+                                            .largeTitle,
+                                            design: .rounded,
+                                            weight: .bold
+                                        )
+                                    )
+                                    .contentTransition(.numericText())
+                            case let .unavailable(issue):
+                                DerivedValueUnavailableView(
+                                    issue: issue,
+                                    prominent: true
+                                )
+                            }
 
                             Text("dashboard.available_detail")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
 
-                            if !otherCurrencyBalances.isEmpty {
+                            if case let .available(balances) = otherCurrencyBalances,
+                               !balances.isEmpty {
                                 HStack(alignment: .firstTextBaseline, spacing: 4) {
                                     Text("dashboard.other_currencies")
                                     Text(
-                                        otherCurrencyBalances
+                                        balances
                                             .map(formattedMoney)
                                             .joined(separator: " · ")
                                     )
@@ -106,6 +147,8 @@ struct DashboardView: View {
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                                 .accessibilityElement(children: .combine)
+                            } else if case let .unavailable(issue) = otherCurrencyBalances {
+                                DerivedValueUnavailableView(issue: issue)
                             }
                         }
                     }
@@ -114,7 +157,8 @@ struct DashboardView: View {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("dashboard.monthly_budget")
                                 .font(.headline)
-                            if let summary = budgetSummary {
+                            switch budgetSummary {
+                            case let .available(.some(summary)):
                                 let ratio = budgetRatio(summary)
                                 ProgressView(value: min(max(ratio, 0), 1))
                                     .tint(ratio >= 1 ? .red : .accentColor)
@@ -135,24 +179,28 @@ struct DashboardView: View {
                                     .foregroundStyle(.secondary)
                                     .accessibilityElement(children: .combine)
                                 }
-                                ForEach(
-                                    model.excludedForeignSpendingThisMonth(),
-                                    id: \.currency
-                                ) { money in
-                                    HStack {
-                                        Text("plan.foreign_not_counted")
-                                        Spacer()
-                                        Text(formattedMoney(money))
-                                            .monospacedDigit()
+                                switch model.excludedForeignSpendingThisMonthResult() {
+                                case let .available(foreignSpending):
+                                    ForEach(foreignSpending, id: \.currency) { money in
+                                        HStack {
+                                            Text("plan.foreign_not_counted")
+                                            Spacer()
+                                            Text(formattedMoney(money))
+                                                .monospacedDigit()
+                                        }
+                                        .font(.footnote)
+                                        .foregroundStyle(.orange)
+                                        .accessibilityElement(children: .combine)
                                     }
-                                    .font(.footnote)
-                                    .foregroundStyle(.orange)
-                                    .accessibilityElement(children: .combine)
+                                case let .unavailable(issue):
+                                    DerivedValueUnavailableView(issue: issue)
                                 }
-                            } else {
+                            case .available(.none):
                                 Text("dashboard.no_budget")
                                     .font(.subheadline)
                                     .foregroundStyle(.secondary)
+                            case let .unavailable(issue):
+                                DerivedValueUnavailableView(issue: issue)
                             }
                         }
                     }

@@ -59,7 +59,12 @@ final class AppModel: ObservableObject {
     @Published private(set) var pendingLockedCaptureCount = 0
 
     private var store: EncryptedRecordStore?
-    private let lockedCaptureStore = LockedCaptureStore()
+    private let lockedCaptureStore: any LockedCaptureStoring
+    private let receiptRecognizer: ReceiptLineRecognizer
+    private let lifecycleHooks: AppModelLifecycleHooks
+    private let databaseURLForErase: URL?
+    private let deleteDatabaseKey: @Sendable () throws -> Void
+    private let restartAfterErase: Bool
     private var quickLogDraftWriteTask: Task<Void, Never>?
     private var quickLogCommit: PendingQuickLogCommit?
     private var storeCloseTask: Task<Void, Never>?
@@ -68,13 +73,21 @@ final class AppModel: ObservableObject {
     private var storeGeneration = 0
     private var lockAfterStart = false
     private var isStarting = false
-    private var reportCache: [ReportPeriod: PeriodReport] = [:]
+    private var reportCache: [ReportPeriod: DerivedValue<PeriodReport>] = [:]
     private var reportCacheDay: Date?
-    private var monthToDateComparisonCache: MonthToDateExpenseComparison?
+    private var monthToDateComparisonCache: DerivedValue<MonthToDateExpenseComparison>?
     private var monthToDateComparisonCacheDay: Date?
-    private var balanceCache: [UUID: [CurrencyCode: Money]]?
+    private var balanceCache: DerivedValue<[UUID: [CurrencyCode: Money]]>?
 
     init() {
+        lockedCaptureStore = LockedCaptureStore()
+        receiptRecognizer = { data in
+            try await ReceiptScanner.recognizeLines(inImageData: data)
+        }
+        lifecycleHooks = .none
+        databaseURLForErase = nil
+        deleteDatabaseKey = { try DatabaseKeyStore.deleteKey() }
+        restartAfterErase = true
         UserDefaults.standard.register(defaults: [
             Self.lockedQuickCapturePreferenceKey: true
         ])
@@ -89,8 +102,23 @@ final class AppModel: ObservableObject {
         entries: [JournalEntry] = [],
         budgetNodes: [BudgetNode] = [],
         scheduledTransactions: [ScheduledTransaction] = [],
-        investmentHoldings: [InvestmentHolding] = []
+        investmentHoldings: [InvestmentHolding] = [],
+        quickLogDraft: QuickLogDraft? = nil,
+        lockedCaptureStore: any LockedCaptureStoring = LockedCaptureStore(),
+        receiptRecognizer: @escaping ReceiptLineRecognizer = { data in
+            try await ReceiptScanner.recognizeLines(inImageData: data)
+        },
+        lifecycleHooks: AppModelLifecycleHooks = .none,
+        databaseURLForErase: URL? = nil,
+        deleteDatabaseKey: @escaping @Sendable () throws -> Void = {},
+        restartAfterErase: Bool = false
     ) {
+        self.lockedCaptureStore = lockedCaptureStore
+        self.receiptRecognizer = receiptRecognizer
+        self.lifecycleHooks = lifecycleHooks
+        self.databaseURLForErase = databaseURLForErase
+        self.deleteDatabaseKey = deleteDatabaseKey
+        self.restartAfterErase = restartAfterErase
         UserDefaults.standard.register(defaults: [
             Self.lockedQuickCapturePreferenceKey: true
         ])
@@ -102,6 +130,7 @@ final class AppModel: ObservableObject {
         self.budgetNodes = budgetNodes
         self.scheduledTransactions = scheduledTransactions
         self.investmentHoldings = investmentHoldings
+        self.quickLogDraft = quickLogDraft
         state = .ready
     }
 
@@ -162,7 +191,10 @@ final class AppModel: ObservableObject {
                 state = .onboarding
             } else {
                 try validateLoadedBook()
-                try await promoteLockedCaptureIfPossible(to: openedStore)
+                try await promoteLockedCaptureIfPossible(
+                    to: openedStore,
+                    generation: storeGeneration
+                )
                 state = .ready
             }
             if lockAfterStart {
@@ -242,6 +274,14 @@ final class AppModel: ObservableObject {
             }
             await storeToClose.close()
         }
+    }
+
+    /// Allows lifecycle callers and deterministic tests to wait until a lock
+    /// has finished flushing/closing the store before reopening the file.
+    func waitForPendingStoreClose() async {
+        guard let pendingClose = storeCloseTask else { return }
+        await pendingClose.value
+        storeCloseTask = nil
     }
 
     func sceneDidEnterBackground(at date: Date = Date()) {
@@ -335,6 +375,25 @@ final class AppModel: ObservableObject {
     func consumeQuickLogRequest(_ mode: QuickLogLaunchMode) {
         guard requestedQuickLogMode == mode else { return }
         requestedQuickLogMode = nil
+    }
+
+    /// Runs OCR outside the view and only returns a parsed draft to the same
+    /// unlocked store generation that requested it. A lock during Vision work
+    /// therefore cannot repopulate sensitive form state afterward.
+    func receiptDraft(
+        from imageData: Data,
+        prefersDayFirst: Bool
+    ) async throws -> TransactionDraft? {
+        guard state == .ready else { return nil }
+        let generation = storeGeneration
+        try Task.checkCancellation()
+        let lines = try await receiptRecognizer(imageData)
+        try Task.checkCancellation()
+        guard isCurrentStoreGeneration(generation) else { return nil }
+        return ReceiptTextParser.draft(
+            fromLines: lines,
+            prefersDayFirst: prefersDayFirst
+        )
     }
 
     /// Keeps the latest form state in memory immediately, then serializes a
@@ -462,6 +521,7 @@ final class AppModel: ObservableObject {
         let generation = storeGeneration
         let accountStore = try requireStore()
         try await accountStore.write(writes)
+        await lifecycleHooks.checkpoint(.afterAccountWriteBeforeApply)
         guard isCurrentStoreGeneration(generation) else { return }
         accounts.append(contentsOf: accountsToAdd)
         if let openingEntry { entries.insert(openingEntry, at: 0) }
@@ -512,7 +572,13 @@ final class AppModel: ObservableObject {
               let currency = account.currency else {
             throw AppModelError.missingRecord
         }
-        let current = self.displayBalance(for: account)?.amount ?? .zero
+        let current: Decimal
+        switch displayBalanceResult(for: account) {
+        case let .available(balance):
+            current = balance.amount
+        case let .unavailable(issue):
+            throw issue
+        }
         try requireSupportedPrecision(displayBalance, currency: currency)
         let delta = displayBalance - current
         guard delta != .zero else { return }
@@ -690,7 +756,7 @@ final class AppModel: ObservableObject {
             throw AppModelError.missingRecord
         }
 
-        let originalMoney = editableMoneySnapshot(for: original)
+        let originalMoney = try editableMoneySnapshot(for: original)
         let accountCurrency = try currency(for: accountID)
         if let originalMoney, originalMoney.source.currency != accountCurrency {
             throw AppModelError.crossCurrencyEditRequiresConversion
@@ -969,16 +1035,26 @@ final class AppModel: ObservableObject {
         await storeToClose?.close()
 
         do {
-            let databaseURL = try Self.databaseURL()
+            let databaseURL: URL
+            if let databaseURLForErase {
+                databaseURL = databaseURLForErase
+            } else {
+                databaseURL = try Self.databaseURL()
+            }
             for suffix in ["-wal", "-shm"] {
                 try Self.removeIfPresent(
                     URL(fileURLWithPath: databaseURL.path + suffix)
                 )
             }
             try Self.removeIfPresent(databaseURL)
-            try DatabaseKeyStore.deleteKey()
-            isWorking = false
-            await start()
+            try deleteDatabaseKey()
+            if restartAfterErase {
+                isWorking = false
+                await start()
+            } else {
+                state = .onboarding
+                isWorking = false
+            }
         } catch {
             lockAfterStart = false
             clearDecodedState()
@@ -987,17 +1063,24 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func displayBalance(for account: LedgerAccount) -> Money? {
-        guard let currency = account.currency else { return nil }
-        let raw = accountBalances()[account.id]?[currency]
-            ?? Money.zero(currency: currency)
-        return account.kind == .liability ? raw.negated : raw
+    func displayBalanceResult(for account: LedgerAccount) -> DerivedValue<Money> {
+        guard let currency = account.currency else {
+            return .unavailable(.missingCurrency)
+        }
+        switch accountBalancesResult() {
+        case let .available(balances):
+            let raw = balances[account.id]?[currency]
+                ?? Money.zero(currency: currency)
+            return .available(account.kind == .liability ? raw.negated : raw)
+        case let .unavailable(issue):
+            return .unavailable(issue)
+        }
     }
 
     /// The period report used by every reporting screen. Results are cached
     /// until the journal changes or the calendar day rolls over, so a SwiftUI
     /// body evaluation never rescans the whole journal.
-    func report(for period: ReportPeriod) -> PeriodReport? {
+    func reportResult(for period: ReportPeriod) -> DerivedValue<PeriodReport> {
         let today = Calendar.current.startOfDay(for: Date())
         if reportCacheDay != today {
             reportCache.removeAll()
@@ -1005,59 +1088,118 @@ final class AppModel: ObservableObject {
         }
         if let cached = reportCache[period] { return cached }
 
-        guard let currency = profile?.baseCurrency,
-              let interval = period.interval(containing: Date()) else { return nil }
+        guard let currency = profile?.baseCurrency else {
+            return .unavailable(.appNotReady)
+        }
+        guard let interval = period.interval(containing: Date()) else {
+            DerivedValueDiagnostics.record(
+                .invalidPeriod,
+                operation: "period-report-interval"
+            )
+            return .unavailable(.invalidPeriod)
+        }
         let trendInterval = ReportPeriod.twelveMonths.interval(containing: Date())
             ?? interval
-        guard let built = try? FinanceCalculator.report(
-            interval: interval,
-            trendInterval: trendInterval,
-            accounts: accounts,
-            entries: entries,
-            baseCurrency: currency
-        ) else { return nil }
-
-        reportCache[period] = built
-        return built
+        let result: DerivedValue<PeriodReport>
+        do {
+            result = .available(
+                try FinanceCalculator.report(
+                    interval: interval,
+                    trendInterval: trendInterval,
+                    accounts: accounts,
+                    entries: entries,
+                    baseCurrency: currency
+                )
+            )
+        } catch {
+            DerivedValueDiagnostics.record(
+                .ledgerCalculationFailed,
+                operation: "period-report",
+                error: error
+            )
+            result = .unavailable(.ledgerCalculationFailed)
+        }
+        reportCache[period] = result
+        return result
     }
 
-    func spendingThisMonth() -> [UUID: Money] {
-        guard let report = report(for: .thisMonth) else { return [:] }
-        return Dictionary(
-            uniqueKeysWithValues: report.categorySpending.map {
-                ($0.accountID, $0.amount)
+    func spendingThisMonthResult() -> DerivedValue<[UUID: Money]> {
+        switch reportResult(for: .thisMonth) {
+        case let .available(report):
+            return .available(
+                Dictionary(
+                    uniqueKeysWithValues: report.categorySpending.map {
+                        ($0.accountID, $0.amount)
+                    }
+                )
+            )
+        case let .unavailable(issue):
+            return .unavailable(issue)
+        }
+    }
+
+    func excludedForeignSpendingThisMonthResult() -> DerivedValue<[Money]> {
+        switch reportResult(for: .thisMonth) {
+        case let .available(report):
+            return .available(
+                report.foreignFlows
+                    .map(\.expense)
+                    .filter { $0.amount > .zero }
+                    .sorted { $0.currency < $1.currency }
+            )
+        case let .unavailable(issue):
+            return .unavailable(issue)
+        }
+    }
+
+    func budgetProgressThisMonthResult() -> DerivedValue<[BudgetProgress]> {
+        guard let currency = profile?.baseCurrency else {
+            return .unavailable(.appNotReady)
+        }
+        do {
+            let tree = try BudgetTree(currency: currency, nodes: budgetNodes)
+            switch spendingThisMonthResult() {
+            case let .available(spending):
+                return .available(try tree.progress(directSpending: spending))
+            case let .unavailable(issue):
+                return .unavailable(issue)
             }
-        )
-    }
-
-    func excludedForeignSpendingThisMonth() -> [Money] {
-        guard let report = report(for: .thisMonth) else { return [] }
-        return report.foreignFlows
-            .map(\.expense)
-            .filter { $0.amount > .zero }
-            .sorted { $0.currency < $1.currency }
-    }
-
-    func budgetProgressThisMonth() -> [BudgetProgress] {
-        guard let currency = profile?.baseCurrency,
-              let tree = try? BudgetTree(currency: currency, nodes: budgetNodes) else {
-            return []
+        } catch {
+            DerivedValueDiagnostics.record(
+                .budgetCalculationFailed,
+                operation: "budget-progress",
+                error: error
+            )
+            return .unavailable(.budgetCalculationFailed)
         }
-        return (try? tree.progress(directSpending: spendingThisMonth())) ?? []
     }
 
-    func budgetPlanSummaryThisMonth() -> BudgetPlanSummary? {
-        guard let currency = profile?.baseCurrency,
-              let tree = try? BudgetTree(currency: currency, nodes: budgetNodes) else {
-            return nil
+    func budgetPlanSummaryThisMonthResult() -> DerivedValue<BudgetPlanSummary?> {
+        guard let currency = profile?.baseCurrency else {
+            return .unavailable(.appNotReady)
         }
-        return try? tree.planSummary(directSpending: spendingThisMonth())
+        do {
+            let tree = try BudgetTree(currency: currency, nodes: budgetNodes)
+            switch spendingThisMonthResult() {
+            case let .available(spending):
+                return .available(try tree.planSummary(directSpending: spending))
+            case let .unavailable(issue):
+                return .unavailable(issue)
+            }
+        } catch {
+            DerivedValueDiagnostics.record(
+                .budgetCalculationFailed,
+                operation: "budget-summary",
+                error: error
+            )
+            return .unavailable(.budgetCalculationFailed)
+        }
     }
 
     /// Compares equal elapsed portions of this month and the prior month.
     /// A full prior month against a partial current month would produce a
     /// dramatic but misleading “spending down” sentence early in the month.
-    func monthToDateExpenseComparison() -> MonthToDateExpenseComparison? {
+    func monthToDateExpenseComparisonResult() -> DerivedValue<MonthToDateExpenseComparison> {
         let calendar = Calendar.current
         let now = Date()
         let today = calendar.startOfDay(for: now)
@@ -1066,35 +1208,55 @@ final class AppModel: ObservableObject {
             return cached
         }
 
-        guard let currency = profile?.baseCurrency,
-              let intervals = MonthToDateComparisonIntervals(
-                  containing: now,
-                  calendar: calendar
-              ) else { return nil }
-
-        guard let currentReport = try? FinanceCalculator.report(
-            interval: intervals.current,
-            accounts: accounts,
-            entries: entries,
-            baseCurrency: currency,
+        guard let currency = profile?.baseCurrency else {
+            return .unavailable(.appNotReady)
+        }
+        guard let intervals = MonthToDateComparisonIntervals(
+            containing: now,
             calendar: calendar
-        ), let previousReport = try? FinanceCalculator.report(
-            interval: intervals.previous,
-            accounts: accounts,
-            entries: entries,
-            baseCurrency: currency,
-            calendar: calendar
-        ) else { return nil }
+        ) else {
+            DerivedValueDiagnostics.record(
+                .invalidPeriod,
+                operation: "month-to-date-interval"
+            )
+            return .unavailable(.invalidPeriod)
+        }
 
-        let comparison = MonthToDateExpenseComparison(
-            previous: previousReport.baseFlow.expense,
-            current: currentReport.baseFlow.expense,
-            holdsUnconvertedActivity: currentReport.holdsUnconvertedActivity
-                || previousReport.holdsUnconvertedActivity
-        )
-        monthToDateComparisonCache = comparison
+        let result: DerivedValue<MonthToDateExpenseComparison>
+        do {
+            let currentReport = try FinanceCalculator.report(
+                interval: intervals.current,
+                accounts: accounts,
+                entries: entries,
+                baseCurrency: currency,
+                calendar: calendar
+            )
+            let previousReport = try FinanceCalculator.report(
+                interval: intervals.previous,
+                accounts: accounts,
+                entries: entries,
+                baseCurrency: currency,
+                calendar: calendar
+            )
+            result = .available(
+                MonthToDateExpenseComparison(
+                    previous: previousReport.baseFlow.expense,
+                    current: currentReport.baseFlow.expense,
+                    holdsUnconvertedActivity: currentReport.holdsUnconvertedActivity
+                        || previousReport.holdsUnconvertedActivity
+                )
+            )
+        } catch {
+            DerivedValueDiagnostics.record(
+                .ledgerCalculationFailed,
+                operation: "month-to-date-comparison",
+                error: error
+            )
+            result = .unavailable(.ledgerCalculationFailed)
+        }
+        monthToDateComparisonCache = result
         monthToDateComparisonCacheDay = today
-        return comparison
+        return result
     }
 
     func csvExport() -> String {
@@ -1472,12 +1634,23 @@ final class AppModel: ObservableObject {
         balanceCache = nil
     }
 
-    private func accountBalances() -> [UUID: [CurrencyCode: Money]] {
+    private func accountBalancesResult() -> DerivedValue<[UUID: [CurrencyCode: Money]]> {
         if let balanceCache { return balanceCache }
-        let computed = (try? FinanceCalculator.balancesByAccount(entries: entries))
-            ?? [:]
-        balanceCache = computed
-        return computed
+        let result: DerivedValue<[UUID: [CurrencyCode: Money]]>
+        do {
+            result = .available(
+                try FinanceCalculator.balancesByAccount(entries: entries)
+            )
+        } catch {
+            DerivedValueDiagnostics.record(
+                .ledgerCalculationFailed,
+                operation: "account-balances",
+                error: error
+            )
+            result = .unavailable(.ledgerCalculationFailed)
+        }
+        balanceCache = result
+        return result
     }
 
     @discardableResult
@@ -1503,6 +1676,7 @@ final class AppModel: ObservableObject {
         let writes = pendingWrites
         let commitTask = Task {
             await pendingDraftWrite?.value
+            await lifecycleHooks.checkpoint(.beforeJournalCommit)
             try await transactionStore.write(
                 writes,
                 removing: [
@@ -1643,14 +1817,26 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func promotePendingLockedCapture() async throws {
+        let generation = storeGeneration
+        let currentStore = try requireStore()
+        try await promoteLockedCaptureIfPossible(
+            to: currentStore,
+            generation: generation
+        )
+    }
+
     private func promoteLockedCaptureIfPossible(
-        to store: EncryptedRecordStore
+        to store: EncryptedRecordStore,
+        generation: Int
     ) async throws {
         let captures = (try? await lockedCaptureStore.all()) ?? []
+        guard ownsStoreGeneration(generation) else { return }
         pendingLockedCaptureCount = captures.count
 
         if let sourceID = quickLogDraft?.sourceCaptureID {
             try? await lockedCaptureStore.remove(id: sourceID)
+            guard ownsStoreGeneration(generation) else { return }
             pendingLockedCaptureCount = max(0, captures.count - 1)
             return
         }
@@ -1691,8 +1877,11 @@ final class AppModel: ObservableObject {
             id: QuickLogDraft.primaryRecordID,
             in: .quickLogDrafts
         )
+        await lifecycleHooks.checkpoint(.afterCaptureDraftPersisted)
+        guard ownsStoreGeneration(generation) else { return }
         quickLogDraft = draft
         try await lockedCaptureStore.remove(id: capture.id)
+        guard ownsStoreGeneration(generation) else { return }
         pendingLockedCaptureCount = max(0, captures.count - 1)
         requestedQuickLogMode = mode
     }
@@ -1764,9 +1953,12 @@ final class AppModel: ObservableObject {
     }
 
     private func isCurrentStoreGeneration(_ generation: Int) -> Bool {
-        generation == storeGeneration
-            && store != nil
+        ownsStoreGeneration(generation)
             && (state == .ready || state == .onboarding)
+    }
+
+    private func ownsStoreGeneration(_ generation: Int) -> Bool {
+        generation == storeGeneration && store != nil
     }
 
     private func currency(for accountID: UUID) throws -> CurrencyCode {
@@ -1778,25 +1970,39 @@ final class AppModel: ObservableObject {
 
     private func editableMoneySnapshot(
         for entry: JournalEntry
-    ) -> EditableMoneySnapshot? {
+    ) throws -> EditableMoneySnapshot? {
         let accountKinds = Dictionary(
             uniqueKeysWithValues: accounts.map { ($0.id, $0.kind) }
         )
 
-        func positiveMoney(from posting: Posting) -> Money? {
-            try? Money(abs(posting.money.amount), currency: posting.money.currency)
+        func positiveMoney(from posting: Posting) throws -> Money {
+            do {
+                return try Money(
+                    abs(posting.money.amount),
+                    currency: posting.money.currency
+                )
+            } catch {
+                DerivedValueDiagnostics.record(
+                    .amountCalculationFailed,
+                    operation: "editable-money-snapshot",
+                    error: error
+                )
+                throw DerivedValueIssue.amountCalculationFailed
+            }
         }
 
         switch entry.kind {
         case .expense:
             guard let posting = entry.postings.first(where: {
                 accountKinds[$0.accountID] == .expense
-            }), let source = positiveMoney(from: posting) else { return nil }
+            }) else { return nil }
+            let source = try positiveMoney(from: posting)
             return EditableMoneySnapshot(source: source, destination: nil)
         case .income:
             guard let posting = entry.postings.first(where: {
                 accountKinds[$0.accountID] == .income
-            }), let source = positiveMoney(from: posting) else { return nil }
+            }) else { return nil }
+            let source = try positiveMoney(from: posting)
             return EditableMoneySnapshot(source: source, destination: nil)
         case .transfer:
             let userPostings = entry.postings.filter {
@@ -1807,8 +2013,9 @@ final class AppModel: ObservableObject {
                 $0.money.amount < .zero
             }), let destinationPosting = userPostings.first(where: {
                 $0.money.amount > .zero
-            }), let source = positiveMoney(from: sourcePosting),
-            let destination = positiveMoney(from: destinationPosting) else { return nil }
+            }) else { return nil }
+            let source = try positiveMoney(from: sourcePosting)
+            let destination = try positiveMoney(from: destinationPosting)
             return EditableMoneySnapshot(source: source, destination: destination)
         case .adjustment, .investment:
             return nil
