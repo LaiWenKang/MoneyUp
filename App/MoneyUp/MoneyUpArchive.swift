@@ -10,7 +10,7 @@ extension UTType {
     )
 }
 
-extension PortableArchiveError: LocalizedError {
+extension PortableArchiveError: @retroactive LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .passwordTooShort:

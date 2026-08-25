@@ -233,7 +233,7 @@ private enum CSVImportViewError: LocalizedError {
     }
 }
 
-extension TransactionCSVImportError: LocalizedError {
+extension TransactionCSVImportError: @retroactive LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .emptyFile: String(localized: "import.error.empty")

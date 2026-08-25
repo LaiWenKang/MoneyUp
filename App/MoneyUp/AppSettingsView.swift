@@ -74,9 +74,15 @@ struct AppSettingsView: View {
             Section {
                 Picker(
                     "settings.default_account",
-                    selection: optionalSelection(
+                    selection: Binding(
                         get: { model.profile?.preferredAccountID },
-                        update: { try await model.updatePreferredAccount($0) }
+                        set: { value in
+                            Task {
+                                await update {
+                                    try await model.updatePreferredAccount(value)
+                                }
+                            }
+                        }
                     )
                 ) {
                     Text("settings.smart_default").tag(Optional<UUID>.none)
@@ -87,9 +93,15 @@ struct AppSettingsView: View {
 
                 Picker(
                     "settings.default_expense_category",
-                    selection: optionalSelection(
+                    selection: Binding(
                         get: { model.profile?.preferredExpenseCategoryID },
-                        update: { try await model.updatePreferredExpenseCategory($0) }
+                        set: { value in
+                            Task {
+                                await update {
+                                    try await model.updatePreferredExpenseCategory(value)
+                                }
+                            }
+                        }
                     )
                 ) {
                     Text("settings.smart_default").tag(Optional<UUID>.none)
@@ -100,9 +112,15 @@ struct AppSettingsView: View {
 
                 Picker(
                     "settings.default_income_category",
-                    selection: optionalSelection(
+                    selection: Binding(
                         get: { model.profile?.preferredIncomeCategoryID },
-                        update: { try await model.updatePreferredIncomeCategory($0) }
+                        set: { value in
+                            Task {
+                                await update {
+                                    try await model.updatePreferredIncomeCategory(value)
+                                }
+                            }
+                        }
                     )
                 ) {
                     Text("settings.smart_default").tag(Optional<UUID>.none)
@@ -157,18 +175,6 @@ struct AppSettingsView: View {
         }
         .navigationTitle("settings.title")
         .navigationBarTitleDisplayMode(.inline)
-    }
-
-    private func optionalSelection(
-        get: @escaping () -> UUID?,
-        update operation: @escaping (UUID?) async throws -> Void
-    ) -> Binding<UUID?> {
-        Binding(
-            get: get,
-            set: { value in
-                Task { await update { try await operation(value) } }
-            }
-        )
     }
 
     private func update(_ operation: () async throws -> Void) async {

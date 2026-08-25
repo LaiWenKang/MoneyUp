@@ -210,7 +210,8 @@ final class EncryptedRecordStoreTests: XCTestCase {
 
         let later = LedgerAccount(name: "Later", kind: .asset)
         try await store.upsert(later, id: later.id.uuidString, in: .accounts)
-        XCTAssertEqual(try await store.count(in: .accounts), 2)
+        let recordCount = try await store.count(in: .accounts)
+        XCTAssertEqual(recordCount, 2)
 
         try await store.restore(snapshot)
         let restored = try await store.fetchAll(LedgerAccount.self, from: .accounts)

@@ -2,6 +2,7 @@ import MoneyUpCore
 import SwiftUI
 
 struct DashboardView: View {
+    @MainActor
     private struct UpcomingSchedule {
         let transaction: ScheduledTransaction
         let occurrence: Date
