@@ -6,13 +6,241 @@ import XCTest
 
 final class AppModelTests: XCTestCase {
     @MainActor
+    func testLockDuringSaveCommitsExactlyOnceWithoutRepopulatingLockedState() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let gate = AsyncGate()
+        let model = fixture.model(
+            lifecycleHooks: hooks(pausing: .beforeJournalCommit, at: gate)
+        )
+
+        let saveTask = Task { @MainActor in
+            try await model.logExpense(
+                amount: 12,
+                accountID: fixture.wallet.id,
+                categoryID: fixture.food.id,
+                occurredAt: Date(timeIntervalSinceReferenceDate: 200),
+                payee: "Cafe",
+                note: nil
+            )
+        }
+
+        await gate.waitUntilReached()
+        model.lock()
+        await gate.release()
+
+        let savedID = try await saveTask.value
+        XCTAssertNil(savedID)
+        await model.waitForPendingStoreClose()
+        XCTAssertEqual(model.state, .locked)
+        XCTAssertTrue(model.entries.isEmpty)
+
+        let reopened = try fixture.reopenStore()
+        let persisted = try await reopened.fetchAll(
+            JournalEntry.self,
+            from: .journalEntries
+        )
+        XCTAssertEqual(persisted.count, 1)
+        XCTAssertEqual(persisted.first?.payee, "Cafe")
+        let draftCount = try await reopened.count(in: .quickLogDrafts)
+        XCTAssertEqual(draftCount, 0)
+        await reopened.close()
+    }
+
+    @MainActor
+    func testLockDuringReceiptScanDiscardsTheStaleResult() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let gate = AsyncGate()
+        let model = fixture.model(receiptRecognizer: { _ in
+            await gate.suspend()
+            return ["Cafe", "Total 12.50"]
+        })
+
+        let scanTask = Task { @MainActor in
+            try await model.receiptDraft(
+                from: Data([0x01]),
+                prefersDayFirst: true
+            )
+        }
+
+        await gate.waitUntilReached()
+        model.lock()
+        await gate.release()
+
+        let scannedDraft = try await scanTask.value
+        XCTAssertNil(scannedDraft)
+        await model.waitForPendingStoreClose()
+        XCTAssertEqual(model.state, .locked)
+        XCTAssertNil(model.quickLogDraft)
+    }
+
+    @MainActor
+    func testEraseDuringPendingCommitWaitsThenRemovesTheCommittedDatabase() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let gate = AsyncGate()
+        let model = fixture.model(
+            lifecycleHooks: hooks(pausing: .beforeJournalCommit, at: gate)
+        )
+
+        let saveTask = Task { @MainActor in
+            try await model.logExpense(
+                amount: 18,
+                accountID: fixture.wallet.id,
+                categoryID: fixture.food.id,
+                occurredAt: Date(timeIntervalSinceReferenceDate: 300),
+                payee: "Pending cafe",
+                note: nil
+            )
+        }
+        await gate.waitUntilReached()
+
+        let eraseTask = Task { @MainActor in
+            await model.eraseAllDataAndRestart()
+        }
+        for _ in 0..<100 {
+            if model.state == .launching { break }
+            await Task.yield()
+        }
+        XCTAssertEqual(model.state, .launching)
+        await gate.release()
+
+        let savedID = try await saveTask.value
+        XCTAssertNil(savedID)
+        await eraseTask.value
+        XCTAssertEqual(model.state, .onboarding)
+        XCTAssertNil(model.profile)
+        XCTAssertTrue(model.entries.isEmpty)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.databaseURL.path))
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: fixture.databaseURL.path + "-wal")
+        )
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: fixture.databaseURL.path + "-shm")
+        )
+    }
+
+    @MainActor
+    func testStaleGenerationWriteDoesNotRepopulateMemoryAfterLock() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let gate = AsyncGate()
+        let model = fixture.model(
+            lifecycleHooks: hooks(pausing: .afterAccountWriteBeforeApply, at: gate)
+        )
+
+        let addTask = Task { @MainActor in
+            try await model.addAccount(
+                name: "Secondary wallet",
+                type: .cash,
+                currencyCode: "SGD"
+            )
+        }
+
+        await gate.waitUntilReached()
+        model.lock()
+        await gate.release()
+        try await addTask.value
+        await model.waitForPendingStoreClose()
+
+        XCTAssertEqual(model.state, .locked)
+        XCTAssertTrue(model.accounts.isEmpty)
+        let reopened = try fixture.reopenStore()
+        let persisted = try await reopened.fetchAll(
+            LedgerAccount.self,
+            from: .accounts
+        )
+        XCTAssertEqual(persisted.map(\.name), ["Secondary wallet"])
+        await reopened.close()
+    }
+
+    @MainActor
+    func testCapturePromotionInterruptedByLockResumesExactlyOnce() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let capture = LockedCapture(
+            kind: .expense,
+            amountText: "12.50",
+            occurredAt: Date(timeIntervalSinceReferenceDate: 400),
+            payee: "Captured cafe"
+        )
+        let captureStore = InMemoryLockedCaptureStore(captures: [capture])
+        let gate = AsyncGate()
+        let model = fixture.model(
+            lockedCaptureStore: captureStore,
+            lifecycleHooks: hooks(pausing: .afterCaptureDraftPersisted, at: gate)
+        )
+
+        let promotionTask = Task { @MainActor in
+            try await model.promotePendingLockedCapture()
+        }
+        await gate.waitUntilReached()
+        model.lock()
+        await gate.release()
+        try await promotionTask.value
+        await model.waitForPendingStoreClose()
+
+        XCTAssertEqual(model.state, .locked)
+        XCTAssertNil(model.quickLogDraft)
+        let interruptedCaptures = try await captureStore.all()
+        XCTAssertEqual(interruptedCaptures, [capture])
+
+        let reopened = try fixture.reopenStore()
+        let resumedModel = fixture.model(
+            store: reopened,
+            lockedCaptureStore: captureStore
+        )
+        try await resumedModel.promotePendingLockedCapture()
+        let remainingCaptures = try await captureStore.all()
+        XCTAssertTrue(remainingCaptures.isEmpty)
+        let promotedDraft = try await reopened.fetch(
+            QuickLogDraft.self,
+            id: QuickLogDraft.primaryRecordID,
+            from: .quickLogDrafts
+        )
+        let promotedDraftCount = try await reopened.count(in: .quickLogDrafts)
+        XCTAssertEqual(promotedDraft?.sourceCaptureID, capture.id)
+        XCTAssertEqual(promotedDraftCount, 1)
+        XCTAssertEqual(resumedModel.quickLogDraft?.sourceCaptureID, capture.id)
+        XCTAssertEqual(resumedModel.pendingLockedCaptureCount, 0)
+        await reopened.close()
+    }
+
+    @MainActor
+    func testInvalidBudgetReturnsUnavailableStateInsteadOfEmptyOrZeroValues() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let duplicate = BudgetNode(id: fixture.food.id, name: "Food")
+        let model = fixture.model(budgetNodes: [duplicate, duplicate])
+
+        switch model.budgetProgressThisMonthResult() {
+        case .available:
+            XCTFail("Expected an explicit unavailable budget state")
+        case let .unavailable(issue):
+            XCTAssertEqual(issue, .budgetCalculationFailed)
+        }
+
+        switch model.budgetPlanSummaryThisMonthResult() {
+        case .available:
+            XCTFail("Expected an explicit unavailable budget summary")
+        case let .unavailable(issue):
+            XCTAssertEqual(issue, .budgetCalculationFailed)
+        }
+        await fixture.store.close()
+    }
+
+    @MainActor
     func testReplacingEntryRetainsEncryptedRevisionAndInvalidatesBalanceCache() async throws {
         let fixture = try AppModelFixture()
         defer { fixture.removeFiles() }
         let original = try fixture.expense(amount: 10)
         let model = fixture.model(entries: [original])
 
-        XCTAssertEqual(model.displayBalance(for: fixture.wallet)?.amount, -10)
+        XCTAssertEqual(
+            model.displayBalanceResult(for: fixture.wallet).value?.amount,
+            -10
+        )
 
         try await model.replaceEntry(
             id: original.id,
@@ -49,7 +277,10 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(live.supersedesID, original.id)
         XCTAssertNotNil(live.revisedAt)
         XCTAssertNil(retiredLive)
-        XCTAssertEqual(model.displayBalance(for: fixture.wallet)?.amount, -20)
+        XCTAssertEqual(
+            model.displayBalanceResult(for: fixture.wallet).value?.amount,
+            -20
+        )
         await fixture.store.close()
     }
 
@@ -199,6 +430,7 @@ final class AppModelTests: XCTestCase {
 
 private struct AppModelFixture {
     let directoryURL: URL
+    let databaseURL: URL
     let store: EncryptedRecordStore
     let sgd: CurrencyCode
     let usd: CurrencyCode
@@ -211,9 +443,11 @@ private struct AppModelFixture {
         let usd = try CurrencyCode("USD")
         let directoryURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("MoneyUpAppTests-\(UUID().uuidString)")
+        let databaseURL = directoryURL.appendingPathComponent("moneyup.sqlite3")
         self.directoryURL = directoryURL
+        self.databaseURL = databaseURL
         store = try EncryptedRecordStore(
-            databaseURL: directoryURL.appendingPathComponent("moneyup.sqlite3"),
+            databaseURL: databaseURL,
             key: Data(repeating: 0x2a, count: 32)
         )
         self.sgd = sgd
@@ -224,12 +458,35 @@ private struct AppModelFixture {
     }
 
     @MainActor
-    func model(entries: [JournalEntry] = []) -> AppModel {
+    func model(
+        store: EncryptedRecordStore? = nil,
+        entries: [JournalEntry] = [],
+        budgetNodes: [BudgetNode] = [],
+        quickLogDraft: QuickLogDraft? = nil,
+        lockedCaptureStore: any LockedCaptureStoring = LockedCaptureStore(),
+        receiptRecognizer: @escaping ReceiptLineRecognizer = { data in
+            try await ReceiptScanner.recognizeLines(inImageData: data)
+        },
+        lifecycleHooks: AppModelLifecycleHooks = .none
+    ) -> AppModel {
         AppModel(
-            store: store,
+            store: store ?? self.store,
             profile: UserProfile(baseCurrency: sgd),
             accounts: [wallet, usAccount, food],
-            entries: entries
+            entries: entries,
+            budgetNodes: budgetNodes,
+            quickLogDraft: quickLogDraft,
+            lockedCaptureStore: lockedCaptureStore,
+            receiptRecognizer: receiptRecognizer,
+            lifecycleHooks: lifecycleHooks,
+            databaseURLForErase: databaseURL
+        )
+    }
+
+    func reopenStore() throws -> EncryptedRecordStore {
+        try EncryptedRecordStore(
+            databaseURL: databaseURL,
+            key: Data(repeating: 0x2a, count: 32)
         )
     }
 
@@ -245,5 +502,68 @@ private struct AppModelFixture {
 
     func removeFiles() {
         try? FileManager.default.removeItem(at: directoryURL)
+    }
+}
+
+private func hooks(
+    pausing checkpoint: AppModelLifecycleCheckpoint,
+    at gate: AsyncGate
+) -> AppModelLifecycleHooks {
+    AppModelLifecycleHooks { candidate in
+        guard candidate == checkpoint else { return }
+        await gate.suspend()
+    }
+}
+
+private actor AsyncGate {
+    private var reached = false
+    private var released = false
+    private var reachWaiters: [CheckedContinuation<Void, Never>] = []
+    private var releaseWaiters: [CheckedContinuation<Void, Never>] = []
+
+    func suspend() async {
+        reached = true
+        let waiters = reachWaiters
+        reachWaiters.removeAll()
+        waiters.forEach { $0.resume() }
+        guard !released else { return }
+        await withCheckedContinuation { continuation in
+            releaseWaiters.append(continuation)
+        }
+    }
+
+    func waitUntilReached() async {
+        guard !reached else { return }
+        await withCheckedContinuation { continuation in
+            reachWaiters.append(continuation)
+        }
+    }
+
+    func release() {
+        released = true
+        let waiters = releaseWaiters
+        releaseWaiters.removeAll()
+        waiters.forEach { $0.resume() }
+    }
+}
+
+private actor InMemoryLockedCaptureStore: LockedCaptureStoring {
+    private var captures: [LockedCapture]
+
+    init(captures: [LockedCapture]) {
+        self.captures = captures
+    }
+
+    func all() async throws -> [LockedCapture] {
+        captures
+    }
+
+    func append(_ capture: LockedCapture) async throws {
+        guard !captures.contains(where: { $0.id == capture.id }) else { return }
+        captures.append(capture)
+    }
+
+    func remove(id: UUID) async throws {
+        captures.removeAll { $0.id == id }
     }
 }

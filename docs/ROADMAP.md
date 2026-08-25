@@ -62,14 +62,16 @@ physical evidence passes on the exact candidate.
 | Show filtered totals separately by currency | Implemented as signed movement per currency; same-currency transfers offset and foreign-currency sides remain separate | Product/UI review and filter-result reconciliation |
 | Retain encrypted revisions and invalidate derived caches immediately | Existing atomic write retained; app regression test added | App test must pass in CI |
 | Remove or honor `lockWhenBackgrounded` | Removed from the runtime model and future encoding; legacy JSON remains decodable | Core migration test must pass |
-| Add AppModel race-condition coverage | Test target and deep-link/revision/cache/precision cases added | Still add deterministic lock-during-save, lock-during-scan, erase-during-commit, stale-generation, and capture-promotion cases |
+| Add AppModel race-condition coverage | Deterministic lifecycle hooks and all named lock/save, scan, erase, stale-generation, deep-link, and capture-promotion cases added | App suite must pass in CI |
 | Validate the exact candidate | CI now includes app tests | Release assets, core tests, app tests, app/widget build, unique version/build, and exact-commit packaging must all be green |
 
-Additional G1 acceptance work remains open: replace silent derived-value zero
-fallbacks with unavailable state and a user-readable reason (TOD-06/DAT-08),
-finish the shared half-open financial-period boundary audit (DAT-06), and
-confirm locale/extreme-value regression coverage (DAT-05/QA-03). G1 is not
-closed while any of these or the named concurrency cases remain open.
+Derived financial failures now propagate an explicit unavailable state, show a
+localized reason plus a redacted diagnostic code, and log no transaction
+content (TOD-06/DAT-08); CI and bilingual Simulator review remain required.
+Additional G1 acceptance work remains open: finish the shared half-open
+financial-period boundary audit (DAT-06), confirm locale/extreme-value
+regression coverage (DAT-05/QA-03), and pass the new concurrency suite. G1 is
+not closed while any of these checks remain open.
 
 ## G2 — after internal upload, before wider testers
 

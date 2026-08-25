@@ -633,14 +633,12 @@ private struct QuickLogEntryView: View {
             guard let data = try await item.loadTransferable(type: Data.self) else {
                 throw ReceiptScannerError.unreadableImage
             }
-            let lines = try await ReceiptScanner.recognizeLines(inImageData: data)
-            try Task.checkCancellation()
-            _ = apply(
-                ReceiptTextParser.draft(
-                    fromLines: lines,
-                    prefersDayFirst: Self.localePrefersDayFirst
-                )
-            )
+            if let draft = try await model.receiptDraft(
+                from: data,
+                prefersDayFirst: Self.localePrefersDayFirst
+            ) {
+                _ = apply(draft)
+            }
         } catch is CancellationError {
             return
         } catch {

@@ -274,10 +274,18 @@ private struct HistorySummaryView: View {
             } else {
                 ForEach(currencies, id: \.self) { currency in
                     LabeledContent {
-                        if let amount = summary.amountsByCurrency[currency],
-                           let money = try? Money(amount, currency: currency) {
-                            Text(formattedMoney(money))
-                                .monospacedDigit()
+                        if let amount = summary.amountsByCurrency[currency] {
+                            switch DerivedValue<Money>.money(
+                                amount,
+                                currency: currency,
+                                operation: "history-filtered-total"
+                            ) {
+                            case let .available(money):
+                                Text(formattedMoney(money))
+                                    .monospacedDigit()
+                            case let .unavailable(issue):
+                                DerivedValueUnavailableView(issue: issue)
+                            }
                         }
                     } label: {
                         HStack(spacing: 4) {

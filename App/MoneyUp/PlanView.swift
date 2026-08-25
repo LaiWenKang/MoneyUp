@@ -67,22 +67,30 @@ private struct BudgetPlanView: View {
         return result
     }
 
-    private func progressByID() -> [UUID: BudgetProgress] {
-        Dictionary(
-            uniqueKeysWithValues: model.budgetProgressThisMonth().map { ($0.node.id, $0) }
-        )
+    private func progressByIDResult() -> DerivedValue<[UUID: BudgetProgress]> {
+        switch model.budgetProgressThisMonthResult() {
+        case let .available(progress):
+            return .available(
+                Dictionary(
+                    uniqueKeysWithValues: progress.map { ($0.node.id, $0) }
+                )
+            )
+        case let .unavailable(issue):
+            return .unavailable(issue)
+        }
     }
 
     var body: some View {
         // Resolved once per update. Reading it inside the row loop recomputed
         // the whole budget tree for every category on screen.
-        let progress = progressByID()
+        let progressResult = progressByIDResult()
         let elapsed = monthElapsed
-        let foreignSpending = model.excludedForeignSpendingThisMonth()
+        let foreignSpendingResult = model.excludedForeignSpendingThisMonthResult()
+        let summaryResult = model.budgetPlanSummaryThisMonthResult()
 
         return NavigationStack {
             List {
-                if let summary = model.budgetPlanSummaryThisMonth() {
+                if case let .available(.some(summary)) = summaryResult {
                     Section {
                         BudgetSummaryCard(
                             limit: summary.limit,
@@ -91,9 +99,17 @@ private struct BudgetPlanView: View {
                             elapsed: elapsed
                         )
                     }
+                } else if case let .unavailable(issue) = summaryResult {
+                    Section {
+                        DerivedValueUnavailableView(
+                            issue: issue,
+                            prominent: true
+                        )
+                    }
                 }
 
-                if !foreignSpending.isEmpty {
+                if case let .available(foreignSpending) = foreignSpendingResult,
+                   !foreignSpending.isEmpty {
                     Section {
                         ForEach(foreignSpending, id: \.currency) { money in
                             LabeledContent(
@@ -104,21 +120,46 @@ private struct BudgetPlanView: View {
                     } footer: {
                         Text("plan.foreign_not_counted_detail")
                     }
+                } else if case let .unavailable(issue) = foreignSpendingResult {
+                    Section {
+                        DerivedValueUnavailableView(issue: issue)
+                    }
                 }
 
                 Section {
-                    ForEach(orderedNodes) { item in
-                        Button {
-                            editingNode = item.node
-                        } label: {
-                            BudgetRow(
-                                node: item.node,
-                                depth: item.depth,
-                                progress: progress[item.node.id],
-                                elapsed: elapsed
-                            )
+                    switch progressResult {
+                    case let .available(progress):
+                        ForEach(orderedNodes) { item in
+                            Button {
+                                editingNode = item.node
+                            } label: {
+                                BudgetRow(
+                                    node: item.node,
+                                    depth: item.depth,
+                                    progress: progress[item.node.id],
+                                    elapsed: elapsed
+                                )
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
+                    case let .unavailable(issue):
+                        ForEach(orderedNodes) { item in
+                            Button {
+                                editingNode = item.node
+                            } label: {
+                                HStack {
+                                    Text(item.node.name)
+                                    Spacer()
+                                    Text("—")
+                                        .monospacedDigit()
+                                }
+                                .padding(.leading, CGFloat(min(item.depth, 4)) * 16)
+                                .accessibilityLabel(
+                                    "\(item.node.name), \(issue.localizedDescription)"
+                                )
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
                 } header: {
                     Text("plan.this_month")

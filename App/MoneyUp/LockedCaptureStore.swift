@@ -64,7 +64,7 @@ actor LockedCaptureStore {
     private static let account = "primary"
     private static let maximumCount = 100
 
-    func all() throws -> [LockedCapture] {
+    func all() async throws -> [LockedCapture] {
         guard FileManager.default.fileExists(atPath: try fileURL().path) else { return [] }
         var key = try loadOrCreateKey()
         defer { key.resetBytes(in: 0..<key.count) }
@@ -81,8 +81,8 @@ actor LockedCaptureStore {
         }
     }
 
-    func append(_ capture: LockedCapture) throws {
-        var captures = try all()
+    func append(_ capture: LockedCapture) async throws {
+        var captures = try await all()
         guard captures.count < Self.maximumCount else {
             throw LockedCaptureStoreError.queueFull
         }
@@ -91,8 +91,8 @@ actor LockedCaptureStore {
         try write(captures)
     }
 
-    func remove(id: UUID) throws {
-        var captures = try all()
+    func remove(id: UUID) async throws {
+        var captures = try await all()
         captures.removeAll { $0.id == id }
         try write(captures)
     }

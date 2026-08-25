@@ -23,16 +23,38 @@ struct CalendarView: View {
     /// The day's money flow, one line per currency. A day spent abroad used to
     /// read as zero because everything outside the base currency was filtered
     /// out before the totals were taken.
-    private var dayFlows: [CurrencyFlow] {
-        guard let currency = model.profile?.baseCurrency,
-              let interval = Calendar.current.dateInterval(of: .day, for: selectedDate),
-              let report = try? FinanceCalculator.report(
-                  interval: interval,
-                  accounts: model.accounts,
-                  entries: selectedEntries,
-                  baseCurrency: currency
-              ) else { return [] }
-        return ([report.baseFlow] + report.foreignFlows).filter { !$0.isEmpty }
+    private var dayFlows: DerivedValue<[CurrencyFlow]> {
+        guard let currency = model.profile?.baseCurrency else {
+            return .unavailable(.appNotReady)
+        }
+        guard let interval = Calendar.current.dateInterval(
+            of: .day,
+            for: selectedDate
+        ) else {
+            DerivedValueDiagnostics.record(
+                .invalidPeriod,
+                operation: "calendar-day-interval"
+            )
+            return .unavailable(.invalidPeriod)
+        }
+        do {
+            let report = try FinanceCalculator.report(
+                interval: interval,
+                accounts: model.accounts,
+                entries: selectedEntries,
+                baseCurrency: currency
+            )
+            return .available(
+                ([report.baseFlow] + report.foreignFlows).filter { !$0.isEmpty }
+            )
+        } catch {
+            DerivedValueDiagnostics.record(
+                .ledgerCalculationFailed,
+                operation: "calendar-day-flow",
+                error: error
+            )
+            return .unavailable(.ledgerCalculationFailed)
+        }
     }
 
     var body: some View {
@@ -45,9 +67,10 @@ struct CalendarView: View {
                 )
                 .datePickerStyle(.graphical)
 
-                if !dayFlows.isEmpty {
+                if case let .available(flows) = dayFlows,
+                   !flows.isEmpty {
                     Section("calendar.money_flow") {
-                        ForEach(dayFlows) { flow in
+                        ForEach(flows) { flow in
                             LabeledContent {
                                 Text(formattedMoney(flow.income))
                             } label: {
@@ -59,6 +82,10 @@ struct CalendarView: View {
                                 Text("\(String(localized: "transaction.expense")) (\(flow.currency.value))")
                             }
                         }
+                    }
+                } else if case let .unavailable(issue) = dayFlows {
+                    Section("calendar.money_flow") {
+                        DerivedValueUnavailableView(issue: issue)
                     }
                 }
 

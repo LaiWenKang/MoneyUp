@@ -19,25 +19,75 @@ struct AssetsView: View {
         }
     }
 
-    private var accountNetWorth: Money? {
-        guard let currency = model.profile?.baseCurrency else { return nil }
+    private var accountNetWorth: DerivedValue<Money> {
+        guard let currency = model.profile?.baseCurrency else {
+            return .unavailable(.appNotReady)
+        }
         var amount = Decimal.zero
         for account in model.userAccounts where account.currency == currency {
-            guard let balance = model.displayBalance(for: account) else { continue }
-            amount += account.kind == .liability ? -balance.amount : balance.amount
+            switch model.displayBalanceResult(for: account) {
+            case let .available(balance):
+                amount += account.kind == .liability ? -balance.amount : balance.amount
+            case let .unavailable(issue):
+                return .unavailable(issue)
+            }
         }
-        return try? Money(amount, currency: currency)
+        return .money(
+            amount,
+            currency: currency,
+            operation: "assets-account-net-worth"
+        )
     }
 
-    private var recordedHoldingsValue: Money? {
-        guard let currency = model.profile?.baseCurrency else { return nil }
-        let amount = model.investmentHoldings.reduce(Decimal.zero) { total, holding in
-            guard let value = try? holding.marketValue(), value.currency == currency else {
-                return total
-            }
-            return total + value.amount
+    private var recordedHoldingsValue: DerivedValue<Money> {
+        guard let currency = model.profile?.baseCurrency else {
+            return .unavailable(.appNotReady)
         }
-        return try? Money(amount, currency: currency)
+        var amount = Decimal.zero
+        for holding in model.investmentHoldings {
+            do {
+                guard let value = try holding.marketValue() else {
+                    DerivedValueDiagnostics.record(
+                        .holdingValuationFailed,
+                        operation: "assets-recorded-holdings-missing-price"
+                    )
+                    return .unavailable(.holdingValuationFailed)
+                }
+                if value.currency == currency { amount += value.amount }
+            } catch {
+                DerivedValueDiagnostics.record(
+                    .holdingValuationFailed,
+                    operation: "assets-recorded-holdings",
+                    error: error
+                )
+                return .unavailable(.holdingValuationFailed)
+            }
+        }
+        return .money(
+            amount,
+            currency: currency,
+            operation: "assets-recorded-holdings-total"
+        )
+    }
+
+    private func value(for holding: InvestmentHolding) -> DerivedValue<Money> {
+        do {
+            guard let value = try holding.marketValue() else {
+                DerivedValueDiagnostics.record(
+                    .holdingValuationFailed,
+                    operation: "assets-holding-row-missing-price"
+                )
+                return .unavailable(.holdingValuationFailed)
+            }
+            return .available(value)
+        } catch {
+            DerivedValueDiagnostics.record(
+                .holdingValuationFailed,
+                operation: "assets-holding-row",
+                error: error
+            )
+            return .unavailable(.holdingValuationFailed)
+        }
     }
 
     var body: some View {
@@ -48,8 +98,16 @@ struct AssetsView: View {
                         Text("assets.account_net_worth")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
-                        Text(accountNetWorth.map(formattedMoney) ?? "—")
-                            .font(.largeTitle.bold().monospacedDigit())
+                        switch accountNetWorth {
+                        case let .available(netWorth):
+                            Text(formattedMoney(netWorth))
+                                .font(.largeTitle.bold().monospacedDigit())
+                        case let .unavailable(issue):
+                            DerivedValueUnavailableView(
+                                issue: issue,
+                                prominent: true
+                            )
+                        }
                     }
                     .padding(.vertical, 8)
                 } footer: {
@@ -72,9 +130,19 @@ struct AssetsView: View {
                                         .foregroundStyle(.secondary)
                                 }
                                 Spacer()
-                                if let balance = model.displayBalance(for: account) {
+                                switch model.displayBalanceResult(for: account) {
+                                case let .available(balance):
                                     Text(formattedMoney(balance))
                                         .font(.subheadline.monospacedDigit())
+                                case let .unavailable(issue):
+                                    VStack(alignment: .trailing, spacing: 2) {
+                                        Text("—")
+                                            .font(.subheadline.monospacedDigit())
+                                        Text(issue.localizedDescription)
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(2)
+                                    }
                                 }
                             }
                         }
@@ -89,12 +157,14 @@ struct AssetsView: View {
                 }
 
                 Section("assets.investments") {
-                    if let recordedHoldingsValue,
-                       !recordedHoldingsValue.isZero {
+                    if case let .available(value) = recordedHoldingsValue,
+                       !value.isZero {
                         LabeledContent(
                             "assets.recorded_holdings",
-                            value: formattedMoney(recordedHoldingsValue)
+                            value: formattedMoney(value)
                         )
+                    } else if case let .unavailable(issue) = recordedHoldingsValue {
+                        DerivedValueUnavailableView(issue: issue)
                     }
                     if model.investmentHoldings.isEmpty {
                         Text("assets.no_holdings")
@@ -111,9 +181,17 @@ struct AssetsView: View {
                                 }
                                 Spacer()
                                 VStack(alignment: .trailing, spacing: 2) {
-                                    if let value = try? holding.marketValue() {
+                                    switch value(for: holding) {
+                                    case let .available(value):
                                         Text(formattedMoney(value))
                                             .font(.subheadline.monospacedDigit())
+                                    case let .unavailable(issue):
+                                        Text("—")
+                                            .font(.subheadline.monospacedDigit())
+                                        Text(issue.localizedDescription)
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(2)
                                     }
                                     Text(
                                         holding.quantity,
@@ -371,8 +449,12 @@ private struct AccountBalanceSheet: View {
                 }
             }
             .onAppear {
-                if balanceText.isEmpty, let balance = model.displayBalance(for: account) {
+                guard balanceText.isEmpty else { return }
+                switch model.displayBalanceResult(for: account) {
+                case let .available(balance):
                     balanceText = editableAmount(balance.amount)
+                case let .unavailable(issue):
+                    errorMessage = issue.localizedDescription
                 }
             }
         }
