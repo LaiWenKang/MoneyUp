@@ -34,6 +34,11 @@ final class AppModel: ObservableObject {
         let task: Task<Void, Error>
     }
 
+    private struct EditableMoneySnapshot {
+        let source: Money
+        let destination: Money?
+    }
+
     @Published private(set) var state: State = .launching
     @Published private(set) var profile: UserProfile? {
         didSet { invalidateDerivedData() }
@@ -73,6 +78,31 @@ final class AppModel: ObservableObject {
         UserDefaults.standard.register(defaults: [
             Self.lockedQuickCapturePreferenceKey: true
         ])
+    }
+
+    /// Dependency-injected construction for app-level tests and previews.
+    /// Production startup still owns key access, store opening, and recovery.
+    init(
+        store: EncryptedRecordStore,
+        profile: UserProfile,
+        accounts: [LedgerAccount],
+        entries: [JournalEntry] = [],
+        budgetNodes: [BudgetNode] = [],
+        scheduledTransactions: [ScheduledTransaction] = [],
+        investmentHoldings: [InvestmentHolding] = []
+    ) {
+        UserDefaults.standard.register(defaults: [
+            Self.lockedQuickCapturePreferenceKey: true
+        ])
+        self.store = store
+        storeGeneration = 1
+        self.profile = profile
+        self.accounts = accounts
+        self.entries = entries.sorted { $0.occurredAt > $1.occurredAt }
+        self.budgetNodes = budgetNodes
+        self.scheduledTransactions = scheduledTransactions
+        self.investmentHoldings = investmentHoldings
+        state = .ready
     }
 
     var userAccounts: [LedgerAccount] {
@@ -640,9 +670,10 @@ final class AppModel: ObservableObject {
     }
 
     /// Rebuilds a consumer transaction and swaps it into the live journal in
-    /// one database transaction. The prior encrypted record is retained in a
-    /// revision collection for recovery/audit purposes, but is excluded from
-    /// balances and reports.
+    /// one database transaction. The replacement receives a new identity and
+    /// points to the prior identity through `supersedesID`. The prior encrypted
+    /// record is retained in a revision collection for recovery/audit purposes,
+    /// but is excluded from balances and reports.
     func replaceEntry(
         id: UUID,
         kind: QuickLogKind,
@@ -659,8 +690,16 @@ final class AppModel: ObservableObject {
             throw AppModelError.missingRecord
         }
 
+        let originalMoney = editableMoneySnapshot(for: original)
         let accountCurrency = try currency(for: accountID)
-        try requireSupportedPrecision(amount, currency: accountCurrency)
+        if let originalMoney, originalMoney.source.currency != accountCurrency {
+            throw AppModelError.crossCurrencyEditRequiresConversion
+        }
+        try requireSupportedPrecision(
+            amount,
+            currency: accountCurrency,
+            preserving: originalMoney?.source.amount
+        )
         let candidate: JournalEntry
         var addedAccounts: [LedgerAccount] = []
 
@@ -698,6 +737,10 @@ final class AppModel: ObservableObject {
         case .transfer:
             guard let destinationAccountID else { throw AppModelError.missingRecord }
             let destinationCurrency = try currency(for: destinationAccountID)
+            if let originalDestination = originalMoney?.destination,
+               originalDestination.currency != destinationCurrency {
+                throw AppModelError.crossCurrencyEditRequiresConversion
+            }
             if destinationCurrency == accountCurrency {
                 candidate = try TransactionFactory.transfer(
                     amount: try Money(amount, currency: accountCurrency),
@@ -712,7 +755,8 @@ final class AppModel: ObservableObject {
                 }
                 try requireSupportedPrecision(
                     destinationAmount,
-                    currency: destinationCurrency
+                    currency: destinationCurrency,
+                    preserving: originalMoney?.destination?.amount
                 )
                 let sourceTrading = foreignExchangeAccount(for: accountCurrency)
                 let destinationTrading = foreignExchangeAccount(for: destinationCurrency)
@@ -736,14 +780,13 @@ final class AppModel: ObservableObject {
         }
 
         let replacement = try JournalEntry(
-            id: original.id,
             kind: candidate.kind,
             occurredAt: candidate.occurredAt,
             createdAt: original.createdAt,
             payee: candidate.payee,
             note: candidate.note,
             postings: candidate.postings,
-            supersedesID: original.supersedesID,
+            supersedesID: original.id,
             revisedAt: Date(),
             sourceSystem: original.sourceSystem,
             sourceFingerprint: original.sourceFingerprint
@@ -764,7 +807,15 @@ final class AppModel: ObservableObject {
 
         let generation = storeGeneration
         let transactionStore = try requireStore()
-        try await transactionStore.write(writes)
+        try await transactionStore.write(
+            writes,
+            removing: [
+                RecordDeletion(
+                    id: original.id.uuidString,
+                    from: .journalEntries
+                )
+            ]
+        )
         guard isCurrentStoreGeneration(generation) else { return }
         accounts.append(contentsOf: addedAccounts)
         entries.removeAll { $0.id == original.id }
@@ -801,6 +852,10 @@ final class AppModel: ObservableObject {
     }
 
     func addScheduledTransaction(_ transaction: ScheduledTransaction) async throws {
+        try requireSupportedPrecision(
+            transaction.amount.amount,
+            currency: transaction.amount.currency
+        )
         let generation = storeGeneration
         let scheduleStore = try requireStore()
         try await scheduleStore.upsert(
@@ -822,6 +877,9 @@ final class AppModel: ObservableObject {
     }
 
     func addInvestmentHolding(_ holding: InvestmentHolding) async throws {
+        if let price = holding.price {
+            try requireSupportedPrecision(price.amount, currency: price.currency)
+        }
         let generation = storeGeneration
         let holdingStore = try requireStore()
         try await holdingStore.upsert(
@@ -841,24 +899,9 @@ final class AppModel: ObservableObject {
         investmentHoldings.removeAll { $0.id == id }
     }
 
-    func updateLockWhenBackgrounded(_ enabled: Bool) async throws {
-        guard var updated = profile else { throw AppModelError.missingRecord }
-        updated.lockWhenBackgrounded = enabled
-        let generation = storeGeneration
-        let profileStore = try requireStore()
-        try await profileStore.upsert(
-            updated,
-            id: UserProfile.primaryRecordID,
-            in: .profile
-        )
-        guard isCurrentStoreGeneration(generation) else { return }
-        profile = updated
-    }
-
     func updateAutoLockDelay(_ seconds: TimeInterval) async throws {
         guard var updated = profile else { throw AppModelError.missingRecord }
         updated.autoLockDelay = max(0, seconds)
-        updated.lockWhenBackgrounded = true
         try await persist(updatedProfile: updated)
     }
 
@@ -1733,6 +1776,45 @@ final class AppModel: ObservableObject {
         return currency
     }
 
+    private func editableMoneySnapshot(
+        for entry: JournalEntry
+    ) -> EditableMoneySnapshot? {
+        let accountKinds = Dictionary(
+            uniqueKeysWithValues: accounts.map { ($0.id, $0.kind) }
+        )
+
+        func positiveMoney(from posting: Posting) -> Money? {
+            try? Money(abs(posting.money.amount), currency: posting.money.currency)
+        }
+
+        switch entry.kind {
+        case .expense:
+            guard let posting = entry.postings.first(where: {
+                accountKinds[$0.accountID] == .expense
+            }), let source = positiveMoney(from: posting) else { return nil }
+            return EditableMoneySnapshot(source: source, destination: nil)
+        case .income:
+            guard let posting = entry.postings.first(where: {
+                accountKinds[$0.accountID] == .income
+            }), let source = positiveMoney(from: posting) else { return nil }
+            return EditableMoneySnapshot(source: source, destination: nil)
+        case .transfer:
+            let userPostings = entry.postings.filter {
+                accountKinds[$0.accountID] == .asset
+                    || accountKinds[$0.accountID] == .liability
+            }
+            guard let sourcePosting = userPostings.first(where: {
+                $0.money.amount < .zero
+            }), let destinationPosting = userPostings.first(where: {
+                $0.money.amount > .zero
+            }), let source = positiveMoney(from: sourcePosting),
+            let destination = positiveMoney(from: destinationPosting) else { return nil }
+            return EditableMoneySnapshot(source: source, destination: destination)
+        case .adjustment, .investment:
+            return nil
+        }
+    }
+
     private func openingBalancesAccount() -> LedgerAccount {
         accounts.first(where: { $0.systemRole == .openingBalances })
             ?? LedgerAccount(
@@ -1744,8 +1826,10 @@ final class AppModel: ObservableObject {
 
     private func requireSupportedPrecision(
         _ amount: Decimal,
-        currency: CurrencyCode
+        currency: CurrencyCode,
+        preserving originalAmount: Decimal? = nil
     ) throws {
+        if let originalAmount, originalAmount == amount { return }
         guard currency.supports(amount) else {
             throw AppModelError.unsupportedPrecision(currency)
         }
@@ -1892,6 +1976,7 @@ enum AppModelError: Error {
     case invalidBook
     case transactionInProgress
     case unsupportedPrecision(CurrencyCode)
+    case crossCurrencyEditRequiresConversion
     case importTooLarge
 }
 
@@ -1914,6 +1999,8 @@ extension AppModelError: LocalizedError {
                 currency.value,
                 currency.minorUnits
             )
+        case .crossCurrencyEditRequiresConversion:
+            String(localized: "error.cross_currency_edit")
         case .importTooLarge: String(localized: "import.error.too_large")
         }
     }

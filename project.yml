@@ -64,7 +64,20 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
     scheme:
-      testTargets: []
+      testTargets:
+        - MoneyUpTests
+
+  MoneyUpTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Tests/MoneyUpAppTests
+    dependencies:
+      - target: MoneyUp
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.laiwenkang.MoneyUpTests
+        GENERATE_INFOPLIST_FILE: true
 
   MoneyUpWidget:
     type: app-extension
