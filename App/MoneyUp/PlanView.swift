@@ -78,6 +78,7 @@ private struct BudgetPlanView: View {
         // the whole budget tree for every category on screen.
         let progress = progressByID()
         let elapsed = monthElapsed
+        let foreignSpending = model.excludedForeignSpendingThisMonth()
 
         return NavigationStack {
             List {
@@ -89,6 +90,19 @@ private struct BudgetPlanView: View {
                             remaining: summary.remaining,
                             elapsed: elapsed
                         )
+                    }
+                }
+
+                if !foreignSpending.isEmpty {
+                    Section {
+                        ForEach(foreignSpending, id: \.currency) { money in
+                            LabeledContent(
+                                "plan.foreign_not_counted",
+                                value: formattedMoney(money)
+                            )
+                        }
+                    } footer: {
+                        Text("plan.foreign_not_counted_detail")
                     }
                 }
 
@@ -295,7 +309,7 @@ private struct BudgetEditorSheet: View {
         self.node = node
         _amountText = State(
             initialValue: node.limit.map {
-                NSDecimalNumber(decimal: $0.amount).stringValue
+                editableAmount($0.amount)
             } ?? ""
         )
     }

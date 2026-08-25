@@ -37,6 +37,7 @@ final class LedgerCSVExporterTests: XCTestCase {
         let lines = csv.components(separatedBy: "\r\n")
 
         XCTAssertEqual(lines.count, 4)
+        XCTAssertTrue(csv.hasPrefix("\u{feff}entry_id"))
         XCTAssertTrue(csv.contains("\"Cafe, \"\"A\"\"\""))
         XCTAssertTrue(csv.contains(",5.25,SGD,"))
         XCTAssertTrue(csv.contains(",-5.25,SGD,"))

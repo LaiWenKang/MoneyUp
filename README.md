@@ -8,7 +8,7 @@ on-device charts, accounts and holdings, and spreadsheet-friendly export.
 
 ## Project status
 
-MoneyUp is preparing **Founders Beta 0.4.0**. An earlier signed build is already
+MoneyUp is preparing **Founders Beta 0.4.1**. An earlier signed build is already
 installed by the account holder through private TestFlight; developers can also
 install the app from source on an iOS 18 device through Xcode.
 
@@ -16,8 +16,8 @@ The beta includes:
 
 - an encrypted SQLCipher database with a random 256-bit app-generated,
   device-bound key;
-- Keychain protection requiring device-owner presence, automatic background
-  locking, and an app-switcher privacy cover;
+- Keychain protection requiring device-owner presence, configurable timed
+  auto-lock (one minute by default), and an immediate app-switcher privacy cover;
 - onboarding with base currency, first account, and opening balance;
 - persistent expense, income, same-currency, and foreign-currency transfers;
 - account balance reconciliation that does not distort income or spending;
@@ -33,10 +33,16 @@ The beta includes:
   recognition, parses typed phrases such as "lunch 12.50 cash yesterday", and
   suggests a category from the user's own history, with no image retained and
   no remote model involved;
-- a permanent leftmost Log tab with encrypted draft recovery, retained defaults,
-  success feedback, and Undo;
+- a permanent leftmost Log tab with encrypted draft recovery, retained or
+  configurable smart defaults, success feedback, and Undo;
+- a searchable, filterable History tab with refunds and atomic transaction
+  editing; prior versions are retained in the encrypted revision collection;
 - configurable privacy-redacted Home and Lock Screen widgets for expense,
-  income, transfer, smart entry, and receipt scanning;
+  income, transfer, refund, smart entry, and receipt scanning, plus a separate
+  encrypted Quick Capture inbox that does not reveal balances while locked;
+- password-protected `.moneyup` backup with authenticated, transactional restore;
+- preview-first local import for Qianji-style and generic CSV/TSV exports, with
+  name mapping, duplicate detection, row-level issues, and atomic saving;
 - posting-level CSV export with account metadata for Numbers and Excel;
 - English and Simplified Chinese UI and first-run categories;
 - a royal-blue app icon and accent colour with restrained gold highlights, a
@@ -47,10 +53,10 @@ The beta includes:
   permanent transaction, schedule, or holding deletion;
 - Swift tests plus a clean unsigned iOS Simulator build in CI.
 
-Portable encrypted backup/restore, imports, and signed public distribution are
-not in this beta. Until backup/restore ships, do not make MoneyUp the only copy
-of information you cannot afford to lose; export CSV snapshots regularly and
-protect them because they are readable plaintext.
+The 0.4.1 source candidate includes portable backup/restore and reviewed CSV
+import. It still requires green CI and physical upgrade/restore drills before
+TestFlight distribution or a public release. Keep a separate encrypted backup;
+CSV snapshots remain readable plaintext and should be protected.
 
 ## Install the beta
 

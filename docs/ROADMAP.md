@@ -1,6 +1,6 @@
 # Delivery Roadmap
 
-Completed checkboxes describe Founders Beta 0.4.0 behavior; unchecked
+Completed checkboxes describe the Founders Beta 0.4.1 source candidate; unchecked
 items are not promised by the current build.
 
 ## Foundation — finance and secure storage
@@ -15,7 +15,7 @@ items are not promised by the current build.
 - [x] Wrong-key, plaintext-leak, migration-compatibility, and rollback tests
 - [x] Destructive failed-recovery path with explicit confirmation
 
-## Daily use — Founders Beta 0.4.0
+## Daily use — Founders Beta 0.4.1
 
 - [x] Onboarding with base currency, first account, and opening balance
 - [x] Expense, income, same-currency, and foreign-currency transfer logging
@@ -37,10 +37,14 @@ items are not promised by the current build.
 - [x] App privacy manifest and bilingual in-app privacy/beta disclosure
 - [x] Confirmed deletion for transactions, schedules, and manual holdings
 - [x] Exclude non-restorable encrypted database files from system backup
+- [x] Configurable one-minute-default auto-lock and locked Quick Capture inbox
+- [x] Searchable/filterable History with refunds and atomic transaction editing
+- [x] Minor-unit validation and locale-safe manual amount fields
 
 ## Beta hardening
 
-- [ ] Search, transaction editing, refunds, and split transactions in the UI
+- [x] Search, transaction editing, and refunds in the UI
+- [ ] Split transactions in the UI
 - [ ] Scheduled-versus-actual matching and recurrence editing
 - [ ] Budget rollover, sinking funds, and savings goals
 - [ ] Historical net-worth series and investment lots
@@ -50,9 +54,10 @@ items are not promised by the current build.
 
 ## Portability and distribution
 
-- [ ] Versioned authenticated `.moneyup` backup archive
-- [ ] Recovery-secret design, transactional restore, and restore drills
-- [ ] Previewable CSV import with duplicate detection
+- [x] Versioned authenticated `.moneyup` backup archive
+- [x] Password-based recovery and transactional restore implementation
+- [ ] Physical-device backup, restore, and TestFlight-to-App-Store drills
+- [x] Previewable Qianji/generic CSV import with duplicate detection
 - [ ] Native XLSX workbook export
 - [x] Signed private TestFlight beta
 - [ ] App Store submission compliance and review work

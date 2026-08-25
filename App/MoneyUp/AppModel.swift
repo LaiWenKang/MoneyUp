@@ -6,6 +6,7 @@ import UIKit
 
 @MainActor
 final class AppModel: ObservableObject {
+    static let lockedQuickCapturePreferenceKey = "moneyup.allowLockedQuickCapture"
     enum State: Equatable {
         case launching
         case locked
@@ -18,6 +19,13 @@ final class AppModel: ObservableObject {
         let previous: Money
         let current: Money
         let holdsUnconvertedActivity: Bool
+    }
+
+    struct TransactionImportResult: Equatable {
+        let imported: Int
+        let duplicates: Int
+        let skipped: Int
+        let categoriesCreated: Int
     }
 
     private struct PendingQuickLogCommit {
@@ -42,11 +50,16 @@ final class AppModel: ObservableObject {
     @Published private(set) var isWorking = false
     @Published private(set) var requestedQuickLogMode: QuickLogLaunchMode?
     @Published private(set) var quickLogDraft: QuickLogDraft?
+    @Published private(set) var recoveryIssues: [String] = []
+    @Published private(set) var pendingLockedCaptureCount = 0
 
     private var store: EncryptedRecordStore?
+    private let lockedCaptureStore = LockedCaptureStore()
     private var quickLogDraftWriteTask: Task<Void, Never>?
     private var quickLogCommit: PendingQuickLogCommit?
     private var storeCloseTask: Task<Void, Never>?
+    private var autoLockTask: Task<Void, Never>?
+    private var backgroundedAt: Date?
     private var storeGeneration = 0
     private var lockAfterStart = false
     private var isStarting = false
@@ -55,6 +68,12 @@ final class AppModel: ObservableObject {
     private var monthToDateComparisonCache: MonthToDateExpenseComparison?
     private var monthToDateComparisonCacheDay: Date?
     private var balanceCache: [UUID: [CurrencyCode: Money]]?
+
+    init() {
+        UserDefaults.standard.register(defaults: [
+            Self.lockedQuickCapturePreferenceKey: true
+        ])
+    }
 
     var userAccounts: [LedgerAccount] {
         accounts.filter {
@@ -83,25 +102,37 @@ final class AppModel: ObservableObject {
             await pendingClose.value
             storeCloseTask = nil
         }
+        if let existingStore = store {
+            await existingStore.close()
+            store = nil
+            storeGeneration &+= 1
+        }
         state = .launching
 
         do {
             var key = try DatabaseKeyStore.loadOrCreateKey()
             defer { key.resetBytes(in: 0..<key.count) }
 
-            let openedStore = try EncryptedRecordStore(
-                databaseURL: try Self.databaseURL(),
-                key: key
-            )
+            let databaseURL = try Self.databaseURL()
+            let openingKey = key
+            let openedStore = try await Task.detached(priority: .userInitiated) {
+                try EncryptedRecordStore(databaseURL: databaseURL, key: openingKey)
+            }.value
             storeGeneration &+= 1
             store = openedStore
             try await load(from: openedStore)
 
             if profile == nil {
-                try await discardIncompleteOnboarding(from: openedStore)
+                let hasBookData = !accounts.isEmpty
+                    || !entries.isEmpty
+                    || !budgetNodes.isEmpty
+                    || !scheduledTransactions.isEmpty
+                    || !investmentHoldings.isEmpty
+                guard !hasBookData else { throw AppModelError.invalidBook }
                 state = .onboarding
             } else {
                 try validateLoadedBook()
+                try await promoteLockedCaptureIfPossible(to: openedStore)
                 state = .ready
             }
             if lockAfterStart {
@@ -115,11 +146,13 @@ final class AppModel: ObservableObject {
             state = .locked
         } catch {
             lockAfterStart = false
-            let failedStore = store
-            clearDecodedState()
-            store = nil
-            storeGeneration &+= 1
-            await failedStore?.close()
+            // Keep an opened store available to the recovery screen. It can
+            // still produce a raw authenticated backup even when a domain
+            // record cannot be decoded. A key/cipher failure happens before
+            // `store` is assigned and therefore exposes no recovery operation.
+            if store == nil {
+                clearDecodedState()
+            }
             state = .failed(error.localizedDescription)
         }
     }
@@ -129,7 +162,17 @@ final class AppModel: ObservableObject {
             lockAfterStart = true
             return
         }
-        guard state == .ready || state == .onboarding else { return }
+        let canLock: Bool
+        switch state {
+        case .ready, .onboarding, .failed:
+            canLock = true
+        case .launching, .locked:
+            canLock = false
+        }
+        guard canLock else { return }
+        autoLockTask?.cancel()
+        autoLockTask = nil
+        backgroundedAt = nil
         let pendingDraftWrite = quickLogDraftWriteTask
         let pendingQuickLogCommit = quickLogCommit.flatMap {
             $0.generation == storeGeneration ? $0.task : nil
@@ -171,6 +214,37 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func sceneDidEnterBackground(at date: Date = Date()) {
+        guard state == .ready || state == .onboarding else { return }
+        backgroundedAt = date
+        autoLockTask?.cancel()
+        let delay = profile?.autoLockDelay ?? 60
+        guard delay > 0 else {
+            lock()
+            return
+        }
+        autoLockTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: .seconds(delay))
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            self?.lock()
+        }
+    }
+
+    func sceneDidBecomeActive(at date: Date = Date()) {
+        autoLockTask?.cancel()
+        autoLockTask = nil
+        guard let backgroundedAt else { return }
+        self.backgroundedAt = nil
+        let delay = profile?.autoLockDelay ?? 60
+        if date.timeIntervalSince(backgroundedAt) >= delay {
+            lock()
+        }
+    }
+
     @discardableResult
     func handleDeepLink(_ url: URL) -> Bool {
         guard url.scheme?.lowercased() == "moneyup",
@@ -182,6 +256,50 @@ final class AppModel: ObservableObject {
         }
         requestedQuickLogMode = mode
         return true
+    }
+
+    var canPresentLockedQuickCapture: Bool {
+        guard state == .locked,
+              let requestedQuickLogMode,
+              UserDefaults.standard.bool(
+                  forKey: Self.lockedQuickCapturePreferenceKey
+              ) else { return false }
+        switch requestedQuickLogMode {
+        case .expense, .income, .transfer, .refund:
+            return true
+        case .smartEntry, .scanReceipt:
+            return false
+        }
+    }
+
+    func saveLockedCapture(
+        mode: QuickLogLaunchMode,
+        amountText: String,
+        payee: String,
+        note: String
+    ) async throws {
+        let kind: LockedCaptureKind
+        switch mode {
+        case .income:
+            kind = .income
+        case .transfer:
+            kind = .transfer
+        case .refund:
+            kind = .refund
+        case .expense, .smartEntry, .scanReceipt:
+            kind = .expense
+        }
+        try await lockedCaptureStore.append(
+            LockedCapture(
+                kind: kind,
+                amountText: amountText,
+                payee: payee,
+                note: note
+            )
+        )
+        let pendingCaptures = try? await lockedCaptureStore.all()
+        pendingLockedCaptureCount = pendingCaptures?.count ?? 0
+        consumeQuickLogRequest(mode)
     }
 
     func consumeQuickLogRequest(_ mode: QuickLogLaunchMode) {
@@ -213,6 +331,7 @@ final class AppModel: ObservableObject {
         let store = try requireStore()
         let currency = try CurrencyCode(baseCurrencyCode)
         guard startingBalance >= .zero else { throw AppModelError.negativeAmount }
+        try requireSupportedPrecision(startingBalance, currency: currency)
         let normalizedName = accountName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedName.isEmpty else {
             throw AppModelError.emptyName
@@ -276,6 +395,7 @@ final class AppModel: ObservableObject {
         guard !normalizedName.isEmpty else { throw AppModelError.emptyName }
         guard startingBalance >= .zero else { throw AppModelError.negativeAmount }
         let currency = try CurrencyCode(currencyCode)
+        try requireSupportedPrecision(startingBalance, currency: currency)
         let account = LedgerAccount(
             name: normalizedName,
             kind: type == .creditCard || type == .loan ? .liability : .asset,
@@ -363,6 +483,7 @@ final class AppModel: ObservableObject {
             throw AppModelError.missingRecord
         }
         let current = self.displayBalance(for: account)?.amount ?? .zero
+        try requireSupportedPrecision(displayBalance, currency: currency)
         let delta = displayBalance - current
         guard delta != .zero else { return }
 
@@ -402,6 +523,7 @@ final class AppModel: ObservableObject {
         note: String?
     ) async throws -> UUID? {
         let currency = try currency(for: accountID)
+        try requireSupportedPrecision(amount, currency: currency)
         let entry = try TransactionFactory.expense(
             amount: try Money(amount, currency: currency),
             paidFrom: accountID,
@@ -423,9 +545,32 @@ final class AppModel: ObservableObject {
         note: String?
     ) async throws -> UUID? {
         let currency = try currency(for: accountID)
+        try requireSupportedPrecision(amount, currency: currency)
         let entry = try TransactionFactory.income(
             amount: try Money(amount, currency: currency),
             depositedInto: accountID,
+            category: categoryID,
+            occurredAt: occurredAt,
+            payee: payee,
+            note: note
+        )
+        return try await save(entry)
+    }
+
+    @discardableResult
+    func logRefund(
+        amount: Decimal,
+        accountID: UUID,
+        categoryID: UUID,
+        occurredAt: Date,
+        payee: String?,
+        note: String?
+    ) async throws -> UUID? {
+        let currency = try currency(for: accountID)
+        try requireSupportedPrecision(amount, currency: currency)
+        let entry = try TransactionFactory.refund(
+            amount: try Money(amount, currency: currency),
+            returnedTo: accountID,
             category: categoryID,
             occurredAt: occurredAt,
             payee: payee,
@@ -445,6 +590,7 @@ final class AppModel: ObservableObject {
     ) async throws -> UUID? {
         let sourceCurrency = try currency(for: sourceAccountID)
         let destinationCurrency = try currency(for: destinationAccountID)
+        try requireSupportedPrecision(amount, currency: sourceCurrency)
         if sourceCurrency == destinationCurrency {
             let entry = try TransactionFactory.transfer(
                 amount: try Money(amount, currency: sourceCurrency),
@@ -459,6 +605,7 @@ final class AppModel: ObservableObject {
         guard let destinationAmount, destinationAmount > .zero else {
             throw AppModelError.foreignCurrencyTransferRequiresExchangeRate
         }
+        try requireSupportedPrecision(destinationAmount, currency: destinationCurrency)
         let sourceTrading = foreignExchangeAccount(for: sourceCurrency)
         let destinationTrading = foreignExchangeAccount(for: destinationCurrency)
         let newTradingAccounts = [sourceTrading, destinationTrading].filter { candidate in
@@ -492,12 +639,149 @@ final class AppModel: ObservableObject {
         entries.removeAll { $0.id == id }
     }
 
+    /// Rebuilds a consumer transaction and swaps it into the live journal in
+    /// one database transaction. The prior encrypted record is retained in a
+    /// revision collection for recovery/audit purposes, but is excluded from
+    /// balances and reports.
+    func replaceEntry(
+        id: UUID,
+        kind: QuickLogKind,
+        amount: Decimal,
+        destinationAmount: Decimal?,
+        accountID: UUID,
+        destinationAccountID: UUID?,
+        categoryID: UUID?,
+        occurredAt: Date,
+        payee: String?,
+        note: String?
+    ) async throws {
+        guard let original = entries.first(where: { $0.id == id }) else {
+            throw AppModelError.missingRecord
+        }
+
+        let accountCurrency = try currency(for: accountID)
+        try requireSupportedPrecision(amount, currency: accountCurrency)
+        let candidate: JournalEntry
+        var addedAccounts: [LedgerAccount] = []
+
+        switch kind {
+        case .expense:
+            guard let categoryID else { throw AppModelError.missingRecord }
+            candidate = try TransactionFactory.expense(
+                amount: try Money(amount, currency: accountCurrency),
+                paidFrom: accountID,
+                category: categoryID,
+                occurredAt: occurredAt,
+                payee: payee,
+                note: note
+            )
+        case .income:
+            guard let categoryID else { throw AppModelError.missingRecord }
+            candidate = try TransactionFactory.income(
+                amount: try Money(amount, currency: accountCurrency),
+                depositedInto: accountID,
+                category: categoryID,
+                occurredAt: occurredAt,
+                payee: payee,
+                note: note
+            )
+        case .refund:
+            guard let categoryID else { throw AppModelError.missingRecord }
+            candidate = try TransactionFactory.refund(
+                amount: try Money(amount, currency: accountCurrency),
+                returnedTo: accountID,
+                category: categoryID,
+                occurredAt: occurredAt,
+                payee: payee,
+                note: note
+            )
+        case .transfer:
+            guard let destinationAccountID else { throw AppModelError.missingRecord }
+            let destinationCurrency = try currency(for: destinationAccountID)
+            if destinationCurrency == accountCurrency {
+                candidate = try TransactionFactory.transfer(
+                    amount: try Money(amount, currency: accountCurrency),
+                    from: accountID,
+                    to: destinationAccountID,
+                    occurredAt: occurredAt,
+                    note: note
+                )
+            } else {
+                guard let destinationAmount, destinationAmount > .zero else {
+                    throw AppModelError.foreignCurrencyTransferRequiresExchangeRate
+                }
+                try requireSupportedPrecision(
+                    destinationAmount,
+                    currency: destinationCurrency
+                )
+                let sourceTrading = foreignExchangeAccount(for: accountCurrency)
+                let destinationTrading = foreignExchangeAccount(for: destinationCurrency)
+                addedAccounts = [sourceTrading, destinationTrading].filter { candidate in
+                    !accounts.contains(where: { $0.id == candidate.id })
+                }
+                candidate = try TransactionFactory.foreignCurrencyTransfer(
+                    sourceAmount: try Money(amount, currency: accountCurrency),
+                    destinationAmount: try Money(
+                        destinationAmount,
+                        currency: destinationCurrency
+                    ),
+                    from: accountID,
+                    to: destinationAccountID,
+                    sourceTradingAccountID: sourceTrading.id,
+                    destinationTradingAccountID: destinationTrading.id,
+                    occurredAt: occurredAt,
+                    note: note
+                )
+            }
+        }
+
+        let replacement = try JournalEntry(
+            id: original.id,
+            kind: candidate.kind,
+            occurredAt: candidate.occurredAt,
+            createdAt: original.createdAt,
+            payee: candidate.payee,
+            note: candidate.note,
+            postings: candidate.postings,
+            supersedesID: original.supersedesID,
+            revisedAt: Date(),
+            sourceSystem: original.sourceSystem,
+            sourceFingerprint: original.sourceFingerprint
+        )
+        var writes = try addedAccounts.map {
+            try RecordWrite($0, id: $0.id.uuidString, in: .accounts)
+        }
+        writes.append(
+            try RecordWrite(
+                original,
+                id: "\(original.id.uuidString)-\(UUID().uuidString)",
+                in: .journalEntryRevisions
+            )
+        )
+        writes.append(
+            try RecordWrite(replacement, id: replacement.id.uuidString, in: .journalEntries)
+        )
+
+        let generation = storeGeneration
+        let transactionStore = try requireStore()
+        try await transactionStore.write(writes)
+        guard isCurrentStoreGeneration(generation) else { return }
+        accounts.append(contentsOf: addedAccounts)
+        entries.removeAll { $0.id == original.id }
+        entries.append(replacement)
+        entries.sort {
+            if $0.occurredAt == $1.occurredAt { return $0.createdAt > $1.createdAt }
+            return $0.occurredAt > $1.occurredAt
+        }
+    }
+
     func setBudgetLimit(categoryID: UUID, amount: Decimal?) async throws {
         guard let currency = profile?.baseCurrency,
               let index = budgetNodes.firstIndex(where: { $0.id == categoryID }) else {
             throw AppModelError.missingRecord
         }
         if let amount, amount < .zero { throw AppModelError.negativeAmount }
+        if let amount { try requireSupportedPrecision(amount, currency: currency) }
 
         var updated = budgetNodes[index]
         updated.limit = try amount.map { try Money($0, currency: currency) }
@@ -571,6 +855,50 @@ final class AppModel: ObservableObject {
         profile = updated
     }
 
+    func updateAutoLockDelay(_ seconds: TimeInterval) async throws {
+        guard var updated = profile else { throw AppModelError.missingRecord }
+        updated.autoLockDelay = max(0, seconds)
+        updated.lockWhenBackgrounded = true
+        try await persist(updatedProfile: updated)
+    }
+
+    func updateLockedQuickCapture(_ enabled: Bool) async throws {
+        guard var updated = profile else { throw AppModelError.missingRecord }
+        updated.allowLockedQuickCapture = enabled
+        try await persist(updatedProfile: updated)
+        UserDefaults.standard.set(enabled, forKey: Self.lockedQuickCapturePreferenceKey)
+    }
+
+    func updatePreferredAccount(_ id: UUID?) async throws {
+        guard var updated = profile else { throw AppModelError.missingRecord }
+        updated.preferredAccountID = id
+        try await persist(updatedProfile: updated)
+    }
+
+    func updatePreferredExpenseCategory(_ id: UUID?) async throws {
+        guard var updated = profile else { throw AppModelError.missingRecord }
+        updated.preferredExpenseCategoryID = id
+        try await persist(updatedProfile: updated)
+    }
+
+    func updatePreferredIncomeCategory(_ id: UUID?) async throws {
+        guard var updated = profile else { throw AppModelError.missingRecord }
+        updated.preferredIncomeCategoryID = id
+        try await persist(updatedProfile: updated)
+    }
+
+    private func persist(updatedProfile: UserProfile) async throws {
+        let generation = storeGeneration
+        let profileStore = try requireStore()
+        try await profileStore.upsert(
+            updatedProfile,
+            id: UserProfile.primaryRecordID,
+            in: .profile
+        )
+        guard isCurrentStoreGeneration(generation) else { return }
+        profile = updatedProfile
+    }
+
     func eraseAllDataAndRestart() async {
         guard !isWorking else { return }
         isWorking = true
@@ -636,9 +964,11 @@ final class AppModel: ObservableObject {
 
         guard let currency = profile?.baseCurrency,
               let interval = period.interval(containing: Date()) else { return nil }
+        let trendInterval = ReportPeriod.twelveMonths.interval(containing: Date())
+            ?? interval
         guard let built = try? FinanceCalculator.report(
             interval: interval,
-            trendInterval: interval,
+            trendInterval: trendInterval,
             accounts: accounts,
             entries: entries,
             baseCurrency: currency
@@ -655,6 +985,14 @@ final class AppModel: ObservableObject {
                 ($0.accountID, $0.amount)
             }
         )
+    }
+
+    func excludedForeignSpendingThisMonth() -> [Money] {
+        guard let report = report(for: .thisMonth) else { return [] }
+        return report.foreignFlows
+            .map(\.expense)
+            .filter { $0.amount > .zero }
+            .sorted { $0.currency < $1.currency }
     }
 
     func budgetProgressThisMonth() -> [BudgetProgress] {
@@ -721,6 +1059,367 @@ final class AppModel: ObservableObject {
             entries.sorted { $0.occurredAt < $1.occurredAt },
             accounts: accounts
         )
+    }
+
+    /// Resolves a parsed CSV preview against the current book, then commits
+    /// every new category, FX helper, and journal entry together. A failure
+    /// therefore imports either all accepted rows or none of them.
+    func importTransactions(
+        _ rows: [ImportedTransaction],
+        fallbackAccountID: UUID,
+        fallbackExpenseCategoryID: UUID,
+        fallbackIncomeCategoryID: UUID,
+        sourceSystem: String = "CSV/Qianji"
+    ) async throws -> TransactionImportResult {
+        guard rows.count <= 20_000 else { throw AppModelError.importTooLarge }
+        guard let fallbackAccount = userAccounts.first(where: {
+            $0.id == fallbackAccountID
+        }), expenseCategories.contains(where: {
+            $0.id == fallbackExpenseCategoryID
+        }), incomeCategories.contains(where: {
+            $0.id == fallbackIncomeCategoryID
+        }) else { throw AppModelError.missingRecord }
+
+        func normalizedName(_ value: String) -> String {
+            value.trimmingCharacters(in: .whitespacesAndNewlines)
+                .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+        }
+
+        var candidateAccounts = accounts
+        var newAccounts: [LedgerAccount] = []
+        var newBudgetNodes: [BudgetNode] = []
+        var importedEntries: [JournalEntry] = []
+        var fingerprints = Set(entries.compactMap(\.sourceFingerprint))
+        var duplicates = 0
+        var skipped = 0
+        let initialAccountKinds = Dictionary(
+            uniqueKeysWithValues: accounts.map { ($0.id, $0.kind) }
+        )
+
+        func duplicateKey(
+            kind: ImportedTransactionKind,
+            occurredAt: Date,
+            amount: Decimal,
+            currency: CurrencyCode,
+            sourceID: UUID,
+            payee: String?
+        ) -> String {
+            [
+                kind.rawValue,
+                String(Int64(occurredAt.timeIntervalSince1970.rounded(.down))),
+                NSDecimalNumber(decimal: amount).stringValue,
+                currency.value,
+                sourceID.uuidString.lowercased(),
+                normalizedName(payee ?? "")
+            ].joined(separator: "\u{1f}")
+        }
+
+        func duplicateKey(for entry: JournalEntry) -> String? {
+            let userPosting: Posting?
+            let amountPosting: Posting?
+            let kind: ImportedTransactionKind?
+            switch entry.kind {
+            case .expense:
+                userPosting = entry.postings.first {
+                    initialAccountKinds[$0.accountID] == .asset
+                        || initialAccountKinds[$0.accountID] == .liability
+                }
+                amountPosting = entry.postings.first {
+                    initialAccountKinds[$0.accountID] == .expense
+                }
+                kind = (amountPosting?.money.amount ?? .zero) < .zero
+                    ? .refund : .expense
+            case .income:
+                userPosting = entry.postings.first {
+                    initialAccountKinds[$0.accountID] == .asset
+                        || initialAccountKinds[$0.accountID] == .liability
+                }
+                amountPosting = entry.postings.first {
+                    initialAccountKinds[$0.accountID] == .income
+                }
+                kind = .income
+            case .transfer:
+                userPosting = entry.postings.first {
+                    (initialAccountKinds[$0.accountID] == .asset
+                        || initialAccountKinds[$0.accountID] == .liability)
+                        && $0.money.amount < .zero
+                }
+                amountPosting = userPosting
+                kind = .transfer
+            case .adjustment, .investment:
+                return nil
+            }
+            guard let userPosting, let amountPosting, let kind else { return nil }
+            return duplicateKey(
+                kind: kind,
+                occurredAt: entry.occurredAt,
+                amount: abs(amountPosting.money.amount),
+                currency: amountPosting.money.currency,
+                sourceID: userPosting.accountID,
+                payee: entry.payee
+            )
+        }
+
+        var duplicateKeys = Set(entries.compactMap { duplicateKey(for: $0) })
+
+        func account(named name: String?, currency: CurrencyCode?) -> LedgerAccount? {
+            guard let name else { return nil }
+            let normalized = normalizedName(name)
+            return candidateAccounts.first {
+                ($0.kind == .asset || $0.kind == .liability)
+                    && !$0.isArchived
+                    && normalizedName($0.name) == normalized
+                    && (currency == nil || $0.currency == currency)
+            }
+        }
+
+        func category(
+            named name: String?,
+            kind: LedgerAccountKind,
+            fallbackID: UUID
+        ) -> LedgerAccount? {
+            guard let name, !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            else { return candidateAccounts.first { $0.id == fallbackID } }
+            let normalized = normalizedName(name)
+            if let existing = candidateAccounts.first(where: {
+                $0.kind == kind && normalizedName($0.name) == normalized
+            }) {
+                return existing
+            }
+            let created = LedgerAccount(name: name, kind: kind)
+            candidateAccounts.append(created)
+            newAccounts.append(created)
+            if kind == .expense {
+                newBudgetNodes.append(BudgetNode(id: created.id, name: created.name))
+            }
+            return created
+        }
+
+        for row in rows {
+            guard fingerprints.insert(row.id).inserted else {
+                duplicates += 1
+                continue
+            }
+            let declaredCurrency = row.currencyCode.flatMap { try? CurrencyCode($0) }
+            if row.currencyCode != nil, declaredCurrency == nil {
+                fingerprints.remove(row.id)
+                skipped += 1
+                continue
+            }
+            let source = account(named: row.accountName, currency: declaredCurrency)
+                ?? (declaredCurrency == nil || declaredCurrency == fallbackAccount.currency
+                    ? fallbackAccount
+                    : nil)
+            guard let source, let sourceCurrency = source.currency,
+                  sourceCurrency.supports(row.amount) else {
+                fingerprints.remove(row.id)
+                skipped += 1
+                continue
+            }
+            let rowDuplicateKey = duplicateKey(
+                kind: row.kind,
+                occurredAt: row.occurredAt,
+                amount: row.amount,
+                currency: sourceCurrency,
+                sourceID: source.id,
+                payee: row.payee
+            )
+            guard duplicateKeys.insert(rowDuplicateKey).inserted else {
+                fingerprints.remove(row.id)
+                duplicates += 1
+                continue
+            }
+
+            let baseEntry: JournalEntry
+            do {
+                switch row.kind {
+                case .expense:
+                    guard let category = category(
+                        named: row.categoryName,
+                        kind: .expense,
+                        fallbackID: fallbackExpenseCategoryID
+                    ) else { throw AppModelError.missingRecord }
+                    baseEntry = try TransactionFactory.expense(
+                        amount: try Money(row.amount, currency: sourceCurrency),
+                        paidFrom: source.id,
+                        category: category.id,
+                        occurredAt: row.occurredAt,
+                        payee: row.payee,
+                        note: row.note
+                    )
+                case .income:
+                    guard let category = category(
+                        named: row.categoryName,
+                        kind: .income,
+                        fallbackID: fallbackIncomeCategoryID
+                    ) else { throw AppModelError.missingRecord }
+                    baseEntry = try TransactionFactory.income(
+                        amount: try Money(row.amount, currency: sourceCurrency),
+                        depositedInto: source.id,
+                        category: category.id,
+                        occurredAt: row.occurredAt,
+                        payee: row.payee,
+                        note: row.note
+                    )
+                case .refund:
+                    guard let category = category(
+                        named: row.categoryName,
+                        kind: .expense,
+                        fallbackID: fallbackExpenseCategoryID
+                    ) else { throw AppModelError.missingRecord }
+                    baseEntry = try TransactionFactory.refund(
+                        amount: try Money(row.amount, currency: sourceCurrency),
+                        returnedTo: source.id,
+                        category: category.id,
+                        occurredAt: row.occurredAt,
+                        payee: row.payee,
+                        note: row.note
+                    )
+                case .transfer:
+                    guard let destination = account(
+                        named: row.destinationAccountName,
+                        currency: nil
+                    ), destination.id != source.id,
+                    let destinationCurrency = destination.currency else {
+                        throw AppModelError.missingRecord
+                    }
+                    if sourceCurrency == destinationCurrency {
+                        baseEntry = try TransactionFactory.transfer(
+                            amount: try Money(row.amount, currency: sourceCurrency),
+                            from: source.id,
+                            to: destination.id,
+                            occurredAt: row.occurredAt,
+                            note: row.note
+                        )
+                    } else {
+                        guard let destinationAmount = row.destinationAmount,
+                              destinationCurrency.supports(destinationAmount) else {
+                            throw AppModelError.foreignCurrencyTransferRequiresExchangeRate
+                        }
+                        let sourceTrading = foreignExchangeAccount(for: sourceCurrency)
+                        let destinationTrading = foreignExchangeAccount(for: destinationCurrency)
+                        for trading in [sourceTrading, destinationTrading]
+                        where !candidateAccounts.contains(where: { $0.id == trading.id }) {
+                            candidateAccounts.append(trading)
+                            newAccounts.append(trading)
+                        }
+                        baseEntry = try TransactionFactory.foreignCurrencyTransfer(
+                            sourceAmount: try Money(row.amount, currency: sourceCurrency),
+                            destinationAmount: try Money(
+                                destinationAmount,
+                                currency: destinationCurrency
+                            ),
+                            from: source.id,
+                            to: destination.id,
+                            sourceTradingAccountID: sourceTrading.id,
+                            destinationTradingAccountID: destinationTrading.id,
+                            occurredAt: row.occurredAt,
+                            note: row.note
+                        )
+                    }
+                }
+
+                importedEntries.append(
+                    try JournalEntry(
+                        kind: baseEntry.kind,
+                        occurredAt: baseEntry.occurredAt,
+                        createdAt: baseEntry.createdAt,
+                        payee: baseEntry.payee,
+                        note: baseEntry.note,
+                        postings: baseEntry.postings,
+                        sourceSystem: sourceSystem,
+                        sourceFingerprint: row.id
+                    )
+                )
+            } catch {
+                fingerprints.remove(row.id)
+                duplicateKeys.remove(rowDuplicateKey)
+                skipped += 1
+            }
+        }
+
+        guard !importedEntries.isEmpty else {
+            return TransactionImportResult(
+                imported: 0,
+                duplicates: duplicates,
+                skipped: skipped,
+                categoriesCreated: 0
+            )
+        }
+        if let currency = profile?.baseCurrency {
+            _ = try BudgetTree(currency: currency, nodes: budgetNodes + newBudgetNodes)
+        }
+
+        var writes = try newAccounts.map {
+            try RecordWrite($0, id: $0.id.uuidString, in: .accounts)
+        }
+        writes += try newBudgetNodes.map {
+            try RecordWrite($0, id: $0.id.uuidString, in: .budgetNodes)
+        }
+        writes += try importedEntries.map {
+            try RecordWrite($0, id: $0.id.uuidString, in: .journalEntries)
+        }
+
+        let generation = storeGeneration
+        let importStore = try requireStore()
+        try await importStore.write(writes)
+        guard isCurrentStoreGeneration(generation) else {
+            return TransactionImportResult(
+                imported: 0,
+                duplicates: duplicates,
+                skipped: skipped,
+                categoriesCreated: 0
+            )
+        }
+        accounts.append(contentsOf: newAccounts)
+        budgetNodes.append(contentsOf: newBudgetNodes)
+        entries.append(contentsOf: importedEntries)
+        entries.sort {
+            if $0.occurredAt == $1.occurredAt { return $0.createdAt > $1.createdAt }
+            return $0.occurredAt > $1.occurredAt
+        }
+        return TransactionImportResult(
+            imported: importedEntries.count,
+            duplicates: duplicates,
+            skipped: skipped,
+            categoriesCreated: newBudgetNodes.count
+                + newAccounts.filter { $0.kind == .income }.count
+        )
+    }
+
+    func encryptedBackup(password: String) async throws -> Data {
+        let backupStore = try requireStore()
+        let snapshot = try await backupStore.snapshot()
+        return try await Task.detached(priority: .userInitiated) {
+            try PortableArchive.seal(snapshot, password: password)
+        }.value
+    }
+
+    /// Restores only after decryption and snapshot validation succeed. The
+    /// previous logical store is retained in memory and written back if loading
+    /// the candidate fails, so restore is atomic from the user's perspective.
+    func restoreEncryptedBackup(_ data: Data, password: String) async throws {
+        guard !isWorking else { return }
+        isWorking = true
+        defer { isWorking = false }
+
+        let candidate = try await Task.detached(priority: .userInitiated) {
+            try PortableArchive.open(data, password: password)
+        }.value
+        let restoreStore = try requireStore()
+        let rollback = try await restoreStore.snapshot()
+
+        do {
+            try await restoreStore.restore(candidate)
+            try await load(from: restoreStore)
+            guard profile != nil else { throw AppModelError.invalidBook }
+            try validateLoadedBook()
+            state = .ready
+        } catch {
+            try? await restoreStore.restore(rollback)
+            try? await load(from: restoreStore)
+            throw error
+        }
     }
 
     private func invalidateDerivedData() {
@@ -835,23 +1534,55 @@ final class AppModel: ObservableObject {
     }
 
     private func load(from store: EncryptedRecordStore) async throws {
+        recoveryIssues = []
         profile = try await store.fetch(
             UserProfile.self,
             id: UserProfile.primaryRecordID,
             from: .profile
         )
-        accounts = try await store.fetchAll(LedgerAccount.self, from: .accounts)
-        entries = try await store.fetchAll(JournalEntry.self, from: .journalEntries)
-            .sorted { $0.occurredAt > $1.occurredAt }
-        budgetNodes = try await store.fetchAll(BudgetNode.self, from: .budgetNodes)
-        scheduledTransactions = try await store.fetchAll(
+        if let profile {
+            UserDefaults.standard.set(
+                profile.allowLockedQuickCapture,
+                forKey: Self.lockedQuickCapturePreferenceKey
+            )
+        }
+        let recoveredAccounts = try await store.fetchAllRecovering(
+            LedgerAccount.self,
+            from: .accounts
+        )
+        let recoveredEntries = try await store.fetchAllRecovering(
+            JournalEntry.self,
+            from: .journalEntries
+        )
+        let recoveredBudgets = try await store.fetchAllRecovering(
+            BudgetNode.self,
+            from: .budgetNodes
+        )
+        let recoveredSchedules = try await store.fetchAllRecovering(
             ScheduledTransaction.self,
             from: .scheduledTransactions
-        ).sorted { $0.nextOccurrence < $1.nextOccurrence }
-        investmentHoldings = try await store.fetchAll(
+        )
+        let recoveredHoldings = try await store.fetchAllRecovering(
             InvestmentHolding.self,
             from: .investmentHoldings
         )
+
+        accounts = recoveredAccounts.values
+        entries = recoveredEntries.values.sorted { $0.occurredAt > $1.occurredAt }
+        budgetNodes = recoveredBudgets.values
+        scheduledTransactions = recoveredSchedules.values.sorted {
+            $0.nextOccurrence < $1.nextOccurrence
+        }
+        investmentHoldings = recoveredHoldings.values
+        let decodeIssues = recoveredAccounts.issues
+            + recoveredEntries.issues
+            + recoveredBudgets.issues
+            + recoveredSchedules.issues
+            + recoveredHoldings.issues
+        recoveryIssues.append(contentsOf: decodeIssues.map {
+            "\($0.collection.rawValue)/\($0.recordID)"
+        })
+        quarantineInvalidRelationships()
         do {
             quickLogDraft = try await store.fetch(
                 QuickLogDraft.self,
@@ -869,16 +1600,119 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func discardIncompleteOnboarding(
-        from store: EncryptedRecordStore
+    private func promoteLockedCaptureIfPossible(
+        to store: EncryptedRecordStore
     ) async throws {
-        try await store.removeAll(from: .accounts)
-        try await store.removeAll(from: .journalEntries)
-        try await store.removeAll(from: .budgetNodes)
-        try await store.removeAll(from: .scheduledTransactions)
-        try await store.removeAll(from: .investmentHoldings)
-        try await store.removeAll(from: .quickLogDrafts)
-        clearDecodedState()
+        let captures = (try? await lockedCaptureStore.all()) ?? []
+        pendingLockedCaptureCount = captures.count
+
+        if let sourceID = quickLogDraft?.sourceCaptureID {
+            try? await lockedCaptureStore.remove(id: sourceID)
+            pendingLockedCaptureCount = max(0, captures.count - 1)
+            return
+        }
+        guard quickLogDraft == nil, let capture = captures.first else { return }
+
+        let kind: QuickLogKind
+        let mode: QuickLogLaunchMode
+        switch capture.kind {
+        case .income:
+            kind = .income
+            mode = .income
+        case .transfer:
+            kind = .transfer
+            mode = .transfer
+        case .expense:
+            kind = .expense
+            mode = .expense
+        case .refund:
+            kind = .refund
+            mode = .refund
+        }
+        let draft = QuickLogDraft(
+            kind: kind,
+            amountText: capture.amountText,
+            destinationAmountText: "",
+            accountID: nil,
+            destinationAccountID: nil,
+            categoryID: nil,
+            occurredAt: capture.occurredAt,
+            dateWasEdited: true,
+            payee: capture.payee,
+            note: capture.note,
+            smartText: "",
+            sourceCaptureID: capture.id
+        )
+        try await store.upsert(
+            draft,
+            id: QuickLogDraft.primaryRecordID,
+            in: .quickLogDrafts
+        )
+        quickLogDraft = draft
+        try await lockedCaptureStore.remove(id: capture.id)
+        pendingLockedCaptureCount = max(0, captures.count - 1)
+        requestedQuickLogMode = mode
+    }
+
+    /// Invalid rows remain untouched in SQLCipher and in portable backups, but
+    /// are excluded from calculations until repaired. This keeps one orphan
+    /// from turning the entire otherwise-readable book into an erase screen.
+    private func quarantineInvalidRelationships() {
+        var seenAccountIDs = Set<UUID>()
+        accounts = accounts.filter { account in
+            let unique = seenAccountIDs.insert(account.id).inserted
+            if !unique { recoveryIssues.append("accounts/duplicate-\(account.id)") }
+            return unique
+        }
+
+        var accountIDs = Set(accounts.map(\.id))
+        var changed = true
+        while changed {
+            let invalid = Set(accounts.compactMap { account -> UUID? in
+                guard let parentID = account.parentID,
+                      !accountIDs.contains(parentID) else { return nil }
+                return account.id
+            })
+            changed = !invalid.isEmpty
+            if changed {
+                recoveryIssues.append(contentsOf: invalid.map { "accounts/orphan-\($0)" })
+                accounts.removeAll { invalid.contains($0.id) }
+                accountIDs = Set(accounts.map(\.id))
+            }
+        }
+
+        let expenseIDs = Set(accounts.filter { $0.kind == .expense }.map(\.id))
+        let invalidBudgetIDs = Set(budgetNodes.filter {
+            !expenseIDs.contains($0.id)
+                || ($0.parentID.map { !expenseIDs.contains($0) } ?? false)
+        }.map(\.id))
+        if !invalidBudgetIDs.isEmpty {
+            recoveryIssues.append(contentsOf: invalidBudgetIDs.map { "budgets/orphan-\($0)" })
+            budgetNodes.removeAll { invalidBudgetIDs.contains($0.id) }
+        }
+        if let currency = profile?.baseCurrency,
+           (try? BudgetTree(currency: currency, nodes: budgetNodes)) == nil,
+           !budgetNodes.isEmpty {
+            recoveryIssues.append("budgets/invalid-tree")
+            budgetNodes = []
+        }
+
+        entries.removeAll { entry in
+            let invalid = entry.postings.contains { !accountIDs.contains($0.accountID) }
+            if invalid { recoveryIssues.append("journal_entries/orphan-\(entry.id)") }
+            return invalid
+        }
+        scheduledTransactions.removeAll { item in
+            let invalid = !accountIDs.contains(item.accountID)
+                || !accountIDs.contains(item.categoryAccountID)
+            if invalid { recoveryIssues.append("scheduled_transactions/orphan-\(item.id)") }
+            return invalid
+        }
+        investmentHoldings.removeAll { holding in
+            let invalid = !accountIDs.contains(holding.accountID)
+            if invalid { recoveryIssues.append("investment_holdings/orphan-\(holding.id)") }
+            return invalid
+        }
     }
 
     private func requireStore() throws -> EncryptedRecordStore {
@@ -908,6 +1742,15 @@ final class AppModel: ObservableObject {
             )
     }
 
+    private func requireSupportedPrecision(
+        _ amount: Decimal,
+        currency: CurrencyCode
+    ) throws {
+        guard currency.supports(amount) else {
+            throw AppModelError.unsupportedPrecision(currency)
+        }
+    }
+
     private func foreignExchangeAccount(for currency: CurrencyCode) -> LedgerAccount {
         accounts.first {
             $0.systemRole == .foreignExchange && $0.currency == currency
@@ -929,6 +1772,7 @@ final class AppModel: ObservableObject {
         scheduledTransactions = []
         investmentHoldings = []
         quickLogDraft = nil
+        recoveryIssues = []
     }
 
     private func validateLoadedBook() throws {
@@ -1047,6 +1891,8 @@ enum AppModelError: Error {
     case foreignCurrencyTransferRequiresExchangeRate
     case invalidBook
     case transactionInProgress
+    case unsupportedPrecision(CurrencyCode)
+    case importTooLarge
 }
 
 extension AppModelError: LocalizedError {
@@ -1062,6 +1908,13 @@ extension AppModelError: LocalizedError {
             String(localized: "error.fx_transfer_not_supported")
         case .invalidBook: String(localized: "error.invalid_book")
         case .transactionInProgress: String(localized: "error.transaction_in_progress")
+        case let .unsupportedPrecision(currency):
+            String(
+                format: String(localized: "error.currency_precision"),
+                currency.value,
+                currency.minorUnits
+            )
+        case .importTooLarge: String(localized: "import.error.too_large")
         }
     }
 }

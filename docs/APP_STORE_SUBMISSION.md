@@ -1,6 +1,6 @@
 # App Store Submission Working Copy
 
-Last reviewed: 24 August 2026
+Last reviewed: 25 August 2026
 
 This file is the source of truth for App Store Connect entry. Verify every
 claim against the exact archived binary before submission.
@@ -51,13 +51,15 @@ Description:
 >
 > Smart entry can read a receipt or screenshot and understand a typed phrase.
 > Recognition and suggestions run on your iPhone; images are not retained or
-> uploaded. Privacy-redacted Home and Lock Screen widgets open authenticated
-> Expense, Income, Transfer, Smart Entry, or Receipt actions without displaying
-> financial values.
+> uploaded. Privacy-redacted Home and Lock Screen widgets open Expense, Income,
+> Transfer, Refund, Smart Entry, or Receipt actions without displaying financial
+> values. Basic actions can use a separate encrypted capture inbox while the
+> full book remains locked.
 >
 > MoneyUp requires no account and contains no ads or tracking. Its local
 > SQLCipher database uses a random device-protected key. Data leaves the app
-> only when you explicitly export a spreadsheet-friendly CSV file.
+> only when you explicitly export a spreadsheet-friendly CSV or encrypted
+> `.moneyup` backup. Reviewed Qianji/generic CSV import stays on device.
 >
 > Highlights:
 > • fast expense, income, and transfer logging
@@ -103,10 +105,12 @@ Version 1.0 release notes:
 >
 > 智能录入可识别收据或截图，也能理解一句话记账。识别与建议均在 iPhone
 > 本机运行，图片不会被保留或上传。主屏幕与锁定屏幕的隐私保护小组件不会显示
-> 财务金额，可在身份验证后打开支出、收入、转账、智能记账或选择小票操作。
+> 财务金额，可打开支出、收入、转账、退款、智能记账或小票操作。账本锁定时，
+> 基本操作可写入独立的加密快速记录收件箱，而完整余额仍保持锁定。
 >
 > MoneyUp 无需注册，不含广告或追踪。本地 SQLCipher 数据库使用随机、受设备
-> 保护的密钥。只有你主动导出时，数据才会生成可供 Numbers 或 Excel 打开的
+> 保护的密钥。只有你主动操作时，数据才会生成可供 Numbers 或 Excel 打开的
+> CSV 文件或加密的 `.moneyup` 备份。在本机检查后，也可导入钱迹风格或通用
 > CSV 文件。
 >
 > MoneyUp 是记录与规划工具，不构成财务、投资、税务或法律建议。
@@ -122,16 +126,18 @@ Beta description:
 
 > MoneyUp is a private local-first budget app. This founders beta covers fast
 > logging, nested budgets, a finance calendar, insights, assets, a redacted
-> widget, on-device smart entry, and CSV export in English and Simplified
-> Chinese. Use sample data first; portable encrypted restore is still being
-> completed.
+> widget, on-device smart entry, History/edit/refunds, encrypted backup/restore,
+> and reviewed CSV import/export in English and Simplified Chinese. Use sample
+> data first while physical upgrade and restore drills are completed.
 
 What to test:
 
 > Follow the in-app Privacy and beta guide. Focus on onboarding, background
-> locking, expense/income/transfer logging, nested budget roll-up, schedule
+> locking, locked capture, expense/income/transfer/refund logging, History/edit,
+> nested budget roll-up, schedule
 > projections, charts, holdings, widget shortcuts, confirmed deletion, update
-> data retention, and CSV export. Hide all private values in feedback images.
+> data retention, encrypted restore, and CSV import/export. Hide all private
+> values in feedback images.
 
 Private TestFlight fields are entered by the Account Holder directly in App
 Store Connect and are intentionally not stored in Git:
@@ -155,14 +161,17 @@ but is not a replacement for a public support contact.
 >
 > Suggested review path: add a small expense from the leftmost Log tab; set a
 > monthly limit in Plan; verify the transaction in Plan > Calendar and Insights;
-> background and reopen the app to see authentication; open Assets to export
-> CSV after the plaintext warning; and add privacy-redacted Home and Lock Screen
-> widgets.
+> background long enough to reach the configured auto-lock delay and reopen to
+> see authentication; use Settings to create an encrypted backup and preview an
+> import; open Assets to export CSV after the plaintext warning; and add
+> privacy-redacted Home and Lock Screen widgets.
 >
 > The receipt reader uses PhotosPicker and Apple's on-device Vision framework.
 > The image is not stored or uploaded. The app has no advertising, analytics,
 > remote AI, or financial-data backend. The widget contains no financial
-> values and only deep-links to the authenticated app.
+> values. Its basic actions can open a separate encrypted Quick Capture form;
+> this contains no balances or database key and moves into the full ledger only
+> after authenticated unlock.
 
 No demo account is required because there is no account system.
 

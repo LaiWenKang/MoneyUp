@@ -7,4 +7,6 @@ public enum PersistenceError: Error, Equatable, Sendable {
     case cipherUnavailable
     case unsupportedSchema(found: Int32, supported: Int32)
     case invalidStoredRecord(collection: RecordCollection, recordID: String)
+    case invalidSnapshot
+    case duplicateSnapshotRecord(collection: String, recordID: String)
 }

@@ -197,6 +197,206 @@ final class EncryptedRecordStoreTests: XCTestCase {
         XCTAssertEqual(committed, account)
         await store.close()
     }
+
+    func testSnapshotRestoreReplacesAllRecordsAtomically() async throws {
+        let fixture = try TemporaryDatabaseFixture()
+        let store = try EncryptedRecordStore(
+            databaseURL: fixture.databaseURL,
+            key: fixture.key
+        )
+        let original = LedgerAccount(name: "Original", kind: .asset)
+        try await store.upsert(original, id: original.id.uuidString, in: .accounts)
+        let snapshot = try await store.snapshot()
+
+        let later = LedgerAccount(name: "Later", kind: .asset)
+        try await store.upsert(later, id: later.id.uuidString, in: .accounts)
+        XCTAssertEqual(try await store.count(in: .accounts), 2)
+
+        try await store.restore(snapshot)
+        let restored = try await store.fetchAll(LedgerAccount.self, from: .accounts)
+        XCTAssertEqual(restored, [original])
+        await store.close()
+    }
+
+    func testInvalidSnapshotLeavesExistingRecordsUntouched() async throws {
+        let fixture = try TemporaryDatabaseFixture()
+        let store = try EncryptedRecordStore(
+            databaseURL: fixture.databaseURL,
+            key: fixture.key
+        )
+        let original = LedgerAccount(name: "Must survive", kind: .asset)
+        try await store.upsert(original, id: original.id.uuidString, in: .accounts)
+        let invalid = DatabaseSnapshot(
+            schemaVersion: EncryptedRecordStore.currentSchemaVersion,
+            records: [
+                StoredRecordSnapshot(
+                    collection: RecordCollection.accounts.rawValue,
+                    recordID: "empty",
+                    payload: Data(),
+                    updatedAt: Date().timeIntervalSince1970
+                )
+            ]
+        )
+
+        do {
+            try await store.restore(invalid)
+            XCTFail("Expected invalid snapshot to fail")
+        } catch {
+            // Validation happens before BEGIN/DELETE.
+        }
+        let retained = try await store.fetchAll(LedgerAccount.self, from: .accounts)
+        XCTAssertEqual(retained, [original])
+        await store.close()
+    }
+
+    func testRecoveringFetchQuarantinesOnlyMalformedRows() async throws {
+        let fixture = try TemporaryDatabaseFixture()
+        let store = try EncryptedRecordStore(
+            databaseURL: fixture.databaseURL,
+            key: fixture.key
+        )
+        let account = LedgerAccount(name: "Readable", kind: .asset)
+        try await store.write([
+            try RecordWrite(account, id: account.id.uuidString, in: .accounts),
+            RecordWrite(
+                collection: .accounts,
+                id: "malformed",
+                payload: Data("{not-json".utf8)
+            )
+        ])
+
+        let recovered = try await store.fetchAllRecovering(
+            LedgerAccount.self,
+            from: .accounts
+        )
+        XCTAssertEqual(recovered.values, [account])
+        XCTAssertEqual(recovered.issues.map(\.recordID), ["malformed"])
+        await store.close()
+    }
+
+    func testVersion040RecordsDecodeAfterInPlaceUpdateWithoutRewriting() async throws {
+        struct LegacyProfile: Codable, Sendable {
+            let baseCurrency: CurrencyCode
+            let createdAt: Date
+            let lockWhenBackgrounded: Bool
+        }
+
+        struct LegacyEntry: Codable, Sendable {
+            let id: UUID
+            let kind: JournalEntryKind
+            let occurredAt: Date
+            let createdAt: Date
+            let payee: String?
+            let note: String?
+            let postings: [Posting]
+        }
+
+        let fixture = try TemporaryDatabaseFixture()
+        let store = try EncryptedRecordStore(
+            databaseURL: fixture.databaseURL,
+            key: fixture.key
+        )
+        let sgd = try CurrencyCode("SGD")
+        let profile = LegacyProfile(
+            baseCurrency: sgd,
+            createdAt: Date(timeIntervalSinceReferenceDate: 100),
+            lockWhenBackgrounded: true
+        )
+        let entry = LegacyEntry(
+            id: UUID(),
+            kind: .expense,
+            occurredAt: Date(timeIntervalSinceReferenceDate: 200),
+            createdAt: Date(timeIntervalSinceReferenceDate: 201),
+            payee: "Legacy lunch",
+            note: nil,
+            postings: [
+                Posting(
+                    accountID: UUID(),
+                    money: try Money(12.34, currency: sgd)
+                ),
+                Posting(
+                    accountID: UUID(),
+                    money: try Money(-12.34, currency: sgd)
+                )
+            ]
+        )
+        try await store.write([
+            try RecordWrite(
+                profile,
+                id: UserProfile.primaryRecordID,
+                in: .profile
+            ),
+            try RecordWrite(
+                entry,
+                id: entry.id.uuidString,
+                in: .journalEntries
+            )
+        ])
+        await store.close()
+
+        let reopened = try EncryptedRecordStore(
+            databaseURL: fixture.databaseURL,
+            key: fixture.key
+        )
+        let upgradedProfile = try await reopened.fetch(
+            UserProfile.self,
+            id: UserProfile.primaryRecordID,
+            from: .profile
+        )
+        let upgradedEntry = try await reopened.fetch(
+            JournalEntry.self,
+            id: entry.id.uuidString,
+            from: .journalEntries
+        )
+
+        XCTAssertEqual(upgradedProfile?.baseCurrency, sgd)
+        XCTAssertEqual(upgradedProfile?.autoLockDelay, 60)
+        XCTAssertEqual(upgradedProfile?.allowLockedQuickCapture, true)
+        XCTAssertEqual(upgradedEntry?.id, entry.id)
+        XCTAssertEqual(upgradedEntry?.payee, "Legacy lunch")
+        XCTAssertNil(upgradedEntry?.sourceSystem)
+        XCTAssertNil(upgradedEntry?.revisedAt)
+        await reopened.close()
+    }
+
+    func testPortableArchiveRoundTripsAndRejectsWrongPassword() throws {
+        let snapshot = DatabaseSnapshot(
+            schemaVersion: EncryptedRecordStore.currentSchemaVersion,
+            records: [
+                StoredRecordSnapshot(
+                    collection: RecordCollection.accounts.rawValue,
+                    recordID: "account-1",
+                    payload: Data("{\"name\":\"Private\"}".utf8),
+                    updatedAt: 123
+                )
+            ]
+        )
+        let archive = try PortableArchive.seal(
+            snapshot,
+            password: "correct horse battery staple"
+        )
+
+        XCTAssertEqual(
+            try PortableArchive.open(
+                archive,
+                password: "correct horse battery staple"
+            ),
+            snapshot
+        )
+        XCTAssertThrowsError(
+            try PortableArchive.open(archive, password: "incorrect password")
+        ) { error in
+            XCTAssertEqual(error as? PortableArchiveError, .authenticationFailed)
+        }
+
+        let decomposed = "Cafe\u{301}-archive-password"
+        let composed = decomposed.precomposedStringWithCanonicalMapping
+        let unicodeArchive = try PortableArchive.seal(snapshot, password: decomposed)
+        XCTAssertEqual(
+            try PortableArchive.open(unicodeArchive, password: composed),
+            snapshot
+        )
+    }
 }
 
 private struct TemporaryDatabaseFixture {

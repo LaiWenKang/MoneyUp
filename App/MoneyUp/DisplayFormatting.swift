@@ -2,11 +2,34 @@ import Foundation
 import MoneyUpCore
 import SwiftUI
 
+@MainActor
+private final class MoneyFormatterCache {
+    static let shared = MoneyFormatterCache()
+    private var formatters: [String: NumberFormatter] = [:]
+
+    func currencyFormatter(for currency: CurrencyCode, locale: Locale) -> NumberFormatter {
+        let key = locale.identifier + "|" + currency.value
+        if let formatter = formatters[key] { return formatter }
+
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.currencyCode = currency.value
+        formatter.locale = locale
+        formatter.minimumFractionDigits = currency.minorUnits <= 3
+            ? currency.minorUnits
+            : 0
+        formatter.maximumFractionDigits = currency.minorUnits
+        formatters[key] = formatter
+        return formatter
+    }
+}
+
+@MainActor
 func formattedMoney(_ money: Money) -> String {
-    let formatter = NumberFormatter()
-    formatter.numberStyle = .currency
-    formatter.currencyCode = money.currency.value
-    formatter.locale = .current
+    let formatter = MoneyFormatterCache.shared.currencyFormatter(
+        for: money.currency,
+        locale: .current
+    )
     return formatter.string(from: NSDecimalNumber(decimal: money.amount))
         ?? "\(money.currency.value) \(NSDecimalNumber(decimal: money.amount).stringValue)"
 }
@@ -20,7 +43,32 @@ func formattedPercent(_ value: Decimal, fractionDigits: Int = 0) -> String {
 }
 
 func decimalAmount(from text: String) -> Decimal? {
-    Decimal(string: text.trimmingCharacters(in: .whitespacesAndNewlines), locale: .current)
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return nil }
+
+    let localSeparator = Locale.current.decimalSeparator ?? "."
+    let escapedLocal = NSRegularExpression.escapedPattern(for: localSeparator)
+    let separatorPattern = localSeparator == "." ? "\\." : "(?:\(escapedLocal)|\\.)"
+    let pattern = "^[+-]?[0-9]+(?:\(separatorPattern)[0-9]+)?$"
+    guard trimmed.range(of: pattern, options: .regularExpression) != nil else {
+        return nil
+    }
+    let normalized = localSeparator == "."
+        ? trimmed
+        : trimmed.replacingOccurrences(of: localSeparator, with: ".")
+    return Decimal(string: normalized, locale: Locale(identifier: "en_US_POSIX"))
+}
+
+func editableAmount(_ value: Decimal, locale: Locale = .current) -> String {
+    let formatter = NumberFormatter()
+    formatter.numberStyle = .decimal
+    formatter.locale = locale
+    formatter.usesGroupingSeparator = false
+    formatter.minimumFractionDigits = 0
+    formatter.maximumFractionDigits = 16
+    formatter.generatesDecimalNumbers = true
+    return formatter.string(from: NSDecimalNumber(decimal: value))
+        ?? NSDecimalNumber(decimal: value).stringValue
 }
 
 func displayMoney(for entry: JournalEntry, accounts: [LedgerAccount]) -> Money? {

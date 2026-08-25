@@ -1,4 +1,4 @@
-# Install and Use Founders Beta 0.4.0
+# Install and Use Founders Beta 0.4.1
 
 MoneyUp is available to approved founders through private TestFlight groups and
 can also be installed from source. New builds still pass through the protected
@@ -64,16 +64,18 @@ Then in Xcode:
 3. Record a small expense from the leftmost Log tab and confirm the account balance and
    category spending both update.
 4. Add a monthly limit in Plan and confirm child-category spending rolls up.
-5. Send MoneyUp to the background and reopen it; the app should require device
-   authentication before showing data again.
+5. Send MoneyUp to the background. The switcher preview should hide data
+   immediately; after the default one-minute delay, reopening should require
+   device authentication. The delay is configurable in Settings.
 
 ## Add the widget
 
 Long-press the Home Screen or Lock Screen, add a widget, and search for MoneyUp.
 The small and Lock Screen widgets can be configured for Expense, Income,
-Transfer, Smart Entry, or Receipt; the medium widget shows four quick actions. No
-widget displays balances, payees, holdings, or statistics. Every action opens
-MoneyUp and requires the normal device authentication.
+Transfer, Refund, Smart Entry, or Receipt; the medium widget shows four quick
+actions. No widget displays balances, payees, holdings, or statistics. Expense,
+income, transfer, and refund can open the encrypted Quick Capture form while the
+book remains locked; full balances and smart/receipt tools still require unlock.
 
 ## Export to Numbers or Excel
 
@@ -82,11 +84,16 @@ warning, and save the CSV through the system file picker. Numbers, Excel, and
 most spreadsheet apps can open the file. Exported files are not encrypted by
 MoneyUp after they leave the app.
 
-## Important data-retention limit
+## Backup, restore, and migration
 
-The SQLCipher key is intentionally this-device-only. Deleting MoneyUp, using
-the in-app destructive reset, or losing the protected key can permanently make
-the local database unreadable. Founders Beta 0.4.0 does not yet have portable
-encrypted backup/restore, and CSV is not a complete restore format. Export
-snapshots regularly and do not use this beta as the sole record of information
-you cannot afford to lose.
+The SQLCipher key is intentionally this-device-only. Before deleting MoneyUp or
+changing devices, open Settings → Backup and recovery and save a password-
+protected `.moneyup` archive. MoneyUp cannot recover that password. Restore is
+validated and transactional. CSV is not a full-fidelity backup, but Settings →
+Import transactions can preview Qianji-style or generic CSV/TSV files, skip bad
+rows and repeat imports, and save accepted rows together.
+
+Updating TestFlight in place preserves data when the bundle identifier,
+development team, and Keychain access remain unchanged. A future App Store build
+must use the same `com.laiwenkang.MoneyUp` identity; run the upgrade drill in
+`FIRST_TEST.md` before release.

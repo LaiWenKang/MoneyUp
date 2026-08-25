@@ -94,8 +94,22 @@ date so routine entries keep useful defaults without reviving the saved amount.
 
 ## Export identity
 
-Readable exports retain stable entry, posting, and account identifiers so later
-imports can detect duplicates. Decimal numbers use a locale-independent format;
+Readable exports retain stable entry, posting, and account identifiers for
+reconciliation. Decimal numbers use a locale-independent format;
 display formatting is applied only by the UI or spreadsheet. User-controlled
 text that begins like a spreadsheet formula is neutralized during CSV export to
 avoid formula injection.
+
+## Portable archive and reviewed import
+
+An authenticated `.moneyup` archive wraps a raw logical database snapshot so
+records remain recoverable even if a future domain decoder cannot understand one
+row. Its AES-256 key is derived from a user password independently of the
+device-bound live key. Restore validates collection identities and payloads,
+replaces records in one SQL transaction, reloads domain invariants, and restores
+the pre-operation snapshot if validation fails.
+
+CSV/Qianji imports are parsed into a preview first. Invalid rows are surfaced,
+known account/category names are matched locally, missing named categories may
+be created, and source fingerprints prevent a repeat import. All accepted
+accounts, budget nodes, FX helpers, and entries commit as one atomic batch.

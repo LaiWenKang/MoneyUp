@@ -25,11 +25,20 @@ struct MoneyUpApp: App {
                     guard model.handleDeepLink(url), model.state == .locked else {
                         return
                     }
+                    guard !model.canPresentLockedQuickCapture else { return }
                     Task { await model.start() }
                 }
                 .onChange(of: scenePhase) { _, newPhase in
-                    guard newPhase == .background else { return }
-                    model.lock()
+                    switch newPhase {
+                    case .background:
+                        model.sceneDidEnterBackground()
+                    case .active:
+                        model.sceneDidBecomeActive()
+                    case .inactive:
+                        break
+                    @unknown default:
+                        break
+                    }
                 }
         }
     }

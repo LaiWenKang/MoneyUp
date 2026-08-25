@@ -3,7 +3,7 @@
 MoneyUp handles sensitive financial data. Security claims here distinguish
 implemented controls from planned work and known limits.
 
-## Founders Beta 0.4.0 controls
+## Founders Beta 0.4.1 controls
 
 | Control | Status |
 |---|---|
@@ -12,7 +12,7 @@ implemented controls from planned work and known limits.
 | SQLCipher 4.18 full-database encryption | Implemented and pinned |
 | Random 256-bit app-generated, device-bound database key | Implemented |
 | Non-synchronizing Keychain item with `WhenPasscodeSetThisDeviceOnly` and user presence | Implemented |
-| Close database and clear decoded state on background | Implemented |
+| Configurable timed auto-lock and decoded-state clearing | Implemented |
 | App-switcher privacy cover while inactive | Implemented |
 | iOS file protection for the database | Implemented |
 | Privacy-redacted widget with no financial values | Implemented |
@@ -23,7 +23,9 @@ implemented controls from planned work and known limits.
 | System-backup exclusion for ciphertext whose key cannot migrate | Implemented |
 | Confirmed deletion for transactions, schedules, and holdings | Implemented |
 | Wrong-key, plaintext-leak, decimal round-trip, and atomic-rollback tests | Implemented |
-| Password-protected portable backup and restore | Planned |
+| Separate encrypted, no-balance Quick Capture inbox while locked | Implemented |
+| Password-protected portable backup and transactional restore | Implemented and tested |
+| Previewable local CSV/Qianji import with atomic commit | Implemented and tested |
 | Optional end-to-end-encrypted device sync | Not implemented |
 
 ## Privacy guarantee
@@ -61,9 +63,10 @@ The guarantee does not cover:
    local-authentication context.
 4. The key opens SQLCipher only after authentication. The temporary Swift
    buffer is overwritten immediately after the store opens.
-5. When the app enters the background, it flushes the latest Log form/defaults
-   to SQLCipher, closes the store, drops decoded models, and returns to the
-   locked screen. Receipt images are never part of the draft. A transaction
+5. When the configured auto-lock delay expires (one minute by default), the app
+   flushes the latest Log form/defaults to SQLCipher, closes the store, drops
+   decoded models, and returns to the locked screen. The app-switcher cover is
+   immediate. Receipt images are never part of the draft. A transaction
    commit and removal of its pre-save draft occur in one database transaction.
 6. If the protected key and database no longer match, the app refuses to read
    records. A separately confirmed reset removes the inaccessible database and
@@ -82,15 +85,15 @@ The guarantee does not cover:
 - User-controlled CSV cells that could be interpreted as spreadsheet formulas
   are neutralized before export.
 
-## Current recovery limit
+## Portable recovery and remaining limits
 
-The Keychain key uses a this-device-only policy. Deleting the app, erasing its
-data, or losing that key can make the database permanently unreadable. Founders
-Beta 0.4.0 does not yet provide a restorable encrypted archive. CSV export is
-readable and useful in Numbers or Excel, but it is not a full-fidelity restore
-format. Because the protected key cannot migrate, the app excludes the
-database directory from system backup rather than allowing unrestorable
-ciphertext to be copied to another device.
+The live Keychain key uses a this-device-only policy. Before deleting the app or
+changing devices, the user can create a `.moneyup` archive encrypted and
+authenticated with an independent password. Restore validates the candidate and
+rolls the current logical store back if loading fails. MoneyUp cannot recover a
+forgotten archive password. CSV export is readable and useful in Numbers or
+Excel, but it is not a full-fidelity restore format. The live database directory
+remains excluded from system backup because its device-bound key cannot migrate.
 
 ## Reporting a vulnerability
 

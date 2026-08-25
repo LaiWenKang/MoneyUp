@@ -134,6 +134,20 @@ struct DashboardView: View {
                                     .foregroundStyle(.secondary)
                                     .accessibilityElement(children: .combine)
                                 }
+                                ForEach(
+                                    model.excludedForeignSpendingThisMonth(),
+                                    id: \.currency
+                                ) { money in
+                                    HStack {
+                                        Text("plan.foreign_not_counted")
+                                        Spacer()
+                                        Text(formattedMoney(money))
+                                            .monospacedDigit()
+                                    }
+                                    .font(.footnote)
+                                    .foregroundStyle(.orange)
+                                    .accessibilityElement(children: .combine)
+                                }
                             } else {
                                 Text("dashboard.no_budget")
                                     .font(.subheadline)
@@ -178,6 +192,30 @@ struct DashboardView: View {
                     }
 
                     DashboardCard {
+                        VStack(spacing: 0) {
+                            NavigationLink {
+                                InsightsView()
+                            } label: {
+                                Label("dashboard.open_insights", systemImage: "chart.bar.fill")
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.vertical, 6)
+
+                            Divider()
+
+                            NavigationLink {
+                                AssetsView()
+                            } label: {
+                                Label("dashboard.open_assets", systemImage: "wallet.bifold.fill")
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.vertical, 6)
+                        }
+                    }
+
+                    DashboardCard {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("dashboard.recent")
                                 .font(.headline)
@@ -217,6 +255,15 @@ struct DashboardView: View {
             }
             .background(Color(.systemGroupedBackground))
             .navigationTitle("tab.today")
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    NavigationLink {
+                        AppSettingsView()
+                    } label: {
+                        Label("settings.title", systemImage: "gearshape")
+                    }
+                }
+            }
         }
     }
 }

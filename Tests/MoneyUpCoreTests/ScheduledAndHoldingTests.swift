@@ -3,6 +3,42 @@ import Foundation
 import XCTest
 
 final class ScheduledAndHoldingTests: XCTestCase {
+    func testDirectOccurrencePredicateMatchesAnchoredMonthlyDates() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let sgd = try CurrencyCode("SGD")
+        let anchor = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026,
+            month: 1,
+            day: 31,
+            hour: 9
+        )))
+        let schedule = try ScheduledTransaction(
+            kind: .expense,
+            name: "Month end",
+            amount: try Money(20, currency: sgd),
+            accountID: UUID(),
+            categoryAccountID: UUID(),
+            nextOccurrence: anchor,
+            frequency: .monthly
+        )
+        let februaryEnd = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026,
+            month: 2,
+            day: 28,
+            hour: 12
+        )))
+        let februaryWrong = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026,
+            month: 2,
+            day: 27,
+            hour: 12
+        )))
+
+        XCTAssertTrue(schedule.occurs(on: februaryEnd, calendar: calendar))
+        XCTAssertFalse(schedule.occurs(on: februaryWrong, calendar: calendar))
+    }
+
     func testMonthlyScheduleGeneratesBoundedOccurrences() throws {
         let sgd = try CurrencyCode("SGD")
         var calendar = Calendar(identifier: .gregorian)

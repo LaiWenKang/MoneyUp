@@ -8,7 +8,12 @@ struct RootView: View {
         case .launching:
             LaunchingView()
         case .locked:
-            LockedView()
+            if model.canPresentLockedQuickCapture,
+               let mode = model.requestedQuickLogMode {
+                LockedQuickCaptureView(mode: mode)
+            } else {
+                LockedView()
+            }
         case .onboarding:
             OnboardingView()
         case .ready:
@@ -79,6 +84,7 @@ private struct RecoveryView: View {
     @EnvironmentObject private var model: AppModel
     let message: String
     @State private var isConfirmingReset = false
+    @State private var isShowingDataSafety = false
 
     var body: some View {
         VStack(spacing: 18) {
@@ -94,6 +100,14 @@ private struct RecoveryView: View {
                 Task { await model.start() }
             }
             .buttonStyle(.borderedProminent)
+            .disabled(model.isWorking)
+
+            Button {
+                isShowingDataSafety = true
+            } label: {
+                Label("recovery.backup_or_restore", systemImage: "externaldrive.badge.shield.checkmark")
+            }
+            .buttonStyle(.bordered)
             .disabled(model.isWorking)
 
             Button("recovery.erase", role: .destructive) {
@@ -116,15 +130,25 @@ private struct RecoveryView: View {
         } message: {
             Text("recovery.erase_detail")
         }
+        .sheet(isPresented: $isShowingDataSafety) {
+            NavigationStack {
+                DataSafetyView()
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("action.close") { isShowingDataSafety = false }
+                        }
+                    }
+            }
+            .environmentObject(model)
+        }
     }
 }
 
 private enum MoneyUpSection: Hashable {
     case log
     case today
+    case history
     case plan
-    case insights
-    case assets
 }
 
 private struct MainTabView: View {
@@ -154,17 +178,13 @@ private struct MainTabView: View {
                 .tabItem { Label("tab.today", systemImage: "house.fill") }
                 .tag(MoneyUpSection.today)
 
+            HistoryView()
+                .tabItem { Label("tab.history", systemImage: "clock.arrow.circlepath") }
+                .tag(MoneyUpSection.history)
+
             PlanView()
                 .tabItem { Label("tab.plan", systemImage: "chart.pie.fill") }
                 .tag(MoneyUpSection.plan)
-
-            InsightsView()
-                .tabItem { Label("tab.insights", systemImage: "chart.bar.fill") }
-                .tag(MoneyUpSection.insights)
-
-            AssetsView()
-                .tabItem { Label("tab.assets", systemImage: "wallet.bifold.fill") }
-                .tag(MoneyUpSection.assets)
         }
         .sheet(isPresented: $isShowingWhatsNew) {
             WhatsNewSheet()

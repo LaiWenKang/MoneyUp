@@ -3,6 +3,31 @@ import Foundation
 import XCTest
 
 final class JournalEntryTests: XCTestCase {
+    func testLegacyEntryDecodesWithoutRevisionOrImportMetadata() throws {
+        let accountID = UUID()
+        let categoryID = UUID()
+        let id = UUID()
+        let json = """
+        {
+          "id":"\(id.uuidString)",
+          "kind":"expense",
+          "occurredAt":0,
+          "createdAt":0,
+          "postings":[
+            {"id":"\(UUID().uuidString)","accountID":"\(accountID.uuidString)","money":{"amount":-1,"currency":"USD"}},
+            {"id":"\(UUID().uuidString)","accountID":"\(categoryID.uuidString)","money":{"amount":1,"currency":"USD"}}
+          ]
+        }
+        """
+
+        let entry = try JSONDecoder().decode(JournalEntry.self, from: Data(json.utf8))
+
+        XCTAssertEqual(entry.id, id)
+        XCTAssertNil(entry.revisedAt)
+        XCTAssertNil(entry.sourceSystem)
+        XCTAssertNil(entry.sourceFingerprint)
+    }
+
     func testBalancedExpenseIsAccepted() throws {
         let sgd = try CurrencyCode("SGD")
         let expenseAccountID = UUID()

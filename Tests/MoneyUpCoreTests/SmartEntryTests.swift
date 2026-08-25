@@ -92,6 +92,20 @@ final class NaturalLanguageEntryParserTests: XCTestCase {
         XCTAssertEqual(draft.categoryID, salary.id)
     }
 
+    func testRefundKeywordUsesExpenseCategoryInsteadOfIncome() throws {
+        let draft = NaturalLanguageEntryParser.draft(
+            from: "refunded 40 food",
+            accounts: accounts,
+            now: try now(),
+            calendar: calendar,
+            locale: Locale(identifier: "en_SG")
+        )
+
+        XCTAssertEqual(draft.kind, .refund)
+        XCTAssertEqual(draft.categoryID, food.id)
+        XCTAssertEqual(draft.amount, Decimal(40))
+    }
+
     func testExplicitDateIsPreferredAndNotMistakenForTheAmount() throws {
         let draft = NaturalLanguageEntryParser.draft(
             from: "dinner 88.00 on 15/03/2026",
@@ -147,6 +161,32 @@ final class NaturalLanguageEntryParserTests: XCTestCase {
         )
 
         XCTAssertEqual(draft.accountID, cashBack.id)
+    }
+
+    func testLatinAccountNameDoesNotMatchInsideAnotherWord() throws {
+        let draft = NaturalLanguageEntryParser.draft(
+            from: "cashew nuts 5",
+            accounts: [cash],
+            now: try now(),
+            calendar: calendar,
+            locale: Locale(identifier: "en_SG")
+        )
+
+        XCTAssertNil(draft.accountID)
+        XCTAssertEqual(draft.payee, "cashew nuts")
+    }
+
+    func testCommaDecimalAmountUsesTheProvidedLocale() throws {
+        let draft = NaturalLanguageEntryParser.draft(
+            from: "déjeuner 12,50 cash",
+            accounts: accounts,
+            now: try now(),
+            calendar: calendar,
+            locale: Locale(identifier: "fr_FR")
+        )
+
+        XCTAssertEqual(draft.amount, Decimal(string: "12.50"))
+        XCTAssertEqual(draft.accountID, cash.id)
     }
 
     func testUnparseablePhraseProducesAnEmptyDraft() throws {

@@ -19,16 +19,23 @@ struct AssetsView: View {
         }
     }
 
-    private var netWorth: Money? {
+    private var accountNetWorth: Money? {
         guard let currency = model.profile?.baseCurrency else { return nil }
         var amount = Decimal.zero
         for account in model.userAccounts where account.currency == currency {
             guard let balance = model.displayBalance(for: account) else { continue }
             amount += account.kind == .liability ? -balance.amount : balance.amount
         }
-        for holding in model.investmentHoldings {
-            guard let value = try? holding.marketValue(), value.currency == currency else { continue }
-            amount += value.amount
+        return try? Money(amount, currency: currency)
+    }
+
+    private var recordedHoldingsValue: Money? {
+        guard let currency = model.profile?.baseCurrency else { return nil }
+        let amount = model.investmentHoldings.reduce(Decimal.zero) { total, holding in
+            guard let value = try? holding.marketValue(), value.currency == currency else {
+                return total
+            }
+            return total + value.amount
         }
         return try? Money(amount, currency: currency)
     }
@@ -38,15 +45,15 @@ struct AssetsView: View {
             List {
                 Section {
                     VStack(alignment: .leading, spacing: 5) {
-                        Text("assets.net_worth")
+                        Text("assets.account_net_worth")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
-                        Text(netWorth.map(formattedMoney) ?? "—")
+                        Text(accountNetWorth.map(formattedMoney) ?? "—")
                             .font(.largeTitle.bold().monospacedDigit())
                     }
                     .padding(.vertical, 8)
                 } footer: {
-                    Text("assets.base_currency_note")
+                    Text("assets.account_net_worth_note")
                 }
 
                 Section("assets.accounts") {
@@ -82,6 +89,13 @@ struct AssetsView: View {
                 }
 
                 Section("assets.investments") {
+                    if let recordedHoldingsValue,
+                       !recordedHoldingsValue.isZero {
+                        LabeledContent(
+                            "assets.recorded_holdings",
+                            value: formattedMoney(recordedHoldingsValue)
+                        )
+                    }
                     if model.investmentHoldings.isEmpty {
                         Text("assets.no_holdings")
                             .foregroundStyle(.secondary)
@@ -134,6 +148,12 @@ struct AssetsView: View {
                 }
 
                 Section("assets.data") {
+                    NavigationLink {
+                        DataSafetyView()
+                    } label: {
+                        Label("backup.data_safety", systemImage: "externaldrive.badge.shield.checkmark")
+                    }
+
                     Button {
                         isConfirmingExport = true
                     } label: {
@@ -352,7 +372,7 @@ private struct AccountBalanceSheet: View {
             }
             .onAppear {
                 if balanceText.isEmpty, let balance = model.displayBalance(for: account) {
-                    balanceText = NSDecimalNumber(decimal: balance.amount).stringValue
+                    balanceText = editableAmount(balance.amount)
                 }
             }
         }

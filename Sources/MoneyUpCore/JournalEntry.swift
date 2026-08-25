@@ -28,6 +28,10 @@ public struct JournalEntry: Codable, Equatable, Identifiable, Sendable {
     public let payee: String?
     public let note: String?
     public let postings: [Posting]
+    public let supersedesID: UUID?
+    public let revisedAt: Date?
+    public let sourceSystem: String?
+    public let sourceFingerprint: String?
 
     public init(
         id: UUID = UUID(),
@@ -36,7 +40,11 @@ public struct JournalEntry: Codable, Equatable, Identifiable, Sendable {
         createdAt: Date = Date(),
         payee: String? = nil,
         note: String? = nil,
-        postings: [Posting]
+        postings: [Posting],
+        supersedesID: UUID? = nil,
+        revisedAt: Date? = nil,
+        sourceSystem: String? = nil,
+        sourceFingerprint: String? = nil
     ) throws {
         try Self.validate(postings)
 
@@ -47,6 +55,10 @@ public struct JournalEntry: Codable, Equatable, Identifiable, Sendable {
         self.payee = payee
         self.note = note
         self.postings = postings
+        self.supersedesID = supersedesID
+        self.revisedAt = revisedAt
+        self.sourceSystem = sourceSystem
+        self.sourceFingerprint = sourceFingerprint
     }
 
     /// Residual balance per currency. A valid entry always contains only zero
@@ -98,6 +110,10 @@ public struct JournalEntry: Codable, Equatable, Identifiable, Sendable {
         case payee
         case note
         case postings
+        case supersedesID
+        case revisedAt
+        case sourceSystem
+        case sourceFingerprint
     }
 
     public init(from decoder: Decoder) throws {
@@ -109,6 +125,13 @@ public struct JournalEntry: Codable, Equatable, Identifiable, Sendable {
         let payee = try container.decodeIfPresent(String.self, forKey: .payee)
         let note = try container.decodeIfPresent(String.self, forKey: .note)
         let postings = try container.decode([Posting].self, forKey: .postings)
+        let supersedesID = try container.decodeIfPresent(UUID.self, forKey: .supersedesID)
+        let revisedAt = try container.decodeIfPresent(Date.self, forKey: .revisedAt)
+        let sourceSystem = try container.decodeIfPresent(String.self, forKey: .sourceSystem)
+        let sourceFingerprint = try container.decodeIfPresent(
+            String.self,
+            forKey: .sourceFingerprint
+        )
 
         do {
             try self.init(
@@ -118,7 +141,11 @@ public struct JournalEntry: Codable, Equatable, Identifiable, Sendable {
                 createdAt: createdAt,
                 payee: payee,
                 note: note,
-                postings: postings
+                postings: postings,
+                supersedesID: supersedesID,
+                revisedAt: revisedAt,
+                sourceSystem: sourceSystem,
+                sourceFingerprint: sourceFingerprint
             )
         } catch {
             throw DecodingError.dataCorruptedError(

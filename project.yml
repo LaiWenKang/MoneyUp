@@ -12,8 +12,8 @@ settings:
     SWIFT_STRICT_CONCURRENCY: complete
     SWIFT_EMIT_LOC_STRINGS: YES
     DEBUG_INFORMATION_FORMAT: dwarf-with-dsym
-    CURRENT_PROJECT_VERSION: 4
-    MARKETING_VERSION: 0.4.0
+    CURRENT_PROJECT_VERSION: 5
+    MARKETING_VERSION: 0.4.1
 
 packages:
   MoneyUpPackage:
@@ -42,6 +42,15 @@ targets:
               - moneyup
         LSApplicationCategoryType: public.app-category.finance
         NSFaceIDUsageDescription: Unlock your private MoneyUp financial data.
+        UTExportedTypeDeclarations:
+          - UTTypeIdentifier: com.laiwenkang.moneyup.archive
+            UTTypeDescription: MoneyUp Encrypted Backup
+            UTTypeConformsTo:
+              - public.data
+            UTTypeTagSpecification:
+              public.filename-extension:
+                - moneyup
+              public.mime-type: application/vnd.moneyup.archive
         UILaunchScreen: {}
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
