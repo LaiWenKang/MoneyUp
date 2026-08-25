@@ -46,7 +46,13 @@ struct AssetsView: View {
         var amount = Decimal.zero
         for holding in model.investmentHoldings {
             do {
-                let value = try holding.marketValue()
+                guard let value = try holding.marketValue() else {
+                    DerivedValueDiagnostics.record(
+                        .holdingValuationFailed,
+                        operation: "assets-recorded-holdings-missing-price"
+                    )
+                    return .unavailable(.holdingValuationFailed)
+                }
                 if value.currency == currency { amount += value.amount }
             } catch {
                 DerivedValueDiagnostics.record(
@@ -66,7 +72,14 @@ struct AssetsView: View {
 
     private func value(for holding: InvestmentHolding) -> DerivedValue<Money> {
         do {
-            return .available(try holding.marketValue())
+            guard let value = try holding.marketValue() else {
+                DerivedValueDiagnostics.record(
+                    .holdingValuationFailed,
+                    operation: "assets-holding-row-missing-price"
+                )
+                return .unavailable(.holdingValuationFailed)
+            }
+            return .available(value)
         } catch {
             DerivedValueDiagnostics.record(
                 .holdingValuationFailed,
