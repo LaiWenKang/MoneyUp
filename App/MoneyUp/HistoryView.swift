@@ -48,8 +48,8 @@ private struct HistoryFilterDraft: Equatable {
             return false
         }
         if includesStartDate, includesEndDate,
-           Calendar.current.startOfDay(for: startDate)
-            > Calendar.current.startOfDay(for: endDate) {
+           FinancialPeriodBoundary.startOfDay(containing: startDate)
+            > FinancialPeriodBoundary.startOfDay(containing: endDate) {
             return false
         }
         return true
@@ -64,9 +64,17 @@ private struct HistoryFilterDraft: Equatable {
     }
 
     func query(searchText: String, calendar: Calendar = .current) -> HistoryQuery {
-        let start = includesStartDate ? calendar.startOfDay(for: startDate) : nil
+        let start = includesStartDate
+            ? FinancialPeriodBoundary.startOfDay(
+                containing: startDate,
+                calendar: calendar
+            )
+            : nil
         let end = includesEndDate
-            ? calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: endDate))
+            ? FinancialPeriodBoundary.endOfDayExclusive(
+                containing: endDate,
+                calendar: calendar
+            )
             : nil
         return HistoryQuery(
             searchText: searchText,
@@ -179,6 +187,8 @@ struct HistoryView: View {
                 }
             }
             .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
+            .background(Color.moneyUpBackground)
             .navigationTitle("tab.history")
             .searchable(text: $searchText, prompt: "history.search")
             .task(id: searchText) {
@@ -388,6 +398,8 @@ private struct HistoryFilterSheet: View {
                     }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(Color.moneyUpBackground)
             .navigationTitle("history.filter")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -624,6 +636,8 @@ private struct TransactionEditView: View {
                     Section { Text(errorMessage).foregroundStyle(.red) }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(Color.moneyUpBackground)
             .navigationTitle("history.edit")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

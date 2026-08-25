@@ -128,6 +128,8 @@ struct ImportTransactionsView: View {
                 Section { Text(errorMessage).foregroundStyle(.red) }
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(Color.moneyUpBackground)
         .navigationTitle("import.title")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { selectDefaults() }

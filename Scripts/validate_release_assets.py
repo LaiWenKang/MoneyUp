@@ -268,6 +268,44 @@ def validate_icons() -> None:
     print("Validated default, dark, and tinted app icons")
 
 
+def validate_brand_palette() -> None:
+    assets = ROOT / "App" / "MoneyUp" / "Assets.xcassets"
+    expected = {
+        "AccentColor": ["#34785F", "#82CEAE"],
+        "BrandBackground": ["#F7F9F6", "#101512"],
+        "BrandSurface": ["#EEF4F0", "#18211D"],
+        "BrandSurfaceElevated": ["#FAFBF9", "#202923"],
+        "BrandAction": ["#34785F"],
+        "BrandMist": ["#D4EAD8", "#3C6349"],
+    }
+    for name, expected_colors in expected.items():
+        path = assets / f"{name}.colorset" / "Contents.json"
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            fail(f"cannot parse semantic brand asset {name}: {error}")
+        actual: list[str] = []
+        for item in payload.get("colors", []):
+            components = item.get("color", {}).get("components", {})
+            try:
+                red = int(components["red"], 16)
+                green = int(components["green"], 16)
+                blue = int(components["blue"], 16)
+            except (KeyError, TypeError, ValueError):
+                fail(f"{name} must use explicit hexadecimal sRGB components")
+            actual.append(f"#{red:02X}{green:02X}{blue:02X}")
+        if actual != expected_colors:
+            fail(f"{name} drifted from the approved soft-green palette: {actual}")
+        if any(color in {"#FFFFFF", "#000000"} for color in actual):
+            fail(f"{name} must not use pure white or pure black")
+
+    if (assets / "GoldAccent.colorset" / "Contents.json").exists():
+        fail("the retired gold accent must not return to the primary palette")
+    if not (ROOT / "Scripts" / "generate_brand_icons.py").is_file():
+        fail("app icon artwork must remain reproducible")
+    print("Validated adaptive soft-green semantic palette")
+
+
 def validate_public_documents() -> None:
     for name in [
         "PRIVACY.md",
@@ -296,6 +334,8 @@ def validate_project_configuration() -> None:
         fail("project.yml must enable compiler extraction of Swift strings")
     if "DEBUG_INFORMATION_FORMAT: dwarf-with-dsym" not in spec:
         fail("project.yml must emit dSYMs for release crash diagnosis")
+    if "UIColorName: BrandBackground" not in spec:
+        fail("the launch screen must use the adaptive non-pure brand background")
     if spec.count("CODE_SIGN_STYLE: Automatic") != 2:
         fail(
             "MoneyUp and MoneyUpWidget must use automatic signing"
@@ -463,6 +503,7 @@ def main() -> None:
     validate_privacy_manifest()
     validate_info_plist_localizations()
     validate_icons()
+    validate_brand_palette()
     validate_public_documents()
     validate_project_configuration()
     validate_testflight_workflow()

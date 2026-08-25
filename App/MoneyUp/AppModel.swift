@@ -419,7 +419,9 @@ final class AppModel: ObservableObject {
         let generation = storeGeneration
         let store = try requireStore()
         let currency = try CurrencyCode(baseCurrencyCode)
-        guard startingBalance >= .zero else { throw AppModelError.negativeAmount }
+        if accountType.isLiabilityAccount, startingBalance < .zero {
+            throw AppModelError.negativeAmount
+        }
         try requireSupportedPrecision(startingBalance, currency: currency)
         let normalizedName = accountName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedName.isEmpty else {
@@ -428,7 +430,7 @@ final class AppModel: ObservableObject {
 
         let mainAccount = LedgerAccount(
             name: normalizedName,
-            kind: accountType == .creditCard || accountType == .loan ? .liability : .asset,
+            kind: accountType.isLiabilityAccount ? .liability : .asset,
             currency: currency,
             accountType: accountType
         )
@@ -449,7 +451,7 @@ final class AppModel: ObservableObject {
         )
 
         var openingEntry: JournalEntry?
-        if startingBalance > .zero,
+        if startingBalance != .zero,
            let equity = defaults.accounts.first(where: { $0.systemRole == .openingBalances }) {
             let entry = try TransactionFactory.balanceAdjustment(
                 displayBalanceDelta: try Money(startingBalance, currency: currency),
@@ -482,12 +484,14 @@ final class AppModel: ObservableObject {
     ) async throws {
         let normalizedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedName.isEmpty else { throw AppModelError.emptyName }
-        guard startingBalance >= .zero else { throw AppModelError.negativeAmount }
+        if type.isLiabilityAccount, startingBalance < .zero {
+            throw AppModelError.negativeAmount
+        }
         let currency = try CurrencyCode(currencyCode)
         try requireSupportedPrecision(startingBalance, currency: currency)
         let account = LedgerAccount(
             name: normalizedName,
-            kind: type == .creditCard || type == .loan ? .liability : .asset,
+            kind: type.isLiabilityAccount ? .liability : .asset,
             currency: currency,
             accountType: type
         )
@@ -497,7 +501,7 @@ final class AppModel: ObservableObject {
         ]
         var openingEntry: JournalEntry?
 
-        if startingBalance > .zero {
+        if startingBalance != .zero {
             let equity = openingBalancesAccount()
             if !accounts.contains(where: { $0.id == equity.id }) {
                 accountsToAdd.append(equity)
@@ -571,6 +575,9 @@ final class AppModel: ObservableObject {
         guard let account = accounts.first(where: { $0.id == accountID }),
               let currency = account.currency else {
             throw AppModelError.missingRecord
+        }
+        if account.kind == .liability, displayBalance < .zero {
+            throw AppModelError.negativeAmount
         }
         let current: Decimal
         switch displayBalanceResult(for: account) {

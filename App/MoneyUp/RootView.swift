@@ -27,15 +27,14 @@ struct RootView: View {
 private struct LaunchingView: View {
     var body: some View {
         VStack(spacing: 16) {
-            Image(systemName: "lock.shield.fill")
-                .font(.system(size: 48))
-                .foregroundStyle(.tint)
+            MoneyUpGrowthMark()
+                .frame(width: 72, height: 72)
             ProgressView()
             Text("lock.opening")
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemGroupedBackground))
+        .background { MoneyUpBackdrop() }
     }
 }
 
@@ -76,7 +75,7 @@ private struct LockedView: View {
         .padding(32)
         .frame(maxWidth: 480, maxHeight: .infinity)
         .frame(maxWidth: .infinity)
-        .background(Color(.systemGroupedBackground))
+        .background { MoneyUpBackdrop() }
     }
 }
 
@@ -117,7 +116,7 @@ private struct RecoveryView: View {
         }
         .padding(32)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemGroupedBackground))
+        .background { MoneyUpBackdrop() }
         .confirmationDialog(
             "recovery.erase_title",
             isPresented: $isConfirmingReset,
@@ -163,7 +162,10 @@ private struct MainTabView: View {
 
     var body: some View {
         TabView(selection: $selectedSection) {
-            DashboardView()
+            DashboardView(
+                onOpenLog: { selectedSection = .log },
+                onOpenPlan: { selectedSection = .plan }
+            )
                 .tabItem { Label("tab.today", systemImage: "house.fill") }
                 .tag(MoneyUpSection.today)
 

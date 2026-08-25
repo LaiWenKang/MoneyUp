@@ -173,6 +173,8 @@ struct AppSettingsView: View {
                 Section { Text(errorMessage).foregroundStyle(.red) }
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(Color.moneyUpBackground)
         .navigationTitle("settings.title")
         .navigationBarTitleDisplayMode(.inline)
     }

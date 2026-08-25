@@ -51,7 +51,8 @@ targets:
               public.filename-extension:
                 - moneyup
               public.mime-type: application/vnd.moneyup.archive
-        UILaunchScreen: {}
+        UILaunchScreen:
+          UIColorName: BrandBackground
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
     settings:

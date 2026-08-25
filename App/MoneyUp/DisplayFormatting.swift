@@ -42,11 +42,11 @@ func formattedPercent(_ value: Decimal, fractionDigits: Int = 0) -> String {
     )
 }
 
-func decimalAmount(from text: String) -> Decimal? {
+func decimalAmount(from text: String, locale: Locale = .current) -> Decimal? {
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { return nil }
 
-    let localSeparator = Locale.current.decimalSeparator ?? "."
+    let localSeparator = locale.decimalSeparator ?? "."
     let escapedLocal = NSRegularExpression.escapedPattern(for: localSeparator)
     let separatorPattern = localSeparator == "." ? "\\." : "(?:\(escapedLocal)|\\.)"
     let pattern = "^[+-]?[0-9]+(?:\(separatorPattern)[0-9]+)?$"
@@ -108,12 +108,6 @@ extension FinancialAccountType {
         case .other: "wallet.bifold"
         }
     }
-}
-
-extension Color {
-    /// A restrained premium highlight against the royal-blue brand colour.
-    /// Keep this rare so blue remains unmistakably dominant.
-    static var moneyUpGold: Color { Color("GoldAccent") }
 }
 
 extension ReportPeriod {

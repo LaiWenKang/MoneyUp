@@ -39,7 +39,10 @@ public enum FinanceCalculator {
         )
         var totals: [UUID: Decimal] = [:]
 
-        for entry in entries where interval?.containsHalfOpen(entry.occurredAt) ?? true {
+        for entry in entries where FinancialPeriodBoundary.contains(
+            entry.occurredAt,
+            in: interval
+        ) {
             for posting in entry.postings
             where expenseAccountIDs.contains(posting.accountID)
                 && posting.money.currency == currency {
@@ -64,7 +67,10 @@ public enum FinanceCalculator {
         )
         var amount = Decimal.zero
 
-        for entry in entries where interval?.containsHalfOpen(entry.occurredAt) ?? true {
+        for entry in entries where FinancialPeriodBoundary.contains(
+            entry.occurredAt,
+            in: interval
+        ) {
             for posting in entry.postings
             where relevantAccountIDs.contains(posting.accountID)
                 && posting.money.currency == currency {
@@ -76,14 +82,5 @@ public enum FinanceCalculator {
             amount = -amount
         }
         return try Money(amount, currency: currency)
-    }
-}
-
-extension DateInterval {
-    /// Financial periods are adjacent half-open ranges. Foundation's
-    /// `contains` includes the end instant and therefore double-counts midnight
-    /// at a month boundary.
-    func containsHalfOpen(_ date: Date) -> Bool {
-        date >= start && date < end
     }
 }

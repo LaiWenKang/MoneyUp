@@ -26,6 +26,8 @@ approved.
 | Capability | Founders Beta 0.4.1 behavior |
 |---|---|
 | Privacy and security | No account or backend; encrypted local database; timed local authentication; redacted locked capture |
+| First-run guidance | Four explicit steps: purpose/privacy, base currency, first financial account, and review; Today then offers visible Log and Plan actions |
+| Visual system | Adaptive soft green, off-white light and deep-charcoal dark surfaces, restrained gradients/graphics, and no pure-white/pure-black primary canvas |
 | Navigation | Five permanent tabs: Today, History, center Log, Plan, and Assets |
 | Budget planner | Monthly nested limits, roll-up, progress, and explicit unbudgeted spending |
 | Widgets | Configurable, privacy-redacted Home and Lock Screen entry points |
@@ -46,6 +48,14 @@ approved.
   Tags capture context and must not replace either hierarchy.
 - A credit card is a liability account. A debit card is a payment instrument
   linked to an asset account.
+- Asset account setup asks for the current balance and permits an explained
+  negative overdraft. Card and loan setup asks for a non-negative amount owed.
+- Every unfamiliar flow explains what the choice means, why it matters, what
+  is required, and the next action; a disabled control must never be the only
+  explanation of what is wrong.
+- Soft green identifies MoneyUp and positive directional graphics. Semantic
+  surfaces adapt to light/dark mode without pure white or pure black as the
+  primary canvas; decoration never carries financial meaning.
 - Transfers, credit-card repayments, and investment funding are not expenses.
 - A scheduled item remains a forecast until posted or matched to an actual
   transaction.

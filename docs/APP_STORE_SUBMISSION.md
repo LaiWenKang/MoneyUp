@@ -154,10 +154,11 @@ but is not a replacement for a public support contact.
 ## App Review notes
 
 > MoneyUp does not require an account, credentials, subscription, bank login,
-> or network connection. On first launch, MoneyUp creates a protected local
-> book after confirming that the iPhone has a device passcode; choose a base
-> currency, first account, and optional opening balance. After setup, reopening
-> the protected book requires Face ID, Touch ID, or the device passcode.
+> or network connection. On first launch, a four-step guide explains the local
+> privacy model, base currency, first financial account, optional current
+> balance or amount owed, and a final review before creating the protected
+> local book. After setup, Today shows clear Log and Plan actions. Reopening the
+> protected book requires Face ID, Touch ID, or the device passcode.
 >
 > Suggested review path: add a small expense from the center Log tab; set a
 > monthly limit in Plan; verify the transaction in Plan > Calendar and Insights;
@@ -214,8 +215,10 @@ alpha channel and no real financial data. Apple currently permits 1–10 images.
 7. Privacy — local encrypted processing and no tracking
 
 Capture both English and Simplified Chinese sets. Use coherent fictional data,
-consistent dates, strong contrast, large readable copy, and no claims that are
-not visible in the app.
+consistent dates, the approved adaptive soft-green identity in light and dark
+mode, strong contrast, large readable copy, and no claims that are not visible
+in the app. Do not substitute pure-white or pure-black canvases for MoneyUp's
+semantic surfaces.
 
 ## Final submission checklist
 

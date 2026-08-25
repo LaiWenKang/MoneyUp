@@ -289,6 +289,8 @@ private struct QuickLogEntryView: View {
                     }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(Color.moneyUpBackground)
             .disabled(isSaving || isUndoing)
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)

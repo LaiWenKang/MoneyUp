@@ -54,7 +54,7 @@ struct InsightsView: View {
                 }
                 .padding()
             }
-            .background(Color(.systemGroupedBackground))
+            .background { MoneyUpBackdrop() }
             .navigationTitle("tab.insights")
         }
     }

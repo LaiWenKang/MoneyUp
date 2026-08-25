@@ -135,7 +135,10 @@ defect.
 
 Each tester should complete:
 
-- onboarding in a different app language;
+- onboarding in a different app language without reading the runbook steps,
+  then explain what each choice did and identify the first Log/Plan actions;
+- light and dark appearance plus largest Dynamic Type/VoiceOver on onboarding
+  and account creation, including a bank overdraft and card amount owed;
 - at least three account types and 25 transactions;
 - expense, income, same-currency transfer, and one foreign-currency transfer;
 - nested budgets at two or more levels;
@@ -173,7 +176,8 @@ Required before this stage:
   checks on common tasks;
 - add bilingual UI automation for onboarding, logging, deletion, export, and
   background lock on representative iPhone sizes;
-- add performance tests for at least 10,000 entries and long recurrence ranges;
+- retain the 10,000-entry History CI guard and add long-recurrence automation;
+  measure the Golden p95 budgets separately on the oldest supported iPhone;
 - complete the first authenticated encrypted backup/restore design, threat
   review, and recovery drill;
 - prepare sanitized sample data and screenshot capture instructions;

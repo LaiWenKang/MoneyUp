@@ -261,6 +261,8 @@ struct AssetsView: View {
                     Section { Text(errorMessage).foregroundStyle(.red) }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(Color.moneyUpBackground)
             .navigationTitle("tab.assets")
             .sheet(isPresented: $isAddingAccount) {
                 AddAccountSheet()
@@ -337,30 +339,50 @@ private struct AddAccountSheet: View {
     @State private var errorMessage: String?
 
     private var startingBalance: Decimal? {
-        let trimmed = startingBalanceText.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty { return .zero }
-        guard let value = decimalAmount(from: trimmed), value >= .zero else { return nil }
-        return value
+        parsedOpeningBalance(from: startingBalanceText, accountType: type)
     }
 
     var body: some View {
         NavigationStack {
             Form {
-                TextField("account.name", text: $name)
-                Picker("account.type", selection: $type) {
-                    ForEach(FinancialAccountType.allCases, id: \.self) { item in
-                        Text(item.localizedTitle).tag(item)
+                Section {
+                    TextField("account.name", text: $name)
+                    Picker("account.type", selection: $type) {
+                        ForEach(FinancialAccountType.allCases, id: \.self) { item in
+                            Label(item.localizedTitle, systemImage: item.systemImage)
+                                .tag(item)
+                        }
+                    }
+                } header: {
+                    Text("account.details_title")
+                } footer: {
+                    Text("account.details_help")
+                }
+
+                Section {
+                    Picker("account.currency", selection: $currencyCode) {
+                        ForEach(SupportedCurrencies.codes, id: \.self) { code in
+                            Text(code).tag(code)
+                        }
+                    }
+                    TextField(type.openingBalanceLabel, text: $startingBalanceText)
+                        .keyboardType(.numbersAndPunctuation)
+                } header: {
+                    Text("account.opening_title")
+                } footer: {
+                    Text(type.openingBalanceGuidance)
+                }
+
+                if let errorMessage {
+                    Section {
+                        Label(errorMessage, systemImage: "exclamationmark.circle.fill")
+                            .foregroundStyle(.red)
+                            .accessibilityLiveRegion(.assertive)
                     }
                 }
-                TextField("account.currency", text: $currencyCode)
-                    .textInputAutocapitalization(.characters)
-                    .autocorrectionDisabled()
-                TextField("account.starting_balance", text: $startingBalanceText)
-                    .keyboardType(.decimalPad)
-                if let errorMessage {
-                    Text(errorMessage).foregroundStyle(.red)
-                }
             }
+            .scrollContentBackground(.hidden)
+            .background(Color.moneyUpBackground)
             .navigationTitle("account.add")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -369,22 +391,27 @@ private struct AddAccountSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("action.save") { Task { await save() } }
-                        .disabled(
-                            name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                                || startingBalance == nil
-                                || isSaving
-                        )
+                        .disabled(isSaving)
                 }
             }
             .onAppear {
                 currencyCode = model.profile?.baseCurrency.value ?? "SGD"
             }
+            .onChange(of: type) { _, _ in
+                errorMessage = nil
+            }
         }
     }
 
     private func save() async {
+        guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            errorMessage = String(localized: "account.name_error")
+            return
+        }
         guard let startingBalance else {
-            errorMessage = String(localized: "error.invalid_amount")
+            errorMessage = type.isLiabilityAccount
+                ? String(localized: "account.amount_owed_error")
+                : String(localized: "account.current_balance_error")
             return
         }
         isSaving = true
@@ -418,17 +445,31 @@ private struct AccountBalanceSheet: View {
         _balanceText = State(initialValue: "")
     }
 
+    private var editedBalance: Decimal? {
+        guard let value = decimalAmount(from: balanceText) else { return nil }
+        guard account.kind != .liability || value >= .zero else { return nil }
+        return value
+    }
+
+    private var balanceLabel: LocalizedStringKey {
+        account.kind == .liability ? "account.amount_owed" : "account.current_balance"
+    }
+
     var body: some View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("account.current_balance", text: $balanceText)
+                    TextField(balanceLabel, text: $balanceText)
                         .keyboardType(.numbersAndPunctuation)
                 } footer: {
                     VStack(alignment: .leading, spacing: 6) {
-                        if account.accountType == .brokerage
+                        if account.kind == .liability {
+                            Text("account.amount_owed_detail")
+                        } else if account.accountType == .brokerage
                             || account.accountType == .investment {
                             Text("account.investment_cash_detail")
+                        } else {
+                            Text("account.current_balance_detail")
                         }
                         Text("account.adjustment_detail")
                     }
@@ -437,6 +478,8 @@ private struct AccountBalanceSheet: View {
                     Section { Text(errorMessage).foregroundStyle(.red) }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(Color.moneyUpBackground)
             .navigationTitle(account.name)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -445,7 +488,7 @@ private struct AccountBalanceSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("action.save") { Task { await save() } }
-                        .disabled(decimalAmount(from: balanceText) == nil || isSaving)
+                        .disabled(isSaving)
                 }
             }
             .onAppear {
@@ -462,7 +505,12 @@ private struct AccountBalanceSheet: View {
     }
 
     private func save() async {
-        guard let balance = decimalAmount(from: balanceText) else { return }
+        guard let balance = editedBalance else {
+            errorMessage = account.kind == .liability
+                ? String(localized: "account.amount_owed_error")
+                : String(localized: "account.current_balance_error")
+            return
+        }
         isSaving = true
         errorMessage = nil
         defer { isSaving = false }
@@ -520,6 +568,8 @@ private struct AddHoldingSheet: View {
                     Text(errorMessage).foregroundStyle(.red)
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(Color.moneyUpBackground)
             .navigationTitle("holding.add")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

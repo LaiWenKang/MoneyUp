@@ -166,6 +166,44 @@ final class HistoryQueryTests: XCTestCase {
             [refund.id]
         )
     }
+
+    func testTenThousandEntryHistorySearchHasABoundedRegressionGuard() throws {
+        let fixture = try Fixture()
+        let entries = try (0..<10_000).map { index in
+            try fixture.expense(
+                amount: 1,
+                occurredAt: Date(timeIntervalSince1970: TimeInterval(index)),
+                payee: "Cafe \(index)"
+            )
+        }
+        let query = HistoryQuery(
+            searchText: "Cafe",
+            kind: .expense,
+            accountID: fixture.wallet.id,
+            categoryID: fixture.food.id,
+            minimumAmount: 1,
+            maximumAmount: 1
+        )
+        let clock = ContinuousClock()
+        let started = clock.now
+
+        let filtered = query.filteredEntries(
+            entries,
+            accounts: fixture.accounts,
+            locale: Locale(identifier: "en_US_POSIX")
+        )
+        let elapsed = started.duration(to: clock.now)
+
+        XCTAssertEqual(filtered.count, 10_000)
+        XCTAssertEqual(
+            query.summary(for: filtered, accounts: fixture.accounts)
+                .amountsByCurrency[fixture.sgd],
+            -10_000
+        )
+        // CI is a broad algorithmic regression guard. The Golden PRD's
+        // 300 ms p95 remains a physical oldest-device release measurement.
+        XCTAssertLessThan(elapsed, .seconds(2))
+    }
 }
 
 private struct Fixture {

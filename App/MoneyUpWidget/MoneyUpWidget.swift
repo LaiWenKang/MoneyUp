@@ -154,8 +154,8 @@ private struct MoneyUpWidgetView: View {
                 SmallQuickActionView(action: entry.action)
             }
         }
-        .containerBackground(.fill.tertiary, for: .widget)
-        .tint(.moneyUpRoyalBlue)
+        .containerBackground(Color.moneyUpWidgetBackground, for: .widget)
+        .tint(.moneyUpSoftGreen)
         .widgetURL(family == .systemMedium ? nil : entry.action.deepLink)
     }
 }
@@ -179,7 +179,7 @@ private struct SmallQuickActionView: View {
                 .font(.title2.weight(.semibold))
                 .foregroundStyle(.white)
                 .frame(width: 44, height: 44)
-                .background(Color.moneyUpRoyalBlue, in: Circle())
+                .background(Color.moneyUpAction, in: Circle())
                 .accessibilityHidden(true)
 
             Text(action.titleKey)
@@ -218,7 +218,7 @@ private struct MediumQuickActionsView: View {
                                 .font(.headline.weight(.semibold))
                                 .foregroundStyle(.white)
                                 .frame(width: 36, height: 36)
-                                .background(Color.moneyUpRoyalBlue, in: Circle())
+                                .background(Color.moneyUpAction, in: Circle())
                             Text(action.titleKey)
                                 .font(.caption2.weight(.semibold))
                                 .foregroundStyle(.primary)
@@ -288,22 +288,47 @@ private struct AccessoryInlineActionView: View {
 }
 
 private extension Color {
-    /// Mirrors the app accent. In tinted widget mode iOS applies the user's
-    /// selected system tint, while full-colour widgets retain MoneyUp blue.
-    static let moneyUpRoyalBlue = Color(
+    /// Mirrors the app's adaptive brand tokens. In tinted widget mode iOS
+    /// applies the user's system tint; full-colour widgets keep MoneyUp green.
+    static let moneyUpSoftGreen = Color(
         uiColor: UIColor { traits in
             if traits.userInterfaceStyle == .dark {
                 return UIColor(
-                    red: 96.0 / 255.0,
-                    green: 128.0 / 255.0,
-                    blue: 1.0,
+                    red: 130.0 / 255.0,
+                    green: 206.0 / 255.0,
+                    blue: 174.0 / 255.0,
                     alpha: 1
                 )
             }
             return UIColor(
-                red: 38.0 / 255.0,
-                green: 71.0 / 255.0,
-                blue: 196.0 / 255.0,
+                red: 52.0 / 255.0,
+                green: 120.0 / 255.0,
+                blue: 95.0 / 255.0,
+                alpha: 1
+            )
+        }
+    )
+
+    static let moneyUpAction = Color(
+        red: 52.0 / 255.0,
+        green: 120.0 / 255.0,
+        blue: 95.0 / 255.0
+    )
+
+    static let moneyUpWidgetBackground = Color(
+        uiColor: UIColor { traits in
+            if traits.userInterfaceStyle == .dark {
+                return UIColor(
+                    red: 24.0 / 255.0,
+                    green: 33.0 / 255.0,
+                    blue: 29.0 / 255.0,
+                    alpha: 1
+                )
+            }
+            return UIColor(
+                red: 247.0 / 255.0,
+                green: 249.0 / 255.0,
+                blue: 246.0 / 255.0,
                 alpha: 1
             )
         }

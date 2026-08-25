@@ -18,7 +18,9 @@ The beta includes:
   device-bound key;
 - Keychain protection requiring device-owner presence, configurable timed
   auto-lock (one minute by default), and an immediate app-switcher privacy cover;
-- onboarding with base currency, first account, and opening balance;
+- a four-step first-run guide that explains the local-only model, base currency,
+  first financial account, opening balance or amount owed, review, and what to
+  do next;
 - persistent expense, income, same-currency, and foreign-currency transfers;
 - account balance reconciliation that does not distort income or spending;
 - arbitrary-depth categories and monthly limits with correct roll-up;
@@ -46,9 +48,10 @@ The beta includes:
   name mapping, duplicate detection, row-level issues, and atomic saving;
 - posting-level CSV export with account metadata for Numbers and Excel;
 - English and Simplified Chinese UI and first-run categories;
-- a royal-blue app icon and accent colour with restrained gold highlights, a
-  lock screen that names the biometry the device actually has, and an in-app
-  version with release notes on update;
+- an adaptive soft-green app icon, widget, and semantic visual system over
+  off-white light surfaces or deep-charcoal dark surfaces, with restrained
+  gradients and no pure-white or pure-black primary canvas; a lock screen that
+  names the biometry the device actually has; and in-app release notes;
 - an App Store privacy manifest, an in-app bilingual privacy and beta guide,
   backup exclusion for non-restorable ciphertext, and confirmations before
   permanent transaction, schedule, or holding deletion;
