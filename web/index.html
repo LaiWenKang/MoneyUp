@@ -26,21 +26,38 @@
   --radius: 16px;
   --shadow: 0 1px 2px rgba(16, 30, 82, .06), 0 8px 24px rgba(16, 30, 82, .06);
 }
+/* Three theme states, not two: an explicit choice stamps data-theme on the
+   root, and the common "system" setting stamps nothing at all. Tokens are
+   redefined for both paths so an explicit pick always beats the OS. */
 @media (prefers-color-scheme: dark) {
-  :root {
-    --royal: #7E9BFF;
-    --royal-deep: #070F33;
-    --gold: #E9C765;
-    --bg: #0B0F1E;
-    --surface: #151A2E;
-    --surface-2: #1E2440;
-    --text: #ECEEF6;
-    --text-dim: #9AA2BE;
-    --line: #262D48;
-    --positive: #5BD39B;
-    --negative: #FF8A80;
-    --shadow: none;
+  :root:not([data-theme="light"]) {
+  --royal: #7E9BFF;
+  --royal-deep: #070F33;
+  --gold: #E9C765;
+  --bg: #0B0F1E;
+  --surface: #151A2E;
+  --surface-2: #1E2440;
+  --text: #ECEEF6;
+  --text-dim: #9AA2BE;
+  --line: #262D48;
+  --positive: #5BD39B;
+  --negative: #FF8A80;
+  --shadow: none;
   }
+}
+:root[data-theme="dark"] {
+  --royal: #7E9BFF;
+  --royal-deep: #070F33;
+  --gold: #E9C765;
+  --bg: #0B0F1E;
+  --surface: #151A2E;
+  --surface-2: #1E2440;
+  --text: #ECEEF6;
+  --text-dim: #9AA2BE;
+  --line: #262D48;
+  --positive: #5BD39B;
+  --negative: #FF8A80;
+  --shadow: none;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
