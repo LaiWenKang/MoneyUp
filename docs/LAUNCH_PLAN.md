@@ -18,7 +18,7 @@ retention and reliability are proven.
 
 | Area | Status | Release meaning |
 |---|---|---|
-| Product | Founders Beta 0.4.1 source candidate | Log-first entry, History/edit/refund, timed lock, locked capture, budget, calendar, insights, assets, configurable widgets, import/export, and bilingual flows exist |
+| Product | Founders Beta 0.5.0 source candidate | Safe to Spend, cash/debt position, chart drill-through, what-if simulation, Log/History, timed lock, locked capture, budget, calendar, assets, widgets, import/export, and bilingual flows exist |
 | Privacy | Ready for founders beta | Local encrypted database, protected key, privacy cover, no tracking, privacy manifest, and public policy |
 | CI | Active | Domain tests and unsigned app/widget Simulator build run on GitHub's macOS runner |
 | Distribution | Internal TestFlight active | Membership, identifiers, `MoneyUp: CowCome` record, API key, protected environment, first signed upload, and account-holder install are complete; 0.4 still needs exact-commit validation and upload |
@@ -29,7 +29,7 @@ retention and reliability are proven.
 
 ### Stage 0 — Founders build preparation
 
-Target: a green, reviewable 0.4.1 build that can be signed and uploaded through
+Target: a green, reviewable 0.5.0 build that can be signed and uploaded through
 the configured Apple and GitHub connection.
 
 Completed:
@@ -53,7 +53,7 @@ Completed:
   record, dedicated team API key, and protected GitHub environment configured
   by the account holder.
 
-Required before uploading 0.4.1:
+Required before uploading 0.5.0:
 
 - CI must pass on the exact commit to upload;
 - verify current agreements remain accepted and let the signed validation run
@@ -273,7 +273,7 @@ are the correct mechanisms when access is eventually needed.
 
 ## Definition of ready
 
-MoneyUp is ready for the two founders when CI is green, a signed 0.4.1 build
+MoneyUp is ready for the two founders when CI is green, a signed 0.5.0 build
 passes the physical smoke test, and TestFlight has finished processing it. It
 is ready for the public only after encrypted restore is proven, all P0/P1 gates
 above pass, and the exact submitted binary matches the reviewed privacy and

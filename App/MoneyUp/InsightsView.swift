@@ -26,7 +26,10 @@ struct InsightsView: View {
     private static let visibleCategoryCount = 8
 
     @EnvironmentObject private var model: AppModel
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var period: ReportPeriod = .thisMonth
+    @State private var selectedCategoryName: String?
+    @State private var selectedFlowMonth: Date?
 
     var body: some View {
         NavigationStack {
@@ -56,6 +59,10 @@ struct InsightsView: View {
             }
             .background { MoneyUpBackdrop() }
             .navigationTitle("tab.insights")
+            .onChange(of: period) { _, _ in
+                selectedCategoryName = nil
+                selectedFlowMonth = nil
+            }
         }
     }
 
@@ -77,23 +84,36 @@ struct InsightsView: View {
     }
 
     private func totalsRow(_ report: PeriodReport) -> some View {
-        HStack(spacing: 10) {
-            MetricCard(
-                title: "transaction.income",
-                value: formattedMoney(report.baseFlow.income),
-                color: .green
-            )
-            MetricCard(
-                title: "transaction.expense",
-                value: formattedMoney(report.baseFlow.expense),
-                color: .accentColor
-            )
-            MetricCard(
-                title: "insights.net",
-                value: formattedMoney(report.baseFlow.net),
-                color: report.baseFlow.net.amount >= .zero ? .accentColor : .red
-            )
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(spacing: 10) {
+                    totalsCards(report)
+                }
+            } else {
+                HStack(spacing: 10) {
+                    totalsCards(report)
+                }
+            }
         }
+    }
+
+    @ViewBuilder
+    private func totalsCards(_ report: PeriodReport) -> some View {
+        MetricCard(
+            title: "transaction.income",
+            value: formattedMoney(report.baseFlow.income),
+            color: .green
+        )
+        MetricCard(
+            title: "transaction.expense",
+            value: formattedMoney(report.baseFlow.expense),
+            color: .accentColor
+        )
+        MetricCard(
+            title: "insights.net",
+            value: formattedMoney(report.baseFlow.net),
+            color: report.baseFlow.net.amount >= .zero ? .accentColor : .red
+        )
     }
 
     private func foreignCurrencyCard(_ report: PeriodReport) -> some View {
@@ -144,6 +164,10 @@ struct InsightsView: View {
                                 ? Color.secondary
                                 : Color.accentColor
                         )
+                        .opacity(
+                            selectedCategoryName == nil
+                                || selectedCategoryName == point.name ? 1 : 0.34
+                        )
                         .annotation(position: .trailing) {
                             Text(formattedMoney(point.money))
                                 .font(.caption2)
@@ -153,8 +177,19 @@ struct InsightsView: View {
                         .accessibilityValue(formattedMoney(point.money))
                     }
                     .chartXAxis(.hidden)
+                    .chartYSelection(value: $selectedCategoryName)
                     .frame(height: max(190, CGFloat(points.count) * 34))
                     .accessibilityLabel(Text("insights.category_chart"))
+
+                    Text("insights.tap_chart")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    if let selected = points.first(where: {
+                        $0.name == selectedCategoryName
+                    }) {
+                        selectedCategoryCard(selected, report: report)
+                    }
                 } else if case let .unavailable(issue) = pointsResult {
                     DerivedValueUnavailableView(issue: issue)
                 }
@@ -179,6 +214,14 @@ struct InsightsView: View {
                         )
                         .foregroundStyle(by: .value("Flow", point.series))
                         .position(by: .value("Flow", point.series))
+                        .opacity(
+                            selectedFlowMonth == nil
+                                || Calendar.current.isDate(
+                                    point.month,
+                                    equalTo: selectedFlowMonth ?? point.month,
+                                    toGranularity: .month
+                                ) ? 1 : 0.34
+                        )
                         .accessibilityLabel(point.series)
                         .accessibilityValue(formattedMoney(point.money))
                     }
@@ -187,13 +230,105 @@ struct InsightsView: View {
                         String(localized: "transaction.income"): Color.green,
                         String(localized: "transaction.expense"): Color.accentColor
                     ])
+                    .chartXSelection(value: $selectedFlowMonth)
                     .accessibilityLabel(Text("insights.flow_chart"))
+
+                    Text("insights.tap_chart")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    if let selectedFlow = report.monthlyFlows.first(where: {
+                        guard let selectedFlowMonth else { return false }
+                        return Calendar.current.isDate(
+                            $0.month,
+                            equalTo: selectedFlowMonth,
+                            toGranularity: .month
+                        )
+                    }) {
+                        selectedFlowCard(selectedFlow)
+                    }
                 } else {
                     Text("insights.no_flow_data")
                         .foregroundStyle(.secondary)
                 }
             }
         }
+    }
+
+    private func selectedCategoryCard(
+        _ point: CategoryPoint,
+        report: PeriodReport
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Divider()
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(point.name)
+                        .font(.subheadline.weight(.semibold))
+                    Text(formattedMoney(point.money))
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 12)
+                NavigationLink {
+                    HistoryView(
+                        preset: HistoryPreset(
+                            categoryID: point.id == Self.otherCategoryID ? nil : point.id,
+                            interval: report.interval
+                        )
+                    )
+                } label: {
+                    Label("insights.view_transactions", systemImage: "arrow.right.circle.fill")
+                }
+                .font(.subheadline.weight(.semibold))
+            }
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private func selectedFlowCard(_ flow: MonthlyFlow) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Divider()
+            Text(flow.month, format: .dateTime.month(.wide).year())
+                .font(.subheadline.weight(.semibold))
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 12) {
+                    flowValue("transaction.income", money: flow.income)
+                    flowValue("transaction.expense", money: flow.expense)
+                    flowValue("insights.net", money: flow.net)
+                }
+                VStack(alignment: .leading, spacing: 8) {
+                    flowValue("transaction.income", money: flow.income)
+                    flowValue("transaction.expense", money: flow.expense)
+                    flowValue("insights.net", money: flow.net)
+                }
+            }
+
+            if let interval = Calendar.current.dateInterval(of: .month, for: flow.month) {
+                NavigationLink {
+                    HistoryView(preset: HistoryPreset(interval: interval))
+                } label: {
+                    Label("insights.view_transactions", systemImage: "arrow.right.circle.fill")
+                }
+                .font(.subheadline.weight(.semibold))
+            }
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private func flowValue(
+        _ title: LocalizedStringKey,
+        money: Money
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(formattedMoney(money))
+                .font(.caption.monospacedDigit().weight(.semibold))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
     }
 
     private func insightCard(_ report: PeriodReport) -> some View {
@@ -384,7 +519,7 @@ private struct MetricCard: View {
             Text(value)
                 .font(.subheadline.monospacedDigit().weight(.semibold))
                 .lineLimit(1)
-                .minimumScaleFactor(0.65)
+                .minimumScaleFactor(0.80)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)

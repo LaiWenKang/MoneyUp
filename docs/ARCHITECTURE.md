@@ -22,7 +22,7 @@ testable.
 
 ## Module boundaries
 
-| Module | Responsibility | Founders Beta 0.4.1 |
+| Module | Responsibility | Founders Beta 0.5.0 |
 |---|---|---|
 | MoneyUp app | State machine, lock lifecycle, bilingual SwiftUI, local insights | Implemented |
 | MoneyUpCore | Money, ledger, hierarchy, recurrence, holdings, export rules | Implemented |
@@ -30,6 +30,12 @@ testable.
 | Widget | Redacted presentation and authenticated quick-log deep links | Implemented |
 | Portability | Readable enriched CSV plus previewable local CSV/Qianji import | Implemented |
 | Portable recovery | Authenticated encrypted archive and transactional restore | Implemented |
+
+`FinancialGuidance.swift` owns the exact, independently tested arithmetic for
+Safe to Spend and read-only budget scenarios. SwiftUI may render those results
+with flat charts and diagrams, but generated dimensional artwork never carries
+a financial quantity. Insights chart selections create a `HistoryPreset` and
+reuse the same `HistoryQuery` filter path as manual filtering.
 
 ## State and lock lifecycle
 

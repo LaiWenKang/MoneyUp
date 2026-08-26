@@ -120,9 +120,10 @@ struct AssetsView: View {
                             editingAccount = account
                         } label: {
                             HStack(spacing: 12) {
-                                Image(systemName: account.accountType?.systemImage ?? "wallet.bifold")
-                                    .foregroundStyle(.tint)
-                                    .frame(width: 30)
+                                MoneyUpSymbolBadge(
+                                    systemImage: account.accountType?.systemImage
+                                        ?? "wallet.bifold"
+                                )
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(account.name)
                                     Text(account.currency?.value ?? "")
@@ -167,8 +168,17 @@ struct AssetsView: View {
                         DerivedValueUnavailableView(issue: issue)
                     }
                     if model.investmentHoldings.isEmpty {
-                        Text("assets.no_holdings")
-                            .foregroundStyle(.secondary)
+                        VStack(spacing: 8) {
+                            MoneyUpIllustration("MoneyUpMoneyWorld", height: 118)
+                            Text("assets.no_holdings")
+                                .font(.headline)
+                            Text("assets.no_holdings_detail")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
                     } else {
                         ForEach(model.investmentHoldings) { holding in
                             HStack {

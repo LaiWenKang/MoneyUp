@@ -1,4 +1,4 @@
-# Install and Use Founders Beta 0.4.1
+# Install and Use Founders Beta 0.5.0
 
 MoneyUp is available to approved founders through private TestFlight groups and
 can also be installed from source. New builds still pass through the protected
@@ -64,16 +64,20 @@ Then in Xcode:
 3. Record a small expense from the center Log tab and confirm the account balance and
    category spending both update.
 4. Add a monthly limit in Plan and confirm child-category spending rolls up.
-5. Send MoneyUp to the background. The switcher preview should hide data
+5. Open Safe to Spend on Today, inspect its arithmetic, and try the read-only
+   budget what-if simulator. Tap an Insights bar and confirm the matching
+   filtered History opens.
+6. Send MoneyUp to the background. The switcher preview should hide data
    immediately; after the default one-minute delay, reopening should require
    device authentication. The delay is configurable in Settings.
 
 ## Add the widget
 
 Long-press the Home Screen or Lock Screen, add a widget, and search for MoneyUp.
-The small and Lock Screen widgets can be configured for Expense, Income,
-Transfer, Refund, Smart Entry, or Receipt; the medium widget shows four quick
-actions. No widget displays balances, payees, holdings, or statistics. Expense,
+The horned-money small and Lock Screen widgets can be configured for Expense,
+Income, Transfer, Refund, Smart Entry, or Receipt; the medium widget shows four
+illustrated quick actions. No widget displays balances, payees, holdings, or
+statistics. Expense,
 income, transfer, and refund can open the encrypted Quick Capture form while the
 book remains locked; full balances and smart/receipt tools still require unlock.
 

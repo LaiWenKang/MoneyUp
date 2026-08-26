@@ -1,6 +1,6 @@
 # MoneyUp Founders Test Runbook
 
-Version target: 0.4.1 (source build 5; the GitHub workflow assigns a newer
+Version target: 0.5.0 (source build 6; the GitHub workflow assigns a newer
 unique TestFlight build)
 
 This runbook is for the user and his girlfriend, MoneyUp's first two iPhone
@@ -9,13 +9,13 @@ the right place for records that cannot be reconstructed.
 
 ## How installation works
 
-The account holder has already installed an earlier signed beta from the
-private **Founders Internal** TestFlight group. Install the 0.4.1 candidate from
-that same group when it appears. The girlfriend is invited by email to the
+The account holder has already installed the signed 0.4.1 beta from the private
+**Founders Internal** TestFlight group. Install the 0.5.0 candidate from that
+same group when it appears. The girlfriend is invited by email to the
 private **Founders External** group after Apple's TestFlight Beta App Review
 accepts the selected build.
 
-Before the account holder updates the installed 0.4.0 build, pin its existing
+Before the account holder updates the installed 0.4.1 build, pin its existing
 small and medium MoneyUp widgets. Confirm the small widget opens Expense and
 the medium widget's Expense and Income links work, then leave both pinned for
 the migration checks in section 7.
@@ -36,7 +36,7 @@ well before the expiry date shown in TestFlight.
 ## Before starting
 
 - Use an iPhone running iOS 18 or later with a device passcode enabled.
-- Confirm TestFlight shows version 0.4.1 and build 5 or newer.
+- Confirm TestFlight shows version 0.5.0 and build 6 or newer.
 - Decide who tests English and who tests Simplified Chinese first; switch roles
   on a later day.
 - Prepare fictional sample accounts, merchants, balances, and a receipt image.
@@ -59,8 +59,8 @@ well before the expiry date shown in TestFlight.
   expected user-facing sign.
 - On Today, confirm **Log money** and **Plan a budget** make the next actions
   obvious without referring back to this runbook.
-- Check light and dark mode: the identity, upward arrows, icon, and actions are
-  soft green; primary canvases are off-white or deep charcoal rather than pure
+- Check light and dark mode: the horned-money emblem, icon, and actions are soft
+  green; primary canvases are off-white or deep charcoal rather than pure
   white/black; text and controls retain clear contrast.
 - Send MoneyUp to the background. Its app-switcher preview must hide financial
   values.
@@ -101,8 +101,21 @@ the app silently resets, or the opening balance is wrong.
 - Clear one limit to zero and confirm Plan remains readable without a broken or
   misleading progress bar.
 - Check Today, Plan (including Calendar), and Insights for the same amount and currency.
+- On Today, open **Safe to Spend Today**. Reconcile remaining budget minus
+  active scheduled expense occurrences, divided by days remaining including
+  today. Confirm foreign-currency activity, unbudgeted spending, future income,
+  missing rates, and forecast assumptions are stated rather than silently
+  folded into the amount.
+- Confirm Cash on hand, Card and loan debt, and Net cash remain separate and
+  match the underlying base-currency accounts.
+- Open Plan → Budget what-if. Try additional spending and income, compare the
+  exact projected totals with a calculator, then leave and confirm no ledger,
+  budget, or report value changed.
 - Change the Insights period and verify that earlier sample entries appear only
   when their dates belong to the selected period.
+- Tap a category bar and a monthly-flow bar, inspect the selected value, then
+  open transactions. Confirm History has the matching category/date filters and
+  Back returns to the chart.
 - Isolate or delete earlier expense samples, then make total base-currency
   expenses 100 for last month's equivalent period and 120 for this month so
   far. Confirm the month-to-date sentence says up 20%. Replace this month's
@@ -148,14 +161,17 @@ the app silently resets, or the opening balance is wrong.
 
 ### 7. Widget
 
-- On the account holder's upgraded phone, confirm both pinned 0.4.0 widgets still
+- On the account holder's upgraded phone, confirm both pinned 0.4.1 widgets still
   render, their legacy expense/income links open correctly, they can be resized
-  and edited, and they survive a reboot. Then choose a 0.4.1 preferred action. If
+  and edited, and they survive a reboot. Then choose a 0.5.0 preferred action. If
   migration fails, remove and re-add the widget and report both build numbers.
 - Add small and medium MoneyUp widgets to the Home Screen and one MoneyUp widget
   to the Lock Screen.
 - Check inline, circular, and rectangular Lock Screen families where available,
   plus tinted Home Screen rendering.
+- Confirm the horned-money mark, dimensional action buttons, and decorative
+  background remain clear in light, dark, and tinted modes without resembling
+  real financial data.
 - Confirm it shows no balances, payees, or statistics.
 - Configure and test Expense, Income, Transfer, Refund, Smart Entry, and Receipt.
   With locked capture enabled, the first four must permit amount/payee/note
@@ -165,7 +181,7 @@ the app silently resets, or the opening balance is wrong.
 
 ### 8. Upgrade, backup, restore, and import
 
-- Before updating, record the 0.4.0 transaction count and several balances.
+- Before updating, record the 0.4.1 transaction count and several balances.
 - Update in TestFlight without deleting the app. Confirm onboarding does not
   reappear and every prior balance, transaction, budget, schedule, and holding
   remains.

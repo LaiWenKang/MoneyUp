@@ -1203,6 +1203,40 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func safeToSpendTodayResult() -> DerivedValue<SafeToSpendBreakdown?> {
+        switch budgetPlanSummaryThisMonthResult() {
+        case .available(.none):
+            return .available(nil)
+        case let .available(.some(summary)):
+            let foreignSpending: [Money]
+            switch excludedForeignSpendingThisMonthResult() {
+            case let .available(values):
+                foreignSpending = values
+            case let .unavailable(issue):
+                return .unavailable(issue)
+            }
+            do {
+                return .available(
+                    try FinanceCalculator.safeToSpend(
+                        budgetRemaining: summary.remaining,
+                        schedules: scheduledTransactions,
+                        excludedForeignSpending: foreignSpending,
+                        asOf: Date()
+                    )
+                )
+            } catch {
+                DerivedValueDiagnostics.record(
+                    .budgetCalculationFailed,
+                    operation: "safe-to-spend",
+                    error: error
+                )
+                return .unavailable(.budgetCalculationFailed)
+            }
+        case let .unavailable(issue):
+            return .unavailable(issue)
+        }
+    }
+
     /// Compares equal elapsed portions of this month and the prior month.
     /// A full prior month against a partial current month would produce a
     /// dramatic but misleading “spending down” sentence early in the month.

@@ -8,9 +8,10 @@ on-device charts, accounts and holdings, and spreadsheet-friendly export.
 
 ## Project status
 
-MoneyUp is preparing **Founders Beta 0.4.1**. An earlier signed build is already
-installed by the account holder through private TestFlight; developers can also
-install the app from source on an iOS 18 device through Xcode.
+MoneyUp is preparing the **Founders Beta 0.5.0** source candidate. Version 0.4.1
+is already installed by the account holder through private TestFlight;
+developers can also install the app from source on an iOS 18 device through
+Xcode.
 
 The beta includes:
 
@@ -27,6 +28,12 @@ The beta includes:
 - actual and recurring projected money flow in the finance calendar;
 - selectable report periods with category and monthly cash-flow charts, plus
   deterministic readings, all calculated on device;
+- Safe to Spend Today with a tap-through arithmetic breakdown, scheduled
+  commitments, explicit exclusions, and separate cash-versus-debt positioning;
+- tappable category and monthly-flow charts that inspect exact values and open
+  History with the matching category/date filters;
+- a read-only budget what-if simulator for additional spending and income that
+  never mutates the ledger, budget, or reports;
 - explicit reporting of money held or spent outside the base currency, which is
   listed on its own rather than converted or dropped;
 - bank, cash, e-wallet, card, loan, brokerage, and investment accounts;
@@ -48,17 +55,19 @@ The beta includes:
   name mapping, duplicate detection, row-level issues, and atomic saving;
 - posting-level CSV export with account metadata for Numbers and Excel;
 - English and Simplified Chinese UI and first-run categories;
-- an adaptive soft-green app icon, widget, and semantic visual system over
-  off-white light surfaces or deep-charcoal dark surfaces, with restrained
-  gradients and no pure-white or pure-black primary canvas; a lock screen that
-  names the biometry the device actually has; and in-app release notes;
+- a distinctive soft-green horned-money emblem shared by the app icon,
+  first-run surfaces, and privacy-safe widget; original dimensional
+  illustrations for atmosphere; exact 2D position, pace, and scenario graphics;
+  and semantic off-white or deep-charcoal surfaces with no pure-white or
+  pure-black primary canvas; a lock screen that names the biometry the device
+  actually has; and in-app release notes;
 - an App Store privacy manifest, an in-app bilingual privacy and beta guide,
   backup exclusion for non-restorable ciphertext, and confirmations before
   permanent transaction, schedule, or holding deletion;
 - Swift tests plus a clean unsigned iOS Simulator build in CI.
 
-The 0.4.1 source candidate includes portable backup/restore and reviewed CSV
-import. It still requires green CI and physical upgrade/restore drills before
+The 0.5.0 source candidate still requires green CI and physical
+upgrade/restore, visual, localization, accessibility, and widget drills before
 TestFlight distribution or a public release. Keep a separate encrypted backup;
 CSV snapshots remain readable plaintext and should be protected.
 
@@ -162,6 +171,7 @@ behavior, and vulnerability reporting.
 - [Beta installation and use](docs/BETA_INSTALL.md)
 - [Product definition](docs/PRODUCT.md)
 - [Architecture](docs/ARCHITECTURE.md)
+- [Visual system](docs/VISUAL_SYSTEM.md)
 - [Data model and invariants](docs/DATA_MODEL.md)
 - [Delivery roadmap](docs/ROADMAP.md)
 

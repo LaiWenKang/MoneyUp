@@ -37,6 +37,13 @@ enum AppVersion {
 enum ReleaseNotes {
     static func highlights(for version: String = AppVersion.marketing) -> [LocalizedStringKey] {
         switch version {
+        case "0.5.0":
+            [
+                "whats_new.0_5_0.guidance",
+                "whats_new.0_5_0.simulator",
+                "whats_new.0_5_0.insights",
+                "whats_new.0_5_0.visuals"
+            ]
         case "0.4.1":
             [
                 "whats_new.0_4_1.guidance",

@@ -267,6 +267,111 @@ def validate_icons() -> None:
             fail(f"invalid {expected} appearance metadata for {filename}")
     print("Validated default, dark, and tinted app icons")
 
+    mark_directory = (
+        ROOT / "App" / "MoneyUp" / "Assets.xcassets" / "MoneyUpBrandMark.imageset"
+    )
+    expected_marks = {
+        "MoneyUpBrandMark.png": (384, 384, "1x"),
+        "MoneyUpBrandMark@2x.png": (768, 768, "2x"),
+        "MoneyUpBrandMark@3x.png": (1152, 1152, "3x"),
+    }
+    for name, (expected_width, expected_height, _) in expected_marks.items():
+        path = mark_directory / name
+        width, height, color_type, _ = png_metadata(path)
+        if (width, height) != (expected_width, expected_height):
+            fail(
+                f"{path.relative_to(ROOT)} must be "
+                f"{expected_width} by {expected_height} pixels"
+            )
+        if color_type not in {4, 6}:
+            fail(f"{path.relative_to(ROOT)} must preserve a transparent mask")
+
+    mark_contents_path = mark_directory / "Contents.json"
+    try:
+        mark_contents = json.loads(mark_contents_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        fail(f"cannot parse horned-money mark Contents.json: {error}")
+    mark_images = mark_contents.get("images", [])
+    actual_marks = {
+        item.get("filename"): item.get("scale")
+        for item in mark_images
+        if item.get("filename") is not None
+    }
+    expected_scales = {
+        name: scale for name, (_, _, scale) in expected_marks.items()
+    }
+    if actual_marks != expected_scales:
+        fail(f"invalid horned-money mark slots: {actual_marks}")
+    template_intent = mark_contents.get("properties", {}).get(
+        "template-rendering-intent"
+    )
+    if template_intent != "template":
+        fail("the shared horned-money mark must render as a semantic template")
+    print("Validated shared horned-money brand mark")
+
+    widget_mark_directory = (
+        ROOT / "App" / "MoneyUpWidget" / "Assets.xcassets"
+        / "MoneyUpBrandMark.imageset"
+    )
+    for name in expected_marks:
+        app_path = mark_directory / name
+        widget_path = widget_mark_directory / name
+        if not widget_path.is_file() or widget_path.read_bytes() != app_path.read_bytes():
+            fail(f"widget horned-money mark drifted from the app asset: {name}")
+
+    illustrations = {
+        "MoneyUpMoneyWorld": "MoneyUpMoneyWorld",
+        "MoneyUpScenarioStudio": "MoneyUpScenarioStudio",
+    }
+    expected_illustration_sizes = {
+        "": (256, 256, "1x", None),
+        "@2x": (512, 512, "2x", None),
+        "@3x": (768, 768, "3x", None),
+        "-Dark": (256, 256, "1x", "dark"),
+        "-Dark@2x": (512, 512, "2x", "dark"),
+        "-Dark@3x": (768, 768, "3x", "dark"),
+    }
+    app_assets = ROOT / "App" / "MoneyUp" / "Assets.xcassets"
+    for asset_name, filename_stem in illustrations.items():
+        directory = app_assets / f"{asset_name}.imageset"
+        expected_slots: dict[str, tuple[str, str | None]] = {}
+        for suffix, (expected_width, expected_height, scale, appearance) in (
+            expected_illustration_sizes.items()
+        ):
+            name = f"{filename_stem}{suffix}.png"
+            expected_slots[name] = (scale, appearance)
+            width, height, color_type, has_transparency = png_metadata(
+                directory / name
+            )
+            if (width, height) != (expected_width, expected_height):
+                fail(
+                    f"{(directory / name).relative_to(ROOT)} must be "
+                    f"{expected_width} by {expected_height} pixels"
+                )
+            if color_type in {4, 6} or has_transparency:
+                fail(f"{name} must be composited onto its semantic surface")
+        try:
+            payload = json.loads(
+                (directory / "Contents.json").read_text(encoding="utf-8")
+            )
+        except (OSError, json.JSONDecodeError) as error:
+            fail(f"cannot parse {asset_name} Contents.json: {error}")
+        actual_slots = {
+            item.get("filename"): (
+                item.get("scale"),
+                (
+                    item.get("appearances", [{}])[0].get("value")
+                    if item.get("appearances")
+                    else None
+                ),
+            )
+            for item in payload.get("images", [])
+            if item.get("filename") is not None
+        }
+        if actual_slots != expected_slots:
+            fail(f"invalid {asset_name} illustration slots: {actual_slots}")
+    print("Validated adaptive 3D illustration assets and widget brand mark")
+
 
 def validate_brand_palette() -> None:
     assets = ROOT / "App" / "MoneyUp" / "Assets.xcassets"
@@ -303,6 +408,13 @@ def validate_brand_palette() -> None:
         fail("the retired gold accent must not return to the primary palette")
     if not (ROOT / "Scripts" / "generate_brand_icons.py").is_file():
         fail("app icon artwork must remain reproducible")
+    theme = (ROOT / "App" / "MoneyUp" / "MoneyUpTheme.swift").read_text(
+        encoding="utf-8"
+    )
+    if 'Image("MoneyUpBrandMark")' not in theme:
+        fail("in-app brand surfaces must use the shared horned-money mark")
+    if "MoneyUpGrowthMark" in theme or 'Image(systemName: "arrow.up.right")' in theme:
+        fail("the retired three-bar/up-arrow brand mark must not return")
     print("Validated adaptive soft-green semantic palette")
 
 
