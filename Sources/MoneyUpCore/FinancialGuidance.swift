@@ -1,13 +1,13 @@
 import Foundation
 
-/// The checkable arithmetic behind MoneyUp's Safe to Spend Today guidance.
+/// The checkable arithmetic behind MoneyUp's Flexible Today guidance.
 ///
 /// The calculation never converts currencies. Active expense schedules in the
-/// base currency are treated as unposted commitments; other currencies are
-/// returned separately so presentation can explain the exclusion.
-public struct SafeToSpendBreakdown: Equatable, Sendable {
-    public let eligibleBudgetRemaining: Money
-    public let scheduledCommitments: Money
+/// explicitly flexible budget are treated as unposted commitments; reserved
+/// bills, debt, and goals never become discretionary money.
+public struct FlexibleTodayBreakdown: Equatable, Sendable {
+    public let flexibleBudgetRemaining: Money
+    public let flexibleCommitments: Money
     public let availableForRemainingPeriod: Money
     public let amountPerDay: Money
     public let remainingDayCount: Int
@@ -18,8 +18,8 @@ public struct SafeToSpendBreakdown: Equatable, Sendable {
     public let schedulesNeedingReview: Int
 
     public init(
-        eligibleBudgetRemaining: Money,
-        scheduledCommitments: Money,
+        flexibleBudgetRemaining: Money,
+        flexibleCommitments: Money,
         availableForRemainingPeriod: Money,
         amountPerDay: Money,
         remainingDayCount: Int,
@@ -29,8 +29,8 @@ public struct SafeToSpendBreakdown: Equatable, Sendable {
         excludedForeignCommitments: [Money],
         schedulesNeedingReview: Int
     ) {
-        self.eligibleBudgetRemaining = eligibleBudgetRemaining
-        self.scheduledCommitments = scheduledCommitments
+        self.flexibleBudgetRemaining = flexibleBudgetRemaining
+        self.flexibleCommitments = flexibleCommitments
         self.availableForRemainingPeriod = availableForRemainingPeriod
         self.amountPerDay = amountPerDay
         self.remainingDayCount = remainingDayCount
@@ -40,6 +40,13 @@ public struct SafeToSpendBreakdown: Equatable, Sendable {
         self.excludedForeignCommitments = excludedForeignCommitments
         self.schedulesNeedingReview = schedulesNeedingReview
     }
+}
+
+public enum FlexibleTodayStatus: Equatable, Sendable {
+    case needsBudget
+    case needsClassification(count: Int)
+    case needsFlexibleBudget
+    case available(FlexibleTodayBreakdown)
 }
 
 public enum FinanceScenarioError: Error, Equatable, Sendable {
@@ -88,15 +95,16 @@ public struct BudgetScenarioForecast: Equatable, Sendable {
 }
 
 public extension FinanceCalculator {
-    /// Calculates the daily amount available through the end of the current
-    /// calendar month after active scheduled expense occurrences.
-    static func safeToSpend(
-        budgetRemaining: Money,
+    /// Calculates plan-paced flexible spending through the end of the month.
+    /// Only schedules in `flexibleCategoryIDs` can reduce this amount.
+    static func flexibleToday(
+        flexibleBudgetRemaining: Money,
         schedules: [ScheduledTransaction],
+        flexibleCategoryIDs: Set<UUID>,
         excludedForeignSpending: [Money] = [],
         asOf date: Date,
         calendar: Calendar = .current
-    ) throws -> SafeToSpendBreakdown? {
+    ) throws -> FlexibleTodayBreakdown? {
         guard let month = calendar.dateInterval(of: .month, for: date) else {
             return nil
         }
@@ -110,7 +118,9 @@ public extension FinanceCalculator {
         var foreignCommitments: [CurrencyCode: Decimal] = [:]
         var schedulesNeedingReview = 0
 
-        for schedule in schedules where schedule.isActive && schedule.kind == .expense {
+        for schedule in schedules where schedule.isActive
+            && schedule.kind == .expense
+            && flexibleCategoryIDs.contains(schedule.categoryAccountID) {
             if schedule.nextOccurrence < today {
                 schedulesNeedingReview += 1
             }
@@ -123,7 +133,7 @@ public extension FinanceCalculator {
                     calendar: calendar
                   ),
                   occurrence < month.end {
-                if schedule.amount.currency == budgetRemaining.currency {
+                if schedule.amount.currency == flexibleBudgetRemaining.currency {
                     baseCommitments += schedule.amount.amount
                 } else {
                     foreignCommitments[schedule.amount.currency, default: .zero]
@@ -136,23 +146,23 @@ public extension FinanceCalculator {
 
         let scheduled = try Money(
             baseCommitments,
-            currency: budgetRemaining.currency
+            currency: flexibleBudgetRemaining.currency
         )
-        let available = try budgetRemaining.subtracting(scheduled)
-        let dailyAmount = budgetRemaining.currency.rounded(
+        let available = try flexibleBudgetRemaining.subtracting(scheduled)
+        let dailyAmount = flexibleBudgetRemaining.currency.rounded(
             available.amount / Decimal(days)
         )
         let perDay = try Money(
             dailyAmount,
-            currency: budgetRemaining.currency
+            currency: flexibleBudgetRemaining.currency
         )
         let excluded = try foreignCommitments
             .sorted { $0.key < $1.key }
             .map { try Money($0.value, currency: $0.key) }
 
-        return SafeToSpendBreakdown(
-            eligibleBudgetRemaining: budgetRemaining,
-            scheduledCommitments: scheduled,
+        return FlexibleTodayBreakdown(
+            flexibleBudgetRemaining: flexibleBudgetRemaining,
+            flexibleCommitments: scheduled,
             availableForRemainingPeriod: available,
             amountPerDay: perDay,
             remainingDayCount: days,

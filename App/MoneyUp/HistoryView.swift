@@ -187,7 +187,7 @@ struct HistoryView: View {
                        appliedSearchText.isEmpty,
                        !filters.hasActiveFilters {
                         VStack(spacing: 10) {
-                            MoneyUpIllustration("MoneyUpMoneyWorld", height: 150)
+                            MoneyUpIllustration("MoneyUpMoneyWorld", role: .empty)
                             Text(unavailableTitle)
                                 .font(.title2.bold())
                             Text(unavailableDetail)

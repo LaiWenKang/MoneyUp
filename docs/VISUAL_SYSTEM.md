@@ -26,15 +26,20 @@ mascot.
 | `MoneyUpMoneyWorld` | Onboarding, Today, History, Assets, and guided empty states | 256 / 512 / 768 px adaptive light/dark PNG |
 | `MoneyUpScenarioStudio` | Plan empty state and budget what-if simulator | 256 / 512 / 768 px adaptive light/dark PNG |
 
-The dimensional assets were created with OpenAI's built-in image-generation
-mode on 26 August 2026. The production prompts specified isolated objects,
+The dimensional source assets were created with OpenAI's built-in
+image-generation mode on 26 August 2026. The production prompts specified isolated objects,
 adult premium fintech materials, `#34785F` forest green, `#82CEAE`
 mint, warm off-white highlights, subtle architectural horns, and explicit bans
 on text, numbers, currency symbols, fake data, arrows, faces, mascots, blue,
-gold, and watermarks. The generated alpha cutouts are composited onto the
-semantic light/dark surface colors to eliminate edge fringing at small sizes.
-Release validation enforces their dimensions, opacity, appearances, and catalog
-slots.
+gold, and watermarks. On 26 August 2026 the approved image-generation CLI
+fallback removed the uniform light/dark source backdrops, preserved the
+appearance-specific rendering, and emitted 8-bit RGBA production cutouts.
+The 0.5.1 asset contract requires genuine alpha with decontaminated edges;
+release validation decodes the PNG scanlines and requires substantial fully
+transparent and fully opaque regions. Generated checkerboards and baked
+light/dark rectangles are rejected. `MoneyUpIllustration` uses onboarding, hero, empty, and inline roles
+instead of arbitrary screen-specific heights, and inline decoration disappears
+at accessibility text sizes.
 
 ## Widget rule
 

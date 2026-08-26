@@ -102,6 +102,7 @@ private struct QuickLogEntryView: View {
     @State private var isHandlingFocusedLaunch = false
     @State private var isConfirmingDraftSwitch = false
     @State private var pendingLaunchMode: QuickLogLaunchMode?
+    @State private var isShowingOptionalDetails = false
     @State private var receiptScanTask: Task<Void, Never>?
     @State private var receiptScanGeneration = 0
 
@@ -241,34 +242,39 @@ private struct QuickLogEntryView: View {
                 }
 
                 Section {
-                    DatePicker(
-                        "quick_log.date",
-                        selection: Binding(
-                            get: { occurredAt },
-                            set: { newDate in
-                                occurredAt = newDate
-                                dateWasEdited = true
-                                persistUserDraftChange { snapshot in
-                                    snapshot.occurredAt = newDate
-                                    snapshot.dateWasEdited = true
+                    DisclosureGroup(
+                        "quick_log.optional_details",
+                        isExpanded: $isShowingOptionalDetails
+                    ) {
+                        DatePicker(
+                            "quick_log.date",
+                            selection: Binding(
+                                get: { occurredAt },
+                                set: { newDate in
+                                    occurredAt = newDate
+                                    dateWasEdited = true
+                                    persistUserDraftChange { snapshot in
+                                        snapshot.occurredAt = newDate
+                                        snapshot.dateWasEdited = true
+                                    }
                                 }
-                            }
-                        ),
-                        displayedComponents: [.date, .hourAndMinute]
-                    )
-
-                    if kind != .transfer {
-                        TextField(
-                            "transaction.payee",
-                            text: trackedBinding($payee, \.payee)
+                            ),
+                            displayedComponents: [.date, .hourAndMinute]
                         )
+
+                        if kind != .transfer {
+                            TextField(
+                                "transaction.payee",
+                                text: trackedBinding($payee, \.payee)
+                            )
+                        }
+                        TextField(
+                            "quick_log.note",
+                            text: trackedBinding($note, \.note),
+                            axis: .vertical
+                        )
+                            .lineLimit(2...4)
                     }
-                    TextField(
-                        "quick_log.note",
-                        text: trackedBinding($note, \.note),
-                        axis: .vertical
-                    )
-                        .lineLimit(2...4)
                 }
 
                 if model.userAccounts.isEmpty {
@@ -301,24 +307,26 @@ private struct QuickLogEntryView: View {
                             .disabled(isSaving)
                     }
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("action.save") {
-                        Task { await save() }
-                    }
-                    .disabled(!canSave || isSaving || isUndoing)
-                }
             }
             .onAppear {
                 restoreDraftIfAvailable()
                 selectDefaults()
                 hasRestoredDraft = true
                 handleRequestedLaunch()
+                Task { @MainActor in
+                    await Task.yield()
+                    if isActive && amountText.isEmpty && !isHandlingFocusedLaunch {
+                        isAmountFocused = true
+                    }
+                }
             }
             .onChange(of: isActive) { _, newValue in
                 if !newValue {
                     isAmountFocused = false
                     isSmartEntryFocused = false
                     isHandlingFocusedLaunch = false
+                } else if amountText.isEmpty {
+                    isAmountFocused = true
                 }
             }
             .onChange(of: kind) { _, _ in
@@ -380,6 +388,20 @@ private struct QuickLogEntryView: View {
                 .padding(.horizontal, 12)
                 .padding(.bottom, 4)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
+            } else {
+                Button {
+                    Task { await save() }
+                } label: {
+                    Label("action.save", systemImage: "checkmark.circle.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .tint(.moneyUpAction)
+                .disabled(!canSave || isSaving || isUndoing)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(.bar)
             }
         }
         .sensoryFeedback(.success, trigger: successFeedback)
@@ -518,6 +540,10 @@ private struct QuickLogEntryView: View {
         guard !dismissAfterSave, let draft = model.quickLogDraft else { return }
         // Restore first. A conflicting widget request is resolved explicitly
         // below instead of silently reinterpreting or discarding this content.
+        applyDraft(draft)
+    }
+
+    private func applyDraft(_ draft: QuickLogDraft) {
         kind = draft.kind
         amountText = draft.amountText
         destinationAmountText = draft.destinationAmountText
@@ -529,6 +555,9 @@ private struct QuickLogEntryView: View {
         payee = draft.payee
         note = draft.note
         smartText = draft.smartText
+        isShowingOptionalDetails = draft.dateWasEdited
+            || !draft.payee.isEmpty
+            || !draft.note.isEmpty
     }
 
     private func handleRequestedLaunch() {
@@ -853,17 +882,25 @@ private struct QuickLogEntryView: View {
     /// category, transaction kind, and transfer destination remain selected so
     /// the next routine entry takes only an amount and a tap on Save.
     private func completeSuccessfulSave(entryID: UUID?) {
-        amountText = ""
-        destinationAmountText = ""
-        occurredAt = Date()
-        dateWasEdited = false
-        payee = ""
-        note = ""
-        smartText = ""
-        smartMessage = nil
-        photoItem = nil
-        errorMessage = nil
-        if !dismissAfterSave { model.updateQuickLogDraft(draftSnapshot) }
+        if let nextCapture = model.quickLogDraft,
+           nextCapture.sourceCaptureID != nil,
+           !dismissAfterSave {
+            applyDraft(nextCapture)
+            selectDefaults()
+        } else {
+            amountText = ""
+            destinationAmountText = ""
+            occurredAt = Date()
+            dateWasEdited = false
+            payee = ""
+            note = ""
+            smartText = ""
+            smartMessage = nil
+            photoItem = nil
+            errorMessage = nil
+            isShowingOptionalDetails = false
+            if !dismissAfterSave { model.updateQuickLogDraft(draftSnapshot) }
+        }
         successFeedback += 1
         isAmountFocused = isActive
 

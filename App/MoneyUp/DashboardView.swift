@@ -21,7 +21,7 @@ struct DashboardView: View {
 
     @EnvironmentObject private var model: AppModel
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @State private var isShowingSafeToSpendBreakdown = false
+    @State private var isShowingFlexibleTodayBreakdown = false
     let onOpenLog: () -> Void
     let onOpenPlan: () -> Void
 
@@ -350,7 +350,7 @@ struct DashboardView: View {
                             Text("dashboard.recent")
                                 .font(.headline)
                             if model.entries.isEmpty {
-                                MoneyUpIllustration("MoneyUpMoneyWorld", height: 132)
+                                MoneyUpIllustration("MoneyUpMoneyWorld", role: .empty)
                                 Text("dashboard.no_transactions")
                                     .font(.title3.weight(.semibold))
                                     .frame(maxWidth: .infinity, alignment: .center)
@@ -397,9 +397,9 @@ struct DashboardView: View {
             }
             .background { MoneyUpBackdrop() }
             .navigationTitle("tab.today")
-            .sheet(isPresented: $isShowingSafeToSpendBreakdown) {
-                if case let .available(.some(breakdown)) = model.safeToSpendTodayResult() {
-                    SafeToSpendBreakdownSheet(breakdown: breakdown)
+            .sheet(isPresented: $isShowingFlexibleTodayBreakdown) {
+                if case let .available(.available(breakdown)) = model.flexibleTodayResult() {
+                    FlexibleTodayBreakdownSheet(breakdown: breakdown)
                 }
             }
             .toolbar {
@@ -430,24 +430,24 @@ struct DashboardView: View {
                 )
 
             VStack(alignment: .leading, spacing: 14) {
-                switch model.safeToSpendTodayResult() {
-                case let .available(.some(breakdown)):
+                switch model.flexibleTodayResult() {
+                case let .available(.available(breakdown)):
                     Group {
                         if dynamicTypeSize.isAccessibilitySize {
                             VStack(alignment: .leading, spacing: 12) {
                                 heroIllustration
-                                safeToSpendCopy(breakdown)
+                                flexibleTodayCopy(breakdown)
                             }
                         } else {
                             HStack(alignment: .center, spacing: 12) {
-                                safeToSpendCopy(breakdown)
+                                flexibleTodayCopy(breakdown)
                                 heroIllustration
                             }
                         }
                     }
 
                     Button {
-                        isShowingSafeToSpendBreakdown = true
+                        isShowingFlexibleTodayBreakdown = true
                     } label: {
                         Label(
                             "dashboard.safe_to_spend.show_math",
@@ -456,7 +456,7 @@ struct DashboardView: View {
                     }
                     .buttonStyle(.bordered)
                     .tint(.accentColor)
-                case .available(.none):
+                case .available(.needsBudget):
                     heroIllustration
                     Label("dashboard.safe_to_spend", systemImage: "sun.max.fill")
                         .font(.headline)
@@ -473,6 +473,19 @@ struct DashboardView: View {
                     }
                     .buttonStyle(.bordered)
                     .tint(.accentColor)
+                case let .available(.needsClassification(count)):
+                    setupGuidance(
+                        title: String(
+                            format: String(localized: "dashboard.flexible_today.classify_title"),
+                            count
+                        ),
+                        detail: "dashboard.flexible_today.classify_detail"
+                    )
+                case .available(.needsFlexibleBudget):
+                    setupGuidance(
+                        title: String(localized: "dashboard.flexible_today.needs_flexible"),
+                        detail: "dashboard.flexible_today.needs_flexible_detail"
+                    )
                 case let .unavailable(issue):
                     Label("dashboard.safe_to_spend", systemImage: "sun.max.fill")
                         .font(.headline)
@@ -494,17 +507,34 @@ struct DashboardView: View {
     }
 
     private var heroIllustration: some View {
-        Image("MoneyUpMoneyWorld")
-            .resizable()
-            .scaledToFit()
-            .frame(width: dynamicTypeSize.isAccessibilitySize ? 148 : 132)
+        MoneyUpIllustration("MoneyUpMoneyWorld", role: .hero)
             .frame(maxWidth: dynamicTypeSize.isAccessibilitySize ? .infinity : nil)
-            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-            .accessibilityHidden(true)
     }
 
-    private func safeToSpendCopy(
-        _ breakdown: SafeToSpendBreakdown
+    @ViewBuilder
+    private func setupGuidance(
+        title: String,
+        detail: LocalizedStringKey
+    ) -> some View {
+        Label("dashboard.safe_to_spend", systemImage: "rectangle.3.group.fill")
+            .font(.headline)
+            .foregroundStyle(.tint)
+        Text(title)
+            .font(.title3.weight(.semibold))
+        Text(detail)
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+        Button {
+            onOpenPlan()
+        } label: {
+            Label("dashboard.flexible_today.review_plan", systemImage: "checklist")
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(.moneyUpAction)
+    }
+
+    private func flexibleTodayCopy(
+        _ breakdown: FlexibleTodayBreakdown
     ) -> some View {
         VStack(alignment: .leading, spacing: 7) {
             Label("dashboard.safe_to_spend", systemImage: "sun.max.fill")
@@ -607,9 +637,9 @@ private struct PositionMetric: View {
     }
 }
 
-private struct SafeToSpendBreakdownSheet: View {
+private struct FlexibleTodayBreakdownSheet: View {
     @Environment(\.dismiss) private var dismiss
-    let breakdown: SafeToSpendBreakdown
+    let breakdown: FlexibleTodayBreakdown
 
     private var displayedPeriodEnd: Date {
         breakdown.periodEnd.addingTimeInterval(-1)
@@ -636,13 +666,13 @@ private struct SafeToSpendBreakdownSheet: View {
                         VStack(spacing: 0) {
                             calculationRow(
                                 "dashboard.safe_to_spend.budget_remaining",
-                                value: formattedMoney(breakdown.eligibleBudgetRemaining),
+                                value: formattedMoney(breakdown.flexibleBudgetRemaining),
                                 symbol: "chart.pie.fill"
                             )
                             calculationDivider(operatorSymbol: "minus")
                             calculationRow(
                                 "dashboard.safe_to_spend.commitments",
-                                value: formattedMoney(breakdown.scheduledCommitments),
+                                value: formattedMoney(breakdown.flexibleCommitments),
                                 symbol: "calendar.badge.clock"
                             )
                             calculationDivider(operatorSymbol: "equal")

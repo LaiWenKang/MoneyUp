@@ -129,7 +129,7 @@ struct OnboardingView: View {
 
     private var welcomeStep: some View {
         VStack(spacing: 18) {
-            MoneyUpIllustration("MoneyUpMoneyWorld", height: 196)
+            MoneyUpIllustration("MoneyUpMoneyWorld", role: .onboarding)
                 .padding(.horizontal, 18)
 
             VStack(spacing: 8) {

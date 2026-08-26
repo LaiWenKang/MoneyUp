@@ -7,6 +7,18 @@
         "zh-Hans" : {"stringUnit" : {"state" : "translated", "value" : "私密"}}
       }
     },
+    "widget.unlock_required" : {
+      "localizations" : {
+        "en" : {"stringUnit" : {"state" : "translated", "value" : "Unlock required"}},
+        "zh-Hans" : {"stringUnit" : {"state" : "translated", "value" : "需要解锁"}}
+      }
+    },
+    "widget.capture_without_unlock" : {
+      "localizations" : {
+        "en" : {"stringUnit" : {"state" : "translated", "value" : "Capture an amount without unlocking MoneyUp"}},
+        "zh-Hans" : {"stringUnit" : {"state" : "translated", "value" : "无需解锁 MoneyUp 即可记录金额"}}
+      }
+    },
     "widget.action.refund" : {
       "localizations" : {
         "en" : {"stringUnit" : {"state" : "translated", "value" : "Refund"}},

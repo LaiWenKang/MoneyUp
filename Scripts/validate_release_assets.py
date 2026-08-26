@@ -8,6 +8,7 @@ import plistlib
 import re
 import struct
 import sys
+import zlib
 from pathlib import Path
 
 
@@ -220,6 +221,93 @@ def png_metadata(path: Path) -> tuple[int, int, int, bool]:
     return width, height, color_type, has_transparency_chunk
 
 
+def png_alpha_coverage(path: Path) -> tuple[int, int, int, int]:
+    """Return alpha extrema and fully transparent/opaque pixel counts.
+
+    Release illustrations are normalized to non-interlaced 8-bit RGBA PNGs.
+    Decoding their scanline filters here keeps the CI gate dependency-free and
+    rejects files that merely declare an unused alpha channel.
+    """
+    data = path.read_bytes()
+    width, height = struct.unpack(">II", data[16:24])
+    bit_depth = data[24]
+    color_type = data[25]
+    interlace = data[28]
+    if bit_depth != 8 or color_type not in {4, 6} or interlace != 0:
+        fail(
+            f"{path.relative_to(ROOT)} must be a non-interlaced 8-bit "
+            "grayscale-alpha or RGBA PNG"
+        )
+
+    compressed = bytearray()
+    offset = 8
+    while offset + 12 <= len(data):
+        chunk_length = struct.unpack(">I", data[offset : offset + 4])[0]
+        chunk_type = data[offset + 4 : offset + 8]
+        chunk_data = data[offset + 8 : offset + 8 + chunk_length]
+        if chunk_type == b"IDAT":
+            compressed.extend(chunk_data)
+        offset += 12 + chunk_length
+        if chunk_type == b"IEND":
+            break
+
+    try:
+        scanlines = zlib.decompress(bytes(compressed))
+    except zlib.error as error:
+        fail(f"cannot decode {path.relative_to(ROOT)} alpha data: {error}")
+
+    bytes_per_pixel = 4 if color_type == 6 else 2
+    alpha_offset = bytes_per_pixel - 1
+    row_bytes = width * bytes_per_pixel
+    expected_bytes = height * (row_bytes + 1)
+    if len(scanlines) != expected_bytes:
+        fail(f"{path.relative_to(ROOT)} has unexpected PNG scanline data")
+
+    previous = bytearray(row_bytes)
+    alpha_values: list[int] = []
+    cursor = 0
+    for _ in range(height):
+        filter_type = scanlines[cursor]
+        cursor += 1
+        raw = scanlines[cursor : cursor + row_bytes]
+        cursor += row_bytes
+        reconstructed = bytearray(row_bytes)
+        for index, value in enumerate(raw):
+            left = reconstructed[index - bytes_per_pixel] if index >= bytes_per_pixel else 0
+            up = previous[index]
+            upper_left = previous[index - bytes_per_pixel] if index >= bytes_per_pixel else 0
+            if filter_type == 0:
+                predictor = 0
+            elif filter_type == 1:
+                predictor = left
+            elif filter_type == 2:
+                predictor = up
+            elif filter_type == 3:
+                predictor = (left + up) // 2
+            elif filter_type == 4:
+                estimate = left + up - upper_left
+                left_distance = abs(estimate - left)
+                up_distance = abs(estimate - up)
+                upper_left_distance = abs(estimate - upper_left)
+                predictor = (
+                    left
+                    if left_distance <= up_distance and left_distance <= upper_left_distance
+                    else up if up_distance <= upper_left_distance else upper_left
+                )
+            else:
+                fail(f"{path.relative_to(ROOT)} uses unsupported PNG filter {filter_type}")
+            reconstructed[index] = (value + predictor) & 0xFF
+        alpha_values.extend(reconstructed[alpha_offset::bytes_per_pixel])
+        previous = reconstructed
+
+    return (
+        min(alpha_values),
+        max(alpha_values),
+        sum(value == 0 for value in alpha_values),
+        sum(value == 255 for value in alpha_values),
+    )
+
+
 def validate_icons() -> None:
     icon_directory = (
         ROOT / "App" / "MoneyUp" / "Assets.xcassets" / "AppIcon.appiconset"
@@ -348,8 +436,22 @@ def validate_icons() -> None:
                     f"{(directory / name).relative_to(ROOT)} must be "
                     f"{expected_width} by {expected_height} pixels"
                 )
-            if color_type in {4, 6} or has_transparency:
-                fail(f"{name} must be composited onto its semantic surface")
+            if color_type not in {4, 6} and not has_transparency:
+                fail(f"{name} must preserve a genuine transparent cutout")
+            minimum_alpha, maximum_alpha, transparent, opaque = png_alpha_coverage(
+                directory / name
+            )
+            pixel_count = expected_width * expected_height
+            if (
+                minimum_alpha != 0
+                or maximum_alpha != 255
+                or transparent < pixel_count // 20
+                or opaque < pixel_count // 20
+            ):
+                fail(
+                    f"{name} must contain substantial fully transparent and "
+                    "fully opaque regions"
+                )
         try:
             payload = json.loads(
                 (directory / "Contents.json").read_text(encoding="utf-8")

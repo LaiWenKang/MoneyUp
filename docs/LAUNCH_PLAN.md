@@ -18,7 +18,7 @@ retention and reliability are proven.
 
 | Area | Status | Release meaning |
 |---|---|---|
-| Product | Founders Beta 0.5.0 source candidate | Safe to Spend, cash/debt position, chart drill-through, what-if simulation, Log/History, timed lock, locked capture, budget, calendar, assets, widgets, import/export, and bilingual flows exist |
+| Product | Founders Beta 0.5.1 corrective candidate | Purpose-aware Flexible Today, cash/debt position, chart drill-through, what-if simulation, amount-first Log, pre-auth locked capture, budget, calendar, assets, widgets, import/export, and bilingual flows exist |
 | Privacy | Ready for founders beta | Local encrypted database, protected key, privacy cover, no tracking, privacy manifest, and public policy |
 | CI | Active | Domain tests and unsigned app/widget Simulator build run on GitHub's macOS runner |
 | Distribution | Internal TestFlight active | Membership, identifiers, `MoneyUp: CowCome` record, API key, protected environment, first signed upload, and account-holder install are complete; 0.4 still needs exact-commit validation and upload |

@@ -9,7 +9,7 @@ final class FinancialGuidanceTests: XCTestCase {
         return calendar
     }
 
-    func testSafeToSpendSubtractsEveryRemainingBaseCurrencyOccurrence() throws {
+    func testFlexibleTodaySubtractsEveryRemainingFlexibleOccurrence() throws {
         let sgd = try CurrencyCode("SGD")
         let usd = try CurrencyCode("USD")
         let accountID = UUID()
@@ -50,21 +50,22 @@ final class FinancialGuidanceTests: XCTestCase {
             frequency: .monthly
         )
 
-        let result = try XCTUnwrap(FinanceCalculator.safeToSpend(
-            budgetRemaining: try Money(630, currency: sgd),
+        let result = try XCTUnwrap(FinanceCalculator.flexibleToday(
+            flexibleBudgetRemaining: try Money(630, currency: sgd),
             schedules: [weekly, foreign],
+            flexibleCategoryIDs: [categoryID],
             asOf: date,
             calendar: calendar
         ))
 
         XCTAssertEqual(result.remainingDayCount, 6)
-        XCTAssertEqual(result.scheduledCommitments.amount, 30)
+        XCTAssertEqual(result.flexibleCommitments.amount, 30)
         XCTAssertEqual(result.availableForRemainingPeriod.amount, 600)
         XCTAssertEqual(result.amountPerDay.amount, 100)
         XCTAssertEqual(result.excludedForeignCommitments, [try Money(12, currency: usd)])
     }
 
-    func testSafeToSpendRoundsDailyGuidanceToCurrencyMinorUnits() throws {
+    func testFlexibleTodayRoundsDailyGuidanceToCurrencyMinorUnits() throws {
         let jpy = try CurrencyCode("JPY")
         let calendar = utcCalendar
         let date = calendar.date(from: DateComponents(
@@ -74,15 +75,60 @@ final class FinancialGuidanceTests: XCTestCase {
             hour: 12
         ))!
 
-        let result = try XCTUnwrap(FinanceCalculator.safeToSpend(
-            budgetRemaining: try Money(101, currency: jpy),
+        let result = try XCTUnwrap(FinanceCalculator.flexibleToday(
+            flexibleBudgetRemaining: try Money(101, currency: jpy),
             schedules: [],
+            flexibleCategoryIDs: [],
             asOf: date,
             calendar: calendar
         ))
 
         XCTAssertEqual(result.remainingDayCount, 2)
         XCTAssertEqual(result.amountPerDay.amount, 50)
+    }
+
+    func testFlexibleTodayNeverSubtractsReservedOrDebtSchedules() throws {
+        let sgd = try CurrencyCode("SGD")
+        let accountID = UUID()
+        let flexibleID = UUID()
+        let rentID = UUID()
+        let loanID = UUID()
+        let calendar = utcCalendar
+        let date = calendar.date(from: DateComponents(
+            year: 2026,
+            month: 8,
+            day: 30,
+            hour: 12
+        ))!
+
+        func schedule(_ name: String, categoryID: UUID, amount: Decimal) throws
+            -> ScheduledTransaction {
+            try ScheduledTransaction(
+                kind: .expense,
+                name: name,
+                amount: try Money(amount, currency: sgd),
+                accountID: accountID,
+                categoryAccountID: categoryID,
+                nextOccurrence: date,
+                frequency: .monthly
+            )
+        }
+
+        let result = try XCTUnwrap(FinanceCalculator.flexibleToday(
+            flexibleBudgetRemaining: try Money(300, currency: sgd),
+            schedules: [
+                try schedule("Groceries", categoryID: flexibleID, amount: 40),
+                try schedule("Rent", categoryID: rentID, amount: 1_500),
+                try schedule("Loan", categoryID: loanID, amount: 400)
+            ],
+            flexibleCategoryIDs: [flexibleID],
+            asOf: date,
+            calendar: calendar
+        ))
+
+        XCTAssertEqual(result.flexibleCommitments.amount, 40)
+        XCTAssertEqual(result.availableForRemainingPeriod.amount, 260)
+        XCTAssertEqual(result.amountPerDay.amount, 130)
     }
 
     func testBudgetScenarioKeepsEveryProjectedTermCheckable() throws {

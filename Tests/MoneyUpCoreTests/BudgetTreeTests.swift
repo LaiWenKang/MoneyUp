@@ -3,6 +3,77 @@ import Foundation
 import XCTest
 
 final class BudgetTreeTests: XCTestCase {
+    func testLegacyBudgetNodeDecodesAsUnclassified() throws {
+        let sgd = try CurrencyCode("SGD")
+        let original = BudgetNode(
+            name: "Existing rent",
+            limit: try Money(1_500, currency: sgd),
+            purpose: .commitment
+        )
+        let encoded = try JSONEncoder().encode(original)
+        var object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+        )
+        object.removeValue(forKey: "purpose")
+        let legacy = try JSONSerialization.data(withJSONObject: object)
+
+        let decoded = try JSONDecoder().decode(BudgetNode.self, from: legacy)
+
+        XCTAssertEqual(decoded.purpose, .unclassified)
+        XCTAssertEqual(decoded.limit?.amount, 1_500)
+    }
+
+    func testFlexibleSummaryExcludesRentDebtAndGoals() throws {
+        let sgd = try CurrencyCode("SGD")
+        let flexibleID = UUID()
+        let rentID = UUID()
+        let debtID = UUID()
+        let goalID = UUID()
+        let tree = try BudgetTree(
+            currency: sgd,
+            nodes: [
+                BudgetNode(
+                    id: flexibleID,
+                    name: "Flexible",
+                    limit: try Money(600, currency: sgd),
+                    purpose: .flexible
+                ),
+                BudgetNode(
+                    id: rentID,
+                    name: "Rent",
+                    limit: try Money(1_500, currency: sgd),
+                    purpose: .commitment
+                ),
+                BudgetNode(
+                    id: debtID,
+                    name: "Loan",
+                    limit: try Money(400, currency: sgd),
+                    purpose: .debt
+                ),
+                BudgetNode(
+                    id: goalID,
+                    name: "Emergency fund",
+                    limit: try Money(300, currency: sgd),
+                    purpose: .goal
+                )
+            ]
+        )
+
+        let summary = try XCTUnwrap(tree.planSummary(
+            directSpending: [
+                flexibleID: try Money(100, currency: sgd),
+                rentID: try Money(1_500, currency: sgd),
+                debtID: try Money(400, currency: sgd)
+            ],
+            purpose: .flexible
+        ))
+
+        XCTAssertEqual(summary.limit.amount, 600)
+        XCTAssertEqual(summary.spent.amount, 100)
+        XCTAssertEqual(summary.remaining.amount, 500)
+        XCTAssertEqual(tree.categoryIDs(governedBy: .flexible), [flexibleID])
+    }
+
     func testSpendingRollsUpThroughEveryAncestor() throws {
         let sgd = try CurrencyCode("SGD")
         let needsID = UUID()
