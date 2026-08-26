@@ -651,10 +651,10 @@ final class AppModelTests: XCTestCase {
             ]
         )
 
-        XCTAssertEqual(
-            model.flexibleTodayResult(),
-            .available(.needsClassification(count: 1))
-        )
+        guard case let .available(status) = model.flexibleTodayResult() else {
+            return XCTFail("Expected Flexible Today to be available with a classification prompt")
+        }
+        XCTAssertEqual(status, .needsClassification(count: 1))
         await fixture.store.close()
     }
 
