@@ -45,9 +45,10 @@ Description:
 > MoneyUp is a private, local-first budget and personal-finance app for iPhone.
 >
 > Record expenses, income, and transfers in seconds. Build multi-level budgets
-> whose spending rolls up correctly. See actual and scheduled money flow on a
-> finance calendar, explore on-device charts, and track accounts, cards,
-> liabilities, and manually valued investments.
+> whose spending rolls up correctly. See what is safe to spend today and the
+> exact arithmetic behind it, try private budget scenarios without changing
+> your records, inspect on-device charts, and track accounts, cards, liabilities,
+> and manually valued investments.
 >
 > Smart entry can read a receipt or screenshot and understand a typed phrase.
 > Recognition and suggestions run on your iPhone; images are not retained or
@@ -64,7 +65,9 @@ Description:
 > Highlights:
 > • fast expense, income, and transfer logging
 > • nested monthly budgets with accurate roll-up
-> • selectable-period charts and deterministic insights
+> • Safe to Spend with scheduled commitments and explicit exclusions
+> • tappable charts, filtered History drill-through, and deterministic insights
+> • a read-only on-device budget what-if simulator
 > • actual and recurring projected finance calendar
 > • accounts, cards, loans, brokerages, and manual holdings
 > • multi-currency records shown without hidden conversion
@@ -76,9 +79,10 @@ Description:
 
 Version 1.0 release notes:
 
-> Welcome to MoneyUp. Log spending, plan nested budgets, review charts and a
-> finance calendar, track accounts and holdings, and export to Numbers or
-> Excel—all with encrypted local-first storage and no MoneyUp account.
+> Welcome to MoneyUp. Log spending, see what is safe to spend today, simulate a
+> budget scenario, review tappable charts and a finance calendar, track accounts
+> and holdings, and export to Numbers or Excel—all with encrypted local-first
+> storage and no MoneyUp account.
 
 ## Simplified Chinese metadata
 
@@ -126,16 +130,18 @@ Beta description:
 
 > MoneyUp is a private local-first budget app. This founders beta covers fast
 > logging, nested budgets, a finance calendar, insights, assets, a redacted
-> widget, on-device smart entry, History/edit/refunds, encrypted backup/restore,
-> and reviewed CSV import/export in English and Simplified Chinese. Use sample
+> widget, Safe to Spend, a read-only budget simulator, chart drill-through,
+> on-device smart entry, History/edit/refunds, encrypted backup/restore, and
+> reviewed CSV import/export in English and Simplified Chinese. Use sample
 > data first while physical upgrade and restore drills are completed.
 
 What to test:
 
 > Follow the in-app Privacy and beta guide. Focus on onboarding, background
 > locking, locked capture, expense/income/transfer/refund logging, History/edit,
-> nested budget roll-up, schedule
-> projections, charts, holdings, widget shortcuts, confirmed deletion, update
+> nested budget roll-up, Safe to Spend arithmetic, the what-if simulator,
+> schedule projections, chart inspection/drill-through, holdings, widget
+> shortcuts, confirmed deletion, update
 > data retention, encrypted restore, and CSV import/export. Hide all private
 > values in feedback images.
 
@@ -161,7 +167,9 @@ but is not a replacement for a public support contact.
 > protected book requires Face ID, Touch ID, or the device passcode.
 >
 > Suggested review path: add a small expense from the center Log tab; set a
-> monthly limit in Plan; verify the transaction in Plan > Calendar and Insights;
+> monthly limit in Plan; inspect Safe to Spend and its arithmetic; try the
+> read-only budget simulator; tap an Insights bar and verify filtered History;
+> verify the transaction in Plan > Calendar;
 > background long enough to reach the configured auto-lock delay and reopen to
 > see authentication; use Settings to create an encrypted backup and preview an
 > import; open Assets to export CSV after the plaintext warning; and add
@@ -206,11 +214,11 @@ must not guess it.
 Capture 6.9-inch portrait screenshots in an accepted current size, with no
 alpha channel and no real financial data. Apple currently permits 1–10 images.
 
-1. Today — liquid position, budget progress, and recent sample activity
+1. Today — Safe to Spend, cash versus debt, budget pace, and dimensional artwork
 2. Log — fast, editable entry with smart text
-3. Plan > Budget — multi-level budget and remaining amount
+3. Plan > Budget — multi-level budget, remaining amount, and what-if simulator
 4. Plan > Calendar — actual and projected money flow
-5. Insights — category and cash-flow charts
+5. Insights — tappable category and cash-flow charts with selected values
 6. Assets — accounts, cards, holdings, and net worth
 7. Privacy — local encrypted processing and no tracking
 

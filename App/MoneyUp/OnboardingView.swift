@@ -129,11 +129,8 @@ struct OnboardingView: View {
 
     private var welcomeStep: some View {
         VStack(spacing: 18) {
-            MoneyUpGrowthMark()
-                .frame(width: 104, height: 104)
-                .padding(16)
-                .background(Color.moneyUpSurface)
-                .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+            MoneyUpIllustration("MoneyUpMoneyWorld", height: 196)
+                .padding(.horizontal, 18)
 
             VStack(spacing: 8) {
                 Text("onboarding.welcome_eyebrow")

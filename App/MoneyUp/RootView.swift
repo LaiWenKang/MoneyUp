@@ -27,7 +27,7 @@ struct RootView: View {
 private struct LaunchingView: View {
     var body: some View {
         VStack(spacing: 16) {
-            MoneyUpGrowthMark()
+            MoneyUpBrandMark()
                 .frame(width: 72, height: 72)
             ProgressView()
             Text("lock.opening")

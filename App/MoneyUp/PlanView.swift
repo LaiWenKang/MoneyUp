@@ -1,3 +1,4 @@
+import Charts
 import MoneyUpCore
 import SwiftUI
 
@@ -108,6 +109,29 @@ private struct BudgetPlanView: View {
                     }
                 }
 
+                Section {
+                    NavigationLink {
+                        BudgetSimulatorView()
+                    } label: {
+                        HStack(spacing: 12) {
+                            MoneyUpSymbolBadge(
+                                systemImage: "slider.horizontal.3",
+                                color: .accentColor
+                            )
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("simulator.title")
+                                    .font(.headline)
+                                Text("simulator.row_detail")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+                } header: {
+                    Text("simulator.explore")
+                }
+
                 if case let .available(foreignSpending) = foreignSpendingResult,
                    !foreignSpending.isEmpty {
                     Section {
@@ -171,11 +195,28 @@ private struct BudgetPlanView: View {
             .background(Color.moneyUpBackground)
             .overlay {
                 if model.budgetNodes.isEmpty {
-                    ContentUnavailableView(
-                        "plan.empty",
-                        systemImage: "chart.pie",
-                        description: Text("plan.empty_detail")
-                    )
+                    VStack(spacing: 12) {
+                        MoneyUpIllustration("MoneyUpScenarioStudio", height: 164)
+                        Text("plan.empty")
+                            .font(.title2.bold())
+                        Text("plan.empty_detail")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                        Button {
+                            isAddingCategory = true
+                        } label: {
+                            Label("category.add", systemImage: "plus.circle.fill")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.moneyUpAction)
+                    }
+                    .padding(28)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(
+                        cornerRadius: 24,
+                        style: .continuous
+                    ))
+                    .padding()
                 }
             }
             .navigationTitle("tab.plan")
@@ -195,34 +236,6 @@ private struct BudgetPlanView: View {
                 AddCategorySheet()
             }
         }
-    }
-}
-
-/// A track showing spending against a limit, with a marker for how far
-/// through the month we are. The marker is what turns "$420 of $600" into
-/// "ahead" or "behind" without the reader doing the arithmetic.
-private struct BudgetBar: View {
-    let ratio: Double
-    let elapsed: Double
-
-    var body: some View {
-        GeometryReader { proxy in
-            ZStack(alignment: .leading) {
-                Capsule()
-                    .fill(Color(.tertiarySystemFill))
-
-                Capsule()
-                    .fill(ratio > 1 ? Color.red : Color.accentColor)
-                    .frame(width: proxy.size.width * min(max(ratio, 0), 1))
-
-                Capsule()
-                    .fill(Color.primary.opacity(0.45))
-                    .frame(width: 2)
-                    .offset(x: proxy.size.width * min(max(elapsed, 0), 1) - 1)
-            }
-        }
-        .frame(height: 8)
-        .accessibilityHidden(true)
     }
 }
 
@@ -271,7 +284,7 @@ private struct BudgetRow: View {
             }
 
             if let ratio, let limit = node.limit, let spent {
-                BudgetBar(ratio: ratio, elapsed: elapsed)
+                MoneyUpPaceBar(ratio: ratio, elapsed: elapsed)
                 Text(
                     String(
                         format: String(localized: "plan.spent_of_limit"),
@@ -318,7 +331,7 @@ private struct BudgetSummaryCard: View {
                 .foregroundStyle(isOverspent ? Color.red : Color.primary)
                 .contentTransition(.numericText())
 
-            BudgetBar(ratio: ratio, elapsed: elapsed)
+            MoneyUpPaceBar(ratio: ratio, elapsed: elapsed)
 
             Text(
                 String(
@@ -336,6 +349,310 @@ private struct BudgetSummaryCard: View {
         }
         .padding(.vertical, 6)
         .accessibilityElement(children: .combine)
+    }
+}
+
+private struct BudgetSimulatorView: View {
+    private struct ChartPoint: Identifiable {
+        let id: String
+        let label: String
+        let money: Money
+
+        var amount: Double {
+            NSDecimalNumber(decimal: money.amount).doubleValue
+        }
+    }
+
+    @EnvironmentObject private var model: AppModel
+    @State private var additionalSpendingText = ""
+    @State private var additionalIncomeText = ""
+
+    private var monthElapsed: Double {
+        let calendar = Calendar.current
+        let now = Date()
+        guard let month = calendar.dateInterval(of: .month, for: now) else { return 0 }
+        let span = month.end.timeIntervalSince(month.start)
+        guard span > 0 else { return 0 }
+        return min(max(now.timeIntervalSince(month.start) / span, 0), 1)
+    }
+
+    var body: some View {
+        ScrollView {
+            LazyVStack(spacing: 16) {
+                DashboardCard {
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 16) {
+                            simulatorIntroduction
+                            MoneyUpIllustration("MoneyUpScenarioStudio", height: 152)
+                                .frame(width: 158)
+                        }
+                        VStack(spacing: 12) {
+                            MoneyUpIllustration("MoneyUpScenarioStudio", height: 176)
+                            simulatorIntroduction
+                        }
+                    }
+                }
+
+                switch (
+                    model.budgetPlanSummaryThisMonthResult(),
+                    model.reportResult(for: .thisMonth)
+                ) {
+                case let (.available(.some(summary)), .available(report)):
+                    simulator(summary: summary, report: report)
+                case (.available(.none), _):
+                    DashboardCard {
+                        ContentUnavailableView(
+                            "simulator.needs_budget",
+                            systemImage: "chart.pie",
+                            description: Text("simulator.needs_budget_detail")
+                        )
+                    }
+                case let (.unavailable(issue), _), let (_, .unavailable(issue)):
+                    DashboardCard {
+                        DerivedValueUnavailableView(issue: issue, prominent: true)
+                    }
+                }
+            }
+            .padding()
+        }
+        .background { MoneyUpBackdrop() }
+        .navigationTitle("simulator.title")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var simulatorIntroduction: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("simulator.preview_only", systemImage: "eye.fill")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.tint)
+            Text("simulator.title")
+                .font(.title2.bold())
+            Text("simulator.detail")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private func simulator(
+        summary: BudgetPlanSummary,
+        report: PeriodReport
+    ) -> some View {
+        let currency = summary.limit.currency
+        let additionalSpending = parsedAmount(
+            additionalSpendingText,
+            currency: currency
+        )
+        let additionalIncome = parsedAmount(
+            additionalIncomeText,
+            currency: currency
+        )
+
+        DashboardCard {
+            VStack(alignment: .leading, spacing: 14) {
+                Label("simulator.adjust", systemImage: "slider.horizontal.3")
+                    .font(.headline)
+
+                scenarioField(
+                    "simulator.additional_spending",
+                    text: $additionalSpendingText,
+                    currency: currency,
+                    isValid: additionalSpending != nil
+                )
+
+                Divider()
+
+                scenarioField(
+                    "simulator.additional_income",
+                    text: $additionalIncomeText,
+                    currency: currency,
+                    isValid: additionalIncome != nil
+                )
+
+                Button("simulator.reset") {
+                    additionalSpendingText = ""
+                    additionalIncomeText = ""
+                }
+                .font(.subheadline.weight(.semibold))
+                .disabled(additionalSpendingText.isEmpty && additionalIncomeText.isEmpty)
+            }
+        }
+
+        if let additionalSpending, let additionalIncome {
+            if let forecast = try? FinanceCalculator.budgetScenario(
+                currentSpent: summary.spent,
+                budgetLimit: summary.limit,
+                currentIncome: report.baseFlow.income,
+                additionalSpending: additionalSpending,
+                additionalIncome: additionalIncome
+            ) {
+                forecastCards(forecast)
+            } else {
+                DashboardCard {
+                    Text("simulator.unavailable")
+                        .foregroundStyle(.secondary)
+                }
+            }
+        } else {
+            DashboardCard {
+                Label(
+                    "simulator.invalid_amount",
+                    systemImage: "exclamationmark.triangle.fill"
+                )
+                .foregroundStyle(.red)
+            }
+        }
+    }
+
+    private func scenarioField(
+        _ title: LocalizedStringKey,
+        text: Binding<String>,
+        currency: CurrencyCode,
+        isValid: Bool
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                Text(currency.value)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+            }
+            TextField("simulator.amount_placeholder", text: text)
+                .keyboardType(.decimalPad)
+                .textFieldStyle(.roundedBorder)
+            if !isValid {
+                Text("simulator.invalid_amount")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func forecastCards(_ forecast: BudgetScenarioForecast) -> some View {
+        let points = [
+            ChartPoint(
+                id: "current",
+                label: String(localized: "simulator.current"),
+                money: forecast.currentSpent
+            ),
+            ChartPoint(
+                id: "projected",
+                label: String(localized: "simulator.projected"),
+                money: forecast.projectedSpent
+            )
+        ]
+        let limit = NSDecimalNumber(decimal: forecast.budgetLimit.amount).doubleValue
+        let isOver = forecast.projectedRemaining.amount < .zero
+
+        DashboardCard {
+            VStack(alignment: .leading, spacing: 14) {
+                Label("simulator.spending_chart", systemImage: "chart.bar.xaxis")
+                    .font(.headline)
+
+                Chart {
+                    ForEach(points) { point in
+                        BarMark(
+                            x: .value("Scenario", point.label),
+                            y: .value("Amount", point.amount)
+                        )
+                        .foregroundStyle(
+                            point.id == "current"
+                                ? Color.secondary
+                                : (isOver ? Color.red : Color.accentColor)
+                        )
+                        .annotation(position: .top) {
+                            Text(formattedMoney(point.money))
+                                .font(.caption2.monospacedDigit())
+                        }
+                        .accessibilityLabel(point.label)
+                        .accessibilityValue(formattedMoney(point.money))
+                    }
+
+                    RuleMark(y: .value("Budget", limit))
+                        .lineStyle(StrokeStyle(lineWidth: 2, dash: [5, 4]))
+                        .foregroundStyle(Color.primary.opacity(0.55))
+                        .annotation(position: .top, alignment: .trailing) {
+                            Text("simulator.budget_line")
+                                .font(.caption2.weight(.semibold))
+                        }
+                }
+                .frame(height: 240)
+                .chartLegend(.hidden)
+                .accessibilityLabel(Text("simulator.chart_accessibility"))
+
+                if let ratio = forecast.budgetUsage {
+                    MoneyUpPaceBar(
+                        ratio: NSDecimalNumber(decimal: ratio).doubleValue,
+                        elapsed: monthElapsed
+                    )
+                }
+            }
+        }
+
+        DashboardCard {
+            VStack(alignment: .leading, spacing: 14) {
+                Label {
+                    Text(
+                        isOver
+                            ? LocalizedStringKey("simulator.projected_over")
+                            : LocalizedStringKey("simulator.projected_left")
+                    )
+                } icon: {
+                    Image(
+                        systemName: isOver
+                            ? "exclamationmark.triangle.fill"
+                            : "checkmark.circle.fill"
+                    )
+                }
+                .font(.headline)
+                .foregroundStyle(isOver ? Color.red : Color.primary)
+
+                Text(
+                    formattedMoney(
+                        isOver
+                            ? forecast.projectedRemaining.negated
+                            : forecast.projectedRemaining
+                    )
+                )
+                .font(.system(.largeTitle, design: .rounded, weight: .bold))
+                .monospacedDigit()
+
+                Divider()
+
+                LabeledContent("simulator.projected_income") {
+                    Text(formattedMoney(forecast.projectedIncome))
+                        .monospacedDigit()
+                }
+                LabeledContent("simulator.projected_spending") {
+                    Text(formattedMoney(forecast.projectedSpent))
+                        .monospacedDigit()
+                }
+                LabeledContent("simulator.projected_net") {
+                    Text(formattedMoney(forecast.projectedNet))
+                        .monospacedDigit()
+                }
+
+                Text("simulator.no_changes_saved")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func parsedAmount(
+        _ text: String,
+        currency: CurrencyCode
+    ) -> Decimal? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return .zero }
+        guard let amount = decimalAmount(from: trimmed),
+              amount >= .zero,
+              currency.supports(amount) else { return nil }
+        return amount
     }
 }
 

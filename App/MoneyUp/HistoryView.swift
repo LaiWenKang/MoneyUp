@@ -1,6 +1,16 @@
 import MoneyUpCore
 import SwiftUI
 
+struct HistoryPreset: Equatable {
+    let categoryID: UUID?
+    let interval: DateInterval?
+
+    init(categoryID: UUID? = nil, interval: DateInterval? = nil) {
+        self.categoryID = categoryID
+        self.interval = interval
+    }
+}
+
 private extension HistoryKindFilter {
     var title: LocalizedStringKey {
         switch self {
@@ -25,9 +35,23 @@ private struct HistoryFilterDraft: Equatable {
     var minimumAmountText = ""
     var maximumAmountText = ""
 
-    init(now: Date = Date(), calendar: Calendar = .current) {
+    init(
+        now: Date = Date(),
+        calendar: Calendar = .current,
+        preset: HistoryPreset? = nil
+    ) {
         startDate = calendar.dateInterval(of: .month, for: now)?.start ?? now
         endDate = now
+
+        if let categoryID = preset?.categoryID {
+            self.categoryID = categoryID
+        }
+        if let interval = preset?.interval {
+            includesStartDate = true
+            startDate = interval.start
+            includesEndDate = true
+            endDate = interval.end.addingTimeInterval(-1)
+        }
     }
 
     var hasActiveFilters: Bool {
@@ -99,11 +123,15 @@ struct HistoryView: View {
     @EnvironmentObject private var model: AppModel
     @State private var searchText = ""
     @State private var appliedSearchText = ""
-    @State private var filters = HistoryFilterDraft()
+    @State private var filters: HistoryFilterDraft
     @State private var showingFilters = false
     @State private var selectedEntry: JournalEntry?
     @State private var entryPendingDeletion: JournalEntry?
     @State private var errorMessage: String?
+
+    init(preset: HistoryPreset? = nil) {
+        _filters = State(initialValue: HistoryFilterDraft(preset: preset))
+    }
 
     private var filteredEntries: [JournalEntry] {
         filters.query(searchText: appliedSearchText)
@@ -155,12 +183,29 @@ struct HistoryView: View {
                 }
 
                 if dayGroups.isEmpty {
-                    ContentUnavailableView(
-                        unavailableTitle,
-                        systemImage: "clock.arrow.circlepath",
-                        description: Text(unavailableDetail)
-                    )
-                    .listRowBackground(Color.clear)
+                    if model.entries.isEmpty,
+                       appliedSearchText.isEmpty,
+                       !filters.hasActiveFilters {
+                        VStack(spacing: 10) {
+                            MoneyUpIllustration("MoneyUpMoneyWorld", height: 150)
+                            Text(unavailableTitle)
+                                .font(.title2.bold())
+                            Text(unavailableDetail)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .listRowBackground(Color.clear)
+                    } else {
+                        ContentUnavailableView(
+                            unavailableTitle,
+                            systemImage: "clock.arrow.circlepath",
+                            description: Text(unavailableDetail)
+                        )
+                        .listRowBackground(Color.clear)
+                    }
                 } else {
                     ForEach(dayGroups) { group in
                         Section {

@@ -1,6 +1,12 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "widget.private" : {
+      "localizations" : {
+        "en" : {"stringUnit" : {"state" : "translated", "value" : "Private"}},
+        "zh-Hans" : {"stringUnit" : {"state" : "translated", "value" : "私密"}}
+      }
+    },
     "widget.action.refund" : {
       "localizations" : {
         "en" : {"stringUnit" : {"state" : "translated", "value" : "Refund"}},

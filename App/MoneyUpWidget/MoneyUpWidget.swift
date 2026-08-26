@@ -143,7 +143,10 @@ private struct MoneyUpWidgetView: View {
         Group {
             switch family {
             case .systemMedium:
-                MediumQuickActionsView(preferredAction: entry.action)
+                ZStack {
+                    WidgetAmbientGraphic()
+                    MediumQuickActionsView(preferredAction: entry.action)
+                }
             case .accessoryCircular:
                 AccessoryCircularActionView(action: entry.action)
             case .accessoryRectangular:
@@ -151,7 +154,10 @@ private struct MoneyUpWidgetView: View {
             case .accessoryInline:
                 AccessoryInlineActionView(action: entry.action)
             default:
-                SmallQuickActionView(action: entry.action)
+                ZStack {
+                    WidgetAmbientGraphic()
+                    SmallQuickActionView(action: entry.action)
+                }
             }
         }
         .containerBackground(Color.moneyUpWidgetBackground, for: .widget)
@@ -165,21 +171,11 @@ private struct SmallQuickActionView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                Image(systemName: "lock.shield.fill")
-                    .foregroundStyle(.tint)
-                Text("widget.title")
-                    .font(.headline)
-                Spacer(minLength: 0)
-            }
+            WidgetBrandHeader()
 
             Spacer(minLength: 0)
 
-            Image(systemName: action.systemImage)
-                .font(.title2.weight(.semibold))
-                .foregroundStyle(.white)
-                .frame(width: 44, height: 44)
-                .background(Color.moneyUpAction, in: Circle())
+            WidgetActionGlyph(action: action, size: 48)
                 .accessibilityHidden(true)
 
             Text(action.titleKey)
@@ -198,10 +194,7 @@ private struct MediumQuickActionsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 6) {
-                Image(systemName: "lock.shield.fill")
-                    .foregroundStyle(.tint)
-                Text("widget.title")
-                    .font(.headline)
+                WidgetBrandHeader()
                 Spacer(minLength: 0)
                 Text("widget.quick_actions")
                     .font(.caption)
@@ -214,18 +207,23 @@ private struct MediumQuickActionsView: View {
                 ) { action in
                     Link(destination: action.deepLink) {
                         VStack(spacing: 7) {
-                            Image(systemName: action.systemImage)
-                                .font(.headline.weight(.semibold))
-                                .foregroundStyle(.white)
-                                .frame(width: 36, height: 36)
-                                .background(Color.moneyUpAction, in: Circle())
+                            WidgetActionGlyph(action: action, size: 38)
                             Text(action.titleKey)
                                 .font(.caption2.weight(.semibold))
                                 .foregroundStyle(.primary)
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.65)
                         }
+                        .padding(.vertical, 7)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(
+                            Color.moneyUpSoftGreen.opacity(0.09),
+                            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        )
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(Color.moneyUpSoftGreen.opacity(0.15), lineWidth: 1)
+                        }
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -242,6 +240,12 @@ private struct AccessoryCircularActionView: View {
     var body: some View {
         ZStack {
             AccessoryWidgetBackground()
+            Image("MoneyUpBrandMark")
+                .renderingMode(.template)
+                .resizable()
+                .scaledToFit()
+                .foregroundStyle(Color.secondary.opacity(0.32))
+                .padding(7)
             Image(systemName: action.systemImage)
                 .font(.title3.weight(.semibold))
                 .widgetAccentable()
@@ -256,8 +260,15 @@ private struct AccessoryRectangularActionView: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: action.systemImage)
-                .font(.title3.weight(.semibold))
+            ZStack {
+                Image("MoneyUpBrandMark")
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+                    .opacity(0.28)
+                Image(systemName: action.systemImage)
+                    .font(.subheadline.weight(.bold))
+            }
                 .widgetAccentable()
                 .frame(width: 28)
             VStack(alignment: .leading, spacing: 1) {
@@ -270,6 +281,90 @@ private struct AccessoryRectangularActionView: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityHint("widget.tap_to_open")
+    }
+}
+
+private struct WidgetBrandHeader: View {
+    var body: some View {
+        HStack(spacing: 7) {
+            Image("MoneyUpBrandMark")
+                .renderingMode(.template)
+                .resizable()
+                .scaledToFit()
+                .foregroundStyle(.tint)
+                .frame(width: 22, height: 22)
+            Text("widget.title")
+                .font(.headline)
+            Image(systemName: "lock.fill")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.secondary)
+                .accessibilityLabel("widget.private")
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct WidgetActionGlyph: View {
+    let action: MoneyUpQuickAction
+    let size: CGFloat
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(Color.moneyUpAction.opacity(0.22))
+                .offset(y: 3)
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: [Color.moneyUpSoftGreen, Color.moneyUpAction],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .padding(2)
+            Circle()
+                .stroke(Color.white.opacity(0.34), lineWidth: 1)
+                .padding(3)
+            Image(systemName: action.systemImage)
+                .font(.system(size: size * 0.36, weight: .bold))
+                .foregroundStyle(.white)
+        }
+        .frame(width: size, height: size)
+    }
+}
+
+/// A decorative, data-free diagram. It adds visual depth without exposing a
+/// balance, payee, account, holding, or even an invented percentage.
+private struct WidgetAmbientGraphic: View {
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack(alignment: .topTrailing) {
+                Circle()
+                    .fill(Color.moneyUpSoftGreen.opacity(0.12))
+                    .frame(width: proxy.size.width * 0.72)
+                    .offset(x: proxy.size.width * 0.24, y: -proxy.size.height * 0.38)
+
+                Image("MoneyUpBrandMark")
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+                    .foregroundStyle(Color.moneyUpSoftGreen.opacity(0.075))
+                    .frame(width: min(proxy.size.width, proxy.size.height) * 0.78)
+                    .offset(x: proxy.size.width * 0.08, y: proxy.size.height * 0.34)
+
+                HStack(alignment: .bottom, spacing: 4) {
+                    ForEach([0.36, 0.56, 0.82], id: \.self) { fraction in
+                        Capsule()
+                            .fill(Color.moneyUpSoftGreen.opacity(0.10))
+                            .frame(width: 7, height: proxy.size.height * fraction * 0.34)
+                    }
+                }
+                .padding(.trailing, 4)
+                .padding(.top, proxy.size.height * 0.50)
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }
 

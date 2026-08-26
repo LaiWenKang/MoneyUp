@@ -10,7 +10,8 @@ The daily loop is:
 
 1. Record an expense, income, or transfer in seconds.
 2. See its effect on account balances and nested budgets immediately.
-3. Understand the current liquid position, budget progress, and what is scheduled next.
+3. Understand what is safe to spend today, cash versus debt, budget pace, and
+   what is scheduled next.
 4. Retain ownership through documented exports; add portable encrypted backup
    through password-protected backups and reviewed imports.
 
@@ -23,16 +24,17 @@ approved.
 
 ## Core capabilities
 
-| Capability | Founders Beta 0.4.1 behavior |
+| Capability | Founders Beta 0.5.0 behavior |
 |---|---|
 | Privacy and security | No account or backend; encrypted local database; timed local authentication; redacted locked capture |
 | First-run guidance | Four explicit steps: purpose/privacy, base currency, first financial account, and review; Today then offers visible Log and Plan actions |
-| Visual system | Adaptive soft green, off-white light and deep-charcoal dark surfaces, restrained gradients/graphics, and no pure-white/pure-black primary canvas |
+| Visual system | Adaptive soft green, horned-money identity, original decorative 3D illustrations, exact 2D data graphics, guided empty states, and off-white/deep-charcoal canvases |
 | Navigation | Five permanent tabs: Today, History, center Log, Plan, and Assets |
-| Budget planner | Monthly nested limits, roll-up, progress, and explicit unbudgeted spending |
+| Budget planner | Monthly nested limits, roll-up, pace, explicit unbudgeted spending, and a read-only what-if simulator |
 | Widgets | Configurable, privacy-redacted Home and Lock Screen entry points |
 | Hierarchy | Arbitrary-depth model with group/category/subcategory roll-up |
-| Insights | Category distribution, monthly cash flow, and plain-language readings over a selectable period |
+| Insights | Category distribution, trailing monthly cash flow, plain-language readings, tap-to-inspect, and History drill-through |
+| Today guidance | Safe to Spend arithmetic, scheduled commitments and exclusions, plus separate cash, debt, and net-cash position |
 | Finance calendar | Actual transactions and recurring projected occurrences |
 | Assets | Assets, liabilities, cards, loans, accounts, and manual holdings |
 | Portability | Enriched CSV export, authenticated `.moneyup` backup/restore, and preview-first Qianji/generic CSV import |
@@ -55,7 +57,8 @@ approved.
   explanation of what is wrong.
 - Soft green identifies MoneyUp and positive directional graphics. Semantic
   surfaces adapt to light/dark mode without pure white or pure black as the
-  primary canvas; decoration never carries financial meaning.
+  primary canvas. Dimensional artwork is decorative only; charts, diagrams,
+  simulator results, labels, and accessibility values remain precise 2D data.
 - Transfers, credit-card repayments, and investment funding are not expenses.
 - A scheduled item remains a forecast until posted or matched to an actual
   transaction.
