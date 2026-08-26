@@ -31,10 +31,13 @@ mode on 26 August 2026. The production prompts specified isolated objects,
 adult premium fintech materials, `#34785F` forest green, `#82CEAE`
 mint, warm off-white highlights, subtle architectural horns, and explicit bans
 on text, numbers, currency symbols, fake data, arrows, faces, mascots, blue,
-gold, and watermarks. The generated alpha cutouts are composited onto the
-semantic light/dark surface colors to eliminate edge fringing at small sizes.
-Release validation enforces their dimensions, opacity, appearances, and catalog
-slots.
+gold, and watermarks. The 0.5.1 asset contract requires genuine alpha cutouts
+with tightly trimmed bounds and decontaminated edges. Release validation checks
+them on the background, surface, elevated surface, and Today gradient in both
+appearances; generated checkerboards and baked light/dark rectangles are
+rejected. `MoneyUpIllustration` uses onboarding, hero, empty, and inline roles
+instead of arbitrary screen-specific heights, and inline decoration disappears
+at accessibility text sizes.
 
 ## Widget rule
 

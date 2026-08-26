@@ -169,7 +169,7 @@ struct AssetsView: View {
                     }
                     if model.investmentHoldings.isEmpty {
                         VStack(spacing: 8) {
-                            MoneyUpIllustration("MoneyUpMoneyWorld", height: 118)
+                            MoneyUpIllustration("MoneyUpMoneyWorld", role: .inline)
                             Text("assets.no_holdings")
                                 .font(.headline)
                             Text("assets.no_holdings_detail")

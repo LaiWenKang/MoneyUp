@@ -219,6 +219,20 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Gives SwiftUI's initial URL delivery one deterministic routing window
+    /// before any protected key access can request authentication. A basic
+    /// widget action can therefore enter the separate capture inbox without
+    /// racing the normal encrypted-book startup path.
+    func startAfterInitialRoutingWindow() async {
+        do {
+            try await Task.sleep(for: .milliseconds(350))
+        } catch {
+            return
+        }
+        guard !routeLockSafeRequestIfPossible() else { return }
+        await start()
+    }
+
     func lock() {
         if isStarting || state == .launching {
             lockAfterStart = true
@@ -325,12 +339,22 @@ final class AppModel: ObservableObject {
             return false
         }
         requestedQuickLogMode = mode
+        _ = routeLockSafeRequestIfPossible()
         return true
     }
 
-    var canPresentLockedQuickCapture: Bool {
-        guard state == .locked,
-              let requestedQuickLogMode,
+    /// Moves only basic, privacy-redacted requests onto the locked capture
+    /// screen. Smart text and receipts still require the protected book.
+    @discardableResult
+    func routeLockSafeRequestIfPossible() -> Bool {
+        guard state == .launching || state == .locked,
+              isLockSafeQuickCaptureRequested else { return false }
+        state = .locked
+        return true
+    }
+
+    private var isLockSafeQuickCaptureRequested: Bool {
+        guard let requestedQuickLogMode,
               UserDefaults.standard.bool(
                   forKey: Self.lockedQuickCapturePreferenceKey
               ) else { return false }
@@ -340,6 +364,10 @@ final class AppModel: ObservableObject {
         case .smartEntry, .scanReceipt:
             return false
         }
+    }
+
+    var canPresentLockedQuickCapture: Bool {
+        state == .locked && isLockSafeQuickCaptureRequested
     }
 
     func saveLockedCapture(
@@ -369,7 +397,6 @@ final class AppModel: ObservableObject {
         )
         let pendingCaptures = try? await lockedCaptureStore.all()
         pendingLockedCaptureCount = pendingCaptures?.count ?? 0
-        consumeQuickLogRequest(mode)
     }
 
     func consumeQuickLogRequest(_ mode: QuickLogLaunchMode) {
@@ -899,7 +926,11 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func setBudgetLimit(categoryID: UUID, amount: Decimal?) async throws {
+    func setBudgetLimit(
+        categoryID: UUID,
+        amount: Decimal?,
+        purpose: BudgetPurpose? = nil
+    ) async throws {
         guard let currency = profile?.baseCurrency,
               let index = budgetNodes.firstIndex(where: { $0.id == categoryID }) else {
             throw AppModelError.missingRecord
@@ -909,6 +940,7 @@ final class AppModel: ObservableObject {
 
         var updated = budgetNodes[index]
         updated.limit = try amount.map { try Money($0, currency: currency) }
+        if let purpose { updated.purpose = purpose }
         var candidate = budgetNodes
         candidate[index] = updated
         _ = try BudgetTree(currency: currency, nodes: candidate)
@@ -1203,37 +1235,57 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func safeToSpendTodayResult() -> DerivedValue<SafeToSpendBreakdown?> {
-        switch budgetPlanSummaryThisMonthResult() {
-        case .available(.none):
-            return .available(nil)
-        case let .available(.some(summary)):
-            let foreignSpending: [Money]
-            switch excludedForeignSpendingThisMonthResult() {
-            case let .available(values):
-                foreignSpending = values
-            case let .unavailable(issue):
-                return .unavailable(issue)
-            }
-            do {
-                return .available(
-                    try FinanceCalculator.safeToSpend(
-                        budgetRemaining: summary.remaining,
-                        schedules: scheduledTransactions,
-                        excludedForeignSpending: foreignSpending,
-                        asOf: Date()
-                    )
-                )
-            } catch {
-                DerivedValueDiagnostics.record(
-                    .budgetCalculationFailed,
-                    operation: "safe-to-spend",
-                    error: error
-                )
-                return .unavailable(.budgetCalculationFailed)
-            }
+    func flexibleTodayResult() -> DerivedValue<FlexibleTodayStatus> {
+        guard let currency = profile?.baseCurrency else {
+            return .unavailable(.appNotReady)
+        }
+        let spending: [UUID: Money]
+        switch spendingThisMonthResult() {
+        case let .available(values):
+            spending = values
         case let .unavailable(issue):
             return .unavailable(issue)
+        }
+        let foreignSpending: [Money]
+        switch excludedForeignSpendingThisMonthResult() {
+        case let .available(values):
+            foreignSpending = values
+        case let .unavailable(issue):
+            return .unavailable(issue)
+        }
+
+        do {
+            let tree = try BudgetTree(currency: currency, nodes: budgetNodes)
+            guard try tree.planSummary(directSpending: spending) != nil else {
+                return .available(.needsBudget)
+            }
+            let unclassifiedCount = tree.limitedNodesNeedingPurpose.count
+            guard unclassifiedCount == 0 else {
+                return .available(.needsClassification(count: unclassifiedCount))
+            }
+            guard let flexibleSummary = try tree.planSummary(
+                directSpending: spending,
+                purpose: .flexible
+            ) else {
+                return .available(.needsFlexibleBudget)
+            }
+            guard let breakdown = try FinanceCalculator.flexibleToday(
+                flexibleBudgetRemaining: flexibleSummary.remaining,
+                schedules: scheduledTransactions,
+                flexibleCategoryIDs: tree.categoryIDs(governedBy: .flexible),
+                excludedForeignSpending: foreignSpending,
+                asOf: Date()
+            ) else {
+                return .unavailable(.invalidPeriod)
+            }
+            return .available(.available(breakdown))
+        } catch {
+            DerivedValueDiagnostics.record(
+                .budgetCalculationFailed,
+                operation: "flexible-today",
+                error: error
+            )
+            return .unavailable(.budgetCalculationFailed)
         }
     }
 
@@ -1700,6 +1752,7 @@ final class AppModel: ObservableObject {
         additionalWrites: [RecordWrite] = []
     ) async throws -> UUID? {
         let generation = storeGeneration
+        let completedLockedCapture = quickLogDraft?.sourceCaptureID != nil
         if let existingCommit = quickLogCommit {
             guard existingCommit.generation != generation else {
                 throw AppModelError.transactionInProgress
@@ -1743,6 +1796,13 @@ final class AppModel: ObservableObject {
         guard isCurrentStoreGeneration(generation) else { return nil }
         quickLogDraft = nil
         entries.insert(entry, at: 0)
+        if completedLockedCapture {
+            try? await promoteLockedCaptureIfPossible(
+                to: transactionStore,
+                generation: generation,
+                requestLogRoute: false
+            )
+        }
         return entry.id
     }
 
@@ -1869,7 +1929,8 @@ final class AppModel: ObservableObject {
 
     private func promoteLockedCaptureIfPossible(
         to store: EncryptedRecordStore,
-        generation: Int
+        generation: Int,
+        requestLogRoute: Bool = true
     ) async throws {
         let captures = (try? await lockedCaptureStore.all()) ?? []
         guard ownsStoreGeneration(generation) else { return }
@@ -1924,7 +1985,7 @@ final class AppModel: ObservableObject {
         try await lockedCaptureStore.remove(id: capture.id)
         guard ownsStoreGeneration(generation) else { return }
         pendingLockedCaptureCount = max(0, captures.count - 1)
-        requestedQuickLogMode = mode
+        if requestLogRoute { requestedQuickLogMode = mode }
     }
 
     /// Invalid rows remain untouched in SQLCipher and in portable backups, but

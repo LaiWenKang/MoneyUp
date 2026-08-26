@@ -13,7 +13,8 @@ flowchart TD
     App --> Archive["Password-protected .moneyup archive"]
 ```
 
-The widget owns no financial snapshot. Its basic actions can deep-link to a
+The widget owns no financial snapshot. On cold launch, a deterministic routing
+window processes its basic actions before protected database startup. They deep-link to a
 separate device-only encrypted capture inbox containing no balances or database
 key; captures move into SQLCipher after the next authenticated unlock.
 `MoneyUpCore` has no UI, database, network, or Apple-framework
@@ -31,8 +32,9 @@ testable.
 | Portability | Readable enriched CSV plus previewable local CSV/Qianji import | Implemented |
 | Portable recovery | Authenticated encrypted archive and transactional restore | Implemented |
 
-`FinancialGuidance.swift` owns the exact, independently tested arithmetic for
-Safe to Spend and read-only budget scenarios. SwiftUI may render those results
+`BudgetTree.swift` owns purpose inheritance and non-overlapping allocation
+selection. `FinancialGuidance.swift` owns the exact, independently tested
+arithmetic for Flexible Today and read-only budget scenarios. SwiftUI may render those results
 with flat charts and diagrams, but generated dimensional artwork never carries
 a financial quantity. Insights chart selections create a `HistoryPreset` and
 reuse the same `HistoryQuery` filter path as manual filtering.

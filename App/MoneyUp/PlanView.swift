@@ -68,6 +68,26 @@ private struct BudgetPlanView: View {
         return result
     }
 
+    private var effectivePurposeByID: [UUID: BudgetPurpose] {
+        guard let currency = model.profile?.baseCurrency,
+              let tree = try? BudgetTree(currency: currency, nodes: model.budgetNodes) else {
+            return [:]
+        }
+        return Dictionary(
+            uniqueKeysWithValues: model.budgetNodes.map {
+                ($0.id, tree.effectivePurpose(for: $0.id))
+            }
+        )
+    }
+
+    private var purposeReviewCount: Int {
+        guard let currency = model.profile?.baseCurrency,
+              let tree = try? BudgetTree(currency: currency, nodes: model.budgetNodes) else {
+            return 0
+        }
+        return tree.limitedNodesNeedingPurpose.count
+    }
+
     private func progressByIDResult() -> DerivedValue<[UUID: BudgetProgress]> {
         switch model.budgetProgressThisMonthResult() {
         case let .available(progress):
@@ -88,6 +108,8 @@ private struct BudgetPlanView: View {
         let elapsed = monthElapsed
         let foreignSpendingResult = model.excludedForeignSpendingThisMonthResult()
         let summaryResult = model.budgetPlanSummaryThisMonthResult()
+        let purposes = effectivePurposeByID
+        let needsPurposeCount = purposeReviewCount
 
         return NavigationStack {
             List {
@@ -106,6 +128,28 @@ private struct BudgetPlanView: View {
                             issue: issue,
                             prominent: true
                         )
+                    }
+                }
+
+                if needsPurposeCount > 0 {
+                    Section {
+                        Label {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(
+                                    String(
+                                        format: String(localized: "plan.purpose_review_title"),
+                                        needsPurposeCount
+                                    )
+                                )
+                                .font(.headline)
+                                Text("plan.purpose_review_detail")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } icon: {
+                            Image(systemName: "exclamationmark.shield.fill")
+                                .foregroundStyle(.orange)
+                        }
                     }
                 }
 
@@ -161,7 +205,8 @@ private struct BudgetPlanView: View {
                                     node: item.node,
                                     depth: item.depth,
                                     progress: progress[item.node.id],
-                                    elapsed: elapsed
+                                    elapsed: elapsed,
+                                    purpose: purposes[item.node.id] ?? .unclassified
                                 )
                             }
                             .buttonStyle(.plain)
@@ -196,7 +241,7 @@ private struct BudgetPlanView: View {
             .overlay {
                 if model.budgetNodes.isEmpty {
                     VStack(spacing: 12) {
-                        MoneyUpIllustration("MoneyUpScenarioStudio", height: 164)
+                        MoneyUpIllustration("MoneyUpScenarioStudio", role: .empty)
                         Text("plan.empty")
                             .font(.title2.bold())
                         Text("plan.empty_detail")
@@ -244,6 +289,7 @@ private struct BudgetRow: View {
     let depth: Int
     let progress: BudgetProgress?
     let elapsed: Double
+    let purpose: BudgetPurpose
 
     private var spent: Money? { progress?.spent }
 
@@ -281,6 +327,13 @@ private struct BudgetRow: View {
                     Text(formattedMoney(spent))
                         .font(.subheadline.monospacedDigit())
                 }
+            }
+
+
+            if node.limit != nil {
+                Label(purpose.titleKey, systemImage: purpose.systemImage)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(purpose == .unclassified ? Color.orange : Color.accentColor)
             }
 
             if let ratio, let limit = node.limit, let spent {
@@ -383,11 +436,10 @@ private struct BudgetSimulatorView: View {
                     ViewThatFits(in: .horizontal) {
                         HStack(spacing: 16) {
                             simulatorIntroduction
-                            MoneyUpIllustration("MoneyUpScenarioStudio", height: 152)
-                                .frame(width: 158)
+                            MoneyUpIllustration("MoneyUpScenarioStudio", role: .inline)
                         }
                         VStack(spacing: 12) {
-                            MoneyUpIllustration("MoneyUpScenarioStudio", height: 176)
+                            MoneyUpIllustration("MoneyUpScenarioStudio", role: .empty)
                             simulatorIntroduction
                         }
                     }
@@ -662,6 +714,7 @@ private struct BudgetEditorSheet: View {
     let node: BudgetNode
 
     @State private var amountText: String
+    @State private var purpose: BudgetPurpose
     @State private var isSaving = false
     @State private var errorMessage: String?
 
@@ -672,6 +725,7 @@ private struct BudgetEditorSheet: View {
                 editableAmount($0.amount)
             } ?? ""
         )
+        _purpose = State(initialValue: node.purpose)
     }
 
     var body: some View {
@@ -684,6 +738,18 @@ private struct BudgetEditorSheet: View {
                     Text("plan.monthly_limit")
                 } footer: {
                     Text("plan.blank_removes_limit")
+                }
+                Section {
+                    Picker("plan.purpose", selection: $purpose) {
+                        ForEach(BudgetPurpose.allCases, id: \.self) { option in
+                            Label(option.titleKey, systemImage: option.systemImage)
+                                .tag(option)
+                        }
+                    }
+                } header: {
+                    Text("plan.purpose")
+                } footer: {
+                    Text("plan.purpose_detail")
                 }
                 if let errorMessage {
                     Section { Text(errorMessage).foregroundStyle(.red) }
@@ -699,7 +765,11 @@ private struct BudgetEditorSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("action.save") { Task { await save() } }
-                        .disabled(isSaving || (!amountText.isEmpty && decimalAmount(from: amountText) == nil))
+                        .disabled(
+                            isSaving
+                                || (!amountText.isEmpty && decimalAmount(from: amountText) == nil)
+                                || (!amountText.isEmpty && purpose == .unclassified)
+                        )
                 }
             }
         }
@@ -714,11 +784,34 @@ private struct BudgetEditorSheet: View {
             let trimmed = amountText.trimmingCharacters(in: .whitespacesAndNewlines)
             try await model.setBudgetLimit(
                 categoryID: node.id,
-                amount: trimmed.isEmpty ? nil : decimalAmount(from: trimmed)
+                amount: trimmed.isEmpty ? nil : decimalAmount(from: trimmed),
+                purpose: purpose
             )
             dismiss()
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+}
+
+private extension BudgetPurpose {
+    var titleKey: LocalizedStringKey {
+        switch self {
+        case .unclassified: "plan.purpose.unclassified"
+        case .flexible: "plan.purpose.flexible"
+        case .commitment: "plan.purpose.commitment"
+        case .debt: "plan.purpose.debt"
+        case .goal: "plan.purpose.goal"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .unclassified: "questionmark.circle"
+        case .flexible: "basket.fill"
+        case .commitment: "calendar.badge.clock"
+        case .debt: "creditcard.fill"
+        case .goal: "target"
         }
     }
 }

@@ -1,4 +1,4 @@
-# Install and Use Founders Beta 0.5.0
+# Install and Use Founders Beta 0.5.1
 
 MoneyUp is available to approved founders through private TestFlight groups and
 can also be installed from source. New builds still pass through the protected
@@ -64,8 +64,9 @@ Then in Xcode:
 3. Record a small expense from the center Log tab and confirm the account balance and
    category spending both update.
 4. Add a monthly limit in Plan and confirm child-category spending rolls up.
-5. Open Safe to Spend on Today, inspect its arithmetic, and try the read-only
-   budget what-if simulator. Tap an Insights bar and confirm the matching
+5. Classify each limited allocation in Plan, open Flexible Today, inspect its
+   arithmetic, and try the read-only budget what-if simulator. Tap an Insights
+   bar and confirm the matching
    filtered History opens.
 6. Send MoneyUp to the background. The switcher preview should hide data
    immediately; after the default one-minute delay, reopening should require

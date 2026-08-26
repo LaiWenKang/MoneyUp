@@ -542,6 +542,151 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(model.canPresentLockedQuickCapture)
         await fixture.store.close()
     }
+
+    @MainActor
+    func testColdBasicDeepLinkRoutesBeforeProtectedBookStartup() throws {
+        let model = AppModel()
+        UserDefaults.standard.set(
+            true,
+            forKey: AppModel.lockedQuickCapturePreferenceKey
+        )
+
+        let handled = model.handleDeepLink(
+            try XCTUnwrap(URL(string: "moneyup://quick-log/expense"))
+        )
+
+        XCTAssertTrue(handled)
+        XCTAssertEqual(model.state, .locked)
+        XCTAssertTrue(model.canPresentLockedQuickCapture)
+    }
+
+    @MainActor
+    func testColdReceiptDeepLinkDoesNotEnterRedactedCapture() throws {
+        let model = AppModel()
+        UserDefaults.standard.set(
+            true,
+            forKey: AppModel.lockedQuickCapturePreferenceKey
+        )
+
+        let handled = model.handleDeepLink(
+            try XCTUnwrap(URL(string: "moneyup://quick-log/scan-receipt"))
+        )
+
+        XCTAssertTrue(handled)
+        XCTAssertEqual(model.state, .launching)
+        XCTAssertFalse(model.canPresentLockedQuickCapture)
+    }
+
+    @MainActor
+    func testLockedCaptureKeepsRouteUntilSuccessScreenIsDismissed() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let inbox = InMemoryLockedCaptureStore(captures: [])
+        let model = fixture.model(lockedCaptureStore: inbox)
+        UserDefaults.standard.set(
+            true,
+            forKey: AppModel.lockedQuickCapturePreferenceKey
+        )
+        model.lock()
+        _ = model.handleDeepLink(
+            try XCTUnwrap(URL(string: "moneyup://quick-log/expense"))
+        )
+
+        try await model.saveLockedCapture(
+            mode: .expense,
+            amountText: "12.50",
+            payee: "",
+            note: ""
+        )
+
+        XCTAssertEqual(model.requestedQuickLogMode, .expense)
+        XCTAssertEqual(model.pendingLockedCaptureCount, 1)
+        let captures = try await inbox.all()
+        XCTAssertEqual(captures.count, 1)
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testSavingReviewedCapturePromotesNextQueueItemExactlyOnce() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let first = LockedCapture(kind: .expense, amountText: "10")
+        let second = LockedCapture(kind: .expense, amountText: "20")
+        let inbox = InMemoryLockedCaptureStore(captures: [first, second])
+        let model = fixture.model(lockedCaptureStore: inbox)
+
+        try await model.promotePendingLockedCapture()
+        XCTAssertEqual(model.quickLogDraft?.sourceCaptureID, first.id)
+        XCTAssertEqual(model.pendingLockedCaptureCount, 1)
+
+        _ = try await model.logExpense(
+            amount: 10,
+            accountID: fixture.wallet.id,
+            categoryID: fixture.food.id,
+            occurredAt: Date(),
+            payee: nil,
+            note: nil
+        )
+
+        XCTAssertEqual(model.quickLogDraft?.sourceCaptureID, second.id)
+        XCTAssertEqual(model.quickLogDraft?.amountText, "20")
+        XCTAssertEqual(model.pendingLockedCaptureCount, 0)
+        let remaining = try await inbox.all()
+        XCTAssertTrue(remaining.isEmpty)
+        XCTAssertEqual(model.entries.count, 1)
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testFlexibleTodayBlocksLegacyLimitsUntilClassified() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let model = fixture.model(
+            budgetNodes: [
+                BudgetNode(
+                    id: fixture.food.id,
+                    name: "Existing plan",
+                    limit: try Money(600, currency: fixture.sgd)
+                )
+            ]
+        )
+
+        XCTAssertEqual(
+            model.flexibleTodayResult(),
+            .available(.needsClassification(count: 1))
+        )
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testFlexibleTodayDoesNotIncludeRentAllocation() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let rentID = UUID()
+        let model = fixture.model(
+            budgetNodes: [
+                BudgetNode(
+                    id: fixture.food.id,
+                    name: "Flexible",
+                    limit: try Money(600, currency: fixture.sgd),
+                    purpose: .flexible
+                ),
+                BudgetNode(
+                    id: rentID,
+                    name: "Rent",
+                    limit: try Money(1_500, currency: fixture.sgd),
+                    purpose: .commitment
+                )
+            ]
+        )
+
+        guard case let .available(.available(breakdown)) = model.flexibleTodayResult()
+        else {
+            return XCTFail("Expected available flexible guidance")
+        }
+        XCTAssertEqual(breakdown.flexibleBudgetRemaining.amount, 600)
+        await fixture.store.close()
+    }
 }
 
 private struct AppModelFixture {

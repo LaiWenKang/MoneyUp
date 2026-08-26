@@ -1,24 +1,58 @@
 import SwiftUI
 
-/// Generated 3D artwork is decorative only. Financial quantities remain in
-/// native text and flat, measurable 2D graphics elsewhere in the interface.
-struct MoneyUpIllustration: View {
-    let assetName: String
-    let height: CGFloat
+enum MoneyUpIllustrationRole {
+    case onboarding
+    case hero
+    case empty
+    case inline
 
-    init(_ assetName: String, height: CGFloat = 176) {
-        self.assetName = assetName
-        self.height = height
+    var height: CGFloat {
+        switch self {
+        case .onboarding: 148
+        case .hero: 92
+        case .empty: 116
+        case .inline: 72
+        }
     }
 
+    var maximumWidth: CGFloat {
+        switch self {
+        case .onboarding: 240
+        case .hero: 116
+        case .empty: 190
+        case .inline: 90
+        }
+    }
+}
+
+/// Generated 3D artwork is decorative only. Financial quantities remain in
+/// native text and flat, measurable 2D graphics elsewhere in the interface.
+/// Role-based sizing prevents decorative art from consuming the space needed
+/// for the screen's decision and primary action.
+struct MoneyUpIllustration: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    let assetName: String
+    let role: MoneyUpIllustrationRole
+
+    init(_ assetName: String, role: MoneyUpIllustrationRole = .empty) {
+        self.assetName = assetName
+        self.role = role
+    }
+
+    @ViewBuilder
     var body: some View {
-        Image(assetName)
-            .resizable()
-            .scaledToFit()
-            .frame(maxWidth: .infinity)
-            .frame(height: height)
-            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-            .accessibilityHidden(true)
+        if !(dynamicTypeSize.isAccessibilitySize && role == .inline) {
+            Image(assetName)
+                .resizable()
+                .scaledToFit()
+                .frame(
+                    maxWidth: role.maximumWidth,
+                    maxHeight: dynamicTypeSize.isAccessibilitySize
+                        ? min(role.height, 84)
+                        : role.height
+                )
+                .accessibilityHidden(true)
+        }
     }
 }
 

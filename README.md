@@ -8,8 +8,8 @@ on-device charts, accounts and holdings, and spreadsheet-friendly export.
 
 ## Project status
 
-MoneyUp is preparing the **Founders Beta 0.5.0** source candidate. Version 0.4.1
-is already installed by the account holder through private TestFlight;
+MoneyUp is preparing the **Founders Beta 0.5.1** corrective candidate. Version
+0.5.0 is installed by the account holder through private TestFlight;
 developers can also install the app from source on an iOS 18 device through
 Xcode.
 
@@ -28,8 +28,10 @@ The beta includes:
 - actual and recurring projected money flow in the finance calendar;
 - selectable report periods with category and monthly cash-flow charts, plus
   deterministic readings, all calculated on device;
-- Safe to Spend Today with a tap-through arithmetic breakdown, scheduled
-  commitments, explicit exclusions, and separate cash-versus-debt positioning;
+- Flexible Today with purpose-classified allocations, a tap-through arithmetic
+  breakdown, flexible commitments, explicit exclusions, and separate
+  cash-versus-debt positioning; bills, debt, and goals never become
+  discretionary money;
 - tappable category and monthly-flow charts that inspect exact values and open
   History with the matching category/date filters;
 - a read-only budget what-if simulator for additional spending and income that
@@ -66,7 +68,7 @@ The beta includes:
   permanent transaction, schedule, or holding deletion;
 - Swift tests plus a clean unsigned iOS Simulator build in CI.
 
-The 0.5.0 source candidate still requires green CI and physical
+The 0.5.1 corrective candidate still requires green CI and physical
 upgrade/restore, visual, localization, accessibility, and widget drills before
 TestFlight distribution or a public release. Keep a separate encrypted backup;
 CSV snapshots remain readable plaintext and should be protected.

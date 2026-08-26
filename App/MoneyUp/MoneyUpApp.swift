@@ -20,12 +20,10 @@ struct MoneyUpApp: App {
                 }
             }
                 .task {
-                    await model.start()
+                    await model.startAfterInitialRoutingWindow()
                 }
                 .onOpenURL { url in
-                    guard model.handleDeepLink(url), model.state == .locked else {
-                        return
-                    }
+                    guard model.handleDeepLink(url), model.state == .locked else { return }
                     guard !model.canPresentLockedQuickCapture else { return }
                     Task { await model.start() }
                 }

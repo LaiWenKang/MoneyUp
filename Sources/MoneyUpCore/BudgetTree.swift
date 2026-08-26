@@ -1,21 +1,57 @@
 import Foundation
 
+/// The job a budget allocation performs in the user's monthly plan.
+///
+/// Existing records decode as `unclassified`. This is intentionally
+/// conservative: an upgrade must never guess that rent, debt, or savings are
+/// discretionary money merely because their category names look familiar.
+public enum BudgetPurpose: String, Codable, CaseIterable, Hashable, Sendable {
+    case unclassified
+    case flexible
+    case commitment
+    case debt
+    case goal
+}
+
 public struct BudgetNode: Codable, Equatable, Identifiable, Sendable {
     public let id: UUID
     public var parentID: UUID?
     public var name: String
     public var limit: Money?
+    public var purpose: BudgetPurpose
 
     public init(
         id: UUID = UUID(),
         parentID: UUID? = nil,
         name: String,
-        limit: Money? = nil
+        limit: Money? = nil,
+        purpose: BudgetPurpose = .unclassified
     ) {
         self.id = id
         self.parentID = parentID
         self.name = name
         self.limit = limit
+        self.purpose = purpose
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case parentID
+        case name
+        case limit
+        case purpose
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        parentID = try container.decodeIfPresent(UUID.self, forKey: .parentID)
+        name = try container.decode(String.self, forKey: .name)
+        limit = try container.decodeIfPresent(Money.self, forKey: .limit)
+        purpose = try container.decodeIfPresent(
+            BudgetPurpose.self,
+            forKey: .purpose
+        ) ?? .unclassified
     }
 }
 
@@ -172,11 +208,62 @@ public struct BudgetTree: Codable, Equatable, Sendable {
     public func planSummary(
         directSpending: [UUID: Money]
     ) throws -> BudgetPlanSummary? {
-        let progress = try progress(directSpending: directSpending)
-        let progressByID = Dictionary(
-            uniqueKeysWithValues: progress.map { ($0.node.id, $0) }
+        try planSummary(
+            directSpending: directSpending,
+            topmostLimits: topmostLimitedNodes
         )
-        let topmostLimits = nodes.filter { node in
+    }
+
+    /// Produces a non-overlapping plan summary for one purpose only.
+    ///
+    /// A topmost limited node owns the allocation beneath it. This prevents a
+    /// child marked as rent from being subtracted once as a commitment and
+    /// counted again inside a flexible parent cap. To split purposes, users
+    /// place limits on separate sibling allocations instead of one mixed cap.
+    public func planSummary(
+        directSpending: [UUID: Money],
+        purpose: BudgetPurpose
+    ) throws -> BudgetPlanSummary? {
+        let selected = topmostLimitedNodes.filter {
+            effectivePurpose(for: $0.id) == purpose
+        }
+        return try planSummary(
+            directSpending: directSpending,
+            topmostLimits: selected
+        )
+    }
+
+    /// Topmost allocations whose purpose was not explicitly configured.
+    public var limitedNodesNeedingPurpose: [BudgetNode] {
+        topmostLimitedNodes.filter {
+            effectivePurpose(for: $0.id) == .unclassified
+        }
+    }
+
+    /// Every category governed by the requested allocation purpose.
+    /// Scheduled expenses use this set so reserved bills and debt are never
+    /// deducted from (or presented as part of) flexible spending.
+    public func categoryIDs(governedBy purpose: BudgetPurpose) -> Set<UUID> {
+        Set(nodes.compactMap { node in
+            guard let owner = topmostLimitedOwner(for: node.id),
+                  effectivePurpose(for: owner.id) == purpose else {
+                return nil
+            }
+            return node.id
+        })
+    }
+
+    public func effectivePurpose(for nodeID: UUID) -> BudgetPurpose {
+        var currentID: UUID? = nodeID
+        while let id = currentID, let node = nodesByID[id] {
+            if node.purpose != .unclassified { return node.purpose }
+            currentID = node.parentID
+        }
+        return .unclassified
+    }
+
+    private var topmostLimitedNodes: [BudgetNode] {
+        nodes.filter { node in
             guard node.limit != nil else { return false }
             var parentID = node.parentID
             while let id = parentID, let parent = nodesByID[id] {
@@ -185,6 +272,26 @@ public struct BudgetTree: Codable, Equatable, Sendable {
             }
             return true
         }
+    }
+
+    private func topmostLimitedOwner(for nodeID: UUID) -> BudgetNode? {
+        var owner: BudgetNode?
+        var currentID: UUID? = nodeID
+        while let id = currentID, let node = nodesByID[id] {
+            if node.limit != nil { owner = node }
+            currentID = node.parentID
+        }
+        return owner
+    }
+
+    private func planSummary(
+        directSpending: [UUID: Money],
+        topmostLimits: [BudgetNode]
+    ) throws -> BudgetPlanSummary? {
+        let progress = try progress(directSpending: directSpending)
+        let progressByID = Dictionary(
+            uniqueKeysWithValues: progress.map { ($0.node.id, $0) }
+        )
         guard !topmostLimits.isEmpty else { return nil }
 
         let limit = topmostLimits

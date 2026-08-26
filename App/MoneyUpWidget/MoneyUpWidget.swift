@@ -80,6 +80,14 @@ enum MoneyUpQuickAction: String, AppEnum, CaseIterable, Identifiable, Sendable {
         }
     }
 
+    var requiresUnlock: Bool {
+        self == .smartEntry || self == .scanReceipt
+    }
+
+    var accessibilityHintKey: LocalizedStringKey {
+        requiresUnlock ? "widget.unlock_required" : "widget.capture_without_unlock"
+    }
+
     var deepLink: URL {
         switch self {
         case .expense:
@@ -182,9 +190,14 @@ private struct SmallQuickActionView: View {
                 .font(.headline)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
+            if action.requiresUnlock {
+                Label("widget.unlock_required", systemImage: "lock.fill")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityHint("widget.tap_to_open")
+        .accessibilityHint(action.accessibilityHintKey)
     }
 }
 
@@ -227,7 +240,7 @@ private struct MediumQuickActionsView: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .accessibilityHint("widget.tap_to_open")
+                    .accessibilityHint(action.accessibilityHintKey)
                 }
             }
         }
@@ -251,7 +264,7 @@ private struct AccessoryCircularActionView: View {
                 .widgetAccentable()
         }
         .accessibilityLabel(action.titleKey)
-        .accessibilityHint("widget.tap_to_open")
+        .accessibilityHint(action.accessibilityHintKey)
     }
 }
 
@@ -277,10 +290,14 @@ private struct AccessoryRectangularActionView: View {
                 Text(action.titleKey)
                     .font(.headline)
                     .lineLimit(1)
+                if action.requiresUnlock {
+                    Label("widget.unlock_required", systemImage: "lock.fill")
+                        .font(.caption2)
+                }
             }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityHint("widget.tap_to_open")
+        .accessibilityHint(action.accessibilityHintKey)
     }
 }
 
@@ -328,6 +345,14 @@ private struct WidgetActionGlyph: View {
             Image(systemName: action.systemImage)
                 .font(.system(size: size * 0.36, weight: .bold))
                 .foregroundStyle(.white)
+            if action.requiresUnlock {
+                Image(systemName: "lock.fill")
+                    .font(.system(size: size * 0.18, weight: .bold))
+                    .foregroundStyle(Color.moneyUpAction)
+                    .padding(4)
+                    .background(.white, in: Circle())
+                    .offset(x: size * 0.34, y: size * 0.34)
+            }
         }
         .frame(width: size, height: size)
     }
@@ -378,7 +403,7 @@ private struct AccessoryInlineActionView: View {
             Image(systemName: action.systemImage)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityHint("widget.tap_to_open")
+        .accessibilityHint(action.accessibilityHintKey)
     }
 }
 

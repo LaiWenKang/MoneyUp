@@ -60,7 +60,7 @@ automated or physical evidence passes on the exact candidate.
 - [x] Searchable History with kind filters, refunds, and atomic transaction editing
 - [x] Locale-safe manual amount fields
 
-## Candidate verification — before the next internal 0.5.0 upload
+## Candidate verification — inherited by the 0.5.1 corrective candidate
 
 | Golden requirement | Code status after this change | Evidence still required |
 |---|---|---|
@@ -86,9 +86,27 @@ the complete core/app suites and Simulator build are green on the exact commit,
 then the bilingual light/dark accessibility walkthrough records its physical
 evidence.
 
+## 0.5.1 corrective release — founder 0.5.0 findings
+
+- [x] Replace aggregate Safe to Spend with Flexible Today. Existing limits
+  decode as unclassified; only explicitly flexible topmost allocations and
+  their scheduled commitments enter the daily calculation.
+- [x] Route basic widget actions before protected database startup, focus the
+  amount, keep optional details collapsed, and show an explicit saved state.
+- [x] Advance multiple locked captures through authenticated review exactly
+  once; Smart Entry and Receipt remain authentication-required.
+- [x] Replace arbitrary illustration heights with compact responsive roles and
+  keep routine Log fields/action ahead of decoration and optional metadata.
+- [ ] Replace opaque dimensional artwork with validated true-alpha production
+  cutouts. The built-in generation path produced opaque checkerboards and those
+  drafts are rejected; the approved fallback generation pass remains open.
+- [ ] Pass exact-commit core/app tests, app/widget Simulator build, physical
+  cold/warm locked widget matrix, 0.5.0 upgrade, bilingual accessibility, and
+  light/dark/tinted screenshot review before TestFlight promotion.
+
 ## G2 — after internal upload, before wider testers
 
-- [ ] Install 0.5.0 over the founder's existing 0.4.1 TestFlight app without
+- [ ] Install 0.5.1 over the founder's existing 0.5.0 TestFlight app without
   deleting it; reconcile profile, accounts, entries, budgets, schedules,
   holdings, settings, widgets, and pending captures before and after.
 - [ ] Restore a password-protected `.moneyup` backup on a clean/fresh install;
@@ -106,7 +124,7 @@ evidence.
 
 ## G3 — before public App Store 1.0
 
-- [x] Today: Safe to Spend, consumer-language cash/debt position, budget pace,
+- [x] Today: purpose-aware Flexible Today, consumer-language cash/debt position, budget pace,
   chart inspection/drill-through, guided empty states, and auditable exclusions.
 - [ ] Widget: opt-in redacted budget percentage with no amount, payee, account,
   holding, or balance. The 0.5.0 widget visual refresh remains data-free.
