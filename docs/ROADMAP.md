@@ -97,9 +97,10 @@ evidence.
   once; Smart Entry and Receipt remain authentication-required.
 - [x] Replace arbitrary illustration heights with compact responsive roles and
   keep routine Log fields/action ahead of decoration and optional metadata.
-- [ ] Replace opaque dimensional artwork with validated true-alpha production
-  cutouts. The built-in generation path produced opaque checkerboards and those
-  drafts are rejected; the approved fallback generation pass remains open.
+- [x] Replace opaque dimensional artwork with validated true-alpha production
+  cutouts. Opaque checkerboard drafts were rejected; the approved CLI fallback
+  extracted and decontaminated the established light/dark 3D scenes, and CI now
+  verifies substantial transparent and opaque pixel regions in every scale.
 - [ ] Pass exact-commit core/app tests, app/widget Simulator build, physical
   cold/warm locked widget matrix, 0.5.0 upgrade, bilingual accessibility, and
   light/dark/tinted screenshot review before TestFlight promotion.
