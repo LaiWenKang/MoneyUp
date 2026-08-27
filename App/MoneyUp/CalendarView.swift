@@ -64,10 +64,7 @@ struct CalendarView: View {
                 entries: selectedEntries,
                 baseCurrency: currency,
                 calendar: model.reportingCalendar
-            )
-            return .available(
-                ([report.baseFlow] + report.foreignFlows).filter { !$0.isEmpty }
-            )
+            ))
         } catch {
             DerivedValueDiagnostics.record(
                 .ledgerCalculationFailed,
