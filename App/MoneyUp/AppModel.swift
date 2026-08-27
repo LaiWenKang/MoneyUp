@@ -360,6 +360,8 @@ final class AppModel: ObservableObject {
         databaseURLForErase = nil
         deleteDatabaseKey = {}
         restartAfterErase = false
+        budgetWidgetSnapshotStore = BudgetWidgetSnapshotStore(defaults: nil)
+        currentDate = Date.init
         store = restoreValidationStore
         storeGeneration = 1
         retainsCompleteJournal = false
@@ -914,7 +916,7 @@ final class AppModel: ObservableObject {
             for: interval,
             calendar: reportingCalendar
         ) else { throw AppModelError.invalidBook }
-        try await journalEntries(
+        return try await journalEntries(
             startDayKey: dayKeys.lowerBound,
             endDayKeyExclusive: dayKeys.upperBound
         )
@@ -4708,7 +4710,7 @@ final class AppModel: ObservableObject {
                 includeInvalidRelationships: false
             )
         }
-        LedgerXLSXExporter.export(
+        return LedgerXLSXExporter.export(
             entries: exportEntries,
             accounts: accounts,
             rates: exchangeRates,
