@@ -1,4 +1,5 @@
 import SwiftUI
+import MoneyUpCore
 
 enum MoneyUpIllustrationRole {
     case onboarding

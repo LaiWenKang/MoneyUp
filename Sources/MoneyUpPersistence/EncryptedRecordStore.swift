@@ -178,6 +178,11 @@ public struct RecordDecodeIssue: Equatable, Sendable, Identifiable {
     public let collection: RecordCollection
     public let recordID: String
 
+    public init(collection: RecordCollection, recordID: String) {
+        self.collection = collection
+        self.recordID = recordID
+    }
+
     public var id: String { "\(collection.rawValue):\(recordID)" }
 }
 

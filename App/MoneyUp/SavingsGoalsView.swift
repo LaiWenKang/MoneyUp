@@ -339,7 +339,7 @@ private struct GoalManagementSheet: View {
                     }
                 }
 
-                Section("goal.movements") {
+                Section {
                     Button {
                         movementKind = .contribution
                     } label: {
@@ -350,6 +350,8 @@ private struct GoalManagementSheet: View {
                     } label: {
                         Label("goal.withdraw", systemImage: "minus.circle.fill")
                     }
+                } header: {
+                    Text("goal.movements")
                 } footer: {
                     Text("goal.movements_detail")
                 }

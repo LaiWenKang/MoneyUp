@@ -212,6 +212,8 @@ extension InvestmentHoldingError: @retroactive LocalizedError {
              .duplicateIdentifier, .duplicateLinkedEntry, .invalidDisposal,
              .historyMismatch:
             String(localized: "error.invalid_book")
+        case .correctionUnavailable:
+            String(localized: "holding.error.invalid_trade")
         }
     }
 }

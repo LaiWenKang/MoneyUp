@@ -111,7 +111,7 @@ struct AssetsView: View {
                             .foregroundStyle(.secondary)
                         switch model.netWorthByCurrencyResult() {
                         case let .available(amounts):
-                            ForEach(amounts) { netWorth in
+                            ForEach(amounts, id: \.currency) { netWorth in
                                 Text(formattedMoney(netWorth))
                                     .font(.title.bold().monospacedDigit())
                             }

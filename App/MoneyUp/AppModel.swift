@@ -2483,7 +2483,7 @@ final class AppModel: ObservableObject {
             guard !self.savingsGoals.contains(where: { $0.id == goal.id }) else {
                 throw AppModelError.invalidBook
             }
-            try self.requireSupportedPrecision(
+            try self.requireValidNewWriteAmount(
                 goal.target.amount,
                 currency: goal.target.currency
             )
@@ -2515,7 +2515,7 @@ final class AppModel: ObservableObject {
                 throw AppModelError.missingRecord
             }
             let currency = goal.target.currency
-            try self.requireSupportedPrecision(targetAmount, currency: currency)
+            try self.requireValidNewWriteAmount(targetAmount, currency: currency)
             let target = try Money(targetAmount, currency: currency)
             let updated: SavingsGoal
             do {
@@ -2543,7 +2543,10 @@ final class AppModel: ObservableObject {
             guard let goal = self.savingsGoals.first(where: { $0.id == goalID }) else {
                 throw AppModelError.missingRecord
             }
-            try self.requireSupportedPrecision(amount, currency: goal.target.currency)
+            try self.requireValidNewWriteAmount(
+                amount,
+                currency: goal.target.currency
+            )
             let movement: SavingsGoalMovement
             let updated: SavingsGoal
             do {
@@ -2812,6 +2815,7 @@ final class AppModel: ObservableObject {
             throw ScheduledTransactionError.unsupportedKind
         }
         let fingerprint = Self.scheduleFingerprint(for: occurrenceID)
+        let generation = storeGeneration
         let scheduleStore = try requireStore()
         let occurrenceAlreadyExists = try await scheduleStore.containsJournalEntry(
             sourceFingerprint: fingerprint
@@ -2870,8 +2874,6 @@ final class AppModel: ObservableObject {
             ].compactMap { $0 }
         )
 
-        let generation = storeGeneration
-        let scheduleStore = try requireStore()
         var writes = [
             try RecordWrite(entry, id: entry.id.uuidString, in: .journalEntries),
             try RecordWrite(
@@ -6281,11 +6283,13 @@ final class AppModel: ObservableObject {
         investmentLinkedEntriesByID = investmentLinkedEntriesByID.filter {
             retainedInvestmentEntryIDs.contains($0.key)
         }
-        let entryIDs = existingAttachmentEntryIDs ?? Set(entries.map(\.id))
+        let attachmentEntryIDs = existingAttachmentEntryIDs
+            ?? Set(entries.map(\.id))
         var seenAttachmentIDs = Set<UUID>()
         receiptAttachmentMetadata.removeAll { attachment in
             let duplicate = !seenAttachmentIDs.insert(attachment.id).inserted
-            let invalid = duplicate || !entryIDs.contains(attachment.entryID)
+            let invalid = duplicate
+                || !attachmentEntryIDs.contains(attachment.entryID)
             if duplicate {
                 recoveryIssues.append("receipt_attachments/duplicate-\(attachment.id)")
             } else if invalid {
@@ -7342,6 +7346,8 @@ final class AppModel: ObservableObject {
             case .lotQuantityMismatch, .duplicateIdentifier,
                  .duplicateLinkedEntry, .invalidDisposal, .historyMismatch:
                 throw AppModelError.invalidBook
+            case .correctionUnavailable:
+                throw AppModelError.invalidInvestmentTrade
             }
         }
     }

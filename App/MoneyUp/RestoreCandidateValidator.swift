@@ -89,6 +89,26 @@ enum RestoreCandidateValidator {
                         DatedExchangeRate.self,
                         from: record.payload
                     ).id
+                case .savingsGoals:
+                    logicalID = try decoder.decode(
+                        SavingsGoal.self,
+                        from: record.payload
+                    ).id
+                case .budgetConfigurationTimelines:
+                    guard record.recordID
+                        == BudgetConfigurationTimeline.primaryRecordID else {
+                        throw AppModelError.invalidBook
+                    }
+                    _ = try decoder.decode(
+                        BudgetConfigurationTimeline.self,
+                        from: record.payload
+                    )
+                    logicalID = nil
+                case .budgetEntryAttributions:
+                    logicalID = try decoder.decode(
+                        BudgetEntryAttribution.self,
+                        from: record.payload
+                    ).id
                 }
 
                 guard let logicalID else { continue }
