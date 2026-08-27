@@ -145,7 +145,7 @@ final class FinancialGuidanceTests: XCTestCase {
         XCTAssertEqual(forecast.projectedRemaining.amount, 450)
         XCTAssertEqual(forecast.projectedIncome.amount, 1_700)
         XCTAssertEqual(forecast.projectedNet.amount, 1_150)
-        XCTAssertEqual(forecast.budgetUsage, Decimal(string: "0.55"))
+        XCTAssertEqual(try forecast.budgetUsage(), Decimal(string: "0.55"))
     }
 
     func testBudgetScenarioRejectsNegativeAdjustments() throws {

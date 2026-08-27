@@ -9,7 +9,11 @@ public enum FinanceCalculator {
 
         for posting in entries.flatMap(\.postings)
         where posting.accountID == accountID {
-            totals[posting.money.currency, default: .zero] += posting.money.amount
+            let currency = posting.money.currency
+            totals[currency] = try CheckedDecimal.adding(
+                totals[currency] ?? .zero,
+                posting.money.amount
+            )
         }
 
         return try totals.reduce(into: [:]) { result, item in
@@ -32,7 +36,8 @@ public enum FinanceCalculator {
         accounts: [LedgerAccount],
         entries: [JournalEntry],
         currency: CurrencyCode,
-        interval: DateInterval? = nil
+        interval: DateInterval? = nil,
+        calendar: Calendar = .current
     ) throws -> [UUID: Money] {
         let expenseAccountIDs = Set(
             accounts.lazy.filter { $0.kind == .expense }.map(\.id)
@@ -46,7 +51,10 @@ public enum FinanceCalculator {
             for posting in entry.postings
             where expenseAccountIDs.contains(posting.accountID)
                 && posting.money.currency == currency {
-                totals[posting.accountID, default: .zero] += posting.money.amount
+                totals[posting.accountID] = try CheckedDecimal.adding(
+                    totals[posting.accountID] ?? .zero,
+                    posting.money.amount
+                )
             }
         }
 
@@ -60,7 +68,8 @@ public enum FinanceCalculator {
         accounts: [LedgerAccount],
         entries: [JournalEntry],
         currency: CurrencyCode,
-        interval: DateInterval? = nil
+        interval: DateInterval? = nil,
+        calendar: Calendar = .current
     ) throws -> Money {
         let relevantAccountIDs = Set(
             accounts.lazy.filter { $0.kind == kind }.map(\.id)
@@ -74,7 +83,7 @@ public enum FinanceCalculator {
             for posting in entry.postings
             where relevantAccountIDs.contains(posting.accountID)
                 && posting.money.currency == currency {
-                amount += posting.money.amount
+                amount = try CheckedDecimal.adding(amount, posting.money.amount)
             }
         }
 

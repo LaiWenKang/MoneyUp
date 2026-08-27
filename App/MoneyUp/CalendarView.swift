@@ -1,6 +1,11 @@
 import MoneyUpCore
 import SwiftUI
 
+private struct CalendarLoadRequest: Hashable {
+    let day: Date
+    let generation: Int
+}
+
 struct CalendarView: View {
     @EnvironmentObject private var model: AppModel
     @State private var selectedDate = Date()
@@ -8,23 +13,31 @@ struct CalendarView: View {
     @State private var errorMessage: String?
     @State private var entryPendingDeletion: JournalEntry?
     @State private var schedulePendingDeletion: ScheduledTransaction?
+    @State private var scheduleBeingEdited: ScheduledTransaction?
+    @State private var selectedEntries: [JournalEntry] = []
+    @State private var isLoadingActuals = true
+    @State private var actualsUnavailable = false
+    @State private var reloadGeneration = 0
+    @State private var scheduleMatchCandidates: [UUID: [JournalEntry]] = [:]
+    @State private var scheduleMatchesLoading = Set<UUID>()
 
     private var selectedDayInterval: DateInterval? {
         FinancialPeriodBoundary.inclusiveDayInterval(
             from: selectedDate,
-            through: selectedDate
+            through: selectedDate,
+            calendar: model.reportingCalendar
         )
     }
 
-    private var selectedEntries: [JournalEntry] {
-        guard let selectedDayInterval else { return [] }
-        return model.entries.filter {
-            FinancialPeriodBoundary.contains($0.occurredAt, in: selectedDayInterval)
-        }
+    private var loadRequest: CalendarLoadRequest {
+        CalendarLoadRequest(
+            day: selectedDayInterval?.start ?? selectedDate,
+            generation: reloadGeneration
+        )
     }
 
     private var scheduledForDay: [ScheduledTransaction] {
-        let calendar = Calendar.current
+        let calendar = model.reportingCalendar
         return model.scheduledTransactions.filter { item in
             item.occurs(on: selectedDate, calendar: calendar)
         }
@@ -45,15 +58,13 @@ struct CalendarView: View {
             return .unavailable(.invalidPeriod)
         }
         do {
-            let report = try FinanceCalculator.report(
+            return .available(try FinanceCalculator.dailyFlows(
                 interval: interval,
                 accounts: model.accounts,
                 entries: selectedEntries,
-                baseCurrency: currency
-            )
-            return .available(
-                ([report.baseFlow] + report.foreignFlows).filter { !$0.isEmpty }
-            )
+                baseCurrency: currency,
+                calendar: model.reportingCalendar
+            ))
         } catch {
             DerivedValueDiagnostics.record(
                 .ledgerCalculationFailed,
@@ -74,7 +85,25 @@ struct CalendarView: View {
                 )
                 .datePickerStyle(.graphical)
 
-                if case let .available(flows) = dayFlows,
+                if isLoadingActuals {
+                    Section("calendar.money_flow") {
+                        HStack(spacing: 10) {
+                            ProgressView()
+                            Text("calendar.loading_actuals")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                } else if actualsUnavailable {
+                    Section("calendar.money_flow") {
+                        ContentUnavailableView {
+                            Label("calendar.actuals_unavailable", systemImage: "exclamationmark.arrow.triangle.2.circlepath")
+                        } description: {
+                            Text("calendar.actuals_unavailable_detail")
+                        } actions: {
+                            Button("action.retry") { reloadGeneration += 1 }
+                        }
+                    }
+                } else if case let .available(flows) = dayFlows,
                    !flows.isEmpty {
                     Section("calendar.money_flow") {
                         ForEach(flows) { flow in
@@ -97,17 +126,26 @@ struct CalendarView: View {
                 }
 
                 Section("calendar.actual") {
-                    if selectedEntries.isEmpty {
+                    if isLoadingActuals {
+                        ProgressView()
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .accessibilityLabel("calendar.loading_actuals")
+                    } else if actualsUnavailable {
+                        Text("calendar.actuals_unavailable_detail")
+                            .foregroundStyle(.secondary)
+                    } else if selectedEntries.isEmpty {
                         Text("calendar.no_actual")
                             .foregroundStyle(.secondary)
                     } else {
                         ForEach(selectedEntries) { entry in
                             TransactionRow(entry: entry)
                                 .swipeActions {
-                                    Button(role: .destructive) {
-                                        entryPendingDeletion = entry
-                                    } label: {
-                                        Label("action.delete", systemImage: "trash")
+                                    if !model.isProtectedJournalEntry(entry) {
+                                        Button(role: .destructive) {
+                                            entryPendingDeletion = entry
+                                        } label: {
+                                            Label("action.delete", systemImage: "trash")
+                                        }
                                     }
                                 }
                         }
@@ -121,11 +159,19 @@ struct CalendarView: View {
                     } else {
                         ForEach(scheduledForDay) { item in
                             HStack {
-                                Label(item.name, systemImage: "clock")
+                                Label(
+                                    item.name,
+                                    systemImage: item.isCurrentOccurrenceConfirmed
+                                        ? "checkmark.circle"
+                                        : "clock"
+                                )
                                 Spacer()
                                 Text(formattedMoney(item.amount))
                                     .font(.subheadline.monospacedDigit())
                             }
+                            .contentShape(Rectangle())
+                            .onTapGesture { scheduleBeingEdited = item }
+                            .contextMenu { scheduleActions(for: item) }
                             .swipeActions {
                                 Button(role: .destructive) {
                                     schedulePendingDeletion = item
@@ -144,7 +190,23 @@ struct CalendarView: View {
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
             .navigationTitle("tab.calendar")
+            .task(id: loadRequest) {
+                await loadSelectedActuals()
+            }
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Menu {
+                        if model.scheduledTransactions.isEmpty {
+                            Text("calendar.no_scheduled")
+                        } else {
+                            ForEach(model.scheduledTransactions) { item in
+                                Menu(item.name) { scheduleActions(for: item) }
+                            }
+                        }
+                    } label: {
+                        Label("schedule.manage", systemImage: "calendar.badge.clock")
+                    }
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Button {
                         isAddingSchedule = true
@@ -155,6 +217,9 @@ struct CalendarView: View {
             }
             .sheet(isPresented: $isAddingSchedule) {
                 AddScheduleSheet()
+            }
+            .sheet(item: $scheduleBeingEdited) { item in
+                AddScheduleSheet(schedule: item)
             }
             .confirmationDialog(
                 "transaction.delete_title",
@@ -189,6 +254,8 @@ struct CalendarView: View {
                 Text("schedule.delete_detail")
             }
         }
+        .environment(\.calendar, model.reportingCalendar)
+        .environment(\.timeZone, model.reportingCalendar.timeZone)
     }
 
     private func deletionBinding<Value>(for value: Binding<Value?>) -> Binding<Bool> {
@@ -201,8 +268,9 @@ struct CalendarView: View {
     private func delete(_ entry: JournalEntry) async {
         do {
             try await model.deleteEntry(id: entry.id)
+            reloadGeneration += 1
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = safeUserMessage(for: error, context: .save)
         }
     }
 
@@ -210,7 +278,164 @@ struct CalendarView: View {
         do {
             try await model.deleteScheduledTransaction(id: item.id)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = safeUserMessage(for: error, context: .save)
+        }
+    }
+
+    @ViewBuilder
+    private func scheduleActions(for item: ScheduledTransaction) -> some View {
+        Button {
+            scheduleBeingEdited = item
+        } label: {
+            Label("action.edit", systemImage: "pencil")
+        }
+
+        switch item.status {
+        case .active:
+            Button {
+                perform {
+                    try await model.confirmScheduledOccurrence(
+                        scheduleID: item.id,
+                        occurrenceID: item.currentOccurrenceID
+                    )
+                }
+            } label: {
+                Label(
+                    item.isCurrentOccurrenceConfirmed
+                        ? String(localized: "schedule.confirmed")
+                        : String(localized: "schedule.confirm"),
+                    systemImage: "checkmark.circle"
+                )
+            }
+            .disabled(item.isCurrentOccurrenceConfirmed)
+
+            Button {
+                perform {
+                    _ = try await model.postScheduledOccurrence(
+                        scheduleID: item.id,
+                        occurrenceID: item.currentOccurrenceID,
+                        calendar: model.reportingCalendar
+                    )
+                }
+            } label: {
+                Label("schedule.post", systemImage: "arrow.down.doc")
+            }
+
+            Menu {
+                if scheduleMatchesLoading.contains(item.id) {
+                    ProgressView()
+                } else if let matches = scheduleMatchCandidates[item.id] {
+                    if matches.isEmpty {
+                        Text("schedule.match_none")
+                    } else {
+                        ForEach(matches.prefix(8)) { entry in
+                            Button(entry.payee ?? entry.occurredAt.formatted(date: .abbreviated, time: .omitted)) {
+                                perform {
+                                    try await model.matchScheduledOccurrence(
+                                        scheduleID: item.id,
+                                        occurrenceID: item.currentOccurrenceID,
+                                        entryID: entry.id,
+                                        calendar: model.reportingCalendar
+                                    )
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    Button("schedule.find_matches") {
+                        Task { await loadMatches(for: item) }
+                    }
+                }
+            } label: {
+                Label("schedule.match", systemImage: "link")
+            }
+
+            Button {
+                perform {
+                    try await model.skipScheduledOccurrence(
+                        scheduleID: item.id,
+                        occurrenceID: item.currentOccurrenceID,
+                        calendar: model.reportingCalendar
+                    )
+                }
+            } label: {
+                Label("schedule.skip", systemImage: "forward.end")
+            }
+            Button {
+                perform { try await model.pauseScheduledTransaction(id: item.id) }
+            } label: {
+                Label("schedule.pause", systemImage: "pause")
+            }
+        case .paused:
+            Button {
+                perform { try await model.resumeScheduledTransaction(id: item.id) }
+            } label: {
+                Label("schedule.resume", systemImage: "play")
+            }
+        case .ended:
+            EmptyView()
+        }
+
+        if item.status != .ended {
+            Button(role: .destructive) {
+                perform { try await model.endScheduledTransaction(id: item.id) }
+            } label: {
+                Label("schedule.end", systemImage: "stop.circle")
+            }
+        }
+    }
+
+    private func loadSelectedActuals() async {
+        guard let interval = selectedDayInterval else {
+            selectedEntries = []
+            actualsUnavailable = true
+            isLoadingActuals = false
+            return
+        }
+        isLoadingActuals = true
+        actualsUnavailable = false
+        do {
+            let loaded = try await model.calendarEntries(in: interval)
+            try Task.checkCancellation()
+            selectedEntries = loaded
+            isLoadingActuals = false
+        } catch is CancellationError {
+            return
+        } catch {
+            selectedEntries = []
+            actualsUnavailable = true
+            isLoadingActuals = false
+        }
+    }
+
+    private func loadMatches(for item: ScheduledTransaction) async {
+        guard scheduleMatchesLoading.insert(item.id).inserted else { return }
+        defer { scheduleMatchesLoading.remove(item.id) }
+        do {
+            scheduleMatchCandidates[item.id] = try await model.matchingEntries(
+                for: item,
+                calendar: model.reportingCalendar
+            )
+        } catch {
+            errorMessage = safeUserMessage(for: error, context: .read)
+        }
+    }
+
+    private func perform(
+        _ operation: @escaping @MainActor () async throws -> Void
+    ) {
+        Task { @MainActor in
+            do {
+                try await operation()
+                // Calendar owns a range-scoped actuals snapshot. Production's
+                // recent cache is intentionally not authoritative, so every
+                // successful schedule action re-queries the selected day and
+                // discards match candidates derived before the mutation.
+                scheduleMatchCandidates.removeAll()
+                reloadGeneration &+= 1
+            } catch {
+                errorMessage = safeUserMessage(for: error, context: .save)
+            }
         }
     }
 }
@@ -218,6 +443,8 @@ struct CalendarView: View {
 private struct AddScheduleSheet: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var model: AppModel
+
+    let schedule: ScheduledTransaction?
 
     @State private var kind: JournalEntryKind = .expense
     @State private var name = ""
@@ -229,8 +456,25 @@ private struct AddScheduleSheet: View {
     @State private var isSaving = false
     @State private var errorMessage: String?
 
+    init(schedule: ScheduledTransaction? = nil) {
+        self.schedule = schedule
+        if let schedule {
+            _kind = State(initialValue: schedule.kind)
+            _name = State(initialValue: schedule.name)
+            _amountText = State(initialValue: editableAmount(schedule.amount.amount))
+            _accountID = State(initialValue: schedule.accountID)
+            _categoryID = State(initialValue: schedule.categoryAccountID)
+            _nextOccurrence = State(initialValue: schedule.nextOccurrence)
+            _frequency = State(initialValue: schedule.frequency)
+        }
+    }
+
     private var categories: [LedgerAccount] {
         kind == .income ? model.incomeCategories : model.expenseCategories
+    }
+
+    private var selectedCurrency: CurrencyCode? {
+        model.userAccounts.first(where: { $0.id == accountID })?.currency
     }
 
     private var canSave: Bool {
@@ -252,7 +496,7 @@ private struct AddScheduleSheet: View {
                 Section {
                     TextField("schedule.name", text: $name)
                     TextField("quick_log.amount", text: $amountText)
-                        .keyboardType(.decimalPad)
+                        .moneyAmountKeyboard(currency: selectedCurrency)
                     Picker("transaction.account", selection: $accountID) {
                         ForEach(model.userAccounts) { account in
                             Text(account.name).tag(Optional(account.id))
@@ -280,7 +524,11 @@ private struct AddScheduleSheet: View {
             }
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
-            .navigationTitle("schedule.add")
+            .navigationTitle(
+                schedule == nil
+                    ? String(localized: "schedule.add")
+                    : String(localized: "schedule.edit")
+            )
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -294,11 +542,15 @@ private struct AddScheduleSheet: View {
             .onAppear { selectDefaults() }
             .onChange(of: kind) { _, _ in selectDefaults() }
         }
+        .environment(\.calendar, model.reportingCalendar)
+        .environment(\.timeZone, model.reportingCalendar.timeZone)
     }
 
     private func selectDefaults() {
         accountID = accountID ?? model.userAccounts.first?.id
-        categoryID = categories.first { $0.parentID != nil }?.id ?? categories.first?.id
+        if !categories.contains(where: { $0.id == categoryID }) {
+            categoryID = categories.first { $0.parentID != nil }?.id ?? categories.first?.id
+        }
     }
 
     private func save() async {
@@ -313,19 +565,33 @@ private struct AddScheduleSheet: View {
         defer { isSaving = false }
 
         do {
-            let item = try ScheduledTransaction(
-                kind: kind,
-                name: name,
-                amount: try Money(amount, currency: currency),
-                accountID: accountID,
-                categoryAccountID: categoryID,
-                nextOccurrence: nextOccurrence,
-                frequency: frequency
-            )
-            try await model.addScheduledTransaction(item)
+            let money = try Money(amount, currency: currency)
+            if let schedule {
+                try await model.updateScheduledTransaction(
+                    id: schedule.id,
+                    kind: kind,
+                    name: name,
+                    amount: money,
+                    accountID: accountID,
+                    categoryAccountID: categoryID,
+                    nextOccurrence: nextOccurrence,
+                    frequency: frequency
+                )
+            } else {
+                let item = try ScheduledTransaction(
+                    kind: kind,
+                    name: name,
+                    amount: money,
+                    accountID: accountID,
+                    categoryAccountID: categoryID,
+                    nextOccurrence: nextOccurrence,
+                    frequency: frequency
+                )
+                try await model.addScheduledTransaction(item)
+            }
             dismiss()
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = safeUserMessage(for: error, context: .save)
         }
     }
 }

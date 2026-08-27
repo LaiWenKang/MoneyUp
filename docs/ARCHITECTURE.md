@@ -5,80 +5,125 @@
 ```mermaid
 flowchart TD
     Widget["Redacted widget"] --> Capture["Encrypted Quick Capture inbox"]
-    Capture --> App["Authenticated SwiftUI app"]
-    App --> Core["MoneyUpCore"]
+    App["Authenticated SwiftUI app"] --> Core["MoneyUpCore"]
     App --> Store["MoneyUpPersistence"]
-    Store --> Cipher["SQLCipher database"]
-    App --> Export["CSV export / reviewed import"]
-    App --> Archive["Password-protected .moneyup archive"]
+    Store --> Cipher["SQLCipher schema 3"]
+    App --> Shared["Percent/state-only App Group"]
+    Shared --> Widget
+    App --> Files["CSV/XLSX/import/archive"]
 ```
 
-The widget owns no financial snapshot. On cold launch, a deterministic routing
-window processes its basic actions before protected database startup. They deep-link to a
-separate device-only encrypted capture inbox containing no balances or database
-key; captures move into SQLCipher after the next authenticated unlock.
-`MoneyUpCore` has no UI, database, network, or Apple-framework
-dependency beyond Foundation, so financial invariants remain independently
-testable.
+The widget has two deliberately separate boundaries. Basic actions can route
+to a device-only encrypted Quick Capture inbox without opening the book. The
+opt-in budget-status surface reads a tiny snapshot from
+`group.com.laiwenkang.MoneyUp` containing only availability/state and an
+integer percentage. The shared container never receives amounts, payees,
+account names, holdings, balances, transaction data, ledger identifiers, the
+SQLCipher database, or its Keychain key.
+
+`MoneyUpCore` has no UI, database, network, or Apple-framework dependency
+beyond Foundation. Financial invariants remain independently testable, and no
+runtime backend is required.
 
 ## Module boundaries
 
-| Module | Responsibility | Founders Beta 0.5.0 |
+| Module | Responsibility | 0.6.0 source state |
 |---|---|---|
-| MoneyUp app | State machine, lock lifecycle, bilingual SwiftUI, local insights | Implemented |
-| MoneyUpCore | Money, ledger, hierarchy, recurrence, holdings, export rules | Implemented |
-| MoneyUpPersistence | SQLCipher schema, record encoding, migrations, atomic batches | Implemented |
-| Widget | Redacted presentation and authenticated quick-log deep links | Implemented |
-| Portability | Readable enriched CSV plus previewable local CSV/Qianji import | Implemented |
-| Portable recovery | Authenticated encrypted archive and transactional restore | Implemented |
+| MoneyUp app | State machine, locking, bilingual SwiftUI, local guidance and workflows | Implemented in source; exact-candidate app tests open |
+| MoneyUpCore | Exact money, ledger, hierarchy, recurrence, goals, investments, reports, export rules | Implemented in source; exact-candidate core tests open |
+| MoneyUpPersistence | SQLCipher schema/migrations, normalized encrypted indexes, atomic writes, snapshots | Implemented in source; Mac test gate open |
+| Widget | Redacted actions plus opt-in percentage/state status | Implemented in source; App Group registration/signing and device matrix open |
+| Portability | CSV/XLSX, mapped local import, encrypted attachment/archive lifecycle | Implemented in source; physical restore/export drills open |
 
-`BudgetTree.swift` owns purpose inheritance and non-overlapping allocation
-selection. `FinancialGuidance.swift` owns the exact, independently tested
-arithmetic for Flexible Today and read-only budget scenarios. SwiftUI may render those results
-with flat charts and diagrams, but generated dimensional artwork never carries
-a financial quantity. Insights chart selections create a `HistoryPreset` and
-reuse the same `HistoryQuery` filter path as manual filtering.
+`BudgetTree`, `BudgetRollover`, `SavingsGoal`, and `FinancialGuidance` own the
+exact plan arithmetic. `InvestmentHolding`, `TransactionFactory`, and
+`NetWorthSnapshot` keep purchases, sales, repricing, FIFO metadata, and
+currency-separated observations tied to the ledger. SwiftUI can render those
+results, but dimensional artwork never carries a financial quantity.
 
 ## State and lock lifecycle
 
 The application moves between launching, locked, onboarding, ready, and failed
-states. Only `ready` retains decoded records. The inactive phase applies an
-opaque cover immediately; the configurable auto-lock timer then closes the
-actor-isolated database and clears decoded arrays. If Log contains an unfinished transaction, its latest text fields and
-selections are flushed to SQLCipher first; receipt images are never retained.
-Saving a transaction atomically commits the journal entry and removes its draft;
-the cleared form may subsequently retain only useful encrypted defaults.
-The inactive phase overlays an opaque privacy cover so the app-switcher snapshot
-cannot capture balances or transactions.
+states. The inactive phase applies an opaque privacy cover immediately. When
+the configured timeout expires, the app flushes the encrypted Log draft,
+closes the actor-isolated store, clears decoded records and caches, and returns
+to the locked state. Receipt bytes never enter a draft.
 
-On unlock, Keychain enforces local user presence before returning the SQLCipher
-key. The app loads valid rows, quarantines malformed or orphaned rows from
-calculations while preserving them in raw backups, validates the usable book,
-then exposes ready state. It never silently erases an interrupted or damaged
-book.
+On unlock, Keychain enforces local user presence before returning the
+this-device-only SQLCipher key. Normal startup loads non-journal records, exact
+compact balances/reference counts, and at most a bounded recent-activity page;
+it does not decode or retain the complete journal. Malformed or orphaned rows
+are quarantined from calculations while their encrypted raw records remain
+available to backup/repair paths.
 
-## Ledger and persistence
+Saving, editing, deleting, importing, reconciling, posting a schedule, changing
+lifecycle state, retaining an attachment, or moving a goal uses one store
+transaction for all affected records. The operation either commits completely
+or rolls back completely. The six-second Undo is offered only after a committed
+save and reverses the same derived effects once.
+
+## Ledger and SQLCipher schema 3
 
 Normal views do not create postings directly. `TransactionFactory` creates
-balanced expense, income, transfer, foreign-exchange, refund, and reconciliation
-entries. `JournalEntry` validates each currency independently at initialization
-and again during decoding.
+balanced expense, income, transfer, foreign-exchange, refund, reconciliation,
+split, investment purchase/sale, and valuation entries. `JournalEntry`
+validates each currency independently at initialization and decoding, and
+retains originating calendar/time-zone facts plus a stable local-day key.
 
-The store encodes each record as deterministic JSON inside an encrypted SQLite
-table. Related setup records are committed with `BEGIN IMMEDIATE` and either all
-persist or all roll back. The app uses the profile record as the completed-book
-marker when recovering an interrupted legacy onboarding.
+Schema 3 retains deterministic encrypted record payloads and adds normalized
+encrypted support tables:
 
-## Spreadsheet boundary
+| Table/index | Purpose |
+|---|---|
+| `journal_entry_index` | Chronological identity, source fingerprint, and day/range lookup without decoding every payload |
+| `journal_posting_index` | Account/category/currency posting events for reports, Calendar, lifecycle counts, and bounded scans |
+| `journal_balance` | Exact materialized balance per account/currency |
 
-CSV is an explicit, readable export. It retains stable entry, posting, and
-account identifiers, exact decimals, currency codes, timestamps, account names,
-types, and hierarchy identifiers. Potential spreadsheet-formula prefixes in
-user text are neutralized. The app warns that the resulting file is unencrypted
-before opening the system file picker.
+Routine writes apply exact `-old + new` posting deltas to compact balance rows
+inside the same transaction. A full rebuild is reserved for migration,
+restore, or explicit repair. History uses stable keyset pages. Calendar and
+reports request bounded posting events for the relevant window. Export,
+archive, and whole-book lifecycle work page on demand rather than turning the
+recent cache into an accidental full journal.
 
-CSV is not the database. Import is a reviewed local boundary with row-level
-issues, explicit fallback mappings, duplicate fingerprints, and an atomic
-commit. Full-fidelity recovery uses an authenticated `.moneyup` archive derived
-from a user password; restore validates first and rolls the current snapshot
-back if loading fails.
+Schema-1/2 books migrate by decoding each legacy journal payload once to build
+the normalized indexes without changing the original payload, timestamp, or
+identifier. Raw malformed rows remain quarantined instead of blocking the
+readable book.
+
+## Planning and investment records
+
+Budget rollover has an explicit activation day and uses half-open Gregorian
+reporting periods, so enabling it never retroactively invents carry-forward.
+Savings and sinking goals retain dated contributions, withdrawals, manual or
+automatic resets, archive state, target date, and reporting time zone.
+
+Each connected holding owns a hidden position account. Purchases move cash to
+the position, sales move proceeds back, and repricing balances valuation
+changes against a hidden investment result account. Holdings are therefore not
+added on top of ledger net worth. FIFO lots/disposals are deterministic
+bookkeeping metadata, and append-only snapshots freeze totals separately by
+currency.
+
+## Portability boundary
+
+CSV and native XLSX are explicit readable exports. Both retain stable entry,
+posting, account, and hierarchy identifiers; exact decimals; currencies;
+timestamps; origin-day context; and account metadata. CSV neutralizes formula
+prefixes in user text. XLSX uses inline-string cells for user text and numeric
+cells for valid financial values. Neither format includes receipt bytes.
+
+Import is local, preview-first, row-aware, duplicate-detecting, and atomic.
+Unknown CSV/TSV layouts can be mapped column by column. Full-fidelity recovery
+uses an authenticated `.moneyup` archive derived from a user-held password;
+attachments, user rates, goals, snapshots, and encrypted raw records remain in
+that archive. Restore validates first and leaves the current book untouched on
+wrong password, tampering, cancellation, future schema, or failure.
+
+## Evidence boundary
+
+This architecture describes the source-integrated 0.6.0 candidate. It is not a
+claim that Swift/XCTest compiled on the exact merge, that the 10,000-entry
+physical budgets passed, that upgrade/restore succeeded on iPhones, or that
+TestFlight/App Review accepted a binary. Those gates remain tracked in
+[Golden PRD traceability](GOLDEN_TRACEABILITY.md).

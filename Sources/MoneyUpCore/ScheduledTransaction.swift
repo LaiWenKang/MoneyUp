@@ -6,12 +6,161 @@ public enum RecurrenceFrequency: String, Codable, CaseIterable, Sendable {
     case yearly
 }
 
+public enum ScheduledTransactionStatus: String, Codable, CaseIterable, Sendable {
+    case active
+    case paused
+    case ended
+}
+
+public struct ScheduledOccurrenceID: Codable, Equatable, Hashable, Sendable {
+    public let scheduleID: UUID
+    public let seriesVersion: Int
+    public let index: Int
+
+    public init(scheduleID: UUID, seriesVersion: Int, index: Int) {
+        self.scheduleID = scheduleID
+        self.seriesVersion = seriesVersion
+        self.index = index
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case scheduleID, seriesVersion, index
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let decodedSeries = try container.decode(Int.self, forKey: .seriesVersion)
+        let decodedIndex = try container.decode(Int.self, forKey: .index)
+        guard decodedSeries >= 0, decodedIndex >= 0 else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .index,
+                in: container,
+                debugDescription: "Negative scheduled occurrence identity"
+            )
+        }
+        self.init(
+            scheduleID: try container.decode(UUID.self, forKey: .scheduleID),
+            seriesVersion: decodedSeries,
+            index: decodedIndex
+        )
+    }
+}
+
+public enum ScheduledOccurrenceResolutionKind: String, Codable, Sendable {
+    case skipped
+    case posted
+    case matched
+    /// The occurrence remains resolved and advanced, while the linked actual
+    /// was later removed through History.
+    case entryDeleted = "entry_deleted"
+}
+
+public struct ScheduledOccurrenceResolution: Codable, Equatable, Sendable, Identifiable {
+    public let occurrenceID: ScheduledOccurrenceID
+    public let scheduledFor: Date
+    public let kind: ScheduledOccurrenceResolutionKind
+    public let linkedEntryID: UUID?
+    public let resolvedAt: Date
+    public let entryDeletedAt: Date?
+
+    public var id: ScheduledOccurrenceID { occurrenceID }
+
+    public init(
+        occurrenceID: ScheduledOccurrenceID,
+        scheduledFor: Date,
+        kind: ScheduledOccurrenceResolutionKind,
+        linkedEntryID: UUID?,
+        resolvedAt: Date,
+        entryDeletedAt: Date? = nil
+    ) throws {
+        switch kind {
+        case .posted, .matched:
+            guard linkedEntryID != nil, entryDeletedAt == nil else {
+                throw ScheduledTransactionError.invalidResolutionState
+            }
+        case .skipped:
+            guard linkedEntryID == nil, entryDeletedAt == nil else {
+                throw ScheduledTransactionError.invalidResolutionState
+            }
+        case .entryDeleted:
+            guard linkedEntryID == nil, entryDeletedAt != nil else {
+                throw ScheduledTransactionError.invalidResolutionState
+            }
+        }
+        self.occurrenceID = occurrenceID
+        self.scheduledFor = scheduledFor
+        self.kind = kind
+        self.linkedEntryID = linkedEntryID
+        self.resolvedAt = resolvedAt
+        self.entryDeletedAt = entryDeletedAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case occurrenceID, scheduledFor, kind, linkedEntryID, resolvedAt
+        case entryDeletedAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        do {
+            try self.init(
+                occurrenceID: container.decode(
+                    ScheduledOccurrenceID.self,
+                    forKey: .occurrenceID
+                ),
+                scheduledFor: container.decode(Date.self, forKey: .scheduledFor),
+                kind: container.decode(
+                    ScheduledOccurrenceResolutionKind.self,
+                    forKey: .kind
+                ),
+                linkedEntryID: container.decodeIfPresent(
+                    UUID.self,
+                    forKey: .linkedEntryID
+                ),
+                resolvedAt: container.decode(Date.self, forKey: .resolvedAt),
+                entryDeletedAt: container.decodeIfPresent(
+                    Date.self,
+                    forKey: .entryDeletedAt
+                )
+            )
+        } catch let error as ScheduledTransactionError {
+            throw DecodingError.dataCorruptedError(
+                forKey: .kind,
+                in: container,
+                debugDescription: "Invalid occurrence resolution: \(error)"
+            )
+        }
+    }
+}
+
+public struct ScheduledOccurrenceConfirmation: Codable, Equatable, Sendable {
+    public let occurrenceID: ScheduledOccurrenceID
+    public let scheduledFor: Date
+    public let confirmedAt: Date
+}
+
 public enum ScheduledTransactionError: Error, Equatable, Sendable {
     case unsupportedKind
     case amountMustBePositive
     case nameCannotBeEmpty
+    case inactive
+    case ended
+    case staleOccurrence
+    case occurrenceAlreadyResolved
+    case linkedEntryRequired
+    case unexpectedLinkedEntry
+    case cannotAdvance
+    case linkedEntryNotFound
+    case invalidResolutionState
+    case invalidLifecycle
 }
 
+/// A recurring forecast with an explicit, auditable occurrence lifecycle.
+///
+/// `recurrenceAnchor` never moves. `currentOccurrenceIndex` and
+/// `nextOccurrence` advance together only when the current occurrence is
+/// skipped, posted, or matched. Keeping the original anchor avoids the classic
+/// 31 January -> 28 February -> 28 March drift.
 public struct ScheduledTransaction: Codable, Equatable, Identifiable, Sendable {
     public let id: UUID
     public var kind: JournalEntryKind
@@ -19,9 +168,33 @@ public struct ScheduledTransaction: Codable, Equatable, Identifiable, Sendable {
     public var amount: Money
     public var accountID: UUID
     public var categoryAccountID: UUID
-    public var nextOccurrence: Date
+    public private(set) var nextOccurrence: Date
     public var frequency: RecurrenceFrequency
-    public var isActive: Bool
+    public private(set) var status: ScheduledTransactionStatus
+    public private(set) var recurrenceAnchor: Date
+    public private(set) var seriesVersion: Int
+    public private(set) var currentOccurrenceIndex: Int
+    public private(set) var currentConfirmation: ScheduledOccurrenceConfirmation?
+    public private(set) var resolutions: [ScheduledOccurrenceResolution]
+    public private(set) var endedAt: Date?
+    /// New records retain the recurrence zone so encode/decode validation and
+    /// month-end anchoring remain stable when the device travels.
+    public private(set) var recurrenceTimeZoneIdentifier: String?
+
+    /// Source-compatible view for calculations written before lifecycle state.
+    public var isActive: Bool { status == .active }
+
+    public var currentOccurrenceID: ScheduledOccurrenceID {
+        ScheduledOccurrenceID(
+            scheduleID: id,
+            seriesVersion: seriesVersion,
+            index: currentOccurrenceIndex
+        )
+    }
+
+    public var isCurrentOccurrenceConfirmed: Bool {
+        currentConfirmation?.occurrenceID == currentOccurrenceID
+    }
 
     public init(
         id: UUID = UUID(),
@@ -32,7 +205,8 @@ public struct ScheduledTransaction: Codable, Equatable, Identifiable, Sendable {
         categoryAccountID: UUID,
         nextOccurrence: Date,
         frequency: RecurrenceFrequency,
-        isActive: Bool = true
+        isActive: Bool = true,
+        recurrenceTimeZoneIdentifier: String? = TimeZone.current.identifier
     ) throws {
         guard kind == .expense || kind == .income else {
             throw ScheduledTransactionError.unsupportedKind
@@ -53,24 +227,40 @@ public struct ScheduledTransaction: Codable, Equatable, Identifiable, Sendable {
         self.categoryAccountID = categoryAccountID
         self.nextOccurrence = nextOccurrence
         self.frequency = frequency
-        self.isActive = isActive
+        status = isActive ? .active : .paused
+        recurrenceAnchor = nextOccurrence
+        seriesVersion = 0
+        currentOccurrenceIndex = 0
+        currentConfirmation = nil
+        resolutions = []
+        endedAt = nil
+        if let recurrenceTimeZoneIdentifier,
+           TimeZone(identifier: recurrenceTimeZoneIdentifier) == nil {
+            throw ScheduledTransactionError.invalidLifecycle
+        }
+        self.recurrenceTimeZoneIdentifier = recurrenceTimeZoneIdentifier
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id
-        case kind
-        case name
-        case amount
-        case accountID
-        case categoryAccountID
-        case nextOccurrence
-        case frequency
-        case isActive
+        case id, kind, name, amount, accountID, categoryAccountID
+        case nextOccurrence, frequency, isActive, status, recurrenceAnchor
+        case seriesVersion, currentOccurrenceIndex, currentConfirmation
+        case resolutions, endedAt
+        case recurrenceTimeZoneIdentifier
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        let decodedNextOccurrence = try container.decode(Date.self, forKey: .nextOccurrence)
         do {
+            let legacyIsActive = try container.decodeIfPresent(
+                Bool.self,
+                forKey: .isActive
+            ) ?? true
+            let decodedRecurrenceTimeZoneIdentifier = try container.decodeIfPresent(
+                String.self,
+                forKey: .recurrenceTimeZoneIdentifier
+            )
             try self.init(
                 id: container.decode(UUID.self, forKey: .id),
                 kind: container.decode(JournalEntryKind.self, forKey: .kind),
@@ -78,16 +268,355 @@ public struct ScheduledTransaction: Codable, Equatable, Identifiable, Sendable {
                 amount: container.decode(Money.self, forKey: .amount),
                 accountID: container.decode(UUID.self, forKey: .accountID),
                 categoryAccountID: container.decode(UUID.self, forKey: .categoryAccountID),
-                nextOccurrence: container.decode(Date.self, forKey: .nextOccurrence),
+                nextOccurrence: decodedNextOccurrence,
                 frequency: container.decode(RecurrenceFrequency.self, forKey: .frequency),
-                isActive: container.decode(Bool.self, forKey: .isActive)
+                isActive: legacyIsActive,
+                recurrenceTimeZoneIdentifier: decodedRecurrenceTimeZoneIdentifier
             )
+
+            // Older records migrate to the first unresolved occurrence without
+            // requiring an eager database rewrite.
+            recurrenceAnchor = try container.decodeIfPresent(
+                Date.self,
+                forKey: .recurrenceAnchor
+            ) ?? decodedNextOccurrence
+            seriesVersion = try container.decodeIfPresent(
+                Int.self,
+                forKey: .seriesVersion
+            ) ?? 0
+            currentOccurrenceIndex = try container.decodeIfPresent(
+                Int.self,
+                forKey: .currentOccurrenceIndex
+            ) ?? 0
+            status = try container.decodeIfPresent(
+                ScheduledTransactionStatus.self,
+                forKey: .status
+            ) ?? (legacyIsActive ? .active : .paused)
+            currentConfirmation = try container.decodeIfPresent(
+                ScheduledOccurrenceConfirmation.self,
+                forKey: .currentConfirmation
+            )
+            resolutions = try container.decodeIfPresent(
+                [ScheduledOccurrenceResolution].self,
+                forKey: .resolutions
+            ) ?? []
+            endedAt = try container.decodeIfPresent(Date.self, forKey: .endedAt)
+
+            try validateLifecycle()
         } catch let error as ScheduledTransactionError {
             throw DecodingError.dataCorruptedError(
                 forKey: .amount,
                 in: container,
                 debugDescription: "Invalid scheduled transaction: \(error)"
             )
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(kind, forKey: .kind)
+        try container.encode(name, forKey: .name)
+        try container.encode(amount, forKey: .amount)
+        try container.encode(accountID, forKey: .accountID)
+        try container.encode(categoryAccountID, forKey: .categoryAccountID)
+        try container.encode(nextOccurrence, forKey: .nextOccurrence)
+        try container.encode(frequency, forKey: .frequency)
+        try container.encode(isActive, forKey: .isActive)
+        try container.encode(status, forKey: .status)
+        try container.encode(recurrenceAnchor, forKey: .recurrenceAnchor)
+        try container.encode(seriesVersion, forKey: .seriesVersion)
+        try container.encode(currentOccurrenceIndex, forKey: .currentOccurrenceIndex)
+        try container.encodeIfPresent(currentConfirmation, forKey: .currentConfirmation)
+        try container.encode(resolutions, forKey: .resolutions)
+        try container.encodeIfPresent(endedAt, forKey: .endedAt)
+        try container.encodeIfPresent(
+            recurrenceTimeZoneIdentifier,
+            forKey: .recurrenceTimeZoneIdentifier
+        )
+    }
+
+    public func validateLifecycle(calendar suppliedCalendar: Calendar? = nil) throws {
+        guard seriesVersion >= 0, currentOccurrenceIndex >= 0 else {
+            throw ScheduledTransactionError.invalidLifecycle
+        }
+        switch status {
+        case .ended:
+            guard endedAt != nil, currentConfirmation == nil else {
+                throw ScheduledTransactionError.invalidLifecycle
+            }
+        case .active, .paused:
+            guard endedAt == nil else {
+                throw ScheduledTransactionError.invalidLifecycle
+            }
+        }
+
+        let resolutionIDs = resolutions.map(\.occurrenceID)
+        let linkedEntryIDs = resolutions.compactMap(\.linkedEntryID)
+        guard Set(resolutionIDs).count == resolutionIDs.count,
+              Set(linkedEntryIDs).count == linkedEntryIDs.count,
+              resolutions.allSatisfy({ resolution in
+                  resolution.occurrenceID.scheduleID == id
+                      && resolution.occurrenceID.seriesVersion <= seriesVersion
+                      && (resolution.entryDeletedAt.map {
+                          $0 >= resolution.resolvedAt
+                      } ?? true)
+              }) else {
+            throw ScheduledTransactionError.invalidLifecycle
+        }
+        for (left, right) in zip(resolutions, resolutions.dropFirst()) {
+            let leftID = left.occurrenceID
+            let rightID = right.occurrenceID
+            guard leftID.seriesVersion < rightID.seriesVersion
+                    || (leftID.seriesVersion == rightID.seriesVersion
+                        && leftID.index < rightID.index) else {
+                throw ScheduledTransactionError.invalidLifecycle
+            }
+        }
+        let currentSeriesResolutions = resolutions.filter {
+            $0.occurrenceID.seriesVersion == seriesVersion
+        }
+        guard currentSeriesResolutions.count == currentOccurrenceIndex,
+              currentSeriesResolutions.enumerated().allSatisfy({ pair in
+                  pair.element.occurrenceID.index == pair.offset
+              }) else {
+            throw ScheduledTransactionError.invalidLifecycle
+        }
+        if let confirmation = currentConfirmation {
+            guard status != .ended,
+                  confirmation.occurrenceID == currentOccurrenceID,
+                  confirmation.scheduledFor == nextOccurrence else {
+                throw ScheduledTransactionError.invalidLifecycle
+            }
+        }
+
+        var recurrenceCalendar = suppliedCalendar
+        if recurrenceCalendar == nil,
+           let identifier = recurrenceTimeZoneIdentifier,
+           let timeZone = TimeZone(identifier: identifier) {
+            var decodedCalendar = Calendar(identifier: .gregorian)
+            decodedCalendar.timeZone = timeZone
+            recurrenceCalendar = decodedCalendar
+        }
+        if let recurrenceCalendar {
+            guard anchoredOccurrence(
+                index: currentOccurrenceIndex,
+                calendar: recurrenceCalendar
+            ) == nextOccurrence else {
+                throw ScheduledTransactionError.invalidLifecycle
+            }
+            for resolution in currentSeriesResolutions {
+                guard anchoredOccurrence(
+                    index: resolution.occurrenceID.index,
+                    calendar: recurrenceCalendar
+                ) == resolution.scheduledFor else {
+                    throw ScheduledTransactionError.invalidLifecycle
+                }
+            }
+        }
+    }
+
+    /// Returns a series edit while retaining the audit trail. Changing the due
+    /// date or frequency starts a new version so stale UI cannot resolve it.
+    public func updating(
+        kind: JournalEntryKind,
+        name: String,
+        amount: Money,
+        accountID: UUID,
+        categoryAccountID: UUID,
+        nextOccurrence: Date,
+        frequency: RecurrenceFrequency,
+        recurrenceTimeZone: TimeZone? = nil
+    ) throws -> ScheduledTransaction {
+        var updated = try ScheduledTransaction(
+            id: id,
+            kind: kind,
+            name: name,
+            amount: amount,
+            accountID: accountID,
+            categoryAccountID: categoryAccountID,
+            nextOccurrence: nextOccurrence,
+            frequency: frequency,
+            recurrenceTimeZoneIdentifier: recurrenceTimeZone?.identifier
+                ?? recurrenceTimeZoneIdentifier
+        )
+        updated.status = status
+        updated.endedAt = endedAt
+        updated.resolutions = resolutions
+
+        if self.nextOccurrence == nextOccurrence, self.frequency == frequency {
+            updated.recurrenceAnchor = recurrenceAnchor
+            updated.seriesVersion = seriesVersion
+            updated.currentOccurrenceIndex = currentOccurrenceIndex
+            updated.currentConfirmation = currentConfirmation
+        } else {
+            let nextVersion = seriesVersion.addingReportingOverflow(1)
+            guard !nextVersion.overflow else {
+                throw ScheduledTransactionError.cannotAdvance
+            }
+            updated.seriesVersion = nextVersion.partialValue
+            updated.recurrenceTimeZoneIdentifier = recurrenceTimeZone?.identifier
+                ?? recurrenceTimeZoneIdentifier
+        }
+        try updated.validateLifecycle(calendar: recurrenceTimeZone.map {
+            var calendar = Calendar(identifier: .gregorian)
+            calendar.timeZone = $0
+            return calendar
+        })
+        return updated
+    }
+
+    public mutating func pause() throws {
+        guard status != .ended else { throw ScheduledTransactionError.ended }
+        status = .paused
+    }
+
+    public mutating func resume() throws {
+        guard status != .ended else { throw ScheduledTransactionError.ended }
+        status = .active
+    }
+
+    public mutating func end(at date: Date = Date()) {
+        status = .ended
+        endedAt = date
+        currentConfirmation = nil
+    }
+
+    /// Confirmation records review but remains a forecast until posted/matched.
+    public mutating func confirmCurrent(
+        occurrenceID: ScheduledOccurrenceID,
+        at date: Date = Date()
+    ) throws {
+        try requireCurrentActiveOccurrence(occurrenceID)
+        guard !resolutions.contains(where: { $0.occurrenceID == occurrenceID }) else {
+            throw ScheduledTransactionError.occurrenceAlreadyResolved
+        }
+        currentConfirmation = ScheduledOccurrenceConfirmation(
+            occurrenceID: occurrenceID,
+            scheduledFor: nextOccurrence,
+            confirmedAt: date
+        )
+    }
+
+    /// Resolves the caller's exact occurrence and advances the recurrence.
+    public mutating func resolveCurrent(
+        occurrenceID: ScheduledOccurrenceID,
+        as resolutionKind: ScheduledOccurrenceResolutionKind,
+        linkedEntryID: UUID? = nil,
+        at date: Date = Date(),
+        calendar: Calendar = .current
+    ) throws {
+        try requireCurrentActiveOccurrence(occurrenceID)
+        guard !resolutions.contains(where: { $0.occurrenceID == occurrenceID }) else {
+            throw ScheduledTransactionError.occurrenceAlreadyResolved
+        }
+        switch resolutionKind {
+        case .posted, .matched:
+            guard let linkedEntryID else {
+                throw ScheduledTransactionError.linkedEntryRequired
+            }
+            guard !resolutions.contains(where: {
+                $0.linkedEntryID == linkedEntryID
+            }) else {
+                throw ScheduledTransactionError.invalidResolutionState
+            }
+        case .skipped:
+            guard linkedEntryID == nil else {
+                throw ScheduledTransactionError.unexpectedLinkedEntry
+            }
+        case .entryDeleted:
+            throw ScheduledTransactionError.invalidResolutionState
+        }
+
+        let nextIndex = currentOccurrenceIndex.addingReportingOverflow(1)
+        guard !nextIndex.overflow,
+              let followingOccurrence = anchoredOccurrence(
+                index: nextIndex.partialValue,
+                calendar: calendar
+              ) else {
+            throw ScheduledTransactionError.cannotAdvance
+        }
+        recurrenceTimeZoneIdentifier = calendar.timeZone.identifier
+        resolutions.append(
+            try ScheduledOccurrenceResolution(
+                occurrenceID: occurrenceID,
+                scheduledFor: nextOccurrence,
+                kind: resolutionKind,
+                linkedEntryID: linkedEntryID,
+                resolvedAt: date
+            )
+        )
+        currentOccurrenceIndex = nextIndex.partialValue
+        nextOccurrence = followingOccurrence
+        currentConfirmation = nil
+    }
+
+    /// Atomically keeps the occurrence audit trail attached when History
+    /// replaces a journal entry with a new revision identity.
+    public mutating func relinkEntry(from oldID: UUID, to newID: UUID) throws {
+        guard oldID != newID else {
+            throw ScheduledTransactionError.invalidResolutionState
+        }
+        let matchingIndices = resolutions.indices.filter {
+            resolutions[$0].linkedEntryID == oldID
+        }
+        guard !matchingIndices.isEmpty else {
+            throw ScheduledTransactionError.linkedEntryNotFound
+        }
+        guard !resolutions.contains(where: { $0.linkedEntryID == newID }) else {
+            throw ScheduledTransactionError.invalidResolutionState
+        }
+        for index in matchingIndices {
+            let resolution = resolutions[index]
+            guard resolution.kind == .posted || resolution.kind == .matched else {
+                throw ScheduledTransactionError.invalidResolutionState
+            }
+            resolutions[index] = try ScheduledOccurrenceResolution(
+                occurrenceID: resolution.occurrenceID,
+                scheduledFor: resolution.scheduledFor,
+                kind: resolution.kind,
+                linkedEntryID: newID,
+                resolvedAt: resolution.resolvedAt
+            )
+        }
+    }
+
+    /// Retains occurrence advancement while making deletion of the actual an
+    /// explicit audit fact rather than falsely rewriting it as skipped.
+    public mutating func markLinkedEntryDeleted(
+        _ entryID: UUID,
+        at deletedAt: Date = Date()
+    ) throws {
+        let matchingIndices = resolutions.indices.filter {
+            resolutions[$0].linkedEntryID == entryID
+        }
+        guard !matchingIndices.isEmpty else {
+            throw ScheduledTransactionError.linkedEntryNotFound
+        }
+        for index in matchingIndices {
+            let resolution = resolutions[index]
+            guard resolution.kind == .posted || resolution.kind == .matched else {
+                throw ScheduledTransactionError.invalidResolutionState
+            }
+            resolutions[index] = try ScheduledOccurrenceResolution(
+                occurrenceID: resolution.occurrenceID,
+                scheduledFor: resolution.scheduledFor,
+                kind: .entryDeleted,
+                linkedEntryID: nil,
+                resolvedAt: resolution.resolvedAt,
+                entryDeletedAt: deletedAt
+            )
+        }
+    }
+
+    public func matches(_ entry: JournalEntry) -> Bool {
+        guard entry.kind == kind else { return false }
+        let accountAmount = kind == .expense ? amount.negated : amount
+        let categoryAmount = accountAmount.negated
+        return entry.postings.contains {
+            $0.accountID == accountID && $0.money == accountAmount
+        } && entry.postings.contains {
+            $0.accountID == categoryAccountID && $0.money == categoryAmount
         }
     }
 
@@ -99,88 +628,59 @@ public struct ScheduledTransaction: Codable, Equatable, Identifiable, Sendable {
         guard isActive, maximumCount > 0, nextOccurrence <= endDate else {
             return []
         }
-
         var dates: [Date] = []
         var offset = 0
-
         while dates.count < maximumCount,
               let candidate = occurrence(offset: offset, calendar: calendar),
               candidate <= endDate {
             dates.append(candidate)
             offset += 1
         }
-
         return dates
     }
 
-    /// Returns the first active occurrence that has not already passed.
-    ///
-    /// `nextOccurrence` is the recurrence anchor stored in the book. It may be
-    /// in the past when a schedule has not been advanced after each occurrence,
-    /// so presentation code should use this helper instead of displaying the
-    /// anchor as though it were still upcoming.
     public func occurrence(
         onOrAfter referenceDate: Date,
         calendar: Calendar = .current
     ) -> Date? {
         guard isActive else { return nil }
         guard referenceDate > nextOccurrence else { return nextOccurrence }
-
-        let offset: Int
-        switch frequency {
-        case .weekly:
-            let days = calendar.dateComponents(
-                [.day],
-                from: calendar.startOfDay(for: nextOccurrence),
-                to: calendar.startOfDay(for: referenceDate)
-            ).day ?? 0
-            offset = max(0, days / 7)
-        case .monthly, .yearly:
-            guard let anchorMonth = calendar.dateInterval(
-                of: .month,
-                for: nextOccurrence
-            )?.start,
-            let referenceMonth = calendar.dateInterval(
-                of: .month,
-                for: referenceDate
-            )?.start else { return nil }
-            let months = calendar.dateComponents(
-                [.month],
-                from: anchorMonth,
-                to: referenceMonth
-            ).month ?? 0
-            offset = frequency == .monthly ? max(0, months) : max(0, months / 12)
-        }
-
-        guard let candidate = occurrence(offset: offset, calendar: calendar) else {
+        let absoluteOffset = estimatedAnchorOffset(
+            onOrAfter: referenceDate,
+            calendar: calendar
+        )
+        let candidateIndex = max(currentOccurrenceIndex, absoluteOffset)
+        guard let candidate = anchoredOccurrence(index: candidateIndex, calendar: calendar) else {
             return nil
         }
         if candidate >= referenceDate { return candidate }
-        return occurrence(offset: offset + 1, calendar: calendar)
+        let followingIndex = candidateIndex.addingReportingOverflow(1)
+        guard !followingIndex.overflow else { return nil }
+        return anchoredOccurrence(
+            index: followingIndex.partialValue,
+            calendar: calendar
+        )
     }
 
-    /// Direct day predicate used by the interactive calendar. It performs at
-    /// most one anchored date calculation instead of generating thousands of
-    /// historical occurrences for every SwiftUI render.
     public func occurs(on date: Date, calendar: Calendar = .current) -> Bool {
         guard isActive,
               calendar.startOfDay(for: date) >= calendar.startOfDay(for: nextOccurrence)
         else { return false }
 
-        let offset: Int
+        let absoluteOffset: Int
         switch frequency {
         case .weekly:
             let days = calendar.dateComponents(
                 [.day],
-                from: calendar.startOfDay(for: nextOccurrence),
+                from: calendar.startOfDay(for: recurrenceAnchor),
                 to: calendar.startOfDay(for: date)
             ).day ?? -1
             guard days >= 0, days.isMultiple(of: 7) else { return false }
-            offset = days / 7
+            absoluteOffset = days / 7
         case .monthly, .yearly:
             guard let anchorMonth = calendar.dateInterval(
                 of: .month,
-                for: nextOccurrence
+                for: recurrenceAnchor
             )?.start,
             let targetMonth = calendar.dateInterval(of: .month, for: date)?.start else {
                 return false
@@ -193,37 +693,78 @@ public struct ScheduledTransaction: Codable, Equatable, Identifiable, Sendable {
             guard months >= 0 else { return false }
             if frequency == .yearly {
                 guard months.isMultiple(of: 12) else { return false }
-                offset = months / 12
+                absoluteOffset = months / 12
             } else {
-                offset = months
+                absoluteOffset = months
             }
         }
-        guard let candidate = occurrence(offset: offset, calendar: calendar) else {
-            return false
-        }
+        guard absoluteOffset >= currentOccurrenceIndex,
+              let candidate = anchoredOccurrence(index: absoluteOffset, calendar: calendar)
+        else { return false }
         return calendar.isDate(candidate, inSameDayAs: date)
     }
 
-    /// Every recurrence is calculated from the original anchor, not from the
-    /// prior shortened month. A schedule anchored on 31 January therefore uses
-    /// February's last valid day and returns to the 31st in March.
+    private func requireCurrentActiveOccurrence(
+        _ occurrenceID: ScheduledOccurrenceID
+    ) throws {
+        guard status != .ended else { throw ScheduledTransactionError.ended }
+        guard status == .active else { throw ScheduledTransactionError.inactive }
+        guard occurrenceID == currentOccurrenceID else {
+            throw ScheduledTransactionError.staleOccurrence
+        }
+    }
+
+    private func estimatedAnchorOffset(
+        onOrAfter referenceDate: Date,
+        calendar: Calendar
+    ) -> Int {
+        switch frequency {
+        case .weekly:
+            let days = calendar.dateComponents(
+                [.day],
+                from: calendar.startOfDay(for: recurrenceAnchor),
+                to: calendar.startOfDay(for: referenceDate)
+            ).day ?? 0
+            return max(0, days / 7)
+        case .monthly, .yearly:
+            guard let anchorMonth = calendar.dateInterval(
+                of: .month,
+                for: recurrenceAnchor
+            )?.start,
+            let referenceMonth = calendar.dateInterval(
+                of: .month,
+                for: referenceDate
+            )?.start else { return currentOccurrenceIndex }
+            let months = calendar.dateComponents(
+                [.month],
+                from: anchorMonth,
+                to: referenceMonth
+            ).month ?? 0
+            return frequency == .monthly ? max(0, months) : max(0, months / 12)
+        }
+    }
+
     private func occurrence(offset: Int, calendar: Calendar) -> Date? {
         guard offset >= 0 else { return nil }
-        if offset == 0 { return nextOccurrence }
+        let index = currentOccurrenceIndex.addingReportingOverflow(offset)
+        guard !index.overflow else { return nil }
+        return anchoredOccurrence(index: index.partialValue, calendar: calendar)
+    }
+
+    private func anchoredOccurrence(index: Int, calendar: Calendar) -> Date? {
+        guard index >= 0 else { return nil }
+        if index == 0 { return recurrenceAnchor }
         switch frequency {
         case .weekly:
             return calendar.date(
                 byAdding: .weekOfYear,
-                value: offset,
-                to: nextOccurrence
+                value: index,
+                to: recurrenceAnchor
             )
         case .monthly:
-            return monthAnchoredOccurrence(
-                monthOffset: offset,
-                calendar: calendar
-            )
+            return monthAnchoredOccurrence(monthOffset: index, calendar: calendar)
         case .yearly:
-            let multiplication = offset.multipliedReportingOverflow(by: 12)
+            let multiplication = index.multipliedReportingOverflow(by: 12)
             guard !multiplication.overflow else { return nil }
             return monthAnchoredOccurrence(
                 monthOffset: multiplication.partialValue,
@@ -238,7 +779,7 @@ public struct ScheduledTransaction: Codable, Equatable, Identifiable, Sendable {
     ) -> Date? {
         guard let anchorMonth = calendar.dateInterval(
             of: .month,
-            for: nextOccurrence
+            for: recurrenceAnchor
         )?.start,
         let targetMonth = calendar.date(
             byAdding: .month,
@@ -250,14 +791,10 @@ public struct ScheduledTransaction: Codable, Equatable, Identifiable, Sendable {
 
         let anchor = calendar.dateComponents(
             [.day, .hour, .minute, .second, .nanosecond],
-            from: nextOccurrence
+            from: recurrenceAnchor
         )
         guard let anchorDay = anchor.day else { return nil }
-
-        var target = calendar.dateComponents(
-            [.era, .year, .month],
-            from: targetMonth
-        )
+        var target = calendar.dateComponents([.era, .year, .month], from: targetMonth)
         target.day = min(anchorDay, lastDay)
         target.hour = anchor.hour
         target.minute = anchor.minute

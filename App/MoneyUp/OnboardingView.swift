@@ -27,7 +27,7 @@ struct OnboardingView: View {
 
     @EnvironmentObject private var model: AppModel
     @State private var step: Step = .welcome
-    @State private var currencyCode = "SGD"
+    @State private var currencyCode = SupportedCurrencies.regionalDefault
     @State private var accountName = ""
     @State private var accountType: FinancialAccountType = .bank
     @State private var startingBalanceText = ""
@@ -180,14 +180,10 @@ struct OnboardingView: View {
                     Text("onboarding.base_currency")
                         .font(.headline)
 
-                    Picker("onboarding.base_currency", selection: $currencyCode) {
-                        ForEach(SupportedCurrencies.codes, id: \.self) { code in
-                            Text(code).tag(code)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .tint(.accentColor)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    SearchableCurrencyPicker(
+                        title: "onboarding.base_currency",
+                        selection: $currencyCode
+                    )
 
                     Divider()
 
@@ -247,7 +243,10 @@ struct OnboardingView: View {
                         Text(accountType.openingBalanceLabel)
                             .font(.headline)
                         TextField(accountType.openingBalanceLabel, text: $startingBalanceText)
-                            .keyboardType(.numbersAndPunctuation)
+                            .moneyAmountKeyboard(
+                                currency: try? CurrencyCode(currencyCode),
+                                allowsNegative: !accountType.isLiabilityAccount
+                            )
                             .focused($focusedField, equals: .openingBalance)
                             .textFieldStyle(.roundedBorder)
                         Text(accountType.openingBalanceGuidance)
@@ -420,7 +419,7 @@ struct OnboardingView: View {
                 startingBalance: startingBalance
             )
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = safeUserMessage(for: error, context: .save)
         }
     }
 

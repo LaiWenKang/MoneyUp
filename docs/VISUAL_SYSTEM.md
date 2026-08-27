@@ -34,7 +34,7 @@ on text, numbers, currency symbols, fake data, arrows, faces, mascots, blue,
 gold, and watermarks. On 26 August 2026 the approved image-generation CLI
 fallback removed the uniform light/dark source backdrops, preserved the
 appearance-specific rendering, and emitted 8-bit RGBA production cutouts.
-The 0.5.1 asset contract requires genuine alpha with decontaminated edges;
+The production asset contract requires genuine alpha with decontaminated edges;
 release validation decodes the PNG scanlines and requires substantial fully
 transparent and fully opaque regions. Generated checkerboards and baked
 light/dark rectangles are rejected. `MoneyUpIllustration` uses onboarding, hero, empty, and inline roles
@@ -43,8 +43,12 @@ at accessibility text sizes.
 
 ## Widget rule
 
-The current widget timeline owns no financial snapshot. Its horned mark,
-ambient bars, dimensional action glyphs, and soft-green layers are deliberately
-data-free. A future opt-in budget-status widget may show a real percentage only
-after its setting, migration, persistence, redaction, and lock-screen tests are
-implemented; fake sample statistics must never be used as decoration.
+Quick-action widget timelines remain data-free. The 0.6.0 source candidate also
+offers an opt-in budget-status surface backed by a versioned App Group snapshot
+containing only availability/state and an integer percentage. It receives no
+amount, payee, account name, holding, balance, transaction, or ledger
+identifier. Disabled or unavailable states use honest guidance rather than a
+fake statistic; over-budget status uses text and shape as well as color.
+
+The percentage surface still requires the final physical Home/Lock Screen
+family, redacted, light, dark, and tinted matrix on the exact signed candidate.

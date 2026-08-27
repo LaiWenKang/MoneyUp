@@ -12,35 +12,40 @@ The daily loop is:
 2. See its effect on account balances and nested budgets immediately.
 3. Understand today's plan-paced flexible amount, cash versus debt, budget pace, and
    what is scheduled next.
-4. Retain ownership through documented exports; add portable encrypted backup
-   through password-protected backups and reviewed imports.
+4. Retain ownership through documented exports, password-protected portable
+   backups, and reviewed imports.
 
 ## Target user
 
 The first version serves one person managing multiple currencies, bank and cash
-accounts, cards, brokerages, and manually valued investments. Household sharing
-is excluded until a separate end-to-end encryption and authorization design is
-approved.
+accounts, cards, brokerages, and manually valued, ledger-linked investments.
+Household sharing and multi-device sync are excluded until a separate
+end-to-end encryption and authorization design is approved.
 
 ## Core capabilities
 
-| Capability | Founders Beta 0.5.1 behavior |
+| Capability | Unified Founders Beta 0.6.0 source behavior |
 |---|---|
 | Privacy and security | No account or backend; encrypted local database; timed local authentication; redacted locked capture |
 | First-run guidance | Four explicit steps: purpose/privacy, base currency, first financial account, and review; Today then offers visible Log and Plan actions |
 | Visual system | Adaptive soft green, horned-money identity, original decorative 3D illustrations, exact 2D data graphics, guided empty states, and off-white/deep-charcoal canvases |
 | Navigation | Five permanent tabs: Today, History, center Log, Plan, and Assets |
-| Budget planner | Monthly nested limits classified as Flexible, Bills, Debt, or Goals; roll-up, pace, explicit unbudgeted spending, and a read-only what-if simulator |
-| Widgets | Configurable, privacy-redacted Home and Lock Screen entry points; basic amount capture does not unlock the protected book |
+| Budget planner | Monthly nested limits classified as Flexible, Bills, Debt, or Goals; roll-up, dated rollover, sinking funds, savings goals, pace, explicit unbudgeted spending, and a read-only what-if simulator |
+| Widgets | Configurable privacy-redacted entry points; locked basic capture; optional budget percentage/state shared through the single reviewed App Group with no financial record fields |
 | Hierarchy | Arbitrary-depth model with group/category/subcategory roll-up |
 | Insights | Category distribution, trailing monthly cash flow, plain-language readings, tap-to-inspect, and History drill-through |
 | Today guidance | Flexible Today uses only explicitly flexible allocations and their commitments, plus separate cash, debt, and net-cash position |
-| Finance calendar | Actual transactions and recurring projected occurrences |
-| Assets | Assets, liabilities, cards, loans, accounts, and manual holdings |
-| Portability | Enriched CSV export, authenticated `.moneyup` backup/restore, and preview-first Qianji/generic CSV import |
-| Easy logging | Center Log tab, amount first, encrypted drafts, smart defaults, refund, History/edit, and Undo |
-| Smart entry | On-device receipt and screenshot reading, typed-phrase parsing, and category suggestions learned from the user's own history |
+| Finance calendar | Indexed actual flows plus recurring forecasts with edit, pause, end, skip, confirm, match, and exactly-once posting |
+| Assets | Lifecycle-managed accounts/categories; ledger-linked holdings; dated prices; stale warnings; FIFO lots/disposals; currency-separated net-worth history |
+| Portability | Posting-level CSV and native XLSX, mapped CSV/TSV import, encrypted receipt attachments, dated user FX rates, and authenticated `.moneyup` backup/restore |
+| Easy logging | Amount-first center Log, encrypted drafts, smart defaults, refund, exact splits, date-indexed History/edit, and Undo; keyboard Done, Save, and tab navigation remain reachable |
+| Smart entry | Responsive fast-first on-device receipt and screenshot reading with immediate progress and visible populated suggestions, typed-phrase parsing, and category suggestions learned from the user's own history |
+| Scale architecture | SQLCipher schema-3 journal/posting indexes, compact exact balances, bounded recent activity, and on-demand History/Calendar/export loading |
 | Languages | English and Simplified Chinese with locale-correct dates and amounts |
+
+These rows describe source implementation in the unified candidate. They do
+not close the exact-candidate Mac CI, physical iPhone, TestFlight, closed-beta,
+or App Store gates. See [Golden PRD traceability](GOLDEN_TRACEABILITY.md).
 
 ## Product rules
 
@@ -67,6 +72,9 @@ approved.
   transaction.
 - The app database is the source of truth. Spreadsheets are exports or reviewed
   imports, not live writable replicas.
+- The first public version is free. StoreKit, CloudKit sync, automatic market
+  prices, bank aggregation, shared books, remote AI, and two-way spreadsheet
+  editing are outside the approved 1.0 boundary.
 
 ## Initial quality targets
 
@@ -80,3 +88,6 @@ approved.
 - Core screens and workflows pass English and Simplified Chinese UI checks.
 - Sensitive content is absent from logs, notifications, lock-screen widgets,
   and app-switcher snapshots by default.
+- Performance budgets and the seven-day usability target are promotion gates
+  measured on the exact candidate; source configuration alone does not pass
+  them.

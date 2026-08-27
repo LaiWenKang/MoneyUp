@@ -159,4 +159,249 @@ final class ReceiptTextParserTests: XCTestCase {
         let draft = ReceiptTextParser.draft(fromLines: ["", "   "])
         XCTAssertTrue(draft.isEmpty)
     }
+
+    func testSingaporeReceiptRejectsTenderedCashChangeCardTailAndIdentifiers() throws {
+        let result = ReceiptTextParser.analyze(
+            fromLines: [
+                "NTUC FAIRPRICE CO-OPERATIVE LTD",
+                "Tel: +65 6123 4567",
+                "Receipt No: 00881234",
+                "2 x Bread @ 3.20       6.40",
+                "SUBTOTAL              27.10",
+                "GST 9%                 2.44",
+                "GRAND TOTAL       S$  29.54",
+                "CASH TENDERED          50.00",
+                "CHANGE                 20.46",
+                "VISA **** 4821",
+                "AUTH 912834"
+            ],
+            now: try date(2026, 8, 26),
+            calendar: calendar,
+            locale: Locale(identifier: "en_SG")
+        )
+
+        XCTAssertEqual(result.draft.amount, Decimal(string: "29.54"))
+        XCTAssertEqual(result.draft.payee, "NTUC FAIRPRICE CO-OPERATIVE LTD")
+        XCTAssertEqual(result.categoryHint, .groceries)
+        XCTAssertEqual(result.noteCandidate, "Receipt No: 00881234")
+        XCTAssertEqual(result.amountCandidates.first, Decimal(string: "29.54"))
+        XCTAssertFalse(result.amountCandidates.contains(Decimal(50)))
+        XCTAssertFalse(result.amountCandidates.contains(Decimal(4821)))
+    }
+
+    func testMalaysiaReceiptReadsMixedSeparatorsAndMalayPayableLabel() throws {
+        let draft = ReceiptTextParser.draft(
+            fromLines: [
+                "KEDAI PERABOT MAJU SDN BHD",
+                "Subjumlah       RM 1.200,00",
+                "Cukai              RM 99,00",
+                "JUMLAH BESAR    RM 1.299,00",
+                "Tunai           RM 1.500,00",
+                "Baki              RM 201,00"
+            ],
+            now: try date(2026, 8, 26),
+            calendar: calendar,
+            locale: Locale(identifier: "ms_MY")
+        )
+
+        XCTAssertEqual(draft.amount, Decimal(1299))
+        XCTAssertEqual(draft.payee, "KEDAI PERABOT MAJU SDN BHD")
+    }
+
+    func testPaymentScreenshotExtractsMerchantTimestampAmountCategoryAndReference() throws {
+        let result = ReceiptTextParser.analyze(
+            fromLines: [
+                "Payment successful",
+                "Paid to GRAB",
+                "Trip fare",
+                "S$ 18.20",
+                "Transaction date 26 Aug 2026, 8:42 PM",
+                "Reference: SG26082612345",
+                "Available balance S$ 2,418.55"
+            ],
+            now: try date(2026, 8, 26, hour: 23),
+            calendar: calendar,
+            locale: Locale(identifier: "en_SG")
+        )
+
+        XCTAssertEqual(result.draft.amount, Decimal(string: "18.20"))
+        XCTAssertEqual(result.draft.payee, "GRAB")
+        XCTAssertEqual(result.draft.occurredAt, try date(2026, 8, 26, hour: 20).addingTimeInterval(42 * 60))
+        XCTAssertEqual(result.categoryHint, .transport)
+        XCTAssertEqual(result.noteCandidate, "Reference: SG26082612345")
+        XCTAssertFalse(result.amountCandidates.contains(Decimal(string: "2418.55")!))
+    }
+
+    func testTwoDigitYearAndTwentyFourHourTimeAreParsed() throws {
+        let draft = ReceiptTextParser.draft(
+            fromLines: [
+                "Cafe Merdeka",
+                "Date: 25/08/26 13:05",
+                "AMOUNT PAID RM 16.80"
+            ],
+            now: try date(2026, 8, 26),
+            calendar: calendar,
+            locale: Locale(identifier: "en_MY")
+        )
+
+        XCTAssertEqual(draft.occurredAt, try date(2026, 8, 25, hour: 13).addingTimeInterval(5 * 60))
+        XCTAssertEqual(draft.amount, Decimal(string: "16.80"))
+    }
+
+    func testExpiryDateDoesNotBeatTransactionDate() throws {
+        let draft = ReceiptTextParser.draft(
+            fromLines: [
+                "Pharmacy",
+                "Expiry 01/01/2027",
+                "Transaction Date 24/08/2026",
+                "TOTAL RM 8.90"
+            ],
+            now: try date(2026, 8, 26),
+            calendar: calendar
+        )
+
+        XCTAssertEqual(draft.occurredAt, try date(2026, 8, 24, hour: 0))
+    }
+
+    func testRejectsTimestampsPercentagesOrderNumbersAndCardTailsAsFallbackAmounts() throws {
+        let draft = ReceiptTextParser.draft(
+            fromLines: [
+                "Transaction Detail",
+                "Time 12:45:30",
+                "GST 9%",
+                "Order No 123.45",
+                "VISA **** 4821",
+                "Phone +65 8123 4567"
+            ],
+            now: try date(2026, 8, 26),
+            calendar: calendar
+        )
+
+        XCTAssertNil(draft.amount)
+    }
+
+    func testTotalItemCountCannotBeatPayableAmount() throws {
+        let draft = ReceiptTextParser.draft(
+            fromLines: [
+                "Mini Mart",
+                "TOTAL ITEMS 12",
+                "TOTAL",
+                "RM 42.80"
+            ],
+            now: try date(2026, 8, 26),
+            calendar: calendar,
+            locale: Locale(identifier: "en_MY")
+        )
+
+        XCTAssertEqual(draft.amount, Decimal(string: "42.80"))
+    }
+
+    func testSplitSubtotalLabelDoesNotOutrankLaterUnlabelledPayableAmount() throws {
+        let draft = ReceiptTextParser.draft(
+            fromLines: [
+                "Mini Mart",
+                "SUBTOTAL",
+                "27.10",
+                "PAYABLE LABEL UNREADABLE",
+                "29.54"
+            ],
+            now: try date(2026, 8, 26),
+            calendar: calendar,
+            locale: Locale(identifier: "en_SG")
+        )
+
+        XCTAssertEqual(draft.amount, Decimal(string: "29.54"))
+    }
+
+    func testTotalSavingsIsNotTreatedAsThePayableAmount() throws {
+        let draft = ReceiptTextParser.draft(
+            fromLines: ["Rewards Store", "TOTAL SAVINGS S$ 20.00"],
+            now: try date(2026, 8, 26),
+            calendar: calendar,
+            locale: Locale(identifier: "en_SG")
+        )
+
+        XCTAssertNil(draft.amount)
+    }
+
+    func testTaxAndServiceComponentTotalsAreNotTreatedAsPayable() throws {
+        let nonPayableLines = [
+            "TOTAL GST S$ 2.44",
+            "TOTAL TAX S$ 2.44",
+            "JUMLAH CUKAI RM 6.00",
+            "TOTAL SERVICE CHARGE S$ 5.00"
+        ]
+
+        for line in nonPayableLines {
+            let draft = ReceiptTextParser.draft(
+                fromLines: ["Example Merchant", line],
+                now: try date(2026, 8, 26),
+                calendar: calendar,
+                locale: Locale(identifier: "en_SG")
+            )
+            XCTAssertNil(draft.amount, line)
+        }
+    }
+
+    func testExplicitlyTaxInclusiveTotalRemainsPayable() throws {
+        let draft = ReceiptTextParser.draft(
+            fromLines: ["Example Merchant", "TOTAL (incl. GST) S$ 29.54"],
+            now: try date(2026, 8, 26),
+            calendar: calendar,
+            locale: Locale(identifier: "en_SG")
+        )
+
+        XCTAssertEqual(draft.amount, Decimal(string: "29.54"))
+    }
+
+    func testRepairsConservativeOCRConfusionsInsideMonetaryToken() throws {
+        let draft = ReceiptTextParser.draft(
+            fromLines: ["Coffee Lab", "TOTAL S$ I2.5O"],
+            now: try date(2026, 8, 26),
+            calendar: calendar,
+            locale: Locale(identifier: "en_SG")
+        )
+
+        XCTAssertEqual(draft.amount, Decimal(string: "12.50"))
+    }
+
+    func testCategoryHintMapsOntoUserOwnedCategoryWithoutInventingAnID() throws {
+        let groceries = LedgerAccount(name: "Groceries", kind: .expense)
+        let transport = LedgerAccount(name: "Transport", kind: .expense)
+        let draft = ReceiptTextParser.draft(
+            fromLines: ["FAIRPRICE FINEST", "TOTAL S$ 28.40"],
+            now: try date(2026, 8, 26),
+            calendar: calendar,
+            locale: Locale(identifier: "en_SG"),
+            accounts: [transport, groceries]
+        )
+
+        XCTAssertEqual(draft.categoryID, groceries.id)
+    }
+
+    func testCandidateRankingIsDeterministicAndBestFirst() throws {
+        let lines = [
+            "Cafe Nero",
+            "Latte 7.50",
+            "Subtotal 7.50",
+            "TOTAL S$ 8.18",
+            "NETS 8.18"
+        ]
+        let first = ReceiptTextParser.analyze(
+            fromLines: lines,
+            now: try date(2026, 8, 26),
+            calendar: calendar,
+            locale: Locale(identifier: "en_SG")
+        )
+        let second = ReceiptTextParser.analyze(
+            fromLines: lines,
+            now: try date(2026, 8, 26),
+            calendar: calendar,
+            locale: Locale(identifier: "en_SG")
+        )
+
+        XCTAssertEqual(first, second)
+        XCTAssertEqual(first.amountCandidates.first, Decimal(string: "8.18"))
+        XCTAssertEqual(first.merchantCandidates.first, "Cafe Nero")
+    }
 }

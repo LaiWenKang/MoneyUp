@@ -1,6 +1,25 @@
 import Foundation
 
 public extension FinanceCalculator {
+    /// Currency-labeled flow for one half-open day/window. Empty input returns
+    /// no rows rather than a fabricated base-currency zero.
+    static func dailyFlows(
+        interval: DateInterval,
+        accounts: [LedgerAccount],
+        entries: [JournalEntry],
+        baseCurrency: CurrencyCode,
+        calendar: Calendar = FinancialPeriodBoundary.gregorianCalendar()
+    ) throws -> [CurrencyFlow] {
+        let report = try self.report(
+            interval: interval,
+            accounts: accounts,
+            entries: entries,
+            baseCurrency: baseCurrency,
+            calendar: calendar
+        )
+        return ([report.baseFlow] + report.foreignFlows).filter { !$0.isEmpty }
+    }
+
     /// Builds a full period report in one pass over the journal.
     ///
     /// Reporting used to rescan every entry once per figure on screen, and
@@ -12,6 +31,37 @@ public extension FinanceCalculator {
         trendInterval: DateInterval? = nil,
         accounts: [LedgerAccount],
         entries: [JournalEntry],
+        baseCurrency: CurrencyCode,
+        calendar: Calendar = .current
+    ) throws -> PeriodReport {
+        try report(
+            interval: interval,
+            trendInterval: trendInterval,
+            accounts: accounts,
+            postingEvents: entries.flatMap { entry in
+                entry.postings.map {
+                    LedgerPostingEvent(
+                        entryID: entry.id,
+                        occurredAt: entry.occurredAt,
+                        originDayKey: entry.originContext.dayKey,
+                        posting: $0
+                    )
+                }
+            },
+            baseCurrency: baseCurrency,
+            calendar: calendar
+        )
+    }
+
+    /// Builds the same exact report from the encrypted store's normalized
+    /// posting projection. This keeps reporting independent of full journal
+    /// JSON and is deliberately public so app startup can prepare its compact
+    /// Today/Insights state without retaining the whole journal.
+    static func report(
+        interval: DateInterval,
+        trendInterval: DateInterval? = nil,
+        accounts: [LedgerAccount],
+        postingEvents: [LedgerPostingEvent],
         baseCurrency: CurrencyCode,
         calendar: Calendar = .current
     ) throws -> PeriodReport {
@@ -32,48 +82,64 @@ public extension FinanceCalculator {
         var monthlyIncome: [Date: Decimal] = [:]
         var monthlyExpense: [Date: Decimal] = [:]
 
-        for entry in entries {
+        for event in postingEvents {
+            let attributedDate = event.attributedDate(in: calendar)
+                ?? event.occurredAt
             let inPeriod = FinancialPeriodBoundary.contains(
-                entry.occurredAt,
+                attributedDate,
                 in: interval
             )
             let inTrend = FinancialPeriodBoundary.contains(
-                entry.occurredAt,
+                attributedDate,
                 in: trend
             )
             guard inPeriod || inTrend else { continue }
 
             let month: Date? = inTrend
-                ? calendar.dateInterval(of: .month, for: entry.occurredAt)?.start
+                ? calendar.dateInterval(of: .month, for: attributedDate)?.start
                 : nil
 
-            for posting in entry.postings {
-                guard let kind = kinds[posting.accountID],
-                      kind == .income || kind == .expense else { continue }
+            let posting = event.posting
+            guard let kind = kinds[posting.accountID],
+                  kind == .income || kind == .expense else { continue }
 
-                let currency = posting.money.currency
-                // Income accounts are credited, so their postings are negative.
-                let amount = kind == .income
-                    ? -posting.money.amount
-                    : posting.money.amount
+            let currency = posting.money.currency
+            // Income accounts are credited, so their postings are negative.
+            let amount = kind == .income
+                ? -posting.money.amount
+                : posting.money.amount
 
-                if inPeriod {
-                    if kind == .income {
-                        income[currency, default: .zero] += amount
-                    } else {
-                        expense[currency, default: .zero] += amount
-                        if currency == baseCurrency {
-                            categoryTotals[posting.accountID, default: .zero] += amount
-                        }
+            if inPeriod {
+                if kind == .income {
+                    income[currency] = try CheckedDecimal.adding(
+                        income[currency] ?? .zero,
+                        amount
+                    )
+                } else {
+                    expense[currency] = try CheckedDecimal.adding(
+                        expense[currency] ?? .zero,
+                        amount
+                    )
+                    if currency == baseCurrency {
+                        categoryTotals[posting.accountID] = try CheckedDecimal.adding(
+                            categoryTotals[posting.accountID] ?? .zero,
+                            amount
+                        )
                     }
                 }
+            }
 
-                if let month, currency == baseCurrency {
-                    if kind == .income {
-                        monthlyIncome[month, default: .zero] += amount
-                    } else {
-                        monthlyExpense[month, default: .zero] += amount
-                    }
+            if let month, currency == baseCurrency {
+                if kind == .income {
+                    monthlyIncome[month] = try CheckedDecimal.adding(
+                        monthlyIncome[month] ?? .zero,
+                        amount
+                    )
+                } else {
+                    monthlyExpense[month] = try CheckedDecimal.adding(
+                        monthlyExpense[month] ?? .zero,
+                        amount
+                    )
                 }
             }
         }
@@ -90,7 +156,10 @@ public extension FinanceCalculator {
             let expenseAmount = expense[currency] ?? .zero
             let incomeMoney = try Money(incomeAmount, currency: currency)
             let expenseMoney = try Money(expenseAmount, currency: currency)
-            let netMoney = try Money(incomeAmount - expenseAmount, currency: currency)
+            let netMoney = try Money(
+                CheckedDecimal.subtracting(incomeAmount, expenseAmount),
+                currency: currency
+            )
             flows.append(
                 CurrencyFlow(
                     currency: currency,
@@ -141,7 +210,10 @@ public extension FinanceCalculator {
                     month: month,
                     income: try Money(incomeAmount, currency: baseCurrency),
                     expense: try Money(expenseAmount, currency: baseCurrency),
-                    net: try Money(incomeAmount - expenseAmount, currency: baseCurrency)
+                    net: try Money(
+                        CheckedDecimal.subtracting(incomeAmount, expenseAmount),
+                        currency: baseCurrency
+                    )
                 )
             )
         }
@@ -168,10 +240,14 @@ public extension FinanceCalculator {
 
         for entry in entries {
             for posting in entry.postings {
-                totals[posting.accountID, default: [:]][
-                    posting.money.currency,
-                    default: .zero
-                ] += posting.money.amount
+                let accountID = posting.accountID
+                let currency = posting.money.currency
+                var accountTotals = totals[accountID] ?? [:]
+                accountTotals[currency] = try CheckedDecimal.adding(
+                    accountTotals[currency] ?? .zero,
+                    posting.money.amount
+                )
+                totals[accountID] = accountTotals
             }
         }
 

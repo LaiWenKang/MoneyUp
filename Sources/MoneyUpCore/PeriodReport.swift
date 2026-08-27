@@ -2,9 +2,9 @@ import Foundation
 
 /// Income, expense, and net movement recorded in a single currency.
 ///
-/// MoneyUp never converts between currencies in a report. It holds no
-/// exchange rates, and inventing one would make a deterministic on-device
-/// number look like a fact it is not.
+/// Core reports retain exact per-currency amounts. App presentation may add a
+/// visibly estimated view only when the user has supplied an applicable dated
+/// rate; missing pairs remain explicitly unconverted.
 public struct CurrencyFlow: Equatable, Sendable, Identifiable {
     public let currency: CurrencyCode
     public let income: Money
@@ -200,18 +200,30 @@ public struct PeriodReport: Equatable, Sendable {
 
     /// Share of base-currency income that was not spent, as a fraction.
     /// `nil` when no income was recorded, because the ratio has no meaning.
-    public var savingsRate: Decimal? {
+    public func savingsRate() throws -> Decimal? {
         guard baseFlow.income.amount > .zero else { return nil }
-        return baseFlow.net.amount / baseFlow.income.amount
+        return try CheckedDecimal.ratio(
+            baseFlow.net.amount,
+            baseFlow.income.amount
+        )
     }
 
     /// The largest positive spending category and its share of base-currency
     /// spending in this period.
-    public var largestCategory: (category: CategorySpending, share: Decimal)? {
+    public func largestCategory() throws -> (
+        category: CategorySpending,
+        share: Decimal
+    )? {
         guard baseFlow.expense.amount > .zero,
               let top = categorySpending.first,
               top.amount.amount > .zero else { return nil }
-        return (top, top.amount.amount / baseFlow.expense.amount)
+        return (
+            top,
+            try CheckedDecimal.ratio(
+                top.amount.amount,
+                baseFlow.expense.amount
+            )
+        )
     }
 
 }

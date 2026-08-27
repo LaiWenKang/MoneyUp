@@ -106,9 +106,29 @@ enum MoneyUpQuickAction: String, AppEnum, CaseIterable, Identifiable, Sendable {
     }
 }
 
+enum MoneyUpWidgetContent: String, AppEnum, CaseIterable, Identifiable, Sendable {
+    case quickAction
+    case budgetStatus
+
+    static let typeDisplayRepresentation: TypeDisplayRepresentation =
+        "widget.configuration.content_type"
+    static let caseDisplayRepresentations: [MoneyUpWidgetContent: DisplayRepresentation] = [
+        .quickAction: "widget.content.quick_actions",
+        .budgetStatus: "widget.content.budget_status"
+    ]
+
+    var id: String { rawValue }
+}
+
 struct MoneyUpWidgetConfigurationIntent: WidgetConfigurationIntent {
     static let title: LocalizedStringResource = "widget.configuration.title"
     static let description = IntentDescription("widget.configuration.description")
+
+    @Parameter(
+        title: "widget.configuration.content",
+        default: MoneyUpWidgetContent.quickAction
+    )
+    var content: MoneyUpWidgetContent
 
     @Parameter(
         title: "widget.configuration.default_action",
@@ -119,27 +139,58 @@ struct MoneyUpWidgetConfigurationIntent: WidgetConfigurationIntent {
 
 private struct MoneyUpWidgetEntry: TimelineEntry {
     let date: Date
+    let content: MoneyUpWidgetContent
     let action: MoneyUpQuickAction
+    let budgetSnapshot: BudgetWidgetSnapshot
 }
 
 private struct MoneyUpWidgetProvider: AppIntentTimelineProvider {
     func placeholder(in context: Context) -> MoneyUpWidgetEntry {
-        MoneyUpWidgetEntry(date: Date(), action: .expense)
+        MoneyUpWidgetEntry(
+            date: Date(),
+            content: .quickAction,
+            action: .expense,
+            budgetSnapshot: .disabled
+        )
     }
 
     func snapshot(
         for configuration: MoneyUpWidgetConfigurationIntent,
         in context: Context
     ) async -> MoneyUpWidgetEntry {
-        MoneyUpWidgetEntry(date: Date(), action: configuration.defaultAction)
+        makeEntry(for: configuration)
     }
 
     func timeline(
         for configuration: MoneyUpWidgetConfigurationIntent,
         in context: Context
     ) async -> Timeline<MoneyUpWidgetEntry> {
-        let entry = MoneyUpWidgetEntry(date: Date(), action: configuration.defaultAction)
-        return Timeline(entries: [entry], policy: .never)
+        let entry = makeEntry(for: configuration)
+        let policy: TimelineReloadPolicy
+        let validUntil: Date?
+        switch entry.budgetSnapshot {
+        case let .available(_, expiry), let .needsBudget(expiry):
+            validUntil = expiry
+        case .disabled, .stale:
+            validUntil = nil
+        }
+        if let validUntil, validUntil > entry.date {
+            policy = .after(validUntil)
+        } else {
+            policy = .never
+        }
+        return Timeline(entries: [entry], policy: policy)
+    }
+
+    private func makeEntry(
+        for configuration: MoneyUpWidgetConfigurationIntent
+    ) -> MoneyUpWidgetEntry {
+        MoneyUpWidgetEntry(
+            date: Date(),
+            content: configuration.content,
+            action: configuration.defaultAction,
+            budgetSnapshot: BudgetWidgetSnapshotStore().read()
+        )
     }
 }
 
@@ -149,28 +200,171 @@ private struct MoneyUpWidgetView: View {
 
     var body: some View {
         Group {
-            switch family {
-            case .systemMedium:
-                ZStack {
-                    WidgetAmbientGraphic()
-                    MediumQuickActionsView(preferredAction: entry.action)
-                }
-            case .accessoryCircular:
-                AccessoryCircularActionView(action: entry.action)
-            case .accessoryRectangular:
-                AccessoryRectangularActionView(action: entry.action)
-            case .accessoryInline:
-                AccessoryInlineActionView(action: entry.action)
-            default:
-                ZStack {
-                    WidgetAmbientGraphic()
-                    SmallQuickActionView(action: entry.action)
+            if entry.content == .budgetStatus {
+                BudgetStatusWidgetView(
+                    snapshot: entry.budgetSnapshot,
+                    family: family
+                )
+            } else {
+                switch family {
+                case .systemMedium:
+                    ZStack {
+                        WidgetAmbientGraphic()
+                        MediumQuickActionsView(preferredAction: entry.action)
+                    }
+                case .accessoryCircular:
+                    AccessoryCircularActionView(action: entry.action)
+                case .accessoryRectangular:
+                    AccessoryRectangularActionView(action: entry.action)
+                case .accessoryInline:
+                    AccessoryInlineActionView(action: entry.action)
+                default:
+                    ZStack {
+                        WidgetAmbientGraphic()
+                        SmallQuickActionView(action: entry.action)
+                    }
                 }
             }
         }
         .containerBackground(Color.moneyUpWidgetBackground, for: .widget)
         .tint(.moneyUpSoftGreen)
-        .widgetURL(family == .systemMedium ? nil : entry.action.deepLink)
+        .widgetURL(
+            entry.content == .quickAction && family != .systemMedium
+                ? entry.action.deepLink : nil
+        )
+    }
+}
+
+private struct BudgetStatusWidgetView: View {
+    let snapshot: BudgetWidgetSnapshot
+    let family: WidgetFamily
+
+    var body: some View {
+        switch snapshot {
+        case .disabled:
+            statusMessage(
+                title: "widget.budget_status",
+                detail: "widget.budget_enable",
+                systemImage: "eye.slash.fill"
+            )
+        case .needsBudget(_):
+            statusMessage(
+                title: "widget.budget_status",
+                detail: "widget.budget_needs_plan",
+                systemImage: "chart.pie"
+            )
+        case .stale:
+            statusMessage(
+                title: "widget.budget_status",
+                detail: "widget.budget_stale",
+                systemImage: "arrow.clockwise.circle"
+            )
+        case let .available(percentUsed, _):
+            availableStatus(percentUsed: percentUsed)
+        }
+    }
+
+    @ViewBuilder
+    private func availableStatus(percentUsed: Int) -> some View {
+        let isOver = percentUsed > 100
+        switch family {
+        case .accessoryCircular:
+            Gauge(value: min(Double(percentUsed), 100), in: 0...100) {
+                Text("widget.budget_status")
+            } currentValueLabel: {
+                Text("\(percentUsed)%")
+                    .font(.caption2.monospacedDigit().weight(.bold))
+            }
+            .gaugeStyle(.accessoryCircularCapacity)
+            .widgetAccentable()
+            .accessibilityLabel("widget.budget_status")
+            .accessibilityValue(percentAccessibility(percentUsed, isOver: isOver))
+        case .accessoryInline:
+            Label {
+                Text("\(percentUsed)% \(String(localized: "widget.budget_used"))")
+            } icon: {
+                Image(systemName: isOver ? "exclamationmark.triangle.fill" : "chart.pie.fill")
+            }
+            .accessibilityValue(percentAccessibility(percentUsed, isOver: isOver))
+        case .accessoryRectangular:
+            HStack(spacing: 8) {
+                Image(systemName: isOver ? "exclamationmark.triangle.fill" : "chart.pie.fill")
+                    .widgetAccentable()
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("widget.budget_status").font(.caption2)
+                    Text("\(percentUsed)% \(String(localized: "widget.budget_used"))")
+                        .font(.headline.monospacedDigit())
+                    Text(
+                        isOver
+                            ? LocalizedStringKey("widget.budget_over")
+                            : LocalizedStringKey("widget.budget_on_plan")
+                    )
+                        .font(.caption2)
+                }
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityValue(percentAccessibility(percentUsed, isOver: isOver))
+        default:
+            VStack(alignment: .leading, spacing: 9) {
+                WidgetBrandHeader()
+                Spacer(minLength: 0)
+                Label {
+                    Text(
+                        isOver
+                            ? LocalizedStringKey("widget.budget_over")
+                            : LocalizedStringKey("widget.budget_on_plan")
+                    )
+                } icon: {
+                    Image(
+                        systemName: isOver
+                            ? "exclamationmark.triangle.fill" : "checkmark.circle.fill"
+                    )
+                }
+                .font(.caption.weight(.semibold))
+                Text("\(percentUsed)%")
+                    .font(.system(.largeTitle, design: .rounded, weight: .bold))
+                    .monospacedDigit()
+                    .minimumScaleFactor(0.65)
+                Text("widget.budget_used").font(.caption).foregroundStyle(.secondary)
+                ProgressView(value: min(Double(percentUsed), 100), total: 100)
+                    .accessibilityHidden(true)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("widget.budget_status")
+            .accessibilityValue(percentAccessibility(percentUsed, isOver: isOver))
+        }
+    }
+
+    @ViewBuilder
+    private func statusMessage(
+        title: LocalizedStringKey,
+        detail: LocalizedStringKey,
+        systemImage: String
+    ) -> some View {
+        if family == .accessoryInline {
+            Label(detail, systemImage: systemImage)
+        } else {
+            VStack(alignment: .leading, spacing: 7) {
+                Label(title, systemImage: systemImage)
+                    .font(.headline)
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(family == .systemMedium ? 3 : 2)
+            }
+            .accessibilityElement(children: .combine)
+        }
+    }
+
+    private func percentAccessibility(_ percent: Int, isOver: Bool) -> String {
+        let status = isOver
+            ? String(localized: "widget.budget_over")
+            : String(localized: "widget.budget_on_plan")
+        return String(
+            format: String(localized: "widget.budget_accessibility"),
+            percent,
+            status
+        )
     }
 }
 
@@ -429,11 +623,7 @@ private extension Color {
         }
     )
 
-    static let moneyUpAction = Color(
-        red: 52.0 / 255.0,
-        green: 120.0 / 255.0,
-        blue: 95.0 / 255.0
-    )
+    static let moneyUpAction = moneyUpSoftGreen
 
     static let moneyUpWidgetBackground = Color(
         uiColor: UIColor { traits in

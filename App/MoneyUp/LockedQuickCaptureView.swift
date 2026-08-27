@@ -161,7 +161,7 @@ struct LockedQuickCaptureView: View {
             isAmountFocused = false
             didSave = true
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = safeUserMessage(for: error, context: .save)
         }
     }
 

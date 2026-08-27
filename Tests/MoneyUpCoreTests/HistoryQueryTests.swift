@@ -106,6 +106,35 @@ final class HistoryQueryTests: XCTestCase {
         )
     }
 
+    func testSplitAmountRangeMatchesTotalAndIndividualAllocations() throws {
+        let fixture = try Fixture()
+        let split = try TransactionFactory.splitExpense(
+            amount: try Money(100, currency: fixture.sgd),
+            paidFrom: fixture.wallet.id,
+            splits: [
+                TransactionSplitLine(
+                    categoryAccountID: fixture.food.id,
+                    amount: try Money(40, currency: fixture.sgd)
+                ),
+                TransactionSplitLine(
+                    categoryAccountID: fixture.transport.id,
+                    amount: try Money(60, currency: fixture.sgd)
+                )
+            ]
+        )
+
+        XCTAssertEqual(
+            HistoryQuery(minimumAmount: 100, maximumAmount: 100)
+                .filteredEntries([split], accounts: fixture.accounts).map(\.id),
+            [split.id]
+        )
+        XCTAssertEqual(
+            HistoryQuery(minimumAmount: 40, maximumAmount: 40)
+                .filteredEntries([split], accounts: fixture.accounts).map(\.id),
+            [split.id]
+        )
+    }
+
     func testSummaryReportsNetIncomeLessSpendingPerCurrency() throws {
         let fixture = try Fixture()
         let expense = try fixture.expense(amount: 30)
@@ -126,7 +155,7 @@ final class HistoryQueryTests: XCTestCase {
         )
         let entries = [expense, refund, income, transfer]
 
-        let summary = HistoryQuery().summary(for: entries, accounts: fixture.accounts)
+        let summary = try HistoryQuery().summary(for: entries, accounts: fixture.accounts)
 
         XCTAssertEqual(summary.transactionCount, 4)
         XCTAssertEqual(summary.amountsByCurrency[fixture.sgd], -25)
@@ -144,7 +173,7 @@ final class HistoryQueryTests: XCTestCase {
             destinationTradingAccountID: fixture.usdTrading.id
         )
 
-        let summary = HistoryQuery().summary(for: [transfer], accounts: fixture.accounts)
+        let summary = try HistoryQuery().summary(for: [transfer], accounts: fixture.accounts)
 
         XCTAssertEqual(summary.amountsByCurrency[fixture.sgd], -135)
         XCTAssertEqual(summary.amountsByCurrency[fixture.usd], 100)
@@ -196,7 +225,7 @@ final class HistoryQueryTests: XCTestCase {
 
         XCTAssertEqual(filtered.count, 10_000)
         XCTAssertEqual(
-            query.summary(for: filtered, accounts: fixture.accounts)
+            try query.summary(for: filtered, accounts: fixture.accounts)
                 .amountsByCurrency[fixture.sgd],
             -10_000
         )

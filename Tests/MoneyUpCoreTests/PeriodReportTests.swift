@@ -187,6 +187,46 @@ final class PeriodReportTests: XCTestCase {
         XCTAssertEqual(april.baseFlow.expense.amount, 12)
     }
 
+    func testPersistedOriginDayControlsNormalizedReportAttribution() throws {
+        let sgd = try CurrencyCode("SGD")
+        let bank = LedgerAccount(
+            name: "Bank",
+            kind: .asset,
+            currency: sgd,
+            accountType: .bank
+        )
+        let food = LedgerAccount(name: "Food", kind: .expense)
+        let occurredAt = try date(2026, 3, 31, hour: 23)
+        let expensePosting = Posting(
+            accountID: food.id,
+            money: try Money(12, currency: sgd)
+        )
+        let event = LedgerPostingEvent(
+            entryID: UUID(),
+            occurredAt: occurredAt,
+            originDayKey: 20260401,
+            posting: expensePosting
+        )
+
+        let march = try FinanceCalculator.report(
+            interval: try interval(.thisMonth, containing: try date(2026, 3, 15)),
+            accounts: [bank, food],
+            postingEvents: [event],
+            baseCurrency: sgd,
+            calendar: calendar
+        )
+        let april = try FinanceCalculator.report(
+            interval: try interval(.thisMonth, containing: try date(2026, 4, 15)),
+            accounts: [bank, food],
+            postingEvents: [event],
+            baseCurrency: sgd,
+            calendar: calendar
+        )
+
+        XCTAssertEqual(march.baseFlow.expense.amount, 0)
+        XCTAssertEqual(april.baseFlow.expense.amount, 12)
+    }
+
     func testTrendSeriesCoversEveryMonthIncludingQuietOnes() throws {
         let sgd = try CurrencyCode("SGD")
         let bank = LedgerAccount(name: "Bank", kind: .asset, currency: sgd, accountType: .bank)
@@ -270,10 +310,10 @@ final class PeriodReportTests: XCTestCase {
             calendar: calendar
         )
 
-        XCTAssertEqual(report.savingsRate, Decimal(3000) / Decimal(5000))
-        let largest = try XCTUnwrap(report.largestCategory)
+        XCTAssertEqual(try report.savingsRate(), Decimal(string: "0.6"))
+        let largest = try XCTUnwrap(try report.largestCategory())
         XCTAssertEqual(largest.category.name, "Rent")
-        XCTAssertEqual(largest.share, Decimal(1500) / Decimal(2000))
+        XCTAssertEqual(largest.share, Decimal(string: "0.75"))
         XCTAssertEqual(report.categorySpending.map(\.name), ["Rent", "Food"])
     }
 
@@ -296,8 +336,8 @@ final class PeriodReportTests: XCTestCase {
             calendar: calendar
         )
 
-        XCTAssertNil(report.savingsRate)
-        XCTAssertNotNil(report.largestCategory)
+        XCTAssertNil(try report.savingsRate())
+        XCTAssertNotNil(try report.largestCategory())
     }
 
     func testPeriodsAreAlignedToWholeMonths() throws {
@@ -341,6 +381,70 @@ final class PeriodReportTests: XCTestCase {
         XCTAssertEqual(windows.previous.start, try date(2026, 2, 1, hour: 0))
         XCTAssertEqual(windows.previous.end, try date(2026, 3, 1, hour: 0))
         XCTAssertLessThan(windows.previous.duration, windows.current.duration)
+    }
+
+    func testEmptyCalendarDayReturnsNoFalseZeroFlow() throws {
+        let sgd = try CurrencyCode("SGD")
+        let selected = try date(2026, 6, 15)
+        let day = try XCTUnwrap(
+            FinancialPeriodBoundary.inclusiveDayInterval(
+                from: selected,
+                through: selected,
+                calendar: calendar
+            )
+        )
+
+        let flows = try FinanceCalculator.dailyFlows(
+            interval: day,
+            accounts: [],
+            entries: [],
+            baseCurrency: sgd,
+            calendar: calendar
+        )
+
+        XCTAssertTrue(flows.isEmpty)
+    }
+
+    func testCalendarDayKeepsEveryCurrencyInSeparateLabeledFlow() throws {
+        let sgd = try CurrencyCode("SGD")
+        let usd = try CurrencyCode("USD")
+        let bank = LedgerAccount(name: "Bank", kind: .asset, currency: sgd)
+        let card = LedgerAccount(name: "Card", kind: .liability, currency: usd)
+        let food = LedgerAccount(name: "Food", kind: .expense)
+        let selected = try date(2026, 6, 15)
+        let day = try XCTUnwrap(
+            FinancialPeriodBoundary.inclusiveDayInterval(
+                from: selected,
+                through: selected,
+                calendar: calendar
+            )
+        )
+        let entries = [
+            try TransactionFactory.expense(
+                amount: try Money(10, currency: sgd),
+                paidFrom: bank.id,
+                category: food.id,
+                occurredAt: selected
+            ),
+            try TransactionFactory.expense(
+                amount: try Money(20, currency: usd),
+                paidFrom: card.id,
+                category: food.id,
+                occurredAt: selected
+            )
+        ]
+
+        let flows = try FinanceCalculator.dailyFlows(
+            interval: day,
+            accounts: [bank, card, food],
+            entries: entries,
+            baseCurrency: sgd,
+            calendar: calendar
+        )
+
+        XCTAssertEqual(Set(flows.map(\.currency)), [sgd, usd])
+        XCTAssertEqual(flows.first { $0.currency == sgd }?.expense.amount, 10)
+        XCTAssertEqual(flows.first { $0.currency == usd }?.expense.amount, 20)
     }
 
     func testBalancesByAccountMatchesPerAccountBalances() throws {

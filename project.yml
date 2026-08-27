@@ -12,8 +12,8 @@ settings:
     SWIFT_STRICT_CONCURRENCY: complete
     SWIFT_EMIT_LOC_STRINGS: YES
     DEBUG_INFORMATION_FORMAT: dwarf-with-dsym
-    CURRENT_PROJECT_VERSION: 6
-    MARKETING_VERSION: 0.5.1
+    CURRENT_PROJECT_VERSION: 8
+    MARKETING_VERSION: 0.6.0
 
 packages:
   MoneyUpPackage:
@@ -25,6 +25,7 @@ targets:
     platform: iOS
     sources:
       - path: App/MoneyUp
+      - path: App/Shared
     dependencies:
       - package: MoneyUpPackage
         product: MoneyUpCore
@@ -64,6 +65,7 @@ targets:
         CODE_SIGN_STYLE: Automatic
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        CODE_SIGN_ENTITLEMENTS: App/MoneyUp/MoneyUp.entitlements
     scheme:
       testTargets:
         - MoneyUpTests
@@ -85,6 +87,7 @@ targets:
     platform: iOS
     sources:
       - path: App/MoneyUpWidget
+      - path: App/Shared
     info:
       path: App/MoneyUpWidget/Info.plist
       properties:
@@ -102,3 +105,4 @@ targets:
         CODE_SIGN_STYLE: Automatic
         APPLICATION_EXTENSION_API_ONLY: YES
         SKIP_INSTALL: true
+        CODE_SIGN_ENTITLEMENTS: App/MoneyUpWidget/MoneyUpWidget.entitlements

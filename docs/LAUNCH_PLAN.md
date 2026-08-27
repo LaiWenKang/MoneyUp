@@ -1,280 +1,200 @@
 # MoneyUp Rollout Plan
 
-Last updated: 25 August 2026
+Last updated: 27 August 2026
 
 ## Release decision
 
-MoneyUp remains a native SwiftUI iPhone app. A web app would weaken the core
-advantages already implemented: device-bound encrypted storage, Face ID or
-Touch ID protection, WidgetKit quick entry, on-device receipt recognition,
-offline operation, and a clean no-backend privacy claim.
-
-TestFlight is the correct path from the founders beta to the App Store. The
-first public version should be free, have no ads, no account, no in-app
-purchases, and no financial-data backend. Monetization can be evaluated after
-retention and reliability are proven.
+MoneyUp remains a native SwiftUI iPhone app. TestFlight is the controlled path
+from founders beta to the App Store. The first public version is free, with no
+ads, account, in-app purchase, bank aggregation, financial-data backend,
+remote AI, or multi-device sync. Monetization or remote capabilities require a
+later explicit product, privacy, and threat-model decision.
 
 ## Current position
 
 | Area | Status | Release meaning |
 |---|---|---|
-| Product | Founders Beta 0.5.1 corrective candidate | Purpose-aware Flexible Today, cash/debt position, chart drill-through, what-if simulation, amount-first Log, pre-auth locked capture, budget, calendar, assets, widgets, import/export, and bilingual flows exist |
-| Privacy | Ready for founders beta | Local encrypted database, protected key, privacy cover, no tracking, privacy manifest, and public policy |
-| CI | Active | Domain tests and unsigned app/widget Simulator build run on GitHub's macOS runner |
-| Distribution | Internal TestFlight active | Membership, identifiers, `MoneyUp: CowCome` record, API key, protected environment, first signed upload, and account-holder install are complete; 0.4 still needs exact-commit validation and upload |
-| Recovery | Implementation complete; drill pending | Authenticated `.moneyup` backup and transactional restore require CI and physical-device drills |
-| Physical QA | In progress | The account holder has installed the initial beta; the 0.4 two-person runbook remains |
+| Product | Source-integrated 0.6.0 candidate, source build 8 | Golden functional surfaces are implemented across logging, Today/History/Insights, planning/goals, assets/investments, settings/widgets, portability, data, and security |
+| Scale architecture | Implemented in source | SQLCipher schema 3, normalized journal/posting indexes, compact balances, bounded recent activity, and on-demand reads still require exact-candidate Mac and physical measurements |
+| Privacy | Source and policy aligned | Local processing, no tracking/backend, optional encrypted receipts, and a percentage/state-only App Group widget snapshot |
+| CI | Configured, exact-candidate result open | Release validator, core tests, app-model XCTest, and unsigned app/widget Simulator build must run on the final merged SHA |
+| Apple capability | Manual account-holder action open | Register `group.com.laiwenkang.MoneyUp` and enable it on both existing App IDs before signed validation |
+| Distribution | 0.5.1 installed; 0.6.0 not uploaded | Signed validation, upload, Apple processing, internal install, and external Beta App Review remain open |
+| Physical QA | Open | Upgrade/restore, 10,000-entry/20-schedule performance, bilingual accessibility/widget matrix, and the founder/co-tester seven-day run remain open |
+| Public release | Blocked | Closed beta, exact-binary compliance, App Review, manual release, and 72-hour operations evidence are not complete |
 
-## Rollout stages and gates
+Source implementation is not a promotion decision. The per-requirement status
+and evidence boundary is in [Golden PRD traceability](GOLDEN_TRACEABILITY.md).
 
-### Stage 0 — Founders build preparation
+## Stage 0 - exact source candidate
 
-Target: a green, reviewable 0.5.0 build that can be signed and uploaded through
-the configured Apple and GitHub connection.
+Target: one reviewable 0.6.0 commit whose source version is 0.6.0 build 8 and
+whose app/widget/localization/privacy/release documents agree.
 
-Completed:
+Required:
 
-- encrypted, validated local ledger and device-owner authentication;
-- English and Simplified Chinese product UI;
-- privacy-redacted widget and on-device receipt/text entry;
-- no ads, tracking, analytics SDK, backend, or remote AI;
-- App Privacy manifest declaring no tracking or collected data and the required
-  `UserDefaults` reason;
-- bilingual in-app privacy and beta guidance plus public privacy/support pages;
-- confirmed deletion of transactions, schedules, and manual holdings;
-- release-asset CI validation for localizations, icons, privacy, and documents;
-- non-restorable database ciphertext excluded from system backup;
-- a manual, protected TestFlight workflow using Xcode 26, checksum-pinned
-  XcodeGen, an unsigned release archive, App Store Connect API authentication,
-  Apple automatic cloud signing during IPA export, archive/IPA inspection,
-  validation, encrypted unsigned-archive retention, symbol upload, and explicit
-  upload approval.
-- both explicit bundle identifiers, the `MoneyUp: CowCome` App Store Connect
-  record, dedicated team API key, and protected GitHub environment configured
-  by the account holder.
+- review the unified `AppModel`, persistence, `RecordCollection`,
+  reporting-calendar, rate, goal, snapshot, and widget paths for semantic
+  conflicts;
+- run release-asset validation and verify both localization catalogs parse with
+  complete English/Simplified Chinese values;
+- generate the Xcode project on macOS, run core/persistence tests with warnings
+  as errors, run app-model XCTest on a booted iPhone Simulator, and build the
+  app plus widget without signing;
+- record the exact commit and keep every failed check open; do not promote a
+  different working tree based on partial results.
 
-Required before uploading 0.5.0:
+Exit gate: all exact-candidate Mac checks green, no unresolved P0/P1 defect, and
+the candidate still matches the Golden traceability table.
 
-- CI must pass on the exact commit to upload;
-- verify current agreements remain accepted and let the signed validation run
-  confirm the protected GitHub `testflight` environment values;
-- verify the existing identifiers and `MoneyUp: CowCome` record still match
-  the workflow;
-- run the workflow's signed validation mode, then its confirmed upload mode;
-- confirm both app and widget bundle identifiers are registered and signable;
-- confirm the archive contains `PrivacyInfo.xcprivacy`, both localizations, the
-  widget extension, and matching app/widget version and generated build;
-- answer App Store Connect encryption questions accurately for SQLCipher;
-- download each encrypted `.xcarchive` workflow artifact to durable private
-  storage before GitHub's 90-day public-repository retention limit;
-- never commit certificates, provisioning profiles, API keys, or passwords.
+## Stage 1 - Apple capability and signed validation
 
-### Stage 1 — Founders TestFlight distribution
+The account holder performs these actions without sharing Apple credentials:
 
-Status: the first signed build has been uploaded and installed by the account
-holder through **Founders Internal**. For 0.4, the account holder must install
-the same signed artifact that will be sent to the second tester.
+1. Register App Group `group.com.laiwenkang.MoneyUp` if it does not already
+   exist.
+2. Enable only that App Group capability on both explicit App IDs:
+   `com.laiwenkang.MoneyUp` and `com.laiwenkang.MoneyUp.Widget`.
+3. Verify current agreements, the existing `MoneyUp: CowCome` app record, the
+   protected GitHub `testflight` environment, and export-compliance readiness.
+4. Dispatch the TestFlight workflow from the final `main` commit in `validate`
+   mode.
 
-1. Accept current Apple Developer and App Store Connect agreements.
-2. Verify `com.laiwenkang.MoneyUp` and
-   `com.laiwenkang.MoneyUp.Widget` remain registered and match the repository.
-   Treat these identifiers as permanent.
-3. Verify the existing `MoneyUp: CowCome` record, then add Simplified Chinese
-   localization and the Finance category before public submission.
-4. Dispatch the protected GitHub TestFlight workflow first in `validate` mode,
-   then in `upload` mode with explicit confirmation. The workflow assigns a
-   unique build number, retains an encrypted unsigned archive and dSYMs, and uploads
-   symbols to Apple. Download the encrypted artifact into private iCloud Drive
-   after every successful upload. Do not use a ChatGPT-hosted preview link as
-   distribution.
-5. Complete export-compliance processing and wait for build processing.
-6. Add the processed build to the existing **Founders Internal** group.
-7. Update through Apple's TestFlight app and complete the smoke section in
-   `FIRST_TEST.md`.
+The workflow must verify:
 
-The girlfriend should be the first **external** tester. This avoids granting
-her App Store Connect access merely to test the app. Create a private external
-group named **Founders External**, add only her email, add the already-tested
-build, and submit it for TestFlight Beta App Review. She needs an Apple Account
-and the TestFlight app; she does not need Gmail specifically, ChatGPT, a
-MoneyUp login, or access to the source repository.
+- source marketing version 0.6.0 and source build 8 before assigning a unique
+  upload build number;
+- the exact dispatched commit, Xcode/toolchain, immutable dependencies, release
+  assets, tests, and app/widget build;
+- source app/widget entitlement files contain only the reviewed App Group;
+- the exported app and widget have correct IDs, versions, distribution
+  profiles, team, signatures, no development/enterprise profile, and matching
+  signed App Group entitlements;
+- Apple accepts IPA validation.
 
-Apple's current TestFlight documentation is here:
-<https://developer.apple.com/help/app-store-connect/test-a-beta-version/testflight-overview>.
+Exit gate: signed validation succeeds and the encrypted unsigned archive/dSYM
+recovery artifact is retained. Validation does not mean a TestFlight upload or
+App Review occurred.
 
-### iPhone-only release administration
+## Stage 2 - internal TestFlight and physical acceptance
 
-The account holder does not need to buy a Mac for the chosen release path.
-Apple account actions can be completed in Safari on the iPhone, and GitHub's
-macOS 26 runner performs the Xcode archive. The bootstrap sequence is:
+After a separately confirmed upload and Apple processing, add the exact build
+to **Founders Internal**. Update the account holder's installed 0.5.1 build in
+place; never delete it as an upgrade procedure.
 
-1. Accept agreements, register the app and widget identifiers, and create the
-   main app record.
-2. Request App Store Connect API access, then create a dedicated team key.
-3. Put only Team ID, Key ID, Issuer ID, the `.p8` contents, and the independent
-   archive-encryption password in the protected GitHub `testflight`
-   environment. Never commit or paste either secret into chat.
-4. Dispatch the manual workflow from `main`. It reruns validation and tests,
-   generates the project, creates an unsigned archive, uses API-key-authenticated
-   automatic distribution signing during IPA export,
-   verifies the signed app and widget, asks Apple to validate the IPA, and
-   uploads the archive and symbols only after an encrypted recovery artifact
-   is retained and the typed `UPLOAD` confirmation is present.
-5. Let Apple manage the distribution certificate and both provisioning
-   profiles in the cloud. A `.p12`, certificate password, CSR, and manually
-   downloaded profiles are not part of the primary design.
+Complete [the founder/co-tester runbook](FIRST_TEST.md), including:
 
-The exact iPhone instructions are in `APPLE_SETUP.md`. Xcode Cloud is not the
-bootstrap choice because its first workflow is normally configured from Xcode
-on a Mac. It remains an optional later migration.
+- pre/post inventory across profile, accounts, entries, budgets, goals,
+  schedules, holdings/lots, rates, snapshots, attachments, settings, pending
+  captures, widgets, and Keychain access;
+- password-protected archive restore on a clean/fresh install plus wrong
+  password, tampering/cancellation/failure atomicity;
+- amount-keypad Done/Save/tab reachability and receipt/screenshot latency/error
+  paths on the founder and co-tester iPhones;
+- schedule post/match exactly once, split edit, lifecycle operations, rollover,
+  goals, investment purchase/sale/reprice, and CSV/XLSX/import paths;
+- every widget family in light/dark/tinted/redacted states, including opt-in
+  percentage/state and opt-out scrubbing;
+- English and Simplified Chinese, VoiceOver, largest Dynamic Type, Reduce
+  Motion, smallest supported and current large iPhones;
+- the Golden p95 budgets on the oldest supported iPhone with 10,000 entries and
+  20 long-lived schedules.
 
-### Stage 2 — Two-person founders test
+Exit gate: no P0, no open/reproducible P1 in a core workflow, zero reproducible
+crash in the candidate, reconciled financial results, and recorded version,
+build, device, OS, language, and measurements.
 
-Target: seven consecutive days of realistic daily use without a critical
-defect.
+## Stage 3 - founder/co-tester seven-day run
 
-Each tester should complete:
-
-- onboarding in a different app language without reading the runbook steps,
-  then explain what each choice did and identify the first Log/Plan actions;
-- light and dark appearance plus largest Dynamic Type/VoiceOver on onboarding
-  and account creation, including a bank overdraft and card amount owed;
-- at least three account types and 25 transactions;
-- expense, income, same-currency transfer, and one foreign-currency transfer;
-- nested budgets at two or more levels;
-- one weekly or monthly scheduled item;
-- one manual investment holding if applicable;
-- receipt/screenshot reading and typed smart entry;
-- widget installation and all five quick-log actions;
-- background lock/unlock at least ten times;
-- one transaction deletion, one schedule deletion, and one holding deletion
-  using sample records;
-- two CSV exports opened in Numbers or Excel;
-- one app update from an earlier TestFlight build without losing data.
+Invite the co-tester through the private **Founders External** group only
+after internal acceptance and TestFlight Beta App Review. For seven consecutive
+days both testers log, correct, plan, unlock, back up, update, and independently
+reconcile representative data.
 
 Exit gate:
 
-- no P0 defect;
-- no open P1 defect in onboarding, unlock, save, calculation, export, or update;
-- zero reproducible crashes in the final candidate;
-- ledger balances, category roll-ups, and reports agree with the testers'
-  sample ledger;
-- all common screens are usable in English and Simplified Chinese;
-- both testers affirm that routine logging is quick enough to sustain.
+- no P0 for seven days;
+- no open P1 and all fixes verified in a newer build;
+- both testers affirm routine logging is sustainable;
+- the final book reconciles across balances, budgets, goals, Calendar,
+  investments, widget status, reports, and readable exports.
 
-### Stage 3 — Closed external beta
+## Stage 4 - closed external beta
 
-Target: 10–25 invited testers, not a public link, over at least two release
-candidates.
+Target: 10-25 invited testers, no public link, for at least 14 days and at least
+two release candidates.
 
-Required before this stage:
+Required:
 
-- add transaction search and editing, or clearly retain delete-and-recreate as
-  the documented correction workflow;
-- add schedule and holding editing;
-- complete VoiceOver, Dynamic Type, contrast, dark mode, and Reduce Motion
-  checks on common tasks;
-- add bilingual UI automation for onboarding, logging, deletion, export, and
-  background lock on representative iPhone sizes;
-- retain the 10,000-entry History CI guard and add long-recurrence automation;
-  measure the Golden p95 budgets separately on the oldest supported iPhone;
-- complete the first authenticated encrypted backup/restore design, threat
-  review, and recovery drill;
-- prepare sanitized sample data and screenshot capture instructions;
-- triage TestFlight feedback within 48 hours during the beta.
+- update and clean-restore drills remain green;
+- no untranslated, clipped, inaccessible, or misleading common flow;
+- performance/energy evidence remains within budget;
+- privacy manifest, policy, App Privacy answers, entitlements, and observed
+  network behavior match the exact binary;
+- feedback is triaged within 48 hours.
 
-Promotion gate:
+Promotion gate: 14 days without P0, all P1 resolved and reverified, no data
+continuity regression, and owner approval of the evidence pack.
 
-- 14 days without P0;
-- all P1 issues resolved and verified in a newer build;
-- update migration and restore drills pass;
-- no untranslated or clipped common flow;
-- privacy manifest and App Privacy answers still match the binary.
+## Stage 5 - App Store 1.0 candidate
 
-### Stage 4 — App Store candidate
+Public submission remains blocked until:
 
-Public release is blocked until these are complete:
+- exact archive/build, dSYMs, metadata, screenshots, review notes, privacy
+  answers, languages, entitlements, support contact, age rating, content rights,
+  export compliance, and trader-status declaration agree;
+- final accessibility, performance, recovery, migration, and physical matrices
+  pass;
+- App Review can create a sample local book without a demo account and can
+  inspect every claimed capability;
+- the account holder chooses manual release after approval.
 
-- versioned authenticated `.moneyup` archive export and transactional restore;
-- restore tests for wrong password, tampering, duplicate records, interrupted
-  import, older supported archive, and unsupported future archive;
-- final accessibility test matrix and honest Accessibility Nutrition Labels;
-- final performance and energy check on the oldest supported iPhone class;
-- app privacy, privacy-policy URL, support URL with a monitored direct contact,
-  age rating, content rights, export compliance, and EU Digital Services Act
-  trader-status declaration;
-- localized store description, keywords, review notes, and 1–10 screenshots in
-  an accepted current iPhone size without real financial information;
-- App Review receives complete access instructions explaining that no account
-  is required and how to create a sample local book;
-- choose manual release after approval for version 1.0 so the team controls the
-  launch moment.
+The working copy is [App Store submission](APP_STORE_SUBMISSION.md). Do not call
+0.6.0 public 1.0 and do not infer approval from a successful upload.
 
-The working metadata and review copy live in `APP_STORE_SUBMISSION.md`.
+## Stage 6 - manual release and first 72 hours
 
-### Stage 5 — Public 1.0 and operations
+After approval, the account holder manually releases 1.0. For 72 hours:
 
-Release 1.0 gradually after approval. For the first 72 hours:
-
-- monitor App Store Connect crashes, reviews, and support reports twice daily;
+- check App Store Connect crashes, reviews, and support twice daily;
 - stop phased release for any P0 or repeated P1;
-- fix forward with a higher build number—never attempt to upload an old build;
-- preserve database schema backward compatibility across patch releases;
-- publish updated release notes, privacy answers, and policy whenever behavior
-  changes;
-- review SQLCipher and GitHub Actions dependency updates weekly;
-- keep CI failure monitoring enabled.
+- fix forward with a higher build number, never reuse an old build;
+- preserve schema and archive backward compatibility;
+- update release notes/privacy declarations whenever behavior changes.
 
-## Engineering queue
+## Remaining engineering and evidence queue
 
-Priority order:
+1. Final unified conflict review and exact-candidate Mac CI.
+2. Apple App Group registration and signed entitlement validation.
+3. Physical 0.5.1-to-0.6.0 upgrade and clean-device restore.
+4. Oldest-device 10,000-entry/20-schedule performance measurements.
+5. Bilingual accessibility, appearance, widget, and receipt matrices.
+6. Founder/co-tester seven-day run and 14-day closed beta.
+7. Exact-binary store compliance, App Review, manual release, and monitoring.
 
-1. **P0 — encrypted backup and restore:** public release cannot responsibly
-   promise ownership without recoverability.
-2. **P1 — transaction/schedule/holding editing and search:** corrections must
-   not depend on deletion once more users join.
-3. **P1 — UI automation and accessibility:** cover both languages and the
-   common iPhone form factors.
-4. **P1 — large-ledger performance:** establish explicit time and memory
-   budgets for 10,000 and 100,000 entries.
-5. **P2 — CSV import with duplicate preview:** useful after backup is proven.
-6. **P2 — exchange-rate preferences, budget rollover, goals, and net-worth
-   history:** product depth after reliability.
-7. **Deferred — sync, shared household books, bank aggregation, and hosted AI:**
-   each requires a separate privacy and threat-model decision.
+Sync, shared books, bank aggregation, automatic market pricing, hosted AI,
+two-way spreadsheet editing, and commerce remain outside this queue because
+they are not approved 1.0 requirements.
 
-## Release ownership
+## Ownership
 
 | Work | Engineering | Apple account holder |
 |---|---|---|
-| Code, tests, migrations, privacy manifest, release docs | Own | Review |
-| Certificates, agreements, legal identity, tax/banking, trader status | Advise | Own |
-| App Store Connect record and tester groups | Prepare exact steps | Execute/approve |
-| Physical-iPhone test | Supply runbook and triage | Execute with girlfriend |
-| Store screenshots and copy | Prepare | Approve truthful final version |
-| Submission and release button | Verify candidate | Execute |
+| Code, tests, migrations, manifest, release documents | Own | Review |
+| Agreements, legal identity, tax/banking, trader status | Advise | Own |
+| App Group, App IDs, app record, tester groups | Prepare exact steps | Execute/approve |
+| Physical iPhone tests | Supply runbook and triage | Execute with tester |
+| Store screenshots/copy | Prepare | Approve against exact binary |
+| Submission and manual release | Verify candidate/evidence | Execute |
 
-No collaborator needs to receive the account holder's Apple password. App
-Store Connect roles, scoped API keys, or a supervised screen-sharing session
-are the correct mechanisms when access is eventually needed.
-
-## Risk register
-
-| Risk | Control | Release gate |
-|---|---|---|
-| Device loss before backup ships | Small sample data plus regular CSV export | Blocks public release, not founders test |
-| Incorrect finance calculations | Exact decimals, balanced entries, unit tests, manual sample reconciliation | Blocks every candidate |
-| Privacy claim drifts from binary | Manifest/document CI and no network dependencies | Blocks every candidate |
-| Accidental deletion | Confirmation dialogs and sample-only destructive testing | Verified in founders test |
-| Apple API access, build processing, or review delay | Finish code, metadata, policy, and QA in parallel | Distribution waits; engineering continues |
-| Certificate or secret exposure | Keep secrets out of Git and use Apple/GitHub secret stores | Immediate P0 response |
-| App update corrupts data | Versioned schema, migration fixtures, physical update test | Blocks broader beta |
-| Accessibility claim is inaccurate | Common-task matrix before publishing labels | Blocks App Store submission |
+No collaborator needs the account holder's Apple password. Use protected
+environment secrets, scoped App Store Connect roles/API keys, or supervised
+screen sharing when account access is required.
 
 ## Definition of ready
 
-MoneyUp is ready for the two founders when CI is green, a signed 0.5.0 build
-passes the physical smoke test, and TestFlight has finished processing it. It
-is ready for the public only after encrypted restore is proven, all P0/P1 gates
-above pass, and the exact submitted binary matches the reviewed privacy and
-store declarations.
+MoneyUp 0.6.0 is ready for the founder/co-tester run only after exact-candidate
+Mac CI, signed validation, physical smoke/upgrade/restore, and TestFlight
+processing pass. It is ready for public 1.0 only after every physical,
+accessibility, performance, recovery, beta, compliance, review, and exact-binary
+gate above is recorded as passed.

@@ -23,6 +23,13 @@ public enum FinancialAccountType: String, Codable, CaseIterable, Sendable {
 public enum SystemAccountRole: String, Codable, Sendable {
     case openingBalances = "opening_balances"
     case foreignExchange = "foreign_exchange"
+    /// A hidden asset account carrying one holding's current ledger value.
+    /// Keeping positions in the journal makes invested cash and positions one
+    /// source of net worth instead of two values that can be added twice.
+    case investmentPosition = "investment_position"
+    /// Counter-account for market-value and disposal movements. Entries using
+    /// this role are investment events, never ordinary income or spending.
+    case investmentGainLoss = "investment_gain_loss"
 }
 
 /// The accounting account behind a user-facing bank account, liability,

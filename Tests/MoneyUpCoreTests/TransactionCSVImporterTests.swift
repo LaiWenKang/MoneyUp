@@ -108,4 +108,42 @@ struct TransactionCSVImporterTests {
             Issue.record("Unexpected error: \(error)")
         }
     }
+
+    @Test
+    func mapsUnknownHeadersWithoutGuessingColumns() throws {
+        let csv = "When,Flow,Value,Wallet Name,Bucket\n2026-08-26,Expense,12.50,Cash,Food\n"
+        let inspection = try TransactionCSVImporter.inspect(csv)
+        #expect(!inspection.suggestedMapping.hasRequiredColumns)
+
+        var mapping = CSVColumnMapping()
+        mapping[.date] = 0
+        mapping[.kind] = 1
+        mapping[.amount] = 2
+        mapping[.account] = 3
+        mapping[.category] = 4
+        let preview = try TransactionCSVImporter.parse(
+            csv,
+            mapping: mapping,
+            locale: Locale(identifier: "en_US_POSIX"),
+            timeZone: TimeZone(secondsFromGMT: 0)!
+        )
+
+        #expect(preview.rows.count == 1)
+        #expect(preview.rows[0].accountName == "Cash")
+        #expect(preview.rows[0].categoryName == "Food")
+    }
+
+    @Test
+    func preservesExplicitImportOffsetForStableOriginDay() throws {
+        let csv = "Date,Type,Amount\n2026-08-27T00:30:00+14:00,Expense,5\n"
+
+        let preview = try TransactionCSVImporter.parse(
+            csv,
+            locale: Locale(identifier: "en_US_POSIX"),
+            timeZone: TimeZone(secondsFromGMT: 0)!
+        )
+
+        #expect(preview.rows.first?.originContext?.dayKey == 20260827)
+        #expect(preview.rows.first?.originContext?.utcOffsetSeconds == 14 * 3_600)
+    }
 }

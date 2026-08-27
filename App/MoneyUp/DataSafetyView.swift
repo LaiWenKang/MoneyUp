@@ -18,20 +18,19 @@ struct DataSafetyView: View {
 
     var body: some View {
         Form {
-            if !model.recoveryIssues.isEmpty {
+            if model.recoveryIssueCount > 0 {
                 Section {
                     Label(
                         String(
                             format: String(localized: "recovery.quarantined_count"),
-                            model.recoveryIssues.count
+                            model.recoveryIssueCount
                         ),
                         systemImage: "exclamationmark.shield"
                     )
                     DisclosureGroup("recovery.details") {
-                        ForEach(model.recoveryIssues, id: \.self) { issue in
-                            Text(issue)
-                                .font(.caption.monospaced())
-                                .textSelection(.enabled)
+                        ForEach(model.recoveryIssueSummaries, id: \.self) { summary in
+                            Text(summary)
+                                .font(.caption)
                         }
                     }
                 } header: {
@@ -107,7 +106,7 @@ struct DataSafetyView: View {
             defaultFilename: "MoneyUp-Backup.moneyup"
         ) { result in
             if case let .failure(error) = result {
-                errorMessage = error.localizedDescription
+                errorMessage = safeUserMessage(for: error, context: .write)
             }
         }
         .fileImporter(
@@ -129,7 +128,7 @@ struct DataSafetyView: View {
                 pendingRestoreData = try Data(contentsOf: url, options: [.mappedIfSafe])
                 isConfirmingRestore = true
             } catch {
-                errorMessage = error.localizedDescription
+                errorMessage = safeUserMessage(for: error, context: .read)
             }
         }
         .confirmationDialog(
@@ -161,7 +160,7 @@ struct DataSafetyView: View {
             isExporting = true
             message = String(localized: "backup.ready")
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = safeUserMessage(for: error, context: .exportData)
         }
     }
 
@@ -181,7 +180,7 @@ struct DataSafetyView: View {
             )
             message = String(localized: "restore.complete")
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = safeUserMessage(for: error, context: .restoreData)
         }
     }
 }

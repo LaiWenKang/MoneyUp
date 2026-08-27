@@ -20,7 +20,17 @@ enum QuickLogKind: String, CaseIterable, Codable, Identifiable, Sendable {
     }
 }
 
-/// The permanent, leftmost transaction-entry destination.
+/// Destinations exposed beside the keyboard while the permanent Log tab has
+/// focus. The system tab bar sits behind the iPhone keyboard, so this compact
+/// route keeps all four sibling tabs reachable without abandoning the draft.
+enum QuickLogNavigationDestination: Hashable, Sendable {
+    case today
+    case history
+    case plan
+    case assets
+}
+
+/// The permanent, center transaction-entry destination.
 ///
 /// `kind` lives in the tab container so a widget/deep link can both select the
 /// Log tab and switch this form to the requested transaction type.
@@ -30,6 +40,7 @@ struct LogView: View {
     let launchMode: QuickLogLaunchMode?
     let requestSequence: Int
     let onRequestHandled: @MainActor (QuickLogLaunchMode) -> Void
+    let onNavigate: @MainActor (QuickLogNavigationDestination) -> Void
 
     var body: some View {
         QuickLogEntryView(
@@ -38,7 +49,8 @@ struct LogView: View {
             isActive: isActive,
             launchMode: launchMode,
             requestSequence: requestSequence,
-            onRequestHandled: onRequestHandled
+            onRequestHandled: onRequestHandled,
+            onNavigate: onNavigate
         )
     }
 }
@@ -60,16 +72,24 @@ struct QuickLogSheet: View {
             isActive: true,
             launchMode: nil,
             requestSequence: 0,
-            onRequestHandled: { _ in }
+            onRequestHandled: { _ in },
+            onNavigate: { _ in }
         )
     }
 }
 
 private struct QuickLogEntryView: View {
+    private enum FocusedField: Hashable {
+        case amount
+        case destinationAmount
+        case smartEntry
+        case payee
+        case note
+    }
+
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var model: AppModel
-    @FocusState private var isAmountFocused: Bool
-    @FocusState private var isSmartEntryFocused: Bool
+    @FocusState private var focusedField: FocusedField?
 
     @Binding var kind: QuickLogKind
     let dismissAfterSave: Bool
@@ -77,6 +97,7 @@ private struct QuickLogEntryView: View {
     let launchMode: QuickLogLaunchMode?
     let requestSequence: Int
     let onRequestHandled: @MainActor (QuickLogLaunchMode) -> Void
+    let onNavigate: @MainActor (QuickLogNavigationDestination) -> Void
 
     @State private var amountText = ""
     @State private var destinationAmountText = ""
@@ -105,6 +126,13 @@ private struct QuickLogEntryView: View {
     @State private var isShowingOptionalDetails = false
     @State private var receiptScanTask: Task<Void, Never>?
     @State private var receiptScanGeneration = 0
+    @State private var receiptResult: ReceiptParseResult?
+    @State private var splitLines: [QuickLogSplitDraftLine] = []
+    /// Transient image bytes. They are intentionally absent from QuickLogDraft
+    /// and reach persistence only when the user turns on receipt retention.
+    @State private var receiptAttachmentData: Data?
+    @State private var retainReceiptAttachment = false
+    @State private var receiptRetentionMessage: String?
 
     private var amount: Decimal? {
         guard let value = decimalAmount(from: amountText), value > .zero else { return nil }
@@ -137,6 +165,62 @@ private struct QuickLogEntryView: View {
         return value
     }
 
+    private var splitRemainder: Decimal? {
+        guard let amount,
+              let currency = selectedAccountCurrency,
+              let total = try? Money(amount, currency: currency),
+              let lines = try? transactionSplitLines(currency: currency),
+              let remainder = try? TransactionSplitCalculator.remainder(
+                total: total,
+                lines: lines
+              ) else { return nil }
+        return remainder.amount
+    }
+
+    private var splitLinesAreValid: Bool {
+        guard let amount,
+              let currency = selectedAccountCurrency,
+              let total = try? Money(amount, currency: currency),
+              let lines = try? transactionSplitLines(currency: currency),
+              lines.allSatisfy({ line in
+                  categories.contains(where: {
+                      $0.id == line.categoryAccountID
+                  }) && currency.supports(line.amount.amount)
+              }) else { return false }
+        do {
+            try TransactionSplitCalculator.validate(total: total, lines: lines)
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    private var historicalFXConversion: DerivedValue<HistoricalCurrencyConversion?> {
+        guard isForeignCurrencyTransfer,
+              let amount,
+              let source = selectedAccountCurrency,
+              let destination = selectedDestinationCurrency else {
+            return .available(nil)
+        }
+        do {
+            return .available(
+                try model.historicalConversion(
+                    amount: amount,
+                    from: source,
+                    to: destination,
+                    occurredAt: occurredAt
+                )
+            )
+        } catch {
+            DerivedValueDiagnostics.record(
+                .amountCalculationFailed,
+                operation: "quick-log-historical-conversion",
+                error: error
+            )
+            return .unavailable(.amountCalculationFailed)
+        }
+    }
+
     private var canSave: Bool {
         guard !isScanning,
               amount != nil,
@@ -146,7 +230,9 @@ private struct QuickLogEntryView: View {
         }
         switch kind {
         case .expense, .income, .refund:
-            return categories.contains { $0.id == categoryID }
+            return splitLines.isEmpty
+                ? categories.contains { $0.id == categoryID }
+                : splitLinesAreValid
         case .transfer:
             return destinationAccountID != nil
                 && destinationAccountID != accountID
@@ -159,6 +245,7 @@ private struct QuickLogEntryView: View {
     }
 
     var body: some View {
+        let historicalFXConversionResult = historicalFXConversion
         NavigationStack {
             Form {
                 Picker(
@@ -177,9 +264,9 @@ private struct QuickLogEntryView: View {
                             "quick_log.amount",
                             text: trackedBinding($amountText, \.amountText)
                         )
-                        .keyboardType(.decimalPad)
+                        .moneyAmountKeyboard(currency: selectedAccountCurrency)
                         .font(.title2.monospacedDigit())
-                        .focused($isAmountFocused)
+                        .focused($focusedField, equals: .amount)
                         if let currency = selectedAccountCurrency {
                             Text(currency.value)
                                 .font(.subheadline.weight(.semibold))
@@ -218,21 +305,79 @@ private struct QuickLogEntryView: View {
                                         \.destinationAmountText
                                     )
                                 )
-                                .keyboardType(.decimalPad)
+                                .moneyAmountKeyboard(currency: selectedDestinationCurrency)
+                                .focused($focusedField, equals: .destinationAmount)
                                 if let currency = selectedDestinationCurrency {
                                     Text(currency.value)
                                         .foregroundStyle(.secondary)
                                 }
                             }
+
+                            if case let .available(.some(conversion)) =
+                                historicalFXConversionResult {
+                                Button {
+                                    destinationAmountText = editableAmount(
+                                        conversion.converted.amount
+                                    )
+                                    persistUserDraftChange { snapshot in
+                                        snapshot.destinationAmountText = destinationAmountText
+                                    }
+                                } label: {
+                                    Label(
+                                        String(
+                                            format: String(localized: "fx.use_estimate_format"),
+                                            conversion.converted.currency.value,
+                                            NSDecimalNumber(
+                                                decimal: conversion.converted.amount
+                                            ).stringValue,
+                                            conversion.effectiveDayKey
+                                        ),
+                                        systemImage: "function"
+                                    )
+                                }
+                                .accessibilityHint("fx.estimate_accessibility_hint")
+                            } else if case let .unavailable(issue) =
+                                historicalFXConversionResult {
+                                DerivedValueUnavailableView(issue: issue)
+                            } else {
+                                Label("fx.unconverted_mode", systemImage: "equal.circle")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     } else {
-                        Picker(
-                            "transaction.category",
-                            selection: trackedBinding($categoryID, \.categoryID)
-                        ) {
-                            ForEach(categories) { category in
-                                Text(category.name).tag(Optional(category.id))
+                        Toggle(
+                            "quick_log.split_transaction",
+                            isOn: Binding(
+                                get: { !splitLines.isEmpty },
+                                set: { enabled in
+                                    if enabled {
+                                        let initialCategory = categoryID ?? categories.first?.id
+                                        splitLines = [
+                                            QuickLogSplitDraftLine(categoryID: initialCategory),
+                                            QuickLogSplitDraftLine(categoryID: initialCategory)
+                                        ]
+                                    } else {
+                                        splitLines = []
+                                    }
+                                    persistUserDraftChange { snapshot in
+                                        snapshot.splitLines = splitLines
+                                    }
+                                }
+                            )
+                        )
+
+                        if splitLines.isEmpty {
+                            Picker(
+                                "transaction.category",
+                                selection: trackedBinding($categoryID, \.categoryID)
+                            ) {
+                                ForEach(categories) { category in
+                                    Text(category.name).tag(Optional(category.id))
+                                }
                             }
+                        } else {
+                            splitEditor
                         }
                     }
                 }
@@ -267,6 +412,7 @@ private struct QuickLogEntryView: View {
                                 "transaction.payee",
                                 text: trackedBinding($payee, \.payee)
                             )
+                            .focused($focusedField, equals: .payee)
                         }
                         TextField(
                             "quick_log.note",
@@ -274,6 +420,7 @@ private struct QuickLogEntryView: View {
                             axis: .vertical
                         )
                             .lineLimit(2...4)
+                            .focused($focusedField, equals: .note)
                     }
                 }
 
@@ -307,6 +454,49 @@ private struct QuickLogEntryView: View {
                             .disabled(isSaving)
                     }
                 }
+                ToolbarItemGroup(placement: .keyboard) {
+                    if !dismissAfterSave {
+                        Menu {
+                            Button {
+                                navigate(to: .today)
+                            } label: {
+                                Label("tab.today", systemImage: "house.fill")
+                            }
+                            Button {
+                                navigate(to: .history)
+                            } label: {
+                                Label("tab.history", systemImage: "clock.arrow.circlepath")
+                            }
+                            Button {
+                                navigate(to: .plan)
+                            } label: {
+                                Label("tab.plan", systemImage: "chart.pie.fill")
+                            }
+                            Button {
+                                navigate(to: .assets)
+                            } label: {
+                                Label("tab.assets", systemImage: "wallet.bifold.fill")
+                            }
+                        } label: {
+                            Label("quick_log.switch_tab", systemImage: "square.grid.2x2")
+                        }
+                    }
+
+                    Button {
+                        Task { await save() }
+                    } label: {
+                        Label("action.save", systemImage: "checkmark.circle.fill")
+                    }
+                    .disabled(!canSave || isSaving || isUndoing)
+
+                    Spacer()
+                    Button {
+                        dismissKeyboard()
+                    } label: {
+                        Label("action.done", systemImage: "keyboard.chevron.compact.down")
+                    }
+                    .fontWeight(.semibold)
+                }
             }
             .onAppear {
                 restoreDraftIfAvailable()
@@ -316,21 +506,35 @@ private struct QuickLogEntryView: View {
                 Task { @MainActor in
                     await Task.yield()
                     if isActive && amountText.isEmpty && !isHandlingFocusedLaunch {
-                        isAmountFocused = true
+                        focusedField = .amount
                     }
                 }
             }
             .onChange(of: isActive) { _, newValue in
                 if !newValue {
-                    isAmountFocused = false
-                    isSmartEntryFocused = false
+                    dismissKeyboard()
                     isHandlingFocusedLaunch = false
                 } else if amountText.isEmpty {
-                    isAmountFocused = true
+                    focusedField = .amount
                 }
             }
-            .onChange(of: kind) { _, _ in
+            .onChange(of: kind) { _, newKind in
+                if newKind == .transfer {
+                    receiptResult = nil
+                    receiptAttachmentData = nil
+                    retainReceiptAttachment = false
+                    receiptRetentionMessage = nil
+                    splitLines = []
+                }
                 selectDefaults()
+                if newKind != .transfer, !splitLines.isEmpty {
+                    for index in splitLines.indices where !categories.contains(
+                        where: { $0.id == splitLines[index].categoryID }
+                    ) {
+                        splitLines[index].categoryID = categories.first?.id
+                    }
+                }
+                persistUserDraftChange { $0.splitLines = splitLines }
             }
             .onChange(of: requestSequence) { _, _ in
                 handleRequestedLaunch()
@@ -418,7 +622,7 @@ private struct QuickLogEntryView: View {
                 }
                 pendingLaunchMode = nil
                 isHandlingFocusedLaunch = false
-                isAmountFocused = true
+                focusedField = .amount
             }
             Button("quick_log.start_new", role: .destructive) {
                 guard let mode = pendingLaunchMode else { return }
@@ -454,7 +658,7 @@ private struct QuickLogEntryView: View {
                     axis: .vertical
                 )
                     .lineLimit(1...3)
-                    .focused($isSmartEntryFocused)
+                    .focused($focusedField, equals: .smartEntry)
                 Button("quick_log.smart_fill") { applyTypedPhrase() }
                     .buttonStyle(.borderless)
                     .disabled(
@@ -486,10 +690,111 @@ private struct QuickLogEntryView: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
+
+            if let receiptResult {
+                receiptSuggestions(receiptResult)
+            }
+
+            if receiptAttachmentData != nil {
+                Toggle("quick_log.keep_receipt", isOn: $retainReceiptAttachment)
+                    .accessibilityHint("quick_log.keep_receipt_hint")
+                Text("quick_log.keep_receipt_detail")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if let receiptRetentionMessage {
+                Text(receiptRetentionMessage)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         } header: {
             Text("quick_log.smart_entry")
         } footer: {
             Text("quick_log.smart_footer")
+        }
+    }
+
+    @ViewBuilder
+    private var splitEditor: some View {
+        ForEach(splitLines.indices, id: \.self) { index in
+            VStack(alignment: .leading, spacing: 8) {
+                Picker(
+                    "quick_log.split_category",
+                    selection: Binding(
+                        get: { splitLines[index].categoryID },
+                        set: { value in
+                            splitLines[index].categoryID = value
+                            persistUserDraftChange { $0.splitLines = splitLines }
+                        }
+                    )
+                ) {
+                    ForEach(categories) { category in
+                        Text(category.name).tag(Optional(category.id))
+                    }
+                }
+
+                HStack {
+                    TextField(
+                        "quick_log.split_amount",
+                        text: Binding(
+                            get: { splitLines[index].amountText },
+                            set: { value in
+                                splitLines[index].amountText = value
+                                persistUserDraftChange { $0.splitLines = splitLines }
+                            }
+                        )
+                    )
+                    .moneyAmountKeyboard(currency: selectedAccountCurrency)
+                    .accessibilityLabel("quick_log.split_amount")
+                    if let currency = selectedAccountCurrency {
+                        Text(currency.value).foregroundStyle(.secondary)
+                    }
+                    if splitLines.count > 2 {
+                        Button(role: .destructive) {
+                            splitLines.remove(at: index)
+                            persistUserDraftChange { $0.splitLines = splitLines }
+                        } label: {
+                            Image(systemName: "minus.circle.fill")
+                        }
+                        .accessibilityLabel("quick_log.split_remove")
+                    }
+                }
+
+                TextField(
+                    "quick_log.split_memo",
+                    text: Binding(
+                        get: { splitLines[index].memo },
+                        set: { value in
+                            splitLines[index].memo = value
+                            persistUserDraftChange { $0.splitLines = splitLines }
+                        }
+                    )
+                )
+                .font(.caption)
+            }
+            .padding(.vertical, 4)
+        }
+
+        Button {
+            splitLines.append(
+                QuickLogSplitDraftLine(categoryID: categoryID ?? categories.first?.id)
+            )
+            persistUserDraftChange { $0.splitLines = splitLines }
+        } label: {
+            Label("quick_log.split_add", systemImage: "plus.circle")
+        }
+
+        if let remainder = splitRemainder, let currency = selectedAccountCurrency {
+            LabeledContent("quick_log.split_remainder") {
+                Text("\(editableAmount(remainder)) \(currency.value)")
+                    .font(.subheadline.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(remainder == .zero ? Color.green : Color.red)
+            }
+            .accessibilityHint(
+                remainder == .zero
+                    ? Text("quick_log.split_balanced")
+                    : Text("quick_log.split_not_balanced")
+            )
         }
     }
 
@@ -505,7 +810,8 @@ private struct QuickLogEntryView: View {
             dateWasEdited: dateWasEdited,
             payee: payee,
             note: note,
-            smartText: smartText
+            smartText: smartText,
+            splitLines: splitLines
         )
     }
 
@@ -555,6 +861,7 @@ private struct QuickLogEntryView: View {
         payee = draft.payee
         note = draft.note
         smartText = draft.smartText
+        splitLines = draft.splitLines
         isShowingOptionalDetails = draft.dateWasEdited
             || !draft.payee.isEmpty
             || !draft.note.isEmpty
@@ -589,6 +896,11 @@ private struct QuickLogEntryView: View {
         note = ""
         smartText = ""
         smartMessage = nil
+        receiptResult = nil
+        splitLines = []
+        receiptAttachmentData = nil
+        retainReceiptAttachment = false
+        receiptRetentionMessage = nil
         errorMessage = nil
         performLaunch(launchMode)
         selectDefaults()
@@ -601,20 +913,17 @@ private struct QuickLogEntryView: View {
         switch launchMode {
         case .smartEntry:
             isHandlingFocusedLaunch = true
-            isAmountFocused = false
-            isSmartEntryFocused = true
+            focusedField = .smartEntry
         case .scanReceipt:
             isHandlingFocusedLaunch = true
-            isAmountFocused = false
-            isSmartEntryFocused = false
+            dismissKeyboard()
             Task { @MainActor in
                 await Task.yield()
                 isPresentingReceiptPicker = true
             }
         case .expense, .income, .transfer, .refund:
             isHandlingFocusedLaunch = false
-            isSmartEntryFocused = false
-            isAmountFocused = true
+            focusedField = .amount
         }
         if !dismissAfterSave { model.updateQuickLogDraft(draftSnapshot) }
     }
@@ -633,6 +942,7 @@ private struct QuickLogEntryView: View {
     }
 
     private func applyTypedPhrase() {
+        receiptResult = nil
         let draft = NaturalLanguageEntryParser.draft(
             from: smartText,
             accounts: model.accounts,
@@ -651,6 +961,10 @@ private struct QuickLogEntryView: View {
         guard let item else { return }
         isScanning = true
         smartMessage = nil
+        receiptResult = nil
+        receiptAttachmentData = nil
+        retainReceiptAttachment = false
+        receiptRetentionMessage = nil
         defer {
             if generation == receiptScanGeneration {
                 isScanning = false
@@ -664,17 +978,97 @@ private struct QuickLogEntryView: View {
             guard let data = try await item.loadTransferable(type: Data.self) else {
                 throw ReceiptScannerError.unreadableImage
             }
-            if let draft = try await model.receiptDraft(
+            try Task.checkCancellation()
+            guard generation == receiptScanGeneration else { return }
+            if data.count <= ReceiptAttachment.maximumByteCount {
+                receiptAttachmentData = data
+                receiptRetentionMessage = nil
+            } else {
+                receiptAttachmentData = nil
+                receiptRetentionMessage = ReceiptAttachmentError.tooLarge.localizedDescription
+            }
+            if let result = try await model.receiptAnalysis(
                 from: data,
                 prefersDayFirst: Self.localePrefersDayFirst
             ) {
-                _ = apply(draft)
+                try Task.checkCancellation()
+                guard generation == receiptScanGeneration else { return }
+                _ = applyReceipt(result)
             }
         } catch is CancellationError {
             return
         } catch {
-            smartMessage = error.localizedDescription
+            smartMessage = safeUserMessage(for: error, context: .scan)
         }
+    }
+
+    /// Receipt fields are suggestions, not an automatic commit. Populate the
+    /// best candidates, reveal any filled optional details, and keep the full
+    /// ranked result in transient view state so alternatives remain reviewable.
+    @discardableResult
+    private func applyReceipt(_ result: ReceiptParseResult) -> Bool {
+        guard apply(result.draft) else {
+            receiptResult = nil
+            return false
+        }
+
+        if note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           let noteCandidate = result.noteCandidate {
+            note = noteCandidate
+        }
+        if result.draft.occurredAt != nil
+            || result.draft.payee != nil
+            || !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            isShowingOptionalDetails = true
+        }
+
+        receiptResult = result
+        smartMessage = nil
+        if !dismissAfterSave {
+            model.updateQuickLogDraft(draftSnapshot)
+        }
+        return true
+    }
+
+    @ViewBuilder
+    private func receiptSuggestions(_ result: ReceiptParseResult) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("quick_log.scan_ready", systemImage: "checkmark.circle.fill")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.tint)
+            Text("quick_log.scan_review")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+
+            if result.amountCandidates.count > 1 {
+                Text("quick_log.scan_alternative_amounts")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(
+                            Array(result.amountCandidates.prefix(4).enumerated()),
+                            id: \.offset
+                        ) { _, candidate in
+                            Button {
+                                amountText = editableAmount(candidate)
+                                persistUserDraftChange { snapshot in
+                                    snapshot.amountText = amountText
+                                }
+                            } label: {
+                                if let currency = selectedAccountCurrency {
+                                    Text("\(editableAmount(candidate)) \(currency.value)")
+                                } else {
+                                    Text(editableAmount(candidate))
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                    }
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
     }
 
     /// Applies whatever the reader was sure about and leaves the rest alone.
@@ -715,7 +1109,7 @@ private struct QuickLogEntryView: View {
         }
 
         smartMessage = nil
-        isAmountFocused = false
+        dismissKeyboard()
         if !dismissAfterSave { model.updateQuickLogDraft(draftSnapshot) }
         return true
     }
@@ -777,6 +1171,8 @@ private struct QuickLogEntryView: View {
     }
 
     private func recentAccountID() -> UUID? {
+        // AppModel intentionally retains only the 80 newest valid entries.
+        // Defaults favor recent behavior and never trigger a historical scan.
         let validIDs = Set(model.userAccounts.map(\.id))
         return model.entries.lazy
             .filter { entry in
@@ -795,7 +1191,11 @@ private struct QuickLogEntryView: View {
     private func recentCategoryID(kind: LedgerAccountKind) -> UUID? {
         let choices = kind == .income ? model.incomeCategories : model.expenseCategories
         let validIDs = Set(choices.map(\.id))
-        let cutoff = Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? .distantPast
+        let cutoff = model.reportingCalendar.date(
+            byAdding: .day,
+            value: -30,
+            to: Date()
+        ) ?? .distantPast
         var counts: [UUID: Int] = [:]
         var firstSeenOrder: [UUID: Int] = [:]
 
@@ -826,37 +1226,68 @@ private struct QuickLogEntryView: View {
         defer { isSaving = false }
         do {
             let savedEntryID: UUID?
+            let retainedReceipt = retainReceiptAttachment ? receiptAttachmentData : nil
             switch kind {
             case .expense:
-                guard let categoryID else { return }
-                savedEntryID = try await model.logExpense(
-                    amount: amount,
-                    accountID: accountID,
-                    categoryID: categoryID,
-                    occurredAt: occurredAt,
-                    payee: payee,
-                    note: note
-                )
+                if splitLines.isEmpty {
+                    guard let categoryID else { return }
+                    savedEntryID = try await model.logExpense(
+                        amount: amount,
+                        accountID: accountID,
+                        categoryID: categoryID,
+                        occurredAt: occurredAt,
+                        payee: payee,
+                        note: note,
+                        receiptData: retainedReceipt
+                    )
+                } else {
+                    savedEntryID = try await saveSplit(
+                        kind: .expense,
+                        amount: amount,
+                        accountID: accountID,
+                        receiptData: retainedReceipt
+                    )
+                }
             case .income:
-                guard let categoryID else { return }
-                savedEntryID = try await model.logIncome(
-                    amount: amount,
-                    accountID: accountID,
-                    categoryID: categoryID,
-                    occurredAt: occurredAt,
-                    payee: payee,
-                    note: note
-                )
+                if splitLines.isEmpty {
+                    guard let categoryID else { return }
+                    savedEntryID = try await model.logIncome(
+                        amount: amount,
+                        accountID: accountID,
+                        categoryID: categoryID,
+                        occurredAt: occurredAt,
+                        payee: payee,
+                        note: note,
+                        receiptData: retainedReceipt
+                    )
+                } else {
+                    savedEntryID = try await saveSplit(
+                        kind: .income,
+                        amount: amount,
+                        accountID: accountID,
+                        receiptData: retainedReceipt
+                    )
+                }
             case .refund:
-                guard let categoryID else { return }
-                savedEntryID = try await model.logRefund(
-                    amount: amount,
-                    accountID: accountID,
-                    categoryID: categoryID,
-                    occurredAt: occurredAt,
-                    payee: payee,
-                    note: note
-                )
+                if splitLines.isEmpty {
+                    guard let categoryID else { return }
+                    savedEntryID = try await model.logRefund(
+                        amount: amount,
+                        accountID: accountID,
+                        categoryID: categoryID,
+                        occurredAt: occurredAt,
+                        payee: payee,
+                        note: note,
+                        receiptData: retainedReceipt
+                    )
+                } else {
+                    savedEntryID = try await saveSplit(
+                        kind: .refund,
+                        amount: amount,
+                        accountID: accountID,
+                        receiptData: retainedReceipt
+                    )
+                }
             case .transfer:
                 guard let destinationAccountID else { return }
                 savedEntryID = try await model.logTransfer(
@@ -874,7 +1305,48 @@ private struct QuickLogEntryView: View {
                 dismiss()
             }
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = safeUserMessage(for: error, context: .save)
+        }
+    }
+
+    private func saveSplit(
+        kind: QuickLogKind,
+        amount: Decimal,
+        accountID: UUID,
+        receiptData: Data?
+    ) async throws -> UUID? {
+        guard let currency = selectedAccountCurrency else {
+            throw AppModelError.accountHasNoCurrency
+        }
+        let lines = try transactionSplitLines(currency: currency)
+        let total = try Money(amount, currency: currency)
+        try TransactionSplitCalculator.validate(total: total, lines: lines)
+        return try await model.logSplitTransaction(
+            kind: kind,
+            amount: amount,
+            accountID: accountID,
+            lines: lines,
+            occurredAt: occurredAt,
+            payee: payee,
+            note: note,
+            receiptData: receiptData
+        )
+    }
+
+    private func transactionSplitLines(
+        currency: CurrencyCode
+    ) throws -> [TransactionSplitLine] {
+        try splitLines.map { line -> TransactionSplitLine in
+            guard let categoryID = line.categoryID,
+                  let splitAmount = decimalAmount(from: line.amountText) else {
+                throw AppModelError.missingRecord
+            }
+            return TransactionSplitLine(
+                id: line.id,
+                categoryAccountID: categoryID,
+                amount: try Money(splitAmount, currency: currency),
+                memo: line.memo
+            )
         }
     }
 
@@ -896,13 +1368,18 @@ private struct QuickLogEntryView: View {
             note = ""
             smartText = ""
             smartMessage = nil
+            receiptResult = nil
+            splitLines = []
+            receiptAttachmentData = nil
+            retainReceiptAttachment = false
+            receiptRetentionMessage = nil
             photoItem = nil
             errorMessage = nil
             isShowingOptionalDetails = false
             if !dismissAfterSave { model.updateQuickLogDraft(draftSnapshot) }
         }
         successFeedback += 1
-        isAmountFocused = isActive
+        focusedField = isActive ? .amount : nil
 
         guard !dismissAfterSave, let entryID else { return }
         withAnimation {
@@ -930,7 +1407,24 @@ private struct QuickLogEntryView: View {
                 lastSavedEntryID = nil
             }
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = safeUserMessage(for: error, context: .save)
         }
+    }
+
+    /// Decimal pads have no return key. Keeping dismissal entirely focus-driven
+    /// also makes leaving Log a pure UI action: no transaction is saved and the
+    /// unfinished draft is neither cleared nor reinterpreted as completed.
+    private func dismissKeyboard() {
+        focusedField = nil
+    }
+
+    /// A tab change is a navigation action only. Persist the exact current
+    /// draft, resign focus, then let the parent select the requested tab.
+    private func navigate(to destination: QuickLogNavigationDestination) {
+        dismissKeyboard()
+        if !dismissAfterSave {
+            model.updateQuickLogDraft(draftSnapshot)
+        }
+        onNavigate(destination)
     }
 }

@@ -26,9 +26,11 @@ concurrency:
 env:
   XCODEGEN_VERSION: 2.46.0
   XCODEGEN_SHA256: 4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806
-  MARKETING_VERSION: 0.5.1
+  MARKETING_VERSION: 0.6.0
+  SOURCE_BUILD_NUMBER: 8
   APP_BUNDLE_ID: com.laiwenkang.MoneyUp
   WIDGET_BUNDLE_ID: com.laiwenkang.MoneyUp.Widget
+  APP_GROUP_ID: group.com.laiwenkang.MoneyUp
 
 jobs:
   preflight:
@@ -57,6 +59,16 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
+
+      - name: Verify the exact dispatched commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACTUAL_SHA="$(git rev-parse HEAD)"
+          if [[ "$ACTUAL_SHA" != "$GITHUB_SHA" ]]; then
+            echo "::error::Checked out $ACTUAL_SHA instead of dispatched commit $GITHUB_SHA."
+            exit 1
+          fi
 
       - name: Verify the Apple upload toolchain
         shell: bash
@@ -87,6 +99,48 @@ jobs:
       - name: Validate release assets
         run: python3 Scripts/validate_release_assets.py
 
+      - name: Verify source candidate identity and App Group contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - "$MARKETING_VERSION" "$SOURCE_BUILD_NUMBER" "$APP_GROUP_ID" <<'PY'
+          import pathlib
+          import plistlib
+          import re
+          import sys
+
+          marketing, build, app_group = sys.argv[1:]
+          project = pathlib.Path("project.yml").read_text(encoding="utf-8")
+          version_match = re.search(
+              r"^\s+MARKETING_VERSION:\s*([^\s#]+)", project, re.MULTILINE
+          )
+          build_match = re.search(
+              r"^\s+CURRENT_PROJECT_VERSION:\s*([^\s#]+)",
+              project,
+              re.MULTILINE,
+          )
+          if version_match is None or version_match.group(1) != marketing:
+              raise SystemExit("project.yml marketing version does not match the workflow")
+          if build_match is None or build_match.group(1) != build:
+              raise SystemExit("project.yml source build does not match the workflow")
+
+          entitlement_paths = (
+              pathlib.Path("App/MoneyUp/MoneyUp.entitlements"),
+              pathlib.Path("App/MoneyUpWidget/MoneyUpWidget.entitlements"),
+          )
+          expected = [app_group]
+          for path in entitlement_paths:
+              if not path.is_file():
+                  raise SystemExit(f"missing reviewed App Group entitlement: {path}")
+              with path.open("rb") as source:
+                  payload = plistlib.load(source)
+              groups = payload.get("com.apple.security.application-groups")
+              if groups != expected:
+                  raise SystemExit(
+                      f"{path} must contain only the reviewed App Group {app_group}"
+                  )
+          PY
+
       - name: Run domain tests
         run: swift test --parallel -Xswiftc -warnings-as-errors
 
@@ -101,6 +155,105 @@ jobs:
           -resolvePackageDependencies
           -project MoneyUp.xcodeproj
           -scheme MoneyUp
+
+      - name: Select and boot a deterministic iPhone Simulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          SIMULATOR_JSON="$RUNNER_TEMP/available-iphone-simulators.json"
+          xcrun simctl list devices available --json > "$SIMULATOR_JSON"
+          SIMULATOR_SELECTION="$(python3 - "$SIMULATOR_JSON" <<'PY'
+          import json
+          import re
+          import sys
+
+          path = sys.argv[1]
+          with open(path, encoding="utf-8") as source:
+              payload = json.load(source)
+
+          preferred_names = [
+              "iPhone 17 Pro",
+              "iPhone 17",
+              "iPhone Air",
+              "iPhone 16 Pro",
+              "iPhone 16",
+              "iPhone 16e",
+              "iPhone 15 Pro",
+              "iPhone 15",
+          ]
+          preference = {name: index for index, name in enumerate(preferred_names)}
+          candidates = []
+          for runtime_identifier, devices in payload.get("devices", {}).items():
+              match = re.search(r"\.iOS-(\d+)(?:-(\d+))?(?:-(\d+))?$", runtime_identifier)
+              if match is None:
+                  continue
+              version = tuple(int(part or 0) for part in match.groups())
+              runtime_name = "iOS " + ".".join(str(part) for part in version)
+              for device in devices:
+                  name = device.get("name", "")
+                  device_type = device.get("deviceTypeIdentifier", "")
+                  if not device.get("isAvailable", True):
+                      continue
+                  if not (name.startswith("iPhone") or ".iPhone-" in device_type):
+                      continue
+                  udid = device.get("udid", "")
+                  if not udid:
+                      continue
+                  candidates.append(
+                      (
+                          version,
+                          preference.get(name, len(preferred_names)),
+                          name,
+                          udid,
+                          device.get("state", "Shutdown"),
+                          runtime_name,
+                      )
+                  )
+
+          if not candidates:
+              raise SystemExit("No available iPhone Simulator was found")
+
+          candidates.sort(
+              key=lambda candidate: (
+                  tuple(-part for part in candidate[0]),
+                  candidate[1],
+                  candidate[2].casefold(),
+                  candidate[3],
+              )
+          )
+          _, _, name, udid, state, runtime_name = candidates[0]
+          print("\t".join((udid, name, runtime_name, state)))
+          PY
+          )"
+          IFS=$'\t' read -r SIMULATOR_UDID SIMULATOR_NAME SIMULATOR_RUNTIME SIMULATOR_STATE \
+            <<< "$SIMULATOR_SELECTION"
+          if [[ -z "$SIMULATOR_UDID" ]]; then
+            echo "::error::The simulator selector did not return a device UDID."
+            exit 1
+          fi
+          echo "Selected $SIMULATOR_NAME ($SIMULATOR_RUNTIME, $SIMULATOR_UDID)"
+          if [[ "$SIMULATOR_STATE" != "Booted" ]]; then
+            xcrun simctl boot "$SIMULATOR_UDID"
+          fi
+          xcrun simctl bootstatus "$SIMULATOR_UDID" -b
+          echo "SIMULATOR_UDID=$SIMULATOR_UDID" >> "$GITHUB_ENV"
+
+      - name: Run app-model tests on the booted iPhone Simulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project MoneyUp.xcodeproj \
+            -scheme MoneyUp \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" \
+            -derivedDataPath "$RUNNER_TEMP/MoneyUp-app-tests" \
+            -disableAutomaticPackageResolution \
+            -only-testing:MoneyUpTests \
+            -parallel-testing-enabled NO \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            test
 
       - name: Build the app and widget without signing
         run: >-
@@ -358,6 +511,31 @@ jobs:
               echo "::error::$(basename "$BUNDLE_PATH") signed entitlements do not match its distribution profile."
               exit 1
             fi
+            python3 - "$PROFILE_PLIST" "$SIGNED_ENTITLEMENTS" "$APP_GROUP_ID" "$(basename "$BUNDLE_PATH")" <<'PY'
+          import plistlib
+          import sys
+
+          profile_path, signed_path, expected_group, bundle_name = sys.argv[1:]
+          with open(profile_path, "rb") as source:
+              profile = plistlib.load(source)
+          with open(signed_path, "rb") as source:
+              signed = plistlib.load(source)
+          profile_groups = profile.get("Entitlements", {}).get(
+              "com.apple.security.application-groups", []
+          )
+          signed_groups = signed.get("com.apple.security.application-groups", [])
+          expected = [expected_group]
+          if profile_groups != expected:
+              raise SystemExit(
+                  f"error: {bundle_name} distribution profile must authorize only "
+                  f"the reviewed App Group {expected_group}; found {profile_groups!r}"
+              )
+          if signed_groups != expected:
+              raise SystemExit(
+                  f"error: {bundle_name} signed entitlements must contain only "
+                  f"the reviewed App Group {expected_group}; found {signed_groups!r}"
+              )
+          PY
             GET_TASK_ALLOW="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:get-task-allow' "$PROFILE_PLIST" 2>/dev/null || true)"
             if [[ "$GET_TASK_ALLOW" == "true" ]]; then
               echo "::error::$(basename "$BUNDLE_PATH") has a development provisioning profile."
