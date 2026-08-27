@@ -2628,7 +2628,7 @@ final class AppModel: ObservableObject {
     ) -> DerivedValue<SavingsGoalSummary> {
         do {
             return .available(
-                try goal.summary(asOf: asOf, calendar: reportingCalendar)
+                try goal.summary(asOf: asOf)
             )
         } catch {
             DerivedValueDiagnostics.record(
@@ -7303,28 +7303,26 @@ final class AppModel: ObservableObject {
         _ left: Decimal,
         _ right: Decimal
     ) throws -> Decimal {
-        var lhs = left
-        var rhs = right
-        var result = Decimal.zero
-        let error = NSDecimalSubtract(&result, &lhs, &rhs, .bankers)
-        guard error == .noError, !result.isNaN else {
+        do {
+            return try CheckedDecimal.subtracting(left, right)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
             throw AppModelError.amountTooLarge
         }
-        return result
     }
 
     private func checkedEstimatedSum(
         _ left: Decimal,
         _ right: Decimal
     ) throws -> Decimal {
-        var lhs = left
-        var rhs = right
-        var result = Decimal.zero
-        let error = NSDecimalAdd(&result, &lhs, &rhs, .bankers)
-        guard error == .noError, !result.isNaN else {
+        do {
+            return try CheckedDecimal.adding(left, right)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
             throw AppModelError.amountTooLarge
         }
-        return result
     }
 
     private func performInvestmentDomainOperation<Value>(

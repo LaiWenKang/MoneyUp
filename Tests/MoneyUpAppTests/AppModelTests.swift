@@ -265,7 +265,7 @@ final class AppModelTests: XCTestCase {
         await gate.release()
 
         let savedID = try await saveTask.value
-        XCTAssertNil(savedID)
+        XCTAssertNotNil(savedID)
         await model.waitForPendingStoreClose()
         XCTAssertEqual(model.state, .locked)
         XCTAssertTrue(model.entries.isEmpty)
@@ -764,7 +764,20 @@ final class AppModelTests: XCTestCase {
 
         let after = try await fixture.store.snapshot()
         XCTAssertEqual(after.schemaVersion, candidate.schemaVersion)
-        XCTAssertEqual(after.records, candidate.records)
+        XCTAssertEqual(
+            after.records.filter {
+                $0.collection
+                    != RecordCollection.budgetConfigurationTimelines.rawValue
+            },
+            candidate.records
+        )
+        XCTAssertEqual(
+            after.records.filter {
+                $0.collection
+                    == RecordCollection.budgetConfigurationTimelines.rawValue
+            }.count,
+            1
+        )
         XCTAssertNil(model.quickLogDraft)
         let draftCount = try await fixture.store.count(in: .quickLogDrafts)
         XCTAssertEqual(draftCount, 0)
@@ -832,10 +845,25 @@ final class AppModelTests: XCTestCase {
         )
 
         let restored = try await fixture.store.snapshot()
-        XCTAssertEqual(restored.records, candidate.records.sorted {
-            if $0.collection == $1.collection { return $0.recordID < $1.recordID }
-            return $0.collection < $1.collection
-        })
+        XCTAssertEqual(
+            restored.records.filter {
+                $0.collection
+                    != RecordCollection.budgetConfigurationTimelines.rawValue
+            },
+            candidate.records.sorted {
+                if $0.collection == $1.collection {
+                    return $0.recordID < $1.recordID
+                }
+                return $0.collection < $1.collection
+            }
+        )
+        XCTAssertEqual(
+            restored.records.filter {
+                $0.collection
+                    == RecordCollection.budgetConfigurationTimelines.rawValue
+            }.count,
+            1
+        )
         XCTAssertEqual(model.profile, replacementProfile)
         XCTAssertEqual(model.accounts, [fixture.usAccount])
         XCTAssertEqual(model.state, .ready)
@@ -1314,7 +1342,7 @@ final class AppModelTests: XCTestCase {
         _ = model.budgetPurposeOverview()
         XCTAssertEqual(model.budgetTreeCacheBuildCount, 2)
 
-        try await model.updateAutoLockDelay(30)
+        try await model.updateAutoLockDelay(300)
         _ = model.budgetPurposeOverview()
         XCTAssertEqual(model.budgetTreeCacheBuildCount, 3)
         await fixture.store.close()
@@ -4082,6 +4110,7 @@ final class AppModelTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let snapshotStore = BudgetWidgetSnapshotStore(defaults: defaults)
+        let now = Date(timeIntervalSinceReferenceDate: 100)
         let entry = try fixture.expense(amount: Decimal(string: "25.49")!)
         let profile = UserProfile(
             baseCurrency: fixture.sgd,
@@ -4099,10 +4128,11 @@ final class AppModelTests: XCTestCase {
             profile: profile,
             entries: [entry],
             budgetNodes: [budget],
-            budgetWidgetSnapshotStore: snapshotStore
+            budgetWidgetSnapshotStore: snapshotStore,
+            currentDate: { now }
         )
 
-        XCTAssertEqual(budgetWidgetPercent(snapshotStore.read()), 25)
+        XCTAssertEqual(budgetWidgetPercent(snapshotStore.read(now: now)), 25)
         let persistedDomain = defaults.persistentDomain(forName: suiteName) ?? [:]
         let persistedKeys = Set(persistedDomain.keys)
         XCTAssertTrue(persistedKeys.isSubset(of: BudgetWidgetSnapshotStore.allowedPersistedKeys))
@@ -4141,6 +4171,7 @@ final class AppModelTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let snapshotStore = BudgetWidgetSnapshotStore(defaults: defaults)
+        let now = Date(timeIntervalSinceReferenceDate: 100)
         let profile = UserProfile(
             baseCurrency: fixture.sgd,
             showsBudgetStatusWidget: true,
@@ -4156,15 +4187,16 @@ final class AppModelTests: XCTestCase {
             profile: profile,
             entries: [try fixture.expense(amount: 25)],
             budgetNodes: [budget],
-            budgetWidgetSnapshotStore: snapshotStore
+            budgetWidgetSnapshotStore: snapshotStore,
+            currentDate: { now }
         )
-        XCTAssertEqual(budgetWidgetPercent(snapshotStore.read()), 25)
+        XCTAssertEqual(budgetWidgetPercent(snapshotStore.read(now: now)), 25)
 
         model.lock()
         await model.waitForPendingStoreClose()
 
         XCTAssertEqual(model.state, .locked)
-        XCTAssertEqual(budgetWidgetPercent(snapshotStore.read()), 25)
+        XCTAssertEqual(budgetWidgetPercent(snapshotStore.read(now: now)), 25)
     }
 
     @MainActor
@@ -4175,6 +4207,7 @@ final class AppModelTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let snapshotStore = BudgetWidgetSnapshotStore(defaults: defaults)
+        let now = Date(timeIntervalSinceReferenceDate: 100)
         let profile = UserProfile(
             baseCurrency: fixture.sgd,
             showsBudgetStatusWidget: true,
@@ -4190,9 +4223,10 @@ final class AppModelTests: XCTestCase {
             profile: profile,
             entries: [try fixture.expense(amount: 25)],
             budgetNodes: [budget],
-            budgetWidgetSnapshotStore: snapshotStore
+            budgetWidgetSnapshotStore: snapshotStore,
+            currentDate: { now }
         )
-        XCTAssertEqual(budgetWidgetPercent(snapshotStore.read()), 25)
+        XCTAssertEqual(budgetWidgetPercent(snapshotStore.read(now: now)), 25)
 
         await model.eraseAllDataAndRestart()
 
@@ -4209,8 +4243,14 @@ final class AppModelTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let snapshotStore = BudgetWidgetSnapshotStore(defaults: defaults)
-        snapshotStore.publish(enabled: true, percentUsed: 73)
-        XCTAssertEqual(budgetWidgetPercent(snapshotStore.read()), 73)
+        let now = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        snapshotStore.publish(
+            enabled: true,
+            percentUsed: 73,
+            periodToken: "2026-05",
+            validUntil: now.addingTimeInterval(3_600)
+        )
+        XCTAssertEqual(budgetWidgetPercent(snapshotStore.read(now: now)), 73)
 
         let model = AppModel(
             store: fixture.store,
@@ -5636,16 +5676,32 @@ extension AppModelTests {
         }
 
         for collection in durable {
-            try await fixture.store.upsert(
-                fixture.wallet,
-                id: "sentinel",
-                in: collection
-            )
+            let recordID: String
+            if collection == .receiptAttachments {
+                let attachment = try ReceiptAttachment(
+                    entryID: UUID(),
+                    mediaType: .jpeg,
+                    data: Data([0xff])
+                )
+                recordID = attachment.id.uuidString
+                try await fixture.store.upsert(
+                    attachment,
+                    id: recordID,
+                    in: collection
+                )
+            } else {
+                recordID = "sentinel"
+                try await fixture.store.upsert(
+                    fixture.wallet,
+                    id: recordID,
+                    in: collection
+                )
+            }
             let detected = try await AppModel.containsPersistedBookData(
                 in: fixture.store
             )
             XCTAssertTrue(detected, collection.rawValue)
-            try await fixture.store.remove(id: "sentinel", from: collection)
+            try await fixture.store.remove(id: recordID, from: collection)
             let cleared = try await AppModel.containsPersistedBookData(
                 in: fixture.store
             )

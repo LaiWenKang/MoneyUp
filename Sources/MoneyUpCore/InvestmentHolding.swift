@@ -535,9 +535,18 @@ public struct InvestmentHolding: Codable, Equatable, Identifiable, Sendable {
             disposals: sortedDisposals,
             corrections: sortedCorrections
         )
-        guard price == effectivePrice?.price,
-              priceAsOf == effectivePrice?.asOf else {
-            throw InvestmentHoldingError.historyMismatch
+        let isUnconnectedLegacyQuote = positionAccountID == nil
+            && sortedHistory.isEmpty
+            && sortedLots.isEmpty
+            && sortedDisposals.isEmpty
+            && sortedCorrections.isEmpty
+            && price != nil
+            && priceAsOf == nil
+        if !isUnconnectedLegacyQuote {
+            guard price == effectivePrice?.price,
+                  priceAsOf == effectivePrice?.asOf else {
+                throw InvestmentHoldingError.historyMismatch
+            }
         }
 
         guard sortedLots.isEmpty || positionAccountID != nil,
