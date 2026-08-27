@@ -363,34 +363,12 @@ jobs:
             echo "- Operation: ${{ inputs.operation }}"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Materialize the App Store Connect key
-        shell: bash
-        env:
-          ASC_API_KEY_P8: ${{ secrets.ASC_API_KEY_P8 }}
-        run: |
-          set -euo pipefail
-          umask 077
-          if [[ -z "$ASC_API_KEY_P8" ]]; then
-            echo "::error::Set ASC_API_KEY_P8 in the testflight environment secrets."
-            exit 1
-          fi
-          KEY_DIRECTORY="$HOME/.appstoreconnect/private_keys"
-          KEY_PATH="$KEY_DIRECTORY/AuthKey_${ASC_KEY_ID}.p8"
-          mkdir -p "$KEY_DIRECTORY"
-          echo "ASC_KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
-          printf '%s\n' "$ASC_API_KEY_P8" > "$KEY_PATH"
-          chmod 600 "$KEY_PATH"
-          if ! openssl pkey -in "$KEY_PATH" -noout >/dev/null 2>&1; then
-            echo "::error::ASC_API_KEY_P8 is not a valid private-key file."
-            exit 1
-          fi
-
-      - name: Create a cloud-signed release archive
+      - name: Create an unsigned release archive
         shell: bash
         run: |
           set -euo pipefail
-          # Preserve target entitlements in the archive. An unsigned archive can
-          # be exported successfully while silently losing App Group entitlements.
+          # The hosted runner has no registered development device. Distribution
+          # signing is applied by the authenticated exportArchive step below.
           xcodebuild \
             -project MoneyUp.xcodeproj \
             -scheme MoneyUp \
@@ -398,13 +376,10 @@ jobs:
             -destination 'generic/platform=iOS' \
             -archivePath "$ARCHIVE_PATH" \
             -disableAutomaticPackageResolution \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath "$ASC_KEY_PATH" \
-            -authenticationKeyID "$ASC_KEY_ID" \
-            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
             CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
-            CODE_SIGN_STYLE=Automatic \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
             clean archive
 
       - name: Inspect the archived app
@@ -416,13 +391,23 @@ jobs:
           --app-bundle-id "$APP_BUNDLE_ID"
           --widget-bundle-id "$WIDGET_BUNDLE_ID"
 
-      - name: Verify archive signatures and App Group entitlements
+      - name: Seed and verify archive App Group entitlements
         shell: bash
         run: |
           set -euo pipefail
           APP_PATH="$ARCHIVE_PATH/Products/Applications/MoneyUp.app"
           WIDGET_PATH="$APP_PATH/PlugIns/MoneyUpWidget.appex"
-          for BUNDLE_PATH in "$APP_PATH" "$WIDGET_PATH"; do
+          # exportArchive preserves requested capabilities from archive
+          # signatures. Seed only the reviewed App Group without requiring a
+          # development profile; Apple Distribution replaces these ad-hoc
+          # signatures during export.
+          codesign --force --sign - \
+            --entitlements App/MoneyUpWidget/MoneyUpWidget.entitlements \
+            "$WIDGET_PATH"
+          codesign --force --sign - \
+            --entitlements App/MoneyUp/MoneyUp.entitlements \
+            "$APP_PATH"
+          for BUNDLE_PATH in "$WIDGET_PATH" "$APP_PATH"; do
             codesign --verify --strict --verbose=2 "$BUNDLE_PATH"
             ARCHIVE_ENTITLEMENTS="$RUNNER_TEMP/$(basename "$BUNDLE_PATH").archive-entitlements.plist"
             codesign -d --entitlements :- "$BUNDLE_PATH" > "$ARCHIVE_ENTITLEMENTS"
@@ -454,6 +439,28 @@ jobs:
               exit 1
             fi
           done
+
+      - name: Materialize the App Store Connect key
+        shell: bash
+        env:
+          ASC_API_KEY_P8: ${{ secrets.ASC_API_KEY_P8 }}
+        run: |
+          set -euo pipefail
+          umask 077
+          if [[ -z "$ASC_API_KEY_P8" ]]; then
+            echo "::error::Set ASC_API_KEY_P8 in the testflight environment secrets."
+            exit 1
+          fi
+          KEY_DIRECTORY="$HOME/.appstoreconnect/private_keys"
+          KEY_PATH="$KEY_DIRECTORY/AuthKey_${ASC_KEY_ID}.p8"
+          mkdir -p "$KEY_DIRECTORY"
+          echo "ASC_KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
+          printf '%s\n' "$ASC_API_KEY_P8" > "$KEY_PATH"
+          chmod 600 "$KEY_PATH"
+          if ! openssl pkey -in "$KEY_PATH" -noout >/dev/null 2>&1; then
+            echo "::error::ASC_API_KEY_P8 is not a valid private-key file."
+            exit 1
+          fi
 
       - name: Export an App Store Connect IPA
         shell: bash
@@ -603,7 +610,7 @@ jobs:
             --apiKey "$ASC_KEY_ID" \
             --apiIssuer "$ASC_ISSUER_ID"
 
-      - name: Encrypt the cloud-signed release archive backup
+      - name: Encrypt the entitlement-seeded release archive backup
         if: ${{ inputs.operation == 'upload' }}
         shell: bash
         env:
@@ -618,7 +625,7 @@ jobs:
           MANIFEST_PATH="$RUNNER_TEMP/MoneyUp-Archive-Manifest.txt"
           ENCRYPTED_PATH="$RUNNER_TEMP/MoneyUp-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.xcarchive.tar.gz.enc"
           {
-            echo "MoneyUp cloud-signed release archive backup"
+            echo "MoneyUp entitlement-seeded release archive backup"
             echo "Commit: $GITHUB_SHA"
             echo "Version: $MARKETING_VERSION"
             echo "Build: $BUILD_NUMBER"
