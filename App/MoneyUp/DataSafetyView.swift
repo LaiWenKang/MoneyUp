@@ -70,15 +70,11 @@ struct DataSafetyView: View {
                         )
                         LabeledContent(
                             "inventory.schedules",
-                            value: "\(inventory.storedRecordCount(
-                                in: .scheduledTransactions
-                            ))"
+                            value: "\(inventory.storedRecordCount(in: .scheduledTransactions))"
                         )
                         LabeledContent(
                             "inventory.holdings",
-                            value: "\(inventory.storedRecordCount(
-                                in: .investmentHoldings
-                            ))"
+                            value: "\(inventory.storedRecordCount(in: .investmentHoldings))"
                         )
                         LabeledContent(
                             "inventory.lots",
@@ -94,9 +90,7 @@ struct DataSafetyView: View {
                         )
                         LabeledContent(
                             "inventory.receipts",
-                            value: "\(inventory.storedRecordCount(
-                                in: .receiptAttachments
-                            ))"
+                            value: "\(inventory.storedRecordCount(in: .receiptAttachments))"
                         )
                         LabeledContent(
                             "inventory.rates",
