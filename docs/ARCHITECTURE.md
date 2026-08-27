@@ -120,6 +120,14 @@ attachments, user rates, goals, snapshots, and encrypted raw records remain in
 that archive. Restore validates first and leaves the current book untouched on
 wrong password, tampering, cancellation, future schema, or failure.
 
+The Data inventory is a separate metadata-only JSON manifest for upgrade and
+restore reconciliation. Every durable collection count comes from one
+actor-isolated, payload-free SQLCipher count snapshot. Already-decoded holdings
+and goals supply nested lot, disposal, price-point, correction, movement, and
+reset counts; a completeness flag compares their top-level totals with the raw
+store counts. The manifest never loads or contains journal payloads, receipt
+bytes, user-authored identifiers, names, amounts, currencies, notes, or balances.
+
 ## Evidence boundary
 
 This architecture describes the source-integrated 0.6.0 candidate. It is not a

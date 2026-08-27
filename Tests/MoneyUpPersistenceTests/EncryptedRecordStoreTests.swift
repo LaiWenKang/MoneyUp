@@ -541,6 +541,35 @@ final class EncryptedRecordStoreTests: XCTestCase {
         await store.close()
     }
 
+    func testRecordCountSnapshotIncludesEveryCollectionWithoutPayloads() async throws {
+        let fixture = try TemporaryDatabaseFixture()
+        let store = try EncryptedRecordStore(
+            databaseURL: fixture.databaseURL,
+            key: fixture.key
+        )
+        let account = LedgerAccount(name: "Private account name", kind: .asset)
+        try await store.upsert(
+            account,
+            id: account.id.uuidString,
+            in: .accounts
+        )
+        try await store.upsert(
+            "private draft payload",
+            id: "current",
+            in: .quickLogDrafts
+        )
+
+        let snapshot = try await store.recordCountSnapshot()
+
+        XCTAssertEqual(snapshot.schemaVersion, EncryptedRecordStore.currentSchemaVersion)
+        XCTAssertEqual(snapshot.storedRecordCounts.count, RecordCollection.allCases.count)
+        XCTAssertEqual(snapshot.count(in: .accounts), 1)
+        XCTAssertEqual(snapshot.count(in: .quickLogDrafts), 1)
+        XCTAssertEqual(snapshot.count(in: .journalEntries), 0)
+        XCTAssertFalse(snapshot.storedRecordCounts.keys.contains("Private account name"))
+        await store.close()
+    }
+
     func testJournalBalanceOverflowRollsBackRecordAndIndexAtomically() async throws {
         let fixture = try TemporaryDatabaseFixture()
         let store = try EncryptedRecordStore(

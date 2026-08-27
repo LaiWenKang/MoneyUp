@@ -1,3 +1,4 @@
+import MoneyUpPersistence
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -8,7 +9,10 @@ struct DataSafetyView: View {
     @State private var backupConfirmation = ""
     @State private var restorePassword = ""
     @State private var archiveDocument = MoneyUpArchiveDocument()
+    @State private var inventory: PrivacySafeDataInventory?
+    @State private var inventoryDocument = PrivacySafeDataInventoryDocument()
     @State private var isExporting = false
+    @State private var isExportingInventory = false
     @State private var isImporting = false
     @State private var pendingRestoreData: Data?
     @State private var isConfirmingRestore = false
@@ -38,6 +42,118 @@ struct DataSafetyView: View {
                 } footer: {
                     Text("recovery.quarantined_detail")
                 }
+            }
+
+            Section {
+                if let inventory {
+                    LabeledContent(
+                        "inventory.version_build",
+                        value: "\(inventory.appVersion) (\(inventory.buildNumber))"
+                    )
+                    LabeledContent(
+                        "inventory.schema",
+                        value: "\(inventory.databaseSchemaVersion)"
+                    )
+                    LabeledContent(
+                        "inventory.transactions",
+                        value: "\(inventory.storedRecordCount(in: .journalEntries))"
+                    )
+                    LabeledContent(
+                        "inventory.accounts",
+                        value: "\(inventory.storedRecordCount(in: .accounts))"
+                    )
+
+                    DisclosureGroup("inventory.more_counts") {
+                        LabeledContent(
+                            "inventory.budgets",
+                            value: "\(inventory.storedRecordCount(in: .budgetNodes))"
+                        )
+                        LabeledContent(
+                            "inventory.schedules",
+                            value: "\(inventory.storedRecordCount(
+                                in: .scheduledTransactions
+                            ))"
+                        )
+                        LabeledContent(
+                            "inventory.holdings",
+                            value: "\(inventory.storedRecordCount(
+                                in: .investmentHoldings
+                            ))"
+                        )
+                        LabeledContent(
+                            "inventory.lots",
+                            value: "\(inventory.nestedActivityCounts.investmentLots)"
+                        )
+                        LabeledContent(
+                            "inventory.goals",
+                            value: "\(inventory.storedRecordCount(in: .savingsGoals))"
+                        )
+                        LabeledContent(
+                            "inventory.goal_movements",
+                            value: "\(inventory.nestedActivityCounts.savingsGoalMovements)"
+                        )
+                        LabeledContent(
+                            "inventory.receipts",
+                            value: "\(inventory.storedRecordCount(
+                                in: .receiptAttachments
+                            ))"
+                        )
+                        LabeledContent(
+                            "inventory.rates",
+                            value: "\(inventory.storedRecordCount(in: .exchangeRates))"
+                        )
+                        LabeledContent(
+                            "inventory.snapshots",
+                            value: "\(inventory.storedRecordCount(in: .netWorthSnapshots))"
+                        )
+                        LabeledContent(
+                            "inventory.pending_captures",
+                            value: "\(inventory.pendingLockedCaptureCount)"
+                        )
+                        LabeledContent(
+                            "inventory.widget_budget_status",
+                            value: inventory.budgetStatusWidgetEnabled
+                                ? String(localized: "inventory.enabled")
+                                : String(localized: "inventory.disabled")
+                        )
+                        LabeledContent(
+                            "inventory.quarantined",
+                            value: "\(inventory.quarantinedRecordCount)"
+                        )
+                    }
+
+                    if !inventory.nestedActivityCountsComplete {
+                        Label("inventory.partial", systemImage: "exclamationmark.triangle")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
+
+                    Button {
+                        inventoryDocument = PrivacySafeDataInventoryDocument(
+                            inventory: inventory
+                        )
+                        isExportingInventory = true
+                    } label: {
+                        Label("inventory.export", systemImage: "square.and.arrow.up")
+                    }
+                    .disabled(isWorking)
+                }
+
+                Button {
+                    Task { await refreshInventory() }
+                } label: {
+                    Label(
+                        inventory == nil
+                            ? String(localized: "inventory.generate")
+                            : String(localized: "inventory.refresh"),
+                        systemImage: "list.number"
+                    )
+                }
+                .disabled(isWorking)
+            } header: {
+                Text("inventory.title")
+            } footer: {
+                Text("inventory.detail")
             }
 
             Section {
@@ -109,6 +225,16 @@ struct DataSafetyView: View {
                 errorMessage = safeUserMessage(for: error, context: .write)
             }
         }
+        .fileExporter(
+            isPresented: $isExportingInventory,
+            document: inventoryDocument,
+            contentType: .json,
+            defaultFilename: inventory?.defaultFilename ?? "MoneyUp-Inventory.json"
+        ) { result in
+            if case let .failure(error) = result {
+                errorMessage = safeUserMessage(for: error, context: .write)
+            }
+        }
         .fileImporter(
             isPresented: $isImporting,
             allowedContentTypes: [.moneyUpArchive],
@@ -159,6 +285,23 @@ struct DataSafetyView: View {
             )
             isExporting = true
             message = String(localized: "backup.ready")
+        } catch {
+            errorMessage = safeUserMessage(for: error, context: .exportData)
+        }
+    }
+
+    private func refreshInventory() async {
+        isWorking = true
+        errorMessage = nil
+        message = nil
+        defer { isWorking = false }
+        do {
+            let refreshed = try await model.privacySafeDataInventory()
+            inventory = refreshed
+            inventoryDocument = PrivacySafeDataInventoryDocument(
+                inventory: refreshed
+            )
+            message = String(localized: "inventory.ready")
         } catch {
             errorMessage = safeUserMessage(for: error, context: .exportData)
         }

@@ -174,6 +174,31 @@ public struct DatabaseSnapshot: Codable, Equatable, Sendable {
     }
 }
 
+/// A point-in-time, payload-free inventory of the encrypted store.
+///
+/// Collection counts are read during one actor-isolated operation, so app
+/// writes cannot interleave. Unlike a portable backup snapshot, this type never
+/// loads journal JSON or receipt bytes into the caller.
+public struct DatabaseRecordCountSnapshot: Equatable, Sendable {
+    public let schemaVersion: Int32
+    public let createdAt: Date
+    public let storedRecordCounts: [String: Int]
+
+    public init(
+        schemaVersion: Int32,
+        createdAt: Date = Date(),
+        storedRecordCounts: [String: Int]
+    ) {
+        self.schemaVersion = schemaVersion
+        self.createdAt = createdAt
+        self.storedRecordCounts = storedRecordCounts
+    }
+
+    public func count(in collection: RecordCollection) -> Int {
+        storedRecordCounts[collection.rawValue] ?? 0
+    }
+}
+
 public struct RecordDecodeIssue: Equatable, Sendable, Identifiable {
     public let collection: RecordCollection
     public let recordID: String
@@ -693,6 +718,19 @@ public actor EncryptedRecordStore {
 
     public func count(in collection: RecordCollection) throws -> Int {
         try connection.count(collection: collection.rawValue)
+    }
+
+    public func recordCountSnapshot() throws -> DatabaseRecordCountSnapshot {
+        let pairs = try RecordCollection.allCases.map { collection in
+            (
+                collection.rawValue,
+                try connection.count(collection: collection.rawValue)
+            )
+        }
+        return DatabaseRecordCountSnapshot(
+            schemaVersion: connection.schemaVersion(),
+            storedRecordCounts: Dictionary(uniqueKeysWithValues: pairs)
+        )
     }
 
     public func close() {
