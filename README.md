@@ -140,7 +140,7 @@ See [Beta installation and use](docs/BETA_INSTALL.md) for the complete setup,
 first-run checklist, widget steps, and data-retention caveats.
 The release gates and founder/co-tester TestFlight protocol are in the
 [launch plan](docs/LAUNCH_PLAN.md) and [first-test runbook](docs/FIRST_TEST.md).
-Cloud-signed release archives and Apple Distribution-signed IPAs use the protected, manual
+Entitlement-seeded release archives and Apple Distribution-signed IPAs use the protected, manual
 [TestFlight workflow](.github/workflows/testflight.yml), which requires Xcode
 26, the iOS 26 SDK, immutable dependencies, explicit confirmation, and
 encrypted archive/dSYM retention before Apple receives an upload.
