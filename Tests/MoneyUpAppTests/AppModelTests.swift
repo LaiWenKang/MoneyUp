@@ -440,6 +440,160 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testPrivacySafeInventoryCountsSnapshotWithoutExportingPayloadValues() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let generatedAt = Date(timeIntervalSince1970: 1_777_777_777)
+        let profile = UserProfile(baseCurrency: fixture.sgd)
+        let captureStore = InMemoryLockedCaptureStore(captures: [
+            LockedCapture(
+                kind: .expense,
+                amountText: "98.76",
+                payee: "Private Capture Payee",
+                note: "Private capture note"
+            )
+        ])
+        let entry = try TransactionFactory.expense(
+            amount: try Money(12.34, currency: fixture.sgd),
+            paidFrom: fixture.wallet.id,
+            category: fixture.food.id,
+            occurredAt: generatedAt.addingTimeInterval(-86_400),
+            payee: "Private Merchant",
+            note: "Private note"
+        )
+        let schedule = try ScheduledTransaction(
+            kind: .expense,
+            name: "Private Schedule",
+            amount: try Money(45.67, currency: fixture.sgd),
+            accountID: fixture.wallet.id,
+            categoryAccountID: fixture.food.id,
+            nextOccurrence: generatedAt.addingTimeInterval(86_400),
+            frequency: .monthly,
+            recurrenceTimeZoneIdentifier: "UTC"
+        )
+        var holding = try InvestmentHolding(
+            accountID: fixture.wallet.id,
+            symbol: "SECRET",
+            name: "Private Holding",
+            quantity: 0
+        )
+        try holding.recordPurchase(
+            quantity: 2,
+            unitCost: try Money(50, currency: fixture.sgd),
+            occurredAt: generatedAt.addingTimeInterval(-172_800),
+            entryID: UUID()
+        )
+        let movement = try SavingsGoalMovement(
+            kind: .contribution,
+            money: try Money(25, currency: fixture.sgd),
+            occurredAt: generatedAt.addingTimeInterval(-86_400),
+            originTimeZoneIdentifier: "UTC"
+        )
+        let goal = try SavingsGoal(
+            name: "Private Goal",
+            kind: .savingsGoal,
+            target: try Money(1_000, currency: fixture.sgd),
+            targetDate: generatedAt.addingTimeInterval(31_536_000),
+            createdAt: generatedAt.addingTimeInterval(-172_800),
+            movements: [movement],
+            reportingTimeZoneIdentifier: "UTC"
+        )
+        try await fixture.seed(
+            profile: profile,
+            accounts: [fixture.wallet, fixture.usAccount, fixture.food],
+            entries: [entry],
+            schedules: [schedule],
+            holdings: [holding],
+            savingsGoals: [goal]
+        )
+        let model = fixture.model(
+            profile: profile,
+            entries: [entry],
+            scheduledTransactions: [schedule],
+            investmentHoldings: [holding],
+            savingsGoals: [goal],
+            lockedCaptureStore: captureStore
+        )
+
+        let inventory = try await model.privacySafeDataInventory(
+            generatedAt: generatedAt,
+            appVersion: "0.6.0",
+            buildNumber: "1017.1"
+        )
+
+        XCTAssertEqual(inventory.formatVersion, 1)
+        XCTAssertEqual(inventory.storedRecordCounts.count, RecordCollection.allCases.count)
+        XCTAssertEqual(inventory.storedRecordCount(in: .profile), 1)
+        XCTAssertEqual(inventory.storedRecordCount(in: .accounts), 3)
+        XCTAssertEqual(inventory.storedRecordCount(in: .journalEntries), 1)
+        XCTAssertEqual(inventory.storedRecordCount(in: .scheduledTransactions), 1)
+        XCTAssertEqual(inventory.storedRecordCount(in: .investmentHoldings), 1)
+        XCTAssertEqual(inventory.storedRecordCount(in: .savingsGoals), 1)
+        XCTAssertEqual(inventory.nestedActivityCounts.investmentLots, 1)
+        XCTAssertEqual(inventory.nestedActivityCounts.savingsGoalMovements, 1)
+        XCTAssertTrue(inventory.nestedActivityCountsComplete)
+        XCTAssertEqual(inventory.pendingLockedCaptureCount, 1)
+        XCTAssertEqual(inventory.quarantinedRecordCount, 0)
+        XCTAssertFalse(inventory.budgetStatusWidgetEnabled)
+        XCTAssertEqual(
+            inventory.defaultFilename,
+            "MoneyUp-Inventory-0.6.0-1017.1-1777777777.json"
+        )
+
+        let exported = try XCTUnwrap(
+            String(data: inventory.encodedJSON(), encoding: .utf8)
+        )
+        for privateValue in [
+            "Private Merchant",
+            "Private note",
+            "Private Schedule",
+            "Private Holding",
+            "Private Goal",
+            "Private Capture Payee",
+            "Private capture note",
+            "98.76",
+            "SECRET",
+            entry.id.uuidString,
+            goal.id.uuidString,
+        ] {
+            XCTAssertFalse(exported.contains(privateValue))
+        }
+        XCTAssertTrue(exported.contains("\"journal_entries\" : 1"))
+        XCTAssertTrue(exported.contains("\"investmentLots\" : 1"))
+        await fixture.store.close()
+    }
+
+    func testPrivacySafeInventoryFlagsMissingDecodedNestedRecord() throws {
+        let snapshot = DatabaseRecordCountSnapshot(
+            schemaVersion: EncryptedRecordStore.currentSchemaVersion,
+            createdAt: Date(timeIntervalSince1970: 1_700_000_000),
+            storedRecordCounts: [
+                RecordCollection.investmentHoldings.rawValue: 1
+            ]
+        )
+
+        let inventory = PrivacySafeDataInventory(
+            snapshot: snapshot,
+            investmentHoldings: [],
+            savingsGoals: [],
+            appVersion: "0.6.0",
+            buildNumber: "test",
+            pendingLockedCaptureCount: 0,
+            quarantinedRecordCount: 1,
+            budgetStatusWidgetEnabled: false
+        )
+
+        XCTAssertEqual(inventory.storedRecordCount(in: .investmentHoldings), 1)
+        XCTAssertEqual(inventory.nestedActivityCounts.investmentLots, 0)
+        XCTAssertFalse(inventory.nestedActivityCountsComplete)
+        let exported = try XCTUnwrap(
+            String(data: inventory.encodedJSON(), encoding: .utf8)
+        )
+        XCTAssertFalse(exported.contains("recordID"))
+        XCTAssertFalse(exported.contains("payload"))
+    }
+
+    @MainActor
     func testRestoreRejectsMalformedRelationshipWithoutChangingLiveSnapshot() async throws {
         let fixture = try AppModelFixture()
         defer { fixture.removeFiles() }

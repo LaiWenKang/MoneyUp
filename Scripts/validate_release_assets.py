@@ -3,11 +3,14 @@
 
 from __future__ import annotations
 
+import csv
 import json
 import plistlib
 import re
 import struct
+import subprocess
 import sys
+import tempfile
 import zlib
 from pathlib import Path
 
@@ -537,6 +540,78 @@ def validate_public_documents() -> None:
     print("Validated public policy, support, launch, and tester documents")
 
 
+def validate_release_fixture_generator() -> None:
+    script = ROOT / "Scripts" / "generate_release_fixture.py"
+    if not script.is_file():
+        fail("release-scale fixture generator is missing")
+
+    with tempfile.TemporaryDirectory(prefix="moneyup-release-fixture-") as directory:
+        first = Path(directory) / "first.csv"
+        second = Path(directory) / "second.csv"
+        command = [
+            sys.executable,
+            str(script),
+            "--entries",
+            "10000",
+            "--output",
+        ]
+        try:
+            subprocess.run(
+                [*command, str(first)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                [*command, str(second)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        except (OSError, subprocess.CalledProcessError) as error:
+            fail(f"cannot generate release-scale fixture: {error}")
+
+        if first.read_bytes() != second.read_bytes():
+            fail("release-scale fixture is not deterministic")
+        if first.stat().st_size >= 10_000_000:
+            fail("10,000-entry fixture exceeds the app's 10 MB import limit")
+
+        with first.open("r", encoding="utf-8", newline="") as handle:
+            reader = csv.DictReader(handle)
+            rows = list(reader)
+        expected_headers = ["id", "date", "kind", "amount", "payee", "note"]
+        if reader.fieldnames != expected_headers:
+            fail(f"release fixture has unexpected headers: {reader.fieldnames}")
+        if len(rows) != 10_000:
+            fail(f"release fixture contains {len(rows)} rows instead of 10,000")
+        if rows[0]["id"] != "moneyup-release-fixture-00001":
+            fail("release fixture first identity drifted")
+        if rows[-1]["id"] != "moneyup-release-fixture-10000":
+            fail("release fixture last identity drifted")
+        if len({row["id"] for row in rows}) != len(rows):
+            fail("release fixture identities must be unique")
+        if len({row["date"] for row in rows}) != len(rows):
+            fail("release fixture timestamps must be unique")
+        if any(row["kind"] != "expense" for row in rows):
+            fail("release fixture must use the reviewed expense-only shape")
+        if any(
+            re.fullmatch(r"[1-9][0-9]*\.[0-9]{2}", row["amount"]) is None
+            for row in rows
+        ):
+            fail("release fixture contains an invalid amount")
+
+    runbook = (ROOT / "docs" / "FIRST_TEST.md").read_text(encoding="utf-8")
+    for declaration in [
+        "Scripts/generate_release_fixture.py",
+        "10,000",
+        "20 long-lived schedules",
+        "Data inventory",
+    ]:
+        if declaration not in runbook:
+            fail(f"first-test runbook is missing release-fixture step: {declaration}")
+    print("Validated deterministic 10,000-entry release fixture and runbook")
+
+
 def validate_project_configuration() -> None:
     path = ROOT / "project.yml"
     try:
@@ -777,6 +852,7 @@ def main() -> None:
     validate_icons()
     validate_brand_palette()
     validate_public_documents()
+    validate_release_fixture_generator()
     validate_project_configuration()
     validate_testflight_workflow()
     print("Release asset validation passed")

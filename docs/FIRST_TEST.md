@@ -248,9 +248,14 @@ the app silently resets, or the opening balance is wrong.
   reappear and every prior balance, transaction, budget, schedule, and holding
   remains. Reconcile goals, rates, receipt attachments, investment lots,
   net-worth snapshots, settings, pending captures, and widget configuration too.
+- In the upgraded build, open Settings → Backup and recovery → Data inventory.
+  Generate and save the metadata-only JSON as the baseline for every later update
+  and restore. It must contain no user-authored names, IDs, amounts, currencies,
+  notes, balances, or receipt images.
 - Create a password-protected `.moneyup` backup. Add one disposable transaction,
   restore the backup, and confirm the disposable transaction disappears while
-  the backed-up counts and balances return.
+  the backed-up counts and balances return. Generate another Data inventory and
+  compare its stored and nested counts with the saved baseline.
 - Try the same archive with a wrong password and confirm the current book is
   unchanged. Store the real password separately; MoneyUp cannot recover it.
 - Export a small fictional Qianji or generic CSV, preview it in Settings → Import
@@ -260,8 +265,25 @@ the app silently resets, or the opening balance is wrong.
 
 ### 9. Scale, reporting day, and accessibility
 
-- On the oldest supported iPhone, load the release fixture with 10,000 entries
-  and 20 long-lived schedules. Record p95 unlock, tab-first-content, History
+Generate the reviewed fictional CSV from the exact release-candidate checkout:
+
+```sh
+python3 Scripts/generate_release_fixture.py \
+  --entries 10000 \
+  --output MoneyUp-Release-Fixture-10000.csv
+```
+
+- Use a separate QA book, never a real financial book. In Settings → Import
+  transactions, select the generated CSV, choose one test asset account and one
+  test expense category as fallbacks, verify 10,000 accepted and zero rejected
+  rows, then import. The fixture intentionally omits account, category, and
+  currency so the reviewed fallbacks control every posting.
+- Add exactly 20 long-lived schedules named `Fixture Schedule 01` through
+  `Fixture Schedule 20` against the same test account/category. Keep them active
+  and monthly, with distinct positive amounts and future next-occurrence dates.
+- Generate and save a Data inventory. Confirm 10,000 transactions and 20
+  schedules before collecting measurements; retain the JSON with the evidence.
+- On the oldest supported iPhone, record p95 unlock, tab-first-content, History
   search/filter after debounce, save, and Calendar-date computation against the
   Golden PRD budgets; inspect scrolling for sustained jank.
 - Verify History pages newest-first without gaps/duplicates and totals remain

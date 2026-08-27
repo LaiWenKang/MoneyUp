@@ -158,7 +158,7 @@ exact-candidate run.
 | QA-02 | `MoneyUpAppTests/AppModelTests` covers lock/save/scan/deep-link/erase/stale-generation/capture-promotion and additional lifecycle paths. | Test source implemented; exact-candidate macOS execution open. |
 | QA-03 | Core/persistence/app suites cover audit defects, minor units, locales, currency edits, revisions, caches/indexes, BOM, and rollback. | Test source implemented; exact-candidate execution open. |
 | QA-04 | `FIRST_TEST.md` defines the required iPhone/language/appearance/Dynamic Type/VoiceOver/Reduce Motion/widget matrix. | Physical gate open. |
-| QA-05 | The runbook requires in-place update over installed TestFlight plus clean-device `.moneyup` restore and inventory reconciliation. | Physical gate open. |
+| QA-05 | `DataSafetyView` exports a privacy-safe inventory from one payload-free store count snapshot, the fixture generator creates 10,000 deterministic fictional imports, and `FIRST_TEST.md` binds both to in-place upgrade and clean-device `.moneyup` restore reconciliation. | Source tooling implemented; physical gate open. |
 | QA-06 | Roadmap/launch plan prohibit wider testing or App Review while mandatory evidence is open. | Gate enforced in documentation; wider-test/review approval remains open. |
 | QA-07 | Workflow and store checklist bind metadata, screenshots, review notes, privacy, languages, version/build, archive, widget, App Group, and binary capabilities. | Exact-binary/App Store gate open. |
 
