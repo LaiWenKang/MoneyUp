@@ -4019,7 +4019,8 @@ final class AppModel: ObservableObject {
     /// body evaluation never rescans the whole journal.
     func reportResult(for period: ReportPeriod) -> DerivedValue<PeriodReport> {
         let calendar = reportingCalendar
-        let today = calendar.startOfDay(for: Date())
+        let now = currentDate()
+        let today = calendar.startOfDay(for: now)
         if reportCacheDay != today {
             reportCache.removeAll()
             reportCacheDay = today
@@ -4038,7 +4039,7 @@ final class AppModel: ObservableObject {
         guard let currency = profile?.baseCurrency else {
             return .unavailable(.appNotReady)
         }
-        guard let interval = period.interval(containing: Date(), calendar: calendar) else {
+        guard let interval = period.interval(containing: now, calendar: calendar) else {
             DerivedValueDiagnostics.record(
                 .invalidPeriod,
                 operation: "period-report-interval"
@@ -4046,7 +4047,7 @@ final class AppModel: ObservableObject {
             return .unavailable(.invalidPeriod)
         }
         let trendInterval = ReportPeriod.twelveMonths.interval(
-            containing: Date(),
+            containing: now,
             calendar: calendar
         )
             ?? interval
@@ -6394,7 +6395,9 @@ final class AppModel: ObservableObject {
               source.currency == target.currency else {
             throw AppModelError.incompatibleLedgerItems
         }
-        if investmentHoldings.contains(where: { $0.accountID == sourceID }),
+        if investmentHoldings.contains(where: {
+            $0.accountID == sourceID && $0.positionAccountID != nil
+        }),
            !isInvestmentFundingAccountShape(target) {
             throw AppModelError.incompatibleLedgerItems
         }
@@ -6642,8 +6645,13 @@ final class AppModel: ObservableObject {
         var positionOwners = Set<UUID>()
         var entryOwners = Set<UUID>()
         for holding in candidateHoldings {
+            let isUnconnectedLegacyHolding = holding.positionAccountID == nil
             guard let funding = accountsByID[holding.accountID],
-                  isInvestmentFundingAccountShape(funding),
+                  (isUnconnectedLegacyHolding
+                    ? funding.kind == .asset
+                        && funding.systemRole == nil
+                        && funding.currency != nil
+                    : isInvestmentFundingAccountShape(funding)),
                   holding.isArchived || !funding.isArchived else {
                 throw AppModelError.incompatibleLedgerItems
             }
