@@ -89,4 +89,27 @@ final class LedgerCSVExporterTests: XCTestCase {
         XCTAssertTrue(csv.contains("Everyday Bank,asset,bank"))
         XCTAssertTrue(csv.contains("Dining,expense"))
     }
+
+    func testExportCarriesStableOriginDayContext() throws {
+        let sgd = try CurrencyCode("SGD")
+        let entry = try JournalEntry(
+            kind: .expense,
+            occurredAt: Date(timeIntervalSince1970: 0),
+            postings: [
+                Posting(accountID: UUID(), money: try Money(1, currency: sgd)),
+                Posting(accountID: UUID(), money: try Money(-1, currency: sgd))
+            ],
+            originContext: try TransactionOriginContext(
+                calendarIdentifier: "gregorian",
+                timeZoneIdentifier: "Asia/Singapore",
+                utcOffsetSeconds: 28_800,
+                dayKey: 19700101
+            )
+        )
+
+        let csv = LedgerCSVExporter.export([entry])
+
+        XCTAssertTrue(csv.contains("origin_day,origin_calendar,origin_time_zone"))
+        XCTAssertTrue(csv.contains("19700101,gregorian,Asia/Singapore,28800,false"))
+    }
 }

@@ -6,13 +6,12 @@ struct TransactionRow: View {
     let entry: JournalEntry
 
     private var categoryName: String? {
-        let categoryIDs = Set(
-            entry.postings.compactMap { posting in
-                model.accounts.first(where: { $0.id == posting.accountID })
-                    .flatMap { ($0.kind == .expense || $0.kind == .income) ? $0.id : nil }
-            }
-        )
-        return model.accounts.first { categoryIDs.contains($0.id) }?.name
+        entry.postings.lazy.compactMap { posting in
+            let account = model.accountsByID[posting.accountID]
+            return account?.kind == .expense || account?.kind == .income
+                ? account?.name
+                : nil
+        }.first
     }
 
     private var title: String {
@@ -21,9 +20,11 @@ struct TransactionRow: View {
 
     private var isRefund: Bool {
         guard entry.kind == .expense else { return false }
-        let expenseIDs = Set(model.expenseCategories.map(\.id))
+        // Archived categories remain part of historical explanations even
+        // though new-entry pickers intentionally hide them.
         return entry.postings.contains {
-            expenseIDs.contains($0.accountID) && $0.money.amount < .zero
+            model.accountsByID[$0.accountID]?.kind == .expense
+                && $0.money.amount < .zero
         }
     }
 
@@ -59,7 +60,7 @@ struct TransactionRow: View {
                 .lineLimit(1)
             }
             Spacer()
-            if let money = displayMoney(for: entry, accounts: model.accounts) {
+            if let money = displayMoney(for: entry, accountsByID: model.accountsByID) {
                 Text(formattedMoney(isRefund ? money.negated : money))
                     .font(.subheadline.monospacedDigit().weight(.semibold))
                     .foregroundStyle(entry.kind == .income || isRefund ? .green : .primary)

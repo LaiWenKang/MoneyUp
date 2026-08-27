@@ -1,20 +1,21 @@
-# MoneyUp Founders Test Runbook
+# MoneyUp Founder/Co-tester Runbook
 
-Version target: 0.5.1 (the GitHub workflow assigns a unique TestFlight build)
+Version target: 0.6.0, source build 8 (the GitHub workflow assigns a unique
+TestFlight upload build)
 
-This runbook is for the user and his girlfriend, MoneyUp's first two iPhone
-testers. Use small sample values during the first session. The beta is not yet
-the right place for records that cannot be reconstructed.
+This runbook is for MoneyUp's founder and co-tester on their two iPhones. Use
+small sample values during the first session. The beta is not yet the right
+place for records that cannot be reconstructed.
 
 ## How installation works
 
-The account holder has already installed the signed 0.5.0 beta from the private
-**Founders Internal** TestFlight group. Install the 0.5.1 candidate from that
-same group when it appears. The girlfriend is invited by email to the
+The account holder has already installed the signed 0.5.1 beta from the private
+**Founders Internal** TestFlight group. Install the 0.6.0 candidate from that
+same group when it appears. The co-tester is invited by email to the
 private **Founders External** group after Apple's TestFlight Beta App Review
 accepts the selected build.
 
-Before the account holder updates the installed 0.5.0 build, pin its existing
+Before the account holder updates the installed 0.5.1 build, pin its existing
 small and medium MoneyUp widgets. Confirm the small widget opens Expense and
 the medium widget's Expense and Income links work, then leave both pinned for
 the migration checks in section 7.
@@ -35,15 +36,15 @@ well before the expiry date shown in TestFlight.
 ## Before starting
 
 - Use an iPhone running iOS 18 or later with a device passcode enabled.
-- Confirm TestFlight shows version 0.5.1 and a build newer than the installed
-  0.5.0 build.
+- Confirm TestFlight shows version 0.6.0 and a build newer than the installed
+  0.5.1 build.
 - Decide who tests English and who tests Simplified Chinese first; switch roles
   on a later day.
 - Prepare fictional sample accounts, merchants, balances, and a receipt image.
 - Do not paste real account numbers, card numbers, passwords, or recovery codes
   into notes.
 
-## 45-minute smoke test
+## Founders smoke and acceptance test
 
 ### 1. First launch, guidance, appearance, and lock
 
@@ -62,17 +63,27 @@ well before the expiry date shown in TestFlight.
 - Check light and dark mode: the horned-money emblem, icon, and actions are soft
   green; primary canvases are off-white or deep charcoal rather than pure
   white/black; text and controls retain clear contrast.
-- Send MoneyUp to the background. Its app-switcher preview must hide financial
-  values.
-- Reopen it. MoneyUp must require device-owner authentication before showing
-  the book.
+- In Settings, leave Auto-lock at its default of one minute. Send MoneyUp to
+  the background; its app-switcher preview must hide financial values
+  immediately.
+- Reopen it well before one minute has elapsed. The privacy cover should clear
+  after MoneyUp becomes active without asking for authentication. Background it
+  again, wait more than one minute, and reopen it. MoneyUp must now require
+  device-owner authentication before showing the book.
 
-Stop and report P0 immediately if another person can see data before unlock,
+Stop and report P0 immediately if another person can see data in the app
+switcher, data appears after the configured timeout without authentication,
 the app silently resets, or the opening balance is wrong.
 
 ### 2. Core logging
 
 - Record a sample expense from the center Log tab.
+- With the amount keypad visible, confirm the keyboard has an obvious Done
+  control and the primary Save action remains reachable above it. Enter an
+  unfinished amount, use the keyboard's Switch tab menu to visit another tab,
+  and return to Log; the keyboard must close and the exact draft must remain.
+  Use Done, then confirm every Log control and all five bottom tabs are
+  reachable; no action should remain hidden behind the keyboard.
 - Enter part of another transaction, background and unlock MoneyUp, and confirm
   the encrypted draft returns without being saved as a transaction.
 - Tap Save twice rapidly and confirm exactly one transaction is recorded.
@@ -80,6 +91,9 @@ the app silently resets, or the opening balance is wrong.
   is exactly one saved transaction and no stale copy in the draft.
 - Save a sample, use Undo from the six-second confirmation, and confirm the
   transaction and its effects disappear.
+- Split a same-currency expense across at least three categories. Confirm the
+  live remainder reaches exactly zero, Save is blocked otherwise, and editing
+  the saved entry preserves each line and optional line note.
 - Record a sample income.
 - Add a second account and make a same-currency transfer.
 - If relevant, add a different-currency account and record a transfer with the
@@ -87,8 +101,16 @@ the app silently resets, or the opening balance is wrong.
 - Verify account balances after every action.
 - Record `lunch 12.50 cash yesterday` or the equivalent Chinese phrase with
   smart entry, then correct every field before saving.
-- Select a sample receipt or screenshot. Confirm recognized values are
-  editable and that the image does not appear anywhere in MoneyUp afterward.
+- Select a clear sample receipt or screenshot. Confirm a reading-progress state
+  appears immediately, recognized amount/payee/date values populate without an
+  extra tap, and every value remains editable. Repeat with an unreadable crop;
+  MoneyUp must finish with a useful error instead of spinning indefinitely.
+  Confirm neither image appears anywhere in MoneyUp afterward, and record the
+  device model plus elapsed reading time if either scan feels slow.
+- Repeat with **Keep this receipt** enabled on fictional data. Confirm the image
+  appears only after Save, survives a password-protected backup/restore, is
+  absent from CSV/XLSX, can be deleted only after confirmation, and is removed
+  when its transaction is deleted.
 - Leave an unfinished expense draft, then open the Income widget action.
   Confirm MoneyUp asks whether to resume or discard the encrypted draft and
   never silently changes its transaction type.
@@ -101,10 +123,10 @@ the app silently resets, or the opening balance is wrong.
 - Clear one limit to zero and confirm Plan remains readable without a broken or
   misleading progress bar.
 - Check Today, Plan (including Calendar), and Insights for the same amount and currency.
-- On an upgraded 0.5.0 book, confirm every existing limited allocation shows
-  **Choose a purpose** and Today shows no optimistic daily amount. Classify one
-  flexible allocation, one rent/bill allocation, one debt allocation, and one
-  savings goal.
+- If this book originally came from 0.5.0, confirm every still-unclassified
+  limited allocation shows **Choose a purpose** and Today shows no optimistic
+  daily amount. Classify one flexible allocation, one rent/bill allocation, one
+  debt allocation, and one savings goal.
 - On Today, open **Flexible Today**. Reconcile only flexible remaining budget
   minus active flexible scheduled occurrences, divided by days remaining
   including today. Confirm rent, loan/card repayment, and goals contribute zero;
@@ -128,6 +150,14 @@ the app silently resets, or the opening balance is wrong.
 - Add a foreign-currency expense to either comparison window and confirm the
   month-to-date comparison sentence is suppressed while that currency remains
   listed separately.
+- Enable positive-only rollover on a disposable budget partway through a month.
+  Verify nothing before the activation period is carried, then cross a month
+  boundary and reconcile the effective limit exactly. Repeat with full signed
+  rollover and confirm overspend carries only when that rule says it should.
+- Create one savings goal and one sinking fund with target dates. Add dated
+  contributions and a withdrawal, reject a withdrawal above the available
+  balance, perform a reset, and confirm prior movements remain inspectable.
+  Archive and restore one goal; delete only disposable sample data.
 
 ### 4. Calendar and schedules
 
@@ -137,7 +167,11 @@ the app silently resets, or the opening balance is wrong.
 - Add a schedule dated on the 29th, 30th, or 31st and verify a short month uses
   its last valid day before returning to the original day when possible (for
   example, 31 January → 28 February → 31 March).
-- Swipe the schedule, cancel deletion once, then delete the sample. Future
+- Edit, pause, resume, skip, and end a disposable schedule. Confirm projections
+  distinguish each state. Post one due occurrence and match another to a
+  compatible actual transaction; each must link and advance exactly once even
+  after repeated taps or reopening the app.
+- Swipe a separate schedule, cancel deletion once, then delete it. Future
   projections should disappear; actual transactions should remain.
 
 ### 5. Assets and holdings
@@ -147,9 +181,23 @@ the app silently resets, or the opening balance is wrong.
   owed** for cards/loans, with visible guidance before saving.
 - Reconcile its displayed balance and confirm the adjustment is not counted as
   income or spending.
-- Add a sample holding and verify quantity × price equals its displayed value.
-- Swipe the holding, cancel once, then delete it. Account transactions must not
-  change.
+- Add a sample holding to a brokerage containing 10,000 cash. Buy 20 units at
+  200 and explicitly choose **Record a purchase now**; cash should become
+  6,000, position value 4,000, and net worth remain 10,000 rather than 14,000.
+  In a disposable book, verify **Cash already excludes this position** leaves
+  cash unchanged and records the missing opening value. MoneyUp must not choose
+  between these interpretations silently.
+- Reprice the holding and confirm **Price as of** is visible. Use a price more
+  than seven days old and confirm it is marked stale wherever used.
+- Buy two lots at different prices and sell through the first plus part of the
+  second. Reconcile FIFO quantity/cost bookkeeping and confirm the UI says it
+  is not tax advice. Reject a sale before acquisition, an out-of-order/future
+  activity date, or more units than available.
+- Confirm positions and net-worth history remain separated by currency. Add a
+  dated user rate and inspect a visibly estimated conversion; remove the rate
+  and confirm unconverted values remain available rather than becoming zero.
+- Reduce a disposable holding to zero, then cancel and confirm deletion once.
+  A non-zero holding must not be deletable.
 
 ### 6. Corrections and export
 
@@ -161,14 +209,17 @@ the app silently resets, or the opening balance is wrong.
   balance, budget, calendar, and report.
 - Export CSV from Assets, accept the plaintext warning, save to a temporary
   location, and open it in Numbers or Excel.
-- Verify dates, exact decimal amounts, currencies, account names, and IDs.
+- Export native XLSX too. Verify dates, exact decimal amounts, currencies,
+  account names, hierarchy IDs, entry/posting IDs, and split notes in both.
+- Import an unknown CSV/TSV layout and map columns manually before preview.
+  Verify account/category targets, duplicate handling, and atomic failure.
 - Delete the exported sample file when finished if it contains private data.
 
 ### 7. Widget
 
-- On the account holder's upgraded phone, confirm both pinned 0.5.0 widgets still
+- On the account holder's upgraded phone, confirm both pinned 0.5.1 widgets still
   render, their legacy expense/income links open correctly, they can be resized
-  and edited, and they survive a reboot. Then choose a 0.5.1 preferred action. If
+  and edited, and they survive a reboot. Then choose a 0.6.0 preferred action. If
   migration fails, remove and re-add the widget and report both build numbers.
 - Add small and medium MoneyUp widgets to the Home Screen and one MoneyUp widget
   to the Lock Screen.
@@ -177,7 +228,11 @@ the app silently resets, or the opening balance is wrong.
 - Confirm the horned-money mark, dimensional action buttons, and decorative
   background remain clear in light, dark, and tinted modes without resembling
   real financial data.
-- Confirm it shows no balances, payees, or statistics.
+- With budget status disabled, confirm the widget asks to enable it and shows no
+  invented percentage. Enable it and confirm only percentage/state appears -
+  never amount, payee, account name, holding, balance, transaction, or ledger
+  identifier. Disable it and erase a disposable book to confirm the snapshot is
+  scrubbed. Repeat while the book is locked and in redacted mode.
 - Terminate MoneyUp while its book is locked. Configure and test Expense,
   Income, Transfer, and Refund: each must open with the amount focused, request
   no Face ID/Touch ID, save in under eight seconds, show a confirmation rather
@@ -188,10 +243,11 @@ the app silently resets, or the opening balance is wrong.
 
 ### 8. Upgrade, backup, restore, and import
 
-- Before updating, record the 0.5.0 transaction count and several balances.
+- Before updating, record the 0.5.1 transaction count and several balances.
 - Update in TestFlight without deleting the app. Confirm onboarding does not
   reappear and every prior balance, transaction, budget, schedule, and holding
-  remains.
+  remains. Reconcile goals, rates, receipt attachments, investment lots,
+  net-worth snapshots, settings, pending captures, and widget configuration too.
 - Create a password-protected `.moneyup` backup. Add one disposable transaction,
   restore the backup, and confirm the disposable transaction disappears while
   the backed-up counts and balances return.
@@ -201,6 +257,23 @@ the app silently resets, or the opening balance is wrong.
   transactions, review any rejected lines, and import. Import the same file
   again and confirm all previously accepted rows are reported as duplicates.
 - Do not delete the app until this complete drill passes on the release candidate.
+
+### 9. Scale, reporting day, and accessibility
+
+- On the oldest supported iPhone, load the release fixture with 10,000 entries
+  and 20 long-lived schedules. Record p95 unlock, tab-first-content, History
+  search/filter after debounce, save, and Calendar-date computation against the
+  Golden PRD budgets; inspect scrolling for sustained jank.
+- Verify History pages newest-first without gaps/duplicates and totals remain
+  complete by currency. Edit and delete entries older than the recent-activity
+  cache and confirm balances, budgets, reports, Calendar, and widget status
+  update before success is shown.
+- Test transactions created around midnight while traveling between UTC-12 and
+  UTC+14 and across DST. Their reporting day must remain stable according to
+  captured origin context and the configured reporting calendar.
+- Complete every common flow in English and Simplified Chinese on the smallest
+  supported and a current large iPhone, light/dark/tinted/redacted appearances,
+  largest Dynamic Type, VoiceOver, and Reduce Motion.
 
 ## Seven-day use test
 
@@ -239,7 +312,10 @@ workaround. P3 is polish or an enhancement.
 
 ## Pass criteria
 
-The founders build passes only when both testers finish the smoke test, the
+The candidate passes only when exact-candidate Mac CI is green, both testers
+finish the smoke test, the
 seven-day period contains no P0, the final candidate has no reproducible crash
 or open P1, and the exported sample ledger reconciles with balances, budgets,
-calendar totals, and insights.
+calendar totals, goals, investments, widget status, and insights. This runbook
+does not record a pass until the measured results and exact version/build are
+attached to the candidate evidence.

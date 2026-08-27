@@ -14,6 +14,7 @@ final class MoneyTests: XCTestCase {
         XCTAssertEqual(decoded.autoLockDelay, 60)
         XCTAssertTrue(decoded.allowLockedQuickCapture)
         XCTAssertNil(decoded.preferredAccountID)
+        XCTAssertEqual(decoded.reportingTimeZoneIdentifier, "GMT")
     }
 
     func testRetiredBackgroundLockFlagIsIgnoredAndNotReencoded() throws {
@@ -31,6 +32,36 @@ final class MoneyTests: XCTestCase {
 
         XCTAssertNil(object["lockWhenBackgrounded"])
         XCTAssertEqual(decoded.autoLockDelay, 60)
+    }
+
+    func testProfileDecodePreservesValidLegacyDelayButRejectsInvalidPresentFields() throws {
+        let legacyDelay = Data(
+            """
+            {"baseCurrency":"SGD","createdAt":0,"autoLockDelay":120}
+            """.utf8
+        )
+        XCTAssertEqual(
+            try JSONDecoder().decode(UserProfile.self, from: legacyDelay).autoLockDelay,
+            120
+        )
+
+        let negativeDelay = Data(
+            """
+            {"baseCurrency":"SGD","createdAt":0,"autoLockDelay":-1}
+            """.utf8
+        )
+        XCTAssertThrowsError(
+            try JSONDecoder().decode(UserProfile.self, from: negativeDelay)
+        )
+
+        let invalidTimeZone = Data(
+            """
+            {"baseCurrency":"SGD","createdAt":0,"reportingTimeZoneIdentifier":"Not/A_Zone"}
+            """.utf8
+        )
+        XCTAssertThrowsError(
+            try JSONDecoder().decode(UserProfile.self, from: invalidTimeZone)
+        )
     }
 
     func testCurrencyCodeNormalizesCaseAndWhitespace() throws {
@@ -67,6 +98,98 @@ final class MoneyTests: XCTestCase {
         XCTAssertEqual(
             try Money(Decimal(string: "12.345")!, currency: sgd).amount,
             Decimal(string: "12.345")!
+        )
+    }
+
+    func testNewWritePolicyAcceptsHighDenominationBalancesAndCurrencyScales() throws {
+        let vnd = try CurrencyCode("VND")
+        let idr = try CurrencyCode("IDR")
+        let jpy = try CurrencyCode("JPY")
+        let kwd = try CurrencyCode("KWD")
+        let btc = try CurrencyCode("BTC")
+
+        XCTAssertNoThrow(try Money.newWrite(500_000_000, currency: vnd))
+        XCTAssertNoThrow(try Money.newWrite(2_500_000_000, currency: idr))
+        XCTAssertNoThrow(try Money.newWrite(-500_000_000, currency: vnd))
+        XCTAssertNoThrow(
+            try Money.newWrite(
+                MonetaryInputPolicy.maximumAbsoluteNewWrite,
+                currency: jpy
+            )
+        )
+        XCTAssertNoThrow(
+            try Money.newWrite(Decimal(string: "123.456")!, currency: kwd)
+        )
+        XCTAssertNoThrow(
+            try Money.newWrite(Decimal(string: "0.12345678")!, currency: btc)
+        )
+
+        XCTAssertThrowsError(
+            try Money.newWrite(Decimal(string: "1.5")!, currency: jpy)
+        ) { error in
+            XCTAssertEqual(
+                error as? MoneyError,
+                .unsupportedPrecision(currency: jpy)
+            )
+        }
+        XCTAssertThrowsError(
+            try Money.newWrite(Decimal(string: "1.2345")!, currency: kwd)
+        )
+        XCTAssertThrowsError(
+            try Money.newWrite(Decimal(string: "0.123456789")!, currency: btc)
+        )
+    }
+
+    func testNewWritePolicyRejectsAbsurdMagnitudeButPreservesLegacyExactly() throws {
+        let sgd = try CurrencyCode("SGD")
+        let absurd = try XCTUnwrap(
+            Decimal(string: "999999999999999999999999999999.99")
+        )
+        XCTAssertThrowsError(try Money.newWrite(absurd, currency: sgd)) { error in
+            XCTAssertEqual(
+                error as? MoneyError,
+                .exceedsNewWriteMaximum(
+                    maximum: MonetaryInputPolicy.maximumAbsoluteNewWrite
+                )
+            )
+        }
+        XCTAssertThrowsError(try Money.newWrite(-absurd, currency: sgd))
+
+        let legacyAmount = try XCTUnwrap(
+            Decimal(string: "1000000000000000.12345")
+        )
+        let legacy = try Money(legacyAmount, currency: sgd)
+        let roundTrip = try JSONDecoder().decode(
+            Money.self,
+            from: JSONEncoder().encode(legacy)
+        )
+
+        XCTAssertEqual(roundTrip.amount, legacyAmount)
+        XCTAssertNoThrow(
+            try MonetaryInputPolicy.validate(
+                roundTrip.amount,
+                currency: roundTrip.currency,
+                preserving: legacyAmount
+            )
+        )
+        XCTAssertThrowsError(
+            try MonetaryInputPolicy.validate(
+                roundTrip.amount,
+                currency: roundTrip.currency
+            )
+        )
+    }
+
+    func testNewWriteMaximumLeavesHeadroomForTwentyThousandAdditions() throws {
+        let aggregate = try CheckedDecimal.multiplying(
+            MonetaryInputPolicy.maximumAbsoluteNewWrite,
+            Decimal(MonetaryInputPolicy.aggregateRecordBudget)
+        )
+
+        XCTAssertFalse(aggregate.isNaN)
+        XCTAssertEqual(
+            aggregate,
+            Decimal(string: "19999999999999980000")
         )
     }
 

@@ -1,9 +1,13 @@
 # App Store Submission Working Copy
 
-Last reviewed: 25 August 2026
+Last reviewed: 27 August 2026 for the 0.6.0 source candidate
 
 This file is the source of truth for App Store Connect entry. Verify every
 claim against the exact archived binary before submission.
+
+Status: working copy for the source-integrated 0.6.0 beta candidate. No 1.0
+binary, screenshots, privacy answers, review notes, App Review approval, or
+public release is represented here as complete.
 
 ## Product setup
 
@@ -16,6 +20,8 @@ claim against the exact archived binary before submission.
 - Languages: English and Simplified Chinese
 - Bundle ID: `com.laiwenkang.MoneyUp`
 - Widget bundle ID: `com.laiwenkang.MoneyUp.Widget`
+- Shared App Group: `group.com.laiwenkang.MoneyUp` (percentage/state-only
+  budget widget snapshot)
 - App Store record name: `MoneyUp: CowCome`
 - Installed Home Screen name: `MoneyUp`
 - Privacy policy: <https://github.com/LaiWenKang/MoneyUp/blob/main/PRIVACY.md>
@@ -48,29 +54,35 @@ Description:
 > whose spending rolls up correctly. See a plan-paced Flexible Today amount
 > drawn only from allocations you classify as flexible, inspect the exact
 > arithmetic behind it, and try private budget scenarios without changing
-> your records, inspect on-device charts, and track accounts, cards, liabilities,
-> and manually valued investments.
+> your records, inspect on-device charts, and track accounts, cards,
+> liabilities, savings goals, and manually priced ledger-linked investments
+> with lots and currency-separated history.
 >
 > Smart entry can read a receipt or screenshot and understand a typed phrase.
-> Recognition and suggestions run on your iPhone; images are not retained or
-> uploaded. Privacy-redacted Home and Lock Screen widgets open Expense, Income,
+> Recognition and suggestions run on your iPhone; images are never uploaded
+> and are retained in encrypted storage only when you explicitly choose to keep
+> one with a transaction. Privacy-redacted Home and Lock Screen widgets open Expense, Income,
 > Transfer, Refund, Smart Entry, or Receipt actions without displaying financial
 > values. Basic actions can use a separate encrypted capture inbox while the
-> full book remains locked.
+> full book remains locked. An optional budget-status configuration receives
+> only a percentage/state - never an amount, payee, account name, holding,
+> balance, transaction, or ledger identifier.
 >
 > MoneyUp requires no account and contains no ads or tracking. Its local
 > SQLCipher database uses a random device-protected key. Data leaves the app
-> only when you explicitly export a spreadsheet-friendly CSV or encrypted
-> `.moneyup` backup. Reviewed Qianji/generic CSV import stays on device.
+> only when you explicitly export a posting-level CSV/native XLSX or encrypted
+> `.moneyup` backup. Reviewed Qianji/generic CSV/TSV import, including manual
+> column mapping, stays on device.
 >
 > Highlights:
 > • fast expense, income, and transfer logging
 > • nested monthly budgets with accurate roll-up
+> • dated rollover, sinking funds, and savings goals
 > • Flexible Today with protected bills, debt, goals, and explicit exclusions
 > • tappable charts, filtered History drill-through, and deterministic insights
 > • a read-only on-device budget what-if simulator
-> • actual and recurring projected finance calendar
-> • accounts, cards, loans, brokerages, and manual holdings
+> • actual and recurring finance calendar with post/match lifecycle
+> • accounts, cards, loans, brokerages, and ledger-linked holdings with FIFO lots
 > • multi-currency records shown without hidden conversion
 > • English and Simplified Chinese
 > • encrypted, local-first storage
@@ -81,9 +93,9 @@ Description:
 Version 1.0 release notes:
 
 > Welcome to MoneyUp. Log spending, review Flexible Today, simulate a
-> budget scenario, review tappable charts and a finance calendar, track accounts
-> and holdings, and export to Numbers or Excel—all with encrypted local-first
-> storage and no MoneyUp account.
+> budget scenario, manage rollover and goals, review tappable charts and a
+> finance calendar, track ledger-linked holdings, and export to Numbers or
+> Excel - all with encrypted local-first storage and no MoneyUp account.
 
 ## Simplified Chinese metadata
 
@@ -105,25 +117,29 @@ Version 1.0 release notes:
 > MoneyUp 是一款注重隐私、本地优先的 iPhone 预算与个人财务应用。
 >
 > 快速记录支出、收入和转账；创建可正确向上汇总的多层预算；在财务日历中
-> 查看实际与计划资金流；使用本机图表了解收支；管理账户、卡片、负债和手动
-> 估值的投资持仓。
+> 查看实际与计划资金流；使用本机图表了解收支；管理预算结转、储蓄目标、
+> 账户、卡片、负债，以及与账本关联并按手动价格估值的投资持仓。
 >
 > 智能录入可识别收据或截图，也能理解一句话记账。识别与建议均在 iPhone
-> 本机运行，图片不会被保留或上传。主屏幕与锁定屏幕的隐私保护小组件不会显示
-> 财务金额，可打开支出、收入、转账、退款、智能记账或小票操作。账本锁定时，
+> 本机运行，图片绝不会上传，且只有你明确选择随交易保留时才会写入加密存储。
+> 主屏幕与锁定屏幕的隐私保护小组件不会显示
+> 财务金额，可打开支出、收入、转账、退款、智能记账或小票操作。可选预算状态
+> 仅接收百分比与状态，不包含金额、商户、账户名称、持仓、余额、交易或账本
+> 标识符。账本锁定时，
 > 基本操作可写入独立的加密快速记录收件箱，而完整余额仍保持锁定。
 >
 > MoneyUp 无需注册，不含广告或追踪。本地 SQLCipher 数据库使用随机、受设备
 > 保护的密钥。只有你主动操作时，数据才会生成可供 Numbers 或 Excel 打开的
-> CSV 文件或加密的 `.moneyup` 备份。在本机检查后，也可导入钱迹风格或通用
-> CSV 文件。
+> CSV／原生 XLSX 文件或加密的 `.moneyup` 备份。在本机检查后，也可导入钱迹风格或
+> 通用 CSV／TSV 文件，并为未知格式手动映射列。
 >
 > MoneyUp 是记录与规划工具，不构成财务、投资、税务或法律建议。
 
 1.0 版本说明：
 
-> 欢迎使用 MoneyUp。快速记账、规划多层预算、查看图表与财务日历、管理账户
-> 和持仓，并导出至 Numbers 或 Excel；所有核心数据均加密保存在本机，无需注册。
+> 欢迎使用 MoneyUp。快速记账、规划多层预算、管理结转与储蓄目标、查看图表
+> 与财务日历、管理与账本关联的持仓，并导出至 Numbers 或 Excel；所有核心
+> 数据均加密保存在本机，无需注册。
 
 ## TestFlight information
 
@@ -131,9 +147,11 @@ Beta description:
 
 > MoneyUp is a private local-first budget app. This founders beta covers fast
 > logging, nested budgets, a finance calendar, insights, assets, a redacted
-> widget, Flexible Today, a read-only budget simulator, chart drill-through,
-> on-device smart entry, History/edit/refunds, encrypted backup/restore, and
-> reviewed CSV import/export in English and Simplified Chinese. Use sample
+> widget, Flexible Today, rollover and savings goals, a read-only budget
+> simulator, chart drill-through, on-device smart entry, indexed
+> History/edit/refunds/splits, ledger-linked investments, encrypted
+> backup/restore, and reviewed CSV/XLSX portability in English and Simplified
+> Chinese. Use sample
 > data first while physical upgrade and restore drills are completed.
 
 What to test:
@@ -141,9 +159,10 @@ What to test:
 > Follow the in-app Privacy and beta guide. Focus on onboarding, background
 > locking, locked capture, expense/income/transfer/refund logging, History/edit,
 > nested budget roll-up, Flexible Today classification/arithmetic, the what-if simulator,
-> schedule projections, chart inspection/drill-through, holdings, widget
-> shortcuts, confirmed deletion, update
-> data retention, encrypted restore, and CSV import/export. Hide all private
+> schedule edit/post/match, chart inspection/drill-through, rollover/goals,
+> holding purchases/sales/repricing/lots, percentage-only widget status,
+> shortcuts, confirmed deletion, update data retention, encrypted restore, and
+> CSV/XLSX export plus mapped import. Hide all private
 > values in feedback images.
 
 Private TestFlight fields are entered by the Account Holder directly in App
@@ -155,8 +174,8 @@ Store Connect and are intentionally not stored in Git:
 
 Before a public App Store submission, publish a monitored direct contact on the
 Support URL and verify that both English and Simplified Chinese users can find
-it. TestFlight's private feedback email is sufficient for the two-founder beta
-but is not a replacement for a public support contact.
+it. TestFlight's private feedback email is sufficient for the founder/co-tester
+beta but is not a replacement for a public support contact.
 
 ## App Review notes
 
@@ -174,21 +193,25 @@ but is not a replacement for a public support contact.
 > verify the transaction in Plan > Calendar;
 > background long enough to reach the configured auto-lock delay and reopen to
 > see authentication; use Settings to create an encrypted backup and preview an
-> import; open Assets to export CSV after the plaintext warning; and add
+> import; open Assets to export CSV and XLSX after the plaintext warning; and add
 > privacy-redacted Home and Lock Screen widgets.
 >
 > The receipt reader uses PhotosPicker and Apple's on-device Vision framework.
-> The image is not stored or uploaded. The app has no advertising, analytics,
+> The image is never uploaded and is stored in SQLCipher only after the user
+> explicitly chooses encrypted receipt retention; it never enters drafts,
+> widgets, readable exports, or diagnostics. The app has no advertising, analytics,
 > remote AI, or financial-data backend. The widget contains no financial
-> values. Its basic actions can open a separate encrypted Quick Capture form;
-> this contains no balances or database key and moves into the full ledger only
-> after authenticated unlock.
+> amounts in quick-action timelines. Its basic actions can open a separate
+> encrypted Quick Capture form; this contains no balances or database key and
+> moves into the full ledger only after authenticated unlock. If the reviewer
+> explicitly enables Budget status in Settings, the App Group snapshot contains
+> only percentage/state and none of the record fields listed above.
 
 No demo account is required because there is no account system.
 
 ## Privacy answers
 
-For the current binary:
+Intended answers for the candidate, subject to exact-binary verification:
 
 - Tracking: No
 - Data collected by the developer or third parties through the app: No
@@ -234,6 +257,8 @@ semantic surfaces.
 
 - membership and agreements active;
 - bundle identifiers and signing valid for app and widget;
+- the registered App Group is enabled on both App IDs, and source/profile/signed
+  entitlements all contain only `group.com.laiwenkang.MoneyUp`;
 - CI green on submitted commit;
 - archive version/build unique and matches release notes;
 - exact encrypted `.xcarchive` and dSYMs saved in durable private storage, with

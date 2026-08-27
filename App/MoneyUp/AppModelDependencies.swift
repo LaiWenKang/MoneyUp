@@ -15,6 +15,17 @@ enum AppModelLifecycleCheckpoint: Equatable, Sendable {
     case beforeJournalCommit
     case afterAccountWriteBeforeApply
     case afterCaptureDraftPersisted
+    /// The candidate has passed isolated store and domain validation, but the
+    /// live SQLCipher transaction has not started yet.
+    case beforeRestoreCommit
+    case afterJournalProjectionReadBeforePublish
+    case beforeNetWorthSnapshotCommit
+    case beforeInvestmentCorrectionCommit
+    case beforeScheduleMatchCommit
+    case beforeScheduleMutationCommit
+    case beforeSavingsGoalWrite
+    case beforeQuickLogDraftWrite
+    case beforeProfileWrite
 }
 
 /// Production uses the no-op checkpoint. Tests can suspend one exact boundary
@@ -27,3 +38,33 @@ struct AppModelLifecycleHooks: Sendable {
 }
 
 typealias ReceiptLineRecognizer = @Sendable (Data) async throws -> [String]
+
+/// FIFO serialization per goal ID. `@MainActor` methods may interleave at any
+/// store await, so actor isolation of the model alone is not a transaction
+/// boundary for read-modify-write goal mutations.
+actor SavingsGoalMutationSerializer {
+    private var held = Set<UUID>()
+    private var waiters: [UUID: [CheckedContinuation<Void, Never>]] = [:]
+
+    func acquire(_ id: UUID) async {
+        if held.insert(id).inserted { return }
+        await withCheckedContinuation { continuation in
+            waiters[id, default: []].append(continuation)
+        }
+    }
+
+    func release(_ id: UUID) {
+        guard var queued = waiters[id], !queued.isEmpty else {
+            waiters.removeValue(forKey: id)
+            held.remove(id)
+            return
+        }
+        let next = queued.removeFirst()
+        if queued.isEmpty {
+            waiters.removeValue(forKey: id)
+        } else {
+            waiters[id] = queued
+        }
+        next.resume()
+    }
+}

@@ -3,6 +3,8 @@ import Foundation
 public enum MoneyError: Error, Equatable {
     case notANumber
     case currencyMismatch(expected: CurrencyCode, actual: CurrencyCode)
+    case unsupportedPrecision(currency: CurrencyCode)
+    case exceedsNewWriteMaximum(maximum: Decimal)
 }
 
 /// A decimal amount paired with an explicit currency or asset code.
@@ -40,12 +42,18 @@ public struct Money: Codable, Equatable, Sendable {
 
     public func adding(_ other: Money) throws -> Money {
         try requireSameCurrency(as: other)
-        return try Money(amount + other.amount, currency: currency)
+        return try Money(
+            CheckedDecimal.adding(amount, other.amount),
+            currency: currency
+        )
     }
 
     public func subtracting(_ other: Money) throws -> Money {
         try requireSameCurrency(as: other)
-        return try Money(amount - other.amount, currency: currency)
+        return try Money(
+            CheckedDecimal.subtracting(amount, other.amount),
+            currency: currency
+        )
     }
 
     private func requireSameCurrency(as other: Money) throws {

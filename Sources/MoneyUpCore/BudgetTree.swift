@@ -13,25 +13,48 @@ public enum BudgetPurpose: String, Codable, CaseIterable, Hashable, Sendable {
     case goal
 }
 
+/// Determines what may enter the following month's allocation.
+///
+/// Existing budgets decode as `none`; enabling rollover therefore starts from
+/// an explicit activation month and never rewrites prior months by surprise.
+public enum BudgetRolloverRule: String, Codable, CaseIterable, Hashable, Sendable {
+    /// Every Gregorian reporting month starts with the configured limit.
+    case none
+    /// Only an unused positive balance is carried. Overspending never reduces
+    /// the next month's configured allocation.
+    case positiveOnly
+    /// The complete signed balance is carried. Overspending therefore reduces
+    /// the next month's effective allocation.
+    case fullBalance
+}
+
 public struct BudgetNode: Codable, Equatable, Identifiable, Sendable {
     public let id: UUID
     public var parentID: UUID?
     public var name: String
     public var limit: Money?
     public var purpose: BudgetPurpose
+    public var rolloverRule: BudgetRolloverRule
+    /// The instant at which rollover was explicitly enabled. The reporting
+    /// calendar aligns it to a month; earlier history is never backfilled.
+    public var rolloverStartedAt: Date?
 
     public init(
         id: UUID = UUID(),
         parentID: UUID? = nil,
         name: String,
         limit: Money? = nil,
-        purpose: BudgetPurpose = .unclassified
+        purpose: BudgetPurpose = .unclassified,
+        rolloverRule: BudgetRolloverRule = .none,
+        rolloverStartedAt: Date? = nil
     ) {
         self.id = id
         self.parentID = parentID
         self.name = name
         self.limit = limit
         self.purpose = purpose
+        self.rolloverRule = rolloverRule
+        self.rolloverStartedAt = rolloverRule == .none ? nil : rolloverStartedAt
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -40,6 +63,8 @@ public struct BudgetNode: Codable, Equatable, Identifiable, Sendable {
         case name
         case limit
         case purpose
+        case rolloverRule
+        case rolloverStartedAt
     }
 
     public init(from decoder: Decoder) throws {
@@ -52,16 +77,31 @@ public struct BudgetNode: Codable, Equatable, Identifiable, Sendable {
             BudgetPurpose.self,
             forKey: .purpose
         ) ?? .unclassified
+        rolloverRule = try container.decodeIfPresent(
+            BudgetRolloverRule.self,
+            forKey: .rolloverRule
+        ) ?? .none
+        rolloverStartedAt = rolloverRule == .none
+            ? nil
+            : try container.decodeIfPresent(Date.self, forKey: .rolloverStartedAt)
     }
 }
 
 public struct BudgetProgress: Equatable, Sendable {
     public let node: BudgetNode
+    /// The configured limit plus carry entering this period.
+    public let effectiveLimit: Money?
     public let spent: Money
     public let remaining: Money?
 
-    public init(node: BudgetNode, spent: Money, remaining: Money?) {
+    public init(
+        node: BudgetNode,
+        effectiveLimit: Money?,
+        spent: Money,
+        remaining: Money?
+    ) {
         self.node = node
+        self.effectiveLimit = effectiveLimit
         self.spent = spent
         self.remaining = remaining
     }
@@ -179,7 +219,10 @@ public struct BudgetTree: Codable, Equatable, Sendable {
 
             var currentID: UUID? = nodeID
             while let id = currentID {
-                totals[id, default: .zero] += money.amount
+                totals[id] = try CheckedDecimal.adding(
+                    totals[id] ?? .zero,
+                    money.amount
+                )
                 currentID = nodesByID[id]?.parentID
             }
         }
@@ -190,15 +233,20 @@ public struct BudgetTree: Codable, Equatable, Sendable {
     }
 
     public func progress(
-        directSpending: [UUID: Money]
+        directSpending: [UUID: Money],
+        effectiveLimits: [UUID: Money] = [:]
     ) throws -> [BudgetProgress] {
         let totals = try rolledUpSpending(directSpending: directSpending)
 
+        try validate(effectiveLimits: effectiveLimits)
+
         return try nodes.map { node in
             let spent = totals[node.id] ?? Money.zero(currency: currency)
-            let remaining = try node.limit?.subtracting(spent)
+            let limit = effectiveLimits[node.id] ?? node.limit
+            let remaining = try limit?.subtracting(spent)
             return BudgetProgress(
                 node: node,
+                effectiveLimit: limit,
                 spent: spent,
                 remaining: remaining
             )
@@ -206,11 +254,13 @@ public struct BudgetTree: Codable, Equatable, Sendable {
     }
 
     public func planSummary(
-        directSpending: [UUID: Money]
+        directSpending: [UUID: Money],
+        effectiveLimits: [UUID: Money] = [:]
     ) throws -> BudgetPlanSummary? {
         try planSummary(
             directSpending: directSpending,
-            topmostLimits: topmostLimitedNodes
+            topmostLimits: topmostLimitedNodes,
+            effectiveLimits: effectiveLimits
         )
     }
 
@@ -222,14 +272,16 @@ public struct BudgetTree: Codable, Equatable, Sendable {
     /// place limits on separate sibling allocations instead of one mixed cap.
     public func planSummary(
         directSpending: [UUID: Money],
-        purpose: BudgetPurpose
+        purpose: BudgetPurpose,
+        effectiveLimits: [UUID: Money] = [:]
     ) throws -> BudgetPlanSummary? {
         let selected = topmostLimitedNodes.filter {
             effectivePurpose(for: $0.id) == purpose
         }
         return try planSummary(
             directSpending: directSpending,
-            topmostLimits: selected
+            topmostLimits: selected,
+            effectiveLimits: effectiveLimits
         )
     }
 
@@ -286,32 +338,64 @@ public struct BudgetTree: Codable, Equatable, Sendable {
 
     private func planSummary(
         directSpending: [UUID: Money],
-        topmostLimits: [BudgetNode]
+        topmostLimits: [BudgetNode],
+        effectiveLimits: [UUID: Money]
     ) throws -> BudgetPlanSummary? {
-        let progress = try progress(directSpending: directSpending)
+        let progress = try progress(
+            directSpending: directSpending,
+            effectiveLimits: effectiveLimits
+        )
         let progressByID = Dictionary(
             uniqueKeysWithValues: progress.map { ($0.node.id, $0) }
         )
         guard !topmostLimits.isEmpty else { return nil }
 
-        let limit = topmostLimits
-            .compactMap(\.limit)
-            .reduce(Decimal.zero) { $0 + $1.amount }
-        let spent = topmostLimits.reduce(Decimal.zero) {
-            $0 + (progressByID[$1.id]?.spent.amount ?? .zero)
+        var limit = Decimal.zero
+        for money in topmostLimits.compactMap({ effectiveLimits[$0.id] ?? $0.limit }) {
+            limit = try CheckedDecimal.adding(limit, money.amount)
         }
-        let totalSpent = nodes
-            .filter { $0.parentID == nil }
-            .reduce(Decimal.zero) {
-                $0 + (progressByID[$1.id]?.spent.amount ?? .zero)
-            }
+        var spent = Decimal.zero
+        for node in topmostLimits {
+            spent = try CheckedDecimal.adding(
+                spent,
+                progressByID[node.id]?.spent.amount ?? .zero
+            )
+        }
+        var totalSpent = Decimal.zero
+        for node in nodes where node.parentID == nil {
+            totalSpent = try CheckedDecimal.adding(
+                totalSpent,
+                progressByID[node.id]?.spent.amount ?? .zero
+            )
+        }
 
         return BudgetPlanSummary(
             limit: try Money(limit, currency: currency),
             spent: try Money(spent, currency: currency),
-            remaining: try Money(limit - spent, currency: currency),
-            unbudgetedSpent: try Money(totalSpent - spent, currency: currency)
+            remaining: try Money(
+                CheckedDecimal.subtracting(limit, spent),
+                currency: currency
+            ),
+            unbudgetedSpent: try Money(
+                CheckedDecimal.subtracting(totalSpent, spent),
+                currency: currency
+            )
         )
+    }
+
+    private func validate(effectiveLimits: [UUID: Money]) throws {
+        for (nodeID, limit) in effectiveLimits {
+            guard nodesByID[nodeID] != nil else {
+                throw BudgetTreeError.unknownSpendingNode(nodeID)
+            }
+            guard limit.currency == currency else {
+                throw BudgetTreeError.limitCurrencyMismatch(
+                    nodeID: nodeID,
+                    expected: currency,
+                    actual: limit.currency
+                )
+            }
+        }
     }
 
     private static func validateAcyclic(

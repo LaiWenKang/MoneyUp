@@ -64,7 +64,8 @@ public struct HistoryQuery: Equatable, Sendable {
     public func filteredEntries(
         _ entries: [JournalEntry],
         accounts: [LedgerAccount],
-        locale: Locale = .current
+        locale: Locale = .current,
+        calendar: Calendar = .current
     ) -> [JournalEntry] {
         let accountsByID = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0) })
         let amountFormatter = NumberFormatter()
@@ -77,7 +78,8 @@ public struct HistoryQuery: Equatable, Sendable {
                 $0,
                 accountsByID: accountsByID,
                 locale: locale,
-                amountFormatter: amountFormatter
+                amountFormatter: amountFormatter,
+                calendar: calendar
             )
         }
     }
@@ -85,7 +87,7 @@ public struct HistoryQuery: Equatable, Sendable {
     public func summary(
         for entries: [JournalEntry],
         accounts: [LedgerAccount]
-    ) -> HistorySummary {
+    ) throws -> HistorySummary {
         let accountsByID = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0) })
         var totals: [CurrencyCode: Decimal] = [:]
 
@@ -94,18 +96,30 @@ public struct HistoryQuery: Equatable, Sendable {
             case .expense, .refund:
                 for posting in entry.postings
                 where accountsByID[posting.accountID]?.kind == .expense {
-                    totals[posting.money.currency, default: .zero] -= posting.money.amount
+                    let currency = posting.money.currency
+                    totals[currency] = try CheckedDecimal.subtracting(
+                        totals[currency] ?? .zero,
+                        posting.money.amount
+                    )
                 }
             case .income:
                 for posting in entry.postings
                 where accountsByID[posting.accountID]?.kind == .income {
-                    totals[posting.money.currency, default: .zero] -= posting.money.amount
+                    let currency = posting.money.currency
+                    totals[currency] = try CheckedDecimal.subtracting(
+                        totals[currency] ?? .zero,
+                        posting.money.amount
+                    )
                 }
             case .transfer, .adjustment:
                 for posting in entry.postings {
                     guard let kind = accountsByID[posting.accountID]?.kind,
                           kind == .asset || kind == .liability else { continue }
-                    totals[posting.money.currency, default: .zero] += posting.money.amount
+                    let currency = posting.money.currency
+                    totals[currency] = try CheckedDecimal.adding(
+                        totals[currency] ?? .zero,
+                        posting.money.amount
+                    )
                 }
             case .all:
                 continue
@@ -122,7 +136,8 @@ public struct HistoryQuery: Equatable, Sendable {
         _ entry: JournalEntry,
         accountsByID: [UUID: LedgerAccount],
         locale: Locale,
-        amountFormatter: NumberFormatter
+        amountFormatter: NumberFormatter,
+        calendar: Calendar
     ) -> Bool {
         guard kind == .all || classifiedKind(of: entry, accountsByID: accountsByID) == kind
         else { return false }
@@ -133,7 +148,7 @@ public struct HistoryQuery: Equatable, Sendable {
             return false
         }
         guard FinancialPeriodBoundary.contains(
-            entry.occurredAt,
+            entry.originContext.attributedDate(in: calendar) ?? entry.occurredAt,
             start: startDate,
             endExclusive: endDateExclusive
         ) else { return false }
@@ -195,8 +210,10 @@ public struct HistoryQuery: Equatable, Sendable {
     ) -> [Decimal] {
         let preferredKinds: Set<LedgerAccountKind>
         switch entry.kind {
-        case .expense: preferredKinds = [.expense]
-        case .income: preferredKinds = [.income]
+        // Split transactions must match both their total movement on the user
+        // account and each individual category allocation.
+        case .expense: preferredKinds = [.expense, .asset, .liability]
+        case .income: preferredKinds = [.income, .asset, .liability]
         case .transfer: preferredKinds = [.asset, .liability]
         case .adjustment, .investment: preferredKinds = [.asset, .liability]
         }
@@ -205,8 +222,11 @@ public struct HistoryQuery: Equatable, Sendable {
                   preferredKinds.contains(account.kind) else { return nil }
             return abs(posting.money.amount)
         }
-        return preferred.isEmpty
+        let values = preferred.isEmpty
             ? entry.postings.map { abs($0.money.amount) }
             : preferred
+        return values.reduce(into: [Decimal]()) { unique, amount in
+            if !unique.contains(amount) { unique.append(amount) }
+        }
     }
 }

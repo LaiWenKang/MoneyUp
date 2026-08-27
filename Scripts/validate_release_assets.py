@@ -482,7 +482,7 @@ def validate_brand_palette() -> None:
         "BrandBackground": ["#F7F9F6", "#101512"],
         "BrandSurface": ["#EEF4F0", "#18211D"],
         "BrandSurfaceElevated": ["#FAFBF9", "#202923"],
-        "BrandAction": ["#34785F"],
+        "BrandAction": ["#34785F", "#82CEAE"],
         "BrandMist": ["#D4EAD8", "#3C6349"],
     }
     for name, expected_colors in expected.items():
@@ -559,13 +559,32 @@ def validate_project_configuration() -> None:
             "automatic signing must not force a code-sign identity; "
             "Apple Distribution signing occurs during export"
         )
-    if "CODE_SIGN_ENTITLEMENTS" in spec or any(
-        (ROOT / "App").rglob("*.entitlements")
-    ):
+    entitlement_contract = {
+        "App/MoneyUp/MoneyUp.entitlements": "App/MoneyUp/MoneyUp.entitlements",
+        "App/MoneyUpWidget/MoneyUpWidget.entitlements": (
+            "App/MoneyUpWidget/MoneyUpWidget.entitlements"
+        ),
+    }
+    discovered_entitlements = {
+        path.relative_to(ROOT).as_posix()
+        for path in (ROOT / "App").rglob("*.entitlements")
+    }
+    if discovered_entitlements != set(entitlement_contract):
         fail(
-            "custom entitlements require a signing-flow review before the "
-            "unsigned archive path can be used"
+            "only the reviewed app/widget App Group entitlements may ship: "
+            f"{sorted(discovered_entitlements)}"
         )
+    for relative_path, declared_path in entitlement_contract.items():
+        if f"CODE_SIGN_ENTITLEMENTS: {declared_path}" not in spec:
+            fail(f"project.yml does not sign with {declared_path}")
+        with (ROOT / relative_path).open("rb") as handle:
+            entitlement = plistlib.load(handle)
+        if entitlement != {
+            "com.apple.security.application-groups": [
+                "group.com.laiwenkang.MoneyUp"
+            ]
+        }:
+            fail(f"unexpected capability in {relative_path}")
     if "SystemCapabilities" in spec or re.search(
         r"^\s+capabilities:\s*$", spec, re.MULTILINE
     ):
@@ -633,6 +652,12 @@ def validate_testflight_workflow() -> None:
         "-disableAutomaticPackageResolution",
         "actions/upload-artifact@",
         "ARCHIVE_ENCRYPTION_PASSWORD",
+        "SOURCE_BUILD_NUMBER:",
+        "APP_GROUP_ID: group.com.laiwenkang.MoneyUp",
+        "Verify source candidate identity and App Group contract",
+        "com.apple.security.application-groups",
+        "distribution profile must authorize only",
+        "signed entitlements must contain only",
     ]
     for declaration in required:
         if declaration not in workflow:
@@ -708,6 +733,19 @@ def validate_testflight_workflow() -> None:
         or project_version.group(1) != workflow_version.group(1)
     ):
         fail("TestFlight workflow marketing version must match project.yml")
+
+    project_build = re.search(
+        r"^\s+CURRENT_PROJECT_VERSION:\s*([^\s#]+)", project, re.MULTILINE
+    )
+    workflow_source_build = re.search(
+        r"^\s+SOURCE_BUILD_NUMBER:\s*([^\s#]+)", workflow, re.MULTILINE
+    )
+    if (
+        project_build is None
+        or workflow_source_build is None
+        or project_build.group(1) != workflow_source_build.group(1)
+    ):
+        fail("TestFlight workflow source build must match project.yml")
 
     print("Validated protected, pinned TestFlight distribution workflow structure")
 

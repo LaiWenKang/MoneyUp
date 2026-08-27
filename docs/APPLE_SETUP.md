@@ -23,22 +23,46 @@ key into chat, an issue, a commit, or a workflow input.
 Apple's agreement guidance is at
 <https://developer.apple.com/help/app-store-connect/manage-agreements/sign-and-update-agreements>.
 
-## 2. Register MoneyUp's two identifiers
+## 2. Register the App Group and verify MoneyUp's two identifiers
 
-Open **Certificates, Identifiers & Profiles** → **Identifiers**, tap **+**, and
-register two explicit **App IDs** of type **App**:
+MoneyUp 0.6.0 adds an opt-in budget-status widget. The app publishes only a
+percentage and availability state to a shared container; it never publishes an
+amount, payee, account name, holding, balance, transaction, or ledger
+identifier. This requires one permanent App Group shared by the app and widget.
+
+Open **Certificates, Identifiers & Profiles** → **Identifiers**, tap **+**,
+choose **App Groups**, and register:
+
+| Description | App Group identifier |
+|---|---|
+| MoneyUp Shared Status | `group.com.laiwenkang.MoneyUp` |
+
+If the group already exists, verify its exact spelling and reuse it. Do not
+create a second group with a similar name.
+
+Return to **Identifiers** and open MoneyUp's two existing explicit **App IDs**
+of type **App**. If either is genuinely missing on a replacement team, register
+that exact ID before continuing:
 
 | Description | Bundle ID |
 |---|---|
 | MoneyUp | `com.laiwenkang.MoneyUp` |
 | MoneyUp Widget | `com.laiwenkang.MoneyUp.Widget` |
 
-Do not enable App Groups, iCloud, Sign in with Apple, push notifications, or
-other capabilities. The current widget deliberately contains no financial
-data and only opens the protected app, so it does not share a data container.
+For each App ID, open **Edit**, enable **App Groups**, choose **Configure**,
+select only `group.com.laiwenkang.MoneyUp`, continue through **Assign**, and
+save. Keep iCloud, Sign in with Apple, push notifications, and every other
+unused capability disabled. Both App IDs must authorize the same group before
+automatic App Store provisioning can sign the 0.6.0 candidate.
+
+This capability does not grant the widget access to the SQLCipher database or
+its Keychain key. Source validation restricts both entitlement files to this
+single App Group, and the signed-release workflow independently checks the app
+and widget provisioning profiles and signed entitlements.
 
 Apple's identifier instructions are at
-<https://developer.apple.com/help/account/identifiers/register-an-app-id>.
+<https://developer.apple.com/help/account/identifiers/register-an-app-id> and
+<https://developer.apple.com/help/account/identifiers/register-an-app-group>.
 
 ## 3. Verify the App Store Connect app record
 
@@ -96,7 +120,7 @@ Configure the environment as follows:
 
 - allow deployments only from the `main` branch;
 - if the GitHub plan offers required reviewers, add the repository owner and
-  leave self-review enabled for this two-founder project;
+  leave self-review enabled for this founder/co-tester project;
 - add environment variable `APPLE_TEAM_ID` with the 10-character Team ID;
 - add environment variable `ASC_KEY_ID` with the 10-character API Key ID;
 - add environment variable `ASC_ISSUER_ID` with the Issuer ID UUID;
@@ -140,11 +164,14 @@ Open the repository's **Actions** tab and choose **TestFlight**.
    app. The saved ciphertext is the recovery copy of the exact unsigned release
    archive and dSYMs; it does not need to be opened on the iPhone.
 
-The workflow creates a unique build number for every attempt, verifies Xcode
-26 and the iOS 26 SDK, checks the app and widget versions and identifiers,
-checks privacy and bilingual resources, verifies distribution signing, asks
-Apple to validate the IPA, uploads symbols for crash diagnosis, and removes
-the temporary private key and release products before the runner is destroyed.
+The workflow verifies source version 0.6.0 build 8, then creates a unique upload
+build number for every attempt. It verifies Xcode 26 and the iOS 26 SDK, checks
+the app and widget versions and identifiers, checks both source entitlement
+files, checks privacy and bilingual resources, verifies that both distribution
+profiles and both signed bundles authorize only
+`group.com.laiwenkang.MoneyUp`, asks Apple to validate the IPA, uploads symbols
+for crash diagnosis, and removes the temporary private key and release products
+before the runner is destroyed.
 Because this repository is public, treat the GitHub artifact as potentially
 public ciphertext: the strong, separately stored archive password is required.
 
@@ -153,15 +180,16 @@ has no development device or development provisioning profile. The authenticated
 `exportArchive` step applies Apple Distribution signing and App Store Connect
 distribution profiles to both the app and widget. Only the exported IPA is a
 distribution artifact; its signatures and embedded profiles must pass every
-workflow check before validation or upload. If MoneyUp later adds a custom
-entitlement or capability, review this signing design before releasing it; the
-release validator intentionally blocks that change until it is handled.
+workflow check before validation or upload. The App Group above is the one
+reviewed custom capability. If MoneyUp adds any other entitlement or
+capability, review this signing design before releasing it; the release
+validator intentionally blocks unreviewed changes.
 
 If an upload step loses its connection after transfer begins, check App Store
 Connect **Build Uploads** before running it again. Never try to reuse an old
 build number.
 
-## 7. Make the build available to both founders
+## 7. Make the build available to the founder and co-tester
 
 After Apple finishes processing the upload:
 
@@ -179,14 +207,14 @@ After Apple finishes processing the upload:
    Test** text from `APP_STORE_SUBMISSION.md`, and install it from Apple's
    TestFlight app.
 4. Complete the smoke test in `FIRST_TEST.md` before inviting anyone else.
-5. Create **Founders External**, add the girlfriend's email, attach the tested
+5. Create **Founders External**, add the co-tester's email, attach the tested
    build, select **Automatically notify testers**, and submit it for TestFlight
    Beta App Review. If automatic notification was not selected, use **Notify
    Testers** after Apple approves the build.
 
-The girlfriend needs an Apple Account and the TestFlight app. Her invitation
-email may be Gmail or any other provider. She does not need ChatGPT, a MoneyUp
-account, App Store Connect access, or repository access.
+The co-tester needs an Apple Account and the TestFlight app. The invitation
+email may be Gmail or any other provider. The co-tester does not need ChatGPT,
+a MoneyUp account, App Store Connect access, or repository access.
 
 Apple's current tester instructions are here:
 

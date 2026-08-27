@@ -66,9 +66,12 @@ public struct BudgetScenarioForecast: Equatable, Sendable {
     public let projectedIncome: Money
     public let projectedNet: Money
 
-    public var budgetUsage: Decimal? {
+    public func budgetUsage() throws -> Decimal? {
         guard budgetLimit.amount > .zero else { return nil }
-        return projectedSpent.amount / budgetLimit.amount
+        return try CheckedDecimal.ratio(
+            projectedSpent.amount,
+            budgetLimit.amount
+        )
     }
 
     public init(
@@ -134,10 +137,16 @@ public extension FinanceCalculator {
                   ),
                   occurrence < month.end {
                 if schedule.amount.currency == flexibleBudgetRemaining.currency {
-                    baseCommitments += schedule.amount.amount
+                    baseCommitments = try CheckedDecimal.adding(
+                        baseCommitments,
+                        schedule.amount.amount
+                    )
                 } else {
-                    foreignCommitments[schedule.amount.currency, default: .zero]
-                        += schedule.amount.amount
+                    let currency = schedule.amount.currency
+                    foreignCommitments[currency] = try CheckedDecimal.adding(
+                        foreignCommitments[currency] ?? .zero,
+                        schedule.amount.amount
+                    )
                 }
                 count += 1
                 reference = occurrence.addingTimeInterval(1)
@@ -149,8 +158,10 @@ public extension FinanceCalculator {
             currency: flexibleBudgetRemaining.currency
         )
         let available = try flexibleBudgetRemaining.subtracting(scheduled)
-        let dailyAmount = flexibleBudgetRemaining.currency.rounded(
-            available.amount / Decimal(days)
+        let dailyAmount = try CheckedDecimal.divideForCurrencyRounding(
+            available.amount,
+            Decimal(days),
+            currency: flexibleBudgetRemaining.currency
         )
         let perDay = try Money(
             dailyAmount,

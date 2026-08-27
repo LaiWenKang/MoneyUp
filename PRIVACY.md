@@ -1,6 +1,6 @@
 # MoneyUp Privacy Policy
 
-Effective: 25 August 2026
+Effective: 27 August 2026
 
 MoneyUp is a local-first personal-finance app. Its core privacy rule is simple:
 financial records are processed on the user's iPhone and are not sent to a
@@ -15,9 +15,18 @@ device. MoneyUp does not require a MoneyUp account and does not operate an
 application backend that receives these records.
 
 The optional receipt and screenshot reader uses Apple's on-device text
-recognition. The selected image is held only while text is recognized; MoneyUp
-does not add the image to its database or upload it. Typed smart entry and
-category suggestions also run on the device.
+recognition. The selected image is transient by default. MoneyUp stores it in
+the encrypted database and password-protected portable backups only if the user
+explicitly chooses to keep the receipt for that transaction. It is never added
+to drafts, widgets, readable CSV/XLSX exports, or uploaded. Typed smart entry
+and category suggestions also run on the device.
+
+If the user explicitly enables budget status for widgets, MoneyUp shares only
+an availability/state value and an integer percentage through its local App
+Group. That snapshot contains no amount, payee, account name, holding, balance,
+transaction, book, or ledger identifier. Disabling the setting or erasing the
+book removes the snapshot. Quick-action widgets remain free of financial
+values.
 
 ## Collection, tracking, and advertising
 
@@ -49,7 +58,7 @@ the app before making and verifying an archive can permanently remove the book.
 ## Exports and links
 
 MoneyUp shares data only after the user deliberately starts an export and
-chooses a destination in the iOS file picker. CSV exports are readable
+chooses a destination in the iOS file picker. CSV and XLSX exports are readable
 plaintext; password-protected `.moneyup` archives are encrypted. After export,
 the selected storage provider or recipient controls the file, and MoneyUp can
 no longer protect it. CSV/Qianji import parsing and matching run locally;
@@ -62,8 +71,9 @@ link is governed by the browser and destination site's privacy practices.
 
 Financial records remain in the encrypted local database until the user
 deletes individual supported records or erases the app's data. Deleting the
-app removes its local container. MoneyUp has no server copy to retrieve or
-delete.
+transaction also deletes its linked encrypted receipt image; a receipt image
+can also be deleted separately after confirmation. Deleting the app removes its
+local container. MoneyUp has no server copy to retrieve or delete.
 
 ## Security limits
 
@@ -89,7 +99,7 @@ when available.
 
 # MoneyUp 隐私政策（简体中文）
 
-生效日期：2026 年 8 月 25 日
+生效日期：2026 年 8 月 27 日
 
 MoneyUp 是一款本地优先的个人财务应用。核心隐私原则很简单：财务记录在
 用户的 iPhone 上处理，不会发送到 MoneyUp 服务器。
@@ -100,9 +110,15 @@ MoneyUp 是一款本地优先的个人财务应用。核心隐私原则很简单
 备注、商户、分类及相关财务信息。这些信息存储在设备上的加密数据库中。
 MoneyUp 无需注册，也没有接收这些记录的应用后端。
 
-可选的收据与截图识别使用 Apple 的本机文字识别。所选图片只在识别文字时
-短暂保留，不会写入 MoneyUp 数据库或上传。文字智能录入和分类建议也完全
-在设备上运行。
+可选的收据与截图识别使用 Apple 的本机文字识别。所选图片默认只在识别期间
+短暂保留；只有用户明确选择为该笔交易保留收据时，MoneyUp 才会将其写入加密
+数据库及受密码保护的便携备份。图片不会进入草稿、组件、可读的 CSV／XLSX
+导出，也不会上传。文字智能录入和分类建议也完全在设备上运行。
+
+只有用户明确启用小组件预算状态时，MoneyUp 才会通过本机 App Group 共享
+可用性／状态与整数百分比。该快照不含金额、商户、账户名称、持仓、余额、
+交易、账本或账本标识符。关闭此设置或抹掉账本会删除该快照；快捷操作小组件
+仍不包含任何财务数值。
 
 ## 收集、追踪与广告
 
@@ -127,7 +143,7 @@ MoneyUp 无法找回遗忘的备份密码。若未先创建并验证备份就删
 ## 导出与链接
 
 只有用户主动发起导出并在 iOS 文件选择器中指定目标后，MoneyUp 才会分享
-数据。CSV 导出文件是可直接读取的明文，`.moneyup` 备份则受密码加密。导出后，
+数据。CSV 与 XLSX 导出文件是可直接读取的明文，`.moneyup` 备份则受密码加密。导出后，
 文件由用户选择的存储服务或接收方管理，MoneyUp 无法继续保护该文件。CSV／钱迹
 导入的解析与匹配仅在本机进行，MoneyUp 不会上传导入文件。
 
@@ -137,7 +153,8 @@ MoneyUp 无法找回遗忘的备份密码。若未先创建并验证备份就删
 ## 保留与删除
 
 财务记录会保留在本机加密数据库中，直到用户删除受支持的单条记录或抹掉应用
-数据。删除应用会移除其本地容器。MoneyUp 没有可供取回或删除的服务器副本。
+数据。删除交易会同时删除其关联的加密收据图片；用户也可在确认后单独删除收据
+图片。删除应用会移除其本地容器。MoneyUp 没有可供取回或删除的服务器副本。
 
 ## 安全限制
 

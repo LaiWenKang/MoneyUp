@@ -248,7 +248,19 @@
           }
         }
       }
-    }
+    },
+    "widget.budget_accessibility" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"%1$d%% used, %2$@"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"已用 %1$d%%，%2$@"}}}},
+    "widget.budget_enable" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Enable the percentage-only status in MoneyUp Settings."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"请在 MoneyUp 设置中启用仅含百分比的状态。"}}}},
+    "widget.budget_needs_plan" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Set a monthly budget in Plan to show its percentage."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"请先在“规划”中设置月度预算，才能显示百分比。"}}}},
+    "widget.budget_on_plan" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Within plan"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"预算内"}}}},
+    "widget.budget_over" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Over plan"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"已超预算"}}}},
+    "widget.budget_stale" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Open MoneyUp to refresh this month’s private status."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"请打开 MoneyUp，刷新本月的私密状态。"}}}},
+    "widget.budget_status" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Budget status"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"预算状态"}}}},
+    "widget.budget_used" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"used"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"已用"}}}},
+    "widget.configuration.content" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Widget content"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"小组件内容"}}}},
+    "widget.configuration.content_type" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Content"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"内容"}}}},
+    "widget.content.budget_status" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Budget status (percentage only)"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"预算状态（仅百分比）"}}}},
+    "widget.content.quick_actions" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Quick actions"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"快捷记账"}}}}
   },
   "version" : "1.0"
 }

@@ -3,6 +3,25 @@ import MoneyUpCore
 import SwiftUI
 
 struct InsightsView: View {
+    private enum FlowSeriesKind: String {
+        case income
+        case expense
+
+        var title: String {
+            switch self {
+            case .income: String(localized: "transaction.income")
+            case .expense: String(localized: "transaction.expense")
+            }
+        }
+
+        var symbol: String {
+            switch self {
+            case .income: "plus.rectangle.fill"
+            case .expense: "minus.rectangle"
+            }
+        }
+    }
+
     private struct CategoryPoint: Identifiable {
         let id: UUID
         let name: String
@@ -13,10 +32,11 @@ struct InsightsView: View {
 
     private struct FlowPoint: Identifiable {
         let month: Date
-        let series: String
+        let kind: FlowSeriesKind
         let money: Money
 
-        var id: String { "\(series)@\(month.timeIntervalSinceReferenceDate)" }
+        var id: String { "\(kind.rawValue)@\(month.timeIntervalSinceReferenceDate)" }
+        var series: String { kind.title }
         var amount: Double { NSDecimalNumber(decimal: money.amount).doubleValue }
     }
 
@@ -64,6 +84,8 @@ struct InsightsView: View {
                 selectedFlowMonth = nil
             }
         }
+        .environment(\.calendar, model.reportingCalendar)
+        .environment(\.timeZone, model.reportingCalendar.timeZone)
     }
 
     private var periodCard: some View {
@@ -180,6 +202,8 @@ struct InsightsView: View {
                     .chartYSelection(value: $selectedCategoryName)
                     .frame(height: max(190, CGFloat(points.count) * 34))
                     .accessibilityLabel(Text("insights.category_chart"))
+                    .accessibilityValue(Text(categoryChartSummary(points)))
+                    .accessibilityHint(Text("insights.chart_accessibility_hint"))
 
                     Text("insights.tap_chart")
                         .font(.caption)
@@ -206,32 +230,73 @@ struct InsightsView: View {
                 Text("insights.monthly_flow")
                     .font(.headline)
 
+                Label(
+                    analysisWindowDescription(report),
+                    systemImage: "selection.pin.in.out"
+                )
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+
                 if hasActivity {
-                    Chart(points) { point in
-                        BarMark(
-                            x: .value("Month", point.month, unit: .month),
-                            y: .value("Amount", point.amount)
+                    Chart {
+                        RuleMark(
+                            x: .value("Selected period start", report.interval.start)
                         )
-                        .foregroundStyle(by: .value("Flow", point.series))
-                        .position(by: .value("Flow", point.series))
-                        .opacity(
-                            selectedFlowMonth == nil
-                                || Calendar.current.isDate(
-                                    point.month,
-                                    equalTo: selectedFlowMonth ?? point.month,
-                                    toGranularity: .month
-                                ) ? 1 : 0.34
+                        .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
+                        .foregroundStyle(Color.primary.opacity(0.45))
+
+                        RuleMark(
+                            x: .value(
+                                "Selected period end",
+                                report.interval.end.addingTimeInterval(-1)
+                            )
                         )
-                        .accessibilityLabel(point.series)
-                        .accessibilityValue(formattedMoney(point.money))
+                        .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
+                        .foregroundStyle(Color.primary.opacity(0.45))
+
+                        ForEach(points) { point in
+                            BarMark(
+                                x: .value("Month", point.month, unit: .month),
+                                y: .value("Amount", point.amount)
+                            )
+                            .foregroundStyle(by: .value("Flow", point.series))
+                            .position(by: .value("Flow", point.series))
+                            .cornerRadius(point.kind == .income ? 5 : 0)
+                            .opacity(
+                                selectedFlowMonth == nil
+                                    || model.reportingCalendar.isDate(
+                                        point.month,
+                                        equalTo: selectedFlowMonth ?? point.month,
+                                        toGranularity: .month
+                                    ) ? 1 : 0.34
+                            )
+                            .accessibilityLabel(
+                                "\(point.month.formatted(.dateTime.month(.wide).year())), \(point.series)"
+                            )
+                            .accessibilityValue(formattedMoney(point.money))
+                        }
                     }
                     .frame(height: 240)
                     .chartForegroundStyleScale([
                         String(localized: "transaction.income"): Color.green,
                         String(localized: "transaction.expense"): Color.accentColor
                     ])
+                    .chartLegend(.hidden)
                     .chartXSelection(value: $selectedFlowMonth)
                     .accessibilityLabel(Text("insights.flow_chart"))
+                    .accessibilityValue(Text(flowChartSummary(report)))
+                    .accessibilityHint(Text("insights.chart_accessibility_hint"))
+
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 16) {
+                            flowLegend(.income, color: .green)
+                            flowLegend(.expense, color: .accentColor)
+                        }
+                        VStack(alignment: .leading, spacing: 6) {
+                            flowLegend(.income, color: .green)
+                            flowLegend(.expense, color: .accentColor)
+                        }
+                    }
 
                     Text("insights.tap_chart")
                         .font(.caption)
@@ -239,7 +304,7 @@ struct InsightsView: View {
 
                     if let selectedFlow = report.monthlyFlows.first(where: {
                         guard let selectedFlowMonth else { return false }
-                        return Calendar.current.isDate(
+                        return model.reportingCalendar.isDate(
                             $0.month,
                             equalTo: selectedFlowMonth,
                             toGranularity: .month
@@ -304,7 +369,10 @@ struct InsightsView: View {
                 }
             }
 
-            if let interval = Calendar.current.dateInterval(of: .month, for: flow.month) {
+            if let interval = model.reportingCalendar.dateInterval(
+                of: .month,
+                for: flow.month
+            ) {
                 NavigationLink {
                     HistoryView(preset: HistoryPreset(interval: interval))
                 } label: {
@@ -369,7 +437,24 @@ struct InsightsView: View {
 
         let remainder = spending.dropFirst(Self.visibleCategoryCount)
         if !remainder.isEmpty {
-            let total = remainder.reduce(Decimal.zero) { $0 + $1.amount.amount }
+            let total: Decimal
+            do {
+                var aggregate = Decimal.zero
+                for category in remainder {
+                    aggregate = try CheckedDecimal.adding(
+                        aggregate,
+                        category.amount.amount
+                    )
+                }
+                total = aggregate
+            } catch {
+                DerivedValueDiagnostics.record(
+                    .amountCalculationFailed,
+                    operation: "insights-other-category",
+                    error: error
+                )
+                return .unavailable(.amountCalculationFailed)
+            }
             switch DerivedValue<Money>.money(
                 total,
                 currency: report.baseCurrency,
@@ -391,15 +476,59 @@ struct InsightsView: View {
     }
 
     private func flowPoints(_ report: PeriodReport) -> [FlowPoint] {
-        let incomeLabel = String(localized: "transaction.income")
-        let expenseLabel = String(localized: "transaction.expense")
-
         return report.monthlyFlows.flatMap { flow in
             [
-                FlowPoint(month: flow.month, series: incomeLabel, money: flow.income),
-                FlowPoint(month: flow.month, series: expenseLabel, money: flow.expense)
+                FlowPoint(month: flow.month, kind: .income, money: flow.income),
+                FlowPoint(month: flow.month, kind: .expense, money: flow.expense)
             ]
         }
+    }
+
+    private func flowLegend(
+        _ kind: FlowSeriesKind,
+        color: Color
+    ) -> some View {
+        Label(kind.title, systemImage: kind.symbol)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(color)
+            .accessibilityElement(children: .combine)
+    }
+
+    private func analysisWindowDescription(_ report: PeriodReport) -> String {
+        let start = report.interval.start.formatted(.dateTime.month(.abbreviated).year())
+        let inclusiveEnd = report.interval.end.addingTimeInterval(-1)
+            .formatted(.dateTime.month(.abbreviated).year())
+        return String(
+            format: String(localized: "insights.selected_window_format"),
+            start,
+            inclusiveEnd
+        )
+    }
+
+    private func categoryChartSummary(_ points: [CategoryPoint]) -> String {
+        guard let largest = points.first else {
+            return String(localized: "insights.no_spending")
+        }
+        return String(
+            format: String(localized: "insights.category_chart_summary_format"),
+            points.count,
+            largest.name,
+            formattedMoney(largest.money)
+        )
+    }
+
+    private func flowChartSummary(_ report: PeriodReport) -> String {
+        guard let latest = report.monthlyFlows.last else {
+            return analysisWindowDescription(report)
+        }
+        return String(
+            format: String(localized: "insights.flow_chart_summary_format"),
+            report.monthlyFlows.count,
+            analysisWindowDescription(report),
+            latest.month.formatted(.dateTime.month(.wide).year()),
+            formattedMoney(latest.income),
+            formattedMoney(latest.expense)
+        )
     }
 
     /// Deterministic, on-device readings. Every line is arithmetic over the
@@ -419,16 +548,16 @@ struct InsightsView: View {
             lines.append(String(localized: "insights.no_expense_yet"))
         }
 
-        if let rate = report.savingsRate {
-            if rate >= .zero {
-                lines.append(
-                    String(
-                        format: String(localized: "insights.savings_rate_format"),
-                        formattedPercent(rate)
+        do {
+            if let rate = try report.savingsRate() {
+                if rate >= .zero {
+                    lines.append(
+                        String(
+                            format: String(localized: "insights.savings_rate_format"),
+                            formattedPercent(rate)
+                        )
                     )
-                )
-            } else {
-                do {
+                } else {
                     let gap = try report.baseFlow.expense
                         .subtracting(report.baseFlow.income)
                     lines.append(
@@ -437,37 +566,53 @@ struct InsightsView: View {
                             formattedMoney(gap)
                         )
                     )
-                } catch {
-                    DerivedValueDiagnostics.record(
-                        .amountCalculationFailed,
-                        operation: "insights-overspend-gap",
-                        error: error
-                    )
-                    issue = .amountCalculationFailed
                 }
             }
+        } catch {
+            DerivedValueDiagnostics.record(
+                .amountCalculationFailed,
+                operation: "insights-savings-reading",
+                error: error
+            )
+            issue = .amountCalculationFailed
         }
 
-        if let largest = report.largestCategory {
-            lines.append(
-                String(
-                    format: String(localized: "insights.largest_category_format"),
-                    largest.category.name,
-                    formattedPercent(largest.share)
+        do {
+            if let largest = try report.largestCategory() {
+                lines.append(
+                    String(
+                        format: String(localized: "insights.largest_category_format"),
+                        largest.category.name,
+                        formattedPercent(largest.share)
+                    )
                 )
+            }
+        } catch {
+            DerivedValueDiagnostics.record(
+                .amountCalculationFailed,
+                operation: "insights-category-share",
+                error: error
             )
+            issue = .amountCalculationFailed
         }
 
         if period == .thisMonth {
             if case let .available(comparison) =
                 model.monthToDateExpenseComparisonResult(),
                !comparison.holdsUnconvertedActivity {
-                lines.append(
-                    contentsOf: monthToDateComparisonLine(
+                do {
+                    lines.append(contentsOf: try monthToDateComparisonLine(
                         previous: comparison.previous.amount,
                         latest: comparison.current.amount
+                    ))
+                } catch {
+                    DerivedValueDiagnostics.record(
+                        .amountCalculationFailed,
+                        operation: "insights-month-comparison",
+                        error: error
                     )
-                )
+                    issue = .amountCalculationFailed
+                }
             }
         }
 
@@ -480,11 +625,12 @@ struct InsightsView: View {
     private func monthToDateComparisonLine(
         previous: Decimal,
         latest: Decimal
-    ) -> [String] {
+    ) throws -> [String] {
         guard previous > .zero else { return [] }
 
-        let delta = (latest - previous) / previous
-        let threshold = Decimal(1) / Decimal(200)
+        let difference = try CheckedDecimal.subtracting(latest, previous)
+        let delta = try CheckedDecimal.ratio(difference, previous)
+        let threshold = Decimal(string: "0.005")!
 
         if delta > threshold {
             return [

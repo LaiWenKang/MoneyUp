@@ -132,4 +132,107 @@ final class JournalEntryTests: XCTestCase {
             )
         }
     }
+
+    func testCheckedBalanceAggregationRejectsIntermediateDecimalOverflow() throws {
+        let sgd = try CurrencyCode("SGD")
+        let huge = try XCTUnwrap(
+            Decimal(string: "9e127", locale: Locale(identifier: "en_US_POSIX"))
+        )
+
+        XCTAssertThrowsError(try JournalEntry(
+            kind: .adjustment,
+            postings: [
+                Posting(accountID: UUID(), money: try Money(huge, currency: sgd)),
+                Posting(accountID: UUID(), money: try Money(huge, currency: sgd)),
+                Posting(accountID: UUID(), money: try Money(-huge, currency: sgd)),
+                Posting(accountID: UUID(), money: try Money(-huge, currency: sgd))
+            ]
+        )) { error in
+            XCTAssertEqual(
+                error as? JournalEntryValidationError,
+                .arithmeticOverflow(currency: sgd)
+            )
+        }
+    }
+
+    func testEventOriginUsesFrozenOffsetAndStillRequiresCapturedDay() throws {
+        let usd = try CurrencyCode("USD")
+        let occurredAt = try XCTUnwrap(
+            ISO8601DateFormatter().date(from: "2026-07-01T16:00:00Z")
+        )
+        // This offset differs from the current tzdb rule for New York on this
+        // date, but remains valid frozen evidence if zone rules later change.
+        let historical = try TransactionOriginContext(
+            calendarIdentifier: "gregorian",
+            timeZoneIdentifier: "America/New_York",
+            utcOffsetSeconds: -5 * 3_600,
+            dayKey: 20260701
+        )
+
+        XCTAssertNoThrow(try JournalEntry(
+            kind: .expense,
+            occurredAt: occurredAt,
+            postings: [
+                Posting(accountID: UUID(), money: try Money(1, currency: usd)),
+                Posting(accountID: UUID(), money: try Money(-1, currency: usd))
+            ],
+            originContext: historical
+        ))
+
+        let wrongDay = try TransactionOriginContext(
+            calendarIdentifier: "gregorian",
+            timeZoneIdentifier: "America/New_York",
+            utcOffsetSeconds: -5 * 3_600,
+            dayKey: 20260702
+        )
+        XCTAssertThrowsError(try JournalEntry(
+            kind: .expense,
+            occurredAt: occurredAt,
+            postings: [
+                Posting(accountID: UUID(), money: try Money(1, currency: usd)),
+                Posting(accountID: UUID(), money: try Money(-1, currency: usd))
+            ],
+            originContext: wrongDay
+        )) { error in
+            XCTAssertEqual(
+                error as? JournalEntryValidationError,
+                .originContextMismatch
+            )
+        }
+
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "America/New_York"))
+        let captured = TransactionOriginContext.capture(
+            for: occurredAt,
+            calendar: calendar,
+            timeZone: calendar.timeZone
+        )
+        XCTAssertEqual(captured.utcOffsetSeconds, -4 * 3_600)
+        XCTAssertNoThrow(try JournalEntry(
+            kind: .expense,
+            occurredAt: occurredAt,
+            postings: [
+                Posting(accountID: UUID(), money: try Money(1, currency: usd)),
+                Posting(accountID: UUID(), money: try Money(-1, currency: usd))
+            ],
+            originContext: captured
+        ))
+    }
+
+    func testNonFiniteJournalDatesAreRejected() throws {
+        let sgd = try CurrencyCode("SGD")
+        XCTAssertThrowsError(try JournalEntry(
+            kind: .expense,
+            occurredAt: Date(timeIntervalSinceReferenceDate: .infinity),
+            postings: [
+                Posting(accountID: UUID(), money: try Money(1, currency: sgd)),
+                Posting(accountID: UUID(), money: try Money(-1, currency: sgd))
+            ]
+        )) { error in
+            XCTAssertEqual(
+                error as? JournalEntryValidationError,
+                .invalidEventDate
+            )
+        }
+    }
 }

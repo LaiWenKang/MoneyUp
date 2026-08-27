@@ -95,4 +95,41 @@ final class FinanceCalculatorTests: XCTestCase {
         )
         XCTAssertEqual(spending[food.id]?.amount, 10)
     }
+
+    func testLegacyBalanceOverflowIsRejectedInsteadOfWrapping() throws {
+        let sgd = try CurrencyCode("SGD")
+        let accountID = UUID()
+        let balancingID = UUID()
+        let huge = try XCTUnwrap(
+            Decimal(
+                string: "9e127",
+                locale: Locale(identifier: "en_US_POSIX")
+            )
+        )
+
+        func entry() throws -> JournalEntry {
+            try JournalEntry(
+                kind: .adjustment,
+                postings: [
+                    Posting(
+                        accountID: accountID,
+                        money: try Money(huge, currency: sgd)
+                    ),
+                    Posting(
+                        accountID: balancingID,
+                        money: try Money(-huge, currency: sgd)
+                    )
+                ]
+            )
+        }
+
+        XCTAssertThrowsError(
+            try FinanceCalculator.balances(
+                for: accountID,
+                entries: [entry(), entry()]
+            )
+        ) { error in
+            XCTAssertEqual(error as? DecimalCalculationError, .overflow)
+        }
+    }
 }

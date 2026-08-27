@@ -135,16 +135,42 @@ struct AppSettingsView: View {
             }
 
             Section {
+                Toggle(
+                    "settings.widget.budget_status",
+                    isOn: Binding(
+                        get: { model.profile?.showsBudgetStatusWidget ?? false },
+                        set: { enabled in
+                            Task {
+                                await update {
+                                    try await model.updateBudgetStatusWidget(enabled)
+                                }
+                            }
+                        }
+                    )
+                )
+                .accessibilityHint("settings.widget.budget_status_hint")
+
+                LabeledContent(
+                    "settings.reporting_time_zone",
+                    value: model.profile?.reportingTimeZoneIdentifier ?? "—"
+                )
+            } header: {
+                Text("settings.widgets_and_reports")
+            } footer: {
+                Text("settings.widget.budget_status_detail")
+            }
+
+            Section {
                 if model.pendingLockedCaptureCount > 0 {
                     LabeledContent(
                         "settings.pending_captures",
                         value: "\(model.pendingLockedCaptureCount)"
                     )
                 }
-                if !model.recoveryIssues.isEmpty {
+                if model.recoveryIssueCount > 0 {
                     LabeledContent(
                         "settings.quarantined_records",
-                        value: "\(model.recoveryIssues.count)"
+                        value: "\(model.recoveryIssueCount)"
                     )
                 }
 
@@ -158,6 +184,12 @@ struct AppSettingsView: View {
                     ImportTransactionsView()
                 } label: {
                     Label("import.title", systemImage: "square.and.arrow.down.on.square")
+                }
+
+                NavigationLink {
+                    ExchangeRatesView()
+                } label: {
+                    Label("fx.title", systemImage: "arrow.left.arrow.right.circle")
                 }
 
                 NavigationLink {
@@ -184,7 +216,7 @@ struct AppSettingsView: View {
             try await operation()
             errorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = safeUserMessage(for: error, context: .save)
         }
     }
 }

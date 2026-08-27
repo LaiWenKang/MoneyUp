@@ -5,16 +5,20 @@ import SwiftUI
 struct PlanView: View {
     private enum Section: Hashable {
         case budget
+        case goals
         case calendar
     }
 
     @State private var selection: Section = .budget
+    @EnvironmentObject private var model: AppModel
 
     var body: some View {
         Group {
             switch selection {
             case .budget:
                 BudgetPlanView()
+            case .goals:
+                SavingsGoalsView()
             case .calendar:
                 CalendarView()
             }
@@ -22,6 +26,7 @@ struct PlanView: View {
         .safeAreaInset(edge: .top, spacing: 0) {
             Picker("tab.plan", selection: $selection) {
                 Text("plan.budget").tag(Section.budget)
+                Text("plan.goals").tag(Section.goals)
                 Text("tab.calendar").tag(Section.calendar)
             }
             .pickerStyle(.segmented)
@@ -29,6 +34,8 @@ struct PlanView: View {
             .padding(.vertical, 8)
             .background(.bar)
         }
+        .environment(\.calendar, model.reportingCalendar)
+        .environment(\.timeZone, model.reportingCalendar.timeZone)
     }
 }
 
@@ -42,11 +49,13 @@ private struct BudgetPlanView: View {
     @EnvironmentObject private var model: AppModel
     @State private var editingNode: BudgetNode?
     @State private var isAddingCategory = false
+    @State private var categoryKindToAdd: LedgerAccountKind = .expense
+    @State private var isManagingCategories = false
 
     /// How far through the month we are, drawn on every bar so a number can be
     /// read as ahead or behind rather than just large.
     private var monthElapsed: Double {
-        let calendar = Calendar.current
+        let calendar = model.reportingCalendar
         let now = Date()
         guard let month = calendar.dateInterval(of: .month, for: now) else { return 0 }
         let span = month.end.timeIntervalSince(month.start)
@@ -66,26 +75,6 @@ private struct BudgetPlanView: View {
         }
         appendChildren(of: nil, depth: 0)
         return result
-    }
-
-    private var effectivePurposeByID: [UUID: BudgetPurpose] {
-        guard let currency = model.profile?.baseCurrency,
-              let tree = try? BudgetTree(currency: currency, nodes: model.budgetNodes) else {
-            return [:]
-        }
-        return Dictionary(
-            uniqueKeysWithValues: model.budgetNodes.map {
-                ($0.id, tree.effectivePurpose(for: $0.id))
-            }
-        )
-    }
-
-    private var purposeReviewCount: Int {
-        guard let currency = model.profile?.baseCurrency,
-              let tree = try? BudgetTree(currency: currency, nodes: model.budgetNodes) else {
-            return 0
-        }
-        return tree.limitedNodesNeedingPurpose.count
     }
 
     private func progressByIDResult() -> DerivedValue<[UUID: BudgetProgress]> {
@@ -108,8 +97,9 @@ private struct BudgetPlanView: View {
         let elapsed = monthElapsed
         let foreignSpendingResult = model.excludedForeignSpendingThisMonthResult()
         let summaryResult = model.budgetPlanSummaryThisMonthResult()
-        let purposes = effectivePurposeByID
-        let needsPurposeCount = purposeReviewCount
+        let purposeOverview = model.budgetPurposeOverview()
+        let purposes = purposeOverview.effectivePurposeByID
+        let needsPurposeCount = purposeOverview.reviewCount
 
         return NavigationStack {
             List {
@@ -249,6 +239,7 @@ private struct BudgetPlanView: View {
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
                         Button {
+                            categoryKindToAdd = .expense
                             isAddingCategory = true
                         } label: {
                             Label("category.add", systemImage: "plus.circle.fill")
@@ -267,18 +258,37 @@ private struct BudgetPlanView: View {
             .navigationTitle("tab.plan")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        isAddingCategory = true
+                    Menu {
+                        Button {
+                            categoryKindToAdd = .expense
+                            isAddingCategory = true
+                        } label: {
+                            Label("lifecycle.add_expense_category", systemImage: "minus.circle")
+                        }
+                        Button {
+                            categoryKindToAdd = .income
+                            isAddingCategory = true
+                        } label: {
+                            Label("lifecycle.add_income_category", systemImage: "plus.circle")
+                        }
+                        Button {
+                            isManagingCategories = true
+                        } label: {
+                            Label("lifecycle.manage_categories", systemImage: "slider.horizontal.3")
+                        }
                     } label: {
-                        Label("category.add", systemImage: "plus")
+                        Label("category.add", systemImage: "ellipsis.circle")
                     }
                 }
             }
             .sheet(item: $editingNode) { node in
-                BudgetEditorSheet(node: node)
+                CategoryManagementSheet(categoryID: node.id)
             }
             .sheet(isPresented: $isAddingCategory) {
-                AddCategorySheet()
+                AddCategorySheet(kind: categoryKindToAdd)
+            }
+            .sheet(isPresented: $isManagingCategories) {
+                CategoryManagementList()
             }
         }
     }
@@ -293,12 +303,25 @@ private struct BudgetRow: View {
 
     private var spent: Money? { progress?.spent }
 
-    private var ratio: Double? {
-        guard let limit = node.limit?.amount,
-              let spent = spent?.amount else { return nil }
-        if limit == .zero { return spent > .zero ? 2 : 0 }
-        guard limit > .zero else { return nil }
-        return NSDecimalNumber(decimal: spent / limit).doubleValue
+    private var ratio: DerivedValue<Double?> {
+        guard let limit = progress?.effectiveLimit?.amount,
+              let spent = spent?.amount else { return .available(nil) }
+        if limit == .zero { return .available(spent > .zero ? 2 : 0) }
+        guard limit > .zero else { return .available(nil) }
+        do {
+            return .available(
+                NSDecimalNumber(
+                    decimal: try CheckedDecimal.ratio(spent, limit)
+                ).doubleValue
+            )
+        } catch {
+            DerivedValueDiagnostics.record(
+                .amountCalculationFailed,
+                operation: "budget-row-ratio",
+                error: error
+            )
+            return .unavailable(.amountCalculationFailed)
+        }
     }
 
     private var remaining: Money? { progress?.remaining }
@@ -309,6 +332,7 @@ private struct BudgetRow: View {
     }
 
     var body: some View {
+        let ratioResult = ratio
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(node.name)
@@ -331,12 +355,21 @@ private struct BudgetRow: View {
 
 
             if node.limit != nil {
-                Label(purpose.titleKey, systemImage: purpose.systemImage)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(purpose == .unclassified ? Color.orange : Color.accentColor)
+                HStack(spacing: 10) {
+                    Label(purpose.titleKey, systemImage: purpose.systemImage)
+                    if node.rolloverRule != .none {
+                        Label(
+                            node.rolloverRule.titleKey,
+                            systemImage: "arrow.turn.down.right"
+                        )
+                    }
+                }
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(purpose == .unclassified ? Color.orange : Color.accentColor)
             }
 
-            if let ratio, let limit = node.limit, let spent {
+            if case let .available(.some(ratio)) = ratioResult,
+               let limit = progress?.effectiveLimit, let spent {
                 MoneyUpPaceBar(ratio: ratio, elapsed: elapsed)
                 Text(
                     String(
@@ -347,6 +380,8 @@ private struct BudgetRow: View {
                 )
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            } else if case let .unavailable(issue) = ratioResult {
+                DerivedValueUnavailableView(issue: issue)
             } else {
                 Text("plan.tap_to_set_limit")
                     .font(.caption)
@@ -366,14 +401,33 @@ private struct BudgetSummaryCard: View {
     let remaining: Money
     let elapsed: Double
 
-    private var ratio: Double {
-        guard limit.amount > .zero else { return spent.amount > .zero ? 2 : 0 }
-        return NSDecimalNumber(decimal: spent.amount / limit.amount).doubleValue
+    private var ratio: DerivedValue<Double> {
+        guard limit.amount > .zero else {
+            return .available(spent.amount > .zero ? 2 : 0)
+        }
+        do {
+            return .available(
+                NSDecimalNumber(
+                    decimal: try CheckedDecimal.ratio(
+                        spent.amount,
+                        limit.amount
+                    )
+                ).doubleValue
+            )
+        } catch {
+            DerivedValueDiagnostics.record(
+                .amountCalculationFailed,
+                operation: "budget-summary-ratio",
+                error: error
+            )
+            return .unavailable(.amountCalculationFailed)
+        }
     }
 
     private var isOverspent: Bool { remaining.amount < .zero }
 
     var body: some View {
+        let ratioResult = ratio
         VStack(alignment: .leading, spacing: 12) {
             Text(isOverspent ? "plan.total_over" : "plan.total_left")
                 .font(.subheadline)
@@ -384,7 +438,12 @@ private struct BudgetSummaryCard: View {
                 .foregroundStyle(isOverspent ? Color.red : Color.primary)
                 .contentTransition(.numericText())
 
-            MoneyUpPaceBar(ratio: ratio, elapsed: elapsed)
+            switch ratioResult {
+            case let .available(ratio):
+                MoneyUpPaceBar(ratio: ratio, elapsed: elapsed)
+            case let .unavailable(issue):
+                DerivedValueUnavailableView(issue: issue)
+            }
 
             Text(
                 String(
@@ -421,7 +480,7 @@ private struct BudgetSimulatorView: View {
     @State private var additionalIncomeText = ""
 
     private var monthElapsed: Double {
-        let calendar = Calendar.current
+        let calendar = model.reportingCalendar
         let now = Date()
         guard let month = calendar.dateInterval(of: .month, for: now) else { return 0 }
         let span = month.end.timeIntervalSince(month.start)
@@ -573,7 +632,7 @@ private struct BudgetSimulatorView: View {
                     .foregroundStyle(.secondary)
             }
             TextField("simulator.amount_placeholder", text: text)
-                .keyboardType(.decimalPad)
+                .moneyAmountKeyboard(currency: currency)
                 .textFieldStyle(.roundedBorder)
             if !isValid {
                 Text("simulator.invalid_amount")
@@ -599,6 +658,7 @@ private struct BudgetSimulatorView: View {
         ]
         let limit = NSDecimalNumber(decimal: forecast.budgetLimit.amount).doubleValue
         let isOver = forecast.projectedRemaining.amount < .zero
+        let budgetUsage = budgetUsageResult(forecast)
 
         DashboardCard {
             VStack(alignment: .leading, spacing: 14) {
@@ -636,11 +696,13 @@ private struct BudgetSimulatorView: View {
                 .chartLegend(.hidden)
                 .accessibilityLabel(Text("simulator.chart_accessibility"))
 
-                if let ratio = forecast.budgetUsage {
+                if case let .available(.some(ratio)) = budgetUsage {
                     MoneyUpPaceBar(
                         ratio: NSDecimalNumber(decimal: ratio).doubleValue,
                         elapsed: monthElapsed
                     )
+                } else if case let .unavailable(issue) = budgetUsage {
+                    DerivedValueUnavailableView(issue: issue)
                 }
             }
         }
@@ -695,6 +757,21 @@ private struct BudgetSimulatorView: View {
         }
     }
 
+    private func budgetUsageResult(
+        _ forecast: BudgetScenarioForecast
+    ) -> DerivedValue<Decimal?> {
+        do {
+            return .available(try forecast.budgetUsage())
+        } catch {
+            DerivedValueDiagnostics.record(
+                .amountCalculationFailed,
+                operation: "budget-scenario-usage",
+                error: error
+            )
+            return .unavailable(.amountCalculationFailed)
+        }
+    }
+
     private func parsedAmount(
         _ text: String,
         currency: CurrencyCode
@@ -733,7 +810,7 @@ private struct BudgetEditorSheet: View {
             Form {
                 Section {
                     TextField("quick_log.amount", text: $amountText)
-                        .keyboardType(.decimalPad)
+                        .moneyAmountKeyboard(currency: model.profile?.baseCurrency)
                 } header: {
                     Text("plan.monthly_limit")
                 } footer: {
@@ -789,12 +866,12 @@ private struct BudgetEditorSheet: View {
             )
             dismiss()
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = safeUserMessage(for: error, context: .save)
         }
     }
 }
 
-private extension BudgetPurpose {
+extension BudgetPurpose {
     var titleKey: LocalizedStringKey {
         switch self {
         case .unclassified: "plan.purpose.unclassified"
@@ -816,6 +893,16 @@ private extension BudgetPurpose {
     }
 }
 
+extension BudgetRolloverRule {
+    var titleKey: LocalizedStringKey {
+        switch self {
+        case .none: "plan.rollover.none"
+        case .positiveOnly: "plan.rollover.positive_only"
+        case .fullBalance: "plan.rollover.full_balance"
+        }
+    }
+}
+
 private struct AddCategorySheet: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var model: AppModel
@@ -823,15 +910,24 @@ private struct AddCategorySheet: View {
     @State private var parentID: UUID?
     @State private var isSaving = false
     @State private var errorMessage: String?
+    let kind: LedgerAccountKind
+
+    private var titleKey: LocalizedStringKey {
+        kind == .income
+            ? "lifecycle.add_income_category"
+            : "lifecycle.add_expense_category"
+    }
 
     var body: some View {
         NavigationStack {
             Form {
                 TextField("category.name", text: $name)
-                Picker("category.parent", selection: $parentID) {
-                    Text("category.no_parent").tag(UUID?.none)
-                    ForEach(model.expenseCategories) { category in
-                        Text(category.name).tag(Optional(category.id))
+                if kind == .expense {
+                    Picker("category.parent", selection: $parentID) {
+                        Text("category.no_parent").tag(UUID?.none)
+                        ForEach(model.expenseCategories) { category in
+                            Text(category.name).tag(Optional(category.id))
+                        }
                     }
                 }
                 if let errorMessage {
@@ -840,7 +936,7 @@ private struct AddCategorySheet: View {
             }
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
-            .navigationTitle("category.add")
+            .navigationTitle(titleKey)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -859,10 +955,14 @@ private struct AddCategorySheet: View {
         errorMessage = nil
         defer { isSaving = false }
         do {
-            try await model.addCategory(name: name, kind: .expense, parentID: parentID)
+            try await model.addCategory(
+                name: name,
+                kind: kind,
+                parentID: kind == .expense ? parentID : nil
+            )
             dismiss()
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = safeUserMessage(for: error, context: .save)
         }
     }
 }

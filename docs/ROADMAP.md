@@ -1,148 +1,170 @@
 # Golden PRD Execution Plan
 
-Last reconciled: 26 August 2026 against **MoneyUp Golden PRD v1.1**.
+Last reconciled: 27 August 2026 against the uploaded MoneyUp Golden PRD
+(document version 1.0; supplied file label v1.1), the independent 0.4.0 audit,
+and later accepted founder decisions.
 
-The Golden PRD is the product and release authority. Security/privacy
-invariants come next, followed by founder decisions and Issue #10, then the
-current implementation. The 0.4.0 audit and earlier PRD are supporting evidence
-where they do not conflict. In particular, multi-device
-sync and monetization are not part of 1.0 without a new approved decision.
+The Golden PRD is the functional/release authority. Security and accounting
+invariants remain non-negotiable. The earlier PRD is supporting evidence only
+where it does not conflict. Its StoreKit and CloudKit requirements are
+superseded: the approved first public release is free and local-only.
 
-Completed checkboxes below describe behavior present in the current source
-candidate. A code status of implemented does not close a gate until the listed
-automated or physical evidence passes on the exact candidate.
+Checked source items describe the source-integrated 0.6.0 candidate. They do
+not close exact-candidate Mac CI, physical-device, TestFlight, closed-beta, or
+App Store gates. See [Golden PRD traceability](GOLDEN_TRACEABILITY.md) for every
+requirement ID and its evidence status.
 
-## Foundation — finance and secure storage
+## Foundation
 
-- [x] Exact decimal money and normalized currencies
-- [x] Balanced multi-currency journal entries and validated decoding
-- [x] Arbitrary-depth budget roll-up
-- [x] SQLCipher encrypted store with pinned dependency
-- [x] Versioned schema and transactional writes
-- [x] Random Keychain key with local user-presence control
-- [x] Automatic background lock, decoded-state clearing, and privacy cover
-- [x] Wrong-key, plaintext-leak, migration-compatibility, and rollback tests
-- [x] Destructive failed-recovery path with explicit confirmation
+- [x] Exact Decimal money, currency minor-unit policy, locale-safe parsing, and
+  independently balanced multi-currency entries
+- [x] SQLCipher with pinned dependency, device-bound Keychain key, privacy
+  cover, timed lock, transactional writes, and schema downgrade refusal
+- [x] Quarantine/recovery that preserves encrypted raw records rather than
+  locking out the readable book
+- [x] Password-protected `.moneyup` archive and transactional restore
+- [x] Stable Gregorian reporting calendar, half-open periods, origin time-zone
+  context, and stable local-day attribution
+- [x] SQLCipher schema 3 with journal/posting indexes, exact compact balance
+  rows, bounded recent activity, and on-demand paging
+- [ ] Exact-candidate Mac core/persistence/app tests and app/widget Simulator
+  build
+- [ ] Physical migration, restore, and oldest-device scale evidence
 
-## Daily use — Founders Beta 0.5.0
+## Daily use and correction
 
-- [x] Four-step guided onboarding with privacy/purpose, base currency, first
-  account, review, inline explanations, Back/Continue, and explicit next actions
-- [x] Expense, income, same-currency, and foreign-currency transfer logging
-- [x] Multiple account types, cards, loans, and balance reconciliation
-- [x] Default categories plus arbitrary-depth custom expense categories
-- [x] Monthly limits with descendant spending roll-up
-- [x] Recurring income and expense templates
-- [x] Finance calendar with actual and projected money flow
-- [x] Category-spending and monthly cash-flow charts over a selectable period
-- [x] Tap-to-inspect category and cash-flow charts with matching History filters
-- [x] Safe to Spend Today with checkable scheduled-commitment arithmetic and
-  explicit foreign-currency, unbudgeted, rate, income, and schedule assumptions
-- [x] Consumer-language cash, debt, and net-cash position with a precise 2D diagram
-- [x] Read-only budget what-if simulator with exact Decimal arithmetic
-- [x] Non-base-currency activity reported explicitly instead of dropped
-- [x] Manually valued holdings and base-currency net worth
-- [x] Configurable privacy-redacted Home and Lock Screen quick-log shortcuts
-- [x] Five permanent tabs for Today, History, center Log, Plan, and Assets
-- [x] Center Log tab with encrypted draft recovery and Undo
-- [x] On-device receipt reading, typed-phrase entry, and category suggestions
-- [x] Adaptive soft-green semantic palette, shared horned-money emblem,
-  reproducible light/dark/tinted app icons, original decorative 3D assets,
-  exact 2D financial graphics, matching widget, biometry-accurate lock screen,
-  and in-app version
-- [x] Enriched, formula-safe CSV export through the system file picker
-- [x] English and Simplified Chinese UI
-- [x] CI for Swift tests and the app plus widget Simulator build
-- [x] App privacy manifest and bilingual in-app privacy/beta disclosure
-- [x] Confirmed deletion for transactions, schedules, and manual holdings
-- [x] Exclude non-restorable encrypted database files from system backup
-- [x] Configurable one-minute-default auto-lock and locked Quick Capture inbox
-- [x] Searchable History with kind filters, refunds, and atomic transaction editing
-- [x] Locale-safe manual amount fields
+- [x] Five permanent tabs: Today, History, center Log, Plan, Assets
+- [x] Amount-first expense, income, transfers, refund, encrypted draft, smart
+  defaults, field-safe validation, exactly-once Save/Undo, and keyboard
+  Done/Save/tab reachability
+- [x] Fast-first on-device receipt/screenshot reading with immediate progress,
+  editable suggestions, finite failure, and optional encrypted attachment
+- [x] Exact N-way split logging/editing with per-line note and live remainder
+- [x] Locked Quick Capture that owns no live database key or balances
+- [x] Date-indexed/keyset-paged History with search, combined filters,
+  per-currency totals, revisions, confirmed deletion, and chart drill-through
+- [x] Account/category rename, archive, merge, unused delete, and atomic
+  delete-with-reassignment
+- [ ] Physical routine-entry timing, receipt timing, large-History scrolling,
+  and end-to-end accessibility evidence
 
-## Candidate verification — inherited by the 0.5.1 corrective candidate
+## Today, insights, and planning
 
-| Golden requirement | Code status after this change | Evidence still required |
-|---|---|---|
-| Enforce minor units on every new write/import while preserving legacy values exactly | Implemented for log, transfer, reconciliation, budget, schedule, holding-price, onboarding/account, and import boundaries | Green core/app suites and a final write-boundary audit |
-| Reject or explicitly convert an edit that changes account currency | Implemented as rejection; same-currency legacy values remain exact | App test and Simulator UI check |
-| Combine account, category, kind, inclusive date, and amount History filters | Implemented with a reusable query, obvious reset flow, and 10,000-entry CI guard | Green core test and Simulator build plus bilingual UI review; physical p95 is G2 |
-| Use one half-open financial-period boundary | Implemented in core and used by reporting and History; midnight/DST regression tests added | Green core suite and final date-path audit |
-| Cover locale and extreme manual money input | Explicit-locale comma-decimal, negative, garbage-suffix, and large-Decimal tests added; currency precision gates remain shared | Green app/core suites and bilingual Simulator entry check |
-| Give first-time users an unambiguous setup path | Four-step flow, field-level guidance, review, overdraft/debt language, and visible Today Log/Plan actions implemented | English/Chinese VoiceOver, largest Dynamic Type, light/dark physical walkthrough |
-| Replace the old visual identity | Semantic soft-green/off-white/deep-charcoal tokens, restrained gradients/graphics, icon, widget, and palette CI guard implemented | Light/dark/tinted screenshot and contrast review on physical iPhones |
-| Show filtered totals separately by currency | Implemented as signed movement per currency; same-currency transfers offset and foreign-currency sides remain separate | Product/UI review and filter-result reconciliation |
-| Retain encrypted revisions and invalidate derived caches immediately | Existing atomic write retained; app regression test added | App test must pass in CI |
-| Remove or honor `lockWhenBackgrounded` | Removed from the runtime model and future encoding; legacy JSON remains decodable | Core migration test must pass |
-| Add AppModel race-condition coverage | Deterministic lifecycle hooks and all named lock/save, scan, erase, stale-generation, deep-link, and capture-promotion cases added | App suite must pass in CI |
-| Validate the exact candidate | CI now includes app tests | Release assets, core tests, app tests, app/widget build, unique version/build, and exact-commit packaging must all be green |
+- [x] Purpose-aware Flexible Today with inspectable arithmetic, explicit
+  exclusions, commitments, and unavailable-state reasons
+- [x] Separate cash, debt, and net-cash position; budget pace and guided empty
+  states
+- [x] Selectable reports, complete category distribution, trailing 12-month
+  cash flow, non-color/VoiceOver encodings, and History drill-through
+- [x] Arbitrary-depth budget roll-up with unbudgeted and foreign-currency
+  disclosures
+- [x] Schedule edit/pause/end/skip/confirm/match/post with exactly-once advance
+- [x] Budget rollover with explicit activation; savings and sinking goals with
+  target dates, dated contributions/withdrawals, resets, archive, and delete
+- [x] Calendar no-false-zero multi-currency flows and bounded recurrence lookup
+- [ ] Oldest-device 20-schedule/Calendar p95 and physical day/travel/DST matrix
 
-Derived financial failures now propagate an explicit unavailable state, show a
-localized reason plus a redacted diagnostic code, and log no transaction
-content (TOD-06/DAT-08); CI and bilingual Simulator review remain required.
-The shared half-open boundary, locale/extreme-value regression coverage, and a
-10,000-entry History CI scale guard are now committed. G1 remains open until
-the complete core/app suites and Simulator build are green on the exact commit,
-then the bilingual light/dark accessibility walkthrough records its physical
-evidence.
+## Assets and investments
 
-## 0.5.1 corrective release — founder 0.5.0 findings
+- [x] Cash, bank, e-wallet, card, loan, brokerage, and investment accounts with
+  consumer overdraft/amount-owed semantics
+- [x] Reconciliation that never appears as income/spending
+- [x] One validated searchable currency picker across setup, accounts,
+  holdings, import, and rates
+- [x] Ledger-linked holdings with explicit opening-cash interpretation,
+  purchases, sales, dated repricing, stale warnings, and no net-worth double
+  count
+- [x] FIFO lots/disposals and append-only net-worth snapshots by currency
+- [x] Dated user rates with direct/inverse historical lookup, visibly estimated
+  conversion, and default unconverted mode
+- [ ] Physical legacy-holding connection, activity chronology, sale/reprice,
+  and snapshot reconciliation
 
-- [x] Replace aggregate Safe to Spend with Flexible Today. Existing limits
-  decode as unclassified; only explicitly flexible topmost allocations and
-  their scheduled commitments enter the daily calculation.
-- [x] Route basic widget actions before protected database startup, focus the
-  amount, keep optional details collapsed, and show an explicit saved state.
-- [x] Advance multiple locked captures through authenticated review exactly
-  once; Smart Entry and Receipt remain authentication-required.
-- [x] Replace arbitrary illustration heights with compact responsive roles and
-  keep routine Log fields/action ahead of decoration and optional metadata.
-- [x] Replace opaque dimensional artwork with validated true-alpha production
-  cutouts. Opaque checkerboard drafts were rejected; the approved CLI fallback
-  extracted and decontaminated the established light/dark 3D scenes, and CI now
-  verifies substantial transparent and opaque pixel regions in every scale.
-- [ ] Pass exact-commit core/app tests, app/widget Simulator build, physical
-  cold/warm locked widget matrix, 0.5.0 upgrade, bilingual accessibility, and
-  light/dark/tinted screenshot review before TestFlight promotion.
+## Portability and widgets
 
-## G2 — after internal upload, before wider testers
+- [x] Posting-level UTF-8-BOM/formula-safe CSV and native XLSX export with
+  stable IDs, exact decimals, currencies, origin day, and account metadata
+- [x] Local preview-first Qianji/generic CSV/TSV import with manual column
+  mapping, reviewed targets, duplicate detection, row issues, and atomic commit
+- [x] Optional encrypted receipt attachment lifecycle included in raw snapshot
+  and `.moneyup` restore, excluded from readable exports
+- [x] Privacy-redacted widget actions and opt-in percentage/state-only budget
+  snapshot using `group.com.laiwenkang.MoneyUp`
+- [x] Source validator limits app/widget entitlements to the reviewed group;
+  TestFlight workflow checks both profiles and signed bundles
+- [ ] Account holder registers/enables the App Group on both App IDs
+- [ ] Signed IPA entitlement validation, physical widget family matrix, and
+  update-preservation evidence
 
-- [ ] Install 0.5.1 over the founder's existing 0.5.0 TestFlight app without
-  deleting it; reconcile profile, accounts, entries, budgets, schedules,
-  holdings, settings, widgets, and pending captures before and after.
-- [ ] Restore a password-protected `.moneyup` backup on a clean/fresh install;
-  verify wrong password, cancellation, and failure leave the current book
-  untouched.
-- [ ] Pass five-tab physical navigation with the keyboard active, unfinished
-  drafts, lock/unlock, and exactly-once external routing.
-- [ ] Measure 10,000 entries and 20 schedules on the oldest supported iPhone
-  against the Golden PRD latency and scrolling budgets.
-- [ ] Pass English and Simplified Chinese with VoiceOver, largest Dynamic Type,
-  Reduce Motion, light/dark/tinted appearance, and small/large iPhones.
-- [ ] Prove the same App Store record, bundle IDs, Keychain namespace, app
-  container, widget configuration, and TestFlight-to-production update path
-  preserve the tester's data.
+## Historical corrective candidates
 
-## G3 — before public App Store 1.0
+### 0.5.1 - founder 0.5.0 findings
 
-- [x] Today: purpose-aware Flexible Today, consumer-language cash/debt position, budget pace,
-  chart inspection/drill-through, guided empty states, and auditable exclusions.
-- [ ] Widget: opt-in redacted budget percentage with no amount, payee, account,
-  holding, or balance. The 0.5.0 widget visual refresh remains data-free.
-- [ ] Assets: account/category rename/archive/merge/delete-with-reassignment,
-  holding repricing/staleness, ledger-linked investments, one currency picker,
-  lots, and net-worth history.
-- [ ] Plan and Log: schedule lifecycle/posting/matching, split transactions,
-  optional encrypted attachments, dated user exchange rates, rollover, sinking
-  funds, and savings goals.
-- [ ] Portability: native XLSX and manual mapping for unknown CSV layouts.
-- [ ] Quality/release: close every P0/P1, complete the two-person seven-day run,
-  closed-beta gates, final accessibility/performance matrices, truthful store
-  compliance, manual release, and the first-72-hour monitoring plan.
+- [x] Refined Safe to Spend into purpose-aware Flexible Today
+- [x] Routed basic locked widget capture before protected database startup
+- [x] Prioritized Log fields/actions over optional detail and decoration
+- [x] Replaced the former visual identity with adaptive soft green and the
+  horned-money emblem
+- [ ] Any unrecorded 0.5.1 exact-build/physical evidence carries into the 0.6.0
+  gate; distribution alone never closes it
 
-## Explicitly deferred pending a new privacy/product decision
+### 0.5.2 - founder 0.5.1 findings
 
-- Multi-device sync, shared books, and two-way live spreadsheet editing.
-- Bank aggregation or any third-party access to financial records.
-- Hosted generative AI or receipt transmission.
-- Automatic market prices that disclose a user's symbol list.
+- [x] Added keyboard Done, reachable Save, and draft-preserving tab navigation
+- [x] Moved receipt decoding/OCR off the UI executor and added bounded
+  fast-first/fallback recognition with visible population
+- [x] Configured exact-commit app-model CI before packaging
+- [x] Aligned source metadata at 0.5.2 build 7
+- [ ] The 0.5.2 exact-build/physical gate was not recorded as a completed
+  public release and is not treated as proof for 0.6.0
+
+## 0.6.0 candidate identity
+
+- [x] Source app and widget marketing version: 0.6.0
+- [x] Source build: 8
+- [x] TestFlight workflow marketing version: 0.6.0; source build 8 is checked
+  before the workflow assigns a unique upload build
+- [x] Bilingual in-app 0.6.0 release notes
+- [x] Current product, architecture, data, privacy, security, Apple setup,
+  tester, launch, and store working documents reconciled
+- [ ] Exact unified SHA passes release validator, Swift tests, app-model XCTest,
+  and app/widget Simulator build on macOS
+
+## G2 - before wider testers
+
+- [ ] Install 0.6.0 over the founder's existing 0.5.1 TestFlight app without
+  deletion; reconcile every collection, Keychain state, pending capture, and
+  widget before/after
+- [ ] Restore `.moneyup` on a clean/fresh install; wrong password, tampering,
+  cancellation, and failure leave the current book untouched
+- [ ] Pass keyboard/draft/lock/routing and receipt/screenshot checks on the
+  founder and co-tester iPhones
+- [ ] Measure all Golden p95 budgets with 10,000 entries and 20 schedules on the
+  oldest supported iPhone
+- [ ] Pass English/Simplified Chinese, VoiceOver, largest Dynamic Type, Reduce
+  Motion, light/dark/tinted/redacted, small/large iPhone, and every widget family
+- [ ] Prove the same app record, bundle IDs, App Group, Keychain namespace, app
+  container, and TestFlight-to-production update path preserve data
+
+## G3 - before public App Store 1.0
+
+- [x] All Golden functional source surfaces mapped in traceability
+- [ ] Exact-candidate Mac/Simulator gate
+- [ ] Founder/co-tester seven-day run without P0/open P1
+- [ ] Fourteen-day invited closed beta and update/restore evidence
+- [ ] Final accessibility, performance, energy, recovery, and privacy matrices
+- [ ] Exact-binary metadata/screenshots/review notes/privacy/export-compliance
+  reconciliation
+- [ ] App Review approval, account-holder manual release, and first-72-hour
+  monitoring
+
+## Explicitly deferred
+
+- Multi-device sync and shared household books
+- StoreKit purchase or subscription for the first public version
+- Bank aggregation or third-party access to financial records
+- Hosted generative AI or receipt transmission
+- Automatic market prices that disclose a symbol list
+- Two-way live spreadsheet editing
+- Investment/tax advice or trade execution
+- Browser app as a substitute for the native iPhone release

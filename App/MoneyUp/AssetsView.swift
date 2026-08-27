@@ -7,9 +7,12 @@ struct AssetsView: View {
     @State private var isAddingAccount = false
     @State private var isAddingHolding = false
     @State private var editingAccount: LedgerAccount?
+    @State private var editingHolding: InvestmentHolding?
     @State private var isConfirmingExport = false
     @State private var isExporting = false
     @State private var exportDocument = CSVDocument(text: "")
+    @State private var isExportingXLSX = false
+    @State private var xlsxDocument = XLSXDocument()
     @State private var errorMessage: String?
     @State private var holdingPendingDeletion: InvestmentHolding?
 
@@ -19,32 +22,28 @@ struct AssetsView: View {
         }
     }
 
-    private var accountNetWorth: DerivedValue<Money> {
-        guard let currency = model.profile?.baseCurrency else {
-            return .unavailable(.appNotReady)
-        }
-        var amount = Decimal.zero
-        for account in model.userAccounts where account.currency == currency {
-            switch model.displayBalanceResult(for: account) {
-            case let .available(balance):
-                amount += account.kind == .liability ? -balance.amount : balance.amount
-            case let .unavailable(issue):
-                return .unavailable(issue)
-            }
-        }
-        return .money(
-            amount,
-            currency: currency,
-            operation: "assets-account-net-worth"
-        )
+    private var archivedFinancialAccounts: [LedgerAccount] {
+        model.allUserAccounts.filter { $0.isArchived && $0.systemRole == nil }
     }
 
-    private var recordedHoldingsValue: DerivedValue<Money> {
-        guard let currency = model.profile?.baseCurrency else {
-            return .unavailable(.appNotReady)
-        }
-        var amount = Decimal.zero
-        for holding in model.investmentHoldings {
+    private var activeInvestmentHoldings: [InvestmentHolding] {
+        model.investmentHoldings.filter { !$0.isArchived }
+    }
+
+    private var archivedInvestmentHoldings: [InvestmentHolding] {
+        model.investmentHoldings.filter(\.isArchived)
+    }
+
+    private var oldestPositionPriceDate: Date? {
+        activeInvestmentHoldings
+            .filter { $0.positionAccountID != nil && $0.quantity > .zero }
+            .compactMap(\.priceAsOf)
+            .min()
+    }
+
+    private var recordedHoldingsValues: DerivedValue<[Money]> {
+        var totals: [CurrencyCode: Decimal] = [:]
+        for holding in activeInvestmentHoldings {
             do {
                 guard let value = try holding.marketValue() else {
                     DerivedValueDiagnostics.record(
@@ -53,7 +52,17 @@ struct AssetsView: View {
                     )
                     return .unavailable(.holdingValuationFailed)
                 }
-                if value.currency == currency { amount += value.amount }
+                totals[value.currency] = try CheckedDecimal.adding(
+                    totals[value.currency] ?? .zero,
+                    value.amount
+                )
+            } catch let error as DecimalCalculationError {
+                DerivedValueDiagnostics.record(
+                    .amountCalculationFailed,
+                    operation: "assets-recorded-holdings-overflow",
+                    error: error
+                )
+                return .unavailable(.amountCalculationFailed)
             } catch {
                 DerivedValueDiagnostics.record(
                     .holdingValuationFailed,
@@ -63,11 +72,13 @@ struct AssetsView: View {
                 return .unavailable(.holdingValuationFailed)
             }
         }
-        return .money(
-            amount,
-            currency: currency,
-            operation: "assets-recorded-holdings-total"
-        )
+        do {
+            return .available(try totals.sorted { $0.key < $1.key }.map {
+                try Money($0.value, currency: $0.key)
+            })
+        } catch {
+            return .unavailable(.amountCalculationFailed)
+        }
     }
 
     private func value(for holding: InvestmentHolding) -> DerivedValue<Money> {
@@ -98,16 +109,74 @@ struct AssetsView: View {
                         Text("assets.account_net_worth")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
-                        switch accountNetWorth {
-                        case let .available(netWorth):
-                            Text(formattedMoney(netWorth))
-                                .font(.largeTitle.bold().monospacedDigit())
+                        switch model.netWorthByCurrencyResult() {
+                        case let .available(amounts):
+                            ForEach(amounts) { netWorth in
+                                Text(formattedMoney(netWorth))
+                                    .font(.title.bold().monospacedDigit())
+                            }
+                            switch model.estimatedNetWorthResult() {
+                            case let .available(estimate):
+                                if let estimate {
+                                    HStack(spacing: 4) {
+                                        Text("≈ \(formattedMoney(estimate.total))")
+                                            .font(.headline.monospacedDigit())
+                                        Text("·")
+                                        Text("fx.rates_as_of")
+                                        Text(
+                                            estimate.conversionAsOf,
+                                            format: .dateTime.year().month().day()
+                                        )
+                                    }
+                                    .foregroundStyle(.secondary)
+                                    .accessibilityLabel("fx.net_worth_estimated")
+                                } else if amounts.filter({ !$0.isZero }).count > 1 {
+                                    Text("fx.net_worth_complete_rate_needed")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            case .unavailable:
+                                EmptyView()
+                            }
                         case let .unavailable(issue):
                             DerivedValueUnavailableView(
                                 issue: issue,
                                 prominent: true
                             )
                         }
+                        if let oldestPositionPriceDate {
+                            HStack(spacing: 4) {
+                                Text("assets.oldest_position_price")
+                                Text(
+                                    oldestPositionPriceDate,
+                                    format: .dateTime.year().month().day()
+                                )
+                                if model.investmentHoldings.contains(where: {
+                                    $0.positionAccountID != nil
+                                        && $0.quantity > .zero
+                                        && $0.isPriceStale(
+                                            relativeTo: Date(),
+                                            calendar: model.reportingCalendar
+                                        )
+                                }) {
+                                    Text("holding.stale").foregroundStyle(.orange)
+                                }
+                            }
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        }
+                        Button("assets.capture_snapshot") {
+                            Task {
+                                do { try await model.captureNetWorthSnapshot() }
+                                catch {
+                                    errorMessage = safeUserMessage(
+                                        for: error,
+                                        context: .save
+                                    )
+                                }
+                            }
+                        }
+                        .font(.subheadline)
                     }
                     .padding(.vertical, 8)
                 } footer: {
@@ -157,17 +226,37 @@ struct AssetsView: View {
                     }
                 }
 
+                if !archivedFinancialAccounts.isEmpty {
+                    Section("lifecycle.archived") {
+                        ForEach(archivedFinancialAccounts) { account in
+                            Button {
+                                editingAccount = account
+                            } label: {
+                                HStack {
+                                    Label(account.name, systemImage: "archivebox.fill")
+                                    Spacer()
+                                    Text(account.currency?.value ?? "")
+                                        .font(.caption.monospaced())
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+
                 Section("assets.investments") {
-                    if case let .available(value) = recordedHoldingsValue,
-                       !value.isZero {
-                        LabeledContent(
-                            "assets.recorded_holdings",
-                            value: formattedMoney(value)
-                        )
-                    } else if case let .unavailable(issue) = recordedHoldingsValue {
+                    if case let .available(values) = recordedHoldingsValues {
+                        ForEach(values.filter { !$0.isZero }, id: \.currency) { value in
+                            LabeledContent(
+                                "assets.recorded_holdings",
+                                value: formattedMoney(value)
+                            )
+                        }
+                    } else if case let .unavailable(issue) = recordedHoldingsValues {
                         DerivedValueUnavailableView(issue: issue)
                     }
-                    if model.investmentHoldings.isEmpty {
+                    if activeInvestmentHoldings.isEmpty {
                         VStack(spacing: 8) {
                             MoneyUpIllustration("MoneyUpMoneyWorld", role: .inline)
                             Text("assets.no_holdings")
@@ -180,7 +269,10 @@ struct AssetsView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6)
                     } else {
-                        ForEach(model.investmentHoldings) { holding in
+                        ForEach(activeInvestmentHoldings) { holding in
+                            Button {
+                                editingHolding = holding
+                            } label: {
                             HStack {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(holding.symbol.isEmpty ? holding.name : holding.symbol)
@@ -188,6 +280,25 @@ struct AssetsView: View {
                                     Text(holding.name)
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
+                                    if holding.needsLedgerConnection {
+                                        Label("holding.needs_ledger", systemImage: "exclamationmark.triangle.fill")
+                                            .font(.caption2)
+                                            .foregroundStyle(.orange)
+                                    } else if let priceAsOf = holding.priceAsOf {
+                                        HStack(spacing: 4) {
+                                            Text("holding.price_as_of")
+                                            Text(priceAsOf, format: .dateTime.year().month().day())
+                                            if holding.isPriceStale(
+                                                relativeTo: Date(),
+                                                calendar: model.reportingCalendar
+                                            ) {
+                                                Text("holding.stale")
+                                                    .foregroundStyle(.orange)
+                                            }
+                                        }
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                    }
                                 }
                                 Spacer()
                                 VStack(alignment: .trailing, spacing: 2) {
@@ -211,6 +322,8 @@ struct AssetsView: View {
                                     .foregroundStyle(.secondary)
                                 }
                             }
+                            }
+                            .buttonStyle(.plain)
                             .swipeActions {
                                 Button(role: .destructive) {
                                     holdingPendingDeletion = holding
@@ -235,6 +348,86 @@ struct AssetsView: View {
                     }
                 }
 
+                if !archivedInvestmentHoldings.isEmpty {
+                    Section("holding.archived") {
+                        ForEach(archivedInvestmentHoldings) { holding in
+                            Button {
+                                editingHolding = holding
+                            } label: {
+                                HStack {
+                                    Label(
+                                        holding.symbol.isEmpty
+                                            ? holding.name
+                                            : holding.symbol,
+                                        systemImage: "archivebox.fill"
+                                    )
+                                    Spacer()
+                                    Text(holding.price?.currency.value ?? "")
+                                        .font(.caption.monospaced())
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+
+                if !model.netWorthSnapshots.isEmpty {
+                    Section("assets.net_worth_history") {
+                        ForEach(model.netWorthSnapshots.prefix(12)) { snapshot in
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(snapshot.capturedAt, format: .dateTime.year().month().day().hour().minute())
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                ForEach(snapshot.amounts) { amount in
+                                    Text(formattedMoney(amount.money))
+                                        .font(.subheadline.monospacedDigit())
+                                }
+                                if let estimate = snapshot.estimatedBaseTotal,
+                                   let asOf = snapshot.conversionAsOf {
+                                    HStack(spacing: 4) {
+                                        Text("≈ \(formattedMoney(estimate))")
+                                            .font(.subheadline.monospacedDigit())
+                                        Text("·")
+                                        Text("fx.rates_as_of")
+                                        Text(asOf, format: .dateTime.year().month().day())
+                                    }
+                                    .foregroundStyle(.secondary)
+                                }
+                                if !snapshot.conversionEvidence.isEmpty {
+                                    DisclosureGroup("fx.snapshot_conversion_evidence") {
+                                        ForEach(snapshot.conversionEvidence) { evidence in
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text(
+                                                    String(
+                                                        format: String(localized: "fx.snapshot_evidence_format"),
+                                                        formattedMoney(evidence.source),
+                                                        NSDecimalNumber(decimal: evidence.appliedRate).stringValue,
+                                                        formattedMoney(evidence.converted)
+                                                    )
+                                                )
+                                                .font(.caption.monospacedDigit())
+                                                Text(
+                                                    String(
+                                                        format: String(localized: "fx.snapshot_rate_day_format"),
+                                                        evidence.effectiveDayKey,
+                                                        evidence.usedInverseRate
+                                                            ? String(localized: "fx.snapshot_inverse")
+                                                            : String(localized: "fx.snapshot_direct")
+                                                    )
+                                                )
+                                                .font(.caption2)
+                                                .foregroundStyle(.secondary)
+                                            }
+                                        }
+                                    }
+                                    .font(.caption)
+                                }
+                            }
+                        }
+                    }
+                }
+
                 Section("assets.data") {
                     NavigationLink {
                         DataSafetyView()
@@ -242,10 +435,16 @@ struct AssetsView: View {
                         Label("backup.data_safety", systemImage: "externaldrive.badge.shield.checkmark")
                     }
 
+                    NavigationLink {
+                        ExchangeRatesView()
+                    } label: {
+                        Label("fx.title", systemImage: "arrow.left.arrow.right.circle")
+                    }
+
                     Button {
                         isConfirmingExport = true
                     } label: {
-                        Label("export.csv", systemImage: "tablecells")
+                        Label("export.data", systemImage: "tablecells")
                     }
 
                     Button {
@@ -281,16 +480,39 @@ struct AssetsView: View {
                 AddHoldingSheet(accounts: investmentAccounts)
             }
             .sheet(item: $editingAccount) { account in
-                AccountBalanceSheet(account: account)
+                AccountManagementSheet(account: account)
+            }
+            .sheet(item: $editingHolding) { holding in
+                HoldingManagementSheet(holdingID: holding.id)
             }
             .confirmationDialog(
                 "export.warning_title",
                 isPresented: $isConfirmingExport,
                 titleVisibility: .visible
             ) {
-                Button("export.continue") {
-                    exportDocument = CSVDocument(text: model.csvExport())
-                    isExporting = true
+                Button("export.xlsx") {
+                    Task {
+                        do {
+                            xlsxDocument = XLSXDocument(
+                                data: try await model.xlsxExport()
+                            )
+                            isExportingXLSX = true
+                        } catch {
+                            errorMessage = safeUserMessage(for: error, context: .exportData)
+                        }
+                    }
+                }
+                Button("export.csv") {
+                    Task {
+                        do {
+                            exportDocument = CSVDocument(
+                                text: try await model.csvExport()
+                            )
+                            isExporting = true
+                        } catch {
+                            errorMessage = safeUserMessage(for: error, context: .exportData)
+                        }
+                    }
                 }
                 Button("action.cancel", role: .cancel) {}
             } message: {
@@ -322,7 +544,17 @@ struct AssetsView: View {
                 defaultFilename: "MoneyUp-Ledger"
             ) { result in
                 if case let .failure(error) = result {
-                    errorMessage = error.localizedDescription
+                    errorMessage = safeUserMessage(for: error, context: .write)
+                }
+            }
+            .fileExporter(
+                isPresented: $isExportingXLSX,
+                document: xlsxDocument,
+                contentType: .officeOpenXMLSpreadsheet,
+                defaultFilename: "MoneyUp-Ledger.xlsx"
+            ) { result in
+                if case let .failure(error) = result {
+                    errorMessage = safeUserMessage(for: error, context: .write)
                 }
             }
         }
@@ -332,7 +564,7 @@ struct AssetsView: View {
         do {
             try await model.deleteInvestmentHolding(id: holding.id)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = safeUserMessage(for: error, context: .save)
         }
     }
 
@@ -343,7 +575,7 @@ private struct AddAccountSheet: View {
     @EnvironmentObject private var model: AppModel
     @State private var name = ""
     @State private var type: FinancialAccountType = .bank
-    @State private var currencyCode = "SGD"
+    @State private var currencyCode = SupportedCurrencies.regionalDefault
     @State private var startingBalanceText = ""
     @State private var isSaving = false
     @State private var errorMessage: String?
@@ -370,13 +602,16 @@ private struct AddAccountSheet: View {
                 }
 
                 Section {
-                    Picker("account.currency", selection: $currencyCode) {
-                        ForEach(SupportedCurrencies.codes, id: \.self) { code in
-                            Text(code).tag(code)
-                        }
-                    }
+                    SearchableCurrencyPicker(
+                        title: "account.currency",
+                        selection: $currencyCode,
+                        existing: model.accounts.compactMap(\.currency)
+                    )
                     TextField(type.openingBalanceLabel, text: $startingBalanceText)
-                        .keyboardType(.numbersAndPunctuation)
+                        .moneyAmountKeyboard(
+                            currency: try? CurrencyCode(currencyCode),
+                            allowsNegative: !type.isLiabilityAccount
+                        )
                 } header: {
                     Text("account.opening_title")
                 } footer: {
@@ -436,47 +671,78 @@ private struct AddAccountSheet: View {
             )
             dismiss()
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = safeUserMessage(for: error, context: .save)
         }
     }
 }
 
-private struct AccountBalanceSheet: View {
+private struct AccountManagementSheet: View {
+    private enum PendingLifecycleAction {
+        case archive
+        case restore
+        case merge
+        case deleteWithReassignment
+        case deleteUnused
+    }
+
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var model: AppModel
     let account: LedgerAccount
 
+    @State private var name: String
     @State private var balanceText: String
+    @State private var targetID: UUID?
+    @State private var pendingLifecycleAction: PendingLifecycleAction?
     @State private var isSaving = false
     @State private var errorMessage: String?
 
     init(account: LedgerAccount) {
         self.account = account
+        _name = State(initialValue: account.name)
         _balanceText = State(initialValue: "")
+    }
+
+    private var currentAccount: LedgerAccount {
+        model.accounts.first { $0.id == account.id } ?? account
+    }
+
+    private var targets: [LedgerAccount] {
+        model.compatibleLifecycleTargets(for: account.id)
+    }
+
+    private var impact: AppModel.LedgerItemLifecycleImpact {
+        model.lifecycleImpact(for: account.id)
     }
 
     private var editedBalance: Decimal? {
         guard let value = decimalAmount(from: balanceText) else { return nil }
-        guard account.kind != .liability || value >= .zero else { return nil }
+        guard currentAccount.kind != .liability || value >= .zero else { return nil }
         return value
     }
 
     private var balanceLabel: LocalizedStringKey {
-        account.kind == .liability ? "account.amount_owed" : "account.current_balance"
+        currentAccount.kind == .liability ? "account.amount_owed" : "account.current_balance"
     }
 
     var body: some View {
         NavigationStack {
             Form {
+                Section("lifecycle.name") {
+                    TextField("account.name", text: $name)
+                }
                 Section {
                     TextField(balanceLabel, text: $balanceText)
-                        .keyboardType(.numbersAndPunctuation)
+                        .moneyAmountKeyboard(
+                            currency: currentAccount.currency,
+                            allowsNegative: currentAccount.kind != .liability
+                        )
+                        .disabled(currentAccount.isArchived)
                 } footer: {
                     VStack(alignment: .leading, spacing: 6) {
-                        if account.kind == .liability {
+                        if currentAccount.kind == .liability {
                             Text("account.amount_owed_detail")
-                        } else if account.accountType == .brokerage
-                            || account.accountType == .investment {
+                        } else if currentAccount.accountType == .brokerage
+                            || currentAccount.accountType == .investment {
                             Text("account.investment_cash_detail")
                         } else {
                             Text("account.current_balance_detail")
@@ -484,13 +750,70 @@ private struct AccountBalanceSheet: View {
                         Text("account.adjustment_detail")
                     }
                 }
+
+                Section {
+                    Button {
+                        pendingLifecycleAction = currentAccount.isArchived
+                            ? .restore : .archive
+                    } label: {
+                        Label {
+                            Text(
+                                currentAccount.isArchived
+                                    ? LocalizedStringKey("lifecycle.restore")
+                                    : LocalizedStringKey("lifecycle.archive")
+                            )
+                        } icon: {
+                            Image(
+                                systemName: currentAccount.isArchived
+                                    ? "arrow.uturn.backward.circle" : "archivebox"
+                            )
+                        }
+                    }
+
+                    if !targets.isEmpty {
+                        Picker("lifecycle.destination", selection: $targetID) {
+                            ForEach(targets) { target in
+                                Text(target.name).tag(Optional(target.id))
+                            }
+                        }
+
+                        Button {
+                            pendingLifecycleAction = .merge
+                        } label: {
+                            Label("lifecycle.merge", systemImage: "arrow.triangle.merge")
+                        }
+                        .disabled(targetID == nil)
+
+                        Button(role: .destructive) {
+                            pendingLifecycleAction = .deleteWithReassignment
+                        } label: {
+                            Label(
+                                "lifecycle.delete_reassign",
+                                systemImage: "trash.slash"
+                            )
+                        }
+                        .disabled(targetID == nil)
+                    }
+
+                    if impact.isUnused {
+                        Button(role: .destructive) {
+                            pendingLifecycleAction = .deleteUnused
+                        } label: {
+                            Label("lifecycle.delete_unused", systemImage: "trash")
+                        }
+                    }
+                } header: {
+                    Text("lifecycle.manage")
+                } footer: {
+                    Text(impactSummary(impact))
+                }
                 if let errorMessage {
                     Section { Text(errorMessage).foregroundStyle(.red) }
                 }
             }
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
-            .navigationTitle(account.name)
+            .navigationTitle(currentAccount.name)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -503,20 +826,37 @@ private struct AccountBalanceSheet: View {
             }
             .onAppear {
                 guard balanceText.isEmpty else { return }
-                switch model.displayBalanceResult(for: account) {
+                targetID = targets.first?.id
+                switch model.displayBalanceResult(for: currentAccount) {
                 case let .available(balance):
                     balanceText = editableAmount(balance.amount)
                 case let .unavailable(issue):
                     errorMessage = issue.localizedDescription
                 }
             }
+            .confirmationDialog(
+                "lifecycle.confirm_title",
+                isPresented: Binding(
+                    get: { pendingLifecycleAction != nil },
+                    set: { if !$0 { pendingLifecycleAction = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button(confirmButtonTitle, role: confirmButtonRole) {
+                    Task { await performLifecycleAction() }
+                }
+                Button("action.cancel", role: .cancel) {
+                    pendingLifecycleAction = nil
+                }
+            } message: {
+                Text(confirmMessage)
+            }
         }
-        .presentationDetents([.medium])
     }
 
     private func save() async {
         guard let balance = editedBalance else {
-            errorMessage = account.kind == .liability
+            errorMessage = currentAccount.kind == .liability
                 ? String(localized: "account.amount_owed_error")
                 : String(localized: "account.current_balance_error")
             return
@@ -525,10 +865,86 @@ private struct AccountBalanceSheet: View {
         errorMessage = nil
         defer { isSaving = false }
         do {
-            try await model.setAccountBalance(accountID: account.id, displayBalance: balance)
+            try await model.renameLedgerItem(id: account.id, name: name)
+            if !currentAccount.isArchived {
+                try await model.setAccountBalance(
+                    accountID: account.id,
+                    displayBalance: balance
+                )
+            }
             dismiss()
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = safeUserMessage(for: error, context: .save)
+        }
+    }
+
+    private var confirmButtonTitle: LocalizedStringKey {
+        switch pendingLifecycleAction {
+        case .archive: "lifecycle.archive"
+        case .restore: "lifecycle.restore"
+        case .merge: "lifecycle.merge"
+        case .deleteWithReassignment: "lifecycle.delete_reassign"
+        case .deleteUnused: "lifecycle.delete_unused"
+        case nil: "action.okay"
+        }
+    }
+
+    private var confirmButtonRole: ButtonRole? {
+        switch pendingLifecycleAction {
+        case .deleteWithReassignment, .deleteUnused: .destructive
+        default: nil
+        }
+    }
+
+    private var confirmMessage: String {
+        let base = impactSummary(impact)
+        switch pendingLifecycleAction {
+        case .archive:
+            return String(localized: "lifecycle.confirm_archive") + " " + base
+        case .restore:
+            return String(localized: "lifecycle.confirm_restore")
+        case .merge:
+            return String(localized: "lifecycle.confirm_merge") + " " + base
+        case .deleteWithReassignment:
+            return String(localized: "lifecycle.confirm_reassign") + " " + base
+        case .deleteUnused:
+            return String(localized: "lifecycle.confirm_delete")
+        case nil:
+            return ""
+        }
+    }
+
+    private func performLifecycleAction() async {
+        let action = pendingLifecycleAction
+        pendingLifecycleAction = nil
+        isSaving = true
+        errorMessage = nil
+        defer { isSaving = false }
+        do {
+            switch action {
+            case .archive:
+                try await model.setLedgerItemArchived(id: account.id, isArchived: true)
+            case .restore:
+                try await model.setLedgerItemArchived(id: account.id, isArchived: false)
+            case .merge:
+                guard let targetID else { return }
+                try await model.mergeLedgerItem(id: account.id, into: targetID)
+                dismiss()
+            case .deleteWithReassignment:
+                guard let targetID else { return }
+                try await model.deleteLedgerItem(
+                    id: account.id,
+                    reassigningTo: targetID
+                )
+                dismiss()
+            case .deleteUnused:
+                try await model.deleteLedgerItem(id: account.id)
+                dismiss()
+            case nil:
+                return
+            }
+        } catch {
+            errorMessage = safeUserMessage(for: error, context: .save)
         }
     }
 }
@@ -543,15 +959,17 @@ private struct AddHoldingSheet: View {
     @State private var name = ""
     @State private var quantityText = ""
     @State private var priceText = ""
-    @State private var currencyCode = "SGD"
+    @State private var currencyCode = SupportedCurrencies.regionalDefault
+    @State private var openingTreatment: AppModel.InvestmentOpeningTreatment?
     @State private var isSaving = false
     @State private var errorMessage: String?
 
     private var canSave: Bool {
         accountID != nil
+            && openingTreatment != nil
             && !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && decimalAmount(from: quantityText) != nil
-            && decimalAmount(from: priceText) != nil
+            && (decimalAmount(from: quantityText) ?? .zero) > .zero
+            && (decimalAmount(from: priceText) ?? .zero) > .zero
     }
 
     var body: some View {
@@ -569,10 +987,40 @@ private struct AddHoldingSheet: View {
                 TextField("holding.quantity", text: $quantityText)
                     .keyboardType(.decimalPad)
                 TextField("holding.price", text: $priceText)
-                    .keyboardType(.decimalPad)
-                TextField("account.currency", text: $currencyCode)
-                    .textInputAutocapitalization(.characters)
-                    .autocorrectionDisabled()
+                    .moneyAmountKeyboard(currency: try? CurrencyCode(currencyCode))
+                SearchableCurrencyPicker(
+                    title: "account.currency",
+                    selection: $currencyCode,
+                    existing: model.accounts.compactMap(\.currency)
+                )
+
+                Section {
+                    Button {
+                        openingTreatment = .deductFromCash
+                    } label: {
+                        treatmentRow(
+                            title: "holding.opening_deduct_title",
+                            detail: "holding.opening_deduct_detail",
+                            selected: openingTreatment == .deductFromCash
+                        )
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        openingTreatment = .cashAlreadyExcludesPosition
+                    } label: {
+                        treatmentRow(
+                            title: "holding.opening_existing_title",
+                            detail: "holding.opening_existing_detail",
+                            selected: openingTreatment == .cashAlreadyExcludesPosition
+                        )
+                    }
+                    .buttonStyle(.plain)
+                } header: {
+                    Text("holding.opening_treatment")
+                } footer: {
+                    Text("holding.opening_treatment_help")
+                }
 
                 if let errorMessage {
                     Text(errorMessage).foregroundStyle(.red)
@@ -593,13 +1041,20 @@ private struct AddHoldingSheet: View {
             }
             .onAppear {
                 accountID = accounts.first?.id
-                currencyCode = model.profile?.baseCurrency.value ?? "SGD"
+                currencyCode = accounts.first?.currency?.value
+                    ?? model.profile?.baseCurrency.value ?? "SGD"
+            }
+            .onChange(of: accountID) { _, newValue in
+                if let code = accounts.first(where: { $0.id == newValue })?.currency?.value {
+                    currencyCode = code
+                }
             }
         }
     }
 
     private func save() async {
         guard let accountID,
+              let openingTreatment,
               let quantity = decimalAmount(from: quantityText),
               let price = decimalAmount(from: priceText) else { return }
         isSaving = true
@@ -614,10 +1069,267 @@ private struct AddHoldingSheet: View {
                 price: try Money(price, currency: CurrencyCode(currencyCode)),
                 priceAsOf: Date()
             )
-            try await model.addInvestmentHolding(holding)
+            try await model.addInvestmentHolding(
+                holding,
+                treatment: openingTreatment
+            )
             dismiss()
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = safeUserMessage(for: error, context: .save)
+        }
+    }
+
+    private func treatmentRow(
+        title: LocalizedStringKey,
+        detail: LocalizedStringKey,
+        selected: Bool
+    ) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                .foregroundStyle(selected ? Color.accentColor : .secondary)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).font(.subheadline.weight(.semibold))
+                Text(detail).font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .contentShape(Rectangle())
+    }
+}
+
+private struct HoldingManagementSheet: View {
+    private enum Action: String, CaseIterable, Identifiable {
+        case reprice
+        case buy
+        case sell
+        var id: String { rawValue }
+        var title: LocalizedStringKey {
+            switch self {
+            case .reprice: "holding.reprice"
+            case .buy: "holding.buy"
+            case .sell: "holding.sell"
+            }
+        }
+    }
+
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var model: AppModel
+    let holdingID: UUID
+    @State private var action: Action = .reprice
+    @State private var quantityText = ""
+    @State private var priceText = ""
+    @State private var asOf = Date()
+    @State private var isSaving = false
+    @State private var errorMessage: String?
+    @State private var resultMessage: String?
+    @State private var migrationChoicePresented = false
+    @State private var migrationAccountID: UUID?
+
+    private var holding: InvestmentHolding? {
+        model.investmentHoldings.first { $0.id == holdingID }
+    }
+
+    private var migrationAccounts: [LedgerAccount] {
+        guard let currency = holding?.price?.currency else { return [] }
+        return model.userAccounts.filter {
+            ($0.accountType == .investment || $0.accountType == .brokerage)
+                && $0.currency == currency
+        }
+    }
+
+    private var activityDateRange: ClosedRange<Date> {
+        let now = Date()
+        let lowerBound = min(holding?.latestActivityDate ?? Date.distantPast, now)
+        return lowerBound...now
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                if let holding {
+                    Section {
+                        LabeledContent("holding.quantity") {
+                            Text(holding.quantity, format: .number.precision(.fractionLength(0...6)))
+                        }
+                        if let price = holding.price {
+                            LabeledContent("holding.price", value: formattedMoney(price))
+                        }
+                        if let date = holding.priceAsOf {
+                            LabeledContent("holding.price_as_of") {
+                                HStack {
+                                    Text(date, format: .dateTime.year().month().day())
+                                    if holding.isPriceStale(
+                                        relativeTo: Date(),
+                                        calendar: model.reportingCalendar
+                                    ) {
+                                        Text("holding.stale").foregroundStyle(.orange)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if holding.isArchived {
+                        Section {
+                            Label("holding.archived_detail", systemImage: "archivebox.fill")
+                                .foregroundStyle(.secondary)
+                        }
+                    } else if holding.needsLedgerConnection {
+                        Section {
+                            Text("holding.migration_explanation")
+                                .font(.subheadline)
+                            if !migrationAccounts.isEmpty {
+                                Picker("holding.cash_account", selection: $migrationAccountID) {
+                                    ForEach(migrationAccounts) { account in
+                                        Text(account.name).tag(Optional(account.id))
+                                    }
+                                }
+                            } else {
+                                Text("holding.add_matching_account")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Button("holding.connect_ledger") {
+                                migrationChoicePresented = true
+                            }
+                            .disabled(migrationAccountID == nil)
+                        } footer: {
+                            Text("holding.migration_review_detail")
+                        }
+                    } else {
+                        Section {
+                            Picker("holding.action", selection: $action) {
+                                ForEach(Action.allCases) { item in
+                                    Text(item.title).tag(item)
+                                }
+                            }
+                            .pickerStyle(.segmented)
+                            if action != .reprice {
+                                TextField("holding.quantity", text: $quantityText)
+                                    .keyboardType(.decimalPad)
+                            }
+                            TextField("holding.unit_price", text: $priceText)
+                                .keyboardType(.decimalPad)
+                            DatePicker(
+                                "holding.price_as_of",
+                                selection: $asOf,
+                                in: activityDateRange,
+                                displayedComponents: .date
+                            )
+                            Button("action.save") { Task { await save() } }
+                                .disabled(isSaving || (decimalAmount(from: priceText) ?? .zero) <= .zero)
+                        } footer: {
+                            Text("holding.fifo_disclaimer")
+                        }
+                    }
+
+                    if !holding.lots.isEmpty {
+                        Section("holding.open_lots") {
+                            ForEach(holding.lots.filter { $0.remainingQuantity > .zero }) { lot in
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(lot.acquiredAt, format: .dateTime.year().month().day())
+                                    Text("\(NSDecimalNumber(decimal: lot.remainingQuantity).stringValue) × \(formattedMoney(lot.unitCost))")
+                                        .font(.caption.monospacedDigit())
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                    }
+                    if !holding.disposals.isEmpty {
+                        Section("holding.realized_history") {
+                            ForEach(holding.disposals.reversed()) { disposal in
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(disposal.occurredAt, format: .dateTime.year().month().day())
+                                    Text(
+                                        String(
+                                            format: String(localized: "holding.realized_format"),
+                                            formattedMoney(disposal.realizedGainLoss)
+                                        )
+                                    )
+                                    .font(.caption.monospacedDigit())
+                                }
+                            }
+                        }
+                    }
+                }
+                if let resultMessage { Section { Text(resultMessage).foregroundStyle(.green) } }
+                if let errorMessage { Section { Text(errorMessage).foregroundStyle(.red) } }
+            }
+            .navigationTitle(holding?.symbol.isEmpty == false ? holding?.symbol ?? "" : holding?.name ?? "")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("action.done") { dismiss() }
+                }
+            }
+            .onAppear {
+                if let price = holding?.price { priceText = editableAmount(price.amount) }
+                migrationAccountID = migrationAccounts.first(where: {
+                    $0.id == holding?.accountID
+                })?.id ?? migrationAccounts.first?.id
+            }
+            .confirmationDialog(
+                "holding.connect_ledger",
+                isPresented: $migrationChoicePresented,
+                titleVisibility: .visible
+            ) {
+                Button("holding.cash_includes_position") {
+                    Task { await migrate(deductFromCash: true) }
+                }
+                Button("holding.cash_excludes_position") {
+                    Task { await migrate(deductFromCash: false) }
+                }
+                Button("action.cancel", role: .cancel) {}
+            } message: {
+                Text("holding.migration_choice_detail")
+            }
+        }
+    }
+
+    private func save() async {
+        guard let price = decimalAmount(from: priceText) else { return }
+        let quantity = decimalAmount(from: quantityText) ?? .zero
+        isSaving = true
+        errorMessage = nil
+        resultMessage = nil
+        defer { isSaving = false }
+        do {
+            switch action {
+            case .reprice:
+                try await model.repriceInvestmentHolding(id: holdingID, unitPrice: price, asOf: asOf)
+            case .buy:
+                try await model.recordInvestmentPurchase(
+                    holdingID: holdingID,
+                    quantity: quantity,
+                    unitPrice: price,
+                    occurredAt: asOf
+                )
+            case .sell:
+                let result = try await model.recordInvestmentSale(
+                    holdingID: holdingID,
+                    quantity: quantity,
+                    unitPrice: price,
+                    occurredAt: asOf
+                )
+                resultMessage = String(
+                    format: String(localized: "holding.realized_format"),
+                    formattedMoney(result.realizedGainLoss)
+                )
+            }
+            quantityText = ""
+        } catch {
+            errorMessage = safeUserMessage(for: error, context: .save)
+        }
+    }
+
+    private func migrate(deductFromCash: Bool) async {
+        do {
+            try await model.connectLegacyInvestmentHolding(
+                id: holdingID,
+                fundingAccountID: migrationAccountID,
+                deductFromCash: deductFromCash
+            )
+        } catch {
+            errorMessage = safeUserMessage(for: error, context: .save)
         }
     }
 }

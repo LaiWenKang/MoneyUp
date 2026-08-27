@@ -21,6 +21,7 @@ enum DerivedValueIssue: String, Equatable, Error, Identifiable, Sendable {
     case amountCalculationFailed = "DV-005"
     case holdingValuationFailed = "DV-006"
     case missingCurrency = "DV-007"
+    case goalCalculationFailed = "DV-008"
 
     var id: String { rawValue }
 
@@ -40,6 +41,8 @@ enum DerivedValueIssue: String, Equatable, Error, Identifiable, Sendable {
             String(localized: "derived.reason.holding")
         case .missingCurrency:
             String(localized: "derived.reason.currency")
+        case .goalCalculationFailed:
+            String(localized: "derived.reason.goal")
         }
     }
 }

@@ -34,8 +34,10 @@ struct DashboardView: View {
     }
 
     private var spendableAccounts: [LedgerAccount] {
-        model.userAccounts.filter {
-            $0.accountType != .brokerage && $0.accountType != .investment
+        model.allUserAccounts.filter {
+            $0.systemRole == nil
+                && $0.accountType != .brokerage
+                && $0.accountType != .investment
         }
     }
 
@@ -45,24 +47,27 @@ struct DashboardView: View {
         }
         var cash = Decimal.zero
         var debt = Decimal.zero
-        for account in spendableAccounts where account.currency == currency {
-            switch model.displayBalanceResult(for: account) {
-            case let .available(balance):
-                if account.kind == .liability {
-                    debt += balance.amount
-                } else {
-                    cash += balance.amount
-                }
-            case let .unavailable(issue):
-                return .unavailable(issue)
-            }
-        }
         do {
+            for account in spendableAccounts where account.currency == currency {
+                switch model.displayBalanceResult(for: account) {
+                case let .available(balance):
+                    if account.kind == .liability {
+                        debt = try CheckedDecimal.adding(debt, balance.amount)
+                    } else {
+                        cash = try CheckedDecimal.adding(cash, balance.amount)
+                    }
+                case let .unavailable(issue):
+                    return .unavailable(issue)
+                }
+            }
             return .available(
                 CashDebtPosition(
                     cash: try Money(cash, currency: currency),
                     debt: try Money(debt, currency: currency),
-                    netCash: try Money(cash - debt, currency: currency)
+                    netCash: try Money(
+                        CheckedDecimal.subtracting(cash, debt),
+                        currency: currency
+                    )
                 )
             )
         } catch {
@@ -88,8 +93,21 @@ struct DashboardView: View {
             guard let currency = account.currency, currency != base else { continue }
             switch model.displayBalanceResult(for: account) {
             case let .available(balance):
-                totals[currency, default: .zero] +=
-                    account.kind == .liability ? -balance.amount : balance.amount
+                do {
+                    totals[currency] = try CheckedDecimal.adding(
+                        totals[currency] ?? .zero,
+                        account.kind == .liability
+                            ? -balance.amount
+                            : balance.amount
+                    )
+                } catch {
+                    DerivedValueDiagnostics.record(
+                        .amountCalculationFailed,
+                        operation: "dashboard-other-currency-position",
+                        error: error
+                    )
+                    return .unavailable(.amountCalculationFailed)
+                }
             case let .unavailable(issue):
                 return .unavailable(issue)
             }
@@ -115,7 +133,10 @@ struct DashboardView: View {
         let now = Date()
         return model.scheduledTransactions
             .compactMap { transaction in
-                transaction.occurrence(onOrAfter: now).map {
+                transaction.occurrence(
+                    onOrAfter: now,
+                    calendar: model.reportingCalendar
+                ).map {
                     UpcomingSchedule(transaction: transaction, occurrence: $0)
                 }
             }
@@ -127,7 +148,7 @@ struct DashboardView: View {
     }
 
     private var monthElapsed: Double {
-        let calendar = Calendar.current
+        let calendar = model.reportingCalendar
         let now = Date()
         guard let month = calendar.dateInterval(of: .month, for: now) else { return 0 }
         let span = month.end.timeIntervalSince(month.start)
@@ -135,13 +156,29 @@ struct DashboardView: View {
         return min(max(now.timeIntervalSince(month.start) / span, 0), 1)
     }
 
-    private func budgetRatio(_ summary: BudgetPlanSummary) -> Double {
+    private func budgetRatio(
+        _ summary: BudgetPlanSummary
+    ) -> DerivedValue<Double> {
         guard summary.limit.amount > .zero else {
-            return summary.spent.amount > .zero ? 1 : 0
+            return .available(summary.spent.amount > .zero ? 1 : 0)
         }
-        return NSDecimalNumber(
-            decimal: summary.spent.amount / summary.limit.amount
-        ).doubleValue
+        do {
+            return .available(
+                NSDecimalNumber(
+                    decimal: try CheckedDecimal.ratio(
+                        summary.spent.amount,
+                        summary.limit.amount
+                    )
+                ).doubleValue
+            )
+        } catch {
+            DerivedValueDiagnostics.record(
+                .amountCalculationFailed,
+                operation: "dashboard-budget-ratio",
+                error: error
+            )
+            return .unavailable(.amountCalculationFailed)
+        }
     }
 
     var body: some View {
@@ -227,20 +264,26 @@ struct DashboardView: View {
                                 .font(.headline)
                             switch budgetSummary {
                             case let .available(.some(summary)):
-                                let ratio = budgetRatio(summary)
-                                MoneyUpPaceBar(ratio: ratio, elapsed: monthElapsed)
+                                let ratioResult = budgetRatio(summary)
+                                if case let .available(ratio) = ratioResult {
+                                    MoneyUpPaceBar(ratio: ratio, elapsed: monthElapsed)
+                                } else if case let .unavailable(issue) = ratioResult {
+                                    DerivedValueUnavailableView(issue: issue)
+                                }
                                 Text(
                                     "\(formattedMoney(summary.spent)) / \(formattedMoney(summary.limit))"
                                 )
                                 .font(.subheadline.monospacedDigit())
                                 .foregroundStyle(.secondary)
 
-                                Label(
-                                    budgetPaceKey(ratio: ratio),
-                                    systemImage: budgetPaceSymbol(ratio: ratio)
-                                )
-                                .font(.footnote.weight(.semibold))
-                                .foregroundStyle(ratio > 1 ? Color.red : Color.secondary)
+                                if case let .available(ratio) = ratioResult {
+                                    Label(
+                                        budgetPaceKey(ratio: ratio),
+                                        systemImage: budgetPaceSymbol(ratio: ratio)
+                                    )
+                                    .font(.footnote.weight(.semibold))
+                                    .foregroundStyle(ratio > 1 ? Color.red : Color.secondary)
+                                }
 
                                 if summary.unbudgetedSpent.amount > .zero {
                                     HStack {
@@ -349,7 +392,7 @@ struct DashboardView: View {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("dashboard.recent")
                                 .font(.headline)
-                            if model.entries.isEmpty {
+                            if !model.hasJournalEntries {
                                 MoneyUpIllustration("MoneyUpMoneyWorld", role: .empty)
                                 Text("dashboard.no_transactions")
                                     .font(.title3.weight(.semibold))
@@ -412,6 +455,8 @@ struct DashboardView: View {
                 }
             }
         }
+        .environment(\.calendar, model.reportingCalendar)
+        .environment(\.timeZone, model.reportingCalendar.timeZone)
     }
 
     private var safeToSpendHero: some View {

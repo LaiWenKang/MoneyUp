@@ -2,7 +2,7 @@ import Foundation
 import LocalAuthentication
 import Security
 
-enum DatabaseKeyStoreError: Error, Equatable {
+enum DatabaseKeyStoreError: Error, Equatable, Sendable {
     case authenticationCancelled
     case devicePasscodeRequired
     case unexpectedStatus(OSStatus)
@@ -16,9 +16,8 @@ extension DatabaseKeyStoreError: LocalizedError {
             return String(localized: "error.authentication_cancelled")
         case .devicePasscodeRequired:
             return String(localized: "error.device_passcode_required")
-        case let .unexpectedStatus(status):
-            let detail = SecCopyErrorMessageString(status, nil) as String?
-            return detail ?? String(localized: "error.keychain_unavailable")
+        case .unexpectedStatus:
+            return String(localized: "error.keychain_unavailable")
         case .invalidStoredKey:
             return String(localized: "error.invalid_database_key")
         }

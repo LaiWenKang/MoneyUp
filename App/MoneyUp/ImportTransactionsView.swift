@@ -6,10 +6,17 @@ struct ImportTransactionsView: View {
     @EnvironmentObject private var model: AppModel
     @State private var isChoosingFile = false
     @State private var preview: CSVImportPreview?
+    @State private var sourceText = ""
+    @State private var inspection: DelimitedImportInspection?
+    @State private var columnMapping = CSVColumnMapping()
     @State private var fileName = ""
     @State private var fallbackAccountID: UUID?
     @State private var fallbackExpenseCategoryID: UUID?
     @State private var fallbackIncomeCategoryID: UUID?
+    @State private var accountMappings: [String: UUID] = [:]
+    @State private var expenseCategoryMappings: [String: UUID] = [:]
+    @State private var incomeCategoryMappings: [String: UUID] = [:]
+    @State private var defaultCurrencyCode = SupportedCurrencies.regionalDefault
     @State private var isImporting = false
     @State private var message: String?
     @State private var errorMessage: String?
@@ -31,6 +38,45 @@ struct ImportTransactionsView: View {
                 Text("import.local_only_detail")
             }
 
+            if let inspection {
+                Section {
+                    ForEach(CSVImportMappedField.allCases) { field in
+                        Picker(
+                            localizedField(field),
+                            selection: Binding(
+                                get: { columnMapping[field] },
+                                set: { columnMapping[field] = $0 }
+                            )
+                        ) {
+                            Text("import.column_none").tag(Optional<Int>.none)
+                            ForEach(inspection.headers.indices, id: \.self) { index in
+                                Text(inspection.headers[index]).tag(Optional(index))
+                            }
+                        }
+                    }
+                    Button {
+                        applyColumnMapping()
+                    } label: {
+                        Label("import.apply_mapping", systemImage: "arrow.triangle.2.circlepath")
+                    }
+                    .disabled(!columnMapping.hasRequiredColumns)
+                } header: {
+                    Text("import.column_mapping")
+                } footer: {
+                    Text("import.column_mapping_detail")
+                }
+
+                if !inspection.sampleRows.isEmpty {
+                    Section("import.raw_preview") {
+                        ForEach(Array(inspection.sampleRows.enumerated()), id: \.offset) { _, row in
+                            Text(row.joined(separator: " · "))
+                                .font(.caption.monospaced())
+                                .lineLimit(2)
+                        }
+                    }
+                }
+            }
+
             if let preview {
                 Section {
                     LabeledContent("import.ready", value: "\(preview.rows.count)")
@@ -50,6 +96,11 @@ struct ImportTransactionsView: View {
                 }
 
                 Section {
+                    SearchableCurrencyPicker(
+                        title: "import.default_currency",
+                        selection: $defaultCurrencyCode,
+                        existing: model.accounts.compactMap(\.currency)
+                    )
                     Picker("settings.default_account", selection: $fallbackAccountID) {
                         ForEach(model.userAccounts) { account in
                             Text(account.name).tag(Optional(account.id))
@@ -77,6 +128,59 @@ struct ImportTransactionsView: View {
                     Text("import.fallbacks_detail")
                 }
 
+                if !sourceAccountNames(in: preview).isEmpty
+                    || !sourceCategoryNames(in: preview, kind: .expense).isEmpty
+                    || !sourceCategoryNames(in: preview, kind: .income).isEmpty {
+                    Section {
+                        ForEach(sourceAccountNames(in: preview), id: \.self) { name in
+                            Picker(
+                                name,
+                                selection: reviewedBinding(
+                                    for: name,
+                                    in: $accountMappings,
+                                    fallback: fallbackAccountID
+                                )
+                            ) {
+                                ForEach(model.userAccounts) { account in
+                                    Text(account.name).tag(Optional(account.id))
+                                }
+                            }
+                        }
+                        ForEach(sourceCategoryNames(in: preview, kind: .expense), id: \.self) { name in
+                            Picker(
+                                name,
+                                selection: reviewedBinding(
+                                    for: name,
+                                    in: $expenseCategoryMappings,
+                                    fallback: fallbackExpenseCategoryID
+                                )
+                            ) {
+                                ForEach(model.expenseCategories) { category in
+                                    Text(category.name).tag(Optional(category.id))
+                                }
+                            }
+                        }
+                        ForEach(sourceCategoryNames(in: preview, kind: .income), id: \.self) { name in
+                            Picker(
+                                name,
+                                selection: reviewedBinding(
+                                    for: name,
+                                    in: $incomeCategoryMappings,
+                                    fallback: fallbackIncomeCategoryID
+                                )
+                            ) {
+                                ForEach(model.incomeCategories) { category in
+                                    Text(category.name).tag(Optional(category.id))
+                                }
+                            }
+                        }
+                    } header: {
+                        Text("import.review_mappings")
+                    } footer: {
+                        Text("import.review_mappings_detail")
+                    }
+                }
+
                 Section {
                     ForEach(preview.rows.prefix(10)) { row in
                         HStack {
@@ -89,7 +193,7 @@ struct ImportTransactionsView: View {
                             }
                             Spacer()
                             Text(
-                                "\(row.currencyCode ?? model.profile?.baseCurrency.value ?? "") \(NSDecimalNumber(decimal: row.amount).stringValue)"
+                                "\(row.currencyCode ?? defaultCurrencyCode) \(NSDecimalNumber(decimal: row.amount).stringValue)"
                             )
                             .font(.subheadline.monospacedDigit())
                         }
@@ -143,6 +247,7 @@ struct ImportTransactionsView: View {
     }
 
     private func selectDefaults() {
+        defaultCurrencyCode = model.profile?.baseCurrency.value ?? "SGD"
         fallbackAccountID = model.profile?.preferredAccountID
             .flatMap { preferred in
                 model.userAccounts.contains(where: { $0.id == preferred }) ? preferred : nil
@@ -171,14 +276,43 @@ struct ImportTransactionsView: View {
             let text = String(data: data, encoding: .utf8)
                 ?? String(data: data, encoding: .utf16)
             guard let text else { throw CSVImportViewError.unsupportedEncoding }
-            preview = try TransactionCSVImporter.parse(text)
+            sourceText = text
+            inspection = try TransactionCSVImporter.inspect(text)
+            columnMapping = inspection?.suggestedMapping ?? CSVColumnMapping()
+            if columnMapping.hasRequiredColumns {
+                preview = try TransactionCSVImporter.parse(
+                    text,
+                    mapping: columnMapping,
+                    timeZone: model.reportingCalendar.timeZone
+                )
+                prepareReviewedMappings(for: preview)
+            } else {
+                preview = nil
+            }
             fileName = url.lastPathComponent
             message = nil
             errorMessage = nil
         } catch {
             preview = nil
+            inspection = nil
+            sourceText = ""
             fileName = ""
-            errorMessage = error.localizedDescription
+            errorMessage = safeUserMessage(for: error, context: .read)
+        }
+    }
+
+    private func applyColumnMapping() {
+        do {
+            preview = try TransactionCSVImporter.parse(
+                sourceText,
+                mapping: columnMapping,
+                timeZone: model.reportingCalendar.timeZone
+            )
+            prepareReviewedMappings(for: preview)
+            errorMessage = nil
+        } catch {
+            preview = nil
+            errorMessage = safeUserMessage(for: error, context: .importData)
         }
     }
 
@@ -189,11 +323,31 @@ struct ImportTransactionsView: View {
         isImporting = true
         defer { isImporting = false }
         do {
+            let rows = preview.rows.map { row in
+                ImportedTransaction(
+                    id: row.id,
+                    sourceLine: row.sourceLine,
+                    kind: row.kind,
+                    occurredAt: row.occurredAt,
+                    originContext: row.originContext,
+                    amount: row.amount,
+                    destinationAmount: row.destinationAmount,
+                    currencyCode: row.currencyCode ?? defaultCurrencyCode,
+                    accountName: row.accountName,
+                    destinationAccountName: row.destinationAccountName,
+                    categoryName: row.categoryName,
+                    payee: row.payee,
+                    note: row.note
+                )
+            }
             let result = try await model.importTransactions(
-                preview.rows,
+                rows,
                 fallbackAccountID: fallbackAccountID,
                 fallbackExpenseCategoryID: fallbackExpenseCategoryID,
-                fallbackIncomeCategoryID: fallbackIncomeCategoryID
+                fallbackIncomeCategoryID: fallbackIncomeCategoryID,
+                accountMappings: accountMappings,
+                expenseCategoryMappings: expenseCategoryMappings,
+                incomeCategoryMappings: incomeCategoryMappings
             )
             message = String(
                 format: String(localized: "import.complete_format"),
@@ -203,8 +357,101 @@ struct ImportTransactionsView: View {
             )
             errorMessage = nil
             self.preview = nil
+            inspection = nil
+            sourceText = ""
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = safeUserMessage(for: error, context: .importData)
+        }
+    }
+
+    private func prepareReviewedMappings(for preview: CSVImportPreview?) {
+        guard let preview else { return }
+        accountMappings = Dictionary(uniqueKeysWithValues: sourceAccountNames(in: preview).compactMap {
+            name in
+            let selected = exactAccount(named: name)?.id ?? fallbackAccountID
+            return selected.map { (normalizedName(name), $0) }
+        })
+        expenseCategoryMappings = Dictionary(
+            uniqueKeysWithValues: sourceCategoryNames(in: preview, kind: .expense).compactMap {
+                name in
+                let selected = exactCategory(named: name, kind: .expense)?.id
+                    ?? fallbackExpenseCategoryID
+                return selected.map { (normalizedName(name), $0) }
+            }
+        )
+        incomeCategoryMappings = Dictionary(
+            uniqueKeysWithValues: sourceCategoryNames(in: preview, kind: .income).compactMap {
+                name in
+                let selected = exactCategory(named: name, kind: .income)?.id
+                    ?? fallbackIncomeCategoryID
+                return selected.map { (normalizedName(name), $0) }
+            }
+        )
+    }
+
+    private func sourceAccountNames(in preview: CSVImportPreview) -> [String] {
+        Set(preview.rows.flatMap { [$0.accountName, $0.destinationAccountName].compactMap { $0 } })
+            .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+    }
+
+    private func sourceCategoryNames(
+        in preview: CSVImportPreview,
+        kind: LedgerAccountKind
+    ) -> [String] {
+        Set(preview.rows.compactMap { row in
+            let matches = kind == .income
+                ? row.kind == .income
+                : row.kind == .expense || row.kind == .refund
+            return matches ? row.categoryName : nil
+        }).sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+    }
+
+    private func reviewedBinding(
+        for name: String,
+        in mappings: Binding<[String: UUID]>,
+        fallback: UUID?
+    ) -> Binding<UUID?> {
+        let key = normalizedName(name)
+        return Binding(
+            get: { mappings.wrappedValue[key] ?? fallback },
+            set: { value in
+                if let value { mappings.wrappedValue[key] = value }
+                else { mappings.wrappedValue.removeValue(forKey: key) }
+            }
+        )
+    }
+
+    private func exactAccount(named name: String) -> LedgerAccount? {
+        let key = normalizedName(name)
+        return model.userAccounts.first { normalizedName($0.name) == key }
+    }
+
+    private func exactCategory(named name: String, kind: LedgerAccountKind) -> LedgerAccount? {
+        let key = normalizedName(name)
+        let choices = kind == .income ? model.incomeCategories : model.expenseCategories
+        return choices.first { normalizedName($0.name) == key }
+    }
+
+    private func normalizedName(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines)
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+    }
+
+    private func localizedField(_ field: CSVImportMappedField) -> String {
+        switch field {
+        case .id: String(localized: "import.field.id")
+        case .date: String(localized: "import.field.date")
+        case .kind: String(localized: "import.field.kind")
+        case .amount: String(localized: "import.field.amount")
+        case .destinationAmount: String(localized: "import.field.destinationAmount")
+        case .currency: String(localized: "import.field.currency")
+        case .account: String(localized: "import.field.account")
+        case .destinationAccount: String(localized: "import.field.destinationAccount")
+        case .category: String(localized: "import.field.category")
+        case .payee: String(localized: "import.field.payee")
+        case .note: String(localized: "import.field.note")
+        case .outflow: String(localized: "import.field.outflow")
+        case .inflow: String(localized: "import.field.inflow")
         }
     }
 
@@ -227,7 +474,7 @@ struct ImportTransactionsView: View {
     }
 }
 
-private enum CSVImportViewError: LocalizedError {
+enum CSVImportViewError: LocalizedError {
     case unsupportedEncoding
 
     var errorDescription: String? {

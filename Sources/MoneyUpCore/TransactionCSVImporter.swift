@@ -12,6 +12,7 @@ public struct ImportedTransaction: Equatable, Sendable, Identifiable {
     public let sourceLine: Int
     public let kind: ImportedTransactionKind
     public let occurredAt: Date
+    public let originContext: TransactionOriginContext?
     public let amount: Decimal
     public let destinationAmount: Decimal?
     public let currencyCode: String?
@@ -26,6 +27,7 @@ public struct ImportedTransaction: Equatable, Sendable, Identifiable {
         sourceLine: Int,
         kind: ImportedTransactionKind,
         occurredAt: Date,
+        originContext: TransactionOriginContext? = nil,
         amount: Decimal,
         destinationAmount: Decimal? = nil,
         currencyCode: String? = nil,
@@ -39,6 +41,7 @@ public struct ImportedTransaction: Equatable, Sendable, Identifiable {
         self.sourceLine = sourceLine
         self.kind = kind
         self.occurredAt = occurredAt
+        self.originContext = originContext
         self.amount = amount
         self.destinationAmount = destinationAmount
         self.currencyCode = currencyCode
@@ -68,6 +71,49 @@ public struct CSVImportPreview: Equatable, Sendable {
     public init(rows: [ImportedTransaction], issues: [CSVImportIssue]) {
         self.rows = rows
         self.issues = issues
+    }
+}
+
+public enum CSVImportMappedField: String, CaseIterable, Hashable, Identifiable, Sendable {
+    case id, date, kind, amount, destinationAmount, currency
+    case account, destinationAccount, category, payee, note, outflow, inflow
+
+    public var id: String { rawValue }
+}
+
+public struct CSVColumnMapping: Equatable, Sendable {
+    public var columns: [CSVImportMappedField: Int]
+
+    public init(columns: [CSVImportMappedField: Int] = [:]) {
+        self.columns = columns
+    }
+
+    public subscript(field: CSVImportMappedField) -> Int? {
+        get { columns[field] }
+        set { columns[field] = newValue }
+    }
+
+    public var hasRequiredColumns: Bool {
+        columns[.date] != nil
+            && (columns[.amount] != nil
+                || columns[.outflow] != nil
+                || columns[.inflow] != nil)
+    }
+}
+
+public struct DelimitedImportInspection: Equatable, Sendable {
+    public let headers: [String]
+    public let sampleRows: [[String]]
+    public let suggestedMapping: CSVColumnMapping
+
+    public init(
+        headers: [String],
+        sampleRows: [[String]],
+        suggestedMapping: CSVColumnMapping
+    ) {
+        self.headers = headers
+        self.sampleRows = sampleRows
+        self.suggestedMapping = suggestedMapping
     }
 }
 
@@ -112,12 +158,60 @@ public enum TransactionCSVImporter {
         guard let headers = records.first, !headers.isEmpty else {
             throw TransactionCSVImportError.emptyFile
         }
+        let indexes = fieldIndexes(headers)
+        return try preview(
+            records: records,
+            indexes: indexes,
+            locale: locale,
+            timeZone: timeZone
+        )
+    }
+
+    public static func inspect(_ text: String) throws -> DelimitedImportInspection {
+        let records = try parseRecords(text)
+        guard let headers = records.first, !headers.isEmpty else {
+            throw TransactionCSVImportError.emptyFile
+        }
+        let indexes = fieldIndexes(headers)
+        return DelimitedImportInspection(
+            headers: headers,
+            sampleRows: Array(records.dropFirst().prefix(5)),
+            suggestedMapping: publicMapping(indexes)
+        )
+    }
+
+    public static func parse(
+        _ text: String,
+        mapping: CSVColumnMapping,
+        locale: Locale = .current,
+        timeZone: TimeZone = .current
+    ) throws -> CSVImportPreview {
+        let records = try parseRecords(text)
+        guard records.first?.isEmpty == false else {
+            throw TransactionCSVImportError.emptyFile
+        }
+        return try preview(
+            records: records,
+            indexes: internalMapping(mapping),
+            locale: locale,
+            timeZone: timeZone
+        )
+    }
+
+    private static func preview(
+        records: [[String]],
+        indexes: [Field: Int],
+        locale: Locale,
+        timeZone: TimeZone
+    ) throws -> CSVImportPreview {
+        guard let headers = records.first else {
+            throw TransactionCSVImportError.emptyFile
+        }
         let normalizedHeaders = Set(headers.map(normalizedHeader))
         if normalizedHeaders.contains("entryid"),
            normalizedHeaders.contains("postingid") {
             throw TransactionCSVImportError.postingLevelExportRequiresArchive
         }
-        let indexes = fieldIndexes(headers)
         guard indexes[.date] != nil,
               indexes[.amount] != nil || indexes[.outflow] != nil || indexes[.inflow] != nil else {
             throw TransactionCSVImportError.missingRequiredColumns
@@ -145,6 +239,56 @@ public enum TransactionCSVImporter {
             }
         }
         return CSVImportPreview(rows: rows, issues: issues)
+    }
+
+    private static func publicMapping(_ indexes: [Field: Int]) -> CSVColumnMapping {
+        CSVColumnMapping(
+            columns: Dictionary(uniqueKeysWithValues: indexes.map { field, index in
+                (publicField(field), index)
+            })
+        )
+    }
+
+    private static func internalMapping(_ mapping: CSVColumnMapping) -> [Field: Int] {
+        Dictionary(uniqueKeysWithValues: mapping.columns.map { field, index in
+            (internalField(field), index)
+        })
+    }
+
+    private static func publicField(_ field: Field) -> CSVImportMappedField {
+        switch field {
+        case .id: .id
+        case .date: .date
+        case .kind: .kind
+        case .amount: .amount
+        case .destinationAmount: .destinationAmount
+        case .currency: .currency
+        case .account: .account
+        case .destinationAccount: .destinationAccount
+        case .category: .category
+        case .payee: .payee
+        case .note: .note
+        case .outflow: .outflow
+        case .inflow: .inflow
+        }
+    }
+
+    private static func internalField(_ field: CSVImportMappedField) -> Field {
+        switch field {
+        case .id: .id
+        case .date: .date
+        case .kind: .kind
+        case .amount: .amount
+        case .destinationAmount: .destinationAmount
+        case .currency: .currency
+        case .account: .account
+        case .destinationAccount: .destinationAccount
+        case .category: .category
+        case .payee: .payee
+        case .note: .note
+        case .outflow: .outflow
+        case .inflow: .inflow
+        }
     }
 
     private enum RowError: String, Error {
@@ -215,6 +359,11 @@ public enum TransactionCSVImporter {
             sourceLine: line,
             kind: kind,
             occurredAt: occurredAt,
+            originContext: .capture(
+                for: occurredAt,
+                calendar: Calendar(identifier: .gregorian),
+                timeZone: originTimeZone(from: dateText) ?? timeZone
+            ),
             amount: amount,
             destinationAmount: destinationAmount,
             currencyCode: value(.currency)?.uppercased(),
@@ -295,6 +444,26 @@ public enum TransactionCSVImporter {
             if let date = formatter.date(from: value) { return date }
         }
         return nil
+    }
+
+    private static func originTimeZone(from value: String) -> TimeZone? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.hasSuffix("Z") || trimmed.hasSuffix("z") {
+            return TimeZone(secondsFromGMT: 0)
+        }
+        guard let match = trimmed.range(
+            of: #"([+-])(\d{2}):?(\d{2})$"#,
+            options: .regularExpression
+        ) else { return nil }
+        let suffix = String(trimmed[match])
+        let sign = suffix.first == "-" ? -1 : 1
+        let digits = suffix.dropFirst().filter(\.isNumber)
+        guard digits.count == 4,
+              let hours = Int(digits.prefix(2)),
+              let minutes = Int(digits.suffix(2)),
+              hours <= 23,
+              minutes <= 59 else { return nil }
+        return TimeZone(secondsFromGMT: sign * (hours * 3_600 + minutes * 60))
     }
 
     private static func fieldIndexes(_ headers: [String]) -> [Field: Int] {

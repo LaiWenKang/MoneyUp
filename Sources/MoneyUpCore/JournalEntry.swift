@@ -13,6 +13,9 @@ public enum JournalEntryValidationError: Error, Equatable {
     case duplicatePostingID(UUID)
     case zeroPosting(UUID)
     case unbalanced(currency: CurrencyCode, residual: Decimal)
+    case arithmeticOverflow(currency: CurrencyCode)
+    case invalidEventDate
+    case originContextMismatch
 }
 
 /// An immutable, balanced financial event.
@@ -32,6 +35,7 @@ public struct JournalEntry: Codable, Equatable, Identifiable, Sendable {
     public let revisedAt: Date?
     public let sourceSystem: String?
     public let sourceFingerprint: String?
+    public let originContext: TransactionOriginContext
 
     public init(
         id: UUID = UUID(),
@@ -44,9 +48,24 @@ public struct JournalEntry: Codable, Equatable, Identifiable, Sendable {
         supersedesID: UUID? = nil,
         revisedAt: Date? = nil,
         sourceSystem: String? = nil,
-        sourceFingerprint: String? = nil
+        sourceFingerprint: String? = nil,
+        originContext: TransactionOriginContext? = nil
     ) throws {
         try Self.validate(postings)
+        guard occurredAt.timeIntervalSinceReferenceDate.isFinite,
+              createdAt.timeIntervalSinceReferenceDate.isFinite else {
+            throw JournalEntryValidationError.invalidEventDate
+        }
+        if let revisedAt,
+           !revisedAt.timeIntervalSinceReferenceDate.isFinite {
+            throw JournalEntryValidationError.invalidEventDate
+        }
+        let capturedOrigin = originContext ?? .capture(for: occurredAt)
+        do {
+            try capturedOrigin.validate(eventDate: occurredAt)
+        } catch {
+            throw JournalEntryValidationError.originContextMismatch
+        }
 
         self.id = id
         self.kind = kind
@@ -59,12 +78,23 @@ public struct JournalEntry: Codable, Equatable, Identifiable, Sendable {
         self.revisedAt = revisedAt
         self.sourceSystem = sourceSystem
         self.sourceFingerprint = sourceFingerprint
+        self.originContext = capturedOrigin
     }
 
     /// Residual balance per currency. A valid entry always contains only zero
     /// values, but this remains useful for diagnostics and export validation.
     public var balanceByCurrency: [CurrencyCode: Decimal] {
-        Self.balanceByCurrency(for: postings)
+        do {
+            return try Self.checkedBalanceByCurrency(
+                for: postings,
+                checkingCancellation: false
+            )
+        } catch {
+            // Construction and decoding both run the same checked aggregation,
+            // so reaching this branch would mean the immutable value's memory
+            // no longer matches the validated instance.
+            preconditionFailure("Validated journal balance became unrepresentable")
+        }
     }
 
     private static func validate(_ postings: [Posting]) throws {
@@ -82,7 +112,10 @@ public struct JournalEntry: Codable, Equatable, Identifiable, Sendable {
             }
         }
 
-        let balances = balanceByCurrency(for: postings)
+        let balances = try checkedBalanceByCurrency(
+            for: postings,
+            checkingCancellation: true
+        )
         for currency in balances.keys.sorted() {
             let residual = balances[currency, default: .zero]
             if residual != .zero {
@@ -94,12 +127,34 @@ public struct JournalEntry: Codable, Equatable, Identifiable, Sendable {
         }
     }
 
-    private static func balanceByCurrency(
-        for postings: [Posting]
-    ) -> [CurrencyCode: Decimal] {
-        postings.reduce(into: [:]) { balances, posting in
-            balances[posting.money.currency, default: .zero] += posting.money.amount
+    private static func checkedBalanceByCurrency(
+        for postings: [Posting],
+        checkingCancellation: Bool
+    ) throws -> [CurrencyCode: Decimal] {
+        var balances: [CurrencyCode: Decimal] = [:]
+        for posting in postings {
+            let currency = posting.money.currency
+            do {
+                if checkingCancellation {
+                    balances[currency] = try CheckedDecimal.adding(
+                        balances[currency] ?? .zero,
+                        posting.money.amount
+                    )
+                } else {
+                    balances[currency] = try CheckedDecimal.addingUninterruptibly(
+                        balances[currency] ?? .zero,
+                        posting.money.amount
+                    )
+                }
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                throw JournalEntryValidationError.arithmeticOverflow(
+                    currency: currency
+                )
+            }
         }
+        return balances
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -114,6 +169,7 @@ public struct JournalEntry: Codable, Equatable, Identifiable, Sendable {
         case revisedAt
         case sourceSystem
         case sourceFingerprint
+        case originContext
     }
 
     public init(from decoder: Decoder) throws {
@@ -132,6 +188,10 @@ public struct JournalEntry: Codable, Equatable, Identifiable, Sendable {
             String.self,
             forKey: .sourceFingerprint
         )
+        let originContext = try container.decodeIfPresent(
+            TransactionOriginContext.self,
+            forKey: .originContext
+        ) ?? .inferredUTC(for: occurredAt)
 
         do {
             try self.init(
@@ -145,7 +205,8 @@ public struct JournalEntry: Codable, Equatable, Identifiable, Sendable {
                 supersedesID: supersedesID,
                 revisedAt: revisedAt,
                 sourceSystem: sourceSystem,
-                sourceFingerprint: sourceFingerprint
+                sourceFingerprint: sourceFingerprint,
+                originContext: originContext
             )
         } catch {
             throw DecodingError.dataCorruptedError(

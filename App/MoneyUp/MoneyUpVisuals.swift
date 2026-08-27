@@ -126,9 +126,21 @@ struct MoneyUpPositionDiagram: View {
         symbol: String,
         color: Color
     ) -> some View {
-        let fraction = NSDecimalNumber(
-            decimal: abs(amount) / scale
-        ).doubleValue
+        let fraction: DerivedValue<Double>
+        do {
+            fraction = .available(
+                NSDecimalNumber(
+                    decimal: try CheckedDecimal.ratio(abs(amount), scale)
+                ).doubleValue
+            )
+        } catch {
+            DerivedValueDiagnostics.record(
+                .amountCalculationFailed,
+                operation: "position-diagram-ratio",
+                error: error
+            )
+            fraction = .unavailable(.amountCalculationFailed)
+        }
 
         return HStack(spacing: 10) {
             Image(systemName: symbol)
@@ -136,16 +148,21 @@ struct MoneyUpPositionDiagram: View {
                 .foregroundStyle(color)
                 .frame(width: 24)
 
-            GeometryReader { proxy in
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(Color(.tertiarySystemFill))
-                    Capsule()
-                        .fill(color.opacity(0.78))
-                        .frame(width: proxy.size.width * min(max(fraction, 0), 1))
+            switch fraction {
+            case let .available(value):
+                GeometryReader { proxy in
+                    ZStack(alignment: .leading) {
+                        Capsule()
+                            .fill(Color(.tertiarySystemFill))
+                        Capsule()
+                            .fill(color.opacity(0.78))
+                            .frame(width: proxy.size.width * min(max(value, 0), 1))
+                    }
                 }
+                .frame(height: 10)
+            case let .unavailable(issue):
+                DerivedValueUnavailableView(issue: issue)
             }
-            .frame(height: 10)
         }
     }
 }

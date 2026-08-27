@@ -8,9 +8,11 @@ on-device charts, accounts and holdings, and spreadsheet-friendly export.
 
 ## Project status
 
-MoneyUp is preparing the **Founders Beta 0.5.1** corrective candidate. Version
-0.5.0 is installed by the account holder through private TestFlight;
-developers can also install the app from source on an iOS 18 device through
+MoneyUp's source-integrated **Founders Beta 0.6.0 (source build 8)** candidate
+unifies the Golden functional scope. Version 0.5.1 is installed by the account
+holder through private TestFlight; 0.6.0 has not yet passed exact-candidate Mac
+CI, physical iPhone validation, TestFlight processing, or App Review.
+Developers can also install the app from source on an iOS 18 device through
 Xcode.
 
 The beta includes:
@@ -24,8 +26,12 @@ The beta includes:
   do next;
 - persistent expense, income, same-currency, and foreign-currency transfers;
 - account balance reconciliation that does not distort income or spending;
-- arbitrary-depth categories and monthly limits with correct roll-up;
-- actual and recurring projected money flow in the finance calendar;
+- arbitrary-depth categories and monthly limits with correct roll-up, dated
+  rollover rules, sinking funds, and savings goals with contributions,
+  withdrawals, resets, archive, and deletion;
+- actual and recurring projected money flow in the finance calendar, including
+  schedule editing, pausing, ending, skipping, confirming, matching, and
+  exactly-once posting;
 - selectable report periods with category and monthly cash-flow charts, plus
   deterministic readings, all calculated on device;
 - Flexible Today with purpose-classified allocations, a tap-through arithmetic
@@ -38,24 +44,38 @@ The beta includes:
   never mutates the ledger, budget, or reports;
 - explicit reporting of money held or spent outside the base currency, which is
   listed on its own rather than converted or dropped;
-- bank, cash, e-wallet, card, loan, brokerage, and investment accounts;
-- manually priced investment holdings and base-currency net worth;
-- smart entry that reads a receipt photo or screenshot with on-device text
-  recognition, parses typed phrases such as "lunch 12.50 cash yesterday", and
-  suggests a category from the user's own history, with no image retained and
-  no remote model involved;
+- bank, cash, e-wallet, card, loan, brokerage, and investment accounts with
+  atomic rename, archive, merge, and delete-with-reassignment workflows;
+- ledger-linked manually priced holdings with dated price history, stale-price
+  warnings, explicit opening-cash treatment, FIFO lots and disposals, and
+  frozen net-worth snapshots kept separate by currency;
+- smart entry that reads a receipt photo or screenshot with bounded, fast-first
+  on-device text recognition, shows reading progress immediately, populates
+  visible amount/payee/date suggestions, parses typed phrases such as "lunch
+  12.50 cash yesterday", and suggests a category from the user's own history,
+  with no remote model involved; receipt images remain transient unless the
+  user explicitly keeps one as an encrypted transaction attachment;
 - a permanent five-tab layout for Today, History, center Log, Plan, and Assets;
   Log retains encrypted draft recovery, configurable smart defaults, success
-  feedback, and Undo;
-- a searchable, filterable History tab with refunds and atomic transaction
-  editing; prior versions are retained in the encrypted revision collection;
+  feedback, and Undo, while the keyboard provides Done, reachable Save, and a
+  draft-preserving route to every other tab;
+- a searchable, filterable, date-indexed History tab with encrypted keyset
+  paging, refunds, and atomic transaction editing, including exact N-way
+  category splits with live remainder; prior versions are retained in the
+  encrypted revision collection;
 - configurable privacy-redacted Home and Lock Screen widgets for expense,
-  income, transfer, refund, smart entry, and receipt scanning, plus a separate
+  income, transfer, refund, smart entry, and receipt scanning; a separate
   encrypted Quick Capture inbox that does not reveal balances while locked;
+  and an opt-in App Group snapshot containing only budget percentage/state,
+  never amounts, payees, accounts, holdings, balances, or ledger identifiers;
 - password-protected `.moneyup` backup with authenticated, transactional restore;
 - preview-first local import for Qianji-style and generic CSV/TSV exports, with
-  name mapping, duplicate detection, row-level issues, and atomic saving;
-- posting-level CSV export with account metadata for Numbers and Excel;
+  manual column mapping, reviewed account/category targets, duplicate
+  detection, row-level issues, and atomic saving;
+- posting-level CSV and native XLSX export with account metadata, stable IDs,
+  exact currencies, and formula-safe user text for Numbers and Excel;
+- dated user-supplied exchange rates with historical estimated conversion and
+  explicit unconverted results when no applicable rate exists;
 - English and Simplified Chinese UI and first-run categories;
 - a distinctive soft-green horned-money emblem shared by the app icon,
   first-run surfaces, and privacy-safe widget; original dimensional
@@ -66,12 +86,20 @@ The beta includes:
 - an App Store privacy manifest, an in-app bilingual privacy and beta guide,
   backup exclusion for non-restorable ciphertext, and confirmations before
   permanent transaction, schedule, or holding deletion;
-- Swift tests plus a clean unsigned iOS Simulator build in CI.
+- SQLCipher schema-3 normalized journal indexes, compact exact balance rows,
+  a bounded recent-activity cache, and on-demand History/Calendar/export reads
+  so normal unlock does not retain the full journal;
+- source-configured Swift domain and app-model suites plus an unsigned iOS
+  Simulator app/widget build gate in CI.
 
-The 0.5.1 corrective candidate still requires green CI and physical
-upgrade/restore, visual, localization, accessibility, and widget drills before
-TestFlight distribution or a public release. Keep a separate encrypted backup;
-CSV snapshots remain readable plaintext and should be protected.
+The unified 0.6.0 candidate still requires exact-commit release validation on
+macOS, physical upgrade/restore and 10,000-entry performance
+drills, bilingual visual/accessibility/widget checks, the founder/co-tester
+seven-day run, closed beta, and App Store gates. Source implementation is not
+evidence that those gates passed. Keep a separate encrypted backup; CSV and XLSX
+snapshots remain readable plaintext and should be protected. The complete
+requirement/evidence split is in
+[Golden PRD traceability](docs/GOLDEN_TRACEABILITY.md).
 
 ## Install the beta
 
@@ -103,12 +131,14 @@ open MoneyUp.xcodeproj
 ```
 
 In Xcode, choose a signing team for both `MoneyUp` and `MoneyUpWidget`, select
-your iPhone, and press Run. If the bundle identifiers are unavailable, replace
-both identifiers in `project.yml`, regenerate the project, and try again.
+your iPhone, enable the reviewed App Group for both targets, and press Run. If
+the bundle identifiers are unavailable, replace both identifiers and the App
+Group in the project/entitlement configuration, regenerate the project, and
+try again.
 
 See [Beta installation and use](docs/BETA_INSTALL.md) for the complete setup,
 first-run checklist, widget steps, and data-retention caveats.
-The release gates and two-person TestFlight protocol are in the
+The release gates and founder/co-tester TestFlight protocol are in the
 [launch plan](docs/LAUNCH_PLAN.md) and [first-test runbook](docs/FIRST_TEST.md).
 Unsigned release archives and Apple Distribution-signed IPAs use the protected, manual
 [TestFlight workflow](.github/workflows/testflight.yml), which requires Xcode
@@ -176,6 +206,7 @@ behavior, and vulnerability reporting.
 - [Visual system](docs/VISUAL_SYSTEM.md)
 - [Data model and invariants](docs/DATA_MODEL.md)
 - [Delivery roadmap](docs/ROADMAP.md)
+- [Golden PRD traceability](docs/GOLDEN_TRACEABILITY.md)
 
 ## License
 

@@ -180,6 +180,18 @@ private struct MainTabView: View {
                 requestSequence: logRequestSequence,
                 onRequestHandled: { mode in
                     model.consumeQuickLogRequest(mode)
+                },
+                onNavigate: { destination in
+                    switch destination {
+                    case .today:
+                        selectedSection = .today
+                    case .history:
+                        selectedSection = .history
+                    case .plan:
+                        selectedSection = .plan
+                    case .assets:
+                        selectedSection = .assets
+                    }
                 }
             )
                 .tabItem { Label("tab.log", systemImage: "plus.circle.fill") }

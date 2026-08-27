@@ -1,12 +1,6 @@
 import MoneyUpCore
 import SwiftUI
 
-enum SupportedCurrencies {
-    static let codes = [
-        "SGD", "CNY", "USD", "EUR", "GBP", "JPY", "HKD", "AUD", "CAD"
-    ]
-}
-
 extension FinancialAccountType {
     var isLiabilityAccount: Bool {
         self == .creditCard || self == .loan

@@ -1,10 +1,67 @@
 import Foundation
+import MoneyUpCore
+
+struct JournalPostingIndexWrite: Sendable {
+    let postingID: String
+    let accountID: String
+    let currency: String
+    let amount: String
+}
+
+struct JournalIndexWrite: Sendable {
+    let recordID: String
+    let occurredAt: TimeInterval
+    let originDayKey: Int
+    let sourceFingerprint: String?
+    let postings: [JournalPostingIndexWrite]
+
+    init(entry: JournalEntry, recordID: String) {
+        self.recordID = recordID
+        occurredAt = entry.occurredAt.timeIntervalSince1970
+        originDayKey = entry.originContext.dayKey
+        sourceFingerprint = entry.sourceFingerprint
+        postings = entry.postings.map {
+            JournalPostingIndexWrite(
+                postingID: $0.id.uuidString,
+                accountID: $0.accountID.uuidString,
+                currency: $0.money.currency.value,
+                amount: NSDecimalNumber(decimal: $0.money.amount).stringValue
+            )
+        }
+    }
+}
+
+struct ReceiptAttachmentIndexWrite: Sendable {
+    let recordID: String
+    let entryID: String
+    let mediaType: String
+    let byteCount: Int
+    let createdAt: TimeInterval
+
+    init(attachment: ReceiptAttachment, recordID: String) {
+        self.recordID = recordID
+        entryID = attachment.entryID.uuidString
+        mediaType = attachment.mediaType.rawValue
+        byteCount = attachment.data.count
+        createdAt = attachment.createdAt.timeIntervalSince1970
+    }
+}
 
 /// A type-erased, already-validated record used for atomic persistence batches.
 public struct RecordWrite: Sendable {
     let collection: RecordCollection
     let id: String
     let payload: Data
+    /// Optional chronological key used by bounded, cursor-based collection
+    /// queries. It is deliberately derived from the validated domain value so
+    /// callers cannot let the index disagree with the encrypted payload.
+    let indexedAt: TimeInterval?
+    /// Normalized, exact ledger projection maintained in the same SQLCipher
+    /// transaction as its source JSON record.
+    let journalIndex: JournalIndexWrite?
+    /// Blob-free receipt projection maintained atomically with the encrypted
+    /// payload. Startup and list/export paths read only this compact index.
+    let receiptAttachmentIndex: ReceiptAttachmentIndexWrite?
 
     public init<Value: Encodable & Sendable>(
         _ value: Value,
@@ -16,12 +73,65 @@ public struct RecordWrite: Sendable {
         self.collection = collection
         self.id = id
         payload = try encoder.encode(value)
+        let decodedJournalEntry: JournalEntry?
+        if collection == .journalEntries {
+            decodedJournalEntry = try? JSONDecoder().decode(
+                JournalEntry.self,
+                from: payload
+            )
+        } else {
+            decodedJournalEntry = nil
+        }
+        let journalEntry = decodedJournalEntry.flatMap { entry in
+            entry.id.uuidString.caseInsensitiveCompare(id) == .orderedSame
+                ? entry : nil
+        }
+        indexedAt = journalEntry?.occurredAt.timeIntervalSince1970
+        journalIndex = journalEntry.map { JournalIndexWrite(entry: $0, recordID: id) }
+        let decodedReceiptAttachment: ReceiptAttachment?
+        if collection == .receiptAttachments {
+            decodedReceiptAttachment = try? JSONDecoder().decode(
+                ReceiptAttachment.self,
+                from: payload
+            )
+        } else {
+            decodedReceiptAttachment = nil
+        }
+        receiptAttachmentIndex = decodedReceiptAttachment.flatMap { attachment in
+            attachment.id.uuidString.caseInsensitiveCompare(id) == .orderedSame
+                ? ReceiptAttachmentIndexWrite(attachment: attachment, recordID: id)
+                : nil
+        }
     }
 
-    init(collection: RecordCollection, id: String, payload: Data) {
+    init(
+        collection: RecordCollection,
+        id: String,
+        payload: Data,
+        indexedAt: TimeInterval? = nil
+    ) {
         self.collection = collection
         self.id = id
         self.payload = payload
+        if collection == .journalEntries,
+           let entry = try? JSONDecoder().decode(JournalEntry.self, from: payload),
+           entry.id.uuidString.caseInsensitiveCompare(id) == .orderedSame {
+            self.indexedAt = entry.occurredAt.timeIntervalSince1970
+            journalIndex = JournalIndexWrite(entry: entry, recordID: id)
+        } else {
+            self.indexedAt = collection == .journalEntries ? nil : indexedAt
+            journalIndex = nil
+        }
+        if collection == .receiptAttachments,
+           let attachment = try? JSONDecoder().decode(ReceiptAttachment.self, from: payload),
+           attachment.id.uuidString.caseInsensitiveCompare(id) == .orderedSame {
+            receiptAttachmentIndex = ReceiptAttachmentIndexWrite(
+                attachment: attachment,
+                recordID: id
+            )
+        } else {
+            receiptAttachmentIndex = nil
+        }
     }
 }
 
@@ -33,5 +143,17 @@ public struct RecordDeletion: Sendable {
     public init(id: String, from collection: RecordCollection) {
         self.collection = collection
         self.id = id
+    }
+}
+
+/// Requests an in-transaction receipt ownership rewrite without materializing
+/// every image blob in the caller.
+public struct ReceiptAttachmentRelink: Sendable {
+    let sourceEntryID: UUID
+    let destinationEntryID: UUID
+
+    public init(sourceEntryID: UUID, destinationEntryID: UUID) {
+        self.sourceEntryID = sourceEntryID
+        self.destinationEntryID = destinationEntryID
     }
 }

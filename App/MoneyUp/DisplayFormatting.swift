@@ -71,13 +71,19 @@ func editableAmount(_ value: Decimal, locale: Locale = .current) -> String {
         ?? NSDecimalNumber(decimal: value).stringValue
 }
 
-func displayMoney(for entry: JournalEntry, accounts: [LedgerAccount]) -> Money? {
-    let accountKinds = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0.kind) })
+func displayMoney(
+    for entry: JournalEntry,
+    accountsByID: [UUID: LedgerAccount]
+) -> Money? {
     switch entry.kind {
     case .expense:
-        return entry.postings.first { accountKinds[$0.accountID] == .expense }?.money
+        return entry.postings.first {
+            accountsByID[$0.accountID]?.kind == .expense
+        }?.money
     case .income:
-        return entry.postings.first { accountKinds[$0.accountID] == .income }?.money.negated
+        return entry.postings.first {
+            accountsByID[$0.accountID]?.kind == .income
+        }?.money.negated
     case .transfer, .adjustment, .investment:
         return nil
     }
