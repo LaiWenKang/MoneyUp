@@ -161,8 +161,9 @@ Open the repository's **Actions** tab and choose **TestFlight**.
    `MoneyUp-encrypted-xcarchive-...` artifact, and save it in a private iCloud
    Drive folder. GitHub deletes public-repository workflow artifacts after at
    most 90 days, so do this immediately. Keep its password in the Passwords
-   app. The saved ciphertext is the recovery copy of the exact cloud-signed
-   release archive and dSYMs; it does not need to be opened on the iPhone.
+   app. The saved ciphertext is the recovery copy of the exact
+   entitlement-seeded release archive and dSYMs; it does not need to be opened
+   on the iPhone.
 
 The workflow verifies source version 0.6.0 build 8, then creates a unique upload
 build number for every attempt. It verifies Xcode 26 and the iOS 26 SDK, checks
@@ -175,14 +176,16 @@ before the runner is destroyed.
 Because this repository is public, treat the GitHub artifact as potentially
 public ciphertext: the strong, separately stored archive password is required.
 
-The hosted runner uses authenticated Xcode cloud signing while creating the
-release archive so that the app and widget entitlements are preserved. The
-authenticated `exportArchive` step then applies App Store Connect distribution
-profiles to the exported IPA. The workflow checks the reviewed App Group in
-both archived executables and again in both distribution-signed bundles before
-validation or upload. If MoneyUp adds any other entitlement or capability,
-review this signing design before releasing it; the release validator
-intentionally blocks unreviewed changes.
+The hosted runner has no registered development device, so it first creates an
+unsigned release archive. It applies ad-hoc signatures containing only the
+reviewed App Group to preserve that capability through export; these are not
+distribution signatures and cannot be shipped. Authenticated `exportArchive`
+replaces them with Apple Distribution signing and App Store Connect profiles.
+The workflow checks the App Group in the archive and then checks the team,
+App IDs, App Group, profile type, profile expiry, and signed entitlements again
+in both exported bundles before validation or upload. If MoneyUp adds another
+entitlement or capability, review this signing design before releasing it; the
+release validator intentionally blocks unreviewed changes.
 
 If an upload step loses its connection after transfer begins, check App Store
 Connect **Build Uploads** before running it again. Never try to reuse an old
