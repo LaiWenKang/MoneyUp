@@ -24,6 +24,22 @@ public struct BudgetEntryAttribution: Codable, Equatable, Identifiable, Sendable
     public let originUTCOffsetSeconds: Int
     public let postings: [Posting]
 
+    private init(
+        id: UUID,
+        occurredAt: Date,
+        originDayKey: String,
+        originTimeZoneIdentifier: String,
+        originUTCOffsetSeconds: Int,
+        postings: [Posting]
+    ) {
+        self.id = id
+        self.occurredAt = occurredAt
+        self.originDayKey = originDayKey
+        self.originTimeZoneIdentifier = originTimeZoneIdentifier
+        self.originUTCOffsetSeconds = originUTCOffsetSeconds
+        self.postings = postings
+    }
+
     public init(
         id: UUID,
         occurredAt: Date,
@@ -71,12 +87,14 @@ public struct BudgetEntryAttribution: Codable, Equatable, Identifiable, Sendable
         reportingTimeZoneIdentifier: String
     ) throws {
         if entry.occurredAt == prior.occurredAt {
-            self.id = entry.id
-            self.occurredAt = entry.occurredAt
-            self.originDayKey = prior.originDayKey
-            self.originTimeZoneIdentifier = prior.originTimeZoneIdentifier
-            self.originUTCOffsetSeconds = prior.originUTCOffsetSeconds
-            self.postings = entry.postings
+            self.init(
+                id: entry.id,
+                occurredAt: entry.occurredAt,
+                originDayKey: prior.originDayKey,
+                originTimeZoneIdentifier: prior.originTimeZoneIdentifier,
+                originUTCOffsetSeconds: prior.originUTCOffsetSeconds,
+                postings: entry.postings
+            )
         } else {
             try self.init(
                 entry: entry,

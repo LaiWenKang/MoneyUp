@@ -185,8 +185,13 @@ public enum ReceiptTextParser {
             calendar: calendar,
             prefersDayFirst: prefersDayFirst
         )
-        let categoryHint = categoryHint(in: cleaned, merchant: merchants.first?.value)
-        let categoryID = categoryHint.flatMap { categoryID(for: $0, in: accounts) }
+        let inferredCategory = Self.categoryHint(
+            in: cleaned,
+            merchant: merchants.first?.value
+        )
+        let categoryID = inferredCategory.flatMap {
+            Self.categoryID(for: $0, in: accounts)
+        }
 
         let draft = TransactionDraft(
             kind: .expense,
@@ -202,7 +207,7 @@ public enum ReceiptTextParser {
             amountCandidates: credibleAmountValues(amounts),
             merchantCandidates: unique(merchants.map(\.value)),
             dateCandidates: unique(dates.map(\.value)),
-            categoryHint: categoryHint,
+            categoryHint: inferredCategory,
             noteCandidate: noteCandidate(in: cleaned)
         )
     }
@@ -219,13 +224,12 @@ public enum ReceiptTextParser {
         for (lineIndex, line) in lines.enumerated() {
             let normalized = normalizedLine(line)
             let labelScore = payableScore(in: normalized)
-            let previousLabelScore: Int = if lineIndex > 0 {
+            var previousLabelScore = 0
+            if lineIndex > 0 {
                 let previous = normalizedLine(lines[lineIndex - 1])
-                nonPayableScore(in: previous) == 0
-                    ? payableScore(in: previous)
-                    : 0
-            } else {
-                0
+                if nonPayableScore(in: previous) == 0 {
+                    previousLabelScore = payableScore(in: previous)
+                }
             }
             let exclusionScore = nonPayableScore(in: normalized)
             let isInclusiveTotal = isInclusivePayableLine(normalized)
