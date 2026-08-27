@@ -643,7 +643,7 @@ def validate_testflight_workflow() -> None:
         "destination -string upload",
         "uploadSymbols -bool true",
         "Scripts/validate_built_bundle.py",
-        "Confirm the archive is unsigned",
+        "Verify archive signatures and App Group entitlements",
         "codesign --verify",
         "embedded.mobileprovision",
         "get-task-allow",
@@ -664,28 +664,29 @@ def validate_testflight_workflow() -> None:
             fail(f"TestFlight workflow is missing {declaration}")
 
     archive_step = re.search(
-        r"(?ms)^      - name: Create an unsigned release archive\n"
+        r"(?ms)^      - name: Create a cloud-signed release archive\n"
         r"(?P<body>.*?)(?=^      - name: |\Z)",
         workflow,
     )
     if archive_step is None:
-        fail("TestFlight workflow is missing the unsigned archive step")
+        fail("TestFlight workflow is missing the cloud-signed archive step")
     archive_body = archive_step.group("body")
     for declaration in [
-        "CODE_SIGNING_ALLOWED=NO",
-        "CODE_SIGNING_REQUIRED=NO",
+        "-allowProvisioningUpdates",
+        "-authenticationKeyPath",
+        "-authenticationKeyID",
+        "-authenticationKeyIssuerID",
+        "CODE_SIGN_STYLE=Automatic",
         "clean archive",
     ]:
         if declaration not in archive_body:
-            fail(f"unsigned archive step is missing {declaration}")
+            fail(f"cloud-signed archive step is missing {declaration}")
     for declaration in [
-        "-allowProvisioningUpdates",
-        "-authenticationKey",
-        "CODE_SIGN_STYLE=",
-        "CODE_SIGN_IDENTITY=",
+        "CODE_SIGNING_ALLOWED=NO",
+        "CODE_SIGNING_REQUIRED=NO",
     ]:
         if declaration in archive_body:
-            fail(f"unsigned archive step must not contain {declaration}")
+            fail(f"cloud-signed archive step must not contain {declaration}")
 
     export_step = re.search(
         r"(?ms)^      - name: Export an App Store Connect IPA\n"
@@ -707,12 +708,12 @@ def validate_testflight_workflow() -> None:
             fail(f"App Store Connect export step is missing {declaration}")
 
     key_step_position = workflow.find("- name: Materialize the App Store Connect key")
-    unsigned_check_position = workflow.find("- name: Confirm the archive is unsigned")
+    archive_step_position = workflow.find("- name: Create a cloud-signed release archive")
     export_step_position = workflow.find("- name: Export an App Store Connect IPA")
-    if not unsigned_check_position < key_step_position < export_step_position:
+    if not key_step_position < archive_step_position < export_step_position:
         fail(
-            "the App Store Connect key must be materialized after the unsigned "
-            "archive checks and immediately before export"
+            "the App Store Connect key must be materialized before the "
+            "cloud-signed archive and export steps"
         )
 
     if not re.search(r"actions/checkout@[0-9a-f]{40}", workflow):
