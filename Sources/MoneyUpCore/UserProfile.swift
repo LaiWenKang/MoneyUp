@@ -76,8 +76,12 @@ public struct UserProfile: Codable, Equatable, Sendable {
                 TimeInterval.self,
                 forKey: .autoLockDelay
             )
+            // Older builds persisted additional whole-minute choices. Keep
+            // those books readable, while rejecting fractional-minute or
+            // negative values that no released settings UI could create.
             guard decodedDelay.isFinite,
-                  Self.allowedAutoLockDelays.contains(decodedDelay) else {
+                  decodedDelay >= 0,
+                  decodedDelay.truncatingRemainder(dividingBy: 60) == 0 else {
                 throw DecodingError.dataCorruptedError(
                     forKey: .autoLockDelay,
                     in: container,

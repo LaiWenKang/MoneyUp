@@ -466,10 +466,19 @@ public struct InvestmentHolding: Codable, Equatable, Identifiable, Sendable {
         var correctedActivityIDs = Set<UUID>()
         var lastCorrectionDate: Date?
         for correction in sortedCorrections {
+            let historyBeforeCorrection = sortedHistory.filter {
+                $0.activitySequence < correction.activitySequence
+            }
+            let lotsBeforeCorrection = sortedLots.filter {
+                $0.activitySequence < correction.activitySequence
+            }
+            let disposalsBeforeCorrection = sortedDisposals.filter {
+                $0.activitySequence < correction.activitySequence
+            }
             guard let expectedTarget = Self.latestSourceTarget(
-                priceHistory: sortedHistory,
-                lots: sortedLots,
-                disposals: sortedDisposals,
+                priceHistory: historyBeforeCorrection,
+                lots: lotsBeforeCorrection,
+                disposals: disposalsBeforeCorrection,
                 correctedActivityIDs: correctedActivityIDs,
                 replacementPricePointIDs: replacementPricePointIDs
             ),
@@ -485,9 +494,9 @@ public struct InvestmentHolding: Codable, Equatable, Identifiable, Sendable {
 
             correctedActivityIDs.insert(correction.targetActivityID)
             let previousPoint = Self.latestActiveSourcePricePoint(
-                priceHistory: sortedHistory,
-                lots: sortedLots,
-                disposals: sortedDisposals,
+                priceHistory: historyBeforeCorrection,
+                lots: lotsBeforeCorrection,
+                disposals: disposalsBeforeCorrection,
                 correctedActivityIDs: correctedActivityIDs,
                 replacementPricePointIDs: replacementPricePointIDs
             )
