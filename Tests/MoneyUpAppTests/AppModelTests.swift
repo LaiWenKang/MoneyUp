@@ -5,6 +5,13 @@ import MoneyUpPersistence
 import XCTest
 
 final class AppModelTests: XCTestCase {
+    private func budgetWidgetPercent(
+        _ snapshot: BudgetWidgetSnapshot
+    ) -> Int? {
+        guard case let .available(percentUsed, _) = snapshot else { return nil }
+        return percentUsed
+    }
+
     func testSharedCurrencyCatalogIsSearchableAndOnlyReturnsValidatedCodes() throws {
         let english = Locale(identifier: "en_US")
         let custom = try CurrencyCode("USDT")
@@ -3196,14 +3203,14 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertEqual(model.investmentHoldings.first, retainedHolding)
         XCTAssertEqual(model.entries, retainedEntries)
-        XCTAssertEqual(
-            try await fixture.store.count(in: .journalEntries),
-            1
+        let journalEntryCount = try await fixture.store.count(
+            in: .journalEntries
         )
-        XCTAssertEqual(
-            try await fixture.store.count(in: .investmentHoldings),
-            1
+        let investmentHoldingCount = try await fixture.store.count(
+            in: .investmentHoldings
         )
+        XCTAssertEqual(journalEntryCount, 1)
+        XCTAssertEqual(investmentHoldingCount, 1)
         await fixture.store.close()
     }
 
@@ -3734,7 +3741,10 @@ final class AppModelTests: XCTestCase {
             exchangeRates: [rate]
         )
 
-        let estimate = try XCTUnwrap(model.estimatedNetWorthResult(at: date).value)
+        let optionalEstimate = try XCTUnwrap(
+            model.estimatedNetWorthResult(at: date).value
+        )
+        let estimate = try XCTUnwrap(optionalEstimate)
         XCTAssertEqual(estimate.total.amount, maximum * 2 + 1)
     }
 
@@ -3954,7 +3964,10 @@ final class AppModelTests: XCTestCase {
         )
         XCTAssertEqual(storedAccount?.name, fixture.food.name)
         XCTAssertEqual(storedBudget, budget)
-        XCTAssertEqual(try await fixture.store.count(in: .accountLifecycleAudit), 0)
+        let auditCount = try await fixture.store.count(
+            in: .accountLifecycleAudit
+        )
+        XCTAssertEqual(auditCount, 0)
         await fixture.store.close()
     }
 
@@ -4034,13 +4047,17 @@ final class AppModelTests: XCTestCase {
             amount: Decimal(string: "123.45")!
         )
         XCTAssertEqual(
-            model.savingsGoalSummary(try XCTUnwrap(model.savingsGoals.first))?.balance.amount,
+            model.savingsGoalSummary(
+                try XCTUnwrap(model.savingsGoals.first)
+            ).value?.balance.amount,
             Decimal(string: "123.45")
         )
 
         try await model.resetSavingsGoal(id: goal.id)
         XCTAssertEqual(
-            model.savingsGoalSummary(try XCTUnwrap(model.savingsGoals.first))?.balance.amount,
+            model.savingsGoalSummary(
+                try XCTUnwrap(model.savingsGoals.first)
+            ).value?.balance.amount,
             0
         )
         XCTAssertEqual(model.savingsGoals.first?.movements.count, 1)
@@ -4085,7 +4102,7 @@ final class AppModelTests: XCTestCase {
             budgetWidgetSnapshotStore: snapshotStore
         )
 
-        XCTAssertEqual(snapshotStore.read(), .available(percentUsed: 25))
+        XCTAssertEqual(budgetWidgetPercent(snapshotStore.read()), 25)
         let persistedDomain = defaults.persistentDomain(forName: suiteName) ?? [:]
         let persistedKeys = Set(persistedDomain.keys)
         XCTAssertTrue(persistedKeys.isSubset(of: BudgetWidgetSnapshotStore.allowedPersistedKeys))
@@ -4141,13 +4158,13 @@ final class AppModelTests: XCTestCase {
             budgetNodes: [budget],
             budgetWidgetSnapshotStore: snapshotStore
         )
-        XCTAssertEqual(snapshotStore.read(), .available(percentUsed: 25))
+        XCTAssertEqual(budgetWidgetPercent(snapshotStore.read()), 25)
 
         model.lock()
         await model.waitForPendingStoreClose()
 
         XCTAssertEqual(model.state, .locked)
-        XCTAssertEqual(snapshotStore.read(), .available(percentUsed: 25))
+        XCTAssertEqual(budgetWidgetPercent(snapshotStore.read()), 25)
     }
 
     @MainActor
@@ -4175,7 +4192,7 @@ final class AppModelTests: XCTestCase {
             budgetNodes: [budget],
             budgetWidgetSnapshotStore: snapshotStore
         )
-        XCTAssertEqual(snapshotStore.read(), .available(percentUsed: 25))
+        XCTAssertEqual(budgetWidgetPercent(snapshotStore.read()), 25)
 
         await model.eraseAllDataAndRestart()
 
@@ -4193,7 +4210,7 @@ final class AppModelTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let snapshotStore = BudgetWidgetSnapshotStore(defaults: defaults)
         snapshotStore.publish(enabled: true, percentUsed: 73)
-        XCTAssertEqual(snapshotStore.read(), .available(percentUsed: 73))
+        XCTAssertEqual(budgetWidgetPercent(snapshotStore.read()), 73)
 
         let model = AppModel(
             store: fixture.store,
