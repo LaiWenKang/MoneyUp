@@ -14,6 +14,14 @@ public enum DecimalCalculationError: Error, Equatable, Sendable {
 }
 
 public enum CheckedDecimal {
+    /// Foundation's `Decimal` implementation can represent values wider than
+    /// MoneyUp's audited persistence/arithmetic envelope on newer runtimes.
+    /// Keep the product boundary explicit and stable across OS versions.
+    private static let maximumMagnitude = Decimal(
+        string: "9e127",
+        locale: Locale(identifier: "en_US_POSIX")
+    )!
+
     public static func adding(_ lhs: Decimal, _ rhs: Decimal) throws -> Decimal {
         try calculate(lhs, rhs, operation: NSDecimalAdd)
     }
@@ -42,7 +50,19 @@ public enum CheckedDecimal {
     }
 
     public static func dividing(_ lhs: Decimal, _ rhs: Decimal) throws -> Decimal {
-        try calculate(lhs, rhs, operation: NSDecimalDivide)
+        let quotient = try calculate(lhs, rhs, operation: NSDecimalDivide)
+
+        // Some Foundation releases report `.noError` for a rounded repeating
+        // quotient. Strict financial division must still reject it; ratios and
+        // currency-rounded conversions use their explicit permissive paths.
+        var value = quotient
+        var divisor = rhs
+        var roundTrip = Decimal.zero
+        let status = NSDecimalMultiply(&roundTrip, &value, &divisor, .plain)
+        guard status == .noError, roundTrip == lhs else {
+            throw DecimalCalculationError.lossOfPrecision
+        }
+        return quotient
     }
 
     /// A display-only quotient. Repeating decimals are useful for percentages,
@@ -116,6 +136,10 @@ public enum CheckedDecimal {
         guard !lhs.isNaN, !rhs.isNaN else {
             throw DecimalCalculationError.invalidResult
         }
+        guard magnitude(of: lhs) <= maximumMagnitude,
+              magnitude(of: rhs) <= maximumMagnitude else {
+            throw DecimalCalculationError.overflow
+        }
 
         var left = lhs
         var right = rhs
@@ -140,6 +164,13 @@ public enum CheckedDecimal {
         }
 
         guard !result.isNaN else { throw DecimalCalculationError.invalidResult }
+        guard magnitude(of: result) <= maximumMagnitude else {
+            throw DecimalCalculationError.overflow
+        }
         return result
+    }
+
+    private static func magnitude(of value: Decimal) -> Decimal {
+        value < .zero ? -value : value
     }
 }

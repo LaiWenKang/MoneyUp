@@ -360,7 +360,7 @@ private struct BudgetStatusWidgetView: View {
         let status = isOver
             ? String(localized: "widget.budget_over")
             : String(localized: "widget.budget_on_plan")
-        String(
+        return String(
             format: String(localized: "widget.budget_accessibility"),
             percent,
             status

@@ -141,6 +141,7 @@ final class ScheduledAndHoldingTests: XCTestCase {
             occurrenceID: schedule.currentOccurrenceID,
             as: .posted,
             linkedEntryID: oldEntryID,
+            at: Date(timeIntervalSinceReferenceDate: 1_500),
             calendar: calendar
         )
 

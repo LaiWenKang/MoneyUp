@@ -76,15 +76,14 @@ public struct UserProfile: Codable, Equatable, Sendable {
                 TimeInterval.self,
                 forKey: .autoLockDelay
             )
-            guard decodedDelay.isFinite, decodedDelay >= 0 else {
+            guard decodedDelay.isFinite,
+                  Self.allowedAutoLockDelays.contains(decodedDelay) else {
                 throw DecodingError.dataCorruptedError(
                     forKey: .autoLockDelay,
                     in: container,
                     debugDescription: "Invalid auto-lock delay."
                 )
             }
-            // Preserve nonnegative delays written by older versions exactly.
-            // All new writes are restricted to the five supported choices.
             autoLockDelay = decodedDelay
         } else {
             autoLockDelay = 60

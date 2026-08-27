@@ -22,42 +22,39 @@ private func checkedInvestmentProduct(
     _ left: Decimal,
     _ right: Decimal
 ) throws -> Decimal {
-    var lhs = left
-    var rhs = right
-    var result = Decimal.zero
-    let error = NSDecimalMultiply(&result, &lhs, &rhs, .bankers)
-    guard error == .noError, !result.isNaN else {
+    do {
+        return try CheckedDecimal.multiplying(left, right)
+    } catch is CancellationError {
+        throw CancellationError()
+    } catch {
         throw InvestmentHoldingError.arithmeticOverflow
     }
-    return result
 }
 
 private func checkedInvestmentSum(
     _ left: Decimal,
     _ right: Decimal
 ) throws -> Decimal {
-    var lhs = left
-    var rhs = right
-    var result = Decimal.zero
-    let error = NSDecimalAdd(&result, &lhs, &rhs, .bankers)
-    guard error == .noError, !result.isNaN else {
+    do {
+        return try CheckedDecimal.adding(left, right)
+    } catch is CancellationError {
+        throw CancellationError()
+    } catch {
         throw InvestmentHoldingError.arithmeticOverflow
     }
-    return result
 }
 
 private func checkedInvestmentDifference(
     _ left: Decimal,
     _ right: Decimal
 ) throws -> Decimal {
-    var lhs = left
-    var rhs = right
-    var result = Decimal.zero
-    let error = NSDecimalSubtract(&result, &lhs, &rhs, .bankers)
-    guard error == .noError, !result.isNaN else {
+    do {
+        return try CheckedDecimal.subtracting(left, right)
+    } catch is CancellationError {
+        throw CancellationError()
+    } catch {
         throw InvestmentHoldingError.arithmeticOverflow
     }
-    return result
 }
 
 public struct HoldingPricePoint: Codable, Equatable, Identifiable, Sendable {
@@ -607,12 +604,14 @@ public struct InvestmentHolding: Codable, Equatable, Identifiable, Sendable {
         }) else {
             throw InvestmentHoldingError.historyMismatch
         }
-        var projectedQuantity = Decimal.zero
-        for remaining in projectedRemaining {
-            projectedQuantity = try checkedInvestmentSum(projectedQuantity, remaining)
-        }
-        guard projectedQuantity == quantity else {
-            throw InvestmentHoldingError.lotQuantityMismatch
+        if !sortedLots.isEmpty {
+            var projectedQuantity = Decimal.zero
+            for remaining in projectedRemaining {
+                projectedQuantity = try checkedInvestmentSum(projectedQuantity, remaining)
+            }
+            guard projectedQuantity == quantity else {
+                throw InvestmentHoldingError.lotQuantityMismatch
+            }
         }
 
         self.priceHistory = sortedHistory
@@ -701,7 +700,7 @@ public struct InvestmentHolding: Codable, Equatable, Identifiable, Sendable {
         guard let target = latestCorrectableActivity,
               target.id == targetActivityID,
               (target.linkedEntryID == nil) == (correctionEntryID == nil),
-              target.linkedEntryID != correctionEntryID,
+              target.linkedEntryID == nil || target.linkedEntryID != correctionEntryID,
               correctionEntryID.map({ !linkedEntryIDs.contains($0) }) ?? true else {
             throw InvestmentHoldingError.correctionUnavailable
         }

@@ -45,7 +45,7 @@ public enum FinanceCalculator {
         var totals: [UUID: Decimal] = [:]
 
         for entry in entries where FinancialPeriodBoundary.contains(
-            entry.originContext.attributedDate(in: calendar) ?? entry.occurredAt,
+            entry.occurredAt,
             in: interval
         ) {
             for posting in entry.postings
@@ -77,7 +77,7 @@ public enum FinanceCalculator {
         var amount = Decimal.zero
 
         for entry in entries where FinancialPeriodBoundary.contains(
-            entry.originContext.attributedDate(in: calendar) ?? entry.occurredAt,
+            entry.occurredAt,
             in: interval
         ) {
             for posting in entry.postings
