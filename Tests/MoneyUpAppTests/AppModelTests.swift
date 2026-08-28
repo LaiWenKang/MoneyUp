@@ -5886,7 +5886,7 @@ final class AppModelTests: XCTestCase {
 
     @MainActor
     func testColdBasicDeepLinkRoutesBeforeProtectedBookStartup() throws {
-        let model = AppModel()
+        let model = AppModel(dataEraseIntent: .none)
         UserDefaults.standard.set(
             true,
             forKey: AppModel.lockedQuickCapturePreferenceKey
@@ -5903,7 +5903,7 @@ final class AppModelTests: XCTestCase {
 
     @MainActor
     func testColdReceiptDeepLinkDoesNotEnterRedactedCapture() throws {
-        let model = AppModel()
+        let model = AppModel(dataEraseIntent: .none)
         UserDefaults.standard.set(
             true,
             forKey: AppModel.lockedQuickCapturePreferenceKey
@@ -10902,7 +10902,9 @@ private struct AppModelFixture {
         netWorthSnapshots: [NetWorthSnapshot] = [],
         savingsGoals: [SavingsGoal] = [],
         quickLogDraft: QuickLogDraft? = nil,
-        lockedCaptureStore: any LockedCaptureStoring = LockedCaptureStore(),
+        lockedCaptureStore: any LockedCaptureStoring = InMemoryLockedCaptureStore(
+            captures: []
+        ),
         receiptRecognizer: @escaping ReceiptLineRecognizer = { data in
             try await ReceiptScanner.recognizeLines(inImageData: data)
         },

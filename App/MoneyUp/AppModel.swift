@@ -321,7 +321,7 @@ final class AppModel: ObservableObject {
             || standaloneJournalMutationsInProgress > 0
     }
 
-    init() {
+    init(dataEraseIntent: DataEraseIntentAccess = .production) {
         lockedCaptureStore = LockedCaptureStore()
         receiptRecognizer = { data in
             try await ReceiptScanner.recognizeLines(inImageData: data)
@@ -329,7 +329,7 @@ final class AppModel: ObservableObject {
         lifecycleHooks = .none
         databaseURLForErase = nil
         deleteDatabaseKey = { try DatabaseKeyStore.deleteKey() }
-        dataEraseIntent = .production
+        self.dataEraseIntent = dataEraseIntent
         openDatabaseStore = DatabaseStoreOpeners.production
         restartAfterErase = true
         retainsCompleteJournal = false
@@ -5207,7 +5207,7 @@ final class AppModel: ObservableObject {
             switch spendingThisMonthResult() {
             case let .available(spending):
                 return .available(try tree.progress(
-                    directSpending: spending,
+                    directSpending: spendingRepresented(in: tree, from: spending),
                     effectiveLimits: rollover.effectiveLimits
                 ))
             case let .unavailable(issue):
@@ -5233,7 +5233,7 @@ final class AppModel: ObservableObject {
             switch spendingThisMonthResult() {
             case let .available(spending):
                 return .available(try tree.planSummary(
-                    directSpending: spending,
+                    directSpending: spendingRepresented(in: tree, from: spending),
                     effectiveLimits: rollover.effectiveLimits
                 ))
             case let .unavailable(issue):
@@ -5271,8 +5271,9 @@ final class AppModel: ObservableObject {
         do {
             let tree = try reportingBudgetTree(currency: currency)
             let rollover = try currentBudgetRolloverSnapshot(tree: tree)
+            let representedSpending = spendingRepresented(in: tree, from: spending)
             guard try tree.planSummary(
-                directSpending: spending,
+                directSpending: representedSpending,
                 effectiveLimits: rollover.effectiveLimits
             ) != nil else {
                 return .available(.needsBudget)
@@ -5282,7 +5283,7 @@ final class AppModel: ObservableObject {
                 return .available(.needsClassification(count: unclassifiedCount))
             }
             guard let flexibleSummary = try tree.planSummary(
-                directSpending: spending,
+                directSpending: representedSpending,
                 purpose: .flexible,
                 effectiveLimits: rollover.effectiveLimits
             ) else {
@@ -5307,6 +5308,18 @@ final class AppModel: ObservableObject {
             )
             return .unavailable(.budgetCalculationFailed)
         }
+    }
+
+    /// An expense account can legitimately exist without a configured budget
+    /// node (for example after an older-book migration). Such spending remains
+    /// unbudgeted; it must not make every configured budget unavailable through
+    /// `BudgetTreeError.unknownSpendingNode`.
+    private func spendingRepresented(
+        in tree: BudgetTree,
+        from spending: [UUID: Money]
+    ) -> [UUID: Money] {
+        let representedIDs = Set(tree.nodes.map(\.id))
+        return spending.filter { representedIDs.contains($0.key) }
     }
 
     /// Compares equal elapsed portions of this month and the prior month.
