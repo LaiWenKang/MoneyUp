@@ -7492,16 +7492,17 @@ final class AppModel: ObservableObject {
                 "budget_entry_attributions/inconsistent-index"
             )
         }
-        let decodeIssues = recoveredAccounts.issues
-            + recoveredBudgets.issues
-            + recoveredSchedules.issues
-            + recoveredHoldings.issues
-            + recoveredAttachments.issues
-            + recoveredRates.issues
-            + recoveredSnapshots.issues
-            + recoveredGoals.issues
-            + attributionIndex.issues
-            + (recoveredBudgetAttributions?.issues ?? [])
+        var decodeIssues: [RecordDecodeIssue] = []
+        decodeIssues.append(contentsOf: recoveredAccounts.issues)
+        decodeIssues.append(contentsOf: recoveredBudgets.issues)
+        decodeIssues.append(contentsOf: recoveredSchedules.issues)
+        decodeIssues.append(contentsOf: recoveredHoldings.issues)
+        decodeIssues.append(contentsOf: recoveredAttachments.issues)
+        decodeIssues.append(contentsOf: recoveredRates.issues)
+        decodeIssues.append(contentsOf: recoveredSnapshots.issues)
+        decodeIssues.append(contentsOf: recoveredGoals.issues)
+        decodeIssues.append(contentsOf: attributionIndex.issues)
+        decodeIssues.append(contentsOf: recoveredBudgetAttributions?.issues ?? [])
         recoveryIssues.append(contentsOf: decodeIssues.map {
             "\($0.collection.rawValue)/\($0.recordID)"
         })
