@@ -10334,7 +10334,7 @@ extension AppModelTests {
         XCTAssertEqual(migrated?.revisions.last?.effectiveMonth, augustMonth)
         XCTAssertEqual(
             migrated?.revisions.last?.openingCarryByID?[fixture.food.id]?.amount,
-            .zero
+            700
         )
         await fixture.store.close()
     }
