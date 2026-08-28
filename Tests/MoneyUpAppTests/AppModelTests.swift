@@ -10289,6 +10289,9 @@ extension AppModelTests {
             month: 8,
             day: 15
         )))
+        let augustMonth = try XCTUnwrap(
+            calendar.dateInterval(of: .month, for: august)?.start
+        )
         let budget = BudgetNode(
             id: fixture.food.id,
             name: fixture.food.name,
@@ -10325,9 +10328,14 @@ extension AppModelTests {
             id: BudgetConfigurationTimeline.primaryRecordID,
             from: .budgetConfigurationTimelines
         )
-        XCTAssertEqual(migrated?.revisions.count, 1)
+        XCTAssertEqual(migrated?.revisions.count, 2)
         XCTAssertEqual(migrated?.revisions.first?.effectiveMonth, january)
         XCTAssertEqual(migrated?.revisions.first?.nodes, [budget])
+        XCTAssertEqual(migrated?.revisions.last?.effectiveMonth, augustMonth)
+        XCTAssertEqual(
+            migrated?.revisions.last?.openingCarryByID?[fixture.food.id]?.amount,
+            .zero
+        )
         await fixture.store.close()
     }
 
