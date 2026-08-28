@@ -118,25 +118,31 @@ struct AssetsView: View {
                             switch model.estimatedNetWorthResult() {
                             case let .available(estimate):
                                 if let estimate {
+                                    let conversionDate = estimate.conversionAsOf
+                                        .formattedForReporting(
+                                            .dateTime.year().month().day(),
+                                            calendar: model.reportingCalendar
+                                        )
                                     HStack(spacing: 4) {
                                         Text("≈ \(formattedMoney(estimate.total))")
                                             .font(.headline.monospacedDigit())
                                         Text("·")
                                         Text("fx.rates_as_of")
-                                        Text(
-                                            estimate.conversionAsOf,
-                                            format: .dateTime.year().month().day()
-                                        )
+                                        Text(conversionDate)
                                     }
                                     .foregroundStyle(.secondary)
+                                    .accessibilityElement(children: .combine)
                                     .accessibilityLabel("fx.net_worth_estimated")
+                                    .accessibilityValue(
+                                        "\(formattedMoney(estimate.total)), \(conversionDate)"
+                                    )
                                 } else if amounts.filter({ !$0.isZero }).count > 1 {
                                     Text("fx.net_worth_complete_rate_needed")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                 }
-                            case .unavailable:
-                                EmptyView()
+                            case let .unavailable(issue):
+                                DerivedValueUnavailableView(issue: issue)
                             }
                         case let .unavailable(issue):
                             DerivedValueUnavailableView(

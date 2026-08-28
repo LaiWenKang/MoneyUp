@@ -3634,6 +3634,47 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testReceiptDateUsesInjectedClockAndReportingTimeZone() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let reportingZone = try XCTUnwrap(TimeZone(identifier: "Asia/Singapore"))
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = reportingZone
+        let now = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026,
+            month: 1,
+            day: 1,
+            hour: 0,
+            minute: 30
+        )))
+        let expectedReceiptDate = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2025,
+            month: 12,
+            day: 31,
+            hour: 23,
+            minute: 45
+        )))
+        let profile = UserProfile(
+            baseCurrency: fixture.sgd,
+            reportingTimeZoneIdentifier: reportingZone.identifier
+        )
+        let model = fixture.model(
+            profile: profile,
+            receiptRecognizer: { _ in
+                ["Cafe Nero", "Date 31/12/2025 23:45", "TOTAL S$ 12.50"]
+            },
+            currentDate: { now }
+        )
+
+        let result = try await model.receiptAnalysis(
+            from: Data([0x01]),
+            prefersDayFirst: true
+        )
+
+        XCTAssertEqual(result?.draft.occurredAt, expectedReceiptDate)
+    }
+
+    @MainActor
     func testEraseDuringPendingCommitWaitsThenRemovesTheCommittedDatabase() async throws {
         let fixture = try AppModelFixture()
         defer { fixture.removeFiles() }

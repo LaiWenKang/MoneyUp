@@ -41,6 +41,12 @@ light/dark rectangles are rejected. `MoneyUpIllustration` uses onboarding, hero,
 instead of arbitrary screen-specific heights, and inline decoration disappears
 at accessibility text sizes.
 
+Accent and filled-action green are separate semantic roles. Dark appearance
+keeps the bright `#82CEAE` mint for links, icons, and decorative emphasis, while
+prominent control fills use `#34785F` in both appearances. This preserves at
+least 4.5:1 contrast with their white foreground and 3:1 separation from the
+deep-charcoal canvas; release validation checks both ratios.
+
 ## Widget rule
 
 Quick-action widget timelines remain data-free. The 0.6.0 source candidate also

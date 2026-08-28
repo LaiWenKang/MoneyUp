@@ -104,44 +104,44 @@ struct InsightsView: View {
     @State private var selectedFlowMonth: Date?
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                LazyVStack(spacing: 16) {
-                    periodCard
+        ScrollView {
+            LazyVStack(spacing: MoneyUpLayout.standardSpacing) {
+                periodCard
 
-                    switch model.reportResult(for: period) {
-                    case let .available(report):
-                        totalsRow(report)
-                        if report.holdsUnconvertedActivity {
-                            foreignCurrencyCard(report)
-                        }
-                        categoryCard(report)
-                        cashFlowCard(report)
-                        insightCard(report)
-                    case let .unavailable(issue):
-                        DashboardCard {
-                            DerivedValueUnavailableView(
-                                issue: issue,
-                                prominent: true
-                            )
-                        }
+                switch model.reportResult(for: period) {
+                case let .available(report):
+                    totalsRow(report)
+                    if report.holdsUnconvertedActivity {
+                        foreignCurrencyCard(report)
+                    }
+                    categoryCard(report)
+                    cashFlowCard(report)
+                    insightCard(report)
+                case let .unavailable(issue):
+                    MoneyUpCard {
+                        DerivedValueUnavailableView(
+                            issue: issue,
+                            prominent: true
+                        )
                     }
                 }
-                .padding()
             }
-            .background { MoneyUpBackdrop() }
-            .navigationTitle("tab.insights")
-            .onChange(of: period) { _, _ in
-                selectedCategoryKey = nil
-                selectedFlowMonth = nil
-            }
+            .padding()
+            .frame(maxWidth: MoneyUpLayout.readableContentWidth)
+            .frame(maxWidth: .infinity)
+        }
+        .background { MoneyUpBackdrop() }
+        .navigationTitle("tab.insights")
+        .onChange(of: period) { _, _ in
+            selectedCategoryKey = nil
+            selectedFlowMonth = nil
         }
         .environment(\.calendar, model.reportingCalendar)
         .environment(\.timeZone, model.reportingCalendar.timeZone)
     }
 
     private var periodCard: some View {
-        DashboardCard {
+        MoneyUpCard {
             HStack {
                 Text("insights.period")
                     .font(.headline)
@@ -191,7 +191,7 @@ struct InsightsView: View {
     }
 
     private func foreignCurrencyCard(_ report: PeriodReport) -> some View {
-        DashboardCard {
+        MoneyUpCard {
             VStack(alignment: .leading, spacing: 12) {
                 Label("insights.other_currencies", systemImage: "arrow.left.arrow.right")
                     .font(.headline)
@@ -218,7 +218,7 @@ struct InsightsView: View {
     private func categoryCard(_ report: PeriodReport) -> some View {
         let pointsResult = categoryPointsResult(report)
 
-        return DashboardCard {
+        return MoneyUpCard {
             VStack(alignment: .leading, spacing: 14) {
                 Text("insights.category_spending")
                     .font(.headline)
@@ -230,8 +230,14 @@ struct InsightsView: View {
                 } else if case let .available(points) = pointsResult {
                     Chart(points) { point in
                         BarMark(
-                            x: .value("Amount", point.amount),
-                            y: .value("Category ID", point.selectionKey)
+                            x: .value(
+                                String(localized: "chart.dimension.amount"),
+                                point.amount
+                            ),
+                            y: .value(
+                                String(localized: "chart.dimension.category"),
+                                point.selectionKey
+                            )
                         )
                         .foregroundStyle(
                             point.isAggregate
@@ -290,7 +296,7 @@ struct InsightsView: View {
         let points = flowPoints(report)
         let hasActivity = points.contains { $0.money.amount != .zero }
 
-        return DashboardCard {
+        return MoneyUpCard {
             VStack(alignment: .leading, spacing: 14) {
                 Text("insights.monthly_flow")
                     .font(.headline)
@@ -305,14 +311,17 @@ struct InsightsView: View {
                 if hasActivity {
                     Chart {
                         RuleMark(
-                            x: .value("Selected period start", report.interval.start)
+                            x: .value(
+                                String(localized: "chart.dimension.selected_period_start"),
+                                report.interval.start
+                            )
                         )
                         .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
                         .foregroundStyle(Color.primary.opacity(0.45))
 
                         RuleMark(
                             x: .value(
-                                "Selected period end",
+                                String(localized: "chart.dimension.selected_period_end"),
                                 report.interval.end.addingTimeInterval(-1)
                             )
                         )
@@ -321,11 +330,28 @@ struct InsightsView: View {
 
                         ForEach(points) { point in
                             BarMark(
-                                x: .value("Month", point.month, unit: .month),
-                                y: .value("Amount", point.amount)
+                                x: .value(
+                                    String(localized: "chart.dimension.month"),
+                                    point.month,
+                                    unit: .month
+                                ),
+                                y: .value(
+                                    String(localized: "chart.dimension.amount"),
+                                    point.amount
+                                )
                             )
-                            .foregroundStyle(by: .value("Flow", point.series))
-                            .position(by: .value("Flow", point.series))
+                            .foregroundStyle(
+                                by: .value(
+                                    String(localized: "chart.dimension.flow"),
+                                    point.series
+                                )
+                            )
+                            .position(
+                                by: .value(
+                                    String(localized: "chart.dimension.flow"),
+                                    point.series
+                                )
+                            )
                             .cornerRadius(point.kind == .income ? 5 : 0)
                             .opacity(
                                 selectedFlowMonth == nil
@@ -477,7 +503,7 @@ struct InsightsView: View {
     private func insightCard(_ report: PeriodReport) -> some View {
         let reading = insightReading(report)
 
-        return DashboardCard {
+        return MoneyUpCard {
             VStack(alignment: .leading, spacing: 10) {
                 Text("insights.reading")
                     .font(.headline)

@@ -26,6 +26,40 @@ enum MoneyUpIllustrationRole {
     }
 }
 
+/// Shared pace semantics prevent Today and Plan from describing the same
+/// financial state differently. Spending against a zero limit is explicitly
+/// over plan (ratio 2), never the merely-full ratio 1.
+func moneyUpPaceRatio(
+    spent: Decimal,
+    limit: Decimal,
+    operation: String
+) -> DerivedValue<Double> {
+    guard limit >= .zero else {
+        DerivedValueDiagnostics.record(
+            .amountCalculationFailed,
+            operation: operation
+        )
+        return .unavailable(.amountCalculationFailed)
+    }
+    guard limit > .zero else {
+        return .available(spent > .zero ? 2 : 0)
+    }
+    do {
+        return .available(
+            NSDecimalNumber(
+                decimal: try CheckedDecimal.ratio(spent, limit)
+            ).doubleValue
+        )
+    } catch {
+        DerivedValueDiagnostics.record(
+            .amountCalculationFailed,
+            operation: operation,
+            error: error
+        )
+        return .unavailable(.amountCalculationFailed)
+    }
+}
+
 /// Generated 3D artwork is decorative only. Financial quantities remain in
 /// native text and flat, measurable 2D graphics elsewhere in the interface.
 /// Role-based sizing prevents decorative art from consuming the space needed
@@ -62,6 +96,13 @@ struct MoneyUpIllustration: View {
 struct MoneyUpPaceBar: View {
     let ratio: Double
     let elapsed: Double
+    var announcesStatus = true
+
+    private var statusKey: LocalizedStringKey {
+        if ratio > 1 { return "dashboard.budget_pace.over" }
+        if ratio > elapsed + 0.05 { return "dashboard.budget_pace.ahead" }
+        return "dashboard.budget_pace.within"
+    }
 
     var body: some View {
         GeometryReader { proxy in
@@ -94,7 +135,9 @@ struct MoneyUpPaceBar: View {
             }
         }
         .frame(height: 14)
-        .accessibilityHidden(true)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(statusKey)
+        .accessibilityHidden(!announcesStatus)
     }
 }
 

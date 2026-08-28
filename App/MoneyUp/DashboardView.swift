@@ -24,13 +24,16 @@ struct DashboardView: View {
     @State private var isShowingFlexibleTodayBreakdown = false
     let onOpenLog: () -> Void
     let onOpenPlan: () -> Void
+    let onOpenAssets: () -> Void
 
     init(
         onOpenLog: @escaping () -> Void = {},
-        onOpenPlan: @escaping () -> Void = {}
+        onOpenPlan: @escaping () -> Void = {},
+        onOpenAssets: @escaping () -> Void = {}
     ) {
         self.onOpenLog = onOpenLog
         self.onOpenPlan = onOpenPlan
+        self.onOpenAssets = onOpenAssets
     }
 
     private var spendableAccounts: [LedgerAccount] {
@@ -159,26 +162,11 @@ struct DashboardView: View {
     private func budgetRatio(
         _ summary: BudgetPlanSummary
     ) -> DerivedValue<Double> {
-        guard summary.limit.amount > .zero else {
-            return .available(summary.spent.amount > .zero ? 1 : 0)
-        }
-        do {
-            return .available(
-                NSDecimalNumber(
-                    decimal: try CheckedDecimal.ratio(
-                        summary.spent.amount,
-                        summary.limit.amount
-                    )
-                ).doubleValue
-            )
-        } catch {
-            DerivedValueDiagnostics.record(
-                .amountCalculationFailed,
-                operation: "dashboard-budget-ratio",
-                error: error
-            )
-            return .unavailable(.amountCalculationFailed)
-        }
+        moneyUpPaceRatio(
+            spent: summary.spent.amount,
+            limit: summary.limit.amount,
+            operation: "dashboard-budget-ratio"
+        )
     }
 
     var body: some View {
@@ -187,7 +175,7 @@ struct DashboardView: View {
                 LazyVStack(spacing: 16) {
                     safeToSpendHero
 
-                    DashboardCard {
+                    MoneyUpCard {
                         VStack(alignment: .leading, spacing: 14) {
                             Label("dashboard.position_title", systemImage: "scale.3d")
                                 .font(.headline)
@@ -258,7 +246,7 @@ struct DashboardView: View {
                         }
                     }
 
-                    DashboardCard {
+                    MoneyUpCard {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("dashboard.monthly_budget")
                                 .font(.headline)
@@ -266,7 +254,11 @@ struct DashboardView: View {
                             case let .available(.some(summary)):
                                 let ratioResult = budgetRatio(summary)
                                 if case let .available(ratio) = ratioResult {
-                                    MoneyUpPaceBar(ratio: ratio, elapsed: monthElapsed)
+                                    MoneyUpPaceBar(
+                                        ratio: ratio,
+                                        elapsed: monthElapsed,
+                                        announcesStatus: false
+                                    )
                                 } else if case let .unavailable(issue) = ratioResult {
                                     DerivedValueUnavailableView(issue: issue)
                                 }
@@ -330,7 +322,7 @@ struct DashboardView: View {
                     }
 
                     if let upcoming = nextScheduledTransaction {
-                        DashboardCard {
+                        MoneyUpCard {
                             VStack(alignment: .leading, spacing: 12) {
                                 Label(
                                     "dashboard.upcoming",
@@ -364,7 +356,7 @@ struct DashboardView: View {
                         }
                     }
 
-                    DashboardCard {
+                    MoneyUpCard {
                         VStack(spacing: 0) {
                             NavigationLink {
                                 InsightsView()
@@ -377,8 +369,8 @@ struct DashboardView: View {
 
                             Divider()
 
-                            NavigationLink {
-                                AssetsView()
+                            Button {
+                                onOpenAssets()
                             } label: {
                                 Label("dashboard.open_assets", systemImage: "wallet.bifold.fill")
                                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -388,7 +380,7 @@ struct DashboardView: View {
                         }
                     }
 
-                    DashboardCard {
+                    MoneyUpCard {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("dashboard.recent")
                                 .font(.headline)
@@ -428,7 +420,7 @@ struct DashboardView: View {
                         }
                     }
 
-                    DashboardCard {
+                    MoneyUpCard {
                         HStack(alignment: .top, spacing: 12) {
                             Image(systemName: "lock.shield.fill")
                                 .font(.title2)
@@ -728,7 +720,7 @@ private struct FlexibleTodayBreakdownSheet: View {
                         }
                     }
 
-                    DashboardCard {
+                    MoneyUpCard {
                         VStack(spacing: 0) {
                             calculationRow(
                                 "dashboard.safe_to_spend.budget_remaining",
@@ -756,7 +748,7 @@ private struct FlexibleTodayBreakdownSheet: View {
                         }
                     }
 
-                    DashboardCard {
+                    MoneyUpCard {
                         VStack(alignment: .leading, spacing: 10) {
                             Label("dashboard.safe_to_spend.period", systemImage: "calendar")
                                 .font(.headline)
@@ -766,7 +758,7 @@ private struct FlexibleTodayBreakdownSheet: View {
                         }
                     }
 
-                    DashboardCard {
+                    MoneyUpCard {
                         VStack(alignment: .leading, spacing: 12) {
                             Label(
                                 "dashboard.safe_to_spend.exclusions",
@@ -874,31 +866,5 @@ private struct FlexibleTodayBreakdownSheet: View {
         Label(key, systemImage: "circle.dashed")
             .font(.subheadline)
             .foregroundStyle(.secondary)
-    }
-}
-
-struct DashboardCard<Content: View>: View {
-    let content: Content
-    let backgroundColor: Color
-
-    init(
-        backgroundColor: Color = .moneyUpSurfaceElevated,
-        @ViewBuilder content: () -> Content
-    ) {
-        self.backgroundColor = backgroundColor
-        self.content = content()
-    }
-
-    var body: some View {
-        content
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(18)
-            .background(backgroundColor)
-            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .stroke(Color.accentColor.opacity(0.10), lineWidth: 1)
-            }
-            .accessibilityElement(children: .contain)
     }
 }

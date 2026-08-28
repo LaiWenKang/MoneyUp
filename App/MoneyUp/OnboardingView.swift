@@ -26,6 +26,7 @@ struct OnboardingView: View {
     }
 
     @EnvironmentObject private var model: AppModel
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var step: Step = .welcome
     @State private var currencyCode = SupportedCurrencies.regionalDefault
     @State private var accountName = ""
@@ -82,22 +83,20 @@ struct OnboardingView: View {
 
     private var progressHeader: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(
-                    String(
-                        format: String(localized: "onboarding.step_progress"),
-                        step.number,
-                        Step.allCases.count
-                    )
-                )
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.secondary)
-
-                Spacer()
-
-                Text(step.title)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.tint)
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .firstTextBaseline) {
+                    progressText
+                    Spacer()
+                    Text(step.title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.tint)
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    progressText
+                    Text(step.title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.tint)
+                }
             }
 
             ProgressView(value: Double(step.number), total: Double(Step.allCases.count))
@@ -242,13 +241,21 @@ struct OnboardingView: View {
                     VStack(alignment: .leading, spacing: 7) {
                         Text(accountType.openingBalanceLabel)
                             .font(.headline)
-                        TextField(accountType.openingBalanceLabel, text: $startingBalanceText)
+                        HStack(spacing: 10) {
+                            TextField(
+                                accountType.openingBalanceLabel,
+                                text: $startingBalanceText
+                            )
                             .moneyAmountKeyboard(
                                 currency: try? CurrencyCode(currencyCode),
                                 allowsNegative: !accountType.isLiabilityAccount
                             )
                             .focused($focusedField, equals: .openingBalance)
                             .textFieldStyle(.roundedBorder)
+                            Text(currencyCode)
+                                .font(.subheadline.monospaced().weight(.semibold))
+                                .foregroundStyle(.secondary)
+                        }
                         Text(accountType.openingBalanceGuidance)
                             .font(.footnote)
                             .foregroundStyle(.secondary)
@@ -322,36 +329,15 @@ struct OnboardingView: View {
                     .accessibilityAddTraits(.isStaticText)
             }
 
-            HStack(spacing: 12) {
-                if step != .welcome {
-                    Button("action.back") {
-                        moveBack()
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.large)
-                    .disabled(model.isWorking)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 12) {
+                    backButton
+                    primaryButton
                 }
-
-                Button {
-                    advance()
-                } label: {
-                    HStack {
-                        if model.isWorking {
-                            ProgressView()
-                                .tint(.white)
-                        }
-                        Text(primaryActionTitle)
-                            .fontWeight(.semibold)
-                        if !model.isWorking && step != .review {
-                            Image(systemName: "arrow.right")
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
+                VStack(spacing: 10) {
+                    primaryButton
+                    backButton
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .tint(.moneyUpAction)
-                .disabled(model.isWorking)
             }
             .frame(maxWidth: 560)
         }
@@ -371,6 +357,50 @@ struct OnboardingView: View {
         case .currency, .account: "action.continue"
         case .review: "onboarding.start"
         }
+    }
+
+    private var progressText: some View {
+        Text(
+            String(
+                format: String(localized: "onboarding.step_progress"),
+                step.number,
+                Step.allCases.count
+            )
+        )
+        .font(.subheadline.weight(.semibold))
+        .foregroundStyle(.secondary)
+    }
+
+    @ViewBuilder
+    private var backButton: some View {
+        if step != .welcome {
+            Button("action.back") { moveBack() }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+                .frame(maxWidth: dynamicTypeSize.isAccessibilitySize ? .infinity : nil)
+                .disabled(model.isWorking)
+        }
+    }
+
+    private var primaryButton: some View {
+        Button { advance() } label: {
+            HStack {
+                if model.isWorking {
+                    ProgressView()
+                        .tint(.white)
+                }
+                Text(primaryActionTitle)
+                    .fontWeight(.semibold)
+                if !model.isWorking && step != .review {
+                    Image(systemName: "arrow.right")
+                }
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.borderedProminent)
+        .controlSize(.large)
+        .tint(.moneyUpAction)
+        .disabled(model.isWorking)
     }
 
     private func advance() {
@@ -470,13 +500,22 @@ struct OnboardingView: View {
     }
 
     private func reviewRow(_ title: LocalizedStringKey, value: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 16) {
-            Text(title)
-                .foregroundStyle(.secondary)
-            Spacer(minLength: 12)
-            Text(value)
-                .fontWeight(.semibold)
-                .multilineTextAlignment(.trailing)
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .firstTextBaseline, spacing: 16) {
+                Text(title)
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 12)
+                Text(value)
+                    .fontWeight(.semibold)
+                    .multilineTextAlignment(.trailing)
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                Text(value)
+                    .fontWeight(.semibold)
+            }
         }
         .accessibilityElement(children: .combine)
     }

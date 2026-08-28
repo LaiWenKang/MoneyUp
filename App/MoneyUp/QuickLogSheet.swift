@@ -1,7 +1,9 @@
 import Foundation
 import MoneyUpCore
+import OSLog
 import PhotosUI
 import SwiftUI
+import UIKit
 
 enum QuickLogKind: String, CaseIterable, Codable, Identifiable, Sendable {
     case expense
@@ -78,7 +80,60 @@ struct QuickLogSheet: View {
     }
 }
 
+/// Keeps the optional retention copy behind the user-visible recognition
+/// result. The callbacks stay main-actor isolated so a generation check and
+/// suggestion publication are one atomic UI decision before ImageIO work
+/// begins.
+@MainActor
+enum QuickLogReceiptPipeline {
+    static func run<Suggestion>(
+        recognize: () async throws -> Suggestion?,
+        handleSuggestions: (Suggestion) -> Bool,
+        handleNoSuggestions: () -> Bool,
+        handleRecognitionFailure: (Error) -> Bool,
+        prepareRetention: () async throws -> Void
+    ) async throws {
+        try Task.checkCancellation()
+        do {
+            let suggestion = try await recognize()
+            try Task.checkCancellation()
+            if let suggestion {
+                guard handleSuggestions(suggestion) else { return }
+            } else {
+                guard handleNoSuggestions() else { return }
+            }
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            guard handleRecognitionFailure(error) else { return }
+        }
+        try Task.checkCancellation()
+        try await prepareRetention()
+    }
+}
+
+enum QuickLogMotionPolicy {
+    static func animatesSavedFeedback(reduceMotion: Bool) -> Bool {
+        !reduceMotion
+    }
+}
+
+enum QuickLogOccurrencePolicy {
+    static func shouldRefresh(
+        hasTransactionContent: Bool,
+        dateWasEdited: Bool,
+        sourceCaptureID: UUID?
+    ) -> Bool {
+        !hasTransactionContent && !dateWasEdited && sourceCaptureID == nil
+    }
+}
+
 private struct QuickLogEntryView: View {
+    private static let receiptSignposter = OSSignposter(
+        subsystem: "com.laiwenkang.MoneyUp",
+        category: "QuickLogReceipt"
+    )
+
     private enum FocusedField: Hashable {
         case amount
         case destinationAmount
@@ -87,7 +142,20 @@ private struct QuickLogEntryView: View {
         case note
     }
 
+    private struct ReceiptScanBaseline: Equatable {
+        let amountText: String
+        let occurredAt: Date
+        let dateWasEdited: Bool
+        let payee: String
+        let note: String
+        let accountID: UUID?
+        let categoryID: UUID?
+    }
+
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+    @Environment(\.accessibilityVoiceOverEnabled) private var isVoiceOverEnabled
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @EnvironmentObject private var model: AppModel
     @FocusState private var focusedField: FocusedField?
 
@@ -126,6 +194,7 @@ private struct QuickLogEntryView: View {
     @State private var isShowingOptionalDetails = false
     @State private var receiptScanTask: Task<Void, Never>?
     @State private var receiptScanGeneration = 0
+    @State private var receiptScanBaseline: ReceiptScanBaseline?
     @State private var receiptResult: ReceiptParseResult?
     @State private var splitLines: [QuickLogSplitDraftLine] = []
     /// Provenance for a draft promoted from the lock-safe capture inbox. This
@@ -278,21 +347,21 @@ private struct QuickLogEntryView: View {
         let historicalFXConversionResult = historicalFXConversion
         NavigationStack {
             Form {
-                Picker(
-                    "transaction.kind",
-                    selection: trackedBinding($kind, \.kind)
-                ) {
-                    ForEach(QuickLogKind.allCases) { item in
-                        Text(item.title).tag(item)
-                    }
+                if dynamicTypeSize.isAccessibilitySize {
+                    kindPicker(style: .menu)
+                } else {
+                    kindPicker(style: .segmented)
                 }
-                .pickerStyle(.segmented)
 
                 Section {
                     HStack {
                         TextField(
                             "quick_log.amount",
-                            text: trackedBinding($amountText, \.amountText)
+                            text: trackedBinding(
+                                $amountText,
+                                \.amountText,
+                                refreshesOccurrenceDate: true
+                            )
                         )
                         .moneyAmountKeyboard(currency: selectedAccountCurrency)
                         .font(.title2.monospacedDigit())
@@ -302,6 +371,7 @@ private struct QuickLogEntryView: View {
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundStyle(.secondary)
                                 .accessibilityLabel("transaction.currency")
+                                .accessibilityValue(Text(currency.value))
                         }
                     }
                     if let message = monetaryInputError(
@@ -341,7 +411,8 @@ private struct QuickLogEntryView: View {
                                     "transaction.received_amount",
                                     text: trackedBinding(
                                         $destinationAmountText,
-                                        \.destinationAmountText
+                                        \.destinationAmountText,
+                                        refreshesOccurrenceDate: true
                                     )
                                 )
                                 .moneyAmountKeyboard(currency: selectedDestinationCurrency)
@@ -399,6 +470,9 @@ private struct QuickLogEntryView: View {
                             isOn: Binding(
                                 get: { !splitLines.isEmpty },
                                 set: { enabled in
+                                    if enabled {
+                                        refreshUntouchedOccurrenceDate()
+                                    }
                                     if enabled {
                                         let initialCategory = categoryID ?? categories.first?.id
                                         splitLines = [
@@ -458,13 +532,21 @@ private struct QuickLogEntryView: View {
                         if kind != .transfer {
                             TextField(
                                 "transaction.payee",
-                                text: trackedBinding($payee, \.payee)
+                                text: trackedBinding(
+                                    $payee,
+                                    \.payee,
+                                    refreshesOccurrenceDate: true
+                                )
                             )
                             .focused($focusedField, equals: .payee)
                         }
                         TextField(
                             "quick_log.note",
-                            text: trackedBinding($note, \.note),
+                            text: trackedBinding(
+                                $note,
+                                \.note,
+                                refreshesOccurrenceDate: true
+                            ),
                             axis: .vertical
                         )
                             .lineLimit(2...4)
@@ -545,6 +627,7 @@ private struct QuickLogEntryView: View {
                 restoreDraftIfAvailable()
                 selectDefaults()
                 hasRestoredDraft = true
+                refreshUntouchedOccurrenceDate()
                 handleRequestedLaunch()
                 Task { @MainActor in
                     await Task.yield()
@@ -555,14 +638,23 @@ private struct QuickLogEntryView: View {
             }
             .onChange(of: isActive) { _, newValue in
                 if !newValue {
+                    cancelReceiptProcessing()
+                    receiptResult = nil
+                    receiptAttachmentData = nil
+                    retainReceiptAttachment = false
+                    receiptRetentionMessage = nil
+                    smartMessage = nil
+                    isPresentingReceiptPicker = false
                     dismissKeyboard()
                     isHandlingFocusedLaunch = false
                 } else if amountText.isEmpty {
+                    refreshUntouchedOccurrenceDate()
                     focusedField = .amount
                 }
             }
             .onChange(of: kind) { _, newKind in
                 if newKind == .transfer {
+                    cancelReceiptProcessing()
                     receiptResult = nil
                     receiptAttachmentData = nil
                     retainReceiptAttachment = false
@@ -592,11 +684,37 @@ private struct QuickLogEntryView: View {
                 receiptScanGeneration &+= 1
                 let generation = receiptScanGeneration
                 receiptScanTask?.cancel()
-                guard item != nil else {
+                guard let item, isActive else {
                     receiptScanTask = nil
+                    receiptScanBaseline = nil
+                    if !isActive {
+                        photoItem = nil
+                        receiptResult = nil
+                        receiptAttachmentData = nil
+                        retainReceiptAttachment = false
+                        receiptRetentionMessage = nil
+                        smartMessage = nil
+                        isScanning = false
+                    }
                     return
                 }
-                receiptScanTask = Task {
+                refreshUntouchedOccurrenceDate()
+                receiptScanBaseline = ReceiptScanBaseline(
+                    amountText: amountText,
+                    occurredAt: occurredAt,
+                    dateWasEdited: dateWasEdited,
+                    payee: payee,
+                    note: note,
+                    accountID: accountID,
+                    categoryID: categoryID
+                )
+                isScanning = true
+                smartMessage = nil
+                receiptResult = nil
+                receiptAttachmentData = nil
+                retainReceiptAttachment = false
+                receiptRetentionMessage = nil
+                receiptScanTask = Task { @MainActor in
                     await scanReceipt(item, generation: generation)
                 }
             }
@@ -610,10 +728,8 @@ private struct QuickLogEntryView: View {
                 model.updateQuickLogDraft(snapshot)
             }
             .onDisappear {
-                receiptScanGeneration &+= 1
-                receiptScanTask?.cancel()
+                cancelReceiptProcessing()
                 receiptScanTask = nil
-                isScanning = false
                 photoItem = nil
                 receiptResult = nil
                 receiptAttachmentData = nil
@@ -635,13 +751,28 @@ private struct QuickLogEntryView: View {
                     }
                     .fontWeight(.semibold)
                     .disabled(isUndoing)
+                    Button {
+                        updateSavedEntry(nil)
+                    } label: {
+                        Image(systemName: "xmark")
+                            .frame(minWidth: 44, minHeight: 44)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("action.close")
+                    .disabled(isUndoing)
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
                 .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
                 .padding(.horizontal, 12)
                 .padding(.bottom, 4)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .transition(
+                    QuickLogMotionPolicy.animatesSavedFeedback(
+                        reduceMotion: accessibilityReduceMotion
+                    )
+                        ? .move(edge: .bottom).combined(with: .opacity)
+                        : .identity
+                )
             } else {
                 Button {
                     Task { await save() }
@@ -705,6 +836,8 @@ private struct QuickLogEntryView: View {
         } message: {
             Text(errorMessage ?? "")
         }
+        .environment(\.calendar, model.reportingCalendar)
+        .environment(\.timeZone, model.reportingCalendar.timeZone)
     }
 
     private var smartEntrySection: some View {
@@ -712,7 +845,11 @@ private struct QuickLogEntryView: View {
             HStack(alignment: .top, spacing: 8) {
                 TextField(
                     "quick_log.smart_placeholder",
-                    text: trackedBinding($smartText, \.smartText),
+                    text: trackedBinding(
+                        $smartText,
+                        \.smartText,
+                        refreshesOccurrenceDate: true
+                    ),
                     axis: .vertical
                 )
                     .lineLimit(1...3)
@@ -772,6 +909,18 @@ private struct QuickLogEntryView: View {
         }
     }
 
+    private func kindPicker<Style: PickerStyle>(style: Style) -> some View {
+        Picker(
+            "transaction.kind",
+            selection: trackedBinding($kind, \.kind)
+        ) {
+            ForEach(QuickLogKind.allCases) { item in
+                Text(item.title).tag(item)
+            }
+        }
+        .pickerStyle(style)
+    }
+
     @ViewBuilder
     private var splitEditor: some View {
         ForEach(splitLines.indices, id: \.self) { index in
@@ -813,6 +962,7 @@ private struct QuickLogEntryView: View {
                             persistUserDraftChange { $0.splitLines = splitLines }
                         } label: {
                             Image(systemName: "minus.circle.fill")
+                                .frame(minWidth: 44, minHeight: 44)
                         }
                         .accessibilityLabel("quick_log.split_remove")
                     }
@@ -850,6 +1000,7 @@ private struct QuickLogEntryView: View {
         } label: {
             Label("quick_log.split_add", systemImage: "plus.circle")
         }
+        .disabled(splitLines.count >= QuickLogDraft.maximumSplitLineCount)
 
         if let remainder = splitRemainder, let currency = selectedAccountCurrency {
             LabeledContent("quick_log.split_remainder") {
@@ -888,17 +1039,35 @@ private struct QuickLogEntryView: View {
     /// final keystroke even if SwiftUI has not delivered `onChange` yet.
     private func trackedBinding<Value>(
         _ binding: Binding<Value>,
-        _ keyPath: WritableKeyPath<QuickLogDraft, Value>
+        _ keyPath: WritableKeyPath<QuickLogDraft, Value>,
+        refreshesOccurrenceDate: Bool = false
     ) -> Binding<Value> {
         Binding(
             get: { binding.wrappedValue },
             set: { newValue in
+                if refreshesOccurrenceDate {
+                    refreshUntouchedOccurrenceDate(persist: false)
+                }
                 binding.wrappedValue = newValue
                 persistUserDraftChange { snapshot in
                     snapshot[keyPath: keyPath] = newValue
                 }
             }
         )
+    }
+
+    private func refreshUntouchedOccurrenceDate(persist: Bool = true) {
+        guard hasRestoredDraft,
+              !dismissAfterSave,
+              QuickLogOccurrencePolicy.shouldRefresh(
+                  hasTransactionContent: draftSnapshot.hasTransactionContent,
+                  dateWasEdited: dateWasEdited,
+                  sourceCaptureID: sourceCaptureID
+              ) else { return }
+        occurredAt = model.currentDateForUserAction()
+        if persist {
+            model.updateQuickLogDraft(draftSnapshot)
+        }
     }
 
     private func persistUserDraftChange(
@@ -924,7 +1093,8 @@ private struct QuickLogEntryView: View {
         accountID = draft.accountID
         destinationAccountID = draft.destinationAccountID
         categoryID = draft.categoryID
-        occurredAt = draft.hasTransactionContent ? draft.occurredAt : Date()
+        occurredAt = draft.hasTransactionContent
+            ? draft.occurredAt : model.currentDateForUserAction()
         dateWasEdited = draft.dateWasEdited
         payee = draft.payee
         note = draft.note
@@ -964,9 +1134,10 @@ private struct QuickLogEntryView: View {
     }
 
     private func discardDraftAndLaunch(_ launchMode: QuickLogLaunchMode) {
+        cancelReceiptProcessing()
         amountText = ""
         destinationAmountText = ""
-        occurredAt = Date()
+        occurredAt = model.currentDateForUserAction()
         dateWasEdited = false
         payee = ""
         note = ""
@@ -985,6 +1156,7 @@ private struct QuickLogEntryView: View {
     }
 
     private func performLaunch(_ launchMode: QuickLogLaunchMode) {
+        refreshUntouchedOccurrenceDate()
         kind = launchMode.kind
 
         switch launchMode {
@@ -1023,6 +1195,8 @@ private struct QuickLogEntryView: View {
         let draft = NaturalLanguageEntryParser.draft(
             from: smartText,
             accounts: model.accounts,
+            now: model.currentDateForUserAction(),
+            calendar: model.reportingCalendar,
             prefersDayFirst: Self.localePrefersDayFirst
         )
         if apply(draft) {
@@ -1036,19 +1210,35 @@ private struct QuickLogEntryView: View {
         generation: Int
     ) async {
         guard let item else { return }
+        let suggestionsSignpostID = Self.receiptSignposter.makeSignpostID()
+        let suggestionsInterval = Self.receiptSignposter.beginInterval(
+            "Receipt selection to suggestions",
+            id: suggestionsSignpostID
+        )
+        var suggestionsIntervalEnded = false
+        defer {
+            if !suggestionsIntervalEnded {
+                Self.receiptSignposter.endInterval(
+                    "Receipt selection to suggestions",
+                    suggestionsInterval,
+                    "outcome=incomplete"
+                )
+            }
+            if generation == receiptScanGeneration {
+                isScanning = false
+                receiptScanTask = nil
+                receiptScanBaseline = nil
+                photoItem = nil
+            }
+        }
+        guard !Task.isCancelled,
+              generation == receiptScanGeneration else { return }
         isScanning = true
         smartMessage = nil
         receiptResult = nil
         receiptAttachmentData = nil
         retainReceiptAttachment = false
         receiptRetentionMessage = nil
-        defer {
-            if generation == receiptScanGeneration {
-                isScanning = false
-                receiptScanTask = nil
-                photoItem = nil
-            }
-        }
 
         do {
             try Task.checkCancellation()
@@ -1057,33 +1247,94 @@ private struct QuickLogEntryView: View {
             }
             try Task.checkCancellation()
             guard generation == receiptScanGeneration else { return }
-            do {
-                receiptAttachmentData = try await Task.detached(
-                    priority: .userInitiated
-                ) {
-                    try ReceiptImageSanitizer.sanitizedForEncryptedStorage(data)
-                }.value
-                receiptRetentionMessage = nil
-            } catch is CancellationError {
-                throw CancellationError()
-            } catch {
-                receiptAttachmentData = nil
-                receiptRetentionMessage = safeUserMessage(
-                    for: error,
-                    context: .scan
+            try await ReceiptImageSanitizer.waitForPendingPreparation()
+            try Task.checkCancellation()
+            guard generation == receiptScanGeneration else { return }
+            try await QuickLogReceiptPipeline.run {
+                try await model.receiptAnalysis(
+                    from: data,
+                    prefersDayFirst: Self.localePrefersDayFirst
                 )
-            }
-            if let result = try await model.receiptAnalysis(
-                from: data,
-                prefersDayFirst: Self.localePrefersDayFirst
-            ) {
-                try Task.checkCancellation()
-                guard generation == receiptScanGeneration else { return }
-                _ = applyReceipt(result)
+            } handleSuggestions: { result in
+                guard generation == receiptScanGeneration else { return false }
+                let didApplySuggestions = applyReceipt(result)
+
+                // Saving and editing can resume as soon as the OCR result is
+                // handled. The optional attachment remains
+                // unavailable until its private copy is ready.
+                isScanning = false
+                if didApplySuggestions {
+                    Self.receiptSignposter.endInterval(
+                        "Receipt selection to suggestions",
+                        suggestionsInterval,
+                        "outcome=ready"
+                    )
+                } else {
+                    Self.receiptSignposter.endInterval(
+                        "Receipt selection to suggestions",
+                        suggestionsInterval,
+                        "outcome=empty"
+                    )
+                }
+                suggestionsIntervalEnded = true
+                return true
+            } handleNoSuggestions: {
+                guard generation == receiptScanGeneration,
+                      model.state == .ready else { return false }
+                isScanning = false
+                Self.receiptSignposter.endInterval(
+                    "Receipt selection to suggestions",
+                    suggestionsInterval,
+                    "outcome=empty"
+                )
+                suggestionsIntervalEnded = true
+                return true
+            } handleRecognitionFailure: { error in
+                guard generation == receiptScanGeneration else { return false }
+                smartMessage = safeUserMessage(for: error, context: .scan)
+                isScanning = false
+                Self.receiptSignposter.endInterval(
+                    "Receipt selection to suggestions",
+                    suggestionsInterval,
+                    "outcome=failed"
+                )
+                suggestionsIntervalEnded = true
+                return true
+            } prepareRetention: {
+                let sanitizationSignpostID = Self.receiptSignposter.makeSignpostID()
+                let sanitizationInterval = Self.receiptSignposter.beginInterval(
+                    "Receipt sanitization",
+                    id: sanitizationSignpostID
+                )
+                defer {
+                    Self.receiptSignposter.endInterval(
+                        "Receipt sanitization",
+                        sanitizationInterval
+                    )
+                }
+
+                do {
+                    let sanitized = try await ReceiptImageSanitizer
+                        .prepareForEncryptedStorage(data)
+                    try Task.checkCancellation()
+                    guard generation == receiptScanGeneration else { return }
+                    receiptAttachmentData = sanitized
+                    receiptRetentionMessage = nil
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
+                    guard generation == receiptScanGeneration else { return }
+                    receiptAttachmentData = nil
+                    receiptRetentionMessage = safeUserMessage(
+                        for: error,
+                        context: .scan
+                    )
+                }
             }
         } catch is CancellationError {
             return
         } catch {
+            guard generation == receiptScanGeneration else { return }
             smartMessage = safeUserMessage(for: error, context: .scan)
         }
     }
@@ -1093,12 +1344,42 @@ private struct QuickLogEntryView: View {
     /// ranked result in transient view state so alternatives remain reviewable.
     @discardableResult
     private func applyReceipt(_ result: ReceiptParseResult) -> Bool {
-        guard apply(result.draft) else {
+        guard let baseline = receiptScanBaseline else {
             receiptResult = nil
             return false
         }
+        guard !result.draft.isEmpty else {
+            receiptResult = nil
+            smartMessage = String(localized: "quick_log.smart_nothing_found")
+            return false
+        }
 
-        if note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+        var reviewDraft = result.draft
+        // Suggestions may arrive after the user has corrected a field. Apply
+        // only values whose field still matches the scan-start snapshot, and
+        // never reinterpret the explicitly selected transaction kind.
+        if amountText != baseline.amountText { reviewDraft.amount = nil }
+        if occurredAt != baseline.occurredAt
+            || dateWasEdited != baseline.dateWasEdited {
+            reviewDraft.occurredAt = nil
+        }
+        if payee != baseline.payee { reviewDraft.payee = nil }
+        if accountID != baseline.accountID { reviewDraft.accountID = nil }
+        if categoryID != baseline.categoryID {
+            reviewDraft.categoryID = nil
+        } else if let parsedCategoryID = reviewDraft.categoryID,
+                  let category = model.accountsByID[parsedCategoryID],
+                  category.kind != (kind == .income ? .income : .expense) {
+            reviewDraft.categoryID = nil
+        }
+        _ = apply(
+            reviewDraft,
+            preservesKind: true,
+            suggestsLearnedCategory: false
+        )
+
+        if note == baseline.note,
+           note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
            let noteCandidate = result.noteCandidate {
             note = noteCandidate
         }
@@ -1161,16 +1442,22 @@ private struct QuickLogEntryView: View {
     /// Returns false when nothing was recognized, so the caller can keep the
     /// user's input instead of clearing it.
     @discardableResult
-    private func apply(_ draft: TransactionDraft) -> Bool {
+    private func apply(
+        _ draft: TransactionDraft,
+        preservesKind: Bool = false,
+        suggestsLearnedCategory: Bool = true
+    ) -> Bool {
         guard !draft.isEmpty else {
             smartMessage = String(localized: "quick_log.smart_nothing_found")
             return false
         }
 
-        switch draft.kind {
-        case .expense: kind = .expense
-        case .income: kind = .income
-        case .refund: kind = .refund
+        if !preservesKind {
+            switch draft.kind {
+            case .expense: kind = .expense
+            case .income: kind = .income
+            case .refund: kind = .refund
+            }
         }
         if let amount = draft.amount {
             amountText = editableAmount(amount)
@@ -1184,7 +1471,8 @@ private struct QuickLogEntryView: View {
 
         if let parsedCategory = draft.categoryID {
             categoryID = parsedCategory
-        } else if let parsedPayee = draft.payee,
+        } else if suggestsLearnedCategory,
+                  let parsedPayee = draft.payee,
                   let learned = CategorySuggester.suggestedCategory(
                       forPayee: parsedPayee,
                       kind: draft.kind == .income ? .income : .expense,
@@ -1440,6 +1728,7 @@ private struct QuickLogEntryView: View {
     /// category, transaction kind, and transfer destination remain selected so
     /// the next routine entry takes only an amount and a tap on Save.
     private func completeSuccessfulSave(entryID: UUID?) {
+        cancelReceiptProcessing()
         if let nextCapture = model.quickLogDraft,
            nextCapture.sourceCaptureID != nil,
            !dismissAfterSave {
@@ -1448,7 +1737,7 @@ private struct QuickLogEntryView: View {
         } else {
             amountText = ""
             destinationAmountText = ""
-            occurredAt = Date()
+            occurredAt = model.currentDateForUserAction()
             dateWasEdited = false
             payee = ""
             note = ""
@@ -1469,16 +1758,21 @@ private struct QuickLogEntryView: View {
         focusedField = isActive ? .amount : nil
 
         guard !dismissAfterSave, let entryID else { return }
-        withAnimation {
-            lastSavedEntryID = entryID
+        updateSavedEntry(entryID)
+        if isVoiceOverEnabled {
+            UIAccessibility.post(
+                notification: .announcement,
+                argument: "\(String(localized: "quick_log.saved")). \(String(localized: "action.undo"))"
+            )
         }
 
         Task {
             try? await Task.sleep(for: .seconds(6))
             guard lastSavedEntryID == entryID else { return }
-            withAnimation {
-                lastSavedEntryID = nil
-            }
+            // VoiceOver users dismiss the persistent correction affordance
+            // explicitly, so it cannot vanish before they navigate to Undo.
+            guard !isVoiceOverEnabled else { return }
+            updateSavedEntry(nil)
         }
     }
 
@@ -1490,12 +1784,34 @@ private struct QuickLogEntryView: View {
 
         do {
             try await model.deleteEntry(id: entryID)
-            withAnimation {
-                lastSavedEntryID = nil
-            }
+            updateSavedEntry(nil)
         } catch {
             errorMessage = safeUserMessage(for: error, context: .save)
         }
+    }
+
+    private func updateSavedEntry(_ entryID: UUID?) {
+        if QuickLogMotionPolicy.animatesSavedFeedback(
+            reduceMotion: accessibilityReduceMotion
+        ) {
+            withAnimation(.snappy(duration: 0.22)) {
+                lastSavedEntryID = entryID
+            }
+        } else {
+            lastSavedEntryID = entryID
+        }
+    }
+
+    /// Invalidates every late receipt callback before clearing UI state. The
+    /// sanitizer's shared serial actor owns the no-overlap boundary even after
+    /// this view releases its task handle.
+    private func cancelReceiptProcessing() {
+        receiptScanGeneration &+= 1
+        receiptScanTask?.cancel()
+        receiptScanTask = nil
+        receiptScanBaseline = nil
+        isScanning = false
+        photoItem = nil
     }
 
     /// Decimal pads have no return key. Keeping dismissal entirely focus-driven

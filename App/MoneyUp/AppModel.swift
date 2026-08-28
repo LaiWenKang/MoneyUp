@@ -513,6 +513,13 @@ final class AppModel: ObservableObject {
         )
     }
 
+    /// One injected clock for user-authored timestamps and local parsers keeps
+    /// financial-day attribution testable and aligned with the book's fixed
+    /// reporting zone.
+    func currentDateForUserAction() -> Date {
+        currentDate()
+    }
+
     /// Onboarding is safe only when no encrypted domain row exists. Iterating
     /// the exhaustive collection enum makes future schema additions fail
     /// closed instead of requiring another hand-maintained startup list.
@@ -980,6 +987,8 @@ final class AppModel: ObservableObject {
         guard isCurrentStoreGeneration(generation) else { return nil }
         return ReceiptTextParser.analyze(
             fromLines: lines,
+            now: currentDate(),
+            calendar: reportingCalendar,
             prefersDayFirst: prefersDayFirst,
             accounts: accounts
         )

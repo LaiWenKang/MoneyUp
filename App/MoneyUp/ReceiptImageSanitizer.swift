@@ -13,6 +13,34 @@ enum ReceiptImageSanitizer {
     static let maximumPixelDimension = 4_096
     private static let jpegQuality = 0.9
 
+    /// Runs the synchronous ImageIO boundary on one shared serial actor. The
+    /// work remains part of the caller's task, so cancellation reaches every
+    /// checkpoint without leaving an unowned encode behind after a view exits.
+    static func prepareForEncryptedStorage(
+        _ data: Data,
+        sanitizer: @escaping @Sendable (Data) throws -> Data = {
+            try ReceiptImageSanitizer.sanitizedForEncryptedStorage($0)
+        }
+    ) async throws -> Data {
+        try Task.checkCancellation()
+        let sanitized = try await ReceiptSanitizationExecutor.shared.run(
+            data,
+            sanitizer: sanitizer
+        )
+        try Task.checkCancellation()
+        return sanitized
+    }
+
+    /// Lets a replacement scan wait only for an older retention decode, not
+    /// for an obsolete Photos transfer or OCR request. This keeps large image
+    /// decodes serialized without making a slow canceled scan block the latest
+    /// selection end to end.
+    static func waitForPendingPreparation() async throws {
+        try Task.checkCancellation()
+        try await ReceiptSanitizationExecutor.shared.waitUntilAvailable()
+        try Task.checkCancellation()
+    }
+
     static func sanitizedForEncryptedStorage(_ data: Data) throws -> Data {
         try Task.checkCancellation()
         guard !data.isEmpty else { throw ReceiptAttachmentError.emptyData }
@@ -79,5 +107,24 @@ enum ReceiptImageSanitizer {
             throw ReceiptAttachmentError.invalidMetadata
         }
         return sanitized
+    }
+}
+
+/// A synchronous actor-isolated job never yields while ImageIO owns its large
+/// bitmap. Rapid rescans and newly constructed Log views therefore cannot run
+/// two retention decodes concurrently, even when the older view has vanished.
+private actor ReceiptSanitizationExecutor {
+    static let shared = ReceiptSanitizationExecutor()
+
+    func run(
+        _ data: Data,
+        sanitizer: @Sendable (Data) throws -> Data
+    ) throws -> Data {
+        try Task.checkCancellation()
+        return try sanitizer(data)
+    }
+
+    func waitUntilAvailable() throws {
+        try Task.checkCancellation()
     }
 }

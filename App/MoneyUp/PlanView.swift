@@ -282,7 +282,7 @@ private struct BudgetPlanView: View {
                 }
             }
             .sheet(item: $editingNode) { node in
-                CategoryManagementSheet(categoryID: node.id)
+                BudgetEditorSheet(node: node)
             }
             .sheet(isPresented: $isAddingCategory) {
                 AddCategorySheet(kind: categoryKindToAdd)
@@ -306,21 +306,13 @@ private struct BudgetRow: View {
     private var ratio: DerivedValue<Double?> {
         guard let limit = progress?.effectiveLimit?.amount,
               let spent = spent?.amount else { return .available(nil) }
-        if limit == .zero { return .available(spent > .zero ? 2 : 0) }
-        guard limit > .zero else { return .available(nil) }
-        do {
-            return .available(
-                NSDecimalNumber(
-                    decimal: try CheckedDecimal.ratio(spent, limit)
-                ).doubleValue
-            )
-        } catch {
-            DerivedValueDiagnostics.record(
-                .amountCalculationFailed,
-                operation: "budget-row-ratio",
-                error: error
-            )
-            return .unavailable(.amountCalculationFailed)
+        switch moneyUpPaceRatio(
+            spent: spent,
+            limit: limit,
+            operation: "budget-row-ratio"
+        ) {
+        case let .available(ratio): return .available(ratio)
+        case let .unavailable(issue): return .unavailable(issue)
         }
     }
 
@@ -402,26 +394,11 @@ private struct BudgetSummaryCard: View {
     let elapsed: Double
 
     private var ratio: DerivedValue<Double> {
-        guard limit.amount > .zero else {
-            return .available(spent.amount > .zero ? 2 : 0)
-        }
-        do {
-            return .available(
-                NSDecimalNumber(
-                    decimal: try CheckedDecimal.ratio(
-                        spent.amount,
-                        limit.amount
-                    )
-                ).doubleValue
-            )
-        } catch {
-            DerivedValueDiagnostics.record(
-                .amountCalculationFailed,
-                operation: "budget-summary-ratio",
-                error: error
-            )
-            return .unavailable(.amountCalculationFailed)
-        }
+        moneyUpPaceRatio(
+            spent: spent.amount,
+            limit: limit.amount,
+            operation: "budget-summary-ratio"
+        )
     }
 
     private var isOverspent: Bool { remaining.amount < .zero }
@@ -491,7 +468,7 @@ private struct BudgetSimulatorView: View {
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 16) {
-                DashboardCard {
+                MoneyUpCard {
                     ViewThatFits(in: .horizontal) {
                         HStack(spacing: 16) {
                             simulatorIntroduction
@@ -511,7 +488,7 @@ private struct BudgetSimulatorView: View {
                 case let (.available(.some(summary)), .available(report)):
                     simulator(summary: summary, report: report)
                 case (.available(.none), _):
-                    DashboardCard {
+                    MoneyUpCard {
                         ContentUnavailableView(
                             "simulator.needs_budget",
                             systemImage: "chart.pie",
@@ -519,7 +496,7 @@ private struct BudgetSimulatorView: View {
                         )
                     }
                 case let (.unavailable(issue), _), let (_, .unavailable(issue)):
-                    DashboardCard {
+                    MoneyUpCard {
                         DerivedValueUnavailableView(issue: issue, prominent: true)
                     }
                 }
@@ -561,7 +538,7 @@ private struct BudgetSimulatorView: View {
             currency: currency
         )
 
-        DashboardCard {
+        MoneyUpCard {
             VStack(alignment: .leading, spacing: 14) {
                 Label("simulator.adjust", systemImage: "slider.horizontal.3")
                     .font(.headline)
@@ -601,13 +578,13 @@ private struct BudgetSimulatorView: View {
             ) {
                 forecastCards(forecast)
             } else {
-                DashboardCard {
+                MoneyUpCard {
                     Text("simulator.unavailable")
                         .foregroundStyle(.secondary)
                 }
             }
         } else {
-            DashboardCard {
+            MoneyUpCard {
                 Label(
                     "simulator.invalid_amount",
                     systemImage: "exclamationmark.triangle.fill"
@@ -661,7 +638,7 @@ private struct BudgetSimulatorView: View {
         let isOver = forecast.projectedRemaining.amount < .zero
         let budgetUsage = budgetUsageResult(forecast)
 
-        DashboardCard {
+        MoneyUpCard {
             VStack(alignment: .leading, spacing: 14) {
                 Label("simulator.spending_chart", systemImage: "chart.bar.xaxis")
                     .font(.headline)
@@ -669,8 +646,14 @@ private struct BudgetSimulatorView: View {
                 Chart {
                     ForEach(points) { point in
                         BarMark(
-                            x: .value("Scenario", point.label),
-                            y: .value("Amount", point.amount)
+                            x: .value(
+                                String(localized: "chart.dimension.scenario"),
+                                point.label
+                            ),
+                            y: .value(
+                                String(localized: "chart.dimension.amount"),
+                                point.amount
+                            )
                         )
                         .foregroundStyle(
                             point.id == "current"
@@ -685,13 +668,20 @@ private struct BudgetSimulatorView: View {
                         .accessibilityValue(formattedMoney(point.money))
                     }
 
-                    RuleMark(y: .value("Budget", limit))
+                    RuleMark(
+                        y: .value(
+                            String(localized: "chart.dimension.budget"),
+                            limit
+                        )
+                    )
                         .lineStyle(StrokeStyle(lineWidth: 2, dash: [5, 4]))
                         .foregroundStyle(Color.primary.opacity(0.55))
                         .annotation(position: .top, alignment: .trailing) {
                             Text("simulator.budget_line")
                                 .font(.caption2.weight(.semibold))
                         }
+                        .accessibilityLabel("simulator.budget_line")
+                        .accessibilityValue(formattedMoney(forecast.budgetLimit))
                 }
                 .frame(height: 240)
                 .chartLegend(.hidden)
@@ -708,7 +698,7 @@ private struct BudgetSimulatorView: View {
             }
         }
 
-        DashboardCard {
+        MoneyUpCard {
             VStack(alignment: .leading, spacing: 14) {
                 Label {
                     Text(

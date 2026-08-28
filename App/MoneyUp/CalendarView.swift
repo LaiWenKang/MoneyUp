@@ -158,19 +158,28 @@ struct CalendarView: View {
                             .foregroundStyle(.secondary)
                     } else {
                         ForEach(scheduledForDay) { item in
-                            HStack {
-                                Label(
-                                    item.name,
-                                    systemImage: item.isCurrentOccurrenceConfirmed
-                                        ? "checkmark.circle"
-                                        : "clock"
-                                )
-                                Spacer()
-                                Text(formattedMoney(item.amount))
-                                    .font(.subheadline.monospacedDigit())
+                            Button {
+                                scheduleBeingEdited = item
+                            } label: {
+                                HStack {
+                                    Label(
+                                        item.name,
+                                        systemImage: item.isCurrentOccurrenceConfirmed
+                                            ? "checkmark.circle"
+                                            : "clock"
+                                    )
+                                    Spacer()
+                                    Text(formattedMoney(item.amount))
+                                        .font(.subheadline.monospacedDigit())
+                                }
+                                .contentShape(Rectangle())
                             }
-                            .contentShape(Rectangle())
-                            .onTapGesture { scheduleBeingEdited = item }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(item.name)
+                            .accessibilityValue(
+                                "\(formattedMoney(item.amount)), \(item.isCurrentOccurrenceConfirmed ? String(localized: "schedule.confirmed") : String(localized: "schedule.pending"))"
+                            )
+                            .accessibilityHint("schedule.edit")
                             .contextMenu { scheduleActions(for: item) }
                             .swipeActions {
                                 Button(role: .destructive) {

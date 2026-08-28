@@ -281,10 +281,12 @@ private struct BudgetStatusWidgetView: View {
             .accessibilityValue(percentAccessibility(percentUsed, isOver: isOver))
         case .accessoryInline:
             Label {
-                Text("\(percentUsed)% \(String(localized: "widget.budget_used"))")
+                Text(visiblePercentUsed(percentUsed))
             } icon: {
                 Image(systemName: isOver ? "exclamationmark.triangle.fill" : "chart.pie.fill")
             }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("widget.budget_status")
             .accessibilityValue(percentAccessibility(percentUsed, isOver: isOver))
         case .accessoryRectangular:
             HStack(spacing: 8) {
@@ -292,7 +294,7 @@ private struct BudgetStatusWidgetView: View {
                     .widgetAccentable()
                 VStack(alignment: .leading, spacing: 1) {
                     Text("widget.budget_status").font(.caption2)
-                    Text("\(percentUsed)% \(String(localized: "widget.budget_used"))")
+                    Text(visiblePercentUsed(percentUsed))
                         .font(.headline.monospacedDigit())
                     Text(
                         isOver
@@ -302,7 +304,8 @@ private struct BudgetStatusWidgetView: View {
                         .font(.caption2)
                 }
             }
-            .accessibilityElement(children: .combine)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("widget.budget_status")
             .accessibilityValue(percentAccessibility(percentUsed, isOver: isOver))
         default:
             VStack(alignment: .leading, spacing: 9) {
@@ -321,11 +324,10 @@ private struct BudgetStatusWidgetView: View {
                     )
                 }
                 .font(.caption.weight(.semibold))
-                Text("\(percentUsed)%")
-                    .font(.system(.largeTitle, design: .rounded, weight: .bold))
+                Text(visiblePercentUsed(percentUsed))
+                    .font(.system(.title, design: .rounded, weight: .bold))
                     .monospacedDigit()
                     .minimumScaleFactor(0.65)
-                Text("widget.budget_used").font(.caption).foregroundStyle(.secondary)
                 ProgressView(value: min(Double(percentUsed), 100), total: 100)
                     .accessibilityHidden(true)
             }
@@ -364,6 +366,13 @@ private struct BudgetStatusWidgetView: View {
             format: String(localized: "widget.budget_accessibility"),
             percent,
             status
+        )
+    }
+
+    private func visiblePercentUsed(_ percent: Int) -> String {
+        String(
+            format: String(localized: "widget.budget_used_format"),
+            percent
         )
     }
 }
@@ -504,6 +513,7 @@ private struct WidgetBrandHeader: View {
                 .scaledToFit()
                 .foregroundStyle(.tint)
                 .frame(width: 22, height: 22)
+                .accessibilityHidden(true)
             Text("widget.title")
                 .font(.headline)
             Image(systemName: "lock.fill")
@@ -527,7 +537,7 @@ private struct WidgetActionGlyph: View {
             Circle()
                 .fill(
                     LinearGradient(
-                        colors: [Color.moneyUpSoftGreen, Color.moneyUpAction],
+                        colors: [Color.moneyUpAction, Color.moneyUpActionDeep],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
@@ -549,6 +559,7 @@ private struct WidgetActionGlyph: View {
             }
         }
         .frame(width: size, height: size)
+        .accessibilityHidden(true)
     }
 }
 
@@ -623,7 +634,20 @@ private extension Color {
         }
     )
 
-    static let moneyUpAction = moneyUpSoftGreen
+    /// Filled glyphs keep a forest-green endpoint in both appearances so the
+    /// white action symbol retains readable contrast. Bright mint remains an
+    /// accent and tint, not a foreground-bearing fill.
+    static let moneyUpAction = Color(
+        red: 52.0 / 255.0,
+        green: 120.0 / 255.0,
+        blue: 95.0 / 255.0
+    )
+
+    static let moneyUpActionDeep = Color(
+        red: 37.0 / 255.0,
+        green: 92.0 / 255.0,
+        blue: 72.0 / 255.0
+    )
 
     static let moneyUpWidgetBackground = Color(
         uiColor: UIColor { traits in
