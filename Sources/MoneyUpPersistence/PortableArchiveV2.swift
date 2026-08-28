@@ -543,7 +543,7 @@ enum PortableArchiveV2 {
         metrics: DatabaseStorageMetrics
     ) throws -> Metadata {
         guard schemaVersion >= 0,
-              createdAt.timeIntervalSince1970.isFinite,
+              createdAt.timeIntervalSinceReferenceDate.isFinite,
               metrics.recordCount >= 0,
               metrics.recordCount <= maximumRecordCount,
               metrics.payloadByteCount >= 0,
@@ -618,7 +618,13 @@ enum PortableArchiveV2 {
         encoded.appendBigEndian(UInt64(metadata.payloadByteCount))
         encoded.appendBigEndian(UInt64(metadata.plaintextByteCount))
         encoded.appendBigEndian(UInt32(bitPattern: metadata.schemaVersion))
-        encoded.appendBigEndian(metadata.createdAt.timeIntervalSince1970.bitPattern)
+        // Foundation stores Date relative to its reference date. Preserve that
+        // exact bit pattern instead of translating through the Unix epoch,
+        // which can lose one ULP and make an otherwise identical snapshot
+        // compare unequal after a round trip.
+        encoded.appendBigEndian(
+            metadata.createdAt.timeIntervalSinceReferenceDate.bitPattern
+        )
         encoded.append(salt)
         encoded.append(noncePrefix)
         guard encoded.count == headerByteCount else {
@@ -694,7 +700,7 @@ enum PortableArchiveV2 {
             collectionByteCount: 0
         )
         let createdAt = Date(
-            timeIntervalSince1970: Double(bitPattern: createdAtBits)
+            timeIntervalSinceReferenceDate: Double(bitPattern: createdAtBits)
         )
         let metadata = Metadata(
             schemaVersion: Int32(bitPattern: schemaBits),
@@ -712,7 +718,7 @@ enum PortableArchiveV2 {
             ) / chunkByteCount
         )
         guard metadata.schemaVersion >= 0,
-              metadata.createdAt.timeIntervalSince1970.isFinite,
+              metadata.createdAt.timeIntervalSinceReferenceDate.isFinite,
               metadata.recordCount >= 0,
               metadata.recordCount <= maximumRecordCount,
               metadata.payloadByteCount >= 0,
