@@ -12,6 +12,37 @@ final class AppModelTests: XCTestCase {
         return percentUsed
     }
 
+    func testDatabaseKeyCreationRequiresEveryCiphertextArtifactToBeAbsent() {
+        for bitmask in 0..<8 {
+            let databaseExists = bitmask & 0b001 != 0
+            let writeAheadLogExists = bitmask & 0b010 != 0
+            let sharedMemoryExists = bitmask & 0b100 != 0
+
+            XCTAssertEqual(
+                DatabaseKeyCreationPolicy.mayCreateKey(
+                    databaseExists: databaseExists,
+                    writeAheadLogExists: writeAheadLogExists,
+                    sharedMemoryExists: sharedMemoryExists
+                ),
+                bitmask == 0,
+                "Unexpected key-creation decision for artifact mask \(bitmask)"
+            )
+        }
+    }
+
+    func testDatabaseKeyPolicyChecksMainWALAndSharedMemoryPaths() {
+        let databaseURL = URL(fileURLWithPath: "/private/test/moneyup.sqlite")
+
+        XCTAssertEqual(
+            DatabaseKeyCreationPolicy.artifactURLs(for: databaseURL).map(\.path),
+            [
+                "/private/test/moneyup.sqlite",
+                "/private/test/moneyup.sqlite-wal",
+                "/private/test/moneyup.sqlite-shm"
+            ]
+        )
+    }
+
     func testBoundedFileReaderConsumesToEOFAndStopsOneBytePastTheLimit() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -143,6 +174,33 @@ final class AppModelTests: XCTestCase {
                 occurredAt: Date(timeIntervalSinceReferenceDate: .infinity)
             ).isStructurallyValid
         )
+    }
+
+    func testLockedCaptureDuplicateRetryRemainsIdempotentAtCapacity() throws {
+        let captures = (0..<100).map { offset in
+            LockedCapture(
+                id: UUID(),
+                kind: .expense,
+                amountText: String(offset + 1)
+            )
+        }
+        let duplicate = try XCTUnwrap(captures.last)
+
+        XCTAssertEqual(
+            try LockedCaptureStore.queueByAppending(duplicate, to: captures),
+            captures
+        )
+
+        XCTAssertThrowsError(
+            try LockedCaptureStore.queueByAppending(
+                LockedCapture(kind: .expense, amountText: "101"),
+                to: captures
+            )
+        ) { error in
+            guard case LockedCaptureStoreError.queueFull = error else {
+                return XCTFail("Expected queueFull, got \(error)")
+            }
+        }
     }
 
     func testMoneyKeyboardUsesCurrencyScaleAndRetainsSignedAssetInput() throws {
@@ -441,24 +499,19 @@ final class AppModelTests: XCTestCase {
     func testFreshBookDetectionChecksEveryPersistedCollection() async throws {
         for collection in RecordCollection.allCases {
             let fixture = try AppModelFixture()
-            if collection == .receiptAttachments {
-                let attachment = try ReceiptAttachment(
-                    entryID: UUID(),
-                    mediaType: .jpeg,
-                    data: Data([0xff])
-                )
-                try await fixture.store.upsert(
-                    attachment,
-                    id: attachment.id.uuidString,
-                    in: collection
-                )
-            } else {
-                try await fixture.store.upsert(
-                    ["collection": collection.rawValue],
-                    id: "fresh-book-sentinel",
-                    in: collection
-                )
-            }
+            // This test is intentionally about raw durable-row presence, not
+            // domain validity. Install one nonempty row through the snapshot
+            // boundary so strict typed-write identity validation cannot make
+            // the test accidentally collection-specific.
+            try await fixture.store.restore(DatabaseSnapshot(
+                schemaVersion: EncryptedRecordStore.currentSchemaVersion,
+                records: [StoredRecordSnapshot(
+                    collection: collection.rawValue,
+                    recordID: "fresh-book-sentinel",
+                    payload: Data("{}".utf8),
+                    updatedAt: 1
+                )]
+            ))
 
             let hasPersistedData = try await AppModel.hasPersistedBookData(
                 in: fixture.store
@@ -543,6 +596,202 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testAutoLockDeadlineStartsWhenInactiveAndBackgroundCannotExtendIt() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let profile = UserProfile(baseCurrency: fixture.sgd, autoLockDelay: 60)
+        let model = fixture.model(profile: profile)
+        let inactiveAt = Date(timeIntervalSinceReferenceDate: 20_000)
+
+        model.sceneDidBecomeInactive(at: inactiveAt)
+        // This normal second lifecycle transition must retain the original
+        // deadline instead of granting another minute.
+        model.sceneDidEnterBackground(at: inactiveAt.addingTimeInterval(59))
+        model.sceneDidBecomeActive(at: inactiveAt.addingTimeInterval(60))
+
+        XCTAssertEqual(model.state, .locked)
+        await model.waitForPendingStoreClose()
+    }
+
+    @MainActor
+    func testLaunchingStateTracksExpiredInactivityAndKeepsAuthenticationCover() {
+        let model = AppModel()
+        let inactiveAt = Date(timeIntervalSinceReferenceDate: 25_000)
+
+        model.sceneDidBecomeInactive(at: inactiveAt)
+        model.sceneDidBecomeActive(
+            at: inactiveAt.addingTimeInterval(60)
+        )
+
+        XCTAssertEqual(model.state, .launching)
+        XCTAssertTrue(model.hasDeferredAuthenticationLock)
+        XCTAssertTrue(model.requiresAuthenticationPrivacyCover)
+    }
+
+    @MainActor
+    func testCancelledStartupAuthenticationClearsCoverInBothCallbackOrders() {
+        let model = AppModel()
+        let inactiveAt = Date(timeIntervalSinceReferenceDate: 26_000)
+
+        model.sceneDidBecomeInactive(at: inactiveAt)
+        model.finishCancelledAuthentication()
+        XCTAssertEqual(model.state, .locked)
+        XCTAssertFalse(model.requiresAuthenticationPrivacyCover)
+
+        model.sceneDidBecomeActive(
+            at: inactiveAt.addingTimeInterval(60)
+        )
+
+        XCTAssertEqual(model.state, .locked)
+        XCTAssertFalse(model.requiresAuthenticationPrivacyCover)
+
+        let reverseOrderModel = AppModel()
+        reverseOrderModel.sceneDidBecomeInactive(at: inactiveAt)
+        reverseOrderModel.sceneDidBecomeActive(
+            at: inactiveAt.addingTimeInterval(60)
+        )
+        XCTAssertEqual(reverseOrderModel.state, .launching)
+        XCTAssertTrue(reverseOrderModel.hasDeferredAuthenticationLock)
+        XCTAssertTrue(reverseOrderModel.requiresAuthenticationPrivacyCover)
+
+        reverseOrderModel.finishCancelledAuthentication()
+
+        XCTAssertEqual(reverseOrderModel.state, .locked)
+        XCTAssertFalse(reverseOrderModel.hasDeferredAuthenticationLock)
+        XCTAssertFalse(reverseOrderModel.requiresAuthenticationPrivacyCover)
+    }
+
+    @MainActor
+    func testCancelledAuthenticationClearsDecodedRecoveryState() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let entry = try fixture.expense(amount: 8)
+        let model = fixture.model(entries: [entry])
+        model.finishFailedStartup(message: "Safe recovery message")
+        XCTAssertNotNil(model.profile)
+        XCTAssertFalse(model.accounts.isEmpty)
+        XCTAssertFalse(model.entries.isEmpty)
+
+        model.finishCancelledAuthentication()
+        await model.waitForPendingStoreClose()
+
+        XCTAssertEqual(model.state, .locked)
+        XCTAssertNil(model.profile)
+        XCTAssertTrue(model.accounts.isEmpty)
+        XCTAssertTrue(model.entries.isEmpty)
+        XCTAssertFalse(model.requiresAuthenticationPrivacyCover)
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testFailedStartupCompletesDeferredLockBeforeRemovingCover() {
+        let model = AppModel()
+        let inactiveAt = Date(timeIntervalSinceReferenceDate: 27_000)
+
+        model.sceneDidBecomeInactive(at: inactiveAt)
+        model.sceneDidBecomeActive(
+            at: inactiveAt.addingTimeInterval(60)
+        )
+        XCTAssertTrue(model.hasDeferredAuthenticationLock)
+        XCTAssertTrue(model.requiresAuthenticationPrivacyCover)
+
+        model.finishFailedStartup(message: "Safe recovery message")
+
+        XCTAssertEqual(model.state, .locked)
+        XCTAssertFalse(model.hasDeferredAuthenticationLock)
+        XCTAssertFalse(model.requiresAuthenticationPrivacyCover)
+        XCTAssertNil(model.profile)
+        XCTAssertTrue(model.accounts.isEmpty)
+    }
+
+    @MainActor
+    func testFailedRecoveryStateAutoLocksAtBackgroundDeadline() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let entry = try fixture.expense(amount: 9)
+        let model = fixture.model(entries: [entry])
+        model.finishFailedStartup(message: "Safe recovery message")
+        guard case .failed = model.state else {
+            return XCTFail("Expected an opened recovery state")
+        }
+
+        let inactiveAt = Date(timeIntervalSinceReferenceDate: 28_000)
+        model.sceneDidBecomeInactive(at: inactiveAt)
+        XCTAssertTrue(model.requiresAuthenticationPrivacyCover)
+        model.sceneDidBecomeActive(
+            at: inactiveAt.addingTimeInterval(60)
+        )
+        await model.waitForPendingStoreClose()
+
+        XCTAssertEqual(model.state, .locked)
+        XCTAssertNil(model.profile)
+        XCTAssertTrue(model.accounts.isEmpty)
+        XCTAssertTrue(model.entries.isEmpty)
+        XCTAssertFalse(model.requiresAuthenticationPrivacyCover)
+    }
+
+    @MainActor
+    func testBecomingInactiveFlushesLatestQuickLogDraftWithoutDebounce() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let model = fixture.model()
+        let draft = QuickLogDraft(
+            kind: .expense,
+            amountText: "17.25",
+            destinationAmountText: "",
+            accountID: fixture.wallet.id,
+            destinationAccountID: nil,
+            categoryID: fixture.food.id,
+            occurredAt: Date(timeIntervalSinceReferenceDate: 30_000),
+            dateWasEdited: true,
+            payee: "Immediate privacy flush",
+            note: "",
+            smartText: ""
+        )
+
+        model.updateQuickLogDraft(draft)
+        let inactiveAt = Date(timeIntervalSinceReferenceDate: 31_000)
+        model.sceneDidBecomeInactive(at: inactiveAt)
+        XCTAssertTrue(model.requiresAuthenticationPrivacyCover)
+        await model.waitForPendingQuickLogDraftFlush()
+
+        let persisted = try await fixture.store.fetch(
+            QuickLogDraft.self,
+            id: QuickLogDraft.primaryRecordID,
+            from: .quickLogDrafts
+        )
+        XCTAssertEqual(persisted, draft)
+
+        model.sceneDidBecomeActive(at: inactiveAt.addingTimeInterval(1))
+        XCTAssertEqual(model.state, .ready)
+        XCTAssertFalse(model.requiresAuthenticationPrivacyCover)
+        await fixture.store.close()
+    }
+
+    func testReportingDateFormattingUsesBookTimeZoneAcrossTravelBoundary() throws {
+        var kiritimati = Calendar(identifier: .gregorian)
+        kiritimati.timeZone = try XCTUnwrap(
+            TimeZone(identifier: "Pacific/Kiritimati")
+        )
+        var losAngeles = Calendar(identifier: .gregorian)
+        losAngeles.timeZone = try XCTUnwrap(
+            TimeZone(identifier: "America/Los_Angeles")
+        )
+        let instant = Date(timeIntervalSince1970: 1_767_240_000)
+        let style = Date.FormatStyle(date: .abbreviated, time: .omitted)
+            .locale(Locale(identifier: "en_US_POSIX"))
+
+        XCTAssertEqual(
+            instant.formattedForReporting(style, calendar: kiritimati),
+            "Jan 1, 2026"
+        )
+        XCTAssertEqual(
+            instant.formattedForReporting(style, calendar: losAngeles),
+            "Dec 31, 2025"
+        )
+    }
+
+    @MainActor
     func testZeroDelayAndInvalidLifecycleClockLockImmediately() async throws {
         let immediateFixture = try AppModelFixture()
         defer { immediateFixture.removeFiles() }
@@ -592,11 +841,13 @@ final class AppModelTests: XCTestCase {
         await gate.waitUntilReached()
         model.lock()
         XCTAssertEqual(model.state, .ready)
+        XCTAssertTrue(model.requiresAuthenticationPrivacyCover)
         await gate.release()
 
         try await restoreTask.value
         await model.waitForPendingStoreClose()
         XCTAssertEqual(model.state, .locked)
+        XCTAssertFalse(model.requiresAuthenticationPrivacyCover)
         XCTAssertNil(model.profile)
         XCTAssertTrue(model.accounts.isEmpty)
         XCTAssertTrue(model.entries.isEmpty)
@@ -606,6 +857,324 @@ final class AppModelTests: XCTestCase {
         let restoredProfileCount = try await reopened.count(in: .profile)
         XCTAssertEqual(restoredProfileCount, 1)
         await reopened.close()
+    }
+
+    @MainActor
+    func testExpiredAutoLockKeepsPrivacyCoverWhileRestoreDrains() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let profile = UserProfile(
+            baseCurrency: fixture.sgd,
+            autoLockDelay: 60
+        )
+        try await fixture.seed(
+            profile: profile,
+            accounts: [fixture.wallet, fixture.usAccount, fixture.food]
+        )
+        let gate = AsyncGate()
+        let model = fixture.model(
+            profile: profile,
+            lifecycleHooks: hooks(pausing: .beforeRestoreCommit, at: gate)
+        )
+        let archive = try await model.encryptedBackup(
+            password: "restore-password"
+        )
+        let restoreTask = Task { @MainActor in
+            try await model.restoreEncryptedBackup(
+                archive,
+                password: "restore-password"
+            )
+        }
+        await gate.waitUntilReached()
+
+        let inactiveAt = Date(timeIntervalSinceReferenceDate: 40_000)
+        model.sceneDidBecomeInactive(at: inactiveAt)
+        model.sceneDidBecomeActive(
+            at: inactiveAt.addingTimeInterval(60)
+        )
+
+        XCTAssertEqual(model.state, .ready)
+        XCTAssertTrue(model.requiresAuthenticationPrivacyCover)
+
+        await gate.release()
+        try await restoreTask.value
+        await model.waitForPendingStoreClose()
+
+        XCTAssertEqual(model.state, .locked)
+        XCTAssertFalse(model.requiresAuthenticationPrivacyCover)
+    }
+
+    @MainActor
+    func testBackupAndRestoreBlockWhileLockedCaptureInboxIsPending() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let capture = LockedCapture(
+            kind: .expense,
+            amountText: "19.90",
+            payee: "Pending cafe"
+        )
+        let inbox = InMemoryLockedCaptureStore(captures: [capture])
+        let model = fixture.model(lockedCaptureStore: inbox)
+
+        do {
+            _ = try await model.encryptedBackup(password: "backup-password")
+            XCTFail("Expected backup to reject an omitted locked-capture row")
+        } catch AppModelError.pendingLockedCaptures {
+            // The current archive format intentionally does not claim to
+            // contain this separately encrypted inbox.
+        }
+        XCTAssertEqual(model.pendingLockedCaptureCount, 1)
+        XCTAssertFalse(model.isWorking)
+
+        do {
+            try await model.restoreEncryptedBackup(
+                Data([0x4d, 0x55]),
+                password: "restore-password"
+            )
+            XCTFail("Expected restore to reject a cross-book capture boundary")
+        } catch AppModelError.pendingLockedCaptures {
+            // The candidate is not even parsed while old-book input is queued.
+        }
+        XCTAssertEqual(model.pendingLockedCaptureCount, 1)
+        XCTAssertEqual(model.state, .ready)
+        XCTAssertFalse(model.isWorking)
+
+        try await inbox.eraseAll()
+        let archive = try await model.encryptedBackup(password: "backup-password")
+        XCTAssertFalse(archive.isEmpty)
+        XCTAssertEqual(model.pendingLockedCaptureCount, 0)
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testLockedCaptureRecoveryNeverDeletesAfterTransientOrStaleFailure() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        try await fixture.seed(
+            profile: UserProfile(baseCurrency: fixture.sgd),
+            accounts: [fixture.wallet, fixture.usAccount, fixture.food]
+        )
+        let inbox = ScriptedLockedCaptureStore(readError: .unavailable)
+        let model = fixture.model(lockedCaptureStore: inbox)
+
+        do {
+            _ = try await model.encryptedBackup(password: "capture-retry-pass")
+            XCTFail("A transient protected-data failure must block backup")
+        } catch LockedCaptureStoreError.unavailable {
+            // Retryable failures never enable destructive recovery.
+        }
+        XCTAssertFalse(model.lockedCaptureInboxIsUnrecoverable)
+        do {
+            try await model.discardUnavailableLockedCaptures()
+            XCTFail("Transient failure must not expose deletion")
+        } catch AppModelError.missingRecord {
+            // No destructive recovery marker exists.
+        }
+        let eraseCountAfterTransientFailure = await inbox.eraseCount()
+        XCTAssertEqual(eraseCountAfterTransientFailure, 0)
+
+        await inbox.setReadError(.invalidData)
+        do {
+            _ = try await model.encryptedBackup(password: "capture-retry-pass")
+            XCTFail("Corrupt authenticated queue must block backup")
+        } catch LockedCaptureStoreError.invalidData {
+            // This stable failure can offer explicit recovery.
+        }
+        XCTAssertTrue(model.lockedCaptureInboxIsUnrecoverable)
+
+        // A successful recheck at the confirmation boundary proves that the
+        // old marker was stale. It must clear the marker and preserve bytes.
+        await inbox.setReadError(nil)
+        do {
+            try await model.discardUnavailableLockedCaptures()
+            XCTFail("A recovered empty inbox must not be erased")
+        } catch AppModelError.missingRecord {
+            // Expected after the fresh successful read.
+        }
+        XCTAssertFalse(model.lockedCaptureInboxIsUnrecoverable)
+        let eraseCountAfterStaleMarker = await inbox.eraseCount()
+        XCTAssertEqual(eraseCountAfterStaleMarker, 0)
+
+        // The same explicit recovery remains available from a failed startup
+        // as long as the authenticated store is open for backup/recovery.
+        await inbox.setReadError(.keyMissing)
+        do {
+            _ = try await model.encryptedBackup(password: "capture-retry-pass")
+            XCTFail("Missing device-only key must block backup")
+        } catch LockedCaptureStoreError.keyMissing {
+            // Definitively unrecoverable ciphertext remains until confirmation.
+        }
+        model.finishFailedStartup(message: "Safe recovery message")
+        try await model.discardUnavailableLockedCaptures()
+        let eraseCountAfterConfirmedLoss = await inbox.eraseCount()
+        XCTAssertEqual(eraseCountAfterConfirmedLoss, 1)
+        XCTAssertFalse(model.lockedCaptureInboxIsUnrecoverable)
+        let archive = try await model.encryptedBackup(
+            password: "capture-retry-pass"
+        )
+        XCTAssertFalse(archive.isEmpty)
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testImmediateBackupFlushesLatestQuickLogDraftIntoLiveStoreAndArchive() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let model = fixture.model()
+        let draft = QuickLogDraft(
+            kind: .expense,
+            amountText: "83.40",
+            destinationAmountText: "",
+            accountID: fixture.wallet.id,
+            destinationAccountID: nil,
+            categoryID: fixture.food.id,
+            occurredAt: Date(timeIntervalSinceReferenceDate: 31_500),
+            dateWasEdited: true,
+            payee: "Latest unsaved form revision",
+            note: "Must survive an immediate backup and power loss",
+            smartText: ""
+        )
+
+        model.updateQuickLogDraft(draft)
+        let archive = try await model.encryptedBackup(
+            password: "immediate-backup-password"
+        )
+
+        let persisted = try await fixture.store.fetch(
+            QuickLogDraft.self,
+            id: QuickLogDraft.primaryRecordID,
+            from: .quickLogDrafts
+        )
+        XCTAssertEqual(persisted, draft)
+
+        let snapshot = try PortableArchive.open(
+            archive,
+            password: "immediate-backup-password"
+        )
+        let archivedRecord = try XCTUnwrap(snapshot.records.first {
+            $0.collection == RecordCollection.quickLogDrafts.rawValue
+                && $0.recordID == QuickLogDraft.primaryRecordID
+        })
+        let archivedDraft = try JSONDecoder().decode(
+            QuickLogDraft.self,
+            from: archivedRecord.payload
+        )
+        XCTAssertEqual(archivedDraft, draft)
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testWrongPasswordRestorePersistsLatestDraftAcrossCloseAndReopen() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let profile = UserProfile(baseCurrency: fixture.sgd)
+        try await fixture.seed(
+            profile: profile,
+            accounts: [fixture.wallet, fixture.usAccount, fixture.food]
+        )
+        let archive = try PortableArchive.seal(
+            try await fixture.store.snapshot(),
+            password: "correct-restore-password"
+        )
+        let model = fixture.model(profile: profile)
+        let latestDraft = QuickLogDraft(
+            kind: .expense,
+            amountText: "64.20",
+            destinationAmountText: "",
+            accountID: fixture.wallet.id,
+            destinationAccountID: nil,
+            categoryID: fixture.food.id,
+            occurredAt: Date(timeIntervalSinceReferenceDate: 31_900),
+            dateWasEdited: true,
+            payee: "Must survive failed restore",
+            note: "Latest form revision",
+            smartText: ""
+        )
+        model.updateQuickLogDraft(latestDraft)
+
+        do {
+            try await model.restoreEncryptedBackup(
+                archive,
+                password: "wrong-restore-password"
+            )
+            XCTFail("Expected authenticated archive rejection")
+        } catch PortableArchiveError.authenticationFailed {
+            // The live book is unchanged, including the newest draft revision.
+        }
+        await fixture.store.close()
+
+        let reopened = try fixture.reopenStore()
+        let persisted = try await reopened.fetch(
+            QuickLogDraft.self,
+            id: QuickLogDraft.primaryRecordID,
+            from: .quickLogDrafts
+        )
+        XCTAssertEqual(persisted, latestDraft)
+        await reopened.close()
+    }
+
+    @MainActor
+    func testRestoreScavengesPowerLossValidationArtifacts() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let profile = UserProfile(baseCurrency: fixture.sgd)
+        try await fixture.seed(
+            profile: profile,
+            accounts: [fixture.wallet, fixture.usAccount, fixture.food]
+        )
+        let archive = try PortableArchive.seal(
+            try await fixture.store.snapshot(),
+            password: "restore-scavenge-pass"
+        )
+        let validationDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "MoneyUp-RestoreValidation-\(fixture.directoryURL.lastPathComponent)",
+                isDirectory: true
+            )
+        try FileManager.default.createDirectory(
+            at: validationDirectory,
+            withIntermediateDirectories: true
+        )
+        for suffix in ["", "-wal", "-shm"] {
+            try Data(repeating: 0xa5, count: 4_096).write(
+                to: validationDirectory.appendingPathComponent(
+                    "candidate.sqlite3\(suffix)"
+                )
+            )
+        }
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: validationDirectory.path)
+        )
+        let legacyValidationDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "MoneyUp-RestoreValidation-\(UUID().uuidString)",
+                isDirectory: true
+            )
+        try FileManager.default.createDirectory(
+            at: legacyValidationDirectory,
+            withIntermediateDirectories: true
+        )
+        try Data(repeating: 0x5a, count: 4_096).write(
+            to: legacyValidationDirectory.appendingPathComponent(
+                "candidate.sqlite3-wal"
+            )
+        )
+
+        let model = fixture.model(profile: profile)
+        try await model.restoreEncryptedBackup(
+            archive,
+            password: "restore-scavenge-pass"
+        )
+
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: validationDirectory.path)
+        )
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: legacyValidationDirectory.path
+            )
+        )
+        await fixture.store.close()
     }
 
     @MainActor
@@ -885,6 +1454,33 @@ final class AppModelTests: XCTestCase {
         await fixture.store.close()
     }
 
+    func testRestoreCandidateRejectsSingleLowercaseUUIDPhysicalKey() throws {
+        let accountID = try XCTUnwrap(
+            UUID(uuidString: "ABCDEF12-3456-4789-ABCD-EF1234567890")
+        )
+        let account = LedgerAccount(
+            id: accountID,
+            name: "Lowercase alias",
+            kind: .asset
+        )
+        let candidate = DatabaseSnapshot(
+            schemaVersion: EncryptedRecordStore.currentSchemaVersion,
+            records: [
+                try storedRecord(
+                    account,
+                    id: accountID.uuidString.lowercased(),
+                    in: .accounts
+                )
+            ]
+        )
+
+        XCTAssertThrowsError(
+            try RestoreCandidateValidator.validateSnapshotIdentities(candidate)
+        ) { error in
+            XCTAssertTrue(error is AppModelError)
+        }
+    }
+
     @MainActor
     func testRestoreRejectsRecordPayloadIDMismatchWithoutChangingLiveSnapshot() async throws {
         let fixture = try AppModelFixture()
@@ -1033,6 +1629,174 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.profile, currentProfile)
         XCTAssertEqual(model.state, .ready)
         await fixture.store.close()
+    }
+
+    @MainActor
+    func testCancellationAfterRestoreCommitRecoversJournalIndexesAndBalance() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let currentProfile = UserProfile(baseCurrency: fixture.sgd)
+        let original = try fixture.expense(amount: 17)
+        try await fixture.seed(
+            profile: currentProfile,
+            accounts: [fixture.wallet, fixture.usAccount, fixture.food],
+            entries: [original]
+        )
+        let before = try await fixture.store.snapshot()
+        let replacementProfile = UserProfile(baseCurrency: fixture.usd)
+        let candidate = DatabaseSnapshot(
+            schemaVersion: EncryptedRecordStore.currentSchemaVersion,
+            records: [
+                try storedRecord(
+                    replacementProfile,
+                    id: UserProfile.primaryRecordID,
+                    in: .profile
+                ),
+                try storedRecord(
+                    fixture.usAccount,
+                    id: fixture.usAccount.id.uuidString,
+                    in: .accounts
+                )
+            ]
+        )
+        let archive = try PortableArchive.seal(
+            candidate,
+            password: "restore-password"
+        )
+        let gate = AsyncGate()
+        let model = fixture.model(
+            profile: currentProfile,
+            entries: [original],
+            lifecycleHooks: hooks(
+                pausing: .afterRestoreCommitBeforeCandidateLoad,
+                at: gate
+            )
+        )
+        let restoreTask = Task { @MainActor in
+            try await model.restoreEncryptedBackup(
+                archive,
+                password: "restore-password"
+            )
+        }
+
+        let reached = await gate.waitUntilReached(timeout: .seconds(5))
+        guard reached else {
+            restoreTask.cancel()
+            await gate.release()
+            _ = try? await restoreTask.value
+            return XCTFail("Postcommit restore checkpoint timed out")
+        }
+        restoreTask.cancel()
+        await gate.release()
+        do {
+            try await restoreTask.value
+            XCTFail("Expected cancellation after candidate replacement")
+        } catch is CancellationError {
+            // The original error is preserved after rollback recovery succeeds.
+        }
+
+        let after = try await fixture.store.snapshot()
+        XCTAssertEqual(after.schemaVersion, before.schemaVersion)
+        XCTAssertEqual(after.records, before.records)
+        XCTAssertEqual(model.profile, currentProfile)
+        XCTAssertEqual(model.entries, [original])
+        XCTAssertEqual(model.state, .ready)
+        XCTAssertEqual(
+            model.displayBalanceResult(for: fixture.wallet).value?.amount,
+            -17
+        )
+
+        let diagnostics = try await fixture.store.journalIndexDiagnostics()
+        XCTAssertEqual(diagnostics.journalRecordCount, 1)
+        XCTAssertEqual(diagnostics.indexedEntryCount, 1)
+        XCTAssertEqual(diagnostics.indexedPostingCount, 2)
+        let ledger = try await fixture.store.journalLedgerIndex(
+            validAccountIDs: Set([
+                fixture.wallet.id,
+                fixture.usAccount.id,
+                fixture.food.id
+            ])
+        )
+        XCTAssertEqual(ledger.entryCount, 1)
+        XCTAssertTrue(ledger.issues.isEmpty)
+        XCTAssertEqual(
+            ledger.balances[fixture.wallet.id]?[fixture.sgd]?.amount,
+            -17
+        )
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testRetainedRestoreFailureRepublishesTheUnchangedJournal() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let profile = UserProfile(baseCurrency: fixture.sgd)
+        let original = try fixture.expense(amount: 17)
+        try await fixture.seed(
+            profile: profile,
+            accounts: [fixture.wallet, fixture.usAccount, fixture.food],
+            entries: [original]
+        )
+        let candidate = try await fixture.store.snapshot()
+        let archive = try PortableArchive.seal(
+            candidate,
+            password: "restore-password"
+        )
+        let precommitGate = AsyncGate()
+        let model = fixture.model(
+            profile: profile,
+            entries: [original],
+            lifecycleHooks: hooks(
+                pausing: .afterJournalProjectionInvalidationBeforeCommit,
+                at: precommitGate
+            ),
+            retainsCompleteJournal: true
+        )
+        XCTAssertEqual(
+            model.displayBalanceResult(for: fixture.wallet).value?.amount,
+            -17
+        )
+
+        let restoreTask = Task { @MainActor in
+            try await model.restoreEncryptedBackup(
+                archive,
+                password: "restore-password"
+            )
+        }
+        let reached = await precommitGate.waitUntilReached(timeout: .seconds(5))
+        XCTAssertTrue(reached, "Restore invalidation checkpoint timed out")
+        XCTAssertFalse(model.journalRecentEntriesAreCurrent)
+        XCTAssertTrue(model.entries.isEmpty)
+        let durableCountBeforeFailure = try await fixture.store.count(
+            in: .journalEntries
+        )
+        XCTAssertEqual(durableCountBeforeFailure, 1)
+
+        // Closing the injected store makes the replacement fail before BEGIN;
+        // the on-disk pre-restore book remains available for an independent open.
+        await fixture.store.close()
+        await precommitGate.release()
+        do {
+            try await restoreTask.value
+            XCTFail("Expected the closed-store restore to fail")
+        } catch {
+            // The retained projection must be republished from the unchanged book.
+        }
+
+        XCTAssertEqual(model.entries, [original])
+        XCTAssertTrue(model.journalRecentEntriesAreCurrent)
+        XCTAssertEqual(model.journalEntryCount, 1)
+        XCTAssertEqual(
+            model.displayBalanceResult(for: fixture.wallet).value?.amount,
+            -17
+        )
+        let reopened = try fixture.reopenStore()
+        let persisted = try await reopened.fetchAll(
+            JournalEntry.self,
+            from: .journalEntries
+        )
+        XCTAssertEqual(persisted, [original])
+        await reopened.close()
     }
 
     @MainActor
@@ -1257,6 +2021,7 @@ final class AppModelTests: XCTestCase {
         } catch {
             XCTAssertTrue(error is AppModelError)
         }
+
         await fixture.store.close()
     }
 
@@ -1347,6 +2112,1237 @@ final class AppModelTests: XCTestCase {
         XCTAssertNoThrow(
             try RestoreCandidateValidator.validateSnapshotIdentities(candidate)
         )
+    }
+
+    func testRestoreRejectsDuplicatePhysicalSingletonRecords() throws {
+        let sgd = try CurrencyCode("SGD")
+        let profile = UserProfile(baseCurrency: sgd)
+        let candidate = DatabaseSnapshot(
+            schemaVersion: EncryptedRecordStore.currentSchemaVersion,
+            records: [
+                try storedRecord(
+                    profile,
+                    id: UserProfile.primaryRecordID,
+                    in: .profile
+                ),
+                try storedRecord(
+                    profile,
+                    id: UserProfile.primaryRecordID,
+                    in: .profile,
+                    updatedAt: 2_000
+                )
+            ]
+        )
+
+        XCTAssertThrowsError(
+            try RestoreCandidateValidator.validateSnapshotIdentities(candidate)
+        ) { error in
+            XCTAssertTrue(error is AppModelError)
+        }
+    }
+
+    func testRestoreRejectsAccountHierarchyCyclesAndKindMismatches() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let profile = UserProfile(
+            baseCurrency: fixture.sgd,
+            reportingTimeZoneIdentifier: "GMT"
+        )
+        let firstID = UUID()
+        let secondID = UUID()
+        let cycle = [
+            LedgerAccount(
+                id: firstID,
+                name: "First",
+                kind: .expense,
+                parentID: secondID
+            ),
+            LedgerAccount(
+                id: secondID,
+                name: "Second",
+                kind: .expense,
+                parentID: firstID
+            )
+        ]
+        let expenseParent = LedgerAccount(name: "Expense", kind: .expense)
+        let mismatchedChild = LedgerAccount(
+            name: "Income",
+            kind: .income,
+            parentID: expenseParent.id
+        )
+
+        for invalidAccounts in [cycle, [expenseParent, mismatchedChild]] {
+            do {
+                try await RestoreCandidateValidator.validateRelationships(
+                    profile: profile,
+                    accounts: invalidAccounts,
+                    budgetNodes: [],
+                    scheduledTransactions: [],
+                    investmentHoldings: [],
+                    netWorthSnapshots: [],
+                    quickLogDraft: nil,
+                    in: fixture.store
+                )
+                XCTFail("Expected an invalid account hierarchy to be rejected")
+            } catch {
+                XCTAssertTrue(error is AppModelError)
+            }
+        }
+        await fixture.store.close()
+    }
+
+    func testAccountHierarchyScreeningHandlesDeepChainsAndInvalidDescendants() throws {
+        var deepChain: [LedgerAccount] = []
+        deepChain.reserveCapacity(12_000)
+        var parentID: UUID?
+        for index in 0..<12_000 {
+            let account = LedgerAccount(
+                name: "Depth \(index)",
+                kind: .expense,
+                parentID: parentID
+            )
+            deepChain.append(account)
+            parentID = account.id
+        }
+        XCTAssertTrue(
+            try AppModel.invalidAccountHierarchyIDs(in: deepChain).isEmpty
+        )
+
+        let firstID = UUID()
+        let secondID = UUID()
+        let descendantID = UUID()
+        let orphanID = UUID()
+        let orphanDescendantID = UUID()
+        let invalidAccounts = [
+            LedgerAccount(
+                id: firstID,
+                name: "Cycle first",
+                kind: .expense,
+                parentID: secondID
+            ),
+            LedgerAccount(
+                id: secondID,
+                name: "Cycle second",
+                kind: .expense,
+                parentID: firstID
+            ),
+            LedgerAccount(
+                id: descendantID,
+                name: "Cycle descendant",
+                kind: .expense,
+                parentID: firstID
+            ),
+            LedgerAccount(
+                id: orphanID,
+                name: "Orphan",
+                kind: .expense,
+                parentID: UUID()
+            ),
+            LedgerAccount(
+                id: orphanDescendantID,
+                name: "Orphan descendant",
+                kind: .expense,
+                parentID: orphanID
+            )
+        ]
+
+        XCTAssertEqual(
+            try AppModel.invalidAccountHierarchyIDs(in: invalidAccounts),
+            Set([
+                firstID,
+                secondID,
+                descendantID,
+                orphanID,
+                orphanDescendantID
+            ])
+        )
+    }
+
+    func testRestoreRejectsMalformedDuplicateAndUnownedSystemAccounts() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let profile = UserProfile(baseCurrency: fixture.sgd)
+        let firstOpening = LedgerAccount(
+            name: "Opening 1",
+            kind: .equity,
+            systemRole: .openingBalances
+        )
+        let secondOpening = LedgerAccount(
+            name: "Opening 2",
+            kind: .equity,
+            systemRole: .openingBalances
+        )
+        let malformedOpening = LedgerAccount(
+            name: "Malformed",
+            kind: .trading,
+            currency: fixture.sgd,
+            systemRole: .openingBalances
+        )
+        let firstFX = LedgerAccount(
+            name: "FX 1",
+            kind: .trading,
+            currency: fixture.sgd,
+            systemRole: .foreignExchange
+        )
+        let secondFX = LedgerAccount(
+            name: "FX 2",
+            kind: .trading,
+            currency: fixture.sgd,
+            systemRole: .foreignExchange
+        )
+        let orphanPosition = LedgerAccount(
+            name: "Orphan position",
+            kind: .asset,
+            currency: fixture.sgd,
+            systemRole: .investmentPosition
+        )
+
+        let invalidSets = [
+            [firstOpening, secondOpening],
+            [malformedOpening],
+            [firstFX, secondFX],
+            [orphanPosition]
+        ]
+        for invalidAccounts in invalidSets {
+            do {
+                try await RestoreCandidateValidator.validateRelationships(
+                    profile: profile,
+                    accounts: invalidAccounts,
+                    budgetNodes: [],
+                    scheduledTransactions: [],
+                    investmentHoldings: [],
+                    netWorthSnapshots: [],
+                    quickLogDraft: nil,
+                    in: fixture.store
+                )
+                XCTFail("Expected invalid system-account topology to be rejected")
+            } catch {
+                XCTAssertTrue(error is AppModelError)
+            }
+        }
+        await fixture.store.close()
+    }
+
+    func testRestoreRejectsSystemAccountUsedByOrdinaryEntry() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let opening = LedgerAccount(
+            name: "Opening",
+            kind: .equity,
+            systemRole: .openingBalances
+        )
+        let entry = try JournalEntry(
+            kind: .expense,
+            postings: [
+                Posting(
+                    accountID: fixture.wallet.id,
+                    money: try Money(-1, currency: fixture.sgd)
+                ),
+                Posting(
+                    accountID: opening.id,
+                    money: try Money(1, currency: fixture.sgd)
+                )
+            ]
+        )
+        try await fixture.store.upsert(
+            entry,
+            id: entry.id.uuidString,
+            in: .journalEntries
+        )
+
+        do {
+            try await RestoreCandidateValidator.validateRelationships(
+                profile: UserProfile(baseCurrency: fixture.sgd),
+                accounts: [fixture.wallet, opening],
+                budgetNodes: [],
+                scheduledTransactions: [],
+                investmentHoldings: [],
+                netWorthSnapshots: [],
+                quickLogDraft: nil,
+                in: fixture.store
+            )
+            XCTFail("Expected ordinary ownership of a system account to fail")
+        } catch {
+            XCTAssertTrue(error is AppModelError)
+        }
+        await fixture.store.close()
+    }
+
+    func testRestoreRequiresLinkedScheduleToMatchTheJournalEntry() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let date = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let entry = try TransactionFactory.expense(
+            amount: try Money(9, currency: fixture.sgd),
+            paidFrom: fixture.wallet.id,
+            category: fixture.food.id,
+            occurredAt: date
+        )
+        try await fixture.store.upsert(
+            entry,
+            id: entry.id.uuidString,
+            in: .journalEntries
+        )
+        var schedule = try ScheduledTransaction(
+            kind: .expense,
+            name: "Subscription",
+            amount: try Money(10, currency: fixture.sgd),
+            accountID: fixture.wallet.id,
+            categoryAccountID: fixture.food.id,
+            nextOccurrence: date,
+            frequency: .monthly,
+            recurrenceTimeZoneIdentifier: calendar.timeZone.identifier
+        )
+        try schedule.resolveCurrent(
+            occurrenceID: schedule.currentOccurrenceID,
+            as: .matched,
+            linkedEntryID: entry.id,
+            at: date,
+            calendar: calendar
+        )
+
+        do {
+            try await RestoreCandidateValidator.validateRelationships(
+                profile: UserProfile(
+                    baseCurrency: fixture.sgd,
+                    reportingTimeZoneIdentifier: calendar.timeZone.identifier
+                ),
+                accounts: [fixture.wallet, fixture.food],
+                budgetNodes: [],
+                scheduledTransactions: [schedule],
+                investmentHoldings: [],
+                netWorthSnapshots: [],
+                quickLogDraft: nil,
+                in: fixture.store
+            )
+            XCTFail("Expected a linked amount mismatch to be rejected")
+        } catch {
+            XCTAssertTrue(error is AppModelError)
+        }
+
+        var matchingSchedule = try ScheduledTransaction(
+            kind: .expense,
+            name: "Subscription",
+            amount: try Money(9, currency: fixture.sgd),
+            accountID: fixture.wallet.id,
+            categoryAccountID: fixture.food.id,
+            nextOccurrence: date,
+            frequency: .monthly,
+            recurrenceTimeZoneIdentifier: calendar.timeZone.identifier
+        )
+        try matchingSchedule.resolveCurrent(
+            occurrenceID: matchingSchedule.currentOccurrenceID,
+            as: .matched,
+            linkedEntryID: entry.id,
+            at: date,
+            calendar: calendar
+        )
+        try await RestoreCandidateValidator.validateRelationships(
+            profile: UserProfile(
+                baseCurrency: fixture.sgd,
+                reportingTimeZoneIdentifier: calendar.timeZone.identifier
+            ),
+            accounts: [fixture.wallet, fixture.food],
+            budgetNodes: [],
+            scheduledTransactions: [matchingSchedule],
+            investmentHoldings: [],
+            netWorthSnapshots: [],
+            quickLogDraft: nil,
+            in: fixture.store
+        )
+        await fixture.store.close()
+    }
+
+    func testRestoreRequiresEveryInvestmentEntryToHaveOneHoldingOwner() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let destination = LedgerAccount(
+            name: "Unowned destination",
+            kind: .asset,
+            currency: fixture.sgd
+        )
+        let entry = try JournalEntry(
+            kind: .investment,
+            postings: [
+                Posting(
+                    accountID: fixture.wallet.id,
+                    money: try Money(-10, currency: fixture.sgd)
+                ),
+                Posting(
+                    accountID: destination.id,
+                    money: try Money(10, currency: fixture.sgd)
+                )
+            ]
+        )
+        try await fixture.store.upsert(
+            entry,
+            id: entry.id.uuidString,
+            in: .journalEntries
+        )
+
+        do {
+            try await RestoreCandidateValidator.validateRelationships(
+                profile: UserProfile(baseCurrency: fixture.sgd),
+                accounts: [fixture.wallet, destination],
+                budgetNodes: [],
+                scheduledTransactions: [],
+                investmentHoldings: [],
+                netWorthSnapshots: [],
+                quickLogDraft: nil,
+                in: fixture.store
+            )
+            XCTFail("Expected an unowned investment entry to be rejected")
+        } catch {
+            XCTAssertTrue(error is AppModelError)
+        }
+        await fixture.store.close()
+    }
+
+    func testRestoreBudgetAttributionRequiresExactPostingOrAuditedRemap() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let source = LedgerAccount(name: "Old food", kind: .expense)
+        let target = LedgerAccount(name: "Food", kind: .expense)
+        let instant = try XCTUnwrap(
+            ISO8601DateFormatter().date(from: "2026-07-31T10:30:00Z")
+        )
+        let originZone = try XCTUnwrap(
+            TimeZone(identifier: "Pacific/Kiritimati")
+        )
+        let originalCandidate = try TransactionFactory.expense(
+            amount: try Money(12, currency: fixture.sgd),
+            paidFrom: fixture.wallet.id,
+            category: source.id,
+            occurredAt: instant
+        )
+        let original = try JournalEntry(
+            id: originalCandidate.id,
+            kind: originalCandidate.kind,
+            occurredAt: originalCandidate.occurredAt,
+            createdAt: originalCandidate.createdAt,
+            payee: originalCandidate.payee,
+            note: originalCandidate.note,
+            postings: originalCandidate.postings,
+            originContext: .capture(
+                for: instant,
+                timeZone: originZone
+            )
+        )
+        let remappedPostings = original.postings.map { posting in
+            Posting(
+                id: posting.id,
+                accountID: posting.accountID == source.id
+                    ? target.id : posting.accountID,
+                money: posting.money,
+                memo: posting.memo
+            )
+        }
+        let remapped = try JournalEntry(
+            id: original.id,
+            kind: original.kind,
+            occurredAt: original.occurredAt,
+            createdAt: original.createdAt,
+            payee: original.payee,
+            note: original.note,
+            postings: remappedPostings,
+            sourceSystem: original.sourceSystem,
+            sourceFingerprint: original.sourceFingerprint,
+            originContext: original.originContext
+        )
+        let attribution = try BudgetEntryAttribution(
+            entry: original,
+            originTimeZoneIdentifier: "GMT"
+        )
+        try await fixture.store.write([
+            try RecordWrite(
+                remapped,
+                id: remapped.id.uuidString,
+                in: .journalEntries
+            ),
+            try RecordWrite(
+                attribution,
+                id: attribution.id.uuidString,
+                in: .budgetEntryAttributions
+            )
+        ])
+        let profile = UserProfile(
+            baseCurrency: fixture.sgd,
+            reportingTimeZoneIdentifier: "GMT"
+        )
+
+        do {
+            try await RestoreCandidateValidator.validateRelationships(
+                profile: profile,
+                accounts: [fixture.wallet, target],
+                budgetNodes: [],
+                scheduledTransactions: [],
+                investmentHoldings: [],
+                netWorthSnapshots: [],
+                quickLogDraft: nil,
+                in: fixture.store
+            )
+            XCTFail("Expected an unaudited attribution remap to be rejected")
+        } catch {
+            XCTAssertTrue(error is AppModelError)
+        }
+
+        let audit = LedgerAccountLifecycleAudit(
+            action: .merged,
+            before: source,
+            after: target,
+            targetID: target.id,
+            affectedJournalEntryIDs: [remapped.id]
+        )
+        try await fixture.store.upsert(
+            audit,
+            id: audit.id.uuidString,
+            in: .accountLifecycleAudit
+        )
+        try await RestoreCandidateValidator.validateRelationships(
+            profile: profile,
+            accounts: [fixture.wallet, target],
+            budgetNodes: [],
+            scheduledTransactions: [],
+            investmentHoldings: [],
+            netWorthSnapshots: [],
+            quickLogDraft: nil,
+            in: fixture.store
+        )
+
+        let encodedAttribution = try JSONEncoder().encode(attribution)
+        var alteredOrigin = try XCTUnwrap(
+            JSONSerialization.jsonObject(
+                with: encodedAttribution
+            ) as? [String: Any]
+        )
+        alteredOrigin["originTimeZoneIdentifier"] = "GMT"
+        alteredOrigin["originUTCOffsetSeconds"] = 0
+        alteredOrigin["originDayKey"] = "2026-07-31"
+        let coherentlyAlteredAttribution = try JSONDecoder().decode(
+            BudgetEntryAttribution.self,
+            from: try JSONSerialization.data(withJSONObject: alteredOrigin)
+        )
+        try await fixture.store.upsert(
+            coherentlyAlteredAttribution,
+            id: coherentlyAlteredAttribution.id.uuidString,
+            in: .budgetEntryAttributions
+        )
+        do {
+            try await RestoreCandidateValidator.validateRelationships(
+                profile: profile,
+                accounts: [fixture.wallet, target],
+                budgetNodes: [],
+                scheduledTransactions: [],
+                investmentHoldings: [],
+                netWorthSnapshots: [],
+                quickLogDraft: nil,
+                in: fixture.store
+            )
+            XCTFail("Expected a coherent origin-context rewrite to be rejected")
+        } catch {
+            XCTAssertTrue(error is AppModelError)
+        }
+        try await fixture.store.upsert(
+            attribution,
+            id: attribution.id.uuidString,
+            in: .budgetEntryAttributions
+        )
+
+        let tamperedPostings = try original.postings.map { posting in
+            Posting(
+                id: posting.id,
+                accountID: posting.accountID,
+                money: try Money(
+                    posting.money.amount < .zero ? -13 : 13,
+                    currency: posting.money.currency
+                ),
+                memo: posting.memo
+            )
+        }
+        let tamperedEntry = try JournalEntry(
+            id: original.id,
+            kind: original.kind,
+            occurredAt: original.occurredAt,
+            createdAt: original.createdAt,
+            payee: original.payee,
+            note: original.note,
+            postings: tamperedPostings,
+            originContext: original.originContext
+        )
+        let tamperedAttribution = try BudgetEntryAttribution(
+            entry: tamperedEntry,
+            originTimeZoneIdentifier: "GMT"
+        )
+        try await fixture.store.upsert(
+            tamperedAttribution,
+            id: tamperedAttribution.id.uuidString,
+            in: .budgetEntryAttributions
+        )
+        do {
+            try await RestoreCandidateValidator.validateRelationships(
+                profile: profile,
+                accounts: [fixture.wallet, target],
+                budgetNodes: [],
+                scheduledTransactions: [],
+                investmentHoldings: [],
+                netWorthSnapshots: [],
+                quickLogDraft: nil,
+                in: fixture.store
+            )
+            XCTFail("Expected altered attribution money to be rejected")
+        } catch {
+            XCTAssertTrue(error is AppModelError)
+        }
+        await fixture.store.close()
+    }
+
+    func testRestoreAcceptsAFunctionalMultiHopLifecycleRemap() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let source = LedgerAccount(name: "Old food", kind: .expense)
+        let intermediate = LedgerAccount(name: "Meals", kind: .expense)
+        let target = LedgerAccount(name: "Food", kind: .expense)
+        let original = try TransactionFactory.expense(
+            amount: try Money(12, currency: fixture.sgd),
+            paidFrom: fixture.wallet.id,
+            category: source.id,
+            occurredAt: Date(timeIntervalSinceReferenceDate: 70_000)
+        )
+        let remapped = try JournalEntry(
+            id: original.id,
+            kind: original.kind,
+            occurredAt: original.occurredAt,
+            createdAt: original.createdAt,
+            postings: original.postings.map { posting in
+                Posting(
+                    id: posting.id,
+                    accountID: posting.accountID == source.id
+                        ? target.id : posting.accountID,
+                    money: posting.money,
+                    memo: posting.memo
+                )
+            },
+            originContext: original.originContext
+        )
+        let attribution = try BudgetEntryAttribution(
+            entry: original,
+            originTimeZoneIdentifier: "GMT"
+        )
+        let firstAudit = LedgerAccountLifecycleAudit(
+            action: .merged,
+            before: source,
+            after: intermediate,
+            targetID: intermediate.id,
+            affectedJournalEntryIDs: [remapped.id]
+        )
+        let secondAudit = LedgerAccountLifecycleAudit(
+            action: .merged,
+            before: intermediate,
+            after: target,
+            targetID: target.id,
+            affectedJournalEntryIDs: [remapped.id]
+        )
+        try await fixture.store.write([
+            try RecordWrite(
+                firstAudit,
+                id: firstAudit.id.uuidString,
+                in: .accountLifecycleAudit
+            ),
+            try RecordWrite(
+                secondAudit,
+                id: secondAudit.id.uuidString,
+                in: .accountLifecycleAudit
+            )
+        ])
+
+        try await RestoreCandidateValidator.validateBudgetAttributionIntegrity(
+            attributions: [attribution],
+            journalEntries: [remapped],
+            journalByID: [remapped.id: remapped],
+            accountByID: [fixture.wallet.id: fixture.wallet, target.id: target],
+            in: fixture.store,
+            enforcesRestoreWorkLimits: true
+        )
+        await fixture.store.close()
+    }
+
+    func testRestoreRejectsSharedLineageAmplificationBeforePerEntryTraversal() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let source = LedgerAccount(name: "Old food", kind: .expense)
+        let target = LedgerAccount(name: "Food", kind: .expense)
+        let occurredAt = Date(timeIntervalSinceReferenceDate: 71_000)
+
+        func entry(
+            id: UUID,
+            categoryID: UUID,
+            postingIDs: (UUID, UUID) = (UUID(), UUID()),
+            supersedesID: UUID? = nil
+        ) throws -> JournalEntry {
+            try JournalEntry(
+                id: id,
+                kind: .expense,
+                occurredAt: occurredAt,
+                createdAt: occurredAt,
+                postings: [
+                    Posting(
+                        id: postingIDs.0,
+                        accountID: fixture.wallet.id,
+                        money: try Money(-1, currency: fixture.sgd)
+                    ),
+                    Posting(
+                        id: postingIDs.1,
+                        accountID: categoryID,
+                        money: try Money(1, currency: fixture.sgd)
+                    )
+                ],
+                supersedesID: supersedesID
+            )
+        }
+
+        var revisions: [JournalEntry] = []
+        var predecessorID: UUID?
+        for _ in 0..<256 {
+            let revision = try entry(
+                id: UUID(),
+                categoryID: source.id,
+                supersedesID: predecessorID
+            )
+            revisions.append(revision)
+            predecessorID = revision.id
+        }
+        try await fixture.store.write(try revisions.map { revision in
+            try RecordWrite(
+                revision,
+                id: "\(revision.id.uuidString)-\(UUID().uuidString)",
+                in: .journalEntryRevisions
+            )
+        })
+        let sharedPredecessorID = try XCTUnwrap(predecessorID)
+
+        var currentEntries: [JournalEntry] = []
+        var attributions: [BudgetEntryAttribution] = []
+        for _ in 0..<256 {
+            let id = UUID()
+            let postingIDs = (UUID(), UUID())
+            let original = try entry(
+                id: id,
+                categoryID: source.id,
+                postingIDs: postingIDs
+            )
+            let current = try entry(
+                id: id,
+                categoryID: target.id,
+                postingIDs: postingIDs,
+                supersedesID: sharedPredecessorID
+            )
+            currentEntries.append(current)
+            attributions.append(try BudgetEntryAttribution(
+                entry: original,
+                originTimeZoneIdentifier: "GMT"
+            ))
+        }
+
+        do {
+            try await RestoreCandidateValidator.validateBudgetAttributionIntegrity(
+                attributions: attributions,
+                journalEntries: currentEntries,
+                journalByID: Dictionary(
+                    uniqueKeysWithValues: currentEntries.map { ($0.id, $0) }
+                ),
+                accountByID: [
+                    fixture.wallet.id: fixture.wallet,
+                    target.id: target
+                ],
+                in: fixture.store,
+                enforcesRestoreWorkLimits: true
+            )
+            XCTFail("Expected a shared-predecessor restore graph to fail closed")
+        } catch AppModelError.invalidBook {
+            // One predecessor can never have multiple logical successors in a
+            // book written by MoneyUp, so the amplification graph is rejected.
+        }
+        await fixture.store.close()
+    }
+
+    func testRestoreIdentityValidationObservesCancellation() async throws {
+        let profile = UserProfile(baseCurrency: try CurrencyCode("SGD"))
+        let candidate = DatabaseSnapshot(
+            schemaVersion: EncryptedRecordStore.currentSchemaVersion,
+            records: [try storedRecord(
+                profile,
+                id: UserProfile.primaryRecordID,
+                in: .profile
+            )]
+        )
+        let gate = AsyncGate()
+        let validation = Task {
+            await gate.suspend()
+            try RestoreCandidateValidator.validateSnapshotIdentities(candidate)
+        }
+        let reached = await gate.waitUntilReached(timeout: .seconds(5))
+        XCTAssertTrue(reached, "Cancellation checkpoint timed out")
+        validation.cancel()
+        await gate.release()
+
+        do {
+            try await validation.value
+            XCTFail("Expected restore identity validation cancellation")
+        } catch is CancellationError {
+            // Cancellation is observed at the first bounded validation step.
+        }
+    }
+
+    func testRestoreCandidateRecordLimitBoundaries() {
+        XCTAssertTrue(RestoreCandidateValidator.isWithinCandidateRecordLimit(0))
+        XCTAssertTrue(RestoreCandidateValidator.isWithinCandidateRecordLimit(
+            RestoreCandidateValidator.maximumCandidateRecordCount
+        ))
+        XCTAssertFalse(RestoreCandidateValidator.isWithinCandidateRecordLimit(-1))
+        XCTAssertFalse(RestoreCandidateValidator.isWithinCandidateRecordLimit(
+            RestoreCandidateValidator.maximumCandidateRecordCount + 1
+        ))
+    }
+
+    func testRestoreWorkLimitsRejectOversizedNestedRowsBeforeDomainDecode() throws {
+        func payload(_ object: Any) throws -> Data {
+            try JSONSerialization.data(withJSONObject: object)
+        }
+        func snapshot(
+            _ collection: RecordCollection,
+            _ payload: Data,
+            recordID: String = UUID().uuidString
+        ) -> DatabaseSnapshot {
+            DatabaseSnapshot(
+                schemaVersion: EncryptedRecordStore.currentSchemaVersion,
+                records: [StoredRecordSnapshot(
+                    collection: collection.rawValue,
+                    recordID: recordID,
+                    payload: payload,
+                    updatedAt: 1
+                )]
+            )
+        }
+
+        let candidates = try [
+            snapshot(.journalEntries, payload([
+                "postings": Array(
+                    repeating: [String: Any](),
+                    count: JournalEntry.maximumPostingCount + 1
+                )
+            ])),
+            snapshot(.investmentHoldings, payload([
+                "lots": Array(
+                    repeating: [String: Any](),
+                    count: InvestmentHolding.maximumActivitiesPerCollection + 1
+                )
+            ])),
+            snapshot(.savingsGoals, payload([
+                "movements": Array(
+                    repeating: [String: Any](),
+                    count: SavingsGoal.maximumMovementCount + 1
+                )
+            ])),
+            snapshot(.scheduledTransactions, payload([
+                "resolutions": Array(
+                    repeating: [String: Any](),
+                    count: ScheduledTransaction.maximumResolutionCount + 1
+                )
+            ])),
+            snapshot(.accountLifecycleAudit, payload([
+                "affectedJournalEntryIDs": Array(
+                    repeating: UUID().uuidString,
+                    count: LedgerAccountLifecycleAudit
+                        .maximumAffectedRecordCount
+                ),
+                "affectedScheduleIDs": [UUID().uuidString],
+                "affectedHoldingIDs": []
+            ])),
+            snapshot(
+                .quickLogDrafts,
+                payload([
+                    "splitLines": Array(
+                        repeating: [String: Any](),
+                        count: QuickLogDraft.maximumSplitLineCount + 1
+                    )
+                ]),
+                recordID: QuickLogDraft.primaryRecordID
+            ),
+            snapshot(
+                .budgetConfigurationTimelines,
+                payload([
+                    "revisions": [[
+                        "nodes": Array(
+                            repeating: [String: Any](),
+                            count: BudgetConfigurationTimeline
+                                .maximumNodesPerRevision + 1
+                        )
+                    ]]
+                ]),
+                recordID: BudgetConfigurationTimeline.primaryRecordID
+            ),
+            snapshot(
+                .accounts,
+                Data(repeating: 0x20, count: RecordWrite.maximumPayloadByteCount + 1)
+            ),
+            snapshot(
+                .accounts,
+                Data("{}".utf8),
+                recordID: String(
+                    repeating: "a",
+                    count: RecordWrite.maximumRecordIDByteCount + 1
+                )
+            )
+        ]
+
+        for candidate in candidates {
+            XCTAssertThrowsError(
+                try RestoreCandidateValidator.validateSnapshotWorkLimits(
+                    candidate
+                )
+            ) { error in
+                XCTAssertTrue(error is AppModelError)
+            }
+        }
+    }
+
+    @MainActor
+    func testBackupPreservesQuarantinedRawRowsWithoutRunningStrictRestoreDecode() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let oversizedGoalPayload = try JSONSerialization.data(
+            withJSONObject: [
+                "movements": Array(
+                    repeating: [String: Any](),
+                    count: SavingsGoal.maximumMovementCount + 1
+                )
+            ]
+        )
+        try await fixture.store.restore(DatabaseSnapshot(
+            schemaVersion: EncryptedRecordStore.currentSchemaVersion,
+            records: [StoredRecordSnapshot(
+                collection: RecordCollection.savingsGoals.rawValue,
+                recordID: UUID().uuidString,
+                payload: oversizedGoalPayload,
+                updatedAt: 1
+            )]
+        ))
+        let model = fixture.model()
+
+        let archive = try await model.encryptedBackup(
+            password: "restore-shape-boundary"
+        )
+        let rawBackup = try PortableArchive.open(
+            archive,
+            password: "restore-shape-boundary"
+        )
+        XCTAssertEqual(rawBackup.records.count, 1)
+        XCTAssertEqual(rawBackup.records.first?.payload, oversizedGoalPayload)
+        XCTAssertThrowsError(
+            try RestoreCandidateValidator.validateSnapshotWorkLimits(rawBackup)
+        ) { error in
+            XCTAssertTrue(error is AppModelError)
+        }
+        XCTAssertFalse(model.isWorking)
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testRecoveringStartupQuarantinesAliasedAccountIdentityWithoutResurrection() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let profile = UserProfile(baseCurrency: fixture.sgd)
+        try await fixture.seed(
+            profile: profile,
+            accounts: [fixture.food]
+        )
+        let aliasRecordID = UUID().uuidString
+        let currentSnapshot = try await fixture.store.snapshot()
+        let aliasedSnapshot = DatabaseSnapshot(
+            schemaVersion: currentSnapshot.schemaVersion,
+            createdAt: currentSnapshot.createdAt,
+            records: currentSnapshot.records + [StoredRecordSnapshot(
+                collection: RecordCollection.accounts.rawValue,
+                recordID: aliasRecordID,
+                payload: try JSONEncoder().encode(fixture.wallet),
+                updatedAt: Date().timeIntervalSince1970
+            )]
+        )
+        try await fixture.store.restore(aliasedSnapshot)
+        let model = fixture.model(
+            profile: profile,
+            accounts: [fixture.wallet, fixture.food]
+        )
+
+        try await model.reloadPersistedBookForTesting()
+
+        XCTAssertFalse(model.accounts.contains { $0.id == fixture.wallet.id })
+        XCTAssertNil(model.accountsByID[fixture.wallet.id])
+        XCTAssertTrue(model.recoveryIssues.contains(
+            "accounts/\(aliasRecordID)"
+        ))
+
+        do {
+            try await model.deleteLedgerItem(id: fixture.wallet.id)
+            XCTFail("An aliased physical identity must not be mutated")
+        } catch AppModelError.missingRecord {
+            // The alias is quarantined, so a canonical delete cannot miss it
+            // and let the account reappear on the next launch.
+        }
+        let persistedAccountCount = try await fixture.store.count(
+            in: .accounts
+        )
+        XCTAssertEqual(persistedAccountCount, 2)
+        try await model.reloadPersistedBookForTesting()
+        XCTAssertNil(model.accountsByID[fixture.wallet.id])
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testRecoveringStartupExcludesCanonicalJournalTwinFromEveryReadPath() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let profile = UserProfile(baseCurrency: fixture.sgd)
+        try await fixture.seed(
+            profile: profile,
+            accounts: [fixture.wallet, fixture.food]
+        )
+        let entryID = try XCTUnwrap(
+            UUID(uuidString: "ABCDEF12-3456-4789-ABCD-EF1234567890")
+        )
+        let candidate = try fixture.expense(amount: 7)
+        let entry = try JournalEntry(
+            id: entryID,
+            kind: candidate.kind,
+            occurredAt: candidate.occurredAt,
+            createdAt: candidate.createdAt,
+            payee: candidate.payee,
+            note: candidate.note,
+            postings: candidate.postings,
+            originContext: candidate.originContext
+        )
+        let payload = try JSONEncoder().encode(entry)
+        let snapshot = try await fixture.store.snapshot()
+        try await fixture.store.restore(DatabaseSnapshot(
+            schemaVersion: snapshot.schemaVersion,
+            createdAt: snapshot.createdAt,
+            records: snapshot.records + [
+                StoredRecordSnapshot(
+                    collection: RecordCollection.journalEntries.rawValue,
+                    recordID: entry.id.uuidString,
+                    payload: payload,
+                    updatedAt: 1
+                ),
+                StoredRecordSnapshot(
+                    collection: RecordCollection.journalEntries.rawValue,
+                    recordID: entry.id.uuidString.lowercased(),
+                    payload: payload,
+                    updatedAt: 1
+                )
+            ]
+        ))
+        let model = fixture.model(
+            profile: profile,
+            accounts: [fixture.wallet, fixture.food]
+        )
+
+        try await model.reloadPersistedBookForTesting()
+
+        XCTAssertEqual(model.journalEntryCount, 0)
+        XCTAssertTrue(model.entries.isEmpty)
+        XCTAssertEqual(
+            model.displayBalanceResult(for: fixture.wallet).value?.amount,
+            0
+        )
+        let history = try await model.historyPage(query: HistoryQuery())
+        XCTAssertTrue(history.entries.isEmpty)
+        let summary = try await model.historySummary(query: HistoryQuery())
+        XCTAssertEqual(summary.transactionCount, 0)
+        XCTAssertTrue(summary.amountsByCurrency.isEmpty)
+        let interval = DateInterval(
+            start: entry.occurredAt.addingTimeInterval(-86_400),
+            end: entry.occurredAt.addingTimeInterval(86_400)
+        )
+        let calendarEntries = try await model.calendarEntries(in: interval)
+        XCTAssertTrue(calendarEntries.isEmpty)
+        let postingEvents = try await model.journalPostingEvents(in: interval)
+        XCTAssertTrue(postingEvents.isEmpty)
+        XCTAssertTrue(model.recoveryIssues.contains {
+            $0.contains(entry.id.uuidString.lowercased())
+        })
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testRecoveringStartupFailsBudgetProjectionClosedForInvalidAttribution() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let source = LedgerAccount(name: "Old food", kind: .expense)
+        let target = LedgerAccount(name: "Food", kind: .expense)
+        let instant = try XCTUnwrap(
+            ISO8601DateFormatter().date(from: "2026-07-31T10:30:00Z")
+        )
+        let originZone = try XCTUnwrap(
+            TimeZone(identifier: "Pacific/Kiritimati")
+        )
+        let originalCandidate = try TransactionFactory.expense(
+            amount: try Money(12, currency: fixture.sgd),
+            paidFrom: fixture.wallet.id,
+            category: source.id,
+            occurredAt: instant
+        )
+        let original = try JournalEntry(
+            id: originalCandidate.id,
+            kind: originalCandidate.kind,
+            occurredAt: originalCandidate.occurredAt,
+            createdAt: originalCandidate.createdAt,
+            payee: originalCandidate.payee,
+            note: originalCandidate.note,
+            postings: originalCandidate.postings,
+            originContext: .capture(
+                for: instant,
+                timeZone: originZone
+            )
+        )
+        let remappedPostings = original.postings.map { posting in
+            Posting(
+                id: posting.id,
+                accountID: posting.accountID == source.id
+                    ? target.id : posting.accountID,
+                money: posting.money,
+                memo: posting.memo
+            )
+        }
+        let remapped = try JournalEntry(
+            id: original.id,
+            kind: original.kind,
+            occurredAt: original.occurredAt,
+            createdAt: original.createdAt,
+            payee: original.payee,
+            note: original.note,
+            postings: remappedPostings,
+            sourceSystem: original.sourceSystem,
+            sourceFingerprint: original.sourceFingerprint,
+            originContext: original.originContext
+        )
+        let attribution = try BudgetEntryAttribution(
+            entry: original,
+            originTimeZoneIdentifier: "GMT"
+        )
+        let profile = UserProfile(
+            baseCurrency: fixture.sgd,
+            reportingTimeZoneIdentifier: "GMT"
+        )
+        try await fixture.seed(
+            profile: profile,
+            accounts: [fixture.wallet, target],
+            entries: [remapped]
+        )
+        try await fixture.store.upsert(
+            attribution,
+            id: attribution.id.uuidString,
+            in: .budgetEntryAttributions
+        )
+        let model = fixture.model(profile: profile)
+
+        try await model.reloadPersistedBookForTesting()
+
+        XCTAssertTrue(model.recoveryIssues.contains(
+            "budget_entry_attributions/inconsistent-history"
+        ))
+        guard case .unavailable = model.budgetProgressThisMonthResult() else {
+            return XCTFail("Unaudited attribution remap must disable budget projection")
+        }
+
+        let audit = LedgerAccountLifecycleAudit(
+            action: .merged,
+            before: source,
+            after: target,
+            targetID: target.id,
+            affectedJournalEntryIDs: [remapped.id]
+        )
+        try await fixture.store.upsert(
+            audit,
+            id: audit.id.uuidString,
+            in: .accountLifecycleAudit
+        )
+        try await model.reloadPersistedBookForTesting()
+
+        XCTAssertFalse(model.recoveryIssues.contains(
+            "budget_entry_attributions/inconsistent-history"
+        ))
+        guard case let .available(progress) = model.budgetProgressThisMonthResult()
+        else { return XCTFail("An exact audited remap must remain usable") }
+        XCTAssertTrue(progress.isEmpty)
+
+        let encodedAttribution = try JSONEncoder().encode(attribution)
+        var alteredOrigin = try XCTUnwrap(
+            JSONSerialization.jsonObject(
+                with: encodedAttribution
+            ) as? [String: Any]
+        )
+        alteredOrigin["originTimeZoneIdentifier"] = "GMT"
+        alteredOrigin["originUTCOffsetSeconds"] = 0
+        alteredOrigin["originDayKey"] = "2026-07-31"
+        let coherentlyAlteredAttribution = try JSONDecoder().decode(
+            BudgetEntryAttribution.self,
+            from: try JSONSerialization.data(withJSONObject: alteredOrigin)
+        )
+        try await fixture.store.upsert(
+            coherentlyAlteredAttribution,
+            id: coherentlyAlteredAttribution.id.uuidString,
+            in: .budgetEntryAttributions
+        )
+        try await model.reloadPersistedBookForTesting()
+
+        XCTAssertTrue(model.recoveryIssues.contains(
+            "budget_entry_attributions/inconsistent-history"
+        ))
+        guard case .unavailable = model.budgetProgressThisMonthResult() else {
+            return XCTFail("A coherent civil-context rewrite must fail closed")
+        }
+
+        let tamperedPostings = try original.postings.map { posting in
+            Posting(
+                id: posting.id,
+                accountID: posting.accountID,
+                money: try Money(
+                    posting.money.amount < .zero ? -13 : 13,
+                    currency: posting.money.currency
+                ),
+                memo: posting.memo
+            )
+        }
+        let tamperedEntry = try JournalEntry(
+            id: original.id,
+            kind: original.kind,
+            occurredAt: original.occurredAt,
+            createdAt: original.createdAt,
+            payee: original.payee,
+            note: original.note,
+            postings: tamperedPostings,
+            originContext: original.originContext
+        )
+        let tamperedAttribution = try BudgetEntryAttribution(
+            entry: tamperedEntry,
+            originTimeZoneIdentifier: "GMT"
+        )
+        try await fixture.store.upsert(
+            tamperedAttribution,
+            id: tamperedAttribution.id.uuidString,
+            in: .budgetEntryAttributions
+        )
+        try await model.reloadPersistedBookForTesting()
+
+        XCTAssertTrue(model.recoveryIssues.contains(
+            "budget_entry_attributions/inconsistent-history"
+        ))
+        guard case .unavailable = model.budgetProgressThisMonthResult() else {
+            return XCTFail("Audits must not excuse changed date/money/memo data")
+        }
+        await fixture.store.close()
     }
 
     @MainActor
@@ -1657,6 +3653,285 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testErasePersistsIntentBeforeDeletingMainKeyAndClearsItLast() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let events = EraseEventRecorder()
+        let captureStore = EraseRecordingLockedCaptureStore(events: events)
+        let intent = DataEraseIntentAccess(
+            isPending: { false },
+            markPending: { events.record("intent-marked") },
+            clear: { events.record("intent-cleared") }
+        )
+        let model = fixture.model(
+            lockedCaptureStore: captureStore,
+            deleteDatabaseKey: { events.record("database-key-deleted") },
+            dataEraseIntent: intent
+        )
+
+        await model.eraseAllDataAndRestart()
+
+        XCTAssertEqual(
+            events.snapshot(),
+            [
+                "intent-marked",
+                "database-key-deleted",
+                "locked-capture-erased",
+                "intent-cleared"
+            ]
+        )
+        XCTAssertEqual(model.state, .onboarding)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.databaseURL.path))
+    }
+
+    @MainActor
+    func testEraseIntentWriteFailurePerformsNoDestructiveStep() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let artifactsBeforeErase = DatabaseKeyCreationPolicy.artifactURLs(
+            for: fixture.databaseURL
+        ).filter {
+            FileManager.default.fileExists(atPath: $0.path)
+        }
+        XCTAssertFalse(artifactsBeforeErase.isEmpty)
+        let events = EraseEventRecorder()
+        let captureStore = EraseRecordingLockedCaptureStore(events: events)
+        let intent = DataEraseIntentAccess(
+            isPending: { false },
+            markPending: {
+                events.record("intent-mark-attempted")
+                throw DatabaseKeyStoreError.unexpectedStatus(-31_337)
+            },
+            clear: { events.record("intent-cleared") }
+        )
+        let model = fixture.model(
+            lockedCaptureStore: captureStore,
+            deleteDatabaseKey: { events.record("database-key-deleted") },
+            dataEraseIntent: intent
+        )
+
+        await model.eraseAllDataAndRestart()
+
+        XCTAssertEqual(events.snapshot(), ["intent-mark-attempted"])
+        guard case .failed = model.state else {
+            XCTFail("A failed durable marker must abort erase")
+            await fixture.store.close()
+            return
+        }
+        XCTAssertTrue(artifactsBeforeErase.allSatisfy {
+            FileManager.default.fileExists(atPath: $0.path)
+        })
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testPendingEraseFailureLeavesIntentAndBookArtifactsCryptographicallyErased() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("MoneyUpEraseResumeTests-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let databaseURL = directory.appendingPathComponent("moneyup.sqlite")
+        let artifactURLs = DatabaseKeyCreationPolicy.artifactURLs(
+            for: databaseURL
+        )
+        for url in artifactURLs {
+            try Data([0xa5]).write(to: url)
+        }
+        let events = EraseEventRecorder()
+        let captureStore = EraseRecordingLockedCaptureStore(
+            events: events,
+            eraseError: LockedCaptureStoreError.unavailable
+        )
+
+        do {
+            try await AppModel.completePendingDataErase(
+                databaseURL: databaseURL,
+                deleteDatabaseKey: {
+                    events.record("database-key-deleted")
+                },
+                lockedCaptureStore: captureStore,
+                clearEraseIntent: { events.record("intent-cleared") }
+            )
+            XCTFail("A failed inbox erase must keep the durable intent")
+        } catch LockedCaptureStoreError.unavailable {
+            // Startup can retry the idempotent completion while the marker stays.
+        }
+
+        XCTAssertEqual(
+            events.snapshot(),
+            ["database-key-deleted", "locked-capture-erased"]
+        )
+        XCTAssertTrue(artifactURLs.allSatisfy {
+            !FileManager.default.fileExists(atPath: $0.path)
+        })
+    }
+
+    @MainActor
+    func testStartupCompletesPendingEraseBeforeOpeningReplacementStore() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let replacementDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("MoneyUpEraseReplacement-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: replacementDirectory) }
+        let replacementStore = try EncryptedRecordStore(
+            databaseURL: replacementDirectory.appendingPathComponent("replacement.sqlite"),
+            key: Data(repeating: 0x71, count: 32)
+        )
+        let events = EraseEventRecorder()
+        let captureStore = EraseRecordingLockedCaptureStore(events: events)
+        let intent = DataEraseIntentAccess(
+            isPending: {
+                events.record("intent-checked")
+                return true
+            },
+            markPending: { events.record("unexpected-intent-mark") },
+            clear: { events.record("intent-cleared") }
+        )
+        let model = fixture.model(
+            lockedCaptureStore: captureStore,
+            deleteDatabaseKey: { events.record("database-key-deleted") },
+            dataEraseIntent: intent,
+            openDatabaseStore: { _ in
+                events.record("database-opened")
+                return replacementStore
+            }
+        )
+
+        await model.start()
+
+        XCTAssertEqual(
+            events.snapshot(),
+            [
+                "intent-checked",
+                "database-key-deleted",
+                "locked-capture-erased",
+                "intent-cleared",
+                "database-opened"
+            ]
+        )
+        XCTAssertEqual(model.state, .onboarding)
+        XCTAssertNil(model.profile)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.databaseURL.path))
+        await replacementStore.close()
+    }
+
+    @MainActor
+    func testStartupCleanupFailureKeepsEraseIntentAndNeverOpensDatabase() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let replacementDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("MoneyUpEraseFailure-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: replacementDirectory) }
+        let replacementStore = try EncryptedRecordStore(
+            databaseURL: replacementDirectory.appendingPathComponent("replacement.sqlite"),
+            key: Data(repeating: 0x72, count: 32)
+        )
+        let events = EraseEventRecorder()
+        let captureStore = EraseRecordingLockedCaptureStore(events: events)
+        let intent = DataEraseIntentAccess(
+            isPending: {
+                events.record("intent-checked")
+                return true
+            },
+            markPending: { events.record("unexpected-intent-mark") },
+            clear: { events.record("intent-cleared") }
+        )
+        let model = fixture.model(
+            lockedCaptureStore: captureStore,
+            deleteDatabaseKey: {
+                events.record("database-key-delete-attempted")
+                throw DatabaseKeyStoreError.authenticationCancelled
+            },
+            dataEraseIntent: intent,
+            openDatabaseStore: { _ in
+                events.record("database-opened")
+                return replacementStore
+            }
+        )
+
+        await model.start()
+
+        XCTAssertEqual(
+            events.snapshot(),
+            [
+                "intent-checked",
+                "database-key-delete-attempted"
+            ]
+        )
+        guard case .failed = model.state else {
+            XCTFail("A partial erase must fail closed")
+            await replacementStore.close()
+            return
+        }
+        XCTAssertNil(model.profile)
+        XCTAssertTrue(model.accounts.isEmpty)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: fixture.databaseURL.path))
+        await replacementStore.close()
+    }
+
+    @MainActor
+    func testStartupRetriesClearFailureIdempotentlyBeforeOpeningOnce() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let replacementDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("MoneyUpEraseClearRetry-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: replacementDirectory) }
+        let replacementStore = try EncryptedRecordStore(
+            databaseURL: replacementDirectory.appendingPathComponent("replacement.sqlite"),
+            key: Data(repeating: 0x73, count: 32)
+        )
+        let events = EraseEventRecorder()
+        let intent = RetryingEraseIntent(
+            events: events,
+            clearFailuresRemaining: 1
+        )
+        let captureStore = EraseRecordingLockedCaptureStore(events: events)
+        let model = fixture.model(
+            lockedCaptureStore: captureStore,
+            deleteDatabaseKey: { events.record("database-key-deleted") },
+            dataEraseIntent: intent.access,
+            openDatabaseStore: { _ in
+                events.record("database-opened")
+                return replacementStore
+            }
+        )
+
+        await model.start()
+
+        guard case .failed = model.state else {
+            XCTFail("A marker-clear failure must prevent opening")
+            await replacementStore.close()
+            return
+        }
+        XCTAssertTrue(intent.pending)
+        XCTAssertEqual(events.snapshot().filter { $0 == "database-opened" }.count, 0)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.databaseURL.path))
+
+        await model.start()
+
+        XCTAssertFalse(intent.pending)
+        XCTAssertEqual(model.state, .onboarding)
+        XCTAssertEqual(
+            events.snapshot(),
+            [
+                "intent-checked",
+                "database-key-deleted",
+                "locked-capture-erased",
+                "intent-clear-attempted",
+                "intent-checked",
+                "database-key-deleted",
+                "locked-capture-erased",
+                "intent-clear-attempted",
+                "database-opened"
+            ]
+        )
+        await replacementStore.close()
+    }
+
+    @MainActor
     func testStaleGenerationWriteDoesNotRepopulateMemoryAfterLock() async throws {
         let fixture = try AppModelFixture()
         defer { fixture.removeFiles() }
@@ -1782,7 +4057,7 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
-    func testCapturePromotionInterruptedByLockResumesExactlyOnce() async throws {
+    func testLockWaitsForCapturePromotionAndKeepsOneDurableDraft() async throws {
         let fixture = try AppModelFixture()
         defer { fixture.removeFiles() }
         let capture = LockedCapture(
@@ -1809,17 +4084,10 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertEqual(model.state, .locked)
         XCTAssertNil(model.quickLogDraft)
-        let interruptedCaptures = try await captureStore.all()
-        XCTAssertEqual(interruptedCaptures, [capture])
-
-        let reopened = try fixture.reopenStore()
-        let resumedModel = fixture.model(
-            store: reopened,
-            lockedCaptureStore: captureStore
-        )
-        try await resumedModel.promotePendingLockedCapture()
         let remainingCaptures = try await captureStore.all()
         XCTAssertTrue(remainingCaptures.isEmpty)
+
+        let reopened = try fixture.reopenStore()
         let promotedDraft = try await reopened.fetch(
             QuickLogDraft.self,
             id: QuickLogDraft.primaryRecordID,
@@ -1828,9 +4096,61 @@ final class AppModelTests: XCTestCase {
         let promotedDraftCount = try await reopened.count(in: .quickLogDrafts)
         XCTAssertEqual(promotedDraft?.sourceCaptureID, capture.id)
         XCTAssertEqual(promotedDraftCount, 1)
-        XCTAssertEqual(resumedModel.quickLogDraft?.sourceCaptureID, capture.id)
-        XCTAssertEqual(resumedModel.pendingLockedCaptureCount, 0)
         await reopened.close()
+    }
+
+    @MainActor
+    func testRestoreCannotCrossCapturePromotionHandoff() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let profile = UserProfile(baseCurrency: fixture.sgd)
+        try await fixture.seed(
+            profile: profile,
+            accounts: [fixture.wallet, fixture.usAccount, fixture.food]
+        )
+        let archive = try PortableArchive.seal(
+            try await fixture.store.snapshot(),
+            password: "capture restore barrier"
+        )
+        let capture = LockedCapture(
+            kind: .expense,
+            amountText: "22",
+            occurredAt: Date(timeIntervalSinceReferenceDate: 400.5)
+        )
+        let captureStore = InMemoryLockedCaptureStore(captures: [capture])
+        let gate = AsyncGate()
+        let model = fixture.model(
+            profile: profile,
+            lockedCaptureStore: captureStore,
+            lifecycleHooks: hooks(pausing: .afterCaptureDraftPersisted, at: gate)
+        )
+        let promotion = Task { @MainActor in
+            try await model.promotePendingLockedCapture()
+        }
+        await gate.waitUntilReached()
+
+        do {
+            try await model.restoreEncryptedBackup(
+                archive,
+                password: "capture restore barrier"
+            )
+            XCTFail("Restore must not cross the capture handoff")
+        } catch AppModelError.transactionInProgress {
+            // Expected while the draft/inbox ownership transfer is active.
+        }
+
+        await gate.release()
+        try await promotion.value
+        let remainingCaptures = try await captureStore.all()
+        XCTAssertTrue(remainingCaptures.isEmpty)
+        XCTAssertEqual(model.quickLogDraft?.sourceCaptureID, capture.id)
+        let storedDraft = try await fixture.store.fetch(
+            QuickLogDraft.self,
+            id: QuickLogDraft.primaryRecordID,
+            from: .quickLogDrafts
+        )
+        XCTAssertEqual(storedDraft?.sourceCaptureID, capture.id)
+        await fixture.store.close()
     }
 
     @MainActor
@@ -2053,6 +4373,252 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testHistoricalSplitCorrectionRetainsItsArchivedAccountAndCategories() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        var archivedWallet = fixture.wallet
+        archivedWallet.isArchived = true
+        var archivedFood = fixture.food
+        archivedFood.isArchived = true
+        let archivedTravel = LedgerAccount(
+            name: "Travel",
+            kind: .expense,
+            isArchived: true
+        )
+        let foodLineID = UUID()
+        let travelLineID = UUID()
+        let original = try TransactionFactory.splitExpense(
+            amount: try Money(30, currency: fixture.sgd),
+            paidFrom: archivedWallet.id,
+            splits: [
+                TransactionSplitLine(
+                    id: foodLineID,
+                    categoryAccountID: archivedFood.id,
+                    amount: try Money(10, currency: fixture.sgd),
+                    memo: "Meal"
+                ),
+                TransactionSplitLine(
+                    id: travelLineID,
+                    categoryAccountID: archivedTravel.id,
+                    amount: try Money(20, currency: fixture.sgd),
+                    memo: "Train"
+                )
+            ],
+            occurredAt: Date(timeIntervalSinceReferenceDate: 500),
+            payee: "Trip"
+        )
+        let model = fixture.model(
+            accounts: [
+                archivedWallet,
+                fixture.usAccount,
+                archivedFood,
+                archivedTravel
+            ],
+            entries: [original]
+        )
+
+        try await model.replaceEntry(
+            id: original.id,
+            kind: .expense,
+            amount: 30,
+            destinationAmount: nil,
+            accountID: archivedWallet.id,
+            destinationAccountID: nil,
+            categoryID: archivedFood.id,
+            splitLines: [
+                TransactionSplitLine(
+                    id: foodLineID,
+                    categoryAccountID: archivedFood.id,
+                    amount: try Money(12, currency: fixture.sgd),
+                    memo: "Corrected meal"
+                ),
+                TransactionSplitLine(
+                    id: travelLineID,
+                    categoryAccountID: archivedTravel.id,
+                    amount: try Money(18, currency: fixture.sgd),
+                    memo: "Corrected train"
+                )
+            ],
+            occurredAt: original.occurredAt,
+            payee: original.payee,
+            note: "Historical correction"
+        )
+
+        let replacement = try XCTUnwrap(model.entries.first)
+        XCTAssertEqual(replacement.supersedesID, original.id)
+        XCTAssertEqual(
+            Set(replacement.postings.map(\.accountID)),
+            Set([archivedWallet.id, archivedFood.id, archivedTravel.id])
+        )
+        XCTAssertEqual(
+            replacement.postings.first { $0.id == foodLineID }?.money.amount,
+            12
+        )
+        XCTAssertEqual(
+            replacement.postings.first { $0.id == travelLineID }?.money.amount,
+            18
+        )
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testHistoricalTransferCorrectionRetainsItsArchivedEndpoints() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        var source = fixture.wallet
+        source.isArchived = true
+        let destination = LedgerAccount(
+            name: "Archived bank",
+            kind: .asset,
+            currency: fixture.sgd,
+            isArchived: true
+        )
+        let original = try TransactionFactory.transfer(
+            amount: try Money(25, currency: fixture.sgd),
+            from: source.id,
+            to: destination.id,
+            occurredAt: Date(timeIntervalSinceReferenceDate: 600),
+            note: "Old transfer"
+        )
+        let model = fixture.model(
+            accounts: [source, destination, fixture.food],
+            entries: [original]
+        )
+
+        try await model.replaceEntry(
+            id: original.id,
+            kind: .transfer,
+            amount: 26,
+            destinationAmount: nil,
+            accountID: source.id,
+            destinationAccountID: destination.id,
+            categoryID: nil,
+            occurredAt: original.occurredAt,
+            payee: nil,
+            note: "Corrected transfer"
+        )
+
+        let replacement = try XCTUnwrap(model.entries.first)
+        XCTAssertEqual(
+            Set(replacement.postings.map(\.accountID)),
+            Set([source.id, destination.id])
+        )
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testHistoricalCorrectionRejectsOtherArchivedAndSystemLedgerItems() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let original = try fixture.expense(amount: 10)
+        let archivedAccount = LedgerAccount(
+            name: "Closed bank",
+            kind: .asset,
+            currency: fixture.sgd,
+            isArchived: true
+        )
+        let archivedCategory = LedgerAccount(
+            name: "Old category",
+            kind: .expense,
+            isArchived: true
+        )
+        let systemAccount = LedgerAccount(
+            name: "Opening balances",
+            kind: .asset,
+            currency: fixture.sgd,
+            systemRole: .openingBalances
+        )
+        let systemCategory = LedgerAccount(
+            name: "Investment gain/loss",
+            kind: .expense,
+            systemRole: .investmentGainLoss
+        )
+        let model = fixture.model(
+            accounts: [
+                fixture.wallet,
+                fixture.usAccount,
+                fixture.food,
+                archivedAccount,
+                archivedCategory,
+                systemAccount,
+                systemCategory
+            ],
+            entries: [original]
+        )
+
+        do {
+            try await model.replaceEntry(
+                id: original.id,
+                kind: .expense,
+                amount: 10,
+                destinationAmount: nil,
+                accountID: archivedAccount.id,
+                destinationAccountID: nil,
+                categoryID: fixture.food.id,
+                occurredAt: original.occurredAt,
+                payee: nil,
+                note: nil
+            )
+            XCTFail("Expected an unrelated archived account to be rejected")
+        } catch AppModelError.ledgerItemArchived {}
+
+        do {
+            try await model.replaceEntry(
+                id: original.id,
+                kind: .expense,
+                amount: 10,
+                destinationAmount: nil,
+                accountID: fixture.wallet.id,
+                destinationAccountID: nil,
+                categoryID: archivedCategory.id,
+                occurredAt: original.occurredAt,
+                payee: nil,
+                note: nil
+            )
+            XCTFail("Expected an unrelated archived category to be rejected")
+        } catch AppModelError.ledgerItemArchived {}
+
+        do {
+            try await model.replaceEntry(
+                id: original.id,
+                kind: .expense,
+                amount: 10,
+                destinationAmount: nil,
+                accountID: systemAccount.id,
+                destinationAccountID: nil,
+                categoryID: fixture.food.id,
+                occurredAt: original.occurredAt,
+                payee: nil,
+                note: nil
+            )
+            XCTFail("Expected a system account to be rejected")
+        } catch AppModelError.systemAccountLifecycleForbidden {}
+
+        do {
+            try await model.replaceEntry(
+                id: original.id,
+                kind: .expense,
+                amount: 10,
+                destinationAmount: nil,
+                accountID: fixture.wallet.id,
+                destinationAccountID: nil,
+                categoryID: systemCategory.id,
+                occurredAt: original.occurredAt,
+                payee: nil,
+                note: nil
+            )
+            XCTFail("Expected a system category to be rejected")
+        } catch AppModelError.systemAccountLifecycleForbidden {}
+
+        XCTAssertEqual(model.entries, [original])
+        let revisionCount = try await fixture.store.count(
+            in: .journalEntryRevisions
+        )
+        XCTAssertEqual(revisionCount, 0)
+        await fixture.store.close()
+    }
+
+    @MainActor
     func testLazyJournalEditsAndDeletesEntryOlderThanRecentCacheExactly() async throws {
         let fixture = try AppModelFixture()
         defer { fixture.removeFiles() }
@@ -2096,6 +4662,7 @@ final class AppModelTests: XCTestCase {
             note: nil
         )
 
+        XCTAssertEqual(model.budgetJournalReplayReadCount, 0)
         XCTAssertEqual(model.entries.count, 80)
         XCTAssertEqual(model.journalEntryCount, 100)
         XCTAssertEqual(
@@ -2116,6 +4683,7 @@ final class AppModelTests: XCTestCase {
 
         try await model.deleteEntry(id: replacement.id)
 
+        XCTAssertEqual(model.budgetJournalReplayReadCount, 0)
         XCTAssertEqual(model.entries.count, 80)
         XCTAssertEqual(model.journalEntryCount, 99)
         XCTAssertEqual(
@@ -2130,42 +4698,99 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
-    func testOlderProjectionRefreshCannotOverwriteNewerCommittedJournalState() async throws {
+    func testProjectionReadCannotPublishBetweenJournalCommitAndRefresh() async throws {
         let fixture = try AppModelFixture()
         defer { fixture.removeFiles() }
-        let gate = FirstRefreshGate()
+        let projectionGate = FirstRefreshGate()
+        let committedWriteGate = AsyncGate()
+        let now = try XCTUnwrap(
+            ISO8601DateFormatter().date(from: "2026-08-15T12:00:00Z")
+        )
+        let profile = UserProfile(
+            baseCurrency: fixture.sgd,
+            reportingTimeZoneIdentifier: "GMT"
+        )
         let model = fixture.model(
-            lifecycleHooks: hooks(
-                pausingFirst: .afterJournalProjectionReadBeforePublish,
-                at: gate
-            ),
-            retainsCompleteJournal: false
+            profile: profile,
+            lifecycleHooks: AppModelLifecycleHooks { checkpoint in
+                switch checkpoint {
+                case .afterJournalProjectionReadBeforePublish:
+                    await projectionGate.suspendFirstCaller()
+                case .afterJournalCommitBeforeProjectionRefresh:
+                    await committedWriteGate.suspend()
+                default:
+                    return
+                }
+            },
+            retainsCompleteJournal: false,
+            currentDate: { now }
         )
 
-        guard case .unavailable = model.reportResult(for: .thisMonth) else {
-            return XCTFail("Expected the lazy projection to begin unavailable")
+        if case .available = model.reportResult(for: .thisMonth) {
+            XCTFail("Expected the lazy projection to begin unavailable")
         }
-        await gate.waitUntilReached()
-
-        let savedID = try await model.logExpense(
-            amount: 12,
-            accountID: fixture.wallet.id,
-            categoryID: fixture.food.id,
-            occurredAt: Date(),
-            payee: "New journal state",
-            note: nil
+        let projectionDidReach = await projectionGate.waitUntilReached(
+            timeout: .seconds(5)
         )
+        XCTAssertTrue(projectionDidReach, "Initial projection checkpoint timed out")
+
+        let saveTask = Task { @MainActor in
+            try await model.logExpense(
+                amount: 12,
+                accountID: fixture.wallet.id,
+                categoryID: fixture.food.id,
+                occurredAt: now,
+                payee: "New journal state",
+                note: nil
+            )
+        }
+        let commitDidReach = await committedWriteGate.waitUntilReached(
+            timeout: .seconds(5)
+        )
+        XCTAssertTrue(commitDidReach, "Postcommit checkpoint timed out")
+
+        // The journal row is durable while its owning mutation is still
+        // suspended. Releasing the older empty read must not republish an
+        // available zero balance/report in this commit-to-refresh window.
+        let durableEntryCount = try? await fixture.store.count(
+            in: .journalEntries
+        )
+        XCTAssertEqual(durableEntryCount, 1)
+        await projectionGate.release()
+        await model.waitForPendingJournalDerivedRefresh()
+        let balanceUnavailable: Bool
+        if case .unavailable = model.displayBalanceResult(for: fixture.wallet) {
+            balanceUnavailable = true
+        } else {
+            balanceUnavailable = false
+        }
+        let reportUnavailable: Bool
+        if case .unavailable = model.reportResult(for: .thisMonth) {
+            reportUnavailable = true
+        } else {
+            reportUnavailable = false
+        }
+        XCTAssertTrue(
+            balanceUnavailable && reportUnavailable,
+            "A superseded projection published during a writer"
+        )
+        XCTAssertFalse(model.journalRecentEntriesAreCurrent)
+        XCTAssertTrue(model.entries.isEmpty)
+
+        await committedWriteGate.release()
+        let savedID: UUID?
+        do {
+            savedID = try await saveTask.value
+        } catch {
+            XCTFail("Save failed before completing the race: \(error)")
+            await fixture.store.close()
+            return
+        }
         XCTAssertNotNil(savedID)
-        XCTAssertEqual(model.journalEntryCount, 1)
-        XCTAssertEqual(
-            model.displayBalanceResult(for: fixture.wallet).value?.amount,
-            -12
-        )
-
-        await gate.release()
         await model.waitForPendingJournalDerivedRefresh()
 
         XCTAssertEqual(model.journalEntryCount, 1)
+        XCTAssertTrue(model.journalRecentEntriesAreCurrent)
         XCTAssertEqual(model.entries.first?.id, savedID)
         XCTAssertEqual(
             model.displayBalanceResult(for: fixture.wallet).value?.amount,
@@ -2176,6 +4801,331 @@ final class AppModelTests: XCTestCase {
             12
         )
         await fixture.store.close()
+    }
+
+    @MainActor
+    func testQueuedProjectionCannotAdoptAWriterRevisionBeforeItsTaskStarts() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let commitBoundaryGate = AsyncGate()
+        let now = try XCTUnwrap(
+            ISO8601DateFormatter().date(from: "2026-08-15T12:00:00Z")
+        )
+        let model = fixture.model(
+            profile: UserProfile(
+                baseCurrency: fixture.sgd,
+                reportingTimeZoneIdentifier: "GMT"
+            ),
+            lifecycleHooks: hooks(
+                pausing: .afterJournalProjectionInvalidationBeforeCommit,
+                at: commitBoundaryGate
+            ),
+            retainsCompleteJournal: false,
+            currentDate: { now }
+        )
+
+        // Enqueue the compact read without yielding the main actor. The direct
+        // save below starts its mutation and advances the projection revision
+        // before this unstructured refresh task can begin executing.
+        if case .available = model.reportResult(for: .thisMonth) {
+            XCTFail("Expected the queued lazy projection to begin unavailable")
+        }
+        let precommitObservation = Task { @MainActor in
+            let reached = await commitBoundaryGate.waitUntilReached(
+                timeout: .seconds(5)
+            )
+            await model.waitForPendingJournalDerivedRefresh()
+            let storedCount = try? await fixture.store.count(
+                in: .journalEntries
+            )
+            let recentIsCurrent = model.journalRecentEntriesAreCurrent
+            let recentCount = model.entries.count
+            await commitBoundaryGate.release()
+            return (reached, storedCount, recentIsCurrent, recentCount)
+        }
+
+        let savedID = try await model.logExpense(
+            amount: 14,
+            accountID: fixture.wallet.id,
+            categoryID: fixture.food.id,
+            occurredAt: now,
+            payee: "Queued refresh race",
+            note: nil
+        )
+        let observation = await precommitObservation.value
+
+        XCTAssertTrue(observation.0, "Precommit checkpoint timed out")
+        XCTAssertEqual(observation.1, 0)
+        XCTAssertFalse(
+            observation.2,
+            "A pre-enqueued refresh adopted the writer's newer revision"
+        )
+        XCTAssertEqual(observation.3, 0)
+        XCTAssertNotNil(savedID)
+        XCTAssertTrue(model.journalRecentEntriesAreCurrent)
+        XCTAssertEqual(model.entries.first?.id, savedID)
+        XCTAssertEqual(
+            model.displayBalanceResult(for: fixture.wallet).value?.amount,
+            -14
+        )
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testPublishedProjectionFailsClosedBeforeJournalCommitAndRecovers() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let now = try XCTUnwrap(
+            ISO8601DateFormatter().date(from: "2026-08-15T12:00:00Z")
+        )
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "GMT"))
+        let month = try XCTUnwrap(calendar.dateInterval(of: .month, for: now))
+        let profile = UserProfile(
+            baseCurrency: fixture.sgd,
+            showsBudgetStatusWidget: true,
+            reportingTimeZoneIdentifier: "GMT"
+        )
+        let travel = LedgerAccount(name: "Travel", kind: .expense)
+        let budget = BudgetNode(
+            id: fixture.food.id,
+            name: fixture.food.name,
+            limit: try Money(100, currency: fixture.sgd),
+            purpose: .flexible
+        )
+        let timeline = try BudgetConfigurationTimeline(
+            currency: fixture.sgd,
+            revisions: [BudgetConfigurationRevision(
+                effectiveMonth: month.start,
+                nodes: [budget]
+            )]
+        )
+        let prior = try TransactionFactory.expense(
+            amount: try Money(25, currency: fixture.sgd),
+            paidFrom: fixture.wallet.id,
+            category: fixture.food.id,
+            occurredAt: now.addingTimeInterval(-3_600),
+            payee: "Before"
+        )
+        let priorAttribution = try BudgetEntryAttribution(
+            entry: prior,
+            originTimeZoneIdentifier: "GMT"
+        )
+        try await fixture.seed(
+            profile: profile,
+            accounts: [fixture.wallet, fixture.usAccount, fixture.food, travel],
+            entries: [prior],
+            budgetNodes: [budget],
+            budgetConfigurationTimeline: timeline
+        )
+        let suiteName = "MoneyUpCommitBoundaryWidget-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let widgetStore = BudgetWidgetSnapshotStore(defaults: defaults)
+        let commitBoundaryGate = AsyncGate()
+        let model = fixture.model(
+            profile: profile,
+            accounts: [fixture.wallet, fixture.usAccount, fixture.food, travel],
+            budgetNodes: [budget],
+            lifecycleHooks: hooks(
+                pausing: .afterJournalProjectionInvalidationBeforeCommit,
+                at: commitBoundaryGate
+            ),
+            retainsCompleteJournal: false,
+            budgetWidgetSnapshotStore: widgetStore,
+            budgetConfigurationTimeline: timeline,
+            budgetEntryAttributions: [prior.id: priorAttribution],
+            currentDate: { now }
+        )
+
+        if case .available = model.reportResult(for: .thisMonth) {
+            XCTFail("Expected the lazy projection to begin unavailable")
+        }
+        await model.waitForPendingJournalDerivedRefresh()
+        XCTAssertEqual(
+            model.displayBalanceResult(for: fixture.wallet).value?.amount,
+            -25
+        )
+        XCTAssertEqual(
+            model.reportResult(for: .thisMonth).value?.baseFlow.expense.amount,
+            25
+        )
+        XCTAssertEqual(budgetWidgetPercent(widgetStore.read(now: now)), 25)
+
+        let saveTask = Task { @MainActor in
+            try await model.logExpense(
+                amount: 12,
+                accountID: fixture.wallet.id,
+                categoryID: travel.id,
+                occurredAt: now,
+                payee: "After",
+                note: nil
+            )
+        }
+        let commitBoundaryDidReach = await commitBoundaryGate.waitUntilReached(
+            timeout: .seconds(5)
+        )
+        XCTAssertTrue(
+            commitBoundaryDidReach,
+            "Precommit invalidation checkpoint timed out"
+        )
+
+        let precommitStoredCount = try? await fixture.store.count(in: .journalEntries)
+        XCTAssertEqual(precommitStoredCount, 1)
+        let precommitBalanceUnavailable: Bool
+        if case .unavailable = model.displayBalanceResult(for: fixture.wallet) {
+            precommitBalanceUnavailable = true
+        } else {
+            precommitBalanceUnavailable = false
+        }
+        let precommitReportUnavailable: Bool
+        if case .unavailable = model.reportResult(for: .thisMonth) {
+            precommitReportUnavailable = true
+        } else {
+            precommitReportUnavailable = false
+        }
+        XCTAssertTrue(
+            precommitBalanceUnavailable && precommitReportUnavailable,
+            "Pre-commit journal projections remained readable"
+        )
+        XCTAssertFalse(model.journalRecentEntriesAreCurrent)
+        XCTAssertTrue(model.entries.isEmpty)
+        let invalidatedImpact = model.lifecycleImpact(for: travel.id)
+        XCTAssertEqual(invalidatedImpact.transactionCount, 0)
+        XCTAssertFalse(invalidatedImpact.transactionReferencesAreCurrent)
+        XCTAssertFalse(invalidatedImpact.isUnused)
+        XCTAssertEqual(
+            widgetStore.read(now: now),
+            .needsBudget(validUntil: month.end)
+        )
+
+        await commitBoundaryGate.release()
+        let savedID: UUID?
+        do {
+            savedID = try await saveTask.value
+        } catch {
+            XCTFail("Save failed before completing the race: \(error)")
+            await fixture.store.close()
+            return
+        }
+        XCTAssertNotNil(savedID)
+        await model.waitForPendingJournalDerivedRefresh()
+
+        let committedStoredCount = try? await fixture.store.count(in: .journalEntries)
+        XCTAssertEqual(committedStoredCount, 2)
+        XCTAssertEqual(
+            model.displayBalanceResult(for: fixture.wallet).value?.amount,
+            -37
+        )
+        XCTAssertEqual(
+            model.reportResult(for: .thisMonth).value?.baseFlow.expense.amount,
+            37
+        )
+        let refreshedImpact = model.lifecycleImpact(for: travel.id)
+        XCTAssertTrue(model.journalRecentEntriesAreCurrent)
+        XCTAssertTrue(refreshedImpact.transactionReferencesAreCurrent)
+        XCTAssertEqual(refreshedImpact.transactionCount, 1)
+        XCTAssertFalse(refreshedImpact.isUnused)
+        XCTAssertEqual(budgetWidgetPercent(widgetStore.read(now: now)), 25)
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testRetainedJournalWriteFailureRepublishesCoherentPrecommitWidget() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let now = try XCTUnwrap(
+            ISO8601DateFormatter().date(from: "2026-08-15T12:00:00Z")
+        )
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "GMT"))
+        let month = try XCTUnwrap(calendar.dateInterval(of: .month, for: now))
+        let profile = UserProfile(
+            baseCurrency: fixture.sgd,
+            showsBudgetStatusWidget: true,
+            reportingTimeZoneIdentifier: "GMT"
+        )
+        let budget = BudgetNode(
+            id: fixture.food.id,
+            name: fixture.food.name,
+            limit: try Money(100, currency: fixture.sgd),
+            purpose: .flexible
+        )
+        let timeline = try BudgetConfigurationTimeline(
+            currency: fixture.sgd,
+            revisions: [BudgetConfigurationRevision(
+                effectiveMonth: month.start,
+                nodes: [budget]
+            )]
+        )
+        let prior = try TransactionFactory.expense(
+            amount: try Money(25, currency: fixture.sgd),
+            paidFrom: fixture.wallet.id,
+            category: fixture.food.id,
+            occurredAt: now.addingTimeInterval(-3_600)
+        )
+        let attribution = try BudgetEntryAttribution(
+            entry: prior,
+            originTimeZoneIdentifier: "GMT"
+        )
+        try await fixture.seed(
+            profile: profile,
+            accounts: [fixture.wallet, fixture.usAccount, fixture.food],
+            entries: [prior],
+            budgetNodes: [budget],
+            budgetConfigurationTimeline: timeline
+        )
+        let suiteName = "MoneyUpRetainedFailureWidget-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let widgetStore = BudgetWidgetSnapshotStore(defaults: defaults)
+        let commitBoundaryGate = AsyncGate()
+        let model = fixture.model(
+            profile: profile,
+            entries: [prior],
+            budgetNodes: [budget],
+            lifecycleHooks: hooks(
+                pausing: .afterJournalProjectionInvalidationBeforeCommit,
+                at: commitBoundaryGate
+            ),
+            retainsCompleteJournal: true,
+            budgetWidgetSnapshotStore: widgetStore,
+            budgetConfigurationTimeline: timeline,
+            budgetEntryAttributions: [prior.id: attribution],
+            currentDate: { now }
+        )
+        XCTAssertEqual(budgetWidgetPercent(widgetStore.read(now: now)), 25)
+
+        let saveTask = Task { @MainActor in
+            try await model.logExpense(
+                amount: 5,
+                accountID: fixture.wallet.id,
+                categoryID: fixture.food.id,
+                occurredAt: now,
+                payee: "Injected write failure",
+                note: nil
+            )
+        }
+        let reached = await commitBoundaryGate.waitUntilReached(
+            timeout: .seconds(5)
+        )
+        XCTAssertTrue(reached, "Precommit failure checkpoint timed out")
+        XCTAssertEqual(
+            widgetStore.read(now: now),
+            .needsBudget(validUntil: month.end)
+        )
+        await fixture.store.close()
+        await commitBoundaryGate.release()
+
+        do {
+            _ = try await saveTask.value
+            XCTFail("Expected the closed-store write to fail")
+        } catch {
+            // The durable store and retained collection both remain precommit.
+        }
+        XCTAssertEqual(model.entries, [prior])
+        XCTAssertTrue(model.journalRecentEntriesAreCurrent)
+        XCTAssertEqual(budgetWidgetPercent(widgetStore.read(now: now)), 25)
     }
 
     @MainActor
@@ -2404,6 +5354,87 @@ final class AppModelTests: XCTestCase {
         }
         let entryCountAfterRetry = try await fixture.store.count(in: .journalEntries)
         XCTAssertEqual(entryCountAfterRetry, 1)
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testScheduledBudgetAttributionPreservesPlus14AndMinus12CivilMonths() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let plusZone = try XCTUnwrap(TimeZone(identifier: "Pacific/Kiritimati"))
+        let minusZone = try XCTUnwrap(TimeZone(identifier: "Etc/GMT+12"))
+        var plusCalendar = Calendar(identifier: .gregorian)
+        plusCalendar.timeZone = plusZone
+        var minusCalendar = Calendar(identifier: .gregorian)
+        minusCalendar.timeZone = minusZone
+        let plusDate = try XCTUnwrap(plusCalendar.date(from: DateComponents(
+            year: 2026,
+            month: 3,
+            day: 1,
+            hour: 0,
+            minute: 30
+        )))
+        let minusDate = try XCTUnwrap(minusCalendar.date(from: DateComponents(
+            year: 2026,
+            month: 2,
+            day: 28,
+            hour: 23,
+            minute: 30
+        )))
+        let plusSchedule = try ScheduledTransaction(
+            kind: .expense,
+            name: "Plus fourteen schedule",
+            amount: try Money(5, currency: fixture.sgd),
+            accountID: fixture.wallet.id,
+            categoryAccountID: fixture.food.id,
+            nextOccurrence: plusDate,
+            frequency: .monthly,
+            recurrenceTimeZoneIdentifier: plusZone.identifier
+        )
+        let minusSchedule = try ScheduledTransaction(
+            kind: .expense,
+            name: "Minus twelve schedule",
+            amount: try Money(6, currency: fixture.sgd),
+            accountID: fixture.wallet.id,
+            categoryAccountID: fixture.food.id,
+            nextOccurrence: minusDate,
+            frequency: .monthly,
+            recurrenceTimeZoneIdentifier: minusZone.identifier
+        )
+        let profile = UserProfile(
+            baseCurrency: fixture.sgd,
+            reportingTimeZoneIdentifier: "GMT"
+        )
+        let model = fixture.model(
+            profile: profile,
+            scheduledTransactions: [plusSchedule, minusSchedule]
+        )
+
+        _ = try await model.postScheduledOccurrence(
+            scheduleID: plusSchedule.id,
+            occurrenceID: plusSchedule.currentOccurrenceID,
+            occurredAt: plusDate,
+            resolvedAt: plusDate,
+            calendar: plusCalendar
+        )
+        _ = try await model.postScheduledOccurrence(
+            scheduleID: minusSchedule.id,
+            occurrenceID: minusSchedule.currentOccurrenceID,
+            occurredAt: minusDate,
+            resolvedAt: minusDate,
+            calendar: minusCalendar
+        )
+
+        let attributions = try await fixture.store.fetchAll(
+            BudgetEntryAttribution.self,
+            from: .budgetEntryAttributions
+        )
+        XCTAssertEqual(
+            Set(attributions.map {
+                "\($0.originDayKey):\($0.originUTCOffsetSeconds)"
+            }),
+            Set(["2026-03-01:50400", "2026-02-28:-43200"])
+        )
         await fixture.store.close()
     }
 
@@ -2917,6 +5948,172 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testPendingEraseIntentDeniesAndForgetsLockedCaptureRoute() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let inbox = InMemoryLockedCaptureStore(captures: [])
+        let model = fixture.model(
+            lockedCaptureStore: inbox,
+            dataEraseIntent: DataEraseIntentAccess(
+                isPending: { true },
+                markPending: {},
+                clear: {}
+            )
+        )
+        UserDefaults.standard.set(
+            true,
+            forKey: AppModel.lockedQuickCapturePreferenceKey
+        )
+        model.lock()
+
+        let handled = model.handleDeepLink(
+            try XCTUnwrap(URL(string: "moneyup://quick-log/expense"))
+        )
+
+        XCTAssertTrue(handled)
+        XCTAssertNil(model.requestedQuickLogMode)
+        XCTAssertFalse(model.canPresentLockedQuickCapture)
+        do {
+            try await model.saveLockedCapture(
+                mode: .expense,
+                amountText: "12.50",
+                payee: "",
+                note: ""
+            )
+            XCTFail("A pending erase must deny redacted capture")
+        } catch AppModelError.locked {
+            // Startup must resume the erase instead of accepting doomed input.
+        }
+        let captures = try await inbox.all()
+        XCTAssertTrue(captures.isEmpty)
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testEraseIntentReadFailureFailsClosedForLockedCapture() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let inbox = InMemoryLockedCaptureStore(captures: [])
+        let model = fixture.model(
+            lockedCaptureStore: inbox,
+            dataEraseIntent: DataEraseIntentAccess(
+                isPending: {
+                    throw DatabaseKeyStoreError.unexpectedStatus(-31_339)
+                },
+                markPending: {},
+                clear: {}
+            )
+        )
+        UserDefaults.standard.set(
+            true,
+            forKey: AppModel.lockedQuickCapturePreferenceKey
+        )
+        model.lock()
+
+        _ = model.handleDeepLink(
+            try XCTUnwrap(URL(string: "moneyup://quick-log/income"))
+        )
+
+        XCTAssertNil(model.requestedQuickLogMode)
+        XCTAssertFalse(model.canPresentLockedQuickCapture)
+        let captures = try await inbox.all()
+        XCTAssertTrue(captures.isEmpty)
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testAcceptedLockedCaptureWriteBlocksEraseUntilAppendFinishes() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let gate = AsyncGate()
+        let inbox = PausingAppendLockedCaptureStore(gate: gate)
+        let events = EraseEventRecorder()
+        let model = fixture.model(
+            lockedCaptureStore: inbox,
+            dataEraseIntent: DataEraseIntentAccess(
+                isPending: { false },
+                markPending: { events.record("intent-marked") },
+                clear: {}
+            )
+        )
+        UserDefaults.standard.set(
+            true,
+            forKey: AppModel.lockedQuickCapturePreferenceKey
+        )
+        model.lock()
+        _ = model.handleDeepLink(
+            try XCTUnwrap(URL(string: "moneyup://quick-log/expense"))
+        )
+        let saveTask = Task { @MainActor in
+            try await model.saveLockedCapture(
+                mode: .expense,
+                amountText: "12.50",
+                payee: "",
+                note: ""
+            )
+        }
+        await gate.waitUntilReached()
+
+        await model.eraseAllDataAndRestart()
+
+        XCTAssertTrue(events.snapshot().isEmpty)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: fixture.databaseURL.path))
+        await gate.release()
+        try await saveTask.value
+        let captures = try await inbox.all()
+        XCTAssertEqual(captures.count, 1)
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testLockedCaptureRejectsMismatchedAndProtectedRoutes() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let inbox = InMemoryLockedCaptureStore(captures: [])
+        let model = fixture.model(lockedCaptureStore: inbox)
+        UserDefaults.standard.set(
+            true,
+            forKey: AppModel.lockedQuickCapturePreferenceKey
+        )
+        model.lock()
+        _ = model.handleDeepLink(
+            try XCTUnwrap(URL(string: "moneyup://quick-log/expense"))
+        )
+
+        do {
+            try await model.saveLockedCapture(
+                mode: .income,
+                amountText: "12.50",
+                payee: "",
+                note: ""
+            )
+            XCTFail("Expected a mismatched locked route to be rejected")
+        } catch AppModelError.locked {
+            // The redacted form may only save the route the user opened.
+        }
+
+        _ = model.handleDeepLink(
+            try XCTUnwrap(URL(string: "moneyup://quick-log/scan-receipt"))
+        )
+        do {
+            try await model.saveLockedCapture(
+                mode: .scanReceipt,
+                amountText: "12.50",
+                payee: "",
+                note: ""
+            )
+            XCTFail("Expected a protected receipt route to require unlock")
+        } catch AppModelError.locked {
+            // Receipt capture never writes to the redacted inbox.
+        }
+
+        let captures = try await inbox.all()
+        XCTAssertTrue(captures.isEmpty)
+        XCTAssertEqual(model.pendingLockedCaptureCount, 0)
+        await fixture.store.close()
+    }
+
+    @MainActor
     func testSavingReviewedCapturePromotesNextQueueItemExactlyOnce() async throws {
         let fixture = try AppModelFixture()
         defer { fixture.removeFiles() }
@@ -2944,6 +6141,45 @@ final class AppModelTests: XCTestCase {
         let remaining = try await inbox.all()
         XCTAssertTrue(remaining.isEmpty)
         XCTAssertEqual(model.entries.count, 1)
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testCompletingFirstRunOnboardingPromotesExistingLockedCapture() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let capture = LockedCapture(
+            kind: .expense,
+            amountText: "14.25",
+            occurredAt: Date(timeIntervalSinceReferenceDate: 415),
+            payee: "Before setup"
+        )
+        let inbox = InMemoryLockedCaptureStore(captures: [capture])
+        let model = fixture.model(
+            profile: nil,
+            accounts: [],
+            lockedCaptureStore: inbox
+        )
+
+        try await model.completeOnboarding(
+            baseCurrencyCode: "SGD",
+            accountName: "First wallet",
+            accountType: .cash,
+            startingBalance: .zero
+        )
+
+        XCTAssertEqual(model.state, .ready)
+        XCTAssertEqual(model.quickLogDraft?.sourceCaptureID, capture.id)
+        XCTAssertEqual(model.quickLogDraft?.amountText, "14.25")
+        let remainingCaptures = try await inbox.all()
+        XCTAssertTrue(remainingCaptures.isEmpty)
+        XCTAssertEqual(model.pendingLockedCaptureCount, 0)
+        let storedDraft = try await fixture.store.fetch(
+            QuickLogDraft.self,
+            id: QuickLogDraft.primaryRecordID,
+            from: .quickLogDrafts
+        )
+        XCTAssertEqual(storedDraft?.sourceCaptureID, capture.id)
         await fixture.store.close()
     }
 
@@ -3982,6 +7218,568 @@ final class AppModelTests: XCTestCase {
                 $0.accountID == fixture.food.id && $0.money.amount == 6
             } == true
         )
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testImportCannotFallThroughWrongCurrencyMappingToHiddenPosition() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let salary = LedgerAccount(name: "Salary", kind: .income)
+        let brokerage = LedgerAccount(
+            name: "USD Brokerage",
+            kind: .asset,
+            currency: fixture.usd,
+            accountType: .brokerage
+        )
+        let profile = UserProfile(baseCurrency: fixture.sgd)
+        let accounts = [
+            fixture.wallet, fixture.usAccount, brokerage, fixture.food, salary
+        ]
+        try await fixture.seed(profile: profile, accounts: accounts)
+        let model = fixture.model(profile: profile, accounts: accounts)
+        let holding = try InvestmentHolding(
+            accountID: brokerage.id,
+            symbol: "MU",
+            name: "MoneyUp",
+            quantity: .zero
+        )
+        try await model.addInvestmentHolding(
+            holding,
+            treatment: .deductFromCash
+        )
+        let position = try XCTUnwrap(
+            model.accounts.first { $0.systemRole == .investmentPosition }
+        )
+        let row = ImportedTransaction(
+            id: "position-name-collision",
+            hasExternalID: true,
+            sourceLine: 2,
+            kind: .expense,
+            occurredAt: Date(timeIntervalSinceReferenceDate: 100),
+            amount: 10,
+            currencyCode: fixture.usd.value,
+            accountName: position.name,
+            categoryName: fixture.food.name
+        )
+
+        let result = try await model.importTransactions(
+            [row],
+            fallbackAccountID: fixture.wallet.id,
+            fallbackExpenseCategoryID: fixture.food.id,
+            fallbackIncomeCategoryID: salary.id,
+            accountMappings: [
+                CSVImportNameResolver.normalizedKey(for: position.name): fixture.wallet.id
+            ]
+        )
+
+        XCTAssertEqual(result.imported, 0)
+        XCTAssertEqual(result.skipped, 1)
+        XCTAssertTrue(model.entries.isEmpty)
+        let storedEntryCount = try await fixture.store.count(
+            in: .journalEntries
+        )
+        XCTAssertEqual(storedEntryCount, 0)
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testImportRejectsMaliciousSystemAccountAndCategoryMappings() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let salary = LedgerAccount(name: "Salary", kind: .income)
+        let position = LedgerAccount(
+            name: "Hidden USD Position",
+            kind: .asset,
+            currency: fixture.usd,
+            systemRole: .investmentPosition
+        )
+        let systemExpense = LedgerAccount(
+            name: "System Expense",
+            kind: .expense,
+            systemRole: .investmentGainLoss
+        )
+        let accounts = [
+            fixture.wallet, fixture.usAccount, fixture.food, salary,
+            position, systemExpense
+        ]
+        let model = fixture.model(accounts: accounts)
+        let row = ImportedTransaction(
+            id: "malicious-system-mappings",
+            hasExternalID: true,
+            sourceLine: 2,
+            kind: .expense,
+            occurredAt: Date(timeIntervalSinceReferenceDate: 200),
+            amount: 12,
+            currencyCode: fixture.usd.value,
+            accountName: "Mapped source",
+            categoryName: systemExpense.name
+        )
+
+        let result = try await model.importTransactions(
+            [row],
+            fallbackAccountID: fixture.usAccount.id,
+            fallbackExpenseCategoryID: fixture.food.id,
+            fallbackIncomeCategoryID: salary.id,
+            accountMappings: ["mapped source": position.id],
+            expenseCategoryMappings: ["system expense": systemExpense.id]
+        )
+
+        XCTAssertEqual(result.imported, 1)
+        let entry = try XCTUnwrap(model.entries.first)
+        XCTAssertTrue(entry.postings.contains { $0.accountID == fixture.usAccount.id })
+        XCTAssertFalse(entry.postings.contains { $0.accountID == position.id })
+        XCTAssertFalse(entry.postings.contains { $0.accountID == systemExpense.id })
+        let replacementCategory = try XCTUnwrap(model.accounts.first {
+            $0.name == systemExpense.name && $0.id != systemExpense.id
+        })
+        XCTAssertNil(replacementCategory.systemRole)
+        XCTAssertTrue(entry.postings.contains { $0.accountID == replacementCategory.id })
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testLockDeferredDuringCSVImportAppliesAfterExactCommit() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let salary = LedgerAccount(name: "Salary", kind: .income)
+        let gate = AsyncGate()
+        let model = fixture.model(
+            accounts: [fixture.wallet, fixture.food, salary],
+            lifecycleHooks: hooks(pausing: .beforeJournalCommit, at: gate)
+        )
+        let row = ImportedTransaction(
+            id: "lock-during-import",
+            sourceLine: 2,
+            kind: .expense,
+            occurredAt: Date(timeIntervalSinceReferenceDate: 2_026),
+            amount: 17,
+            accountName: fixture.wallet.name,
+            categoryName: fixture.food.name,
+            payee: "Durable import"
+        )
+
+        let importTask = Task { @MainActor in
+            try await model.importTransactions(
+                [row],
+                fallbackAccountID: fixture.wallet.id,
+                fallbackExpenseCategoryID: fixture.food.id,
+                fallbackIncomeCategoryID: salary.id
+            )
+        }
+        await gate.waitUntilReached()
+        model.lock()
+        XCTAssertEqual(model.state, .ready)
+
+        await gate.release()
+        let result = try await importTask.value
+        XCTAssertEqual(result.imported, 1)
+        await model.waitForPendingStoreClose()
+        XCTAssertEqual(model.state, .locked)
+        XCTAssertTrue(model.entries.isEmpty)
+
+        let reopened = try fixture.reopenStore()
+        let persisted = try await reopened.fetchAll(
+            JournalEntry.self,
+            from: .journalEntries
+        )
+        XCTAssertEqual(persisted.count, 1)
+        XCTAssertEqual(persisted.first?.payee, "Durable import")
+        await reopened.close()
+    }
+
+    @MainActor
+    func testCSVImportBudgetAttributionPreservesPlus14AndMinus12CivilMonths() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let salary = LedgerAccount(name: "Salary", kind: .income)
+        let profile = UserProfile(
+            baseCurrency: fixture.sgd,
+            reportingTimeZoneIdentifier: "GMT"
+        )
+        let model = fixture.model(
+            profile: profile,
+            accounts: [fixture.wallet, fixture.food, salary]
+        )
+        let preview = try TransactionCSVImporter.parse(
+            """
+            ID,Date,Type,Amount,Payee
+            plus-14,2026-03-01T00:30:00+14:00,Expense,5,Plus fourteen
+            minus-12,2026-02-28T23:30:00-12:00,Expense,6,Minus twelve
+            """,
+            locale: Locale(identifier: "en_US_POSIX"),
+            timeZone: TimeZone(secondsFromGMT: 0)!
+        )
+        XCTAssertEqual(
+            preview.rows.compactMap { $0.originContext?.dayKey },
+            [20260301, 20260228]
+        )
+
+        let result = try await model.importTransactions(
+            preview.rows,
+            fallbackAccountID: fixture.wallet.id,
+            fallbackExpenseCategoryID: fixture.food.id,
+            fallbackIncomeCategoryID: salary.id
+        )
+
+        XCTAssertEqual(result.imported, 2)
+        let attributions = try await fixture.store.fetchAll(
+            BudgetEntryAttribution.self,
+            from: .budgetEntryAttributions
+        )
+        XCTAssertEqual(
+            Set(attributions.map {
+                "\($0.originDayKey):\($0.originUTCOffsetSeconds)"
+            }),
+            Set(["2026-03-01:50400", "2026-02-28:-43200"])
+        )
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testExternalImportIDOverridesOnlySemanticDuplicateHeuristic() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let salary = LedgerAccount(name: "Salary", kind: .income)
+        let occurredAt = Date(timeIntervalSinceReferenceDate: 500_000)
+        let existing = try TransactionFactory.expense(
+            amount: try Money(6, currency: fixture.sgd),
+            paidFrom: fixture.wallet.id,
+            category: fixture.food.id,
+            occurredAt: occurredAt,
+            payee: "Same-second cafe"
+        )
+        let profile = UserProfile(baseCurrency: fixture.sgd)
+        let accounts = [fixture.wallet, fixture.food, salary]
+        try await fixture.seed(
+            profile: profile,
+            accounts: accounts,
+            entries: [existing]
+        )
+        let model = fixture.model(
+            profile: profile,
+            accounts: accounts,
+            entries: [existing]
+        )
+        let authoritative = ImportedTransaction(
+            id: "bank-transaction-123",
+            hasExternalID: true,
+            sourceLine: 2,
+            kind: .expense,
+            occurredAt: occurredAt,
+            amount: 6,
+            payee: "Same-second cafe"
+        )
+        let heuristicOnly = ImportedTransaction(
+            id: "sha256:v2:synthetic-row",
+            sourceLine: 3,
+            kind: .expense,
+            occurredAt: occurredAt,
+            amount: 6,
+            payee: "Same-second cafe"
+        )
+
+        let result = try await model.importTransactions(
+            [authoritative, heuristicOnly],
+            fallbackAccountID: fixture.wallet.id,
+            fallbackExpenseCategoryID: fixture.food.id,
+            fallbackIncomeCategoryID: salary.id
+        )
+
+        XCTAssertEqual(result.imported, 1)
+        XCTAssertEqual(result.duplicates, 1)
+        let persistedFingerprint = TransactionCSVImporter.persistenceFingerprint(
+            for: authoritative.id,
+            sourceSystem: "CSV/Qianji"
+        )
+        XCTAssertEqual(
+            model.entries.filter {
+                $0.sourceFingerprint == persistedFingerprint
+            }.count,
+            1
+        )
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testCorrectedExternalImportIDCannotCreateASecondEntry() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let salary = LedgerAccount(name: "Salary", kind: .income)
+        let model = fixture.model(accounts: [fixture.wallet, fixture.food, salary])
+        let csv = """
+        ID,Date,Type,Amount,Payee,Note
+        Exact-Bank-42,2026-08-20,Expense,12,Cafe,Original
+        Exact-Bank-42,2026-08-21,Expense,13,Cafe,Corrected
+        """
+        let preview = try TransactionCSVImporter.parse(
+            csv,
+            locale: Locale(identifier: "en_US_POSIX"),
+            timeZone: TimeZone(secondsFromGMT: 0)!
+        )
+        XCTAssertEqual(preview.rows.count, 2)
+        XCTAssertEqual(preview.rows[0].id, preview.rows[1].id)
+
+        let first = try await model.importTransactions(
+            [preview.rows[0]],
+            fallbackAccountID: fixture.wallet.id,
+            fallbackExpenseCategoryID: fixture.food.id,
+            fallbackIncomeCategoryID: salary.id,
+            sourceSystem: "Bank Feed"
+        )
+        let corrected = try await model.importTransactions(
+            [preview.rows[1]],
+            fallbackAccountID: fixture.wallet.id,
+            fallbackExpenseCategoryID: fixture.food.id,
+            fallbackIncomeCategoryID: salary.id,
+            sourceSystem: "Bank Feed"
+        )
+
+        XCTAssertEqual(first.imported, 1)
+        XCTAssertEqual(corrected.imported, 0)
+        XCTAssertEqual(corrected.duplicates, 1)
+        XCTAssertEqual(model.entries.filter { $0.sourceSystem == "Bank Feed" }.count, 1)
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testImportFingerprintNamespaceCanonicalizesSourceButSeparatesSources() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let salary = LedgerAccount(name: "Salary", kind: .income)
+        let model = fixture.model(accounts: [fixture.wallet, fixture.food, salary])
+        let row = ImportedTransaction(
+            id: "sha256:external:v1:shared-vendor-id",
+            hasExternalID: true,
+            sourceLine: 2,
+            kind: .expense,
+            occurredAt: Date(timeIntervalSinceReferenceDate: 600_000),
+            amount: 8,
+            payee: "Cafe"
+        )
+
+        let first = try await model.importTransactions(
+            [row],
+            fallbackAccountID: fixture.wallet.id,
+            fallbackExpenseCategoryID: fixture.food.id,
+            fallbackIncomeCategoryID: salary.id,
+            sourceSystem: "Bank   Feed"
+        )
+        let canonicalDuplicate = try await model.importTransactions(
+            [row],
+            fallbackAccountID: fixture.wallet.id,
+            fallbackExpenseCategoryID: fixture.food.id,
+            fallbackIncomeCategoryID: salary.id,
+            sourceSystem: " bank feed "
+        )
+        let otherSource = try await model.importTransactions(
+            [row],
+            fallbackAccountID: fixture.wallet.id,
+            fallbackExpenseCategoryID: fixture.food.id,
+            fallbackIncomeCategoryID: salary.id,
+            sourceSystem: "Card Feed"
+        )
+
+        XCTAssertEqual(first.imported, 1)
+        XCTAssertEqual(canonicalDuplicate.duplicates, 1)
+        XCTAssertEqual(otherSource.imported, 1)
+        let fingerprints = Set(model.entries.compactMap(\.sourceFingerprint))
+        XCTAssertEqual(fingerprints, Set([
+            TransactionCSVImporter.persistenceFingerprint(
+                for: row.id,
+                sourceSystem: "Bank Feed"
+            ),
+            TransactionCSVImporter.persistenceFingerprint(
+                for: row.id,
+                sourceSystem: "Card Feed"
+            )
+        ]))
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testLegacyImportFingerprintMatchesOnlyWithinCanonicalSource() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let salary = LedgerAccount(name: "Salary", kind: .income)
+        let base = try TransactionFactory.expense(
+            amount: try Money(9, currency: fixture.sgd),
+            paidFrom: fixture.wallet.id,
+            category: fixture.food.id,
+            occurredAt: Date(timeIntervalSinceReferenceDate: 610_000),
+            payee: "Legacy cafe"
+        )
+        let legacyFingerprint = "fnv1a64:legacy-fixture"
+        let legacy = try JournalEntry(
+            kind: base.kind,
+            occurredAt: base.occurredAt,
+            createdAt: base.createdAt,
+            payee: base.payee,
+            note: base.note,
+            postings: base.postings,
+            sourceSystem: "Bank Feed",
+            sourceFingerprint: legacyFingerprint,
+            originContext: base.originContext
+        )
+        let profile = UserProfile(baseCurrency: fixture.sgd)
+        let accounts = [fixture.wallet, fixture.food, salary]
+        try await fixture.seed(profile: profile, accounts: accounts, entries: [legacy])
+        let model = fixture.model(profile: profile, accounts: accounts, entries: [legacy])
+        let row = ImportedTransaction(
+            id: "sha256:external:v1:new-identity",
+            hasExternalID: true,
+            legacyFingerprintCandidates: [legacyFingerprint],
+            sourceLine: 2,
+            kind: .expense,
+            occurredAt: base.occurredAt,
+            amount: 9,
+            payee: "Legacy cafe"
+        )
+
+        let sameSource = try await model.importTransactions(
+            [row],
+            fallbackAccountID: fixture.wallet.id,
+            fallbackExpenseCategoryID: fixture.food.id,
+            fallbackIncomeCategoryID: salary.id,
+            sourceSystem: " bank   feed "
+        )
+        let collidingLegacyHash = ImportedTransaction(
+            id: "sha256:external:v1:distinct-new-identity",
+            hasExternalID: true,
+            legacyFingerprintCandidates: [legacyFingerprint],
+            sourceLine: 3,
+            kind: .expense,
+            occurredAt: base.occurredAt.addingTimeInterval(86_400),
+            amount: 10,
+            payee: "Different transaction"
+        )
+        let safeCollision = try await model.importTransactions(
+            [collidingLegacyHash],
+            fallbackAccountID: fixture.wallet.id,
+            fallbackExpenseCategoryID: fixture.food.id,
+            fallbackIncomeCategoryID: salary.id,
+            sourceSystem: "Bank Feed"
+        )
+        let otherSource = try await model.importTransactions(
+            [row],
+            fallbackAccountID: fixture.wallet.id,
+            fallbackExpenseCategoryID: fixture.food.id,
+            fallbackIncomeCategoryID: salary.id,
+            sourceSystem: "Other Feed"
+        )
+
+        XCTAssertEqual(sameSource.duplicates, 1)
+        XCTAssertEqual(safeCollision.imported, 1)
+        XCTAssertEqual(otherSource.imported, 1)
+        XCTAssertEqual(model.entries.count, 3)
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testSemanticTransferDedupeIncludesDestinationAccount() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let salary = LedgerAccount(name: "Salary", kind: .income)
+        let savings = LedgerAccount(
+            name: "Savings",
+            kind: .asset,
+            currency: fixture.sgd
+        )
+        let reserve = LedgerAccount(
+            name: "Reserve",
+            kind: .asset,
+            currency: fixture.sgd
+        )
+        let accounts = [fixture.wallet, savings, reserve, fixture.food, salary]
+        let model = fixture.model(accounts: accounts)
+        let occurredAt = Date(timeIntervalSinceReferenceDate: 620_000)
+        func row(id: String, destination: String) -> ImportedTransaction {
+            ImportedTransaction(
+                id: id,
+                sourceLine: 2,
+                kind: .transfer,
+                occurredAt: occurredAt,
+                amount: 10,
+                accountName: fixture.wallet.name,
+                destinationAccountName: destination,
+                payee: "Internal move"
+            )
+        }
+
+        let first = try await model.importTransactions(
+            [row(id: "semantic-transfer-a", destination: savings.name)],
+            fallbackAccountID: fixture.wallet.id,
+            fallbackExpenseCategoryID: fixture.food.id,
+            fallbackIncomeCategoryID: salary.id
+        )
+        let distinctDestination = try await model.importTransactions(
+            [row(id: "semantic-transfer-b", destination: reserve.name)],
+            fallbackAccountID: fixture.wallet.id,
+            fallbackExpenseCategoryID: fixture.food.id,
+            fallbackIncomeCategoryID: salary.id
+        )
+        let duplicate = try await model.importTransactions(
+            [row(id: "semantic-transfer-c", destination: reserve.name)],
+            fallbackAccountID: fixture.wallet.id,
+            fallbackExpenseCategoryID: fixture.food.id,
+            fallbackIncomeCategoryID: salary.id
+        )
+
+        XCTAssertEqual(first.imported, 1)
+        XCTAssertEqual(distinctDestination.imported, 1)
+        XCTAssertEqual(duplicate.duplicates, 1)
+        XCTAssertEqual(model.entries.filter { $0.kind == .transfer }.count, 2)
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testSemanticFXTransferDedupeIncludesReceivedAmountAndCurrency() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let salary = LedgerAccount(name: "Salary", kind: .income)
+        let accounts = [fixture.wallet, fixture.usAccount, fixture.food, salary]
+        let model = fixture.model(accounts: accounts)
+        let occurredAt = Date(timeIntervalSinceReferenceDate: 630_000)
+        func row(id: String, destinationAmount: Decimal) -> ImportedTransaction {
+            ImportedTransaction(
+                id: id,
+                sourceLine: 2,
+                kind: .transfer,
+                occurredAt: occurredAt,
+                amount: 100,
+                destinationAmount: destinationAmount,
+                accountName: fixture.wallet.name,
+                destinationAccountName: fixture.usAccount.name,
+                payee: "International move"
+            )
+        }
+
+        let distinctReceipts = try await model.importTransactions(
+            [
+                row(id: "semantic-fx-a", destinationAmount: 75),
+                row(id: "semantic-fx-b", destinationAmount: 76)
+            ],
+            fallbackAccountID: fixture.wallet.id,
+            fallbackExpenseCategoryID: fixture.food.id,
+            fallbackIncomeCategoryID: salary.id
+        )
+        let duplicate = try await model.importTransactions(
+            [row(id: "semantic-fx-c", destinationAmount: 76)],
+            fallbackAccountID: fixture.wallet.id,
+            fallbackExpenseCategoryID: fixture.food.id,
+            fallbackIncomeCategoryID: salary.id
+        )
+
+        XCTAssertEqual(distinctReceipts.imported, 2)
+        XCTAssertEqual(duplicate.duplicates, 1)
+        XCTAssertEqual(
+            model.accounts.filter { $0.systemRole == .foreignExchange }.count,
+            2
+        )
+        let receipts = model.entries.flatMap(\.postings).filter {
+            $0.accountID == fixture.usAccount.id && $0.money.amount > .zero
+        }.map { $0.money.amount }.sorted()
+        XCTAssertEqual(receipts, [75, 76])
         await fixture.store.close()
     }
 
@@ -5044,6 +8842,518 @@ private func storedRecord<Value: Encodable>(
 
 extension AppModelTests {
     @MainActor
+    func testLazyBudgetRolloverUsesCompleteClosedMonthProjectionAndRefreshesWidget() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let clock = MutableTestDate(
+            FinancialPeriodBoundary.gregorianCalendar(
+                timeZoneIdentifier: "GMT"
+            ).date(from: DateComponents(
+                year: 2026,
+                month: 3,
+                day: 15,
+                hour: 12
+            ))!
+        )
+        let calendar = FinancialPeriodBoundary.gregorianCalendar(
+            timeZoneIdentifier: "GMT"
+        )
+        func date(_ month: Int, _ day: Int) -> Date {
+            calendar.date(from: DateComponents(
+                year: 2026,
+                month: month,
+                day: day,
+                hour: 12
+            ))!
+        }
+        func expense(amount: Decimal, occurredAt: Date) throws -> JournalEntry {
+            let candidate = try TransactionFactory.expense(
+                amount: try Money(amount, currency: fixture.sgd),
+                paidFrom: fixture.wallet.id,
+                category: fixture.food.id,
+                occurredAt: occurredAt,
+                payee: "Projection"
+            )
+            return try JournalEntry(
+                id: candidate.id,
+                kind: candidate.kind,
+                occurredAt: candidate.occurredAt,
+                createdAt: candidate.createdAt,
+                payee: candidate.payee,
+                note: candidate.note,
+                postings: candidate.postings,
+                originContext: .capture(
+                    for: occurredAt,
+                    timeZone: calendar.timeZone
+                )
+            )
+        }
+
+        let january = try XCTUnwrap(
+            calendar.dateInterval(of: .month, for: date(1, 1))?.start
+        )
+        let budget = BudgetNode(
+            id: fixture.food.id,
+            name: fixture.food.name,
+            limit: try Money(100, currency: fixture.sgd),
+            purpose: .flexible,
+            rolloverRule: .positiveOnly,
+            rolloverStartedAt: january
+        )
+        let timeline = try BudgetConfigurationTimeline(
+            currency: fixture.sgd,
+            revisions: [BudgetConfigurationRevision(
+                effectiveMonth: january,
+                nodes: [budget]
+            )]
+        )
+        let oldClosedMonthEntry = try expense(
+            amount: 40,
+            occurredAt: date(1, 15)
+        )
+        let newerCurrentMonthEntries = try (0..<100).map { offset in
+            try expense(
+                amount: 1,
+                occurredAt: date(3, 1).addingTimeInterval(TimeInterval(offset))
+            )
+        }
+        let allEntries = [oldClosedMonthEntry] + newerCurrentMonthEntries
+        let recent = Array(
+            allEntries.sorted { $0.occurredAt > $1.occurredAt }.prefix(80)
+        )
+        XCTAssertFalse(recent.contains { $0.id == oldClosedMonthEntry.id })
+        let profile = UserProfile(
+            baseCurrency: fixture.sgd,
+            showsBudgetStatusWidget: true,
+            reportingTimeZoneIdentifier: "GMT"
+        )
+        try await fixture.seed(
+            profile: profile,
+            accounts: [fixture.wallet, fixture.usAccount, fixture.food],
+            entries: allEntries,
+            budgetNodes: [budget],
+            budgetConfigurationTimeline: timeline
+        )
+        let suiteName = "MoneyUpCompleteBudgetProjection-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let widgetStore = BudgetWidgetSnapshotStore(defaults: defaults)
+        let model = fixture.model(
+            profile: profile,
+            entries: recent,
+            budgetNodes: [budget],
+            retainsCompleteJournal: false,
+            budgetWidgetSnapshotStore: widgetStore,
+            budgetConfigurationTimeline: timeline,
+            currentDate: { clock.value() }
+        )
+
+        _ = model.reportResult(for: .thisMonth)
+        await model.waitForPendingJournalDerivedRefresh()
+
+        XCTAssertEqual(model.entries.count, 80)
+        XCTAssertEqual(model.journalEntryCount, 101)
+        guard case let .available(progress) = model.budgetProgressThisMonthResult()
+        else { return XCTFail("Expected a complete March rollover projection") }
+        XCTAssertEqual(progress.first?.effectiveLimit?.amount, 260)
+        XCTAssertEqual(progress.first?.spent.amount, 100)
+        XCTAssertEqual(
+            budgetWidgetPercent(widgetStore.read(now: clock.value())),
+            38
+        )
+
+        clock.set(date(4, 15))
+        guard case .unavailable = model.budgetProgressThisMonthResult() else {
+            return XCTFail("A prior-month projection must fail closed")
+        }
+        await model.waitForPendingJournalDerivedRefresh()
+        guard case let .available(aprilProgress) = model.budgetProgressThisMonthResult()
+        else { return XCTFail("Expected the April projection to refresh") }
+        XCTAssertEqual(aprilProgress.first?.effectiveLimit?.amount, 260)
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testLazyLedgerQuarantinesWholeCurrencyMismatchEntry() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let mismatched = try JournalEntry(
+            kind: .expense,
+            occurredAt: Date(),
+            postings: [
+                Posting(
+                    accountID: fixture.wallet.id,
+                    money: try Money(-12, currency: fixture.usd)
+                ),
+                Posting(
+                    accountID: fixture.food.id,
+                    money: try Money(12, currency: fixture.usd)
+                )
+            ]
+        )
+        let profile = UserProfile(baseCurrency: fixture.sgd)
+        try await fixture.seed(
+            profile: profile,
+            accounts: [fixture.wallet, fixture.usAccount, fixture.food],
+            entries: [mismatched]
+        )
+        let model = fixture.model(
+            profile: profile,
+            entries: [mismatched],
+            retainsCompleteJournal: false
+        )
+
+        _ = model.reportResult(for: .thisMonth)
+        await model.waitForPendingJournalDerivedRefresh()
+
+        XCTAssertEqual(model.journalEntryCount, 0)
+        XCTAssertTrue(model.entries.isEmpty)
+        XCTAssertEqual(
+            model.displayBalanceResult(for: fixture.wallet).value?.amount,
+            0
+        )
+        XCTAssertTrue(model.recoveryIssues.contains {
+            $0.contains(mismatched.id.uuidString.lowercased())
+                || $0.contains(mismatched.id.uuidString)
+        })
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testExplicitCheckpointRecomputationExcludesQuarantinedWholeEntry() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let calendar = FinancialPeriodBoundary.gregorianCalendar(
+            timeZoneIdentifier: "GMT"
+        )
+        func date(_ month: Int, _ day: Int) -> Date {
+            calendar.date(from: DateComponents(
+                year: 2026,
+                month: month,
+                day: day,
+                hour: 12
+            ))!
+        }
+        let january = try XCTUnwrap(
+            calendar.dateInterval(of: .month, for: date(1, 1))?.start
+        )
+        let march = try XCTUnwrap(
+            calendar.dateInterval(of: .month, for: date(3, 1))?.start
+        )
+        let budget = BudgetNode(
+            id: fixture.food.id,
+            name: fixture.food.name,
+            limit: try Money(100, currency: fixture.sgd),
+            rolloverRule: .positiveOnly,
+            rolloverStartedAt: january
+        )
+        let timeline = try BudgetConfigurationTimeline(
+            currency: fixture.sgd,
+            revisions: [
+                BudgetConfigurationRevision(
+                    effectiveMonth: january,
+                    nodes: [budget]
+                ),
+                BudgetConfigurationRevision(
+                    effectiveMonth: march,
+                    nodes: [budget],
+                    openingCarry: [
+                        fixture.food.id: try Money(0, currency: fixture.sgd)
+                    ]
+                )
+            ]
+        )
+        let valid = try TransactionFactory.expense(
+            amount: try Money(10, currency: fixture.sgd),
+            paidFrom: fixture.wallet.id,
+            category: fixture.food.id,
+            occurredAt: date(1, 15),
+            payee: "Valid"
+        )
+        let orphan = try JournalEntry(
+            kind: .expense,
+            occurredAt: date(1, 16),
+            postings: [
+                Posting(
+                    accountID: UUID(),
+                    money: try Money(-90, currency: fixture.sgd)
+                ),
+                Posting(
+                    accountID: fixture.food.id,
+                    money: try Money(90, currency: fixture.sgd)
+                )
+            ]
+        )
+        let profile = UserProfile(
+            baseCurrency: fixture.sgd,
+            reportingTimeZoneIdentifier: "GMT"
+        )
+        let aprilNow = date(4, 15)
+        try await fixture.seed(
+            profile: profile,
+            accounts: [fixture.wallet, fixture.usAccount, fixture.food],
+            entries: [valid, orphan],
+            budgetNodes: [budget],
+            budgetConfigurationTimeline: timeline
+        )
+        let model = fixture.model(
+            profile: profile,
+            entries: [valid, orphan],
+            budgetNodes: [budget],
+            retainsCompleteJournal: false,
+            budgetConfigurationTimeline: timeline,
+            currentDate: { aprilNow }
+        )
+        _ = model.reportResult(for: .thisMonth)
+        await model.waitForPendingJournalDerivedRefresh()
+
+        try await model.replaceEntry(
+            id: valid.id,
+            kind: .expense,
+            amount: 20,
+            destinationAmount: nil,
+            accountID: fixture.wallet.id,
+            destinationAccountID: nil,
+            categoryID: fixture.food.id,
+            occurredAt: valid.occurredAt,
+            payee: "Corrected valid",
+            note: nil
+        )
+
+        let stored = try await fixture.store.fetch(
+            BudgetConfigurationTimeline.self,
+            id: BudgetConfigurationTimeline.primaryRecordID,
+            from: .budgetConfigurationTimelines
+        )
+        XCTAssertEqual(
+            stored?.revision(effectiveAt: march)
+                .openingCarryByID?[fixture.food.id]?.amount,
+            180
+        )
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testLazyCurrentMonthQuickLogAndSchedulePostSkipFullJournalReplay() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let calendar = FinancialPeriodBoundary.gregorianCalendar(
+            timeZoneIdentifier: "GMT"
+        )
+        func date(_ month: Int, _ day: Int) -> Date {
+            calendar.date(from: DateComponents(
+                year: 2026,
+                month: month,
+                day: day,
+                hour: 12
+            ))!
+        }
+        let january = try XCTUnwrap(
+            calendar.dateInterval(of: .month, for: date(1, 1))?.start
+        )
+        let march = try XCTUnwrap(
+            calendar.dateInterval(of: .month, for: date(3, 1))?.start
+        )
+        let budget = BudgetNode(
+            id: fixture.food.id,
+            name: fixture.food.name,
+            limit: try Money(100, currency: fixture.sgd),
+            rolloverRule: .positiveOnly,
+            rolloverStartedAt: january
+        )
+        let timeline = try BudgetConfigurationTimeline(
+            currency: fixture.sgd,
+            revisions: [
+                BudgetConfigurationRevision(
+                    effectiveMonth: january,
+                    nodes: [budget]
+                ),
+                BudgetConfigurationRevision(
+                    effectiveMonth: march,
+                    nodes: [budget],
+                    openingCarry: [
+                        fixture.food.id: try Money(0, currency: fixture.sgd)
+                    ]
+                )
+            ]
+        )
+        let schedule = try ScheduledTransaction(
+            kind: .expense,
+            name: "April scheduled expense",
+            amount: try Money(12, currency: fixture.sgd),
+            accountID: fixture.wallet.id,
+            categoryAccountID: fixture.food.id,
+            nextOccurrence: date(4, 12),
+            frequency: .monthly,
+            recurrenceTimeZoneIdentifier: "GMT"
+        )
+        let profile = UserProfile(
+            baseCurrency: fixture.sgd,
+            reportingTimeZoneIdentifier: "GMT"
+        )
+        try await fixture.seed(
+            profile: profile,
+            accounts: [fixture.wallet, fixture.usAccount, fixture.food],
+            budgetNodes: [budget],
+            budgetConfigurationTimeline: timeline,
+            schedules: [schedule]
+        )
+        let malformedID = UUID()
+        let snapshot = try await fixture.store.snapshot()
+        try await fixture.store.restore(DatabaseSnapshot(
+            schemaVersion: snapshot.schemaVersion,
+            createdAt: snapshot.createdAt,
+            records: snapshot.records + [StoredRecordSnapshot(
+                collection: RecordCollection.journalEntries.rawValue,
+                recordID: malformedID.uuidString,
+                payload: Data("{not-json".utf8),
+                updatedAt: 1
+            )]
+        ))
+        let model = fixture.model(
+            profile: profile,
+            budgetNodes: [budget],
+            scheduledTransactions: [schedule],
+            retainsCompleteJournal: false,
+            budgetConfigurationTimeline: timeline,
+            currentDate: { date(4, 15) }
+        )
+
+        let quickLogID = try await model.logExpense(
+            amount: 8,
+            accountID: fixture.wallet.id,
+            categoryID: fixture.food.id,
+            occurredAt: date(4, 10),
+            payee: "April quick log",
+            note: nil
+        )
+        XCTAssertNotNil(quickLogID)
+        XCTAssertEqual(model.budgetJournalReplayReadCount, 0)
+
+        let scheduledID = try await model.postScheduledOccurrence(
+            scheduleID: schedule.id,
+            occurrenceID: schedule.currentOccurrenceID,
+            occurredAt: date(4, 12),
+            resolvedAt: date(4, 12),
+            calendar: calendar
+        )
+        XCTAssertNotNil(scheduledID)
+        XCTAssertEqual(model.budgetJournalReplayReadCount, 0)
+
+        let recovered = try await fixture.store.fetchAllRecovering(
+            JournalEntry.self,
+            from: .journalEntries
+        )
+        XCTAssertEqual(
+            Set(recovered.values.map(\.id)),
+            Set([quickLogID, scheduledID].compactMap { $0 })
+        )
+        XCTAssertEqual(recovered.issues.map(\.recordID), [malformedID.uuidString])
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testLazyCheckpointReplayRecoversPastMalformedJournalRow() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let calendar = FinancialPeriodBoundary.gregorianCalendar(
+            timeZoneIdentifier: "GMT"
+        )
+        func date(_ month: Int, _ day: Int) -> Date {
+            calendar.date(from: DateComponents(
+                year: 2026,
+                month: month,
+                day: day,
+                hour: 12
+            ))!
+        }
+        let january = try XCTUnwrap(
+            calendar.dateInterval(of: .month, for: date(1, 1))?.start
+        )
+        let march = try XCTUnwrap(
+            calendar.dateInterval(of: .month, for: date(3, 1))?.start
+        )
+        let budget = BudgetNode(
+            id: fixture.food.id,
+            name: fixture.food.name,
+            limit: try Money(100, currency: fixture.sgd),
+            rolloverRule: .positiveOnly,
+            rolloverStartedAt: january
+        )
+        let timeline = try BudgetConfigurationTimeline(
+            currency: fixture.sgd,
+            revisions: [
+                BudgetConfigurationRevision(
+                    effectiveMonth: january,
+                    nodes: [budget]
+                ),
+                BudgetConfigurationRevision(
+                    effectiveMonth: march,
+                    nodes: [budget],
+                    openingCarry: [
+                        fixture.food.id: try Money(0, currency: fixture.sgd)
+                    ]
+                )
+            ]
+        )
+        let profile = UserProfile(
+            baseCurrency: fixture.sgd,
+            reportingTimeZoneIdentifier: "GMT"
+        )
+        try await fixture.seed(
+            profile: profile,
+            accounts: [fixture.wallet, fixture.usAccount, fixture.food],
+            budgetNodes: [budget],
+            budgetConfigurationTimeline: timeline
+        )
+        let malformedID = UUID()
+        let snapshot = try await fixture.store.snapshot()
+        try await fixture.store.restore(DatabaseSnapshot(
+            schemaVersion: snapshot.schemaVersion,
+            createdAt: snapshot.createdAt,
+            records: snapshot.records + [StoredRecordSnapshot(
+                collection: RecordCollection.journalEntries.rawValue,
+                recordID: malformedID.uuidString,
+                payload: Data("{not-json".utf8),
+                updatedAt: 1
+            )]
+        ))
+        let model = fixture.model(
+            profile: profile,
+            budgetNodes: [budget],
+            retainsCompleteJournal: false,
+            budgetConfigurationTimeline: timeline,
+            currentDate: { date(4, 15) }
+        )
+
+        let entryID = try await model.logExpense(
+            amount: 10,
+            accountID: fixture.wallet.id,
+            categoryID: fixture.food.id,
+            occurredAt: date(1, 15),
+            payee: "Backdated valid expense",
+            note: nil
+        )
+
+        XCTAssertNotNil(entryID)
+        XCTAssertEqual(model.budgetJournalReplayReadCount, 1)
+        XCTAssertTrue(model.recoveryIssues.contains {
+            $0.contains(malformedID.uuidString)
+        })
+        let storedTimeline = try await fixture.store.fetch(
+            BudgetConfigurationTimeline.self,
+            id: BudgetConfigurationTimeline.primaryRecordID,
+            from: .budgetConfigurationTimelines
+        )
+        XCTAssertEqual(
+            storedTimeline?.revision(effectiveAt: march)
+                .openingCarryByID?[fixture.food.id]?.amount,
+            190
+        )
+        await fixture.store.close()
+    }
+
+    @MainActor
     func testDraftUpdateDuringPausedSaveCannotResurrectDraftAfterReopen() async throws {
         let fixture = try AppModelFixture()
         defer { fixture.removeFiles() }
@@ -5345,12 +9655,25 @@ extension AppModelTests {
                 )
             ]
         )
-        let entry = try TransactionFactory.expense(
+        let candidateEntry = try TransactionFactory.expense(
             amount: try Money(10, currency: fixture.sgd),
             paidFrom: fixture.wallet.id,
             category: fixture.food.id,
             occurredAt: occurrenceInstant,
             payee: "Boundary expense"
+        )
+        let entry = try JournalEntry(
+            id: candidateEntry.id,
+            kind: candidateEntry.kind,
+            occurredAt: candidateEntry.occurredAt,
+            createdAt: candidateEntry.createdAt,
+            payee: candidateEntry.payee,
+            note: candidateEntry.note,
+            postings: candidateEntry.postings,
+            originContext: .capture(
+                for: occurrenceInstant,
+                timeZone: try XCTUnwrap(TimeZone(identifier: "Etc/GMT+12"))
+            )
         )
         let attribution = try BudgetEntryAttribution(
             entry: entry,
@@ -6203,9 +10526,19 @@ extension AppModelTests {
             targetDate: Date(timeIntervalSinceReferenceDate: 900_000_000),
             createdAt: Date(timeIntervalSinceReferenceDate: 700_000_000)
         )
+        let schedule = try ScheduledTransaction(
+            kind: .expense,
+            name: "Restore barrier bill",
+            amount: try Money(25, currency: fixture.sgd),
+            accountID: fixture.wallet.id,
+            categoryAccountID: fixture.food.id,
+            nextOccurrence: Date(timeIntervalSinceReferenceDate: 850_000_000),
+            frequency: .monthly
+        )
         try await fixture.seed(
             profile: profile,
             accounts: [fixture.wallet, fixture.usAccount, fixture.food],
+            schedules: [schedule],
             savingsGoals: [goal]
         )
         let restoreSnapshot = try await fixture.store.snapshot()
@@ -6216,6 +10549,7 @@ extension AppModelTests {
         let gate = AsyncGate()
         let model = fixture.model(
             profile: profile,
+            scheduledTransactions: [schedule],
             savingsGoals: [goal],
             lifecycleHooks: hooks(pausing: .beforeSavingsGoalWrite, at: gate)
         )
@@ -6246,6 +10580,21 @@ extension AppModelTests {
             XCTFail("Restore must close the global goal-mutation barrier")
         } catch AppModelError.transactionInProgress {
             // Expected while restore waits for the already-started write.
+        }
+        do {
+            try await model.pauseScheduledTransaction(id: schedule.id)
+            XCTFail("Restore must block schedule-only mutations while draining goals")
+        } catch AppModelError.transactionInProgress {
+            // Expected: restore owns the cross-feature mutation barrier.
+        }
+        do {
+            _ = try await model.postScheduledOccurrence(
+                scheduleID: schedule.id,
+                occurrenceID: schedule.currentOccurrenceID
+            )
+            XCTFail("Restore must block journal-and-schedule mutations")
+        } catch AppModelError.transactionInProgress {
+            // Expected: no schedule posting can be overwritten by restore.
         }
 
         await gate.release()
@@ -6436,27 +10785,16 @@ extension AppModelTests {
         }
 
         for collection in durable {
-            let recordID: String
-            if collection == .receiptAttachments {
-                let attachment = try ReceiptAttachment(
-                    entryID: UUID(),
-                    mediaType: .jpeg,
-                    data: Data([0xff])
-                )
-                recordID = attachment.id.uuidString
-                try await fixture.store.upsert(
-                    attachment,
-                    id: recordID,
-                    in: collection
-                )
-            } else {
-                recordID = "sentinel"
-                try await fixture.store.upsert(
-                    fixture.wallet,
-                    id: recordID,
-                    in: collection
-                )
-            }
+            let recordID = "sentinel"
+            try await fixture.store.restore(DatabaseSnapshot(
+                schemaVersion: EncryptedRecordStore.currentSchemaVersion,
+                records: [StoredRecordSnapshot(
+                    collection: collection.rawValue,
+                    recordID: recordID,
+                    payload: Data("{}".utf8),
+                    updatedAt: 1
+                )]
+            ))
             let detected = try await AppModel.containsPersistedBookData(
                 in: fixture.store
             )
@@ -6495,6 +10833,27 @@ extension AppModelTests {
         XCTAssertEqual(model.profile?.autoLockDelay, 60)
         XCTAssertEqual(stored?.autoLockDelay, 60)
         await fixture.store.close()
+    }
+}
+
+private final class MutableTestDate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storedValue: Date
+
+    init(_ value: Date) {
+        storedValue = value
+    }
+
+    func value() -> Date {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedValue
+    }
+
+    func set(_ value: Date) {
+        lock.lock()
+        storedValue = value
+        lock.unlock()
     }
 }
 
@@ -6546,6 +10905,10 @@ private struct AppModelFixture {
             try await ReceiptScanner.recognizeLines(inImageData: data)
         },
         lifecycleHooks: AppModelLifecycleHooks = .none,
+        deleteDatabaseKey: @escaping @Sendable () throws -> Void = {},
+        dataEraseIntent: DataEraseIntentAccess = .none,
+        openDatabaseStore: @escaping DatabaseStoreOpener =
+            DatabaseStoreOpeners.production,
         retainsCompleteJournal: Bool = true,
         budgetWidgetSnapshotStore: BudgetWidgetSnapshotStore = BudgetWidgetSnapshotStore(),
         budgetConfigurationTimeline: BudgetConfigurationTimeline? = nil,
@@ -6569,6 +10932,9 @@ private struct AppModelFixture {
             receiptRecognizer: receiptRecognizer,
             lifecycleHooks: lifecycleHooks,
             databaseURLForErase: databaseURL,
+            deleteDatabaseKey: deleteDatabaseKey,
+            dataEraseIntent: dataEraseIntent,
+            openDatabaseStore: openDatabaseStore,
             retainsCompleteJournal: retainsCompleteJournal,
             budgetWidgetSnapshotStore: budgetWidgetSnapshotStore,
             budgetConfigurationTimeline: budgetConfigurationTimeline,
@@ -6701,6 +11067,20 @@ private actor FirstRefreshGate {
         }
     }
 
+    func waitUntilReached(timeout: Duration) async -> Bool {
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: timeout)
+        while !reached {
+            guard clock.now < deadline else { return false }
+            do {
+                try await Task.sleep(for: .milliseconds(10))
+            } catch {
+                return false
+            }
+        }
+        return true
+    }
+
     func release() {
         released = true
         let waiters = releaseWaiters
@@ -6731,6 +11111,20 @@ private actor AsyncGate {
         await withCheckedContinuation { continuation in
             reachWaiters.append(continuation)
         }
+    }
+
+    func waitUntilReached(timeout: Duration) async -> Bool {
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: timeout)
+        while !reached {
+            guard clock.now < deadline else { return false }
+            do {
+                try await Task.sleep(for: .milliseconds(10))
+            } catch {
+                return false
+            }
+        }
+        return true
     }
 
     func release() {
@@ -6771,5 +11165,174 @@ private actor InMemoryLockedCaptureStore: LockedCaptureStoring {
         }
         captures.removeAll { $0.id == id }
         return captures.count
+    }
+
+    func eraseAll() async throws {
+        captures.removeAll()
+    }
+}
+
+private actor PausingAppendLockedCaptureStore: LockedCaptureStoring {
+    private let gate: AsyncGate
+    private var captures: [LockedCapture] = []
+
+    init(gate: AsyncGate) {
+        self.gate = gate
+    }
+
+    func all() async throws -> [LockedCapture] {
+        captures
+    }
+
+    @discardableResult
+    func append(_ capture: LockedCapture) async throws -> Int {
+        await gate.suspend()
+        captures.append(capture)
+        return captures.count
+    }
+
+    @discardableResult
+    func remove(id: UUID) async throws -> Int {
+        captures.removeAll { $0.id == id }
+        return captures.count
+    }
+
+    func eraseAll() async throws {
+        captures.removeAll()
+    }
+}
+
+private final class EraseEventRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var events: [String] = []
+
+    func record(_ event: String) {
+        lock.lock()
+        events.append(event)
+        lock.unlock()
+    }
+
+    func snapshot() -> [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return events
+    }
+}
+
+private final class RetryingEraseIntent: @unchecked Sendable {
+    private let lock = NSLock()
+    private let events: EraseEventRecorder
+    private var isPendingValue = true
+    private var clearFailuresRemaining: Int
+
+    init(
+        events: EraseEventRecorder,
+        clearFailuresRemaining: Int
+    ) {
+        self.events = events
+        self.clearFailuresRemaining = clearFailuresRemaining
+    }
+
+    var pending: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return isPendingValue
+    }
+
+    var access: DataEraseIntentAccess {
+        DataEraseIntentAccess(
+            isPending: { [self] in
+                events.record("intent-checked")
+                return pending
+            },
+            markPending: { [self] in
+                lock.lock()
+                isPendingValue = true
+                lock.unlock()
+            },
+            clear: { [self] in
+                events.record("intent-clear-attempted")
+                lock.lock()
+                defer { lock.unlock() }
+                if clearFailuresRemaining > 0 {
+                    clearFailuresRemaining -= 1
+                    throw DatabaseKeyStoreError.unexpectedStatus(-31_338)
+                }
+                isPendingValue = false
+            }
+        )
+    }
+}
+
+private actor EraseRecordingLockedCaptureStore: LockedCaptureStoring {
+    private let events: EraseEventRecorder
+    private let eraseError: LockedCaptureStoreError?
+
+    init(
+        events: EraseEventRecorder,
+        eraseError: LockedCaptureStoreError? = nil
+    ) {
+        self.events = events
+        self.eraseError = eraseError
+    }
+
+    func all() async throws -> [LockedCapture] { [] }
+
+    @discardableResult
+    func append(_ capture: LockedCapture) async throws -> Int { 0 }
+
+    @discardableResult
+    func remove(id: UUID) async throws -> Int { 0 }
+
+    func eraseAll() async throws {
+        events.record("locked-capture-erased")
+        if let eraseError { throw eraseError }
+    }
+}
+
+private actor ScriptedLockedCaptureStore: LockedCaptureStoring {
+    private var captures: [LockedCapture]
+    private var readError: LockedCaptureStoreError?
+    private var eraseCallCount = 0
+
+    init(
+        captures: [LockedCapture] = [],
+        readError: LockedCaptureStoreError? = nil
+    ) {
+        self.captures = captures
+        self.readError = readError
+    }
+
+    func setReadError(_ error: LockedCaptureStoreError?) {
+        readError = error
+    }
+
+    func eraseCount() -> Int { eraseCallCount }
+
+    func all() async throws -> [LockedCapture] {
+        if let readError { throw readError }
+        return captures
+    }
+
+    @discardableResult
+    func append(_ capture: LockedCapture) async throws -> Int {
+        if let readError { throw readError }
+        if !captures.contains(where: { $0.id == capture.id }) {
+            captures.append(capture)
+        }
+        return captures.count
+    }
+
+    @discardableResult
+    func remove(id: UUID) async throws -> Int {
+        if let readError { throw readError }
+        captures.removeAll { $0.id == id }
+        return captures.count
+    }
+
+    func eraseAll() async throws {
+        eraseCallCount += 1
+        captures.removeAll()
+        readError = nil
     }
 }

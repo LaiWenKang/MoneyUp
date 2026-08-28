@@ -27,7 +27,10 @@ public enum LedgerXLSXExporter {
         rates: [DatedExchangeRate] = [],
         attachmentMetadata: [ReceiptAttachmentMetadata] = []
     ) -> Data {
-        let accountByID = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0) })
+        let accountByID = Dictionary(
+            accounts.map { ($0.id, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
         let attachmentCounts = Dictionary(grouping: attachmentMetadata, by: \.entryID)
             .mapValues { $0.count }
         let sortedEntries = entries.sorted {

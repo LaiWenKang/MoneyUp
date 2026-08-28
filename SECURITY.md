@@ -93,9 +93,10 @@ The guarantee does not cover:
   WAL journaling, secure deletion, and foreign-key enforcement.
 - The database uses a versioned schema and rejects a schema newer than the app
   supports.
-- Schema 3 stores journal/posting lookup indexes and exact account/currency
-  balance rows inside SQLCipher. Routine entry mutations apply exact deltas in
-  the same transaction; rebuild is reserved for migration, restore, or repair.
+- Schema 4 stores journal/posting lookup indexes, exact account/currency balance
+  rows, and bounded receipt-attachment metadata inside SQLCipher. Routine entry
+  mutations apply exact deltas in the same transaction; rebuild is reserved for
+  migration, restore, or repair.
 - Normal unlock retains only bounded recent activity plus compact reference and
   balance state; whole-book operations page from the encrypted store on demand.
 - Multi-record setup and reconciliation operations use a single immediate

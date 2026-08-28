@@ -1,10 +1,20 @@
+import CryptoKit
 import Foundation
 @testable import MoneyUpCore
 @testable import MoneyUpPersistence
 import XCTest
 
+private struct VersionOnePortableArchiveEnvelope: Codable {
+    let version: Int
+    let kdf: String
+    let iterations: Int
+    let salt: Data
+    let ciphertext: Data
+}
+
 final class EncryptedRecordStoreTests: XCTestCase {
-    func testPortableArchivePBKDFMatchesIndependentSHA256Vectors() {
+    func testPortableArchivePBKDFMatchesIndependentSHA256Vectors() throws {
+        XCTAssertEqual(PortableArchive.iterationCount, 120_000)
         let expected: [(iterations: Int, bytes: [UInt8])] = [
             (1, [
                 0x12, 0x0f, 0xb6, 0xcf, 0xfc, 0xf8, 0xb3, 0x2c,
@@ -22,7 +32,7 @@ final class EncryptedRecordStoreTests: XCTestCase {
 
         for vector in expected {
             XCTAssertEqual(
-                PortableArchive.derivedKeyData(
+                try PortableArchive.derivedKeyData(
                     password: "password",
                     salt: Data("salt".utf8),
                     iterations: vector.iterations
@@ -30,6 +40,94 @@ final class EncryptedRecordStoreTests: XCTestCase {
                 Data(vector.bytes)
             )
         }
+        XCTAssertEqual(
+            try PortableArchive.derivedKeyData(
+                password: String(repeating: "p", count: 2_048),
+                salt: Data("legacy-salt".utf8),
+                iterations: 1
+            ),
+            Data([
+                0x28, 0x09, 0x73, 0xdb, 0xaa, 0xe1, 0x0a, 0x3c,
+                0xf2, 0x9e, 0x6a, 0x38, 0xaf, 0xf9, 0x92, 0x93,
+                0x6f, 0xc6, 0xa2, 0x20, 0x10, 0xf0, 0x04, 0x86,
+                0x83, 0x17, 0xa1, 0xd1, 0xaf, 0x92, 0x2e, 0xc6
+            ])
+        )
+    }
+
+    func testPortableArchivePBKDFChecksCancellationDuringDerivation() async {
+        let operation = Task.detached { () throws -> Data in
+            var checkpointCount = 0
+            return try PortableArchive.derivedKeyData(
+                password: "correct horse battery staple",
+                salt: Data(repeating: 0x41, count: 16),
+                iterations: 1_024,
+                cancellationProbe: {
+                    checkpointCount += 1
+                    if checkpointCount == 4 {
+                        withUnsafeCurrentTask { task in task?.cancel() }
+                    }
+                    try Task.checkCancellation()
+                }
+            )
+        }
+
+        do {
+            _ = try await operation.value
+            XCTFail("A cancelled PBKDF must not finish derivation")
+        } catch is CancellationError {
+            // The fourth probe occurs inside the PBKDF iteration loop.
+        } catch {
+            XCTFail("Expected CancellationError, got \(type(of: error))")
+        }
+    }
+
+    func testPortableArchiveSealAndOpenPreserveDetachedCancellation() async throws {
+        let snapshot = DatabaseSnapshot(
+            schemaVersion: EncryptedRecordStore.currentSchemaVersion,
+            records: []
+        )
+        let password = "correct horse battery staple"
+        let archive = try PortableArchive.seal(snapshot, password: password)
+
+        let sealOperation = Task.detached { () throws -> Data in
+            withUnsafeCurrentTask { task in task?.cancel() }
+            return try PortableArchive.seal(snapshot, password: password)
+        }
+        do {
+            _ = try await sealOperation.value
+            XCTFail("Cancelled archive sealing must not return an archive")
+        } catch is CancellationError {
+            // Expected; cancellation is not reclassified as an archive error.
+        } catch {
+            XCTFail("Expected CancellationError, got \(type(of: error))")
+        }
+
+        let openOperation = Task.detached { () throws -> DatabaseSnapshot in
+            withUnsafeCurrentTask { task in task?.cancel() }
+            return try PortableArchive.open(archive, password: password)
+        }
+        do {
+            _ = try await openOperation.value
+            XCTFail("Cancelled archive opening must not return a snapshot")
+        } catch is CancellationError {
+            // Expected; cancellation is not reclassified as authentication.
+        } catch {
+            XCTFail("Expected CancellationError, got \(type(of: error))")
+        }
+    }
+
+    func testSQLCipherKeepsTemporaryStorageInMemory() async throws {
+        let fixture = try TemporaryDatabaseFixture()
+        let store = try EncryptedRecordStore(
+            databaseURL: fixture.databaseURL,
+            key: fixture.key
+        )
+
+        let usesMemoryOnlyTemporaryStorage = try await store
+            .usesMemoryOnlyTemporaryStorage()
+        XCTAssertTrue(usesMemoryOnlyTemporaryStorage)
+        await store.close()
     }
 
     func testBudgetConfigurationTimelineRoundTripsDatedTreeAndCarryMapping() async throws {
@@ -425,6 +523,80 @@ final class EncryptedRecordStoreTests: XCTestCase {
         await store.close()
     }
 
+    func testNormalizedLedgerIndexQuarantinesWholeCurrencyMismatchEntry() async throws {
+        let fixture = try TemporaryDatabaseFixture()
+        let store = try EncryptedRecordStore(
+            databaseURL: fixture.databaseURL,
+            key: fixture.key
+        )
+        let sgd = try CurrencyCode("SGD")
+        let usd = try CurrencyCode("USD")
+        let accountID = UUID()
+        let categoryID = UUID()
+        let healthy = try JournalEntry(
+            kind: .expense,
+            occurredAt: Date(timeIntervalSince1970: 1_700_000_000),
+            postings: [
+                Posting(
+                    accountID: accountID,
+                    money: try Money(-5, currency: sgd)
+                ),
+                Posting(
+                    accountID: categoryID,
+                    money: try Money(5, currency: sgd)
+                )
+            ]
+        )
+        let mismatched = try JournalEntry(
+            kind: .expense,
+            occurredAt: healthy.occurredAt.addingTimeInterval(1),
+            postings: [
+                Posting(
+                    accountID: accountID,
+                    money: try Money(-12, currency: usd)
+                ),
+                Posting(
+                    accountID: categoryID,
+                    money: try Money(12, currency: usd)
+                )
+            ]
+        )
+        try await store.write([
+            try RecordWrite(
+                healthy,
+                id: healthy.id.uuidString,
+                in: .journalEntries
+            ),
+            try RecordWrite(
+                mismatched,
+                id: mismatched.id.uuidString,
+                in: .journalEntries
+            )
+        ])
+
+        let snapshot = try await store.journalLedgerIndex(
+            validAccountIDs: Set([accountID, categoryID]),
+            expectedAccountCurrencies: [accountID: sgd]
+        )
+
+        XCTAssertEqual(snapshot.entryCount, 1)
+        XCTAssertEqual(snapshot.invalidRelationshipEntryIDs, Set([mismatched.id]))
+        XCTAssertEqual(snapshot.referenceCounts[accountID], 1)
+        XCTAssertEqual(snapshot.referenceCounts[categoryID], 1)
+        XCTAssertEqual(snapshot.balances[accountID]?[sgd]?.amount, -5)
+        XCTAssertNil(snapshot.balances[accountID]?[usd])
+        XCTAssertEqual(snapshot.balances[categoryID]?[sgd]?.amount, 5)
+        XCTAssertNil(snapshot.balances[categoryID]?[usd])
+
+        let events = try await store.fetchJournalPostingEvents(
+            startDate: healthy.occurredAt.addingTimeInterval(-1),
+            endDateExclusive: mismatched.occurredAt.addingTimeInterval(1),
+            excludingEntryIDs: snapshot.invalidRelationshipEntryIDs
+        )
+        XCTAssertEqual(Set(events.map(\.entryID)), Set([healthy.id]))
+        await store.close()
+    }
+
     func testTenThousandEntryJournalCanBeReadInBoundedPagesWithoutLoss() async throws {
         let fixture = try TemporaryDatabaseFixture()
         let store = try EncryptedRecordStore(
@@ -598,6 +770,42 @@ final class EncryptedRecordStoreTests: XCTestCase {
         await store.close()
     }
 
+    func testStorageMetricsMatchExactSnapshotByteTotals() async throws {
+        let fixture = try TemporaryDatabaseFixture()
+        let store = try EncryptedRecordStore(
+            databaseURL: fixture.databaseURL,
+            key: fixture.key
+        )
+        let account = LedgerAccount(name: "Private account name", kind: .asset)
+        try await store.upsert(
+            account,
+            id: account.id.uuidString,
+            in: .accounts
+        )
+        try await store.upsert(
+            "private draft payload",
+            id: "current",
+            in: .quickLogDrafts
+        )
+
+        let metrics = try await store.storageMetrics()
+        let snapshot = try await store.snapshot()
+        XCTAssertEqual(metrics.recordCount, snapshot.records.count)
+        XCTAssertEqual(
+            metrics.payloadByteCount,
+            snapshot.records.reduce(0) { $0 + $1.payload.count }
+        )
+        XCTAssertEqual(
+            metrics.recordIDByteCount,
+            snapshot.records.reduce(0) { $0 + $1.recordID.utf8.count }
+        )
+        XCTAssertEqual(
+            metrics.collectionByteCount,
+            snapshot.records.reduce(0) { $0 + $1.collection.utf8.count }
+        )
+        await store.close()
+    }
+
     func testJournalBalanceOverflowRollsBackRecordAndIndexAtomically() async throws {
         let fixture = try TemporaryDatabaseFixture()
         let store = try EncryptedRecordStore(
@@ -654,6 +862,72 @@ final class EncryptedRecordStoreTests: XCTestCase {
             huge
         )
         await store.close()
+    }
+
+    func testWriteRollbackFailureClosesConnectionAndReopenRecoversOldSnapshot() async throws {
+        let fixture = try TemporaryDatabaseFixture()
+        let store = try EncryptedRecordStore(
+            databaseURL: fixture.databaseURL,
+            key: fixture.key
+        )
+        let original = LedgerAccount(name: "Original", kind: .asset)
+        try await store.upsert(
+            original,
+            id: original.id.uuidString,
+            in: .accounts
+        )
+        let before = try await store.snapshot()
+        let accountID = UUID()
+        let categoryID = UUID()
+        let huge = try XCTUnwrap(
+            Decimal(
+                string: "9e127",
+                locale: Locale(identifier: "en_US_POSIX")
+            )
+        )
+        let first = try makeExpenseEntry(
+            occurredAt: Date(timeIntervalSince1970: 1_700_000_000),
+            amount: huge,
+            firstAccountID: accountID,
+            secondAccountID: categoryID
+        )
+        let second = try makeExpenseEntry(
+            occurredAt: Date(timeIntervalSince1970: 1_700_000_001),
+            amount: huge,
+            firstAccountID: accountID,
+            secondAccountID: categoryID
+        )
+        await store.failNextWriteRollbackForTesting()
+
+        do {
+            try await store.write([
+                try RecordWrite(
+                    first,
+                    id: first.id.uuidString,
+                    in: .journalEntries
+                ),
+                try RecordWrite(
+                    second,
+                    id: second.id.uuidString,
+                    in: .journalEntries
+                )
+            ])
+            XCTFail("Expected an indeterminate write rollback failure")
+        } catch PersistenceError.transactionStateIndeterminate {
+            // Closing the connection is the recovery boundary.
+        }
+
+        let reopened = try EncryptedRecordStore(
+            databaseURL: fixture.databaseURL,
+            key: fixture.key
+        )
+        let recovered = try await reopened.snapshot()
+        XCTAssertEqual(recovered.records, before.records)
+        let ledger = try await reopened.journalLedgerIndex(
+            validAccountIDs: Set([original.id])
+        )
+        XCTAssertEqual(ledger.entryCount, 0)
+        await reopened.close()
     }
 
     func testLifecycleBatchRollsBackRepointedEntryAuditAndSourceDeletionTogether() async throws {
@@ -819,6 +1093,187 @@ final class EncryptedRecordStoreTests: XCTestCase {
         await store.close()
     }
 
+    func testSnapshotRestoreCancellationRollsBackUnlessRecoveryIsUninterruptible() async throws {
+        let fixture = try TemporaryDatabaseFixture()
+        let store = try EncryptedRecordStore(
+            databaseURL: fixture.databaseURL,
+            key: fixture.key
+        )
+        let original = LedgerAccount(name: "Original", kind: .asset)
+        try await store.upsert(original, id: original.id.uuidString, in: .accounts)
+        let originalSnapshot = try await store.snapshot()
+        let later = LedgerAccount(name: "Later", kind: .asset)
+        try await store.upsert(later, id: later.id.uuidString, in: .accounts)
+        let candidate = try await store.snapshot()
+        try await store.restore(originalSnapshot)
+
+        let cancellationGate = RestoreStartGate()
+        let canceledRestore = Task {
+            await cancellationGate.suspend()
+            try await store.restore(candidate)
+        }
+        await cancellationGate.waitUntilReached()
+        canceledRestore.cancel()
+        await cancellationGate.release()
+        do {
+            try await canceledRestore.value
+            XCTFail("Expected a canceled candidate restore to roll back")
+        } catch is CancellationError {
+            // Cancellation is checked before BEGIN and throughout replacement.
+        }
+        let afterCancellation = try await store.fetchAll(
+            LedgerAccount.self,
+            from: .accounts
+        )
+        XCTAssertEqual(afterCancellation, [original])
+
+        let recoveryGate = RestoreStartGate()
+        let recoveryRestore = Task {
+            await recoveryGate.suspend()
+            try await store.restore(candidate, observesCancellation: false)
+        }
+        await recoveryGate.waitUntilReached()
+        recoveryRestore.cancel()
+        await recoveryGate.release()
+        try await recoveryRestore.value
+        let afterRecovery = try await store.fetchAll(
+            LedgerAccount.self,
+            from: .accounts
+        )
+        XCTAssertEqual(
+            Set(afterRecovery.map(\.id)),
+            Set([original.id, later.id])
+        )
+        await store.close()
+    }
+
+    func testCancelledJournalRecordWriteCannotLoseItsNormalizedIndex() async throws {
+        let entry = try makeExpenseEntry(
+            occurredAt: Date(timeIntervalSinceReferenceDate: 100),
+            amount: 12
+        )
+        let gate = RestoreStartGate()
+        let creation = Task {
+            await gate.suspend()
+            return try RecordWrite(
+                entry,
+                id: entry.id.uuidString,
+                in: .journalEntries
+            )
+        }
+
+        await gate.waitUntilReached()
+        creation.cancel()
+        await gate.release()
+        do {
+            _ = try await creation.value
+            XCTFail("Expected cancelled journal index derivation to fail")
+        } catch is CancellationError {
+            // A caller cannot hand a valid payload with a missing index to SQL.
+        }
+    }
+
+    func testCancelledRecoveringJournalFetchCannotReturnATruncatedSuccess() async throws {
+        let fixture = try TemporaryDatabaseFixture()
+        let store = try EncryptedRecordStore(
+            databaseURL: fixture.databaseURL,
+            key: fixture.key
+        )
+        let entry = try makeExpenseEntry(
+            occurredAt: Date(timeIntervalSinceReferenceDate: 100),
+            amount: 12
+        )
+        try await store.upsert(
+            entry,
+            id: entry.id.uuidString,
+            in: .journalEntries
+        )
+        let gate = RestoreStartGate()
+        let fetch = Task {
+            await gate.suspend()
+            return try await store.fetchAllRecovering(
+                JournalEntry.self,
+                from: .journalEntries
+            )
+        }
+
+        await gate.waitUntilReached()
+        fetch.cancel()
+        await gate.release()
+        do {
+            _ = try await fetch.value
+            XCTFail("Expected recovering fetch to preserve cancellation")
+        } catch is CancellationError {
+            // Cancellation is not misreported as a malformed persisted row.
+        }
+        await store.close()
+    }
+
+    func testCancelledJournalPageCannotReturnATruncatedSuccess() async throws {
+        let fixture = try TemporaryDatabaseFixture()
+        let store = try EncryptedRecordStore(
+            databaseURL: fixture.databaseURL,
+            key: fixture.key
+        )
+        let entry = try makeExpenseEntry(
+            occurredAt: Date(timeIntervalSinceReferenceDate: 100),
+            amount: 12
+        )
+        try await store.upsert(
+            entry,
+            id: entry.id.uuidString,
+            in: .journalEntries
+        )
+        let gate = RestoreStartGate()
+        let fetch = Task {
+            await gate.suspend()
+            return try await store.fetchJournalEntryPage(limit: 10)
+        }
+
+        await gate.waitUntilReached()
+        fetch.cancel()
+        await gate.release()
+        do {
+            _ = try await fetch.value
+            XCTFail("Expected journal page decode to preserve cancellation")
+        } catch is CancellationError {
+            // History and mutation callers cannot observe an incomplete page.
+        }
+        await store.close()
+    }
+
+    func testNormalWriteRejectsAnUnindexedJournalPayloadBeforeCommit() async throws {
+        let fixture = try TemporaryDatabaseFixture()
+        let store = try EncryptedRecordStore(
+            databaseURL: fixture.databaseURL,
+            key: fixture.key
+        )
+        let recordID = UUID().uuidString
+        let invalid = RecordWrite(
+            collection: .journalEntries,
+            id: recordID,
+            payload: Data("{not-json".utf8)
+        )
+
+        do {
+            try await store.write([invalid])
+            XCTFail("Expected an unindexed journal write to fail closed")
+        } catch let error as PersistenceError {
+            XCTAssertEqual(
+                error,
+                .invalidStoredRecord(
+                    collection: .journalEntries,
+                    recordID: recordID
+                )
+            )
+        }
+        let diagnostics = try await store.journalIndexDiagnostics()
+        XCTAssertEqual(diagnostics.journalRecordCount, 0)
+        XCTAssertEqual(diagnostics.indexedEntryCount, 0)
+        XCTAssertEqual(diagnostics.indexedPostingCount, 0)
+        await store.close()
+    }
+
     func testInvalidSnapshotLeavesExistingRecordsUntouched() async throws {
         let fixture = try TemporaryDatabaseFixture()
         let store = try EncryptedRecordStore(
@@ -848,6 +1303,77 @@ final class EncryptedRecordStoreTests: XCTestCase {
         let retained = try await store.fetchAll(LedgerAccount.self, from: .accounts)
         XCTAssertEqual(retained, [original])
         await store.close()
+    }
+
+    func testRestoreRollbackFailureClosesConnectionAndReopenRecoversOldSnapshot() async throws {
+        let fixture = try TemporaryDatabaseFixture()
+        let store = try EncryptedRecordStore(
+            databaseURL: fixture.databaseURL,
+            key: fixture.key
+        )
+        let original = LedgerAccount(name: "Original", kind: .asset)
+        try await store.upsert(
+            original,
+            id: original.id.uuidString,
+            in: .accounts
+        )
+        let before = try await store.snapshot()
+        await store.failNextRestoreRollbackForTesting()
+
+        let accountID = UUID()
+        let categoryID = UUID()
+        let huge = try XCTUnwrap(
+            Decimal(
+                string: "9e127",
+                locale: Locale(identifier: "en_US_POSIX")
+            )
+        )
+        let first = try makeExpenseEntry(
+            occurredAt: Date(timeIntervalSince1970: 1_700_000_000),
+            amount: huge,
+            firstAccountID: accountID,
+            secondAccountID: categoryID
+        )
+        let second = try makeExpenseEntry(
+            occurredAt: Date(timeIntervalSince1970: 1_700_000_001),
+            amount: huge,
+            firstAccountID: accountID,
+            secondAccountID: categoryID
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let candidate = DatabaseSnapshot(
+            schemaVersion: EncryptedRecordStore.currentSchemaVersion,
+            records: try [first, second].enumerated().map { index, entry in
+                StoredRecordSnapshot(
+                    collection: RecordCollection.journalEntries.rawValue,
+                    recordID: entry.id.uuidString,
+                    payload: try encoder.encode(entry),
+                    updatedAt: TimeInterval(index + 1)
+                )
+            }
+        )
+        do {
+            try await store.restore(candidate)
+            XCTFail("Expected an indeterminate rollback failure")
+        } catch PersistenceError.restoreTransactionStateIndeterminate {
+            // The failed connection is closed rather than exposing a partial
+            // in-transaction candidate to later reads or backups.
+        }
+
+        let reopened = try EncryptedRecordStore(
+            databaseURL: fixture.databaseURL,
+            key: fixture.key
+        )
+        let recovered = try await reopened.snapshot()
+        XCTAssertEqual(recovered.records, before.records)
+        let account = try await reopened.fetch(
+            LedgerAccount.self,
+            id: original.id.uuidString,
+            from: .accounts
+        )
+        XCTAssertEqual(account, original)
+        await reopened.close()
     }
 
     func testNonpositiveSnapshotSchemaLeavesExistingRecordsUntouched() async throws {
@@ -894,6 +1420,242 @@ final class EncryptedRecordStoreTests: XCTestCase {
         )
         XCTAssertEqual(recovered.values, [account])
         XCTAssertEqual(recovered.issues.map(\.recordID), ["malformed"])
+        await store.close()
+    }
+
+    func testUUIDIdentifiedWritesAndRecoveryRejectPhysicalAliases() async throws {
+        let fixture = try TemporaryDatabaseFixture()
+        let store = try EncryptedRecordStore(
+            databaseURL: fixture.databaseURL,
+            key: fixture.key
+        )
+        let account = LedgerAccount(name: "Aliased", kind: .asset)
+        let aliasRecordID = UUID().uuidString
+
+        do {
+            _ = try RecordWrite(
+                account,
+                id: aliasRecordID,
+                in: .accounts
+            )
+            XCTFail("A normal write must reject a payload/key mismatch")
+        } catch let error as PersistenceError {
+            XCTAssertEqual(
+                error,
+                .invalidStoredRecord(
+                    collection: .accounts,
+                    recordID: aliasRecordID
+                )
+            )
+        }
+
+        let snapshot = DatabaseSnapshot(
+            schemaVersion: EncryptedRecordStore.currentSchemaVersion,
+            records: [StoredRecordSnapshot(
+                collection: RecordCollection.accounts.rawValue,
+                recordID: aliasRecordID,
+                payload: try JSONEncoder().encode(account),
+                updatedAt: Date().timeIntervalSince1970
+            )]
+        )
+        try await store.restore(snapshot)
+        let recovered = try await store.fetchAllIdentifiedRecovering(
+            LedgerAccount.self,
+            from: .accounts
+        )
+
+        XCTAssertTrue(recovered.values.isEmpty)
+        XCTAssertEqual(recovered.issues, [RecordDecodeIssue(
+            collection: .accounts,
+            recordID: aliasRecordID
+        )])
+        let persistedAccountCount = try await store.count(in: .accounts)
+        XCTAssertEqual(persistedAccountCount, 1)
+        await store.close()
+    }
+
+    func testLegacyLowercaseJournalAndReceiptAliasesAreQuarantined() async throws {
+        let fixture = try TemporaryDatabaseFixture()
+        let store = try EncryptedRecordStore(
+            databaseURL: fixture.databaseURL,
+            key: fixture.key
+        )
+        let entryID = try XCTUnwrap(
+            UUID(uuidString: "ABCDEF12-3456-4789-ABCD-EF1234567890")
+        )
+        let walletID = UUID()
+        let categoryID = UUID()
+        let entry = try makeExpenseEntry(
+            id: entryID,
+            occurredAt: Date(timeIntervalSinceReferenceDate: 100),
+            amount: 5,
+            firstAccountID: walletID,
+            secondAccountID: categoryID
+        )
+        let attachmentID = try XCTUnwrap(
+            UUID(uuidString: "FEDCBA98-7654-4321-ABCD-EF1234567890")
+        )
+        let attachment = try ReceiptAttachment(
+            id: attachmentID,
+            entryID: entry.id,
+            mediaType: .jpeg,
+            data: Data([0xff, 0x01])
+        )
+        let aliasedAttachment = try ReceiptAttachment(
+            id: attachmentID,
+            entryID: entry.id,
+            mediaType: .jpeg,
+            data: Data([0xff, 0x02])
+        )
+        let journalAlias = entryID.uuidString.lowercased()
+        let receiptAlias = attachmentID.uuidString.lowercased()
+
+        try await store.restore(DatabaseSnapshot(
+            schemaVersion: EncryptedRecordStore.currentSchemaVersion,
+            records: [
+                StoredRecordSnapshot(
+                    collection: RecordCollection.journalEntries.rawValue,
+                    recordID: entryID.uuidString,
+                    payload: try JSONEncoder().encode(entry),
+                    updatedAt: 1
+                ),
+                StoredRecordSnapshot(
+                    collection: RecordCollection.journalEntries.rawValue,
+                    recordID: journalAlias,
+                    payload: try JSONEncoder().encode(entry),
+                    updatedAt: 1
+                ),
+                StoredRecordSnapshot(
+                    collection: RecordCollection.receiptAttachments.rawValue,
+                    recordID: attachmentID.uuidString,
+                    payload: try JSONEncoder().encode(attachment),
+                    updatedAt: 1
+                ),
+                StoredRecordSnapshot(
+                    collection: RecordCollection.receiptAttachments.rawValue,
+                    recordID: receiptAlias,
+                    payload: try JSONEncoder().encode(aliasedAttachment),
+                    updatedAt: 1
+                )
+            ]
+        ))
+        try await store.installLegacyCaseVariantIndexesForTesting()
+
+        let ledger = try await store.journalLedgerIndex(
+            validAccountIDs: Set([walletID, categoryID])
+        )
+        XCTAssertEqual(ledger.entryCount, 0)
+        XCTAssertTrue(ledger.balances.isEmpty)
+        XCTAssertEqual(ledger.referenceCounts[walletID] ?? 0, 0)
+        XCTAssertEqual(ledger.referenceCounts[categoryID] ?? 0, 0)
+        XCTAssertTrue(ledger.issues.contains(RecordDecodeIssue(
+            collection: .journalEntries,
+            recordID: journalAlias
+        )))
+        XCTAssertTrue(ledger.issues.contains(RecordDecodeIssue(
+            collection: .journalEntries,
+            recordID: entryID.uuidString
+        )))
+        XCTAssertEqual(ledger.invalidRelationshipEntryIDs, [entryID])
+        let page = try await store.fetchJournalEntryPage(limit: 10)
+        XCTAssertEqual(page.entries, [entry])
+        XCTAssertEqual(page.issues, [RecordDecodeIssue(
+            collection: .journalEntries,
+            recordID: journalAlias
+        )])
+
+        let receiptIndex = try await store.receiptAttachmentIndexSnapshot()
+        XCTAssertEqual(receiptIndex.metadata, [ReceiptAttachmentMetadata(attachment)])
+        XCTAssertEqual(receiptIndex.issues, [RecordDecodeIssue(
+            collection: .receiptAttachments,
+            recordID: receiptAlias
+        )])
+        let selected = try await store.receiptAttachment(id: attachmentID)
+        XCTAssertEqual(selected?.data, attachment.data)
+        do {
+            _ = try await store.receiptAttachmentIDs(entryID: entryID)
+            XCTFail("A legacy physical alias must make cascade deletion fail closed")
+        } catch let error as PersistenceError {
+            XCTAssertEqual(
+                error,
+                .invalidStoredRecord(
+                    collection: .receiptAttachments,
+                    recordID: receiptAlias
+                )
+            )
+        }
+        let journalPhysicalCount = try await store.count(in: .journalEntries)
+        let receiptPhysicalCount = try await store.count(in: .receiptAttachments)
+        XCTAssertEqual(journalPhysicalCount, 2)
+        XCTAssertEqual(receiptPhysicalCount, 2)
+        await store.close()
+    }
+
+    func testTargetedJournalRecoveryBatchesIDsAndChecksPayloadIdentity() async throws {
+        let fixture = try TemporaryDatabaseFixture()
+        let store = try EncryptedRecordStore(
+            databaseURL: fixture.databaseURL,
+            key: fixture.key
+        )
+        let sgd = try CurrencyCode("SGD")
+        let walletID = UUID()
+        let categoryID = UUID()
+        let entries = try (0..<405).map { offset in
+            try TransactionFactory.expense(
+                amount: try Money(1, currency: sgd),
+                paidFrom: walletID,
+                category: categoryID,
+                occurredAt: Date(timeIntervalSinceReferenceDate: TimeInterval(offset))
+            )
+        }
+        let malformedID = UUID()
+        let mismatchedPhysicalID = UUID()
+        let mismatchedPayload = try TransactionFactory.expense(
+            amount: try Money(2, currency: sgd),
+            paidFrom: walletID,
+            category: categoryID
+        )
+        let writes = try entries.map {
+            try RecordWrite($0, id: $0.id.uuidString, in: .journalEntries)
+        }
+        try await store.write(writes)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let validSnapshot = try await store.snapshot()
+        let corruptedSnapshot = DatabaseSnapshot(
+            schemaVersion: validSnapshot.schemaVersion,
+            createdAt: validSnapshot.createdAt,
+            records: validSnapshot.records + [
+                StoredRecordSnapshot(
+                    collection: RecordCollection.journalEntries.rawValue,
+                    recordID: malformedID.uuidString,
+                    payload: Data("{not-json".utf8),
+                    updatedAt: 1_000
+                ),
+                StoredRecordSnapshot(
+                    collection: RecordCollection.journalEntries.rawValue,
+                    recordID: mismatchedPhysicalID.uuidString,
+                    payload: try encoder.encode(mismatchedPayload),
+                    updatedAt: 1_001
+                )
+            ]
+        )
+        try await store.restore(corruptedSnapshot)
+        let missingID = UUID()
+
+        let recovered = try await store.fetchJournalEntriesRecovering(
+            ids: Set(entries.map(\.id)).union([
+                malformedID,
+                mismatchedPhysicalID,
+                missingID
+            ])
+        )
+
+        XCTAssertEqual(Set(recovered.values.map(\.id)), Set(entries.map(\.id)))
+        XCTAssertEqual(
+            Set(recovered.issues.map(\.recordID)),
+            Set([malformedID.uuidString, mismatchedPhysicalID.uuidString])
+        )
         await store.close()
     }
 
@@ -1180,6 +1942,8 @@ final class EncryptedRecordStoreTests: XCTestCase {
     }
 
     func testPortableArchiveRoundTripsAndRejectsWrongPassword() throws {
+        XCTAssertEqual(PortableArchive.maximumArchiveByteCount, 250_000_000)
+        XCTAssertEqual(PortableArchive.maximumNewArchiveByteCount, 64_000_000)
         XCTAssertTrue(
             PortableArchive.isWithinArchiveByteLimit(
                 PortableArchive.maximumArchiveByteCount
@@ -1192,6 +1956,12 @@ final class EncryptedRecordStoreTests: XCTestCase {
         )
         XCTAssertTrue(PortableArchive.isWithinArchiveByteLimit(0))
         XCTAssertFalse(PortableArchive.isWithinArchiveByteLimit(-1))
+        XCTAssertTrue(PortableArchive.isWithinNewArchiveByteLimit(
+            PortableArchive.maximumNewArchiveByteCount
+        ))
+        XCTAssertFalse(PortableArchive.isWithinNewArchiveByteLimit(
+            PortableArchive.maximumNewArchiveByteCount + 1
+        ))
 
         let snapshot = DatabaseSnapshot(
             schemaVersion: EncryptedRecordStore.currentSchemaVersion,
@@ -1234,6 +2004,20 @@ final class EncryptedRecordStoreTests: XCTestCase {
             try PortableArchive.seal(snapshot, password: "too short")
         ) { error in
             XCTAssertEqual(error as? PortableArchiveError, .passwordTooShort)
+        }
+
+        XCTAssertThrowsError(
+            try PortableArchive.open(archive, password: "short")
+        ) { error in
+            XCTAssertEqual(error as? PortableArchiveError, .authenticationFailed)
+        }
+        XCTAssertThrowsError(
+            try PortableArchive.open(
+                archive,
+                password: String(repeating: "é", count: 513)
+            )
+        ) { error in
+            XCTAssertEqual(error as? PortableArchiveError, .authenticationFailed)
         }
 
         let magic = Data("MONEYUP\u{0}".utf8)
@@ -1280,6 +2064,159 @@ final class EncryptedRecordStoreTests: XCTestCase {
         }
     }
 
+    func testPortableArchiveBoundsTheNormalizedPasswordBytes() throws {
+        let composedAtLimit = String(repeating: "é", count: 512)
+        let decomposedAtLimit = String(repeating: "e\u{301}", count: 512)
+        let expected = Data(composedAtLimit.utf8)
+
+        XCTAssertEqual(expected.count, PortableArchive.maximumPasswordByteCount)
+        XCTAssertEqual(
+            try PortableArchive.validatedPasswordData(composedAtLimit),
+            expected
+        )
+        XCTAssertEqual(
+            try PortableArchive.validatedPasswordData(decomposedAtLimit),
+            expected
+        )
+
+        let tooLong = String(repeating: "é", count: 513)
+        XCTAssertThrowsError(
+            try PortableArchive.validatedPasswordData(tooLong)
+        ) { error in
+            XCTAssertEqual(error as? PortableArchiveError, .passwordTooLong)
+        }
+
+        let snapshot = DatabaseSnapshot(
+            schemaVersion: EncryptedRecordStore.currentSchemaVersion,
+            records: []
+        )
+        XCTAssertThrowsError(
+            try PortableArchive.seal(snapshot, password: tooLong)
+        ) { error in
+            XCTAssertEqual(error as? PortableArchiveError, .passwordTooLong)
+        }
+    }
+
+    func testPortableArchiveOpensLegacyLongPasswordVersionOneArchive() throws {
+        let snapshot = DatabaseSnapshot(
+            schemaVersion: EncryptedRecordStore.currentSchemaVersion,
+            records: []
+        )
+        let password = String(repeating: "p", count: 2_048)
+        let salt = Data(repeating: 0x5a, count: 16)
+        let magic = Data("MONEYUP\u{0}".utf8)
+        var authenticatedData = magic
+        authenticatedData.append(Data(
+            "v=1;kdf=PBKDF2-HMAC-SHA256;i=\(PortableArchive.iterationCount);".utf8
+        ))
+        authenticatedData.append(salt)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let payload = try encoder.encode(snapshot)
+        let key = SymmetricKey(data: try PortableArchive.derivedKeyData(
+            password: password,
+            salt: salt,
+            iterations: PortableArchive.iterationCount
+        ))
+        let sealed = try AES.GCM.seal(
+            payload,
+            using: key,
+            authenticating: authenticatedData
+        )
+        let envelope = VersionOnePortableArchiveEnvelope(
+            version: 1,
+            kdf: "PBKDF2-HMAC-SHA256",
+            iterations: PortableArchive.iterationCount,
+            salt: salt,
+            ciphertext: try XCTUnwrap(sealed.combined)
+        )
+        let archive = magic + (try encoder.encode(envelope))
+
+        XCTAssertEqual(
+            try PortableArchive.open(archive, password: password),
+            snapshot
+        )
+    }
+
+    func testPortableArchiveRejectsAttackerSelectedWorkFactorsAndInvalidBox() throws {
+        let password = "correct horse battery staple"
+        let magic = Data("MONEYUP\u{0}".utf8)
+        let originalObject: [String: Any] = [
+            "version": 1,
+            "kdf": "PBKDF2-HMAC-SHA256",
+            "iterations": PortableArchive.iterationCount,
+            "salt": Data(repeating: 0x11, count: 16).base64EncodedString(),
+            "ciphertext": Data([0x01, 0x02, 0x03]).base64EncodedString()
+        ]
+
+        func encodedArchive(_ object: [String: Any]) throws -> Data {
+            magic + (try JSONSerialization.data(withJSONObject: object))
+        }
+
+        // These include both boundaries that the former permissive range
+        // accepted, plus values adjacent to the one canonical v1 cost.
+        for workFactor in [10_000, 119_999, 120_001, 1_000_000] {
+            var object = originalObject
+            object["iterations"] = workFactor
+            XCTAssertThrowsError(
+                try PortableArchive.open(
+                    encodedArchive(object),
+                    password: password
+                )
+            ) { error in
+                XCTAssertEqual(error as? PortableArchiveError, .invalidArchive)
+            }
+        }
+
+        XCTAssertThrowsError(
+            try PortableArchive.open(
+                encodedArchive(originalObject),
+                password: password
+            )
+        ) { error in
+            XCTAssertEqual(error as? PortableArchiveError, .invalidArchive)
+        }
+    }
+
+    func testPortableArchiveClassifiesAuthenticatedInvalidPlaintextAsInvalid() throws {
+        let password = "correct horse battery staple"
+        let magic = Data("MONEYUP\u{0}".utf8)
+        let salt = Data(repeating: 0x22, count: 16)
+        let key = SymmetricKey(data: try PortableArchive.derivedKeyData(
+            password: password,
+            salt: salt,
+            iterations: PortableArchive.iterationCount
+        ))
+        var authenticatedData = magic
+        authenticatedData.append(Data(
+            "v=1;kdf=PBKDF2-HMAC-SHA256;i=\(PortableArchive.iterationCount);".utf8
+        ))
+        authenticatedData.append(salt)
+        let sealed = try AES.GCM.seal(
+            Data("authenticated, but not a database snapshot".utf8),
+            using: key,
+            authenticating: authenticatedData
+        )
+        let object: [String: Any] = [
+            "version": 1,
+            "kdf": "PBKDF2-HMAC-SHA256",
+            "iterations": PortableArchive.iterationCount,
+            "salt": salt.base64EncodedString(),
+            "ciphertext": try XCTUnwrap(sealed.combined).base64EncodedString()
+        ]
+        let malformedPayloadArchive = magic
+            + (try JSONSerialization.data(withJSONObject: object))
+
+        XCTAssertThrowsError(
+            try PortableArchive.open(
+                malformedPayloadArchive,
+                password: password
+            )
+        ) { error in
+            XCTAssertEqual(error as? PortableArchiveError, .invalidArchive)
+        }
+    }
+
     private func makeExpenseEntry(
         id: UUID = UUID(),
         occurredAt: Date,
@@ -1299,6 +2236,38 @@ final class EncryptedRecordStoreTests: XCTestCase {
             ],
             originContext: originContext
         )
+    }
+}
+
+private actor RestoreStartGate {
+    private var reached = false
+    private var released = false
+    private var reachWaiters: [CheckedContinuation<Void, Never>] = []
+    private var releaseWaiters: [CheckedContinuation<Void, Never>] = []
+
+    func suspend() async {
+        reached = true
+        let waiters = reachWaiters
+        reachWaiters.removeAll()
+        waiters.forEach { $0.resume() }
+        guard !released else { return }
+        await withCheckedContinuation { continuation in
+            releaseWaiters.append(continuation)
+        }
+    }
+
+    func waitUntilReached() async {
+        guard !reached else { return }
+        await withCheckedContinuation { continuation in
+            reachWaiters.append(continuation)
+        }
+    }
+
+    func release() {
+        released = true
+        let waiters = releaseWaiters
+        releaseWaiters.removeAll()
+        waiters.forEach { $0.resume() }
     }
 }
 

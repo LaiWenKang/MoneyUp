@@ -392,7 +392,14 @@ struct DashboardView: View {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("dashboard.recent")
                                 .font(.headline)
-                            if !model.hasJournalEntries {
+                            if !model.journalRecentEntriesAreCurrent {
+                                DerivedValueUnavailableView(issue: .appNotReady)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                Button("action.retry") {
+                                    model.retryUnavailableJournalProjection()
+                                }
+                                .buttonStyle(.bordered)
+                            } else if !model.hasJournalEntries {
                                 MoneyUpIllustration("MoneyUpMoneyWorld", role: .empty)
                                 Text("dashboard.no_transactions")
                                     .font(.title3.weight(.semibold))
@@ -683,6 +690,7 @@ private struct PositionMetric: View {
 }
 
 private struct FlexibleTodayBreakdownSheet: View {
+    @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
     let breakdown: FlexibleTodayBreakdown
 
@@ -740,7 +748,13 @@ private struct FlexibleTodayBreakdownSheet: View {
                             Label("dashboard.safe_to_spend.period", systemImage: "calendar")
                                 .font(.headline)
                             Text(
-                                "\(breakdown.periodStart.formatted(date: .abbreviated, time: .omitted)) – \(displayedPeriodEnd.formatted(date: .abbreviated, time: .omitted))"
+                                "\(breakdown.periodStart.formattedForReporting(
+                                    Date.FormatStyle(date: .abbreviated, time: .omitted),
+                                    calendar: model.reportingCalendar
+                                )) – \(displayedPeriodEnd.formattedForReporting(
+                                    Date.FormatStyle(date: .abbreviated, time: .omitted),
+                                    calendar: model.reportingCalendar
+                                ))"
                             )
                             .font(.subheadline)
                             .foregroundStyle(.secondary)

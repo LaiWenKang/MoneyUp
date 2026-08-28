@@ -1,6 +1,26 @@
 import Foundation
 import MoneyUpCore
 
+private struct UUIDRecordIdentity: Decodable {
+    let id: UUID
+}
+
+private extension RecordCollection {
+    var requiresCanonicalPayloadUUID: Bool {
+        switch self {
+        case .accounts, .journalEntries, .budgetNodes,
+             .scheduledTransactions, .investmentHoldings,
+             .netWorthSnapshots, .accountLifecycleAudit,
+             .receiptAttachments, .exchangeRates, .savingsGoals,
+             .budgetEntryAttributions:
+            return true
+        case .profile, .journalEntryRevisions, .quickLogDrafts,
+             .budgetConfigurationTimelines:
+            return false
+        }
+    }
+}
+
 struct JournalPostingIndexWrite: Sendable {
     let postingID: String
     let accountID: String
@@ -49,6 +69,9 @@ struct ReceiptAttachmentIndexWrite: Sendable {
 
 /// A type-erased, already-validated record used for atomic persistence batches.
 public struct RecordWrite: Sendable {
+    public static let maximumRecordIDByteCount = 128
+    public static let maximumPayloadByteCount = 1_000_000
+    public static let maximumReceiptPayloadByteCount = 24_000_000
     let collection: RecordCollection
     let id: String
     let payload: Data
@@ -73,19 +96,67 @@ public struct RecordWrite: Sendable {
         self.collection = collection
         self.id = id
         payload = try encoder.encode(value)
+        let payloadLimit = collection == .receiptAttachments
+            ? Self.maximumReceiptPayloadByteCount
+            : Self.maximumPayloadByteCount
+        guard !id.isEmpty,
+              id.utf8.count <= Self.maximumRecordIDByteCount,
+              !payload.isEmpty,
+              payload.count <= payloadLimit else {
+            throw PersistenceError.invalidStoredRecord(
+                collection: collection,
+                recordID: id
+            )
+        }
+        if collection.requiresCanonicalPayloadUUID {
+            do {
+                let identity = try JSONDecoder().decode(
+                    UUIDRecordIdentity.self,
+                    from: payload
+                )
+                guard identity.id.uuidString == id else {
+                    throw PersistenceError.invalidStoredRecord(
+                        collection: collection,
+                        recordID: id
+                    )
+                }
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch let error as PersistenceError {
+                throw error
+            } catch {
+                throw PersistenceError.invalidStoredRecord(
+                    collection: collection,
+                    recordID: id
+                )
+            }
+        }
         let decodedJournalEntry: JournalEntry?
         if collection == .journalEntries {
-            decodedJournalEntry = try? JSONDecoder().decode(
-                JournalEntry.self,
-                from: payload
-            )
+            do {
+                decodedJournalEntry = try JSONDecoder().decode(
+                    JournalEntry.self,
+                    from: payload
+                )
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                throw PersistenceError.invalidStoredRecord(
+                    collection: collection,
+                    recordID: id
+                )
+            }
         } else {
             decodedJournalEntry = nil
         }
-        let journalEntry = decodedJournalEntry.flatMap { entry in
-            entry.id.uuidString.caseInsensitiveCompare(id) == .orderedSame
-                ? entry : nil
+        if let decodedJournalEntry,
+           decodedJournalEntry.id.uuidString != id {
+            throw PersistenceError.invalidStoredRecord(
+                collection: collection,
+                recordID: id
+            )
         }
+        let journalEntry = decodedJournalEntry
         indexedAt = journalEntry?.occurredAt.timeIntervalSince1970
         journalIndex = journalEntry.map { JournalIndexWrite(entry: $0, recordID: id) }
         let decodedReceiptAttachment: ReceiptAttachment?
@@ -98,7 +169,7 @@ public struct RecordWrite: Sendable {
             decodedReceiptAttachment = nil
         }
         receiptAttachmentIndex = decodedReceiptAttachment.flatMap { attachment in
-            attachment.id.uuidString.caseInsensitiveCompare(id) == .orderedSame
+            attachment.id.uuidString == id
                 ? ReceiptAttachmentIndexWrite(attachment: attachment, recordID: id)
                 : nil
         }
@@ -115,7 +186,7 @@ public struct RecordWrite: Sendable {
         self.payload = payload
         if collection == .journalEntries,
            let entry = try? JSONDecoder().decode(JournalEntry.self, from: payload),
-           entry.id.uuidString.caseInsensitiveCompare(id) == .orderedSame {
+           entry.id.uuidString == id {
             self.indexedAt = entry.occurredAt.timeIntervalSince1970
             journalIndex = JournalIndexWrite(entry: entry, recordID: id)
         } else {
@@ -124,7 +195,7 @@ public struct RecordWrite: Sendable {
         }
         if collection == .receiptAttachments,
            let attachment = try? JSONDecoder().decode(ReceiptAttachment.self, from: payload),
-           attachment.id.uuidString.caseInsensitiveCompare(id) == .orderedSame {
+           attachment.id.uuidString == id {
             receiptAttachmentIndex = ReceiptAttachmentIndexWrite(
                 attachment: attachment,
                 recordID: id

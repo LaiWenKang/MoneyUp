@@ -332,6 +332,9 @@ public struct SavingsGoalSummary: Equatable, Sendable {
 /// transactions: they describe earmarking within the user's plan, retain exact
 /// Decimal values, and are encrypted in SQLCipher with the rest of the book.
 public struct SavingsGoal: Codable, Equatable, Identifiable, Sendable {
+    public static let maximumMovementCount = 1_024
+    public static let maximumResetCount = 256
+    public static let maximumActivityCount = 1_024
     public let id: UUID
     public var name: String
     public var kind: SavingsGoalKind
@@ -357,6 +360,11 @@ public struct SavingsGoal: Codable, Equatable, Identifiable, Sendable {
         isArchived: Bool = false,
         reportingTimeZoneIdentifier: String = TimeZone.current.identifier
     ) throws {
+        guard movements.count <= Self.maximumMovementCount,
+              resets.count <= Self.maximumResetCount,
+              movements.count + resets.count <= Self.maximumActivityCount else {
+            throw SavingsGoalError.calculationFailed
+        }
         let normalizedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedName.isEmpty else { throw SavingsGoalError.emptyName }
         guard createdAt.timeIntervalSinceReferenceDate.isFinite,
@@ -459,6 +467,8 @@ public struct SavingsGoal: Codable, Equatable, Identifiable, Sendable {
                 targetDate: targetDate,
                 asOf: asOf
             )
+        } catch is CancellationError {
+            throw CancellationError()
         } catch let error as SavingsGoalError {
             throw error
         } catch {
@@ -549,7 +559,10 @@ public struct SavingsGoal: Codable, Equatable, Identifiable, Sendable {
             timeZoneIdentifier: reportingTimeZoneIdentifier
         )
         var accepted: [SavingsGoalMovement] = []
-        for movement in movements {
+        for (movementIndex, movement) in movements.enumerated() {
+            if movementIndex.isMultiple(of: 8) {
+                try Task.checkCancellation()
+            }
             guard movement.money.currency == target.currency else {
                 throw SavingsGoalError.currencyMismatch(
                     expected: target.currency,
@@ -582,6 +595,8 @@ public struct SavingsGoal: Codable, Equatable, Identifiable, Sendable {
                             )
                         }
                     }
+                } catch is CancellationError {
+                    throw CancellationError()
                 } catch {
                     throw SavingsGoalError.calculationFailed
                 }
@@ -748,6 +763,8 @@ public struct SavingsGoal: Codable, Equatable, Identifiable, Sendable {
                     forKey: .reportingTimeZoneIdentifier
                 )
             )
+        } catch is CancellationError {
+            throw CancellationError()
         } catch {
             throw DecodingError.dataCorruptedError(
                 forKey: .target,

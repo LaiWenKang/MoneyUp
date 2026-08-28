@@ -12,6 +12,17 @@ private struct PreparedJournalReports: Sendable {
     let monthToDateHasUnconvertedActivity: Bool
 }
 
+/// Complete closed-month budget actuals prepared from the normalized journal
+/// index. The tags prevent a month rollover or reporting-zone change from
+/// silently reusing civil-month totals produced under different boundaries.
+private struct ClosedMonthBudgetProjection: Sendable {
+    let reportingTimeZoneIdentifier: String
+    let currentMonthStart: Date
+    let coverageStart: Date
+    let currency: CurrencyCode
+    let monthlySpending: [MonthlyBudgetSpending]
+}
+
 @MainActor
 final class AppModel: ObservableObject {
     static let lockedQuickCapturePreferenceKey = "moneyup.allowLockedQuickCapture"
@@ -50,6 +61,10 @@ final class AppModel: ObservableObject {
 
     struct LedgerItemLifecycleImpact: Equatable {
         let transactionCount: Int
+        /// False means `transactionCount` is only a last-known value. In that
+        /// state destructive "unused" actions must fail closed until the
+        /// compact journal projection has been rebuilt.
+        let transactionReferencesAreCurrent: Bool
         let scheduleCount: Int
         let holdingCount: Int
         let childCount: Int
@@ -58,7 +73,8 @@ final class AppModel: ObservableObject {
         let hasConfiguredBudget: Bool
 
         var isUnused: Bool {
-            transactionCount == 0
+            transactionReferencesAreCurrent
+                && transactionCount == 0
                 && scheduleCount == 0
                 && holdingCount == 0
                 && childCount == 0
@@ -139,6 +155,13 @@ final class AppModel: ObservableObject {
             case .rollbackRecovery: return false
             }
         }
+
+        var persistsBudgetTimelineMigration: Bool {
+            switch self {
+            case .recovering, .restoreValidation: return true
+            case .rollbackRecovery: return false
+            }
+        }
     }
 
     private struct BudgetTreeCacheEntry {
@@ -148,10 +171,19 @@ final class AppModel: ObservableObject {
     }
 
     @Published private(set) var state: State = .launching
+    /// Keeps decoded financial UI opaque while an auto-lock request waits for
+    /// an atomic mutation to reach its durable boundary. Once the mutation
+    /// drains, `lock()` clears decoded state before removing this cover.
+    @Published private(set) var requiresAuthenticationPrivacyCover = false
     @Published private(set) var profile: UserProfile? {
         didSet {
             journalProjectionRevision &+= 1
-            if retainsCompleteJournal { invalidateDerivedData() }
+            if oldValue?.baseCurrency != profile?.baseCurrency
+                || oldValue?.reportingTimeZoneIdentifier
+                    != profile?.reportingTimeZoneIdentifier {
+                closedMonthBudgetProjection = nil
+            }
+            invalidateDerivedData()
             budgetTreeCache = nil
             refreshBudgetWidgetSnapshot()
         }
@@ -159,8 +191,18 @@ final class AppModel: ObservableObject {
     @Published private(set) var accounts: [LedgerAccount] = [] {
         didSet {
             journalProjectionRevision &+= 1
-            accountsByID = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0) })
-            if retainsCompleteJournal { invalidateDerivedData() }
+            let oldShape = oldValue.map {
+                "\($0.id.uuidString)|\($0.currency?.value ?? "-")"
+            }.sorted()
+            let newShape = accounts.map {
+                "\($0.id.uuidString)|\($0.currency?.value ?? "-")"
+            }.sorted()
+            if oldShape != newShape { closedMonthBudgetProjection = nil }
+            accountsByID = Dictionary(
+                accounts.map { ($0.id, $0) },
+                uniquingKeysWith: { first, _ in first }
+            )
+            invalidateDerivedData()
         }
     }
     /// Maintained once per account mutation so transaction rows and other hot
@@ -176,6 +218,10 @@ final class AppModel: ObservableObject {
         }
     }
     @Published private(set) var journalEntryCount = 0
+    /// Qualifies both the bounded `entries` cache and `journalEntryCount`.
+    /// False means callers must present an unavailable/loading state rather
+    /// than interpreting an empty cache as an empty durable journal.
+    @Published private(set) var journalRecentEntriesAreCurrent = false
     @Published private(set) var budgetNodes: [BudgetNode] = [] {
         didSet {
             budgetNodesRevision &+= 1
@@ -203,6 +249,8 @@ final class AppModel: ObservableObject {
     private let lifecycleHooks: AppModelLifecycleHooks
     private let databaseURLForErase: URL?
     private let deleteDatabaseKey: @Sendable () throws -> Void
+    private let dataEraseIntent: DataEraseIntentAccess
+    private let openDatabaseStore: DatabaseStoreOpener
     private let restartAfterErase: Bool
     private let budgetWidgetSnapshotStore: BudgetWidgetSnapshotStore
     private let currentDate: @Sendable () -> Date
@@ -213,9 +261,18 @@ final class AppModel: ObservableObject {
     private var scheduleMutationsInProgress = Set<UUID>()
     private var scheduleEntryMatchesInProgress = Set<UUID>()
     private var investmentMutationsInProgress = Set<UUID>()
+    private var lockedCapturePromotionInProgress = false
+    /// Closes the erase/capture time-of-check-to-time-of-use gap while the
+    /// redacted inbox actor is writing. An erase that starts after the marker
+    /// check must wait for (or, through the public guard, decline during) this
+    /// write rather than deleting a capture the UI has just reported as saved.
+    private var lockedCaptureWriteInProgress = false
     private var storeCloseTask: Task<Void, Never>?
     private var autoLockTask: Task<Void, Never>?
-    private var backgroundedAt: Date?
+    /// First instant the scene stopped being active. iOS normally sends
+    /// `.inactive` before `.background`; retaining the first instant prevents
+    /// the second transition from silently extending the lock deadline.
+    private var leftActiveAt: Date?
     private var storeGeneration = 0
     private var lockAfterStart = false
     private var isLifecycleMutationInProgress = false
@@ -231,12 +288,15 @@ final class AppModel: ObservableObject {
     private var monthToDateComparisonCacheDay: Date?
     private var balanceCache: DerivedValue<[UUID: [CurrencyCode: Money]]>?
     private var journalReferenceCounts: [UUID: Int] = [:]
+    private var journalReferenceCountsAreCurrent = false
     private var invalidJournalEntryIDs = Set<UUID>()
     private var investmentLinkedEntriesByID: [UUID: JournalEntry] = [:]
     private var existingScheduledLinkedEntryIDs = Set<UUID>()
     private var journalStoredEntryCount = 0
     private var retainsCompleteJournal = false
     private var journalDerivedRefreshTask: Task<Void, Never>?
+    private var journalDerivedRefreshTaskToken: UUID?
+    private var journalDerivedRefreshWasDeferred = false
     private var journalProjectionRevision: UInt64 = 0
     private var exchangeRateMutationIsActive = false
     private var exchangeRateMutationWaiters: [CheckedContinuation<Void, Never>] = []
@@ -245,10 +305,15 @@ final class AppModel: ObservableObject {
     private var budgetConfigurationTimeline: BudgetConfigurationTimeline?
     private var budgetConfigurationTimelineInvalid = false
     private var budgetEntryAttributions: [UUID: BudgetEntryAttribution] = [:]
+    private var closedMonthBudgetProjection: ClosedMonthBudgetProjection?
     private(set) var budgetTreeCacheBuildCount = 0
+    /// Test-visible evidence that a lazy mutation materialized the complete
+    /// journal specifically to replay a later opening-carry checkpoint.
+    private(set) var budgetJournalReplayReadCount = 0
 
     private var isJournalMutationInProgress: Bool {
         manualJournalMutationIsActive
+            || lockedCapturePromotionInProgress
             || (quickLogCommit?.generation == storeGeneration)
             || !scheduleMutationsInProgress.isEmpty
             || !scheduleEntryMatchesInProgress.isEmpty
@@ -264,6 +329,8 @@ final class AppModel: ObservableObject {
         lifecycleHooks = .none
         databaseURLForErase = nil
         deleteDatabaseKey = { try DatabaseKeyStore.deleteKey() }
+        dataEraseIntent = .production
+        openDatabaseStore = DatabaseStoreOpeners.production
         restartAfterErase = true
         retainsCompleteJournal = false
         budgetWidgetSnapshotStore = BudgetWidgetSnapshotStore()
@@ -295,6 +362,9 @@ final class AppModel: ObservableObject {
         lifecycleHooks: AppModelLifecycleHooks = .none,
         databaseURLForErase: URL? = nil,
         deleteDatabaseKey: @escaping @Sendable () throws -> Void = {},
+        dataEraseIntent: DataEraseIntentAccess = .none,
+        openDatabaseStore: @escaping DatabaseStoreOpener =
+            DatabaseStoreOpeners.production,
         restartAfterErase: Bool = false,
         retainsCompleteJournal: Bool = true,
         budgetWidgetSnapshotStore: BudgetWidgetSnapshotStore = BudgetWidgetSnapshotStore(),
@@ -307,6 +377,8 @@ final class AppModel: ObservableObject {
         self.lifecycleHooks = lifecycleHooks
         self.databaseURLForErase = databaseURLForErase
         self.deleteDatabaseKey = deleteDatabaseKey
+        self.dataEraseIntent = dataEraseIntent
+        self.openDatabaseStore = openDatabaseStore
         self.restartAfterErase = restartAfterErase
         self.budgetWidgetSnapshotStore = budgetWidgetSnapshotStore
         self.currentDate = currentDate
@@ -319,7 +391,10 @@ final class AppModel: ObservableObject {
         storeGeneration = 1
         self.profile = profile
         self.accounts = accounts
-        accountsByID = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0) })
+        accountsByID = Dictionary(
+            accounts.map { ($0.id, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
         self.entries = entries.sorted { $0.occurredAt > $1.occurredAt }
         investmentLinkedEntriesByID = Dictionary(
             uniqueKeysWithValues: entries.map { ($0.id, $0) }
@@ -328,6 +403,7 @@ final class AppModel: ObservableObject {
         journalEntryCount = entries.count
         journalStoredEntryCount = entries.count
         self.retainsCompleteJournal = retainsCompleteJournal
+        journalRecentEntriesAreCurrent = retainsCompleteJournal
         self.budgetNodes = budgetNodes
         self.scheduledTransactions = scheduledTransactions
         self.investmentHoldings = investmentHoldings
@@ -359,6 +435,8 @@ final class AppModel: ObservableObject {
         lifecycleHooks = .none
         databaseURLForErase = nil
         deleteDatabaseKey = {}
+        dataEraseIntent = .none
+        openDatabaseStore = DatabaseStoreOpeners.production
         restartAfterErase = false
         budgetWidgetSnapshotStore = BudgetWidgetSnapshotStore(defaults: nil)
         currentDate = Date.init
@@ -375,9 +453,15 @@ final class AppModel: ObservableObject {
         }
     }
 
-    var hasJournalEntries: Bool { journalEntryCount > 0 }
+    var hasJournalEntries: Bool {
+        journalRecentEntriesAreCurrent && journalEntryCount > 0
+    }
 
     var recoveryIssueCount: Int { recoveryIssues.count }
+
+    var lockedCaptureInboxIsUnrecoverable: Bool {
+        recoveryIssues.contains("locked_captures/unrecoverable")
+    }
 
     /// Compatibility/read-only inventory for app tests and count badges. The
     /// value intentionally contains metadata only, never image bytes.
@@ -453,13 +537,40 @@ final class AppModel: ObservableObject {
         }
         state = .launching
 
+        var pendingDataEraseIsIncomplete = false
         do {
-            let databaseURL = try Self.databaseURL()
-            let openedStore = try await Task.detached(priority: .userInitiated) {
-                var key = try DatabaseKeyStore.loadOrCreateKey()
-                defer { key.resetBytes(in: 0..<key.count) }
-                return try EncryptedRecordStore(databaseURL: databaseURL, key: key)
-            }.value
+            // A prior jetsam, power loss, or process termination can interrupt
+            // isolated restore validation before its defer-like cleanup. The
+            // production directory is stable, so startup bounds abandoned
+            // SQLCipher/WAL artifacts to one owned location.
+            let databaseURL = if let databaseURLForErase {
+                databaseURLForErase
+            } else {
+                try Self.databaseURL()
+            }
+            // A durable erase tombstone always wins over normal startup. Do not
+            // read or create the SQLCipher key until every idempotent erase step
+            // has converged. Scrub the widget immediately as well: a transient
+            // cleanup failure must not keep an old-book projection visible.
+            if try dataEraseIntent.isPending() {
+                pendingDataEraseIsIncomplete = true
+                requestedQuickLogMode = nil
+                disableBudgetWidgetSnapshot()
+                clearDecodedState()
+                try await Self.completePendingDataErase(
+                    databaseURL: databaseURL,
+                    deleteDatabaseKey: deleteDatabaseKey,
+                    lockedCaptureStore: lockedCaptureStore,
+                    clearEraseIntent: dataEraseIntent.clear
+                )
+                pendingDataEraseIsIncomplete = false
+                pendingLockedCaptureCount = 0
+            }
+            try? Self.removeRestoreValidationDirectory(
+                restoreValidationDirectoryURL
+            )
+            try? Self.removeLegacyRestoreValidationDirectories()
+            let openedStore = try await openDatabaseStore(databaseURL)
             storeGeneration &+= 1
             store = openedStore
             try await load(from: openedStore)
@@ -481,8 +592,8 @@ final class AppModel: ObservableObject {
                         to: openedStore,
                         generation: storeGeneration
                     )
-                } catch is LockedCaptureStoreError {
-                    recordRecoveryIssue("locked_captures/unavailable")
+                } catch let error as LockedCaptureStoreError {
+                    recordLockedCaptureStoreIssue(error)
                 }
                 state = .ready
             }
@@ -492,11 +603,11 @@ final class AppModel: ObservableObject {
                 isStarting = false
                 lock()
             }
-        } catch let error as DatabaseKeyStoreError where error == .authenticationCancelled {
-            lockAfterStart = false
-            state = .locked
+        } catch let error as DatabaseKeyStoreError
+            where error == .authenticationCancelled
+                && !pendingDataEraseIsIncomplete {
+            finishCancelledAuthentication()
         } catch {
-            lockAfterStart = false
             // Keep an opened store available to the recovery screen. It can
             // still produce a raw authenticated backup even when a domain
             // record cannot be decoded. A key/cipher failure happens before
@@ -504,8 +615,60 @@ final class AppModel: ObservableObject {
             if store == nil {
                 clearDecodedState()
             }
-            state = .failed(safeUserMessage(for: error, context: .unlock))
+            finishFailedStartup(
+                message: safeUserMessage(for: error, context: .unlock)
+            )
         }
+    }
+
+    /// Authentication cancellation is a normal locked-state transition, not
+    /// a startup failure. Kept as one transition so lifecycle tests can cover
+    /// the background/foreground race without invoking process Keychain UI.
+    func finishCancelledAuthentication() {
+        autoLockTask?.cancel()
+        autoLockTask = nil
+        leftActiveAt = nil
+        lockAfterStart = false
+        if store != nil {
+            // Defensive invariant: although Keychain cancellation normally
+            // happens before a replacement store is assigned, never publish
+            // `.locked` with an injected or future open store still attached.
+            isWorking = false
+            isStarting = false
+            state = .failed("")
+            lock()
+            return
+        }
+        // `start()` closes any prior recovery store before requesting the
+        // device-bound key. A cancelled retry must also discard decoded state
+        // retained from that prior failed load before the locked UI is shown.
+        clearDecodedState()
+        state = .locked
+        // The locked UI contains no decoded book data. Clearing the model
+        // cover here handles both callback orderings: authentication may
+        // cancel before or after the scene's active callback. While the scene
+        // is still inactive, MoneyUpApp's independent scene-phase shield
+        // remains opaque.
+        requiresAuthenticationPrivacyCover = false
+    }
+
+    /// Publishes the recovery state unless an inactivity deadline already
+    /// requested a deferred lock. In the latter ordering an opened or partly
+    /// decoded store must be closed before the opaque cover is removed; the
+    /// same failure will be rediscovered on the next explicit unlock.
+    func finishFailedStartup(message: String) {
+        let mustFinishDeferredLock = lockAfterStart
+        lockAfterStart = false
+        state = .failed(message)
+        guard mustFinishDeferredLock else {
+            if leftActiveAt == nil {
+                requiresAuthenticationPrivacyCover = false
+            }
+            return
+        }
+        isWorking = false
+        isStarting = false
+        lock()
     }
 
     /// Gives SwiftUI's initial URL delivery one deterministic routing window
@@ -530,6 +693,7 @@ final class AppModel: ObservableObject {
             || !scheduleEntryMatchesInProgress.isEmpty
             || goalMutationsInProgress > 0
             || goalMutationBarrierClosed {
+            requiresAuthenticationPrivacyCover = true
             lockAfterLifecycleMutation = true
             return
         }
@@ -547,7 +711,7 @@ final class AppModel: ObservableObject {
         guard canLock else { return }
         autoLockTask?.cancel()
         autoLockTask = nil
-        backgroundedAt = nil
+        leftActiveAt = nil
         let pendingDraftWrite = quickLogDraftWriteTask
         let pendingQuickLogCommit = quickLogCommit.flatMap {
             $0.generation == storeGeneration ? $0.task : nil
@@ -560,6 +724,7 @@ final class AppModel: ObservableObject {
         storeGeneration &+= 1
         clearDecodedState()
         state = .locked
+        requiresAuthenticationPrivacyCover = false
 
         guard let storeToClose else { return }
         let backgroundTask = UIApplication.shared.beginBackgroundTask(
@@ -597,13 +762,42 @@ final class AppModel: ObservableObject {
         storeCloseTask = nil
     }
 
+    func sceneDidBecomeInactive(at date: Date = Date()) {
+        sceneDidLeaveActive(at: date)
+    }
+
     func sceneDidEnterBackground(at date: Date = Date()) {
-        guard state == .ready || state == .onboarding else { return }
+        sceneDidLeaveActive(at: date)
+    }
+
+    private func sceneDidLeaveActive(at date: Date) {
+        // Startup can already hold a decrypted key/store while domain loading
+        // is suspended. Track that interval too; `lock()` records a deferred
+        // request until startup reaches an atomic publication boundary.
+        let tracksInactivity: Bool
+        switch state {
+        case .ready, .onboarding, .launching, .failed:
+            tracksInactivity = true
+        case .locked:
+            tracksInactivity = false
+        }
+        guard tracksInactivity || isStarting else { return }
+        // Retain the opaque cover across the inactive -> active transition.
+        // SwiftUI can reevaluate `scenePhase` before its `onChange` callback;
+        // clearing only after the elapsed-time decision prevents a one-frame
+        // disclosure before auto-lock is requested.
+        requiresAuthenticationPrivacyCover = true
         guard date.timeIntervalSinceReferenceDate.isFinite else {
             lock()
             return
         }
-        backgroundedAt = date
+
+        // Flush the current form immediately instead of relying on a
+        // debounced write to receive background execution time. This guard
+        // also makes inactive -> background idempotent.
+        guard leftActiveAt == nil else { return }
+        leftActiveAt = date
+        flushQuickLogDraftImmediately()
         autoLockTask?.cancel()
         let delay = profile?.autoLockDelay ?? 60
         guard delay > 0 else {
@@ -624,12 +818,26 @@ final class AppModel: ObservableObject {
     func sceneDidBecomeActive(at date: Date = Date()) {
         autoLockTask?.cancel()
         autoLockTask = nil
-        guard let backgroundedAt else { return }
-        self.backgroundedAt = nil
+        // A startup authentication prompt can be cancelled while the scene is
+        // inactive. In that path the model is already locked, so calling
+        // `lock()` again would be a no-op and could leave the scene-level
+        // privacy window permanently covering the unlock UI.
+        if state == .locked {
+            leftActiveAt = nil
+            requiresAuthenticationPrivacyCover = false
+            return
+        }
+        guard let leftActiveAt else {
+            requiresAuthenticationPrivacyCover = false
+            return
+        }
+        self.leftActiveAt = nil
         let delay = profile?.autoLockDelay ?? 60
-        let elapsed = date.timeIntervalSince(backgroundedAt)
+        let elapsed = date.timeIntervalSince(leftActiveAt)
         if !elapsed.isFinite || elapsed < 0 || elapsed >= delay {
             lock()
+        } else {
+            requiresAuthenticationPrivacyCover = false
         }
     }
 
@@ -653,6 +861,13 @@ final class AppModel: ObservableObject {
     func routeLockSafeRequestIfPossible() -> Bool {
         guard state == .launching || state == .locked,
               isLockSafeQuickCaptureRequested else { return false }
+        guard lockedCaptureIsAllowedByLifecycleAndEraseIntent else {
+            // Do not retain a request that was denied by an authoritative erase
+            // boundary: otherwise it could surface later against the new blank
+            // book after startup finishes converging the tombstone.
+            requestedQuickLogMode = nil
+            return false
+        }
         state = .locked
         return true
     }
@@ -671,7 +886,31 @@ final class AppModel: ObservableObject {
     }
 
     var canPresentLockedQuickCapture: Bool {
-        state == .locked && isLockSafeQuickCaptureRequested
+        state == .locked
+            && isLockSafeQuickCaptureRequested
+            && lockedCaptureIsAllowedByLifecycleAndEraseIntent
+    }
+
+    /// The durable erase marker is authoritative even before normal startup.
+    /// A Keychain/protection-state error is not evidence that erase is absent,
+    /// so lock-safe capture fails closed and lets startup resolve the condition.
+    private var lockedCaptureIsAllowedByLifecycleAndEraseIntent: Bool {
+        guard !isWorking,
+              !isLifecycleMutationInProgress,
+              !goalMutationBarrierClosed,
+              !lockedCaptureWriteInProgress else { return false }
+        do {
+            return try dataEraseIntent.isPending() == false
+        } catch {
+            return false
+        }
+    }
+
+    /// Testable/UI-safe evidence that authentication must precede any future
+    /// decoded-content presentation, even though an atomic operation is still
+    /// draining in `.ready` or `.launching`.
+    var hasDeferredAuthenticationLock: Bool {
+        lockAfterStart || lockAfterLifecycleMutation
     }
 
     func saveLockedCapture(
@@ -680,6 +919,14 @@ final class AppModel: ObservableObject {
         payee: String,
         note: String
     ) async throws {
+        guard state == .locked,
+              requestedQuickLogMode == mode,
+              canPresentLockedQuickCapture,
+              !lockedCaptureWriteInProgress else {
+            throw AppModelError.locked
+        }
+        lockedCaptureWriteInProgress = true
+        defer { lockedCaptureWriteInProgress = false }
         let kind: LockedCaptureKind
         switch mode {
         case .income:
@@ -688,8 +935,10 @@ final class AppModel: ObservableObject {
             kind = .transfer
         case .refund:
             kind = .refund
-        case .expense, .smartEntry, .scanReceipt:
+        case .expense:
             kind = .expense
+        case .smartEntry, .scanReceipt:
+            throw AppModelError.locked
         }
         pendingLockedCaptureCount = try await lockedCaptureStore.append(
             LockedCapture(
@@ -767,6 +1016,7 @@ final class AppModel: ObservableObject {
             )
         }
         let validAccountIDs = Set(accountSnapshot.map(\.id))
+        let quarantinedEntryIDs = invalidJournalEntryIDs
         let boundedLimit = min(max(limit, 1), 200)
         let scanLimit = min(max(boundedLimit * 2, 160), 500)
         var scanCursor = cursor
@@ -796,7 +1046,8 @@ final class AppModel: ObservableObject {
             let filtered = await Task.detached(priority: .userInitiated) {
                 query.filteredEntries(
                     rawPage.entries.filter { entry in
-                        entry.postings.allSatisfy {
+                        !quarantinedEntryIDs.contains(entry.id)
+                            && entry.postings.allSatisfy {
                             validAccountIDs.contains($0.accountID)
                         }
                     },
@@ -860,6 +1111,7 @@ final class AppModel: ObservableObject {
             )
         }
         let validAccountIDs = Set(accountSnapshot.map(\.id))
+        let quarantinedEntryIDs = invalidJournalEntryIDs
         var cursor: JournalEntryPageCursor?
         var transactionCount = 0
         var amountsByCurrency: [CurrencyCode: Decimal] = [:]
@@ -888,7 +1140,8 @@ final class AppModel: ObservableObject {
             let pageSummary = try await Task.detached(priority: .userInitiated) {
                 let filtered = query.filteredEntries(
                     rawPage.entries.filter { entry in
-                        entry.postings.allSatisfy {
+                        !quarantinedEntryIDs.contains(entry.id)
+                            && entry.postings.allSatisfy {
                             validAccountIDs.contains($0.accountID)
                         }
                     },
@@ -994,6 +1247,7 @@ final class AppModel: ObservableObject {
         let generation = storeGeneration
         let journalStore = try requireStore()
         let validAccountIDs = Set(accounts.map(\.id))
+        let quarantinedEntryIDs = invalidJournalEntryIDs
         var cursor: JournalEntryPageCursor?
         var result: [JournalEntry] = []
         repeat {
@@ -1011,6 +1265,7 @@ final class AppModel: ObservableObject {
             }
             recordHistoryDecodeIssues(page.issues)
             for entry in page.entries {
+                guard !quarantinedEntryIDs.contains(entry.id) else { continue }
                 let relationshipsAreValid = entry.postings.allSatisfy {
                     validAccountIDs.contains($0.accountID)
                 }
@@ -1040,14 +1295,18 @@ final class AppModel: ObservableObject {
     ) async throws -> [JournalEntry] {
         let generation = storeGeneration
         let snapshotStore = try requireStore()
-        let recovered = try await snapshotStore.fetchAllRecovering(
+        let recovered = try await snapshotStore.fetchAllIdentifiedRecovering(
             JournalEntry.self,
             from: .journalEntries
         )
         guard ownsStoreGeneration(generation) else { throw AppModelError.locked }
         recordHistoryDecodeIssues(recovered.issues)
         let validAccountIDs = Set(accounts.map(\.id))
+        let quarantinedEntryIDs = invalidJournalEntryIDs.union(
+            recovered.issues.compactMap { UUID(uuidString: $0.recordID) }
+        )
         return recovered.values.filter { entry in
+            guard !quarantinedEntryIDs.contains(entry.id) else { return false }
             let valid = entry.postings.allSatisfy {
                 validAccountIDs.contains($0.accountID)
             }
@@ -1099,7 +1358,11 @@ final class AppModel: ObservableObject {
     ) async throws {
         guard !isWorking else { return }
         isWorking = true
-        defer { isWorking = false }
+        invalidateInFlightJournalProjection()
+        defer {
+            isWorking = false
+            resumeDeferredJournalDerivedRefreshIfPossible()
+        }
 
         let generation = storeGeneration
         let store = try requireStore()
@@ -1170,6 +1433,10 @@ final class AppModel: ObservableObject {
             openingEntry = entry
         }
 
+        invalidateCommittedJournalProjection()
+        await lifecycleHooks.checkpoint(
+            .afterJournalProjectionInvalidationBeforeCommit
+        )
         try await store.write(writes)
         guard isCurrentStoreGeneration(generation) else { return }
 
@@ -1182,6 +1449,19 @@ final class AppModel: ObservableObject {
         }
         await refreshJournalAfterMutation()
         state = .ready
+        do {
+            try await promoteLockedCaptureIfPossible(
+                to: store,
+                generation: generation
+            )
+        } catch let error as LockedCaptureStoreError {
+            recordLockedCaptureStoreIssue(error)
+        } catch {
+            // Onboarding is already durable. Keep the new book usable and
+            // expose a redacted recovery signal instead of stranding setup on
+            // an inbox handoff failure.
+            recordRecoveryIssue("locked_captures/promotion-unavailable")
+        }
     }
 
     func addAccount(
@@ -1235,6 +1515,12 @@ final class AppModel: ObservableObject {
 
         let generation = storeGeneration
         let accountStore = try requireStore()
+        if openingEntry != nil {
+            invalidateCommittedJournalProjection()
+            await lifecycleHooks.checkpoint(
+                .afterJournalProjectionInvalidationBeforeCommit
+            )
+        }
         try await accountStore.write(writes)
         await lifecycleHooks.checkpoint(.afterAccountWriteBeforeApply)
         guard isCurrentStoreGeneration(generation) else { return }
@@ -1329,6 +1615,8 @@ final class AppModel: ObservableObject {
 
         return LedgerItemLifecycleImpact(
             transactionCount: transactionCount,
+            transactionReferencesAreCurrent: retainsCompleteJournal
+                || journalReferenceCountsAreCurrent,
             scheduleCount: scheduleCount,
             holdingCount: holdingCount,
             childCount: childCount,
@@ -1694,6 +1982,10 @@ final class AppModel: ObservableObject {
 
         let generation = storeGeneration
         let balanceStore = try requireStore()
+        invalidateCommittedJournalProjection()
+        await lifecycleHooks.checkpoint(
+            .afterJournalProjectionInvalidationBeforeCommit
+        )
         try await balanceStore.write(writes)
         guard isCurrentStoreGeneration(generation) else { return }
         if shouldAddEquity { accounts.append(equity) }
@@ -1907,25 +2199,29 @@ final class AppModel: ObservableObject {
         guard !isProtectedJournalEntry(entry) else {
             throw AppModelError.investmentEntryMutationForbidden
         }
-        let completeEntries = retainsCompleteJournal
-            ? entries
-            : try await entryStore.fetchAll(
-                JournalEntry.self,
-                from: .journalEntries
-            )
         let originalAttribution = budgetEntryAttributions[id]
-        let candidateEntries = completeEntries.filter { $0.id != id }
         var candidateAttributions = budgetEntryAttributions
         candidateAttributions.removeValue(forKey: id)
         let affectedMonth = try budgetAffectedMonth(
             for: entry,
             attribution: originalAttribution
         )
-        let candidateTimeline = try budgetTimelineAfterJournalMutation(
-            journalEntries: candidateEntries,
-            attributions: candidateAttributions,
-            affectedReportingMonths: [affectedMonth].compactMap { $0 }
+        let affectedMonths = [affectedMonth].compactMap { $0 }
+        var candidateEntries = try await journalEntriesForBudgetMutation(
+            from: entryStore,
+            affectedReportingMonths: affectedMonths
         )
+        candidateEntries?.removeAll { $0.id == id }
+        let candidateTimeline: BudgetConfigurationTimeline?
+        if let candidateEntries {
+            candidateTimeline = try budgetTimelineAfterJournalMutation(
+                journalEntries: candidateEntries,
+                attributions: candidateAttributions,
+                affectedReportingMonths: affectedMonths
+            )
+        } else {
+            candidateTimeline = nil
+        }
         let attachmentIDs = try await entryStore.receiptAttachmentIDs(entryID: id)
         var updatedSchedules: [ScheduledTransaction] = []
         let deletedAt = currentDate()
@@ -1950,6 +2246,10 @@ final class AppModel: ObservableObject {
                 RecordDeletion(id: id.uuidString, from: .budgetEntryAttributions)
             )
         }
+        invalidateCommittedJournalProjection()
+        await lifecycleHooks.checkpoint(
+            .afterJournalProjectionInvalidationBeforeCommit
+        )
         try await entryStore.write(
             writes,
             removing: deletions
@@ -1957,7 +2257,7 @@ final class AppModel: ObservableObject {
         guard isCurrentStoreGeneration(generation) else { return }
         if let candidateTimeline { budgetConfigurationTimeline = candidateTimeline }
         budgetEntryAttributions = candidateAttributions
-        if retainsCompleteJournal { entries = candidateEntries }
+        if retainsCompleteJournal, let candidateEntries { entries = candidateEntries }
         receiptAttachmentMetadata.removeAll { $0.entryID == id }
         let schedulesByID = Dictionary(
             uniqueKeysWithValues: updatedSchedules.map { ($0.id, $0) }
@@ -1992,7 +2292,7 @@ final class AppModel: ObservableObject {
     }
 
     func deleteReceiptAttachment(id: UUID) async throws {
-        try beginJournalMutation()
+        try beginJournalMutation(invalidatesJournalProjection: false)
         defer { endJournalMutation() }
         guard receiptAttachmentMetadata.contains(where: { $0.id == id }) else {
             throw AppModelError.missingRecord
@@ -2049,7 +2349,10 @@ final class AppModel: ObservableObject {
         }
 
         let originalMoney = try editableMoneySnapshot(for: original)
-        let accountCurrency = try currency(for: accountID)
+        let accountCurrency = try replacementCurrency(
+            for: accountID,
+            preservingFrom: original
+        )
         if let originalMoney, originalMoney.source.currency != accountCurrency {
             throw AppModelError.crossCurrencyEditRequiresConversion
         }
@@ -2062,7 +2365,11 @@ final class AppModel: ObservableObject {
             guard kind != .transfer else { throw AppModelError.invalidCategoryKind }
             let expectedKind: LedgerAccountKind = kind == .income ? .income : .expense
             for line in splitLines {
-                try requireActiveCategory(line.categoryAccountID, kind: expectedKind)
+                try requireReplacementCategory(
+                    line.categoryAccountID,
+                    kind: expectedKind,
+                    preservingFrom: original
+                )
                 let originalLineAmount = original.postings.first {
                     $0.id == line.id && $0.money.currency == accountCurrency
                 }.map { abs($0.money.amount) }
@@ -2089,7 +2396,11 @@ final class AppModel: ObservableObject {
                 )
             } else {
                 guard let categoryID else { throw AppModelError.missingRecord }
-                try requireActiveCategory(categoryID, kind: .expense)
+                try requireReplacementCategory(
+                    categoryID,
+                    kind: .expense,
+                    preservingFrom: original
+                )
                 candidate = try TransactionFactory.expense(
                     amount: try Money(amount, currency: accountCurrency),
                     paidFrom: accountID,
@@ -2111,7 +2422,11 @@ final class AppModel: ObservableObject {
                 )
             } else {
                 guard let categoryID else { throw AppModelError.missingRecord }
-                try requireActiveCategory(categoryID, kind: .income)
+                try requireReplacementCategory(
+                    categoryID,
+                    kind: .income,
+                    preservingFrom: original
+                )
                 candidate = try TransactionFactory.income(
                     amount: try Money(amount, currency: accountCurrency),
                     depositedInto: accountID,
@@ -2133,7 +2448,11 @@ final class AppModel: ObservableObject {
                 )
             } else {
                 guard let categoryID else { throw AppModelError.missingRecord }
-                try requireActiveCategory(categoryID, kind: .expense)
+                try requireReplacementCategory(
+                    categoryID,
+                    kind: .expense,
+                    preservingFrom: original
+                )
                 candidate = try TransactionFactory.refund(
                     amount: try Money(amount, currency: accountCurrency),
                     returnedTo: accountID,
@@ -2145,7 +2464,10 @@ final class AppModel: ObservableObject {
             }
         case .transfer:
             guard let destinationAccountID else { throw AppModelError.missingRecord }
-            let destinationCurrency = try currency(for: destinationAccountID)
+            let destinationCurrency = try replacementCurrency(
+                for: destinationAccountID,
+                preservingFrom: original
+            )
             if let originalDestination = originalMoney?.destination,
                originalDestination.currency != destinationCurrency {
                 throw AppModelError.crossCurrencyEditRequiresConversion
@@ -2203,18 +2525,6 @@ final class AppModel: ObservableObject {
                 ? original.originContext
                 : reportingOriginContext(for: candidate.occurredAt)
         )
-        let completeEntries = retainsCompleteJournal
-            ? entries
-            : try await lookupStore.fetchAll(
-                JournalEntry.self,
-                from: .journalEntries
-            )
-        var candidateEntries = completeEntries.filter { $0.id != original.id }
-        candidateEntries.append(replacement)
-        candidateEntries.sort {
-            if $0.occurredAt == $1.occurredAt { return $0.createdAt > $1.createdAt }
-            return $0.occurredAt > $1.occurredAt
-        }
         let originalAttribution = budgetEntryAttributions[original.id]
         let reportingZone = profile?.reportingTimeZoneIdentifier
             ?? reportingCalendar.timeZone.identifier
@@ -2247,14 +2557,34 @@ final class AppModel: ObservableObject {
             for: replacement,
             attribution: replacementAttribution
         )
-        let candidateTimeline = try budgetTimelineAfterJournalMutation(
-            journalEntries: candidateEntries,
-            attributions: candidateAttributions,
-            affectedReportingMonths: [
-                originalAffectedMonth,
-                replacementAffectedMonth
-            ].compactMap { $0 }
+        let affectedMonths = [
+            originalAffectedMonth,
+            replacementAffectedMonth
+        ].compactMap { $0 }
+        var candidateEntries = try await journalEntriesForBudgetMutation(
+            from: lookupStore,
+            affectedReportingMonths: affectedMonths
         )
+        if candidateEntries != nil {
+            candidateEntries?.removeAll { $0.id == original.id }
+            candidateEntries?.append(replacement)
+            candidateEntries?.sort {
+                if $0.occurredAt == $1.occurredAt {
+                    return $0.createdAt > $1.createdAt
+                }
+                return $0.occurredAt > $1.occurredAt
+            }
+        }
+        let candidateTimeline: BudgetConfigurationTimeline?
+        if let candidateEntries {
+            candidateTimeline = try budgetTimelineAfterJournalMutation(
+                journalEntries: candidateEntries,
+                attributions: candidateAttributions,
+                affectedReportingMonths: affectedMonths
+            )
+        } else {
+            candidateTimeline = nil
+        }
         var writes = try addedAccounts.map {
             try RecordWrite($0, id: $0.id.uuidString, in: .accounts)
         }
@@ -2293,6 +2623,10 @@ final class AppModel: ObservableObject {
 
         let generation = storeGeneration
         let transactionStore = try requireStore()
+        invalidateCommittedJournalProjection()
+        await lifecycleHooks.checkpoint(
+            .afterJournalProjectionInvalidationBeforeCommit
+        )
         try await transactionStore.write(
             writes,
             removing: [
@@ -2314,9 +2648,7 @@ final class AppModel: ObservableObject {
         accounts.append(contentsOf: addedAccounts)
         if let candidateTimeline { budgetConfigurationTimeline = candidateTimeline }
         budgetEntryAttributions = candidateAttributions
-        if retainsCompleteJournal {
-            entries = candidateEntries
-        }
+        if retainsCompleteJournal, let candidateEntries { entries = candidateEntries }
         if !relinkedAttachmentMetadata.isEmpty {
             receiptAttachmentMetadata.removeAll { $0.entryID == original.id }
             receiptAttachmentMetadata.append(contentsOf: relinkedAttachmentMetadata)
@@ -2863,26 +3195,34 @@ final class AppModel: ObservableObject {
             originTimeZoneIdentifier: profile?.reportingTimeZoneIdentifier
                 ?? reportingCalendar.timeZone.identifier
         )
-        var candidateEntries = retainsCompleteJournal
-            ? entries
-            : try await scheduleStore.fetchAll(
-                JournalEntry.self,
-                from: .journalEntries
-            )
-        candidateEntries.append(entry)
-        candidateEntries.sort {
-            if $0.occurredAt == $1.occurredAt { return $0.createdAt > $1.createdAt }
-            return $0.occurredAt > $1.occurredAt
-        }
         var candidateAttributions = budgetEntryAttributions
         candidateAttributions[entry.id] = attribution
-        let candidateTimeline = try budgetTimelineAfterJournalMutation(
-            journalEntries: candidateEntries,
-            attributions: candidateAttributions,
-            affectedReportingMonths: [
-                try budgetAffectedMonth(for: entry, attribution: attribution)
-            ].compactMap { $0 }
+        let affectedMonths = [
+            try budgetAffectedMonth(for: entry, attribution: attribution)
+        ].compactMap { $0 }
+        var candidateEntries = try await journalEntriesForBudgetMutation(
+            from: scheduleStore,
+            affectedReportingMonths: affectedMonths
         )
+        if candidateEntries != nil {
+            candidateEntries?.append(entry)
+            candidateEntries?.sort {
+                if $0.occurredAt == $1.occurredAt {
+                    return $0.createdAt > $1.createdAt
+                }
+                return $0.occurredAt > $1.occurredAt
+            }
+        }
+        let candidateTimeline: BudgetConfigurationTimeline?
+        if let candidateEntries {
+            candidateTimeline = try budgetTimelineAfterJournalMutation(
+                journalEntries: candidateEntries,
+                attributions: candidateAttributions,
+                affectedReportingMonths: affectedMonths
+            )
+        } else {
+            candidateTimeline = nil
+        }
 
         var writes = [
             try RecordWrite(entry, id: entry.id.uuidString, in: .journalEntries),
@@ -2896,13 +3236,17 @@ final class AppModel: ObservableObject {
         if let candidateTimeline {
             writes.append(try budgetConfigurationTimelineWrite(candidateTimeline))
         }
+        invalidateCommittedJournalProjection()
+        await lifecycleHooks.checkpoint(
+            .afterJournalProjectionInvalidationBeforeCommit
+        )
         try await scheduleStore.write(writes)
         guard isCurrentStoreGeneration(generation) else { return nil }
         scheduledTransactions[index] = updated
         scheduledTransactions.sort { $0.nextOccurrence < $1.nextOccurrence }
         if let candidateTimeline { budgetConfigurationTimeline = candidateTimeline }
         budgetEntryAttributions = candidateAttributions
-        if retainsCompleteJournal { entries = candidateEntries }
+        if retainsCompleteJournal, let candidateEntries { entries = candidateEntries }
         existingScheduledLinkedEntryIDs.insert(entry.id)
         await refreshJournalAfterMutation()
         return entry.id
@@ -2920,7 +3264,8 @@ final class AppModel: ObservableObject {
         let mutationScheduleIDs: Set<UUID> = [scheduleID]
         try beginJournalAndScheduleMutation(
             scheduleIDs: mutationScheduleIDs,
-            matchingEntryID: entryID
+            matchingEntryID: entryID,
+            invalidatesJournalProjection: false
         )
         defer {
             endJournalAndScheduleMutation(
@@ -3015,6 +3360,8 @@ final class AppModel: ObservableObject {
 
     private func beginScheduleMutation(id: UUID) throws {
         guard !isLifecycleMutationInProgress,
+              !isWorking,
+              state == .ready,
               !isJournalMutationInProgress,
               scheduleMutationsInProgress.insert(id).inserted else {
             throw AppModelError.transactionInProgress
@@ -3028,9 +3375,12 @@ final class AppModel: ObservableObject {
 
     private func beginJournalAndScheduleMutation(
         scheduleIDs: Set<UUID>,
-        matchingEntryID: UUID? = nil
+        matchingEntryID: UUID? = nil,
+        invalidatesJournalProjection: Bool = true
     ) throws {
         guard !isLifecycleMutationInProgress,
+              !isWorking,
+              state == .ready,
               !isJournalMutationInProgress,
               investmentMutationsInProgress.isEmpty,
               scheduleMutationsInProgress.isEmpty,
@@ -3041,6 +3391,9 @@ final class AppModel: ObservableObject {
         scheduleMutationsInProgress.formUnion(scheduleIDs)
         if let matchingEntryID {
             scheduleEntryMatchesInProgress.insert(matchingEntryID)
+        }
+        if invalidatesJournalProjection {
+            invalidateInFlightJournalProjection()
         }
     }
 
@@ -3058,19 +3411,17 @@ final class AppModel: ObservableObject {
     private func validateScheduleReferences(
         _ schedule: ScheduledTransaction
     ) throws {
-        try validateScheduleReferences(schedule, in: accounts)
+        try validateScheduleReferences(schedule, in: accountsByID)
     }
 
     private func validateScheduleReferences(
         _ schedule: ScheduledTransaction,
-        in candidateAccounts: [LedgerAccount]
+        in candidateAccountsByID: [UUID: LedgerAccount]
     ) throws {
-        guard let account = candidateAccounts.first(where: {
-                  $0.id == schedule.accountID
-              }),
-              let category = candidateAccounts.first(where: {
-                  $0.id == schedule.categoryAccountID
-              }) else {
+        guard let account = candidateAccountsByID[schedule.accountID],
+              let category = candidateAccountsByID[
+                  schedule.categoryAccountID
+              ] else {
             throw AppModelError.missingRecord
         }
         guard !account.isArchived, !category.isArchived else {
@@ -3215,6 +3566,12 @@ final class AppModel: ObservableObject {
         ))
         let generation = storeGeneration
         let holdingStore = try requireStore()
+        if openingEntry != nil {
+            invalidateCommittedJournalProjection()
+            await lifecycleHooks.checkpoint(
+                .afterJournalProjectionInvalidationBeforeCommit
+            )
+        }
         try await holdingStore.write(writes)
         guard isCurrentStoreGeneration(generation) else { return }
         accounts.append(contentsOf: addedAccounts)
@@ -3297,6 +3654,12 @@ final class AppModel: ObservableObject {
         }
         let generation = storeGeneration
         let store = try requireStore()
+        if newEntry != nil {
+            invalidateCommittedJournalProjection()
+            await lifecycleHooks.checkpoint(
+                .afterJournalProjectionInvalidationBeforeCommit
+            )
+        }
         try await store.write(writes)
         guard isCurrentStoreGeneration(generation) else { return }
         if let newEntry {
@@ -3406,6 +3769,10 @@ final class AppModel: ObservableObject {
         ]
         let generation = storeGeneration
         let store = try requireStore()
+        invalidateCommittedJournalProjection()
+        await lifecycleHooks.checkpoint(
+            .afterJournalProjectionInvalidationBeforeCommit
+        )
         try await store.write(writes)
         guard isCurrentStoreGeneration(generation) else { return }
         accounts.append(contentsOf: addedAccounts.filter { account in
@@ -3491,6 +3858,10 @@ final class AppModel: ObservableObject {
         }
         let generation = storeGeneration
         let store = try requireStore()
+        invalidateCommittedJournalProjection()
+        await lifecycleHooks.checkpoint(
+            .afterJournalProjectionInvalidationBeforeCommit
+        )
         try await store.write(writes)
         guard isCurrentStoreGeneration(generation) else { return }
         if !accounts.contains(where: { $0.id == gain.id }) { accounts.append(gain) }
@@ -3578,6 +3949,10 @@ final class AppModel: ObservableObject {
         }
         let generation = storeGeneration
         let store = try requireStore()
+        invalidateCommittedJournalProjection()
+        await lifecycleHooks.checkpoint(
+            .afterJournalProjectionInvalidationBeforeCommit
+        )
         try await store.write(writes)
         guard isCurrentStoreGeneration(generation) else { return breakdown }
         if !accounts.contains(where: { $0.id == gain.id }) { accounts.append(gain) }
@@ -3589,7 +3964,7 @@ final class AppModel: ObservableObject {
     }
 
     func captureNetWorthSnapshot(at date: Date = Date()) async throws {
-        try beginJournalMutation()
+        try beginJournalMutation(invalidatesJournalProjection: false)
         defer { endJournalMutation() }
         guard !investmentHoldings.contains(where: { $0.needsLedgerConnection }) else {
             throw AppModelError.legacyInvestmentSnapshotForbidden
@@ -3686,7 +4061,7 @@ final class AppModel: ObservableObject {
         await beginExchangeRateMutation()
         defer { endExchangeRateMutation() }
         try Task.checkCancellation()
-        try beginJournalMutation()
+        try beginJournalMutation(invalidatesJournalProjection: false)
         defer { endJournalMutation() }
         let effectiveCalendar = calendar ?? reportingCalendar
         let effectiveTimeZone = timeZone ?? effectiveCalendar.timeZone
@@ -3729,7 +4104,7 @@ final class AppModel: ObservableObject {
         await beginExchangeRateMutation()
         defer { endExchangeRateMutation() }
         try Task.checkCancellation()
-        try beginJournalMutation()
+        try beginJournalMutation(invalidatesJournalProjection: false)
         defer { endJournalMutation() }
         let generation = storeGeneration
         let rateStore = try requireStore()
@@ -3836,20 +4211,39 @@ final class AppModel: ObservableObject {
     }
 
     func eraseAllDataAndRestart() async {
-        guard !isWorking,
-              !isLifecycleMutationInProgress,
-              standaloneJournalMutationsInProgress == 0,
-              scheduleMutationsInProgress.isEmpty else { return }
-        isWorking = true
-        goalMutationBarrierClosed = true
-        await waitForGoalMutationDrain()
-        isLifecycleMutationInProgress = true
-        state = .launching
-        lockAfterStart = false
-        let pendingDraftWrite = quickLogDraftWriteTask
         let pendingCommit = quickLogCommit.flatMap {
             $0.generation == storeGeneration ? $0.task : nil
         }
+        guard !isWorking,
+              !isLifecycleMutationInProgress,
+              standaloneJournalMutationsInProgress == 0,
+              scheduleMutationsInProgress.isEmpty,
+              scheduleEntryMatchesInProgress.isEmpty,
+              investmentMutationsInProgress.isEmpty,
+              !lockedCapturePromotionInProgress,
+              !lockedCaptureWriteInProgress,
+              !manualJournalMutationIsActive || pendingCommit != nil else {
+            return
+        }
+        isWorking = true
+        goalMutationBarrierClosed = true
+        isLifecycleMutationInProgress = true
+        // Persist intent before the first destructive step. From this point a
+        // process kill or power loss makes startup resume the erase instead of
+        // silently reopening the old book.
+        do {
+            try dataEraseIntent.markPending()
+        } catch {
+            state = .failed(safeUserMessage(for: error, context: .save))
+            finishExclusiveDataLifecycleMutation()
+            return
+        }
+        requestedQuickLogMode = nil
+        await waitForGoalMutationDrain()
+        invalidateInFlightJournalProjection()
+        state = .launching
+        lockAfterStart = false
+        let pendingDraftWrite = quickLogDraftWriteTask
         pendingDraftWrite?.cancel()
         quickLogDraftWriteTask = nil
         quickLogCommit = nil
@@ -3875,13 +4269,13 @@ final class AppModel: ObservableObject {
             } else {
                 databaseURL = try Self.databaseURL()
             }
-            for suffix in ["-wal", "-shm"] {
-                try Self.removeIfPresent(
-                    URL(fileURLWithPath: databaseURL.path + suffix)
-                )
-            }
-            try Self.removeIfPresent(databaseURL)
-            try deleteDatabaseKey()
+            try await Self.completePendingDataErase(
+                databaseURL: databaseURL,
+                deleteDatabaseKey: deleteDatabaseKey,
+                lockedCaptureStore: lockedCaptureStore,
+                clearEraseIntent: dataEraseIntent.clear
+            )
+            pendingLockedCaptureCount = 0
             if restartAfterErase {
                 finishExclusiveDataLifecycleMutation()
                 await start()
@@ -4250,7 +4644,8 @@ final class AppModel: ObservableObject {
     }
 
     private func prepareBudgetConfigurationTimelineAfterLoad(
-        in store: EncryptedRecordStore
+        in store: EncryptedRecordStore,
+        persistsMigration: Bool
     ) async throws {
         guard let profile else {
             if budgetConfigurationTimeline != nil {
@@ -4267,14 +4662,18 @@ final class AppModel: ObservableObject {
                 currency: profile.baseCurrency,
                 asOf: currentDate()
             )
-            // One generic-record upsert is a SQL transaction. If it fails,
-            // startup fails rather than running rollover from an ephemeral
-            // baseline that a restart could reinterpret.
-            try await store.upsert(
-                migrated,
-                id: BudgetConfigurationTimeline.primaryRecordID,
-                in: .budgetConfigurationTimelines
-            )
+            if persistsMigration {
+                // One generic-record upsert is a SQL transaction. If it fails,
+                // startup fails rather than running rollover from an ephemeral
+                // baseline that a restart could reinterpret. Rollback recovery
+                // alone must preserve the exact pre-restore byte snapshot; its
+                // next normal open can persist this inferred legacy baseline.
+                try await store.upsert(
+                    migrated,
+                    id: BudgetConfigurationTimeline.primaryRecordID,
+                    in: .budgetConfigurationTimelines
+                )
+            }
             budgetConfigurationTimeline = migrated
             return
         }
@@ -4298,6 +4697,53 @@ final class AppModel: ObservableObject {
         } catch {
             budgetConfigurationTimelineInvalid = true
             recoveryIssues.append("budget_configuration_timelines/inconsistent-primary")
+        }
+    }
+
+    /// A decodable attribution is still untrusted recovery input. Validate it
+    /// against only its referenced live journal row, then apply the restore
+    /// validator's exact posting/audited-remap rule. A failure preserves the
+    /// encrypted records but disables budget projection for this session.
+    private func validateBudgetEntryAttributionsAfterLoad(
+        in store: EncryptedRecordStore
+    ) async throws {
+        guard !budgetConfigurationTimelineInvalid,
+              !budgetEntryAttributions.isEmpty else { return }
+        do {
+            let generation = storeGeneration
+            let recoveredEntries = try await store.fetchJournalEntriesRecovering(
+                ids: Set(budgetEntryAttributions.keys)
+            )
+            guard ownsStoreGeneration(generation) else {
+                throw AppModelError.locked
+            }
+            recordHistoryDecodeIssues(recoveredEntries.issues)
+            let journalByID = Dictionary(
+                uniqueKeysWithValues: recoveredEntries.values.map { ($0.id, $0) }
+            )
+            try await RestoreCandidateValidator.validateBudgetAttributionIntegrity(
+                attributions: Array(budgetEntryAttributions.values),
+                journalEntries: Array(journalByID.values),
+                journalByID: journalByID,
+                accountByID: Dictionary(
+                    uniqueKeysWithValues: accounts.map { ($0.id, $0) }
+                ),
+                in: store
+            )
+            guard ownsStoreGeneration(generation) else {
+                throw AppModelError.locked
+            }
+        } catch AppModelError.locked {
+            throw AppModelError.locked
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            budgetConfigurationTimelineInvalid = true
+            budgetEntryAttributions.removeAll()
+            closedMonthBudgetProjection = nil
+            recordRecoveryIssue(
+                "budget_entry_attributions/inconsistent-history"
+            )
         }
     }
 
@@ -4337,20 +4783,14 @@ final class AppModel: ObservableObject {
         attributions: [UUID: BudgetEntryAttribution]? = nil
     ) throws -> BudgetRolloverSnapshot {
         let calendar = reportingCalendar
-        let sourceEntries = journalEntries ?? entries
-        let sourceAttributions = attributions ?? budgetEntryAttributions
-        let activation = timeline.revisions.flatMap(\.nodes).compactMap { node -> Date? in
-            guard node.rolloverRule != .none,
-                  let startedAt = node.rolloverStartedAt else { return nil }
-            return calendar.dateInterval(of: .month, for: startedAt)?.start
-        }.min()
         guard let currentMonth = calendar.dateInterval(of: .month, for: asOf) else {
             throw AppModelError.invalidBook
         }
-        let latestCheckpoint = timeline.revisions.last {
-            $0.effectiveMonth <= currentMonth.start && $0.openingCarry != nil
-        }
-        guard let replayStart = latestCheckpoint?.effectiveMonth ?? activation else {
+        guard let replayStart = budgetRolloverReplayStart(
+            timeline: timeline,
+            currentMonthStart: currentMonth.start,
+            calendar: calendar
+        ) else {
             return try BudgetRolloverEngine.snapshot(
                 tree: tree,
                 monthlySpending: [],
@@ -4359,52 +4799,60 @@ final class AppModel: ObservableObject {
             )
         }
 
-        var amountsByMonth: [Date: [UUID: Decimal]] = [:]
-        for entry in sourceEntries {
-            let attribution = sourceAttributions[entry.id]
-            let occurredAt: Date
-            if let attribution {
-                guard let attributedDate = attribution.attributedDate(in: calendar) else {
-                    throw AppModelError.invalidBook
-                }
-                occurredAt = attributedDate
-            } else {
-                occurredAt = entry.occurredAt
+        let rawPeriods: [MonthlyBudgetSpending]
+        if let journalEntries {
+            rawPeriods = try closedMonthBudgetSpending(
+                entries: journalEntries,
+                attributions: attributions ?? budgetEntryAttributions,
+                currency: tree.currency,
+                replayStart: replayStart,
+                currentMonthStart: currentMonth.start,
+                calendar: calendar,
+                excludingEntryIDs: invalidJournalEntryIDs
+            )
+        } else if retainsCompleteJournal {
+            rawPeriods = try closedMonthBudgetSpending(
+                entries: entries,
+                attributions: budgetEntryAttributions,
+                currency: tree.currency,
+                replayStart: replayStart,
+                currentMonthStart: currentMonth.start,
+                calendar: calendar,
+                excludingEntryIDs: invalidJournalEntryIDs
+            )
+        } else {
+            guard let projection = closedMonthBudgetProjection,
+                  projection.reportingTimeZoneIdentifier
+                    == calendar.timeZone.identifier,
+                  projection.currentMonthStart == currentMonth.start,
+                  projection.coverageStart <= replayStart,
+                  projection.currency == tree.currency else {
+                // Never substitute the deliberately bounded recent-entry UI
+                // cache. Make the result unavailable until the complete SQL
+                // projection for the new boundary has published.
+                scheduleJournalDerivedRefresh()
+                throw AppModelError.invalidBook
             }
+            rawPeriods = projection.monthlySpending
+        }
+
+        let periods = rawPeriods.compactMap { period -> MonthlyBudgetSpending? in
             guard FinancialPeriodBoundary.contains(
-                occurredAt,
+                period.monthStart,
                 start: replayStart,
                 endExclusive: currentMonth.start
-            ) else { continue }
-            guard let month = calendar.dateInterval(
-                of: .month,
-                for: occurredAt
-            )?.start else { continue }
-            let postings = attribution?.postings ?? entry.postings
-            // An explicit backdated recategorization can target a category
-            // created only in a later revision. In that earlier month it is
-            // honestly unbudgeted; feeding the future ID into the historical
-            // tree would incorrectly fail all rollover as unknown spending.
-            let validIDsForMonth = Set(
-                timeline.revision(effectiveAt: month).nodes.map(\.id)
+            ) else { return nil }
+            // A backdated recategorization can target a category created only
+            // in a later revision. It is honestly unbudgeted in the earlier
+            // month, so filter the raw compact projection through that month's
+            // historical tree before rollover consumes it.
+            let validIDs = Set(
+                timeline.revision(effectiveAt: period.monthStart).nodes.map(\.id)
             )
-            for posting in postings where validIDsForMonth.contains(posting.accountID)
-                && posting.money.currency == tree.currency {
-                let prior = amountsByMonth[month]?[posting.accountID] ?? .zero
-                do {
-                    amountsByMonth[month, default: [:]][posting.accountID] =
-                        try CheckedDecimal.adding(prior, posting.money.amount)
-                } catch {
-                    throw AppModelError.invalidBook
-                }
-            }
-        }
-        let periods = try amountsByMonth.map { month, amounts in
-            MonthlyBudgetSpending(
-                monthStart: month,
-                directSpending: try amounts.reduce(into: [UUID: Money]()) {
-                    result, item in
-                    result[item.key] = try Money(item.value, currency: tree.currency)
+            return MonthlyBudgetSpending(
+                monthStart: period.monthStart,
+                directSpending: period.directSpending.filter {
+                    validIDs.contains($0.key) && $0.value.currency == tree.currency
                 }
             )
         }
@@ -4414,6 +4862,152 @@ final class AppModel: ObservableObject {
             asOf: asOf,
             calendar: calendar
         )
+    }
+
+    private func budgetRolloverReplayStart(
+        timeline: BudgetConfigurationTimeline,
+        currentMonthStart: Date,
+        calendar: Calendar
+    ) -> Date? {
+        let activation = timeline.revisions.flatMap(\.nodes).compactMap {
+            node -> Date? in
+            guard node.rolloverRule != .none,
+                  let startedAt = node.rolloverStartedAt else { return nil }
+            return calendar.dateInterval(of: .month, for: startedAt)?.start
+        }.min()
+        let latestCheckpoint = timeline.revisions.last {
+            $0.effectiveMonth <= currentMonthStart && $0.openingCarry != nil
+        }
+        return latestCheckpoint?.effectiveMonth ?? activation
+    }
+
+    private func closedMonthBudgetSpending(
+        entries sourceEntries: [JournalEntry],
+        attributions: [UUID: BudgetEntryAttribution],
+        currency: CurrencyCode,
+        replayStart: Date,
+        currentMonthStart: Date,
+        calendar: Calendar,
+        excludingEntryIDs: Set<UUID>
+    ) throws -> [MonthlyBudgetSpending] {
+        var amountsByMonth: [Date: [UUID: Decimal]] = [:]
+        for entry in sourceEntries where !excludingEntryIDs.contains(entry.id) {
+            let attribution = attributions[entry.id]
+            let attributedDate: Date
+            if let attribution {
+                guard let date = attribution.attributedDate(in: calendar) else {
+                    throw AppModelError.invalidBook
+                }
+                attributedDate = date
+            } else {
+                attributedDate = entry.occurredAt
+            }
+            try accumulateClosedMonthBudgetPostings(
+                attribution?.postings ?? entry.postings,
+                attributedDate: attributedDate,
+                currency: currency,
+                replayStart: replayStart,
+                currentMonthStart: currentMonthStart,
+                calendar: calendar,
+                amountsByMonth: &amountsByMonth
+            )
+        }
+        return try makeMonthlyBudgetSpending(
+            amountsByMonth,
+            currency: currency
+        )
+    }
+
+    private func closedMonthBudgetSpending(
+        events: [LedgerPostingEvent],
+        attributions: [UUID: BudgetEntryAttribution],
+        currency: CurrencyCode,
+        replayStart: Date,
+        currentMonthStart: Date,
+        calendar: Calendar,
+        excludingEntryIDs: Set<UUID>
+    ) throws -> [MonthlyBudgetSpending] {
+        var amountsByMonth: [Date: [UUID: Decimal]] = [:]
+        let attributedEntryIDs = Set(attributions.keys)
+        for (entryID, attribution) in attributions
+            where !excludingEntryIDs.contains(entryID) {
+            guard let attributedDate = attribution.attributedDate(in: calendar) else {
+                throw AppModelError.invalidBook
+            }
+            try accumulateClosedMonthBudgetPostings(
+                attribution.postings,
+                attributedDate: attributedDate,
+                currency: currency,
+                replayStart: replayStart,
+                currentMonthStart: currentMonthStart,
+                calendar: calendar,
+                amountsByMonth: &amountsByMonth
+            )
+        }
+        for event in events where !attributedEntryIDs.contains(event.entryID)
+            && !excludingEntryIDs.contains(event.entryID) {
+            guard let attributedDate = event.attributedDate(in: calendar) else {
+                throw AppModelError.invalidBook
+            }
+            try accumulateClosedMonthBudgetPostings(
+                [event.posting],
+                attributedDate: attributedDate,
+                currency: currency,
+                replayStart: replayStart,
+                currentMonthStart: currentMonthStart,
+                calendar: calendar,
+                amountsByMonth: &amountsByMonth
+            )
+        }
+        return try makeMonthlyBudgetSpending(
+            amountsByMonth,
+            currency: currency
+        )
+    }
+
+    private func accumulateClosedMonthBudgetPostings(
+        _ postings: [Posting],
+        attributedDate: Date,
+        currency: CurrencyCode,
+        replayStart: Date,
+        currentMonthStart: Date,
+        calendar: Calendar,
+        amountsByMonth: inout [Date: [UUID: Decimal]]
+    ) throws {
+        guard FinancialPeriodBoundary.contains(
+            attributedDate,
+            start: replayStart,
+            endExclusive: currentMonthStart
+        ), let month = calendar.dateInterval(
+            of: .month,
+            for: attributedDate
+        )?.start else { return }
+        for posting in postings where posting.money.currency == currency {
+            let prior = amountsByMonth[month]?[posting.accountID] ?? .zero
+            do {
+                amountsByMonth[month, default: [:]][posting.accountID] =
+                    try CheckedDecimal.adding(prior, posting.money.amount)
+            } catch {
+                throw AppModelError.invalidBook
+            }
+        }
+    }
+
+    private func makeMonthlyBudgetSpending(
+        _ amountsByMonth: [Date: [UUID: Decimal]],
+        currency: CurrencyCode
+    ) throws -> [MonthlyBudgetSpending] {
+        try amountsByMonth.keys.sorted().map { month in
+            MonthlyBudgetSpending(
+                monthStart: month,
+                directSpending: try amountsByMonth[month, default: [:]].reduce(
+                    into: [UUID: Money]()
+                ) { result, item in
+                    guard item.value != .zero else { return }
+                    result[item.key] = try Money(item.value, currency: currency)
+                }
+            )
+        }
     }
 
     /// Rebuilds only derived opening-carry checkpoints after a backdated
@@ -4467,7 +5061,8 @@ final class AppModel: ObservableObject {
         attributions: [UUID: BudgetEntryAttribution],
         affectedReportingMonths: [Date]
     ) throws -> BudgetConfigurationTimeline? {
-        guard let earliestAffected = affectedReportingMonths.min(),
+        guard !budgetConfigurationTimelineInvalid,
+              let earliestAffected = affectedReportingMonths.min(),
               let timeline = candidateTimeline ?? budgetConfigurationTimeline,
               timeline.revisions.contains(where: {
                   $0.openingCarry != nil && earliestAffected < $0.effectiveMonth
@@ -4479,6 +5074,97 @@ final class AppModel: ObservableObject {
             journalEntries: journalEntries,
             attributions: attributions
         )
+    }
+
+    private func budgetCheckpointNeedsJournalReplay(
+        timeline candidateTimeline: BudgetConfigurationTimeline? = nil,
+        affectedReportingMonths: [Date]
+    ) -> Bool {
+        !budgetConfigurationTimelineInvalid
+            && laterBudgetCheckpointExists(
+                timeline: candidateTimeline,
+                affectedReportingMonths: affectedReportingMonths
+            )
+    }
+
+    private func laterBudgetCheckpointExists(
+        timeline candidateTimeline: BudgetConfigurationTimeline? = nil,
+        affectedReportingMonths: [Date]
+    ) -> Bool {
+        guard let earliestAffected = affectedReportingMonths.min(),
+              let timeline = candidateTimeline ?? budgetConfigurationTimeline else {
+            return false
+        }
+        return timeline.revisions.contains {
+            $0.openingCarry != nil && earliestAffected < $0.effectiveMonth
+        }
+    }
+
+    /// Retained mode still needs a candidate array for its in-memory journal.
+    /// Lazy mode materializes the complete journal only when a later persisted
+    /// opening carry can actually change.
+    private func journalEntriesForBudgetMutation(
+        from journalStore: EncryptedRecordStore,
+        affectedReportingMonths: [Date]
+    ) async throws -> [JournalEntry]? {
+        if budgetConfigurationTimelineInvalid,
+           laterBudgetCheckpointExists(
+               affectedReportingMonths: affectedReportingMonths
+           ) {
+            // Saving without replay would make a persisted checkpoint silently
+            // stale after the quarantined budget data is repaired.
+            throw AppModelError.invalidBook
+        }
+        if retainsCompleteJournal { return entries }
+        guard budgetCheckpointNeedsJournalReplay(
+            affectedReportingMonths: affectedReportingMonths
+        ) else {
+            return nil
+        }
+
+        budgetJournalReplayReadCount += 1
+        let generation = storeGeneration
+        let recovered = try await journalStore.fetchAllIdentifiedRecovering(
+            JournalEntry.self,
+            from: .journalEntries
+        )
+        guard ownsStoreGeneration(generation) else { throw AppModelError.locked }
+        recordHistoryDecodeIssues(recovered.issues)
+        guard Set(recovered.values.map(\.id)).count == recovered.values.count else {
+            recordRecoveryIssue("journal_entries/duplicate-logical-identity")
+            throw AppModelError.invalidBook
+        }
+
+        let malformedIDs = Set(recovered.issues.compactMap {
+            UUID(uuidString: $0.recordID)
+        })
+        let validAccountIDs = Set(accounts.map(\.id))
+        let expectedAccountCurrencies = Dictionary(
+            uniqueKeysWithValues: accounts.compactMap { account in
+                account.currency.map { (account.id, $0) }
+            }
+        )
+        var newlyQuarantined = Set<UUID>()
+        for entry in recovered.values where !invalidJournalEntryIDs.contains(entry.id) {
+            let isValid = entry.postings.allSatisfy { posting in
+                guard validAccountIDs.contains(posting.accountID) else { return false }
+                return expectedAccountCurrencies[posting.accountID].map {
+                    $0 == posting.money.currency
+                } ?? true
+            }
+            if !isValid { newlyQuarantined.insert(entry.id) }
+        }
+        if !newlyQuarantined.isEmpty {
+            invalidJournalEntryIDs.formUnion(newlyQuarantined)
+            recordHistoryDecodeIssues(newlyQuarantined.map {
+                RecordDecodeIssue(
+                    collection: .journalEntries,
+                    recordID: $0.uuidString
+                )
+            })
+        }
+        let excludedIDs = invalidJournalEntryIDs.union(malformedIDs)
+        return recovered.values.filter { !excludedIDs.contains($0.id) }
     }
 
     private func budgetAffectedMonth(
@@ -4692,7 +5378,7 @@ final class AppModel: ObservableObject {
     }
 
     func csvExport() async throws -> String {
-        try beginJournalMutation()
+        try beginJournalMutation(invalidatesJournalProjection: false)
         defer { endJournalMutation() }
         let exportEntries: [JournalEntry]
         if retainsCompleteJournal {
@@ -4709,7 +5395,7 @@ final class AppModel: ObservableObject {
     }
 
     func xlsxExport() async throws -> Data {
-        try beginJournalMutation()
+        try beginJournalMutation(invalidatesJournalProjection: false)
         defer { endJournalMutation() }
         let exportEntries: [JournalEntry]
         if retainsCompleteJournal {
@@ -4736,7 +5422,7 @@ final class AppModel: ObservableObject {
         buildNumber: String = AppVersion.build
     ) async throws -> PrivacySafeDataInventory {
         guard state == .ready else { throw AppModelError.locked }
-        try beginLifecycleMutation()
+        try beginLifecycleMutation(invalidatesJournalProjection: false)
         isWorking = true
         defer {
             isWorking = false
@@ -4786,10 +5472,13 @@ final class AppModel: ObservableObject {
         guard let fallbackAccount = userAccounts.first(where: {
             $0.id == fallbackAccountID
         }), expenseCategories.contains(where: {
-            $0.id == fallbackExpenseCategoryID
+            $0.id == fallbackExpenseCategoryID && $0.systemRole == nil
         }), incomeCategories.contains(where: {
-            $0.id == fallbackIncomeCategoryID
+            $0.id == fallbackIncomeCategoryID && $0.systemRole == nil
         }) else { throw AppModelError.missingRecord }
+        let canonicalImportSource = TransactionCSVImporter.canonicalSourceSystem(
+            sourceSystem
+        )
         let existingEntries: [JournalEntry]
         let existingFingerprints: Set<String>
         if retainsCompleteJournal {
@@ -4806,9 +5495,17 @@ final class AppModel: ObservableObject {
         }
 
         func normalizedName(_ value: String) -> String {
-            value.trimmingCharacters(in: .whitespacesAndNewlines)
-                .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            CSVImportNameResolver.normalizedKey(for: value)
         }
+
+        let sameSourceLegacyFingerprints = Set(existingEntries.compactMap { entry in
+            guard TransactionCSVImporter.canonicalSourceSystem(
+                entry.sourceSystem ?? ""
+            ) == canonicalImportSource else {
+                return nil
+            }
+            return entry.sourceFingerprint
+        })
 
         var candidateAccounts = accounts
         var newAccounts: [LedgerAccount] = []
@@ -4827,21 +5524,31 @@ final class AppModel: ObservableObject {
             amount: Decimal,
             currency: CurrencyCode,
             sourceID: UUID,
+            destinationID: UUID? = nil,
+            destinationAmount: Decimal? = nil,
+            destinationCurrency: CurrencyCode? = nil,
             payee: String?
         ) -> String {
-            [
+            let components = [
                 kind.rawValue,
                 String(Int64(occurredAt.timeIntervalSince1970.rounded(.down))),
                 NSDecimalNumber(decimal: amount).stringValue,
                 currency.value,
                 sourceID.uuidString.lowercased(),
+                destinationID?.uuidString.lowercased() ?? "",
+                destinationAmount.map {
+                    NSDecimalNumber(decimal: $0).stringValue
+                } ?? "",
+                destinationCurrency?.value ?? "",
                 normalizedName(payee ?? "")
-            ].joined(separator: "\u{1f}")
+            ]
+            return components.map { "\($0.utf8.count):\($0)" }.joined()
         }
 
         func duplicateKey(for entry: JournalEntry) -> String? {
             let userPosting: Posting?
             let amountPosting: Posting?
+            let destinationPosting: Posting?
             let kind: ImportedTransactionKind?
             switch entry.kind {
             case .expense:
@@ -4852,6 +5559,7 @@ final class AppModel: ObservableObject {
                 amountPosting = entry.postings.first {
                     initialAccountKinds[$0.accountID] == .expense
                 } ?? entry.postings.first { $0.id != userPosting?.id }
+                destinationPosting = nil
                 kind = (amountPosting?.money.amount ?? .zero) < .zero
                     ? .refund : .expense
             case .income:
@@ -4862,48 +5570,74 @@ final class AppModel: ObservableObject {
                 amountPosting = entry.postings.first {
                     initialAccountKinds[$0.accountID] == .income
                 } ?? entry.postings.first { $0.id != userPosting?.id }
+                destinationPosting = nil
                 kind = .income
             case .transfer:
-                userPosting = entry.postings.first {
-                    (initialAccountKinds[$0.accountID] == .asset
-                        || initialAccountKinds[$0.accountID] == .liability)
-                        && $0.money.amount < .zero
+                let userPostings = entry.postings.filter {
+                    initialAccountKinds[$0.accountID] == .asset
+                        || initialAccountKinds[$0.accountID] == .liability
                 }
+                let sourcePostings = userPostings.filter { $0.money.amount < .zero }
+                let destinationPostings = userPostings.filter { $0.money.amount > .zero }
+                guard sourcePostings.count == 1,
+                      destinationPostings.count == 1 else {
+                    return nil
+                }
+                userPosting = sourcePostings[0]
                 amountPosting = userPosting
+                destinationPosting = destinationPostings[0]
                 kind = .transfer
             case .adjustment, .investment:
                 return nil
             }
             guard let userPosting, let amountPosting, let kind else { return nil }
+            if kind == .transfer, destinationPosting == nil { return nil }
             return duplicateKey(
                 kind: kind,
                 occurredAt: entry.occurredAt,
                 amount: abs(amountPosting.money.amount),
                 currency: amountPosting.money.currency,
                 sourceID: userPosting.accountID,
+                destinationID: destinationPosting?.accountID,
+                destinationAmount: destinationPosting.map { abs($0.money.amount) },
+                destinationCurrency: destinationPosting?.money.currency,
                 payee: entry.payee
             )
         }
 
         var duplicateKeys = Set(existingEntries.compactMap { duplicateKey(for: $0) })
 
+        func isEligibleImportAccount(
+            _ account: LedgerAccount,
+            currency: CurrencyCode?
+        ) -> Bool {
+            (account.kind == .asset || account.kind == .liability)
+                && account.systemRole == nil
+                && !account.isArchived
+                && (currency == nil || account.currency == currency)
+        }
+
+        func isEligibleImportCategory(
+            _ account: LedgerAccount,
+            kind: LedgerAccountKind
+        ) -> Bool {
+            account.kind == kind
+                && account.systemRole == nil
+                && !account.isArchived
+        }
+
         func account(named name: String?, currency: CurrencyCode?) -> LedgerAccount? {
             guard let name else { return nil }
             let normalized = normalizedName(name)
             if let mappedID = accountMappings[normalized],
                let mapped = candidateAccounts.first(where: {
-                   $0.id == mappedID
-                       && ($0.kind == .asset || $0.kind == .liability)
-                       && !$0.isArchived
-                       && (currency == nil || $0.currency == currency)
+                   $0.id == mappedID && isEligibleImportAccount($0, currency: currency)
                }) {
                 return mapped
             }
             return candidateAccounts.first {
-                ($0.kind == .asset || $0.kind == .liability)
-                    && !$0.isArchived
+                isEligibleImportAccount($0, currency: currency)
                     && normalizedName($0.name) == normalized
-                    && (currency == nil || $0.currency == currency)
             }
         }
 
@@ -4913,20 +5647,23 @@ final class AppModel: ObservableObject {
             fallbackID: UUID
         ) -> LedgerAccount? {
             guard let name, !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            else { return candidateAccounts.first { $0.id == fallbackID } }
+            else {
+                return candidateAccounts.first {
+                    $0.id == fallbackID && isEligibleImportCategory($0, kind: kind)
+                }
+            }
             let normalized = normalizedName(name)
             let reviewedMappings = kind == .income
                 ? incomeCategoryMappings
                 : expenseCategoryMappings
             if let mappedID = reviewedMappings[normalized],
                let mapped = candidateAccounts.first(where: {
-                   $0.id == mappedID && $0.kind == kind && !$0.isArchived
+                   $0.id == mappedID && isEligibleImportCategory($0, kind: kind)
                }) {
                 return mapped
             }
             if let existing = candidateAccounts.first(where: {
-                $0.kind == kind
-                    && !$0.isArchived
+                isEligibleImportCategory($0, kind: kind)
                     && normalizedName($0.name) == normalized
             }) {
                 return existing
@@ -4940,14 +5677,39 @@ final class AppModel: ObservableObject {
             return created
         }
 
+        func candidateForeignExchangeAccount(
+            for currency: CurrencyCode
+        ) -> LedgerAccount {
+            candidateAccounts.first {
+                $0.systemRole == .foreignExchange && $0.currency == currency
+            } ?? LedgerAccount(
+                name: "\(String(localized: "account.fx_clearing")) \(currency.value)",
+                kind: .trading,
+                currency: currency,
+                systemRole: .foreignExchange
+            )
+        }
+
         for row in rows {
-            guard fingerprints.insert(row.id).inserted else {
+            let persistedFingerprint = TransactionCSVImporter.persistenceFingerprint(
+                for: row.id,
+                sourceSystem: sourceSystem
+            )
+            let insertedFingerprint = fingerprints.insert(persistedFingerprint).inserted
+            let matchesUnscopedIdentity = sameSourceLegacyFingerprints.contains(row.id)
+            let matchesLegacyCandidate = !row.legacyFingerprintCandidates.isDisjoint(
+                with: sameSourceLegacyFingerprints
+            )
+            guard insertedFingerprint, !matchesUnscopedIdentity else {
+                if insertedFingerprint {
+                    fingerprints.remove(persistedFingerprint)
+                }
                 duplicates += 1
                 continue
             }
             let declaredCurrency = row.currencyCode.flatMap { try? CurrencyCode($0) }
             if row.currencyCode != nil, declaredCurrency == nil {
-                fingerprints.remove(row.id)
+                fingerprints.remove(persistedFingerprint)
                 skipped += 1
                 continue
             }
@@ -4960,9 +5722,39 @@ final class AppModel: ObservableObject {
                     row.amount,
                     currency: sourceCurrency
                   ) else {
-                fingerprints.remove(row.id)
+                fingerprints.remove(persistedFingerprint)
                 skipped += 1
                 continue
+            }
+            let transferDestination: LedgerAccount?
+            let semanticDestinationAmount: Decimal?
+            if row.kind == .transfer {
+                guard let destination = account(
+                    named: row.destinationAccountName,
+                    currency: nil
+                ), destination.id != source.id,
+                let destinationCurrency = destination.currency else {
+                    fingerprints.remove(persistedFingerprint)
+                    skipped += 1
+                    continue
+                }
+                let destinationAmount: Decimal? = sourceCurrency == destinationCurrency
+                    ? row.amount
+                    : row.destinationAmount
+                guard let destinationAmount,
+                      MonetaryInputPolicy.accepts(
+                        destinationAmount,
+                        currency: destinationCurrency
+                      ) else {
+                    fingerprints.remove(persistedFingerprint)
+                    skipped += 1
+                    continue
+                }
+                transferDestination = destination
+                semanticDestinationAmount = destinationAmount
+            } else {
+                transferDestination = nil
+                semanticDestinationAmount = nil
             }
             let rowDuplicateKey = duplicateKey(
                 kind: row.kind,
@@ -4970,10 +5762,24 @@ final class AppModel: ObservableObject {
                 amount: row.amount,
                 currency: sourceCurrency,
                 sourceID: source.id,
-                payee: row.payee
+                destinationID: transferDestination?.id,
+                destinationAmount: semanticDestinationAmount,
+                destinationCurrency: transferDestination?.currency,
+                // Transfer factories do not persist a payee. Build the key
+                // from the shape that can be reconstructed after reopening.
+                payee: row.kind == .transfer ? nil : row.payee
             )
-            guard duplicateKeys.insert(rowDuplicateKey).inserted else {
-                fingerprints.remove(row.id)
+            let insertedSemanticKey = duplicateKeys.insert(rowDuplicateKey).inserted
+            // FNV-era candidates are collision-prone and interim SHA candidates
+            // contain mutable fields. Treat either as a legacy duplicate only
+            // when the reconstructed ledger semantics also match. A prior
+            // unscoped exact row identity was handled above and needs no
+            // heuristic corroboration.
+            let matchesSafeLegacyDuplicate = matchesLegacyCandidate
+                && !insertedSemanticKey
+            guard !matchesSafeLegacyDuplicate,
+                  row.hasExternalID || insertedSemanticKey else {
+                fingerprints.remove(persistedFingerprint)
                 duplicates += 1
                 continue
             }
@@ -5028,10 +5834,7 @@ final class AppModel: ObservableObject {
                         note: row.note
                     )
                 case .transfer:
-                    guard let destination = account(
-                        named: row.destinationAccountName,
-                        currency: nil
-                    ), destination.id != source.id,
+                    guard let destination = transferDestination,
                     let destinationCurrency = destination.currency else {
                         throw AppModelError.missingRecord
                     }
@@ -5044,15 +5847,15 @@ final class AppModel: ObservableObject {
                             note: row.note
                         )
                     } else {
-                        guard let destinationAmount = row.destinationAmount,
-                              MonetaryInputPolicy.accepts(
-                                destinationAmount,
-                                currency: destinationCurrency
-                              ) else {
+                        guard let destinationAmount = semanticDestinationAmount else {
                             throw AppModelError.foreignCurrencyTransferRequiresExchangeRate
                         }
-                        let sourceTrading = foreignExchangeAccount(for: sourceCurrency)
-                        let destinationTrading = foreignExchangeAccount(for: destinationCurrency)
+                        let sourceTrading = candidateForeignExchangeAccount(
+                            for: sourceCurrency
+                        )
+                        let destinationTrading = candidateForeignExchangeAccount(
+                            for: destinationCurrency
+                        )
                         for trading in [sourceTrading, destinationTrading]
                         where !candidateAccounts.contains(where: { $0.id == trading.id }) {
                             candidateAccounts.append(trading)
@@ -5083,7 +5886,7 @@ final class AppModel: ObservableObject {
                         note: baseEntry.note,
                         postings: baseEntry.postings,
                         sourceSystem: sourceSystem,
-                        sourceFingerprint: row.id,
+                        sourceFingerprint: persistedFingerprint,
                         originContext: row.originContext
                             ?? reportingOriginContext(for: baseEntry.occurredAt)
                     )
@@ -5092,8 +5895,10 @@ final class AppModel: ObservableObject {
                 candidateAccounts.removeSubrange(candidateAccountsCheckpoint...)
                 newAccounts.removeSubrange(newAccountsCheckpoint...)
                 newBudgetNodes.removeSubrange(newBudgetNodesCheckpoint...)
-                fingerprints.remove(row.id)
-                duplicateKeys.remove(rowDuplicateKey)
+                fingerprints.remove(persistedFingerprint)
+                if insertedSemanticKey {
+                    duplicateKeys.remove(rowDuplicateKey)
+                }
                 skipped += 1
             }
         }
@@ -5171,6 +5976,11 @@ final class AppModel: ObservableObject {
 
         let generation = storeGeneration
         let importStore = try requireStore()
+        await lifecycleHooks.checkpoint(.beforeJournalCommit)
+        invalidateCommittedJournalProjection()
+        await lifecycleHooks.checkpoint(
+            .afterJournalProjectionInvalidationBeforeCommit
+        )
         try await importStore.write(writes)
         guard isCurrentStoreGeneration(generation) else {
             return TransactionImportResult(
@@ -5196,11 +6006,47 @@ final class AppModel: ObservableObject {
     }
 
     func encryptedBackup(password: String) async throws -> Data {
+        try beginLifecycleMutation(invalidatesJournalProjection: false)
+        isWorking = true
+        defer {
+            isWorking = false
+            endLifecycleMutation()
+        }
+
+        // A portable archive contains the SQLCipher snapshot but not the
+        // separately encrypted, book-agnostic locked-capture inbox. Refuse to
+        // label an incomplete recovery point as ready.
         let backupStore = try requireStore()
+        try await flushQuickLogDraftForBackup(to: backupStore)
+        try await requireEmptyLockedCaptureInbox()
+        try Task.checkCancellation()
+        let metrics = try await backupStore.storageMetrics()
+        guard metrics.recordCount
+                <= RestoreCandidateValidator.maximumCandidateRecordCount,
+              metrics.payloadByteCount
+                <= RestoreCandidateValidator.maximumBackupStoredPayloadByteCount,
+              metrics.recordIDByteCount
+                <= RestoreCandidateValidator.maximumAggregateRecordIDByteCount,
+              metrics.collectionByteCount
+                <= RestoreCandidateValidator.maximumAggregateCollectionByteCount else {
+            throw PortableArchiveError.archiveTooLarge
+        }
+        try Task.checkCancellation()
         let snapshot = try await backupStore.snapshot()
-        return try await Task.detached(priority: .userInitiated) {
-            try PortableArchive.seal(snapshot, password: password)
-        }.value
+        try Task.checkCancellation()
+        let archiveTask = Task.detached(priority: .userInitiated) {
+            try RestoreCandidateValidator.validateBackupSnapshotStorageLimits(
+                snapshot,
+                maximumAggregatePayloadByteCount: RestoreCandidateValidator
+                    .maximumBackupStoredPayloadByteCount
+            )
+            return try PortableArchive.seal(snapshot, password: password)
+        }
+        return try await withTaskCancellationHandler {
+            try await archiveTask.value
+        } onCancel: {
+            archiveTask.cancel()
+        }
     }
 
     /// Restores only after the candidate has passed the exact encrypted-store
@@ -5218,23 +6064,48 @@ final class AppModel: ObservableObject {
         goalMutationBarrierClosed = true
         await waitForGoalMutationDrain()
         isLifecycleMutationInProgress = true
+        invalidateInFlightJournalProjection()
         defer { finishExclusiveDataLifecycleMutation() }
 
         // A cancelled debounce can already be inside its store operation.
         // Drain it before taking the rollback snapshot so no pre-restore draft
         // can wake and overwrite the restored logical book afterward.
         await finishPendingQuickLogDraftWrite()
+        let restoreStore = try requireStore()
+        // A wrong password, malformed archive, or failed candidate validation
+        // leaves the old book authoritative. Persist the newest in-memory form
+        // before parsing untrusted input so cancelling its debounce cannot turn
+        // a harmless failed restore into later power-loss data loss.
+        try await flushQuickLogDraftForBackup(to: restoreStore)
+
+        // The redacted inbox is outside the portable archive and has no book
+        // identity. Keeping it across replacement could apply old-book input
+        // to the restored book; dropping it would lose user input.
+        try await requireEmptyLockedCaptureInbox()
+        do {
+            try Self.removeRestoreValidationDirectory(
+                restoreValidationDirectoryURL
+            )
+            try Self.removeLegacyRestoreValidationDirectories()
+        } catch {
+            throw AppModelError.invalidBook
+        }
+        try Task.checkCancellation()
 
         let generation = storeGeneration
         let stateBeforeRestore = state
-        let candidate = try await Task.detached(priority: .userInitiated) {
+        let archiveOpenTask = Task.detached(priority: .userInitiated) {
             try PortableArchive.open(data, password: password)
-        }.value
+        }
+        let candidate = try await withTaskCancellationHandler {
+            try await archiveOpenTask.value
+        } onCancel: {
+            archiveOpenTask.cancel()
+        }
         try Task.checkCancellation()
         try await validateRestoreCandidateInIsolation(candidate)
         try Task.checkCancellation()
 
-        let restoreStore = try requireStore()
         let rollback = try await restoreStore.snapshot()
         guard ownsStoreGeneration(generation) else { throw AppModelError.locked }
 
@@ -5242,10 +6113,21 @@ final class AppModel: ObservableObject {
         try Task.checkCancellation()
         guard ownsStoreGeneration(generation) else { throw AppModelError.locked }
 
+        let retainedEntriesBeforeRestore = retainsCompleteJournal ? entries : nil
         var liveStoreWasReplaced = false
+        // The actor can finish its replacement transaction while this main-
+        // actor task is suspended. Make every old-book derived value and
+        // destructive reference decision fail closed before that handoff.
+        invalidateCommittedJournalProjection(invalidateRecentEntries: true)
+        await lifecycleHooks.checkpoint(
+            .afterJournalProjectionInvalidationBeforeCommit
+        )
         do {
             try await restoreStore.restore(candidate)
             liveStoreWasReplaced = true
+            await lifecycleHooks.checkpoint(
+                .afterRestoreCommitBeforeCandidateLoad
+            )
             try Task.checkCancellation()
             guard ownsStoreGeneration(generation) else {
                 throw AppModelError.locked
@@ -5275,14 +6157,55 @@ final class AppModel: ObservableObject {
             }
             state = .ready
         } catch {
-            guard liveStoreWasReplaced else { throw error }
+            if case PersistenceError.restoreTransactionStateIndeterminate = error {
+                // A failed SQLite rollback means neither the old nor candidate
+                // state may be trusted. Force the same authoritative recovery
+                // used after a committed candidate before republishing data.
+                liveStoreWasReplaced = true
+            }
+            guard liveStoreWasReplaced else {
+                // A failed/rolled-back store replacement leaves the old durable
+                // book intact. Restore the deliberately cleared complete test/
+                // preview journal so the normal idle-end republish cannot mark
+                // a false empty cache as current.
+                if let retainedEntriesBeforeRestore {
+                    entries = retainedEntriesBeforeRestore
+                }
+                throw error
+            }
             do {
-                try await restoreStore.restore(rollback)
-                try await load(from: restoreStore, mode: .rollbackRecovery)
+                // `Task.init` creates a fresh unstructured task, so cancellation
+                // of the failed restore is not inherited. Recovery must remain
+                // uncancelled through both index rebuilding and domain decode:
+                // those paths deliberately observe their current task's state.
+                let rollbackRecoveryTask = Task { @MainActor [self] in
+                    guard ownsStoreGeneration(generation) else {
+                        throw AppModelError.locked
+                    }
+                    // Candidate loading may have partially assigned decoded
+                    // state. Keep every projection unavailable across the
+                    // rollback transaction; `load` republishes only a coherent
+                    // book.
+                    invalidateCommittedJournalProjection(
+                        invalidateRecentEntries: true
+                    )
+                    try await restoreStore.restore(
+                        rollback,
+                        observesCancellation: false
+                    )
+                    guard ownsStoreGeneration(generation) else {
+                        throw AppModelError.locked
+                    }
+                    try await load(from: restoreStore, mode: .rollbackRecovery)
+                    guard ownsStoreGeneration(generation) else {
+                        throw AppModelError.locked
+                    }
+                    if profile != nil { try validateLoadedBook() }
+                }
+                try await rollbackRecoveryTask.value
                 guard ownsStoreGeneration(generation) else {
                     throw AppModelError.locked
                 }
-                if profile != nil { try validateLoadedBook() }
                 state = stateBeforeRestore
             } catch {
                 clearDecodedState()
@@ -5302,15 +6225,40 @@ final class AppModel: ObservableObject {
         _ candidate: DatabaseSnapshot
     ) async throws {
         try Task.checkCancellation()
-        let directoryURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent(
-                "MoneyUp-RestoreValidation-\(UUID().uuidString)",
-                isDirectory: true
+        // Reject record-count/identity amplification before the candidate is
+        // copied into SQLCipher. The detached worker receives explicit parent
+        // cancellation so a canceled restore cannot continue decoding rows.
+        let identityValidationTask = Task.detached(
+            priority: .userInitiated
+        ) {
+            try RestoreCandidateValidator.validateSnapshotIdentities(
+                candidate
             )
+        }
+        try await withTaskCancellationHandler {
+            try await identityValidationTask.value
+        } onCancel: {
+            identityValidationTask.cancel()
+        }
+        try Task.checkCancellation()
+
+        let directoryURL = restoreValidationDirectoryURL
         let databaseURL = directoryURL.appendingPathComponent(
             "candidate.sqlite3",
             isDirectory: false
         )
+        do {
+            // Reuse one exact owned directory. A crash can leave it behind,
+            // but the next validation removes it before any untrusted row is
+            // copied, preventing unbounded UUID-directory accumulation.
+            try Self.removeRestoreValidationDirectory(directoryURL)
+            try FileManager.default.createDirectory(
+                at: directoryURL,
+                withIntermediateDirectories: true
+            )
+        } catch {
+            throw AppModelError.invalidBook
+        }
         var validationKey = Self.temporaryRestoreValidationKey()
         defer { validationKey.resetBytes(in: 0..<validationKey.count) }
 
@@ -5334,12 +6282,6 @@ final class AppModel: ObservableObject {
         var validationFailure: (any Error)?
         do {
             try await validationStore.restore(candidate)
-            try Task.checkCancellation()
-            try await Task.detached(priority: .userInitiated) {
-                try RestoreCandidateValidator.validateSnapshotIdentities(
-                    candidate
-                )
-            }.value
             try Task.checkCancellation()
 
             let validationModel = AppModel(
@@ -5389,9 +6331,48 @@ final class AppModel: ObservableObject {
         })
     }
 
+    private var restoreValidationDirectoryURL: URL {
+        // Dependency-injected test/preview models share the host temporary
+        // directory, so isolate them by their already-unique database parent.
+        // Production has no injected URL and always uses the single `primary`
+        // location scavenged by `start()` and before every restore.
+        let discriminator = databaseURLForErase?
+            .deletingLastPathComponent()
+            .lastPathComponent ?? "primary"
+        return FileManager.default.temporaryDirectory.appendingPathComponent(
+            "MoneyUp-RestoreValidation-\(discriminator)",
+            isDirectory: true
+        )
+    }
+
     private static func removeRestoreValidationDirectory(_ url: URL) throws {
         guard FileManager.default.fileExists(atPath: url.path) else { return }
         try FileManager.default.removeItem(at: url)
+    }
+
+    private static func removeLegacyRestoreValidationDirectories() throws {
+        let temporaryDirectory = FileManager.default.temporaryDirectory
+        let prefix = "MoneyUp-RestoreValidation-"
+        let children = try FileManager.default.contentsOfDirectory(
+            at: temporaryDirectory,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        )
+        for child in children {
+            let name = child.lastPathComponent
+            guard name.hasPrefix(prefix) else { continue }
+            let suffix = String(name.dropFirst(prefix.count))
+            // Old builds used UUID.uuidString verbatim. Restrict cleanup to
+            // that exact canonical shape so no unrelated temporary directory
+            // sharing the human-readable prefix can ever be removed.
+            guard let id = UUID(uuidString: suffix),
+                  id.uuidString == suffix,
+                  try child.resourceValues(forKeys: [.isDirectoryKey])
+                      .isDirectory == true else {
+                continue
+            }
+            try FileManager.default.removeItem(at: child)
+        }
     }
 
     private func invalidateDerivedData() {
@@ -5492,9 +6473,17 @@ final class AppModel: ObservableObject {
     ) async throws -> UUID? {
         try beginJournalMutation()
         defer { endJournalMutation() }
-        let entry = try appAuthoredEntry(entry)
-        let generation = storeGeneration
         let completedLockedCaptureID = quickLogDraft?.sourceCaptureID
+        let entry = try appAuthoredEntry(
+            entry,
+            sourceSystemOverride: completedLockedCaptureID == nil
+                ? nil : "MoneyUp Locked Capture",
+            sourceFingerprintOverride: completedLockedCaptureID.map(
+                Self.lockedCaptureFingerprint
+            )
+        )
+        let generation = storeGeneration
+        let currentDraft = quickLogDraft
         if let existingCommit = quickLogCommit {
             guard existingCommit.generation != generation else {
                 throw AppModelError.transactionInProgress
@@ -5510,26 +6499,34 @@ final class AppModel: ObservableObject {
             originTimeZoneIdentifier: profile?.reportingTimeZoneIdentifier
                 ?? reportingCalendar.timeZone.identifier
         )
-        var candidateEntries = retainsCompleteJournal
-            ? entries
-            : try await transactionStore.fetchAll(
-                JournalEntry.self,
-                from: .journalEntries
-            )
-        candidateEntries.append(entry)
-        candidateEntries.sort {
-            if $0.occurredAt == $1.occurredAt { return $0.createdAt > $1.createdAt }
-            return $0.occurredAt > $1.occurredAt
-        }
         var candidateAttributions = budgetEntryAttributions
         candidateAttributions[entry.id] = attribution
-        let candidateTimeline = try budgetTimelineAfterJournalMutation(
-            journalEntries: candidateEntries,
-            attributions: candidateAttributions,
-            affectedReportingMonths: [
-                try budgetAffectedMonth(for: entry, attribution: attribution)
-            ].compactMap { $0 }
+        let affectedMonths = [
+            try budgetAffectedMonth(for: entry, attribution: attribution)
+        ].compactMap { $0 }
+        var candidateEntries = try await journalEntriesForBudgetMutation(
+            from: transactionStore,
+            affectedReportingMonths: affectedMonths
         )
+        if candidateEntries != nil {
+            candidateEntries?.append(entry)
+            candidateEntries?.sort {
+                if $0.occurredAt == $1.occurredAt {
+                    return $0.createdAt > $1.createdAt
+                }
+                return $0.occurredAt > $1.occurredAt
+            }
+        }
+        let candidateTimeline: BudgetConfigurationTimeline?
+        if let candidateEntries {
+            candidateTimeline = try budgetTimelineAfterJournalMutation(
+                journalEntries: candidateEntries,
+                attributions: candidateAttributions,
+                affectedReportingMonths: affectedMonths
+            )
+        } else {
+            candidateTimeline = nil
+        }
         var pendingWrites = additionalWrites
         let receiptAttachment: ReceiptAttachment?
         if let receiptData {
@@ -5571,6 +6568,16 @@ final class AppModel: ObservableObject {
         // draft or the committed journal entry remains, never a promotable
         // duplicate of an already committed transaction.
         if let completedLockedCaptureID {
+            guard let currentDraft,
+                  currentDraft.sourceCaptureID == completedLockedCaptureID else {
+                throw AppModelError.invalidBook
+            }
+            await pendingDraftWrite?.value
+            try await transactionStore.upsert(
+                currentDraft,
+                id: QuickLogDraft.primaryRecordID,
+                in: .quickLogDrafts
+            )
             let remainingCaptureCount = try await lockedCaptureStore.remove(
                 id: completedLockedCaptureID
             )
@@ -5584,6 +6591,10 @@ final class AppModel: ObservableObject {
         let commitTask = Task {
             await pendingDraftWrite?.value
             await lifecycleHooks.checkpoint(.beforeJournalCommit)
+            invalidateCommittedJournalProjection()
+            await lifecycleHooks.checkpoint(
+                .afterJournalProjectionInvalidationBeforeCommit
+            )
             try await transactionStore.write(
                 writes,
                 removing: [
@@ -5606,6 +6617,9 @@ final class AppModel: ObservableObject {
             }
         }
         try await commitTask.value
+        await lifecycleHooks.checkpoint(
+            .afterJournalCommitBeforeProjectionRefresh
+        )
         guard isCurrentStoreGeneration(generation) else { return nil }
         quickLogDraft = nil
         if !additionalAccounts.isEmpty {
@@ -5616,7 +6630,7 @@ final class AppModel: ObservableObject {
         }
         if let candidateTimeline { budgetConfigurationTimeline = candidateTimeline }
         budgetEntryAttributions = candidateAttributions
-        if retainsCompleteJournal { entries = candidateEntries }
+        if retainsCompleteJournal, let candidateEntries { entries = candidateEntries }
         await refreshJournalAfterMutation()
         if completedLockedCaptureID != nil {
             do {
@@ -5625,8 +6639,8 @@ final class AppModel: ObservableObject {
                     generation: generation,
                     requestLogRoute: false
                 )
-            } catch is LockedCaptureStoreError {
-                recordRecoveryIssue("locked_captures/unavailable")
+            } catch let error as LockedCaptureStoreError {
+                recordLockedCaptureStoreIssue(error)
             } catch {
                 // The journal entry is already durable. Surface a safe
                 // recovery signal instead of reporting Save as failed.
@@ -5660,6 +6674,46 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Replaces the debounce with a chained immediate write. Keeping the
+    /// previous task in the chain ensures an older draft can never land after
+    /// the latest inactivity snapshot.
+    private func flushQuickLogDraftImmediately() {
+        // Restore and journal commit own the durable draft boundary. Starting
+        // a convenience write inside either transaction could resurrect the
+        // pre-transaction form after its authoritative commit. Their normal
+        // completion/lock path performs the required final flush instead.
+        guard !isLifecycleMutationInProgress,
+              !isJournalMutationInProgress,
+              quickLogCommit == nil else { return }
+        let previousWrite = quickLogDraftWriteTask
+        previousWrite?.cancel()
+        guard let draftStore = store else {
+            quickLogDraftWriteTask = nil
+            return
+        }
+        let draft = quickLogDraft
+        let backgroundTask = UIApplication.shared.beginBackgroundTask(
+            withName: "Save MoneyUp draft",
+            expirationHandler: nil
+        )
+
+        quickLogDraftWriteTask = Task {
+            defer {
+                if backgroundTask != .invalid {
+                    UIApplication.shared.endBackgroundTask(backgroundTask)
+                }
+            }
+            await previousWrite?.value
+            await lifecycleHooks.checkpoint(.beforeQuickLogDraftWrite)
+            await writeQuickLogDraft(draft, to: draftStore)
+        }
+    }
+
+    /// Deterministic lifecycle synchronization without timing sleeps.
+    func waitForPendingQuickLogDraftFlush() async {
+        await quickLogDraftWriteTask?.value
+    }
+
     private func writeQuickLogDraft(
         _ draft: QuickLogDraft?,
         to draftStore: EncryptedRecordStore
@@ -5688,12 +6742,18 @@ final class AppModel: ObservableObject {
     private func refreshJournalDerivedState(
         from journalStore: EncryptedRecordStore? = nil,
         loadRecentEntries: Bool = true,
-        now: Date = Date(),
+        now requestedNow: Date? = nil,
         calendar: Calendar? = nil,
-        observesCancellation: Bool = true
+        observesCancellation: Bool = true,
+        expectedProjectionRevision: UInt64? = nil
     ) async throws {
         let generation = storeGeneration
-        let projectionRevision = journalProjectionRevision
+        let projectionRevision = expectedProjectionRevision
+            ?? journalProjectionRevision
+        guard projectionRevision == journalProjectionRevision else {
+            throw CancellationError()
+        }
+        let now = requestedNow ?? currentDate()
         let reportCalendar = calendar ?? reportingCalendar
         let currentStore: EncryptedRecordStore
         if let journalStore {
@@ -5703,8 +6763,17 @@ final class AppModel: ObservableObject {
         }
         let accountSnapshot = accounts
         let validAccountIDs = Set(accountSnapshot.map(\.id))
+        let expectedAccountCurrencies = Dictionary(
+            uniqueKeysWithValues: accountSnapshot.compactMap { account in
+                account.currency.map { (account.id, $0) }
+            }
+        )
         let ledgerIndex = try await currentStore.journalLedgerIndex(
-            validAccountIDs: validAccountIDs
+            validAccountIDs: validAccountIDs,
+            expectedAccountCurrencies: expectedAccountCurrencies
+        )
+        let quarantinedJournalEntryIDs = ledgerIndex.invalidRelationshipEntryIDs.union(
+            ledgerIndex.issues.compactMap { UUID(uuidString: $0.recordID) }
         )
         let diagnostics = try await currentStore.journalIndexDiagnostics()
         guard ownsStoreGeneration(generation) else { throw AppModelError.locked }
@@ -5726,7 +6795,10 @@ final class AppModel: ObservableObject {
                 }
                 recordHistoryDecodeIssues(page.issues)
                 for entry in page.entries where recentEntries.count < 80 {
-                    if entry.postings.allSatisfy({ validAccountIDs.contains($0.accountID) }) {
+                    if !quarantinedJournalEntryIDs.contains(entry.id),
+                       entry.postings.allSatisfy({
+                           validAccountIDs.contains($0.accountID)
+                       }) {
                         recentEntries.append(entry)
                     }
                 }
@@ -5768,7 +6840,7 @@ final class AppModel: ObservableObject {
             ) else { throw AppModelError.invalidBook }
             let events = try await currentStore.fetchJournalPostingEvents(
                 originDayKeyRange: eventDayKeys,
-                excludingEntryIDs: ledgerIndex.invalidRelationshipEntryIDs
+                excludingEntryIDs: quarantinedJournalEntryIDs
             )
             guard ownsStoreGeneration(generation) else {
                 throw AppModelError.locked
@@ -5816,6 +6888,52 @@ final class AppModel: ObservableObject {
             }.value
         }
 
+        var preparedBudgetProjection: ClosedMonthBudgetProjection?
+        if profile != nil, !budgetConfigurationTimelineInvalid {
+            let budgetCalendar = reportingCalendar
+            let timeline = try validatedBudgetConfigurationTimeline(asOf: now)
+            guard let currentMonth = budgetCalendar.dateInterval(
+                of: .month,
+                for: now
+            )?.start else { throw AppModelError.invalidBook }
+            let replayStart = budgetRolloverReplayStart(
+                timeline: timeline,
+                currentMonthStart: currentMonth,
+                calendar: budgetCalendar
+            ) ?? currentMonth
+            let events: [LedgerPostingEvent]
+            if replayStart < currentMonth {
+                guard let dayKeys = FinancialPeriodBoundary.dayKeyRange(
+                    for: DateInterval(start: replayStart, end: currentMonth),
+                    calendar: budgetCalendar
+                ) else { throw AppModelError.invalidBook }
+                events = try await currentStore.fetchJournalPostingEvents(
+                    originDayKeyRange: dayKeys,
+                    excludingEntryIDs: quarantinedJournalEntryIDs
+                )
+            } else {
+                events = []
+            }
+            guard ownsStoreGeneration(generation) else {
+                throw AppModelError.locked
+            }
+            preparedBudgetProjection = ClosedMonthBudgetProjection(
+                reportingTimeZoneIdentifier: budgetCalendar.timeZone.identifier,
+                currentMonthStart: currentMonth,
+                coverageStart: replayStart,
+                currency: timeline.currency,
+                monthlySpending: try closedMonthBudgetSpending(
+                    events: events,
+                    attributions: budgetEntryAttributions,
+                    currency: timeline.currency,
+                    replayStart: replayStart,
+                    currentMonthStart: currentMonth,
+                    calendar: budgetCalendar,
+                    excludingEntryIDs: quarantinedJournalEntryIDs
+                )
+            )
+        }
+
         await lifecycleHooks.checkpoint(.afterJournalProjectionReadBeforePublish)
         guard ownsStoreGeneration(generation) else { throw AppModelError.locked }
         guard projectionRevision == journalProjectionRevision else {
@@ -5824,9 +6942,11 @@ final class AppModel: ObservableObject {
         journalEntryCount = max(0, ledgerIndex.entryCount)
         journalStoredEntryCount = diagnostics.journalRecordCount
         journalReferenceCounts = ledgerIndex.referenceCounts
-        invalidJournalEntryIDs = ledgerIndex.invalidRelationshipEntryIDs
+        journalReferenceCountsAreCurrent = true
+        invalidJournalEntryIDs = quarantinedJournalEntryIDs
         recordHistoryDecodeIssues(ledgerIndex.issues)
         if loadRecentEntries { entries = recentEntries }
+        closedMonthBudgetProjection = preparedBudgetProjection
         balanceCache = .available(ledgerIndex.balances)
         reportCache = preparedReports?.reports.mapValues { .available($0) } ?? [:]
         reportCacheDay = reportCalendar.startOfDay(for: now)
@@ -5844,27 +6964,163 @@ final class AppModel: ObservableObject {
             monthToDateComparisonCache = nil
         }
         monthToDateComparisonCacheDay = reportCalendar.startOfDay(for: now)
+        if loadRecentEntries { journalRecentEntriesAreCurrent = true }
+        // Clear the recovery marker in the same actor turn as the guarded
+        // publish. Clearing it in a caller after this async method returns
+        // creates a reentrancy window where a newer mutation can set the
+        // marker and then have this older continuation erase it.
+        journalDerivedRefreshWasDeferred = false
         recoveryIssues.removeAll {
             $0 == "journal_entries/derived-refresh-unavailable"
         }
+        // `entries` publishes before the complete closed-month projection, so
+        // make one final redacted widget publication from the coherent state.
+        refreshBudgetWidgetSnapshot()
     }
 
     private func scheduleJournalDerivedRefresh() {
-        guard journalDerivedRefreshTask == nil,
-              store != nil,
+        guard store != nil,
               state == .ready || state == .onboarding else { return }
+        guard !isWorking,
+              !isLifecycleMutationInProgress,
+              !manualJournalMutationIsActive,
+              standaloneJournalMutationsInProgress == 0 else {
+            journalDerivedRefreshWasDeferred = true
+            return
+        }
+        // Test fixtures that deliberately retain the complete journal derive
+        // synchronously from that collection. Wait until a writer finishes so
+        // a postcommit/prepublish window cannot expose its old widget state.
+        // A compact refresh would replace the collection with a bounded window.
+        guard !retainsCompleteJournal else {
+            republishRetainedJournalProjectionIfPossible()
+            return
+        }
+        guard journalDerivedRefreshTask == nil else {
+            // A real invalidation always advances `journalProjectionRevision`.
+            // If the running task can still publish, it also satisfies a
+            // duplicate view request and clears this marker on success.
+            journalDerivedRefreshWasDeferred = true
+            return
+        }
+
+        let scheduledRevision = journalProjectionRevision
+        journalDerivedRefreshWasDeferred = false
+        let token = UUID()
+        journalDerivedRefreshTaskToken = token
         journalDerivedRefreshTask = Task { [weak self] in
             guard let self else { return }
-            defer { self.journalDerivedRefreshTask = nil }
-            try? await self.refreshJournalDerivedState()
+            do {
+                try await self.refreshJournalDerivedState(
+                    expectedProjectionRevision: scheduledRevision
+                )
+            } catch {
+                // A mutation invalidates the revision before its durable
+                // write. Its end path observes the retained deferred marker
+                // and starts one coherent successor refresh.
+            }
+            guard self.journalDerivedRefreshTaskToken == token else { return }
+            self.journalDerivedRefreshTask = nil
+            self.journalDerivedRefreshTaskToken = nil
+            self.resumeDeferredJournalDerivedRefreshIfPossible()
         }
+    }
+
+    /// Test/previews can deliberately retain the complete journal in memory.
+    /// If a store write fails after commit-boundary invalidation, that retained
+    /// collection still represents the durable precommit book; restore its
+    /// recent/count/widget projection instead of leaving the widget unavailable.
+    private func republishRetainedJournalProjectionIfPossible() {
+        guard retainsCompleteJournal,
+              store != nil,
+              state == .ready || state == .onboarding else { return }
+        journalEntryCount = entries.count
+        journalStoredEntryCount = entries.count
+        journalRecentEntriesAreCurrent = true
+        journalDerivedRefreshWasDeferred = false
+        refreshBudgetWidgetSnapshot()
+    }
+
+    private func resumeDeferredJournalDerivedRefreshIfPossible() {
+        guard journalDerivedRefreshWasDeferred else { return }
+        scheduleJournalDerivedRefresh()
+    }
+
+    /// Lets an unavailable-state surface request a fresh compact projection.
+    /// A retry is deliberately user driven after a standalone read failure so
+    /// persistent store errors cannot create a tight background retry loop.
+    func retryUnavailableJournalProjection() {
+        guard !retainsCompleteJournal,
+              !journalRecentEntriesAreCurrent else { return }
+        scheduleJournalDerivedRefresh()
+    }
+
+    /// Invalidates every in-flight read before a writer suspends. The last
+    /// published caches remain internally usable while they still describe the
+    /// durable pre-commit book; the commit path clears them synchronously before
+    /// yielding again. This separation keeps balance and rollover validation
+    /// available to the mutation without allowing an older async read to win.
+    private func invalidateInFlightJournalProjection() {
+        journalProjectionRevision &+= 1
+        journalDerivedRefreshWasDeferred = true
+    }
+
+    private func invalidateCommittedJournalProjection(
+        invalidateRecentEntries: Bool = false
+    ) {
+        journalReferenceCountsAreCurrent = false
+        closedMonthBudgetProjection = nil
+        invalidateDerivedData()
+        if invalidateRecentEntries || !retainsCompleteJournal {
+            // Never let an empty/stale bounded cache masquerade as the durable
+            // journal after the store actor crosses its commit boundary.
+            journalRecentEntriesAreCurrent = false
+            entries = []
+            journalEntryCount = 0
+        }
+        publishUnavailableBudgetWidgetSnapshot()
+    }
+
+    /// A committed journal mutation must never leave a pre-commit percentage
+    /// visible while its complete budget projection is being rebuilt. Preserve
+    /// only the opt-in bit and current reporting-period boundary.
+    private func publishUnavailableBudgetWidgetSnapshot() {
+        guard let profile else { return }
+        guard profile.showsBudgetStatusWidget else {
+            disableBudgetWidgetSnapshot()
+            return
+        }
+        let now = currentDate()
+        guard let period = reportingCalendar.dateInterval(of: .month, for: now),
+              let periodToken = BudgetWidgetSnapshotStore.periodToken(
+                  for: period.start,
+                  calendar: reportingCalendar
+              ) else {
+            budgetWidgetSnapshotStore.publish(enabled: true, percentUsed: nil)
+            WidgetCenter.shared.reloadTimelines(ofKind: "MoneyUpQuickLog")
+            return
+        }
+        budgetWidgetSnapshotStore.publish(
+            enabled: true,
+            percentUsed: nil,
+            periodToken: periodToken,
+            validUntil: period.end
+        )
+        WidgetCenter.shared.reloadTimelines(ofKind: "MoneyUpQuickLog")
     }
 
     /// Deterministic app-level tests use this to observe completion of the
     /// single scheduled compact projection refresh without timing sleeps.
     func waitForPendingJournalDerivedRefresh() async {
-        let pending = journalDerivedRefreshTask
-        await pending?.value
+        while let pending = journalDerivedRefreshTask {
+            await pending.value
+        }
+    }
+
+    /// Exercises the production recovering-load path against an injected test
+    /// store without involving Keychain-backed application startup.
+    func reloadPersistedBookForTesting() async throws {
+        try await load(from: requireStore())
     }
 
     /// The journal transaction is already durable when this runs. A compact
@@ -5872,9 +7128,13 @@ final class AppModel: ObservableObject {
     /// not throw a misleading Save error for an operation that did commit.
     private func refreshJournalAfterMutation() async {
         journalProjectionRevision &+= 1
+        invalidateCommittedJournalProjection()
         if retainsCompleteJournal {
             journalEntryCount = entries.count
             journalStoredEntryCount = entries.count
+            journalRecentEntriesAreCurrent = true
+            journalDerivedRefreshWasDeferred = false
+            refreshBudgetWidgetSnapshot()
             return
         }
         let mutationGeneration = storeGeneration
@@ -5888,13 +7148,10 @@ final class AppModel: ObservableObject {
             reportCacheDay = nil
             monthToDateComparisonCache = nil
             monthToDateComparisonCacheDay = nil
+            closedMonthBudgetProjection = nil
             if let refreshStore = store,
                let diagnostics = try? await refreshStore.journalIndexDiagnostics() {
                 journalStoredEntryCount = diagnostics.journalRecordCount
-                journalEntryCount = max(
-                    0,
-                    diagnostics.indexedEntryCount - invalidJournalEntryIDs.count
-                )
             }
             let issue = "journal_entries/derived-refresh-unavailable"
             if !recoveryIssues.contains(issue) { recoveryIssues.append(issue) }
@@ -5907,8 +7164,10 @@ final class AppModel: ObservableObject {
         mode: BookLoadMode = .recovering
     ) async throws {
         journalProjectionRevision &+= 1
-        recoveryIssues = []
         retainsCompleteJournal = false
+        invalidateCommittedJournalProjection()
+        recoveryIssues = []
+        closedMonthBudgetProjection = nil
         budgetConfigurationTimeline = nil
         budgetConfigurationTimelineInvalid = false
         profile = try await store.fetch(
@@ -5929,36 +7188,36 @@ final class AppModel: ObservableObject {
                 in: .profile
             )
         }
-        let recoveredAccounts = try await store.fetchAllRecovering(
+        let recoveredAccounts = try await store.fetchAllIdentifiedRecovering(
             LedgerAccount.self,
             from: .accounts
         )
-        let recoveredBudgets = try await store.fetchAllRecovering(
+        let recoveredBudgets = try await store.fetchAllIdentifiedRecovering(
             BudgetNode.self,
             from: .budgetNodes
         )
-        let recoveredSchedules = try await store.fetchAllRecovering(
+        let recoveredSchedules = try await store.fetchAllIdentifiedRecovering(
             ScheduledTransaction.self,
             from: .scheduledTransactions
         )
-        let recoveredHoldings = try await store.fetchAllRecovering(
+        let recoveredHoldings = try await store.fetchAllIdentifiedRecovering(
             InvestmentHolding.self,
             from: .investmentHoldings
         )
         let recoveredAttachments = try await store.receiptAttachmentIndexSnapshot()
-        let recoveredRates = try await store.fetchAllRecovering(
+        let recoveredRates = try await store.fetchAllIdentifiedRecovering(
             DatedExchangeRate.self,
             from: .exchangeRates
         )
-        let recoveredSnapshots = try await store.fetchAllRecovering(
+        let recoveredSnapshots = try await store.fetchAllIdentifiedRecovering(
             NetWorthSnapshot.self,
             from: .netWorthSnapshots
         )
-        let recoveredGoals = try await store.fetchAllRecovering(
+        let recoveredGoals = try await store.fetchAllIdentifiedRecovering(
             SavingsGoal.self,
             from: .savingsGoals
         )
-        let recoveredBudgetAttributions = try await store.fetchAllRecovering(
+        let recoveredBudgetAttributions = try await store.fetchAllIdentifiedRecovering(
             BudgetEntryAttribution.self,
             from: .budgetEntryAttributions
         )
@@ -5974,24 +7233,64 @@ final class AppModel: ObservableObject {
                 "budget_configuration_timelines/\(BudgetConfigurationTimeline.primaryRecordID)"
             )
         }
-        accounts = recoveredAccounts.values
+        accounts = try quarantiningDuplicateLogicalIDs(
+            recoveredAccounts.values,
+            in: .accounts,
+            observesCancellation: mode.observesCancellationWhileLoading
+        )
         entries = []
-        budgetNodes = recoveredBudgets.values
-        scheduledTransactions = recoveredSchedules.values.sorted {
+        budgetNodes = try quarantiningDuplicateLogicalIDs(
+            recoveredBudgets.values,
+            in: .budgetNodes,
+            observesCancellation: mode.observesCancellationWhileLoading
+        )
+        scheduledTransactions = try quarantiningDuplicateLogicalIDs(
+            recoveredSchedules.values,
+            in: .scheduledTransactions,
+            observesCancellation: mode.observesCancellationWhileLoading
+        ).sorted {
             $0.nextOccurrence < $1.nextOccurrence
         }
-        investmentHoldings = recoveredHoldings.values
-        receiptAttachmentMetadata = recoveredAttachments.metadata
-        exchangeRates = recoveredRates.values.sorted {
+        investmentHoldings = try quarantiningDuplicateLogicalIDs(
+            recoveredHoldings.values,
+            in: .investmentHoldings,
+            observesCancellation: mode.observesCancellationWhileLoading
+        )
+        receiptAttachmentMetadata = try quarantiningDuplicateLogicalIDs(
+            recoveredAttachments.metadata,
+            in: .receiptAttachments,
+            observesCancellation: mode.observesCancellationWhileLoading
+        )
+        exchangeRates = try quarantiningDuplicateLogicalIDs(
+            recoveredRates.values,
+            in: .exchangeRates,
+            observesCancellation: mode.observesCancellationWhileLoading
+        ).sorted {
             if $0.effectiveContext.dayKey == $1.effectiveContext.dayKey {
                 return $0.createdAt > $1.createdAt
             }
             return $0.effectiveContext.dayKey > $1.effectiveContext.dayKey
         }
-        netWorthSnapshots = recoveredSnapshots.values.sorted { $0.capturedAt > $1.capturedAt }
-        savingsGoals = recoveredGoals.values.sorted { $0.targetDate < $1.targetDate }
+        netWorthSnapshots = try quarantiningDuplicateLogicalIDs(
+            recoveredSnapshots.values,
+            in: .netWorthSnapshots,
+            observesCancellation: mode.observesCancellationWhileLoading
+        ).sorted { $0.capturedAt > $1.capturedAt }
+        savingsGoals = try quarantiningDuplicateLogicalIDs(
+            recoveredGoals.values,
+            in: .savingsGoals,
+            observesCancellation: mode.observesCancellationWhileLoading
+        ).sorted { $0.targetDate < $1.targetDate }
+        let recoveredAttributions = try quarantiningDuplicateLogicalIDs(
+            recoveredBudgetAttributions.values,
+            in: .budgetEntryAttributions,
+            observesCancellation: mode.observesCancellationWhileLoading
+        )
+        if recoveredAttributions.count != recoveredBudgetAttributions.values.count {
+            budgetConfigurationTimelineInvalid = true
+        }
         budgetEntryAttributions = [:]
-        for attribution in recoveredBudgetAttributions.values {
+        for attribution in recoveredAttributions {
             if budgetEntryAttributions.updateValue(
                 attribution,
                 forKey: attribution.id
@@ -6037,6 +7336,9 @@ final class AppModel: ObservableObject {
         for entryID in requestedInvestmentEntryIDs.sorted(by: {
             $0.uuidString < $1.uuidString
         }) {
+            if mode.observesCancellationWhileLoading {
+                try Task.checkCancellation()
+            }
             do {
                 if let entry = try await store.fetch(
                     JournalEntry.self,
@@ -6047,16 +7349,27 @@ final class AppModel: ObservableObject {
                 } else {
                     recoveryIssues.append("journal_entries/missing-investment-link")
                 }
+            } catch is CancellationError {
+                throw CancellationError()
             } catch {
                 recoveryIssues.append("journal_entries/unreadable-investment-link")
             }
         }
         investmentLinkedEntriesByID = investmentEntriesByID
-        quarantineInvalidRelationships(
+        try quarantineInvalidRelationships(
             existingAttachmentEntryIDs: existingAttachmentEntryIDs,
             existingScheduledEntryIDs: existingScheduledEntryIDs,
             existingBudgetAttributionEntryIDs: existingBudgetAttributionEntryIDs,
-            investmentEntriesByID: investmentEntriesByID
+            investmentEntriesByID: investmentEntriesByID,
+            observesCancellation: mode.observesCancellationWhileLoading
+        )
+        try await validateBudgetEntryAttributionsAfterLoad(in: store)
+        // Rollover's complete closed-month projection depends on the persisted
+        // dated configuration. Prepare or quarantine that timeline before the
+        // normalized journal refresh derives any budget state from it.
+        try await prepareBudgetConfigurationTimelineAfterLoad(
+            in: store,
+            persistsMigration: mode.persistsBudgetTimelineMigration
         )
         try await refreshJournalDerivedState(
             from: store,
@@ -6082,7 +7395,6 @@ final class AppModel: ObservableObject {
             }
             return invalid
         }
-        try await prepareBudgetConfigurationTimelineAfterLoad(in: store)
         do {
             quickLogDraft = try await store.fetch(
                 QuickLogDraft.self,
@@ -6109,6 +7421,8 @@ final class AppModel: ObservableObject {
     }
 
     func promotePendingLockedCapture() async throws {
+        try beginLockedCapturePromotion()
+        defer { endLockedCapturePromotion() }
         let generation = storeGeneration
         let currentStore = try requireStore()
         try await promoteLockedCaptureIfPossible(
@@ -6117,12 +7431,34 @@ final class AppModel: ObservableObject {
         )
     }
 
+    private func beginLockedCapturePromotion() throws {
+        guard !isLifecycleMutationInProgress,
+              !isWorking,
+              state == .ready,
+              !isJournalMutationInProgress,
+              scheduleMutationsInProgress.isEmpty,
+              scheduleEntryMatchesInProgress.isEmpty,
+              investmentMutationsInProgress.isEmpty else {
+            throw AppModelError.transactionInProgress
+        }
+        lockedCapturePromotionInProgress = true
+    }
+
+    private func endLockedCapturePromotion() {
+        lockedCapturePromotionInProgress = false
+        applyDeferredLockIfPossible()
+    }
+
+    private static func lockedCaptureFingerprint(_ id: UUID) -> String {
+        "locked-capture:\(id.uuidString.lowercased())"
+    }
+
     private func promoteLockedCaptureIfPossible(
         to store: EncryptedRecordStore,
         generation: Int,
         requestLogRoute: Bool = true
     ) async throws {
-        let captures = try await lockedCaptureStore.all()
+        var captures = try await lockedCaptureStore.all()
         guard ownsStoreGeneration(generation) else { return }
         pendingLockedCaptureCount = captures.count
 
@@ -6133,7 +7469,22 @@ final class AppModel: ObservableObject {
             recoveryIssues.removeAll { $0.hasPrefix("locked_captures/") }
             return
         }
-        guard quickLogDraft == nil, let capture = captures.first else {
+        guard quickLogDraft == nil else {
+            recoveryIssues.removeAll { $0.hasPrefix("locked_captures/") }
+            return
+        }
+
+        while let replay = captures.first,
+              try await store.containsJournalEntry(
+                sourceFingerprint: Self.lockedCaptureFingerprint(replay.id)
+              ) {
+            pendingLockedCaptureCount = try await lockedCaptureStore.remove(
+                id: replay.id
+            )
+            captures.removeFirst()
+            guard ownsStoreGeneration(generation) else { return }
+        }
+        guard let capture = captures.first else {
             recoveryIssues.removeAll { $0.hasPrefix("locked_captures/") }
             return
         }
@@ -6188,6 +7539,123 @@ final class AppModel: ObservableObject {
         recoveryIssues.append(issue)
     }
 
+    private func recordLockedCaptureStoreIssue(
+        _ error: LockedCaptureStoreError
+    ) {
+        recoveryIssues.removeAll { $0.hasPrefix("locked_captures/") }
+        let suffix = error.isDefinitivelyUnrecoverable
+            ? "unrecoverable"
+            : "unavailable"
+        recordRecoveryIssue("locked_captures/\(suffix)")
+    }
+
+    /// Classifies each account hierarchy once. A root-to-leaf walk for every
+    /// account is quadratic for a deep but otherwise valid hierarchy and can
+    /// make opening an authenticated archive appear to hang. Invalidity is
+    /// inherited by descendants, so missing parents, kind mismatches, and
+    /// every member/descendant of a cycle are quarantined together.
+    nonisolated static func invalidAccountHierarchyIDs(
+        in accounts: [LedgerAccount],
+        observesCancellation: Bool = true
+    ) throws -> Set<UUID> {
+        let accountByID = Dictionary(
+            uniqueKeysWithValues: accounts.map { ($0.id, $0) }
+        )
+        // 1 = active path, 2 = resolves to a valid root, 3 = invalid.
+        var resolutionByID: [UUID: UInt8] = [:]
+        resolutionByID.reserveCapacity(accountByID.count)
+        var inspectedCount = 0
+
+        for account in accounts where resolutionByID[account.id] == nil {
+            var path: [UUID] = []
+            var currentID: UUID? = account.id
+            var resolvesToValidRoot = true
+
+            while let id = currentID {
+                if observesCancellation,
+                   inspectedCount.isMultiple(of: 256) {
+                    try Task.checkCancellation()
+                }
+                inspectedCount += 1
+
+                switch resolutionByID[id] {
+                case 1:
+                    resolvesToValidRoot = false
+                    currentID = nil
+                    continue
+                case 2:
+                    resolvesToValidRoot = true
+                    currentID = nil
+                    continue
+                case 3:
+                    resolvesToValidRoot = false
+                    currentID = nil
+                    continue
+                default:
+                    break
+                }
+
+                guard let current = accountByID[id] else {
+                    resolvesToValidRoot = false
+                    break
+                }
+                resolutionByID[id] = 1
+                path.append(id)
+
+                guard let parentID = current.parentID else {
+                    resolvesToValidRoot = true
+                    break
+                }
+                guard let parent = accountByID[parentID],
+                      parent.kind == current.kind else {
+                    resolvesToValidRoot = false
+                    break
+                }
+                currentID = parentID
+            }
+
+            let resolution: UInt8 = resolvesToValidRoot ? 2 : 3
+            for id in path {
+                resolutionByID[id] = resolution
+            }
+        }
+
+        return Set(resolutionByID.compactMap { item in
+            item.value == 3 ? item.key : nil
+        })
+    }
+
+    /// Rejects logical identity ambiguity without deleting forensic/recovery
+    /// evidence from the encrypted store.
+    private func quarantiningDuplicateLogicalIDs<Value: Identifiable>(
+        _ values: [Value],
+        in collection: RecordCollection,
+        observesCancellation: Bool
+    ) throws -> [Value] where Value.ID == UUID {
+        var identityCounts: [UUID: Int] = [:]
+        for (offset, value) in values.enumerated() {
+            if observesCancellation, offset.isMultiple(of: 256) {
+                try Task.checkCancellation()
+            }
+            identityCounts[value.id, default: 0] += 1
+        }
+        let duplicateIDs = Set(identityCounts.compactMap {
+            $0.value > 1 ? $0.key : nil
+        })
+        guard !duplicateIDs.isEmpty else { return values }
+
+        recoveryIssues.append(contentsOf: duplicateIDs.sorted {
+            $0.uuidString < $1.uuidString
+        }.map {
+            "\(collection.rawValue)/duplicate-\($0)"
+        })
+        // Physical record keys are not exposed by decoded domain values.
+        // Keeping an arbitrary winner would let another physical row restore
+        // stale data after a canonical update/delete. Preserve every encrypted
+        // row for recovery, but expose none of the ambiguous logical values.
+        return values.filter { !duplicateIDs.contains($0.id) }
+    }
+
     /// Invalid rows remain untouched in SQLCipher and in portable backups, but
     /// are excluded from calculations until repaired. This keeps one orphan
     /// from turning the entire otherwise-readable book into an erase screen.
@@ -6195,36 +7663,13 @@ final class AppModel: ObservableObject {
         existingAttachmentEntryIDs: Set<UUID>? = nil,
         existingScheduledEntryIDs: Set<UUID>? = nil,
         existingBudgetAttributionEntryIDs: Set<UUID>? = nil,
-        investmentEntriesByID: [UUID: JournalEntry] = [:]
-    ) {
-        var seenAccountIDs = Set<UUID>()
-        accounts = accounts.filter { account in
-            let unique = seenAccountIDs.insert(account.id).inserted
-            if !unique { recoveryIssues.append("accounts/duplicate-\(account.id)") }
-            return unique
-        }
-
-        let accountByID = Dictionary(
-            uniqueKeysWithValues: accounts.map { ($0.id, $0) }
+        investmentEntriesByID: [UUID: JournalEntry] = [:],
+        observesCancellation: Bool
+    ) throws {
+        let invalidHierarchyIDs = try Self.invalidAccountHierarchyIDs(
+            in: accounts,
+            observesCancellation: observesCancellation
         )
-        let invalidHierarchyIDs = Set(accounts.compactMap { account -> UUID? in
-            var currentID: UUID? = account.id
-            var visited = Set<UUID>()
-            while let id = currentID {
-                guard visited.insert(id).inserted,
-                      let current = accountByID[id] else {
-                    return account.id
-                }
-                if let parentID = current.parentID {
-                    guard let parent = accountByID[parentID],
-                          parent.kind == current.kind else {
-                        return account.id
-                    }
-                }
-                currentID = current.parentID
-            }
-            return nil
-        })
         if !invalidHierarchyIDs.isEmpty {
             recoveryIssues.append(contentsOf: invalidHierarchyIDs.map {
                 "accounts/orphan-or-cycle-\($0)"
@@ -6232,6 +7677,9 @@ final class AppModel: ObservableObject {
             accounts.removeAll { invalidHierarchyIDs.contains($0.id) }
         }
         var accountIDs = Set(accounts.map(\.id))
+        let retainedAccountByID = Dictionary(
+            uniqueKeysWithValues: accounts.map { ($0.id, $0) }
+        )
 
         let expenseIDs = Set(accounts.filter { $0.kind == .expense }.map(\.id))
         let invalidBudgetIDs = Set(budgetNodes.filter {
@@ -6274,11 +7722,20 @@ final class AppModel: ObservableObject {
             }
             return valid
         }
-        scheduledTransactions.removeAll { item in
+        try scheduledTransactions.removeAll { item in
             let linkedEntryIDs = Set(item.resolutions.compactMap(\.linkedEntryID))
+            let invalidLifecycle: Bool
+            do {
+                try item.validateLifecycle(calendar: reportingCalendar)
+                invalidLifecycle = false
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                invalidLifecycle = true
+            }
             let invalid = !accountIDs.contains(item.accountID)
                 || !accountIDs.contains(item.categoryAccountID)
-                || (try? item.validateLifecycle(calendar: reportingCalendar)) == nil
+                || invalidLifecycle
                 || !linkedEntryIDs.isDisjoint(with: reusedScheduleEntryIDs)
                 || existingScheduledEntryIDs.map {
                     !linkedEntryIDs.isSubset(of: $0)
@@ -6306,10 +7763,10 @@ final class AppModel: ObservableObject {
             }
         }
         let reusedEntryIDs = Set(entryOwners.filter { $0.value.count > 1 }.keys)
-        investmentHoldings.removeAll { holding in
-            let funding = accounts.first { $0.id == holding.accountID }
+        try investmentHoldings.removeAll { holding in
+            let funding = retainedAccountByID[holding.accountID]
             let position = holding.positionAccountID.flatMap { id in
-                accounts.first { $0.id == id }
+                retainedAccountByID[id]
             }
             let holdingCurrencies = Set(
                 [holding.price?.currency]
@@ -6338,14 +7795,18 @@ final class AppModel: ObservableObject {
             }
             let invalidLinks: Bool
             if holding.positionAccountID != nil {
-                let accountMap = Dictionary(
-                    uniqueKeysWithValues: accounts.map { ($0.id, $0) }
-                )
-                invalidLinks = (try? InvestmentLedgerIntegrity.validate(
-                    holding: holding,
-                    accountsByID: accountMap,
-                    entriesByID: investmentEntriesByID
-                )) == nil
+                do {
+                    try InvestmentLedgerIntegrity.validate(
+                        holding: holding,
+                        accountsByID: retainedAccountByID,
+                        entriesByID: investmentEntriesByID
+                    )
+                    invalidLinks = false
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
+                    invalidLinks = true
+                }
             } else {
                 invalidLinks = !holding.linkedEntryIDs.isEmpty
             }
@@ -6698,6 +8159,10 @@ final class AppModel: ObservableObject {
 
         let generation = storeGeneration
         let lifecycleStore = try requireStore()
+        invalidateCommittedJournalProjection()
+        await lifecycleHooks.checkpoint(
+            .afterJournalProjectionInvalidationBeforeCommit
+        )
         try await lifecycleStore.write(writes, removing: deletions)
         guard isCurrentStoreGeneration(generation) else { return }
 
@@ -6726,8 +8191,11 @@ final class AppModel: ObservableObject {
               Set(candidateHoldings.map(\.id)).count == candidateHoldings.count else {
             throw AppModelError.invalidBook
         }
+        let accountsByID = Dictionary(
+            uniqueKeysWithValues: candidateAccounts.map { ($0.id, $0) }
+        )
         for schedule in candidateSchedules {
-            try validateScheduleReferences(schedule, in: candidateAccounts)
+            try validateScheduleReferences(schedule, in: accountsByID)
             try schedule.validateLifecycle(calendar: reportingCalendar)
         }
         let scheduleLinks = candidateSchedules.flatMap {
@@ -6737,9 +8205,6 @@ final class AppModel: ObservableObject {
             throw AppModelError.invalidBook
         }
 
-        let accountsByID = Dictionary(
-            uniqueKeysWithValues: candidateAccounts.map { ($0.id, $0) }
-        )
         var entriesByID: [UUID: JournalEntry] = [:]
         for entry in candidateEntries {
             guard entriesByID.updateValue(entry, forKey: entry.id) == nil else {
@@ -6782,6 +8247,8 @@ final class AppModel: ObservableObject {
                     accountsByID: accountsByID,
                     entriesByID: entriesByID
                 )
+            } catch is CancellationError {
+                throw CancellationError()
             } catch {
                 throw AppModelError.invalidBook
             }
@@ -6807,7 +8274,7 @@ final class AppModel: ObservableObject {
                 candidate[index].parentID = target.id
             }
         }
-        try validateCategoryHierarchy(kind: source.kind, accounts: candidate)
+        try validateCategoryHierarchy(accounts: candidate)
         return candidate
     }
 
@@ -6925,27 +8392,12 @@ final class AppModel: ObservableObject {
     }
 
     private func validateCategoryHierarchy(
-        kind: LedgerAccountKind,
         accounts candidateAccounts: [LedgerAccount]
     ) throws {
-        let categoryByID = Dictionary(
-            uniqueKeysWithValues: candidateAccounts
-                .filter { $0.kind == kind }
-                .map { ($0.id, $0) }
-        )
-        for category in categoryByID.values {
-            if let parentID = category.parentID,
-               categoryByID[parentID] == nil {
-                throw AppModelError.incompatibleLedgerItems
-            }
-            var currentID: UUID? = category.id
-            var visited = Set<UUID>()
-            while let id = currentID {
-                guard visited.insert(id).inserted else {
-                    throw AppModelError.incompatibleLedgerItems
-                }
-                currentID = categoryByID[id]?.parentID
-            }
+        guard try Self.invalidAccountHierarchyIDs(
+            in: candidateAccounts
+        ).isEmpty else {
+            throw AppModelError.incompatibleLedgerItems
         }
     }
 
@@ -7032,7 +8484,86 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func beginLifecycleMutation() throws {
+    /// Creates an exact durable draft boundary for a backup. Unlike restore's
+    /// authoritative replacement barrier, backup must not cancel a debounce:
+    /// cancellation can discard the newest form revision. Await the chain and
+    /// then write the in-memory value with error propagation before snapshot.
+    private func flushQuickLogDraftForBackup(
+        to backupStore: EncryptedRecordStore
+    ) async throws {
+        await quickLogDraftWriteTask?.value
+        if let quickLogDraft {
+            try await backupStore.upsert(
+                quickLogDraft,
+                id: QuickLogDraft.primaryRecordID,
+                in: .quickLogDrafts
+            )
+        } else {
+            try await backupStore.remove(
+                id: QuickLogDraft.primaryRecordID,
+                from: .quickLogDrafts
+            )
+        }
+    }
+
+    private func requireEmptyLockedCaptureInbox() async throws {
+        do {
+            let captures = try await lockedCaptureStore.all()
+            pendingLockedCaptureCount = captures.count
+            recoveryIssues.removeAll { $0.hasPrefix("locked_captures/") }
+            guard captures.isEmpty else {
+                throw AppModelError.pendingLockedCaptures
+            }
+        } catch let error as LockedCaptureStoreError {
+            recordLockedCaptureStoreIssue(error)
+            throw error
+        }
+    }
+
+    /// Explicitly discards only an inbox that is already cryptographically
+    /// unreadable. The authenticated main book remains untouched, restoring
+    /// backup/restore availability without pretending the lost captures can
+    /// be recovered.
+    func discardUnavailableLockedCaptures() async throws {
+        let hasUsableRecoveryStore: Bool
+        switch state {
+        case .ready, .onboarding:
+            hasUsableRecoveryStore = true
+        case .failed:
+            hasUsableRecoveryStore = store != nil
+        case .launching, .locked:
+            hasUsableRecoveryStore = false
+        }
+        guard hasUsableRecoveryStore, lockedCaptureInboxIsUnrecoverable else {
+            throw AppModelError.missingRecord
+        }
+        try beginLifecycleMutation(invalidatesJournalProjection: false)
+        defer { endLifecycleMutation() }
+
+        // The marker can outlive a transient Keychain state change. Re-read at
+        // the destructive boundary: successful recovery or a retryable failure
+        // must disable deletion, while only a fresh definitive failure permits
+        // erasing the orphaned inbox.
+        do {
+            let captures = try await lockedCaptureStore.all()
+            pendingLockedCaptureCount = captures.count
+            recoveryIssues.removeAll { $0.hasPrefix("locked_captures/") }
+            if captures.isEmpty {
+                throw AppModelError.missingRecord
+            }
+            throw AppModelError.pendingLockedCaptures
+        } catch let error as LockedCaptureStoreError {
+            recordLockedCaptureStoreIssue(error)
+            guard error.isDefinitivelyUnrecoverable else { throw error }
+        }
+        try await lockedCaptureStore.eraseAll()
+        pendingLockedCaptureCount = 0
+        recoveryIssues.removeAll { $0.hasPrefix("locked_captures/") }
+    }
+
+    private func beginLifecycleMutation(
+        invalidatesJournalProjection: Bool = true
+    ) throws {
         guard !isLifecycleMutationInProgress,
               !isWorking,
               goalMutationsInProgress == 0,
@@ -7044,6 +8575,9 @@ final class AppModel: ObservableObject {
             throw AppModelError.transactionInProgress
         }
         isLifecycleMutationInProgress = true
+        if invalidatesJournalProjection {
+            invalidateInFlightJournalProjection()
+        }
     }
 
     private func beginStandaloneJournalMutation() throws {
@@ -7054,20 +8588,29 @@ final class AppModel: ObservableObject {
             throw AppModelError.transactionInProgress
         }
         standaloneJournalMutationsInProgress += 1
+        invalidateInFlightJournalProjection()
     }
 
     private func endStandaloneJournalMutation() {
         guard standaloneJournalMutationsInProgress > 0 else { return }
         standaloneJournalMutationsInProgress -= 1
+        guard standaloneJournalMutationsInProgress == 0 else { return }
+        applyDeferredLockIfPossible()
+        resumeDeferredJournalDerivedRefreshIfPossible()
     }
 
     private func endLifecycleMutation() {
         isLifecycleMutationInProgress = false
         applyDeferredLockIfPossible()
+        resumeDeferredJournalDerivedRefreshIfPossible()
     }
 
-    private func beginJournalMutation() throws {
+    private func beginJournalMutation(
+        invalidatesJournalProjection: Bool = true
+    ) throws {
         guard !isLifecycleMutationInProgress,
+              !isWorking,
+              state == .ready,
               !isJournalMutationInProgress,
               scheduleMutationsInProgress.isEmpty,
               scheduleEntryMatchesInProgress.isEmpty,
@@ -7075,11 +8618,15 @@ final class AppModel: ObservableObject {
             throw AppModelError.transactionInProgress
         }
         manualJournalMutationIsActive = true
+        if invalidatesJournalProjection {
+            invalidateInFlightJournalProjection()
+        }
     }
 
     private func endJournalMutation() {
         manualJournalMutationIsActive = false
         applyDeferredLockIfPossible()
+        resumeDeferredJournalDerivedRefreshIfPossible()
     }
 
     private func applyDeferredLockIfPossible() {
@@ -7162,9 +8709,37 @@ final class AppModel: ObservableObject {
               !account.isArchived else {
             throw AppModelError.ledgerItemArchived
         }
+        guard account.systemRole == nil else {
+            throw AppModelError.systemAccountLifecycleForbidden
+        }
         guard account.kind == .asset || account.kind == .liability,
               let currency = account.currency else {
             throw AppModelError.accountHasNoCurrency
+        }
+        return currency
+    }
+
+    /// History corrections may keep an archived user account already present
+    /// on the source entry. They must not make an archived account newly
+    /// spendable, and hidden system accounts are never valid editor choices.
+    private func replacementCurrency(
+        for accountID: UUID,
+        preservingFrom original: JournalEntry
+    ) throws -> CurrencyCode {
+        guard let account = accounts.first(where: { $0.id == accountID }) else {
+            throw AppModelError.missingRecord
+        }
+        guard account.systemRole == nil else {
+            throw AppModelError.systemAccountLifecycleForbidden
+        }
+        guard account.kind == .asset || account.kind == .liability,
+              let currency = account.currency else {
+            throw AppModelError.accountHasNoCurrency
+        }
+        guard !account.isArchived || original.postings.contains(where: {
+            $0.accountID == accountID
+        }) else {
+            throw AppModelError.ledgerItemArchived
         }
         return currency
     }
@@ -7177,7 +8752,35 @@ final class AppModel: ObservableObject {
             throw AppModelError.missingRecord
         }
         guard !category.isArchived else { throw AppModelError.ledgerItemArchived }
-        guard category.kind == kind else { throw AppModelError.invalidCategoryKind }
+        guard category.systemRole == nil else {
+            throw AppModelError.systemAccountLifecycleForbidden
+        }
+        guard category.kind == kind else {
+            throw AppModelError.invalidCategoryKind
+        }
+    }
+
+    /// Mirrors `replacementCurrency`: an archived category is valid only when
+    /// it is part of the historical transaction being corrected.
+    private func requireReplacementCategory(
+        _ id: UUID,
+        kind: LedgerAccountKind,
+        preservingFrom original: JournalEntry
+    ) throws {
+        guard let category = accounts.first(where: { $0.id == id }) else {
+            throw AppModelError.missingRecord
+        }
+        guard category.systemRole == nil else {
+            throw AppModelError.systemAccountLifecycleForbidden
+        }
+        guard category.kind == kind else {
+            throw AppModelError.invalidCategoryKind
+        }
+        guard !category.isArchived || original.postings.contains(where: {
+            $0.accountID == id
+        }) else {
+            throw AppModelError.ledgerItemArchived
+        }
     }
 
     private func editableMoneySnapshot(
@@ -7261,7 +8864,9 @@ final class AppModel: ObservableObject {
     /// an adjacent financial day before it reaches the normalized index.
     private func appAuthoredEntry(
         _ entry: JournalEntry,
-        reportingTimeZoneIdentifier: String? = nil
+        reportingTimeZoneIdentifier: String? = nil,
+        sourceSystemOverride: String? = nil,
+        sourceFingerprintOverride: String? = nil
     ) throws -> JournalEntry {
         try JournalEntry(
             id: entry.id,
@@ -7273,8 +8878,8 @@ final class AppModel: ObservableObject {
             postings: entry.postings,
             supersedesID: entry.supersedesID,
             revisedAt: entry.revisedAt,
-            sourceSystem: entry.sourceSystem,
-            sourceFingerprint: entry.sourceFingerprint,
+            sourceSystem: sourceSystemOverride ?? entry.sourceSystem,
+            sourceFingerprint: sourceFingerprintOverride ?? entry.sourceFingerprint,
             originContext: reportingOriginContext(
                 for: entry.occurredAt,
                 reportingTimeZoneIdentifier: reportingTimeZoneIdentifier
@@ -7500,14 +9105,18 @@ final class AppModel: ObservableObject {
         journalProjectionRevision &+= 1
         journalDerivedRefreshTask?.cancel()
         journalDerivedRefreshTask = nil
+        journalDerivedRefreshTaskToken = nil
+        journalDerivedRefreshWasDeferred = false
         quickLogDraftWriteTask?.cancel()
         quickLogDraftWriteTask = nil
         profile = nil
         accounts = []
         entries = []
         journalEntryCount = 0
+        journalRecentEntriesAreCurrent = false
         journalStoredEntryCount = 0
         journalReferenceCounts = [:]
+        journalReferenceCountsAreCurrent = false
         invalidJournalEntryIDs = []
         investmentLinkedEntriesByID = [:]
         existingScheduledLinkedEntryIDs = []
@@ -7515,6 +9124,7 @@ final class AppModel: ObservableObject {
         budgetConfigurationTimeline = nil
         budgetConfigurationTimelineInvalid = false
         budgetEntryAttributions = [:]
+        closedMonthBudgetProjection = nil
         scheduledTransactions = []
         investmentHoldings = []
         receiptAttachmentMetadata = []
@@ -7546,12 +9156,18 @@ final class AppModel: ObservableObject {
         }) else {
             throw AppModelError.invalidBook
         }
-        guard scheduledTransactions.allSatisfy({ item in
-            accountIDs.contains(item.accountID)
-                && accountIDs.contains(item.categoryAccountID)
-                && (try? item.validateLifecycle(calendar: reportingCalendar)) != nil
-        }) else {
-            throw AppModelError.invalidBook
+        for item in scheduledTransactions {
+            guard accountIDs.contains(item.accountID),
+                  accountIDs.contains(item.categoryAccountID) else {
+                throw AppModelError.invalidBook
+            }
+            do {
+                try item.validateLifecycle(calendar: reportingCalendar)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                throw AppModelError.invalidBook
+            }
         }
         let scheduledLinkedEntryIDs = scheduledTransactions.flatMap {
             $0.resolutions.compactMap(\.linkedEntryID)
@@ -7586,11 +9202,11 @@ final class AppModel: ObservableObject {
         case .unavailable:
             throw AppModelError.invalidBook
         }
-        guard investmentHoldings.allSatisfy({ holding in
+        for holding in investmentHoldings {
             guard let funding = accountsByID[holding.accountID],
                   isInvestmentFundingAccountShape(funding),
                   holding.isArchived || !funding.isArchived else {
-                return false
+                throw AppModelError.invalidBook
             }
             let holdingCurrencies = Set(
                 [holding.price?.currency]
@@ -7602,12 +9218,15 @@ final class AppModel: ObservableObject {
                     }
             ).compactMap { $0 }
             guard holdingCurrencies.allSatisfy({ $0 == funding.currency }) else {
-                return false
+                throw AppModelError.invalidBook
             }
             guard let positionID = holding.positionAccountID else {
-                return !holding.isArchived
-                    && holding.linkedEntryIDs.isEmpty
-                    && (holding.quantity == .zero || holding.needsLedgerConnection)
+                guard !holding.isArchived,
+                      holding.linkedEntryIDs.isEmpty,
+                      holding.quantity == .zero || holding.needsLedgerConnection else {
+                    throw AppModelError.invalidBook
+                }
+                continue
             }
             guard positionID != funding.id,
                   let currency = funding.currency,
@@ -7616,33 +9235,39 @@ final class AppModel: ObservableObject {
                   position.systemRole == .investmentPosition,
                   position.currency == currency,
                   position.isArchived == holding.isArchived else {
-                return false
+                throw AppModelError.invalidBook
             }
-            guard (try? InvestmentLedgerIntegrity.validate(
-                holding: holding,
-                accountsByID: accountsByID,
-                entriesByID: knownLinkedEntries
-            )) != nil else {
-                return false
+            do {
+                try InvestmentLedgerIntegrity.validate(
+                    holding: holding,
+                    accountsByID: accountsByID,
+                    entriesByID: knownLinkedEntries
+                )
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                throw AppModelError.invalidBook
             }
             let expectedValue: Money
             do {
                 expectedValue = try holding.marketValue()
                     ?? Money.zero(currency: currency)
+            } catch is CancellationError {
+                throw CancellationError()
             } catch {
-                return false
+                throw AppModelError.invalidBook
             }
             let positionBalances = balances[positionID] ?? [:]
             guard positionBalances.allSatisfy({ pair in
                 pair.key == funding.currency || pair.value.isZero
             }) else {
-                return false
+                throw AppModelError.invalidBook
             }
             let actualValue = positionBalances[currency]
                 ?? Money.zero(currency: currency)
-            return actualValue == expectedValue
-        }) else {
-            throw AppModelError.invalidBook
+            guard actualValue == expectedValue else {
+                throw AppModelError.invalidBook
+            }
         }
         let linkedPositionArchiveState = Dictionary(
             uniqueKeysWithValues: investmentHoldings.compactMap { holding in
@@ -7691,6 +9316,26 @@ final class AppModel: ObservableObject {
     private static func removeIfPresent(_ url: URL) throws {
         guard FileManager.default.fileExists(atPath: url.path) else { return }
         try FileManager.default.removeItem(at: url)
+    }
+
+    /// Idempotent completion shared by an in-process erase and startup recovery.
+    /// The high-value book key is destroyed first; the marker remains durable
+    /// until main/WAL/SHM, locked-inbox key/ciphertext, and every retryable step
+    /// have completed successfully.
+    static func completePendingDataErase(
+        databaseURL: URL,
+        deleteDatabaseKey: @Sendable () throws -> Void,
+        lockedCaptureStore: any LockedCaptureStoring,
+        clearEraseIntent: @Sendable () throws -> Void
+    ) async throws {
+        try deleteDatabaseKey()
+        for artifactURL in DatabaseKeyCreationPolicy.artifactURLs(
+            for: databaseURL
+        ) {
+            try removeIfPresent(artifactURL)
+        }
+        try await lockedCaptureStore.eraseAll()
+        try clearEraseIntent()
     }
 
     private static func defaultBook(
@@ -7783,6 +9428,7 @@ enum AppModelError: Error {
     case legacyInvestmentSnapshotForbidden
     case invalidGoal
     case goalWithdrawalExceedsBalance
+    case pendingLockedCaptures
 }
 
 extension AppModelError: LocalizedError {
@@ -7843,6 +9489,8 @@ extension AppModelError: LocalizedError {
         case .invalidGoal: String(localized: "goal.error.invalid")
         case .goalWithdrawalExceedsBalance:
             String(localized: "goal.error.withdrawal_exceeds_balance")
+        case .pendingLockedCaptures:
+            String(localized: "backup.error.pending_captures")
         }
     }
 }

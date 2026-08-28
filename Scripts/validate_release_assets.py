@@ -18,6 +18,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 REQUIRED_LANGUAGES = {"en", "zh-Hans"}
 SQLCIPHER_REVISION = "f879fffaaa3ad3541a77830daad4a28726dfa927"
+CHECKOUT_ACTION_REVISION = "3d3c42e5aac5ba805825da76410c181273ba90b1"
+UPLOAD_ARTIFACT_REVISION = "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
+XCODEGEN_VERSION = "2.46.0"
+XCODEGEN_SHA256 = "4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806"
+CI_XCODE_VERSION = "16.4"
+CI_XCODE_BUILD = "16F6"
+CI_IPHONESIMULATOR_SDK_VERSION = "18.5"
+RELEASE_XCODE_VERSION = "26.6"
+RELEASE_XCODE_BUILD = "17F113"
+RELEASE_IPHONEOS_SDK_VERSION = "26.5"
 PRINTF_PLACEHOLDER = re.compile(
     r"%(?:(\d+)\$)?[-+# 0']*(?:\d+|\*)?(?:\.(?:\d+|\*))?"
     r"(?:hh|h|ll|l|L|z|j|t|q)?([@diouxXfFeEgGaAcCsSp])"
@@ -27,7 +37,8 @@ LOCALIZED_STRING_REFERENCE = re.compile(
 )
 SWIFTUI_LOCALIZED_REFERENCE = re.compile(
     r'(?:Text|Button|Label|Picker|Toggle|SecureField|TextField|Section|'
-    r'NavigationLink|DisclosureGroup|LabeledContent)\(\s*'
+    r'NavigationLink|DisclosureGroup|LabeledContent|confirmationDialog|'
+    r'navigationTitle|alert)\(\s*'
     r'"([A-Za-z0-9_.-]+)"'
 )
 
@@ -769,6 +780,116 @@ def validate_project_configuration() -> None:
     print("Validated matching app/widget versions and automatic signing")
 
 
+def workflow_step(workflow: str, name: str) -> str:
+    match = re.search(
+        rf"(?ms)^      - name: {re.escape(name)}\n"
+        r"(?P<body>.*?)(?=^      - name: |\Z)",
+        workflow,
+    )
+    if match is None:
+        fail(f"workflow is missing the {name!r} step")
+    return match.group("body")
+
+
+def validate_action_revisions(workflow: str, workflow_name: str) -> None:
+    expected = {
+        "actions/checkout": CHECKOUT_ACTION_REVISION,
+        "actions/upload-artifact": UPLOAD_ARTIFACT_REVISION,
+    }
+    for action, revision in expected.items():
+        references = re.findall(rf"{re.escape(action)}@([^\s#]+)", workflow)
+        if action == "actions/upload-artifact" and not references:
+            fail(f"{workflow_name} must retain test or release evidence")
+        if action == "actions/checkout" and not references:
+            fail(f"{workflow_name} must check out its source candidate")
+        if any(reference != revision for reference in references):
+            fail(
+                f"{workflow_name} must pin every {action} use to reviewed "
+                f"commit {revision}"
+            )
+
+
+def validate_ci_workflow() -> None:
+    path = ROOT / ".github" / "workflows" / "ci.yml"
+    try:
+        workflow = path.read_text(encoding="utf-8")
+    except OSError as error:
+        fail(f"cannot read CI workflow: {error}")
+
+    validate_action_revisions(workflow, "CI workflow")
+    required = [
+        f"XCODEGEN_VERSION: {XCODEGEN_VERSION}",
+        f"XCODEGEN_SHA256: {XCODEGEN_SHA256}",
+        f'CI_XCODE_VERSION: "{CI_XCODE_VERSION}"',
+        f"CI_XCODE_BUILD: {CI_XCODE_BUILD}",
+        (
+            "CI_IPHONESIMULATOR_SDK_VERSION: "
+            f'"{CI_IPHONESIMULATOR_SDK_VERSION}"'
+        ),
+        "runs-on: macos-15",
+        "DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer",
+        "Verify the exact CI Xcode toolchain",
+        "Verify the exact CI Xcode and simulator SDK",
+        "XcodeGen/releases/download/${XCODEGEN_VERSION}/xcodegen.zip",
+        "shasum -a 256 -c -",
+        "swift test --parallel --enable-code-coverage -Xswiftc -warnings-as-errors",
+        "SWIFT_TREAT_WARNINGS_AS_ERRORS=YES",
+        "-enableCodeCoverage YES",
+        "-resultBundlePath \"$RESULT_BUNDLE\"",
+        "core-tests.log",
+        "core-persistence-coverage.json",
+        "app-model-coverage.json",
+        "${{ runner.temp }}/MoneyUpTests.xcresult",
+        "if: ${{ always() }}",
+    ]
+    for declaration in required:
+        if declaration not in workflow:
+            fail(f"CI workflow is missing {declaration}")
+
+    if workflow.count("runs-on: macos-15") != 2:
+        fail("both Swift CI jobs must run on the reviewed macos-15 image")
+    if workflow.count(
+        "DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer"
+    ) != 2:
+        fail("both Swift CI jobs must select the reviewed Xcode 16.4 bundle")
+
+    core_toolchain = workflow_step(workflow, "Verify the exact CI Xcode toolchain")
+    for declaration in [
+        'test -x "$DEVELOPER_DIR/usr/bin/xcodebuild"',
+        '"$XCODE_VERSION_LINE" != "Xcode $CI_XCODE_VERSION"',
+        '"$XCODE_BUILD_LINE" != "Build version $CI_XCODE_BUILD"',
+    ]:
+        if declaration not in core_toolchain:
+            fail(f"CI core toolchain check is missing {declaration}")
+
+    ios_toolchain = workflow_step(
+        workflow, "Verify the exact CI Xcode and simulator SDK"
+    )
+    for declaration in [
+        'test -x "$DEVELOPER_DIR/usr/bin/xcodebuild"',
+        '"$XCODE_VERSION_LINE" != "Xcode $CI_XCODE_VERSION"',
+        '"$XCODE_BUILD_LINE" != "Build version $CI_XCODE_BUILD"',
+        '"$SDK_VERSION" != "$CI_IPHONESIMULATOR_SDK_VERSION"',
+        "xcrun --sdk iphonesimulator --show-sdk-version",
+    ]:
+        if declaration not in ios_toolchain:
+            fail(f"CI simulator toolchain check is missing {declaration}")
+
+    for wildcard in [
+        f"{CI_XCODE_VERSION}*",
+        f"{CI_IPHONESIMULATOR_SDK_VERSION}*",
+    ]:
+        if wildcard in workflow:
+            fail(f"CI toolchain checks must use exact equality, not {wildcard}")
+
+    if workflow.count("Install checksum-verified XcodeGen") != 1:
+        fail("CI must install checksum-verified XcodeGen exactly once")
+    print(
+        "Validated exact CI toolchain, immutable tools, warnings-as-errors, "
+        "and test evidence"
+    )
+
+
 def validate_testflight_workflow() -> None:
     path = ROOT / ".github" / "workflows" / "testflight.yml"
     try:
@@ -781,12 +902,19 @@ def validate_testflight_workflow() -> None:
         "runs-on: macos-26",
         "environment: testflight",
         "cancel-in-progress: false",
+        "DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer",
+        f'RELEASE_XCODE_VERSION: "{RELEASE_XCODE_VERSION}"',
+        f"RELEASE_XCODE_BUILD: {RELEASE_XCODE_BUILD}",
+        f'RELEASE_IPHONEOS_SDK_VERSION: "{RELEASE_IPHONEOS_SDK_VERSION}"',
+        "toolchain_fingerprint: ${{ steps.release_toolchain.outputs.fingerprint }}",
+        "PREFLIGHT_TOOLCHAIN_FINGERPRINT: "
+        "${{ needs.preflight.outputs.toolchain_fingerprint }}",
         "-allowProvisioningUpdates",
         "-authenticationKeyPath",
         "method -string app-store-connect",
         "signingStyle -string automatic",
         "--validate-app",
-        "destination -string upload",
+        "--upload-app",
         "uploadSymbols -bool true",
         "Scripts/validate_built_bundle.py",
         "Seed and verify archive App Group entitlements",
@@ -804,19 +932,85 @@ def validate_testflight_workflow() -> None:
         "com.apple.security.application-groups",
         "distribution profile must authorize only",
         "signed entitlements must contain only",
+        "IPA_SHA256",
+        "IPA_RELATIVE_PATH",
+        "RECOVERY_VERIFY_DIRECTORY",
+        "MoneyUp-encrypted-release-recovery-",
+        "MoneyUp-Release-Recovery-",
     ]
     for declaration in required:
         if declaration not in workflow:
             fail(f"TestFlight workflow is missing {declaration}")
 
-    archive_step = re.search(
-        r"(?ms)^      - name: Create an unsigned release archive\n"
-        r"(?P<body>.*?)(?=^      - name: |\Z)",
-        workflow,
+    if workflow.count("runs-on: macos-26") != 2:
+        fail("both TestFlight jobs must run on the reviewed macos-26 image")
+    if workflow.count(
+        "DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer"
+    ) != 1:
+        fail("TestFlight must globally select the reviewed Xcode 26.6 bundle")
+    if "needs: preflight" not in workflow:
+        fail("the signing job must depend on its secretless preflight")
+
+    authorization_body = workflow_step(
+        workflow, "Require main and explicit upload confirmation"
     )
-    if archive_step is None:
-        fail("TestFlight workflow is missing the unsigned archive step")
-    archive_body = archive_step.group("body")
+    for declaration in [
+        '"$GITHUB_REF" != "refs/heads/main"',
+        '"$OPERATION" == "upload"',
+        '"$CONFIRMATION" != "UPLOAD"',
+    ]:
+        if declaration not in authorization_body:
+            fail(f"TestFlight authorization step is missing {declaration}")
+
+    release_toolchain = workflow_step(
+        workflow, "Verify the exact Apple upload toolchain"
+    )
+    for declaration in [
+        'test -x "$DEVELOPER_DIR/usr/bin/xcodebuild"',
+        '${ImageOS:?GitHub runner ImageOS metadata is unavailable}',
+        '${ImageVersion:?GitHub runner ImageVersion metadata is unavailable}',
+        '"$XCODE_VERSION_LINE" != "Xcode $RELEASE_XCODE_VERSION"',
+        '"$XCODE_BUILD_LINE" != "Build version $RELEASE_XCODE_BUILD"',
+        '"$SDK_VERSION" != "$RELEASE_IPHONEOS_SDK_VERSION"',
+        "xcrun --sdk iphoneos --show-sdk-version",
+        "id: release_toolchain",
+        "TOOLCHAIN_FINGERPRINT=",
+        "|${ImageOS}|${ImageVersion}",
+        'echo "fingerprint=$TOOLCHAIN_FINGERPRINT" >> "$GITHUB_OUTPUT"',
+    ]:
+        if declaration not in release_toolchain:
+            fail(f"release preflight toolchain check is missing {declaration}")
+
+    signing_toolchain = workflow_step(
+        workflow, "Verify the preflighted Apple upload toolchain"
+    )
+    for declaration in [
+        'test -x "$DEVELOPER_DIR/usr/bin/xcodebuild"',
+        '${ImageOS:?GitHub runner ImageOS metadata is unavailable}',
+        '${ImageVersion:?GitHub runner ImageVersion metadata is unavailable}',
+        '"$XCODE_VERSION_LINE" != "Xcode $RELEASE_XCODE_VERSION"',
+        '"$XCODE_BUILD_LINE" != "Build version $RELEASE_XCODE_BUILD"',
+        '"$SDK_VERSION" != "$RELEASE_IPHONEOS_SDK_VERSION"',
+        "xcrun --sdk iphoneos --show-sdk-version",
+        "TOOLCHAIN_FINGERPRINT=",
+        "|${ImageOS}|${ImageVersion}",
+        '"$TOOLCHAIN_FINGERPRINT" != "$PREFLIGHT_TOOLCHAIN_FINGERPRINT"',
+        'echo "RELEASE_TOOLCHAIN_FINGERPRINT=$TOOLCHAIN_FINGERPRINT" '
+        '>> "$GITHUB_ENV"',
+    ]:
+        if declaration not in signing_toolchain:
+            fail(f"release signing toolchain check is missing {declaration}")
+
+    for weak_check in [
+        f"{RELEASE_XCODE_VERSION}*",
+        f"{RELEASE_IPHONEOS_SDK_VERSION}*",
+        "ImageOS:-unknown",
+        "ImageVersion:-unknown",
+    ]:
+        if weak_check in workflow:
+            fail(f"release toolchain fingerprint must not use weak check {weak_check}")
+
+    archive_body = workflow_step(workflow, "Create an unsigned release archive")
     for declaration in [
         "CODE_SIGNING_ALLOWED=NO",
         "CODE_SIGNING_REQUIRED=NO",
@@ -833,14 +1027,9 @@ def validate_testflight_workflow() -> None:
         if declaration in archive_body:
             fail(f"unsigned archive step must not contain {declaration}")
 
-    entitlement_step = re.search(
-        r"(?ms)^      - name: Seed and verify archive App Group entitlements\n"
-        r"(?P<body>.*?)(?=^      - name: |\Z)",
-        workflow,
+    entitlement_body = workflow_step(
+        workflow, "Seed and verify archive App Group entitlements"
     )
-    if entitlement_step is None:
-        fail("TestFlight workflow is missing the archive entitlement seed step")
-    entitlement_body = entitlement_step.group("body")
     for declaration in [
         "App/MoneyUpWidget/MoneyUpWidget.entitlements",
         "App/MoneyUp/MoneyUp.entitlements",
@@ -851,24 +1040,129 @@ def validate_testflight_workflow() -> None:
         if declaration not in entitlement_body:
             fail(f"archive entitlement seed step is missing {declaration}")
 
-    export_step = re.search(
-        r"(?ms)^      - name: Export an App Store Connect IPA\n"
-        r"(?P<body>.*?)(?=^      - name: |\Z)",
-        workflow,
-    )
-    if export_step is None:
-        fail("TestFlight workflow is missing the App Store Connect export step")
-    export_body = export_step.group("body")
+    debug_symbols_body = workflow_step(workflow, "Verify archive debug symbols")
+    for declaration in [
+        "MoneyUp.app.dSYM",
+        "MoneyUpWidget.appex.dSYM",
+        '"$ARCHIVE_PATH/dSYMs/$DSYM_NAME"',
+    ]:
+        if declaration not in debug_symbols_body:
+            fail(f"archive debug-symbol check is missing {declaration}")
+
+    export_body = workflow_step(workflow, "Export an App Store Connect IPA")
     for declaration in [
         "method -string app-store-connect",
+        "destination -string export",
         "signingStyle -string automatic",
         "-allowProvisioningUpdates",
         "-authenticationKeyPath",
         "-authenticationKeyID",
         "-authenticationKeyIssuerID",
+        "expected exactly one exported IPA",
+        "IPA_SHA256=",
+        "IPA_RELATIVE_PATH=",
     ]:
         if declaration not in export_body:
             fail(f"App Store Connect export step is missing {declaration}")
+
+    validation_body = workflow_step(workflow, "Ask Apple to validate the IPA")
+    for declaration in ["--validate-app", '--file "$IPA_PATH"']:
+        if declaration not in validation_body:
+            fail(f"Apple validation step is missing {declaration}")
+
+    recovery_name = "Encrypt and round-trip verify the exact release recovery bundle"
+    recovery_body = workflow_step(workflow, recovery_name)
+    for declaration in [
+        '"$ARCHIVE_RELATIVE_PATH"',
+        '"$EXPORT_RELATIVE_PATH"',
+        (
+            "${RELEASE_TOOLCHAIN_FINGERPRINT:?Verified release toolchain "
+            "fingerprint is unavailable}"
+        ),
+        "tree_digest()",
+        'digest.update(b"MoneyUp deterministic tree digest v1\\0")',
+        "ordered = sorted(entries",
+        "stat.S_IMODE",
+        "stat.S_ISDIR",
+        "stat.S_ISREG",
+        "stat.S_ISLNK",
+        "metadata.st_size",
+        "os.readlink(path)",
+        "while chunk := source.read(1024 * 1024)",
+        'test -d "$ARCHIVE_PATH/dSYMs"',
+        "DSYM_COUNT=",
+        "if (( DSYM_COUNT < 1 ))",
+        'ARCHIVE_TREE_SHA256="$(tree_digest "$ARCHIVE_PATH")"',
+        'EXPORT_TREE_SHA256="$(tree_digest "$EXPORT_DIRECTORY")"',
+        "Toolchain and runner image fingerprint: $RELEASE_TOOLCHAIN_FINGERPRINT",
+        "IPA SHA-256: $IPA_SHA256",
+        "Archive tree SHA-256: $ARCHIVE_TREE_SHA256",
+        "Export tree SHA-256: $EXPORT_TREE_SHA256",
+        "openssl enc -d -aes-256-cbc",
+        'tar -C "$RECOVERY_VERIFY_DIRECTORY" -xzpf -',
+        'RECOVERED_ARCHIVE_TREE_SHA256="$(tree_digest "$RECOVERED_ARCHIVE")"',
+        'RECOVERED_EXPORT_TREE_SHA256="$(tree_digest "$RECOVERED_EXPORT")"',
+        '"$RECOVERED_ARCHIVE_TREE_SHA256" != "$ARCHIVE_TREE_SHA256"',
+        '"$RECOVERED_EXPORT_TREE_SHA256" != "$EXPORT_TREE_SHA256"',
+        "RECOVERED_IPA_SHA256",
+        'if ! cmp -s "$IPA_PATH" "$RECOVERED_IPA"',
+        'grep -Fqx "IPA: $IPA_RELATIVE_PATH"',
+        (
+            'grep -Fqx "Toolchain and runner image fingerprint: '
+            '$RELEASE_TOOLCHAIN_FINGERPRINT"'
+        ),
+        'grep -Fqx "Archive tree SHA-256: $ARCHIVE_TREE_SHA256"',
+        'grep -Fqx "Export tree SHA-256: $EXPORT_TREE_SHA256"',
+        "xcarchive tree (including dSYMs)",
+        "export tree",
+        "verified byte-for-byte",
+    ]:
+        if declaration not in recovery_body:
+            fail(f"release recovery step is missing {declaration}")
+
+    upload_only_condition = "if: ${{ inputs.operation == 'upload' }}"
+    if upload_only_condition not in recovery_body:
+        fail("release recovery creation must run only for an authorized upload")
+
+    retention_name = "Retain the encrypted exact release recovery bundle"
+    retention_body = workflow_step(workflow, retention_name)
+    for declaration in [
+        upload_only_condition,
+        "actions/upload-artifact@",
+        "MoneyUp-encrypted-release-recovery-",
+        "if-no-files-found: error",
+        "retention-days: 90",
+    ]:
+        if declaration not in retention_body:
+            fail(f"release recovery retention step is missing {declaration}")
+
+    upload_name = "Upload the exact validated IPA to TestFlight"
+    upload_body = workflow_step(workflow, upload_name)
+    for declaration in [
+        upload_only_condition,
+        "UPLOAD_IPA_SHA256",
+        '"$UPLOAD_IPA_SHA256" != "$IPA_SHA256"',
+        "--upload-app",
+        '--file "$IPA_PATH"',
+        '--apiKey "$ASC_KEY_ID"',
+        '--apiIssuer "$ASC_ISSUER_ID"',
+    ]:
+        if declaration not in upload_body:
+            fail(f"exact-IPA upload step is missing {declaration}")
+    if "xcodebuild" in upload_body or "-exportArchive" in upload_body:
+        fail("exact-IPA upload step must not rebuild or re-export the candidate")
+
+    if workflow.count("-exportArchive") != 1:
+        fail("TestFlight must export exactly one IPA and must not re-export for upload")
+    for forbidden in [
+        "destination -string upload",
+        "UPLOAD_OPTIONS_PATH",
+        "UPLOAD_DIRECTORY",
+    ]:
+        if forbidden in workflow:
+            fail(f"TestFlight workflow must not create a second upload binary: {forbidden}")
+    if workflow.count("--upload-app") != 1:
+        fail("TestFlight must upload the validated IPA exactly once")
 
     key_step_position = workflow.find("- name: Materialize the App Store Connect key")
     entitlement_step_position = workflow.find(
@@ -881,10 +1175,33 @@ def validate_testflight_workflow() -> None:
             "entitlement checks and before export"
         )
 
-    if not re.search(r"actions/checkout@[0-9a-f]{40}", workflow):
-        fail("TestFlight workflow must pin actions/checkout to a full commit")
-    if not re.search(r"actions/upload-artifact@[0-9a-f]{40}", workflow):
-        fail("TestFlight workflow must pin actions/upload-artifact to a full commit")
+    validation_step_position = workflow.find("- name: Ask Apple to validate the IPA")
+    recovery_step_position = workflow.find(f"- name: {recovery_name}")
+    retention_step_position = workflow.find(
+        f"- name: {retention_name}"
+    )
+    upload_step_position = workflow.find(f"- name: {upload_name}")
+    if not (
+        export_step_position
+        < validation_step_position
+        < recovery_step_position
+        < retention_step_position
+        < upload_step_position
+    ):
+        fail(
+            "TestFlight must validate one IPA, preserve its verified recovery "
+            "bundle, and only then upload that same IPA"
+        )
+
+    validate_action_revisions(workflow, "TestFlight workflow")
+    for declaration in [
+        f"XCODEGEN_VERSION: {XCODEGEN_VERSION}",
+        f"XCODEGEN_SHA256: {XCODEGEN_SHA256}",
+        "XcodeGen/releases/download/${XCODEGEN_VERSION}/xcodegen.zip",
+        "shasum -a 256 -c -",
+    ]:
+        if declaration not in workflow:
+            fail(f"TestFlight workflow is missing immutable tool check {declaration}")
 
     project = (ROOT / "project.yml").read_text(encoding="utf-8")
     project_version = re.search(
@@ -926,6 +1243,7 @@ def main() -> None:
     validate_public_documents()
     validate_release_fixture_generator()
     validate_project_configuration()
+    validate_ci_workflow()
     validate_testflight_workflow()
     print("Release asset validation passed")
 

@@ -71,8 +71,8 @@ validates each currency independently at initialization and decoding, and
 retains originating calendar/time-zone facts plus a stable local-day key.
 
 Schema 4 retains deterministic encrypted record payloads and the normalized
-encrypted support tables introduced in schema 3, then adds attachment metadata
-indexing so lists never decode receipt-image bytes:
+encrypted ledger support tables, and adds attachment metadata indexing so lists
+never decode receipt-image bytes:
 
 | Table/index | Purpose |
 |---|---|
@@ -90,9 +90,9 @@ recent cache into an accidental full journal.
 
 Schema-1/2 books migrate by decoding each legacy journal payload once to build
 the normalized indexes without changing the original payload, timestamp, or
-identifier. Schema-3 books add the receipt metadata index without rewriting
-valid attachment payloads. Raw malformed rows remain quarantined instead of
-blocking the readable book.
+identifier. Books that already carry the ledger indexes migrate to schema 4 by
+adding the receipt metadata index without rewriting valid attachment payloads.
+Raw malformed rows remain quarantined instead of blocking the readable book.
 
 ## Planning and investment records
 

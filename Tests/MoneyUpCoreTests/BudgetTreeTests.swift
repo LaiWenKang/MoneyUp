@@ -229,13 +229,29 @@ final class BudgetTreeTests: XCTestCase {
                 ]
             )
         ) { error in
-            guard let budgetError = error as? BudgetTreeError else {
-                return XCTFail("Expected a budget error, got \(error)")
-            }
-            guard case .cycle = budgetError else {
-                return XCTFail("Expected a budget cycle error, got \(error)")
-            }
+            XCTAssertEqual(
+                error as? BudgetTreeError,
+                .cycle(nodeID: firstID)
+            )
         }
+    }
+
+    func testDeepAcyclicHierarchyIsAcceptedWithoutQuadraticTraversal() throws {
+        let sgd = try CurrencyCode("SGD")
+        let nodeCount = 10_000
+        let nodeIDs = (0..<nodeCount).map { _ in UUID() }
+        let nodes = nodeIDs.enumerated().map { offset, nodeID in
+            BudgetNode(
+                id: nodeID,
+                parentID: offset == 0 ? nil : nodeIDs[offset - 1],
+                name: "Level \(offset)"
+            )
+        }
+
+        let tree = try BudgetTree(currency: sgd, nodes: nodes)
+
+        XCTAssertEqual(tree.nodes.count, nodeCount)
+        XCTAssertEqual(tree.nodes.last?.parentID, nodeIDs[nodeCount - 2])
     }
 
     func testNegativeLimitIsRejected() throws {

@@ -261,8 +261,10 @@ semantic surfaces.
   entitlements all contain only `group.com.laiwenkang.MoneyUp`;
 - CI green on submitted commit;
 - archive version/build unique and matches release notes;
-- exact encrypted `.xcarchive` and dSYMs saved in durable private storage, with
-  symbols uploaded to Apple;
+- exact encrypted release recovery bundle—`.xcarchive`, dSYMs, complete export
+  directory, validated IPA, and SHA-256 manifest—saved in durable private
+  storage; the IPA hash matches the uploaded candidate, and App Store Connect
+  symbol/crash processing is verified for that exact build;
 - export compliance complete;
 - privacy policy/support links publicly accessible without sign-in;
 - App Privacy and age-rating answers complete;

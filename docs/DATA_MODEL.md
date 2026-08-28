@@ -112,8 +112,7 @@ than three visible levels and uses tags for orthogonal context.
 ## SQLCipher records and normalized indexes
 
 Deterministic encrypted payloads remain the recovery source of truth. Schema 4
-includes the schema-3 ledger support tables and adds attachment metadata
-indexing:
+includes the normalized ledger support tables and attachment metadata indexing:
 
 | Structure | Contract |
 |---|---|

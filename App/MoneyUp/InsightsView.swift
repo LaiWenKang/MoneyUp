@@ -2,6 +2,69 @@ import Charts
 import MoneyUpCore
 import SwiftUI
 
+struct InsightsCategoryPoint: Identifiable, Equatable {
+    let selectionKey: String
+    let name: String
+    let money: Money
+    /// Every category whose postings contribute to this exact chart bar.
+    let categoryIDs: Set<UUID>
+    let isAggregate: Bool
+
+    var id: String { selectionKey }
+    var amount: Double { NSDecimalNumber(decimal: money.amount).doubleValue }
+}
+
+enum InsightsCategoryBucketBuilder {
+    static let aggregateSelectionKey = "insights-category:aggregate:other"
+
+    static func points(
+        from spending: [CategorySpending],
+        visibleCategoryCount: Int,
+        baseCurrency: CurrencyCode,
+        otherName: String
+    ) throws -> [InsightsCategoryPoint] {
+        let positiveSpending = spending.filter { $0.amount.amount > .zero }
+        let visibleCount = max(0, visibleCategoryCount)
+        var points = positiveSpending.prefix(visibleCount).map { category in
+            InsightsCategoryPoint(
+                selectionKey: selectionKey(for: category.accountID),
+                name: category.name,
+                money: category.amount,
+                categoryIDs: [category.accountID],
+                isAggregate: false
+            )
+        }
+
+        let remainder = positiveSpending.dropFirst(visibleCount)
+        guard !remainder.isEmpty else { return points }
+
+        var aggregateAmount = Decimal.zero
+        var aggregateCategoryIDs = Set<UUID>()
+        aggregateCategoryIDs.reserveCapacity(remainder.count)
+        for category in remainder {
+            aggregateAmount = try CheckedDecimal.adding(
+                aggregateAmount,
+                category.amount.amount
+            )
+            aggregateCategoryIDs.insert(category.accountID)
+        }
+        points.append(
+            InsightsCategoryPoint(
+                selectionKey: aggregateSelectionKey,
+                name: otherName,
+                money: try Money(aggregateAmount, currency: baseCurrency),
+                categoryIDs: aggregateCategoryIDs,
+                isAggregate: true
+            )
+        )
+        return points
+    }
+
+    static func selectionKey(for categoryID: UUID) -> String {
+        "insights-category:id:\(categoryID.uuidString.lowercased())"
+    }
+}
+
 struct InsightsView: View {
     private enum FlowSeriesKind: String {
         case income
@@ -22,14 +85,6 @@ struct InsightsView: View {
         }
     }
 
-    private struct CategoryPoint: Identifiable {
-        let id: UUID
-        let name: String
-        let money: Money
-
-        var amount: Double { NSDecimalNumber(decimal: money.amount).doubleValue }
-    }
-
     private struct FlowPoint: Identifiable {
         let month: Date
         let kind: FlowSeriesKind
@@ -40,15 +95,12 @@ struct InsightsView: View {
         var amount: Double { NSDecimalNumber(decimal: money.amount).doubleValue }
     }
 
-    /// Stable identity for the bucket that holds every category beyond the
-    /// ones drawn individually, so the bars still add up to the total.
-    private static let otherCategoryID = UUID()
     private static let visibleCategoryCount = 8
 
     @EnvironmentObject private var model: AppModel
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var period: ReportPeriod = .thisMonth
-    @State private var selectedCategoryName: String?
+    @State private var selectedCategoryKey: String?
     @State private var selectedFlowMonth: Date?
 
     var body: some View {
@@ -80,7 +132,7 @@ struct InsightsView: View {
             .background { MoneyUpBackdrop() }
             .navigationTitle("tab.insights")
             .onChange(of: period) { _, _ in
-                selectedCategoryName = nil
+                selectedCategoryKey = nil
                 selectedFlowMonth = nil
             }
         }
@@ -179,16 +231,16 @@ struct InsightsView: View {
                     Chart(points) { point in
                         BarMark(
                             x: .value("Amount", point.amount),
-                            y: .value("Category", point.name)
+                            y: .value("Category ID", point.selectionKey)
                         )
                         .foregroundStyle(
-                            point.id == Self.otherCategoryID
+                            point.isAggregate
                                 ? Color.secondary
                                 : Color.accentColor
                         )
                         .opacity(
-                            selectedCategoryName == nil
-                                || selectedCategoryName == point.name ? 1 : 0.34
+                            selectedCategoryKey == nil
+                                || selectedCategoryKey == point.selectionKey ? 1 : 0.34
                         )
                         .annotation(position: .trailing) {
                             Text(formattedMoney(point.money))
@@ -199,7 +251,20 @@ struct InsightsView: View {
                         .accessibilityValue(formattedMoney(point.money))
                     }
                     .chartXAxis(.hidden)
-                    .chartYSelection(value: $selectedCategoryName)
+                    .chartYScale(domain: points.map(\.selectionKey))
+                    .chartYAxis {
+                        AxisMarks(values: points.map(\.selectionKey)) { value in
+                            AxisValueLabel {
+                                if let key = value.as(String.self),
+                                   let point = points.first(where: {
+                                       $0.selectionKey == key
+                                   }) {
+                                    Text(point.name)
+                                }
+                            }
+                        }
+                    }
+                    .chartYSelection(value: $selectedCategoryKey)
                     .frame(height: max(190, CGFloat(points.count) * 34))
                     .accessibilityLabel(Text("insights.category_chart"))
                     .accessibilityValue(Text(categoryChartSummary(points)))
@@ -210,7 +275,7 @@ struct InsightsView: View {
                         .foregroundStyle(.secondary)
 
                     if let selected = points.first(where: {
-                        $0.name == selectedCategoryName
+                        $0.selectionKey == selectedCategoryKey
                     }) {
                         selectedCategoryCard(selected, report: report)
                     }
@@ -271,7 +336,10 @@ struct InsightsView: View {
                                     ) ? 1 : 0.34
                             )
                             .accessibilityLabel(
-                                "\(point.month.formatted(.dateTime.month(.wide).year())), \(point.series)"
+                                "\(point.month.formattedForReporting(
+                                    .dateTime.month(.wide).year(),
+                                    calendar: model.reportingCalendar
+                                )), \(point.series)"
                             )
                             .accessibilityValue(formattedMoney(point.money))
                         }
@@ -321,7 +389,7 @@ struct InsightsView: View {
     }
 
     private func selectedCategoryCard(
-        _ point: CategoryPoint,
+        _ point: InsightsCategoryPoint,
         report: PeriodReport
     ) -> some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -338,7 +406,8 @@ struct InsightsView: View {
                 NavigationLink {
                     HistoryView(
                         preset: HistoryPreset(
-                            categoryID: point.id == Self.otherCategoryID ? nil : point.id,
+                            categoryIDs: point.categoryIDs,
+                            categoryPostingCurrency: report.baseCurrency,
                             interval: report.interval
                         )
                     )
@@ -354,7 +423,10 @@ struct InsightsView: View {
     private func selectedFlowCard(_ flow: MonthlyFlow) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Divider()
-            Text(flow.month, format: .dateTime.month(.wide).year())
+            Text(flow.month.formattedForReporting(
+                .dateTime.month(.wide).year(),
+                calendar: model.reportingCalendar
+            ))
                 .font(.subheadline.weight(.semibold))
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 12) {
@@ -429,50 +501,24 @@ struct InsightsView: View {
 
     private func categoryPointsResult(
         _ report: PeriodReport
-    ) -> DerivedValue<[CategoryPoint]> {
-        let spending = report.categorySpending.filter { $0.amount.amount > .zero }
-        var points = spending.prefix(Self.visibleCategoryCount).map {
-            CategoryPoint(id: $0.accountID, name: $0.name, money: $0.amount)
-        }
-
-        let remainder = spending.dropFirst(Self.visibleCategoryCount)
-        if !remainder.isEmpty {
-            let total: Decimal
-            do {
-                var aggregate = Decimal.zero
-                for category in remainder {
-                    aggregate = try CheckedDecimal.adding(
-                        aggregate,
-                        category.amount.amount
-                    )
-                }
-                total = aggregate
-            } catch {
-                DerivedValueDiagnostics.record(
-                    .amountCalculationFailed,
-                    operation: "insights-other-category",
-                    error: error
+    ) -> DerivedValue<[InsightsCategoryPoint]> {
+        do {
+            return .available(
+                try InsightsCategoryBucketBuilder.points(
+                    from: report.categorySpending,
+                    visibleCategoryCount: Self.visibleCategoryCount,
+                    baseCurrency: report.baseCurrency,
+                    otherName: String(localized: "insights.other_category")
                 )
-                return .unavailable(.amountCalculationFailed)
-            }
-            switch DerivedValue<Money>.money(
-                total,
-                currency: report.baseCurrency,
-                operation: "insights-other-category"
-            ) {
-            case let .available(money):
-                points.append(
-                    CategoryPoint(
-                        id: Self.otherCategoryID,
-                        name: String(localized: "insights.other_category"),
-                        money: money
-                    )
-                )
-            case let .unavailable(issue):
-                return .unavailable(issue)
-            }
+            )
+        } catch {
+            DerivedValueDiagnostics.record(
+                .amountCalculationFailed,
+                operation: "insights-other-category",
+                error: error
+            )
+            return .unavailable(.amountCalculationFailed)
         }
-        return .available(points)
     }
 
     private func flowPoints(_ report: PeriodReport) -> [FlowPoint] {
@@ -495,9 +541,15 @@ struct InsightsView: View {
     }
 
     private func analysisWindowDescription(_ report: PeriodReport) -> String {
-        let start = report.interval.start.formatted(.dateTime.month(.abbreviated).year())
+        let start = report.interval.start.formattedForReporting(
+            .dateTime.month(.abbreviated).year(),
+            calendar: model.reportingCalendar
+        )
         let inclusiveEnd = report.interval.end.addingTimeInterval(-1)
-            .formatted(.dateTime.month(.abbreviated).year())
+            .formattedForReporting(
+                .dateTime.month(.abbreviated).year(),
+                calendar: model.reportingCalendar
+            )
         return String(
             format: String(localized: "insights.selected_window_format"),
             start,
@@ -505,7 +557,7 @@ struct InsightsView: View {
         )
     }
 
-    private func categoryChartSummary(_ points: [CategoryPoint]) -> String {
+    private func categoryChartSummary(_ points: [InsightsCategoryPoint]) -> String {
         guard let largest = points.first else {
             return String(localized: "insights.no_spending")
         }
@@ -525,7 +577,10 @@ struct InsightsView: View {
             format: String(localized: "insights.flow_chart_summary_format"),
             report.monthlyFlows.count,
             analysisWindowDescription(report),
-            latest.month.formatted(.dateTime.month(.wide).year()),
+            latest.month.formattedForReporting(
+                .dateTime.month(.wide).year(),
+                calendar: model.reportingCalendar
+            ),
             formattedMoney(latest.income),
             formattedMoney(latest.expense)
         )

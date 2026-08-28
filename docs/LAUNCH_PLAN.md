@@ -73,15 +73,17 @@ The workflow must verify:
   signed App Group entitlements;
 - Apple accepts IPA validation.
 
-Exit gate: signed validation succeeds and the encrypted unsigned archive/dSYM
-recovery artifact is retained. Validation does not mean a TestFlight upload or
-App Review occurred.
+Exit gate: signed validation succeeds for the exact IPA and its SHA-256 is
+recorded. Validation does not create the upload-only encrypted recovery artifact
+and does not mean a TestFlight upload or App Review occurred.
 
 ## Stage 2 - internal TestFlight and physical acceptance
 
-After a separately confirmed upload and Apple processing, add the exact build
-to **Founders Internal**. Update the account holder's installed 0.5.1 build in
-place; never delete it as an upgrade procedure.
+After a separately confirmed upload, verify the encrypted recovery artifact was
+retained before the upload step and contains the archive/dSYMs, complete export
+directory, exact validated IPA, and matching SHA-256 manifest. After Apple
+processing, add that exact build to **Founders Internal**. Update the account
+holder's installed 0.5.1 build in place; never delete it as an upgrade procedure.
 
 Complete [the founder/co-tester runbook](FIRST_TEST.md), including:
 

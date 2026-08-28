@@ -199,6 +199,27 @@ public struct DatabaseRecordCountSnapshot: Equatable, Sendable {
     }
 }
 
+/// Constant-memory SQL aggregates used before a portable backup snapshots any
+/// payload bytes into process memory.
+public struct DatabaseStorageMetrics: Equatable, Sendable {
+    public let recordCount: Int
+    public let payloadByteCount: Int
+    public let recordIDByteCount: Int
+    public let collectionByteCount: Int
+
+    public init(
+        recordCount: Int,
+        payloadByteCount: Int,
+        recordIDByteCount: Int,
+        collectionByteCount: Int
+    ) {
+        self.recordCount = recordCount
+        self.payloadByteCount = payloadByteCount
+        self.recordIDByteCount = recordIDByteCount
+        self.collectionByteCount = collectionByteCount
+    }
+}
+
 public struct RecordDecodeIssue: Equatable, Sendable, Identifiable {
     public let collection: RecordCollection
     public let recordID: String
@@ -366,6 +387,8 @@ public actor EncryptedRecordStore {
 
         do {
             return try Self.makeDecoder().decode(type, from: payload)
+        } catch is CancellationError {
+            throw CancellationError()
         } catch {
             throw PersistenceError.invalidStoredRecord(
                 collection: collection,
@@ -381,6 +404,8 @@ public actor EncryptedRecordStore {
         try connection.fetchAll(collection: collection.rawValue).map { record in
             do {
                 return try Self.makeDecoder().decode(type, from: record.payload)
+            } catch is CancellationError {
+                throw CancellationError()
             } catch {
                 throw PersistenceError.invalidStoredRecord(
                     collection: collection,
@@ -403,10 +428,93 @@ public actor EncryptedRecordStore {
         for record in try connection.fetchAll(collection: collection.rawValue) {
             do {
                 values.append(try Self.makeDecoder().decode(type, from: record.payload))
+            } catch is CancellationError {
+                throw CancellationError()
             } catch {
                 issues.append(
                     RecordDecodeIssue(collection: collection, recordID: record.id)
                 )
+            }
+        }
+        return RecoveredRecords(values: values, issues: issues)
+    }
+
+    /// Recovery read for collections whose physical key must be the exact
+    /// canonical UUID carried by the payload. A decodable alias is still
+    /// quarantined: otherwise a later canonical update/delete can leave the
+    /// alias behind and resurrect stale state on the next launch.
+    public func fetchAllIdentifiedRecovering<
+        Value: Decodable & Sendable & Identifiable
+    >(
+        _ type: Value.Type,
+        from collection: RecordCollection
+    ) throws -> RecoveredRecords<Value> where Value.ID == UUID {
+        var values: [Value] = []
+        var issues: [RecordDecodeIssue] = []
+
+        for (offset, record) in try connection.fetchAll(
+            collection: collection.rawValue
+        ).enumerated() {
+            if offset.isMultiple(of: 256) { try Task.checkCancellation() }
+            do {
+                let value = try Self.makeDecoder().decode(
+                    type,
+                    from: record.payload
+                )
+                guard value.id.uuidString == record.id else {
+                    issues.append(RecordDecodeIssue(
+                        collection: collection,
+                        recordID: record.id
+                    ))
+                    continue
+                }
+                values.append(value)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                issues.append(RecordDecodeIssue(
+                    collection: collection,
+                    recordID: record.id
+                ))
+            }
+        }
+        return RecoveredRecords(values: values, issues: issues)
+    }
+
+    /// Decodes only journal rows referenced by another collection. SQL binds
+    /// IDs in bounded batches, so attribution integrity remains proportional
+    /// to attribution count without one actor round-trip per row.
+    public func fetchJournalEntriesRecovering(
+        ids: Set<UUID>
+    ) throws -> RecoveredRecords<JournalEntry> {
+        try Task.checkCancellation()
+        let records = try connection.fetch(
+            collection: RecordCollection.journalEntries.rawValue,
+            recordIDs: ids.map(\.uuidString)
+        )
+        var values: [JournalEntry] = []
+        var issues: [RecordDecodeIssue] = []
+        for (offset, record) in records.enumerated() {
+            if offset.isMultiple(of: 256) { try Task.checkCancellation() }
+            do {
+                let entry = try Self.makeDecoder().decode(
+                    JournalEntry.self,
+                    from: record.payload
+                )
+                guard entry.id.uuidString == record.id else {
+                    throw PersistenceError.invalidStoredRecord(
+                        collection: .journalEntries,
+                        recordID: record.id
+                    )
+                }
+                values.append(entry)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                issues.append(RecordDecodeIssue(
+                    collection: .journalEntries,
+                    recordID: record.id
+                ))
             }
         }
         return RecoveredRecords(values: values, issues: issues)
@@ -435,9 +543,19 @@ public actor EncryptedRecordStore {
         var issues: [RecordDecodeIssue] = []
         for record in rawPage.records {
             do {
-                entries.append(
-                    try Self.makeDecoder().decode(JournalEntry.self, from: record.payload)
+                let entry = try Self.makeDecoder().decode(
+                    JournalEntry.self,
+                    from: record.payload
                 )
+                guard entry.id.uuidString == record.id else {
+                    throw PersistenceError.invalidStoredRecord(
+                        collection: .journalEntries,
+                        recordID: record.id
+                    )
+                }
+                entries.append(entry)
+            } catch is CancellationError {
+                throw CancellationError()
             } catch {
                 issues.append(
                     RecordDecodeIssue(
@@ -543,17 +661,40 @@ public actor EncryptedRecordStore {
     /// being decoded; entries that point at quarantined accounts are removed
     /// from both balances and counts as one atomic ledger unit.
     public func journalLedgerIndex(
-        validAccountIDs: Set<UUID>
+        validAccountIDs: Set<UUID>,
+        expectedAccountCurrencies: [UUID: CurrencyCode] = [:]
     ) throws -> JournalLedgerIndexSnapshot {
         let validIDs = Set(validAccountIDs.map(\.uuidString))
+        let expectedCurrencies = Dictionary(
+            uniqueKeysWithValues: expectedAccountCurrencies.map {
+                ($0.key.uuidString, $0.value.value)
+            }
+        )
         let missingIndexIDs = try connection.fetchUnindexedJournalRecordIDs()
-        let invalidEntryStrings = try connection.fetchInvalidJournalEntryIDs(
-            validAccountIDs: validIDs
+        var invalidEntryStrings = try connection.fetchInvalidJournalEntryIDs(
+            validAccountIDs: validIDs,
+            expectedAccountCurrencies: expectedCurrencies
+        )
+        invalidEntryStrings.formUnion(
+            try connection.fetchNoncanonicalJournalEntryIDs()
+        )
+        // A current exact rebuild deliberately leaves a lowercase alias
+        // unindexed. If its canonical physical twin is indexed, quarantine
+        // that twin too; otherwise balances/history would expose one version
+        // of an ambiguous logical transaction while reporting the other as a
+        // damaged row.
+        let canonicalTwins = missingIndexIDs.compactMap { recordID -> String? in
+            guard let id = UUID(uuidString: recordID),
+                  id.uuidString != recordID else { return nil }
+            return id.uuidString
+        }
+        invalidEntryStrings.formUnion(
+            try connection.fetchExistingJournalEntryIDs(canonicalTwins)
         )
         // Exact Decimal subtraction is needed only for quarantined entries.
         // Healthy books therefore materialize zero historical posting rows.
         let quarantinedPostingRows = try connection.fetchQuarantinedJournalPostings(
-            validAccountIDs: validIDs
+            entryIDs: invalidEntryStrings
         )
         let referenceRows = try connection.fetchJournalReferenceCounts(
             validAccountIDs: validIDs
@@ -610,7 +751,10 @@ public actor EncryptedRecordStore {
         var invalidReferences: [String: Set<String>] = [:]
         for row in quarantinedPostingRows {
             invalidReferences[row.accountID.lowercased(), default: []]
-                .insert(row.entryID.lowercased())
+                // Physical journal identities are binary keys. Preserve
+                // their exact spelling so a canonical row and legacy
+                // lowercase alias each remove one distinct SQL reference.
+                .insert(row.entryID)
         }
         var referenceCounts: [UUID: Int] = [:]
         for row in referenceRows {
@@ -680,6 +824,12 @@ public actor EncryptedRecordStore {
         connection.lastJournalLedgerReadDiagnostics
     }
 
+    /// Internal runtime evidence for the persistence security tests. Startup
+    /// also fails closed if SQLCipher does not retain this configuration.
+    func usesMemoryOnlyTemporaryStorage() throws -> Bool {
+        try connection.usesMemoryOnlyTemporaryStorage()
+    }
+
     public func snapshot() throws -> DatabaseSnapshot {
         DatabaseSnapshot(
             schemaVersion: connection.schemaVersion(),
@@ -687,9 +837,16 @@ public actor EncryptedRecordStore {
         )
     }
 
+    public func storageMetrics() throws -> DatabaseStorageMetrics {
+        try connection.storageMetrics()
+    }
+
     /// Replaces the complete logical store in one SQLite transaction.
     /// Callers must decrypt and validate the candidate before invoking this.
-    public func restore(_ snapshot: DatabaseSnapshot) throws {
+    public func restore(
+        _ snapshot: DatabaseSnapshot,
+        observesCancellation: Bool = true
+    ) throws {
         guard snapshot.schemaVersion > 0 else {
             throw PersistenceError.invalidSnapshot
         }
@@ -702,7 +859,10 @@ public actor EncryptedRecordStore {
         guard snapshot.createdAt.timeIntervalSince1970.isFinite else {
             throw PersistenceError.invalidSnapshot
         }
-        try connection.replaceAllRecords(with: snapshot.records)
+        try connection.replaceAllRecords(
+            with: snapshot.records,
+            observesCancellation: observesCancellation
+        )
     }
 
     public func remove(id: String, from collection: RecordCollection) throws {
@@ -733,6 +893,23 @@ public actor EncryptedRecordStore {
         )
     }
 
+    #if DEBUG
+    /// Recreates the case-insensitive identity indexes emitted by pre-audit
+    /// builds so regression tests can exercise upgrade quarantine against a
+    /// real legacy database shape. It is unavailable in release builds.
+    func installLegacyCaseVariantIndexesForTesting() throws {
+        try connection.installLegacyCaseVariantIndexesForTesting()
+    }
+
+    func failNextRestoreRollbackForTesting() {
+        connection.failNextRestoreRollbackForTesting()
+    }
+
+    func failNextWriteRollbackForTesting() {
+        connection.failNextWriteRollbackForTesting()
+    }
+    #endif
+
     public func close() {
         connection.close()
     }
@@ -760,6 +937,10 @@ private final class SQLCipherConnection: @unchecked Sendable {
     }
 
     private var database: OpaquePointer?
+    #if DEBUG
+    private var shouldFailNextRestoreRollbackForTesting = false
+    private var shouldFailNextWriteRollbackForTesting = false
+    #endif
     private let supportedSchemaVersion: Int32
     private(set) var lastJournalWriteDiagnostics = JournalWriteDiagnostics(
         priorPostingRowsRead: 0,
@@ -854,6 +1035,14 @@ private final class SQLCipherConnection: @unchecked Sendable {
         relinkingReceiptAttachments relink: ReceiptAttachmentRelink? = nil
     ) throws {
         guard !records.isEmpty || !deletions.isEmpty || relink != nil else { return }
+        for record in records where record.collection == .journalEntries {
+            guard record.journalIndex != nil, record.indexedAt != nil else {
+                throw PersistenceError.invalidStoredRecord(
+                    collection: .journalEntries,
+                    recordID: record.id
+                )
+            }
+        }
         for record in records where record.collection == .receiptAttachments {
             guard record.receiptAttachmentIndex != nil else {
                 throw PersistenceError.invalidStoredRecord(
@@ -946,9 +1135,18 @@ private final class SQLCipherConnection: @unchecked Sendable {
             )
         } catch let operationError {
             do {
+                #if DEBUG
+                if shouldFailNextWriteRollbackForTesting {
+                    shouldFailNextWriteRollbackForTesting = false
+                    try execute(
+                        "ROLLBACK TO moneyup_missing_write_savepoint;"
+                    )
+                }
+                #endif
                 try execute("ROLLBACK;")
             } catch {
-                throw error
+                close()
+                throw PersistenceError.transactionStateIndeterminate
             }
             throw operationError
         }
@@ -1025,7 +1223,7 @@ private final class SQLCipherConnection: @unchecked Sendable {
         attachmentID: String,
         with index: ReceiptAttachmentIndexWrite
     ) throws {
-        guard index.recordID.caseInsensitiveCompare(attachmentID) == .orderedSame,
+        guard index.recordID == attachmentID,
               index.byteCount > 0,
               index.byteCount <= ReceiptAttachment.maximumByteCount,
               index.createdAt.isFinite,
@@ -1036,6 +1234,16 @@ private final class SQLCipherConnection: @unchecked Sendable {
                 recordID: attachmentID
             )
         }
+        try upsertReceiptAttachmentIndex(
+            attachmentID: attachmentID,
+            index: index
+        )
+    }
+
+    private func upsertReceiptAttachmentIndex(
+        attachmentID: String,
+        index: ReceiptAttachmentIndexWrite
+    ) throws {
         try withStatement(
             """
             INSERT INTO receipt_attachment_index (
@@ -1070,7 +1278,8 @@ private final class SQLCipherConnection: @unchecked Sendable {
 
     private func replaceJournalIndex(
         entryID: String,
-        with index: JournalIndexWrite?
+        with index: JournalIndexWrite?,
+        observesCancellation: Bool = true
     ) throws {
         try deleteJournalIndex(entryID: entryID)
         guard let index else { return }
@@ -1091,7 +1300,10 @@ private final class SQLCipherConnection: @unchecked Sendable {
             try bindOptionalText(index.sourceFingerprint, at: 4, to: statement)
             try stepExpectingDone(statement)
         }
-        for posting in index.postings {
+        for (postingIndex, posting) in index.postings.enumerated() {
+            if observesCancellation && postingIndex.isMultiple(of: 128) {
+                try Task.checkCancellation()
+            }
             try withStatement(
                 """
                 INSERT INTO journal_posting_index (
@@ -1247,46 +1459,58 @@ private final class SQLCipherConnection: @unchecked Sendable {
         return rowsRead
     }
 
-    private func rebuildBalances(for keys: Set<BalanceKey>) throws {
+    private func rebuildBalances(
+        for keys: Set<BalanceKey>,
+        observesCancellation: Bool = true
+    ) throws {
+        guard !keys.isEmpty else { return }
         let locale = Locale(identifier: "en_US_POSIX")
-        for key in keys {
-            let amounts: [String] = try withStatement(
-                """
-                SELECT amount_text
-                FROM journal_posting_index
-                WHERE account_id = ? AND currency = ?;
-                """
-            ) { statement in
-                try bindText(key.accountID, at: 1, to: statement)
-                try bindText(key.currency, at: 2, to: statement)
-                var values: [String] = []
-                while true {
-                    let step = sqlite3_step(statement)
-                    if step == SQLITE_DONE { break }
-                    guard step == SQLITE_ROW,
-                          let rawAmount = sqlite3_column_text(statement, 0) else {
-                        throw makeError(code: step == SQLITE_ROW ? SQLITE_CORRUPT : step)
-                    }
-                    values.append(String(cString: rawAmount))
+        var totals: [BalanceKey: Decimal] = [:]
+        var rowIndex = 0
+        try withStatement(
+            """
+            SELECT account_id, currency, amount_text
+            FROM journal_posting_index;
+            """
+        ) { statement in
+            while true {
+                let step = sqlite3_step(statement)
+                if step == SQLITE_DONE { break }
+                guard step == SQLITE_ROW,
+                      let rawAccountID = sqlite3_column_text(statement, 0),
+                      let rawCurrency = sqlite3_column_text(statement, 1),
+                      let rawAmount = sqlite3_column_text(statement, 2) else {
+                    throw makeError(
+                        code: step == SQLITE_ROW ? SQLITE_CORRUPT : step
+                    )
                 }
-                return values
-            }
-            var total = Decimal.zero
-            for value in amounts {
-                guard let amount = Decimal(string: value, locale: locale) else {
+                if observesCancellation && rowIndex.isMultiple(of: 256) {
+                    try Task.checkCancellation()
+                }
+                rowIndex += 1
+                let key = BalanceKey(
+                    accountID: String(cString: rawAccountID),
+                    currency: String(cString: rawCurrency)
+                )
+                guard keys.contains(key) else { continue }
+                guard let amount = Decimal(
+                    string: String(cString: rawAmount),
+                    locale: locale
+                ) else {
                     throw makeError(code: SQLITE_CORRUPT)
                 }
-                total = try CheckedDecimal.adding(total, amount)
+                totals[key] = try CheckedDecimal.adding(
+                    totals[key] ?? .zero,
+                    amount
+                )
             }
-            if amounts.isEmpty {
-                try withStatement(
-                    "DELETE FROM journal_balance WHERE account_id = ? AND currency = ?;"
-                ) { statement in
-                    try bindText(key.accountID, at: 1, to: statement)
-                    try bindText(key.currency, at: 2, to: statement)
-                    try stepExpectingDone(statement)
-                }
-            } else {
+        }
+
+        for (keyIndex, key) in keys.enumerated() {
+            if observesCancellation && keyIndex.isMultiple(of: 128) {
+                try Task.checkCancellation()
+            }
+            if let total = totals[key] {
                 try withStatement(
                     """
                     INSERT INTO journal_balance (account_id, currency, amount_text)
@@ -1302,6 +1526,14 @@ private final class SQLCipherConnection: @unchecked Sendable {
                         at: 3,
                         to: statement
                     )
+                    try stepExpectingDone(statement)
+                }
+            } else {
+                try withStatement(
+                    "DELETE FROM journal_balance WHERE account_id = ? AND currency = ?;"
+                ) { statement in
+                    try bindText(key.accountID, at: 1, to: statement)
+                    try bindText(key.currency, at: 2, to: statement)
                     try stepExpectingDone(statement)
                 }
             }
@@ -1351,6 +1583,53 @@ private final class SQLCipherConnection: @unchecked Sendable {
 
             return records.map { ($0.id, $0.payload) }
         }
+    }
+
+    func fetch(
+        collection: String,
+        recordIDs: [String]
+    ) throws -> [(id: String, payload: Data)] {
+        guard !recordIDs.isEmpty else { return [] }
+        let sortedIDs = Array(Set(recordIDs)).sorted()
+        var records: [StoredPayload] = []
+        // One collection bind plus 400 record IDs remains comfortably below
+        // SQLite's default host-parameter limit.
+        for start in stride(from: 0, to: sortedIDs.count, by: 400) {
+            try Task.checkCancellation()
+            let batch = Array(sortedIDs[start..<min(start + 400, sortedIDs.count)])
+            let fetched: [StoredPayload] = try withStatement(
+                """
+                SELECT record_id, payload
+                FROM records
+                WHERE collection = ?
+                  AND record_id IN (\(Self.placeholders(batch.count)))
+                ORDER BY record_id ASC;
+                """
+            ) { statement in
+                try bindText(collection, at: 1, to: statement)
+                for (offset, recordID) in batch.enumerated() {
+                    try bindText(recordID, at: Int32(offset + 2), to: statement)
+                }
+                var batchRecords: [StoredPayload] = []
+                while true {
+                    let result = sqlite3_step(statement)
+                    if result == SQLITE_DONE { break }
+                    guard result == SQLITE_ROW,
+                          let rawID = sqlite3_column_text(statement, 0) else {
+                        throw makeError(
+                            code: result == SQLITE_ROW ? SQLITE_CORRUPT : result
+                        )
+                    }
+                    batchRecords.append(StoredPayload(
+                        id: String(cString: rawID),
+                        payload: data(from: statement, column: 1)
+                    ))
+                }
+                return batchRecords
+            }
+            records.append(contentsOf: fetched)
+        }
+        return records.map { ($0.id, $0.payload) }
     }
 
     func fetchJournalEntryPage(
@@ -1531,7 +1810,8 @@ private final class SQLCipherConnection: @unchecked Sendable {
     }
 
     func fetchInvalidJournalEntryIDs(
-        validAccountIDs: Set<String>
+        validAccountIDs: Set<String>,
+        expectedAccountCurrencies: [String: String]
     ) throws -> Set<String> {
         let sortedAccountIDs = validAccountIDs.sorted()
         let predicate: String
@@ -1540,7 +1820,7 @@ private final class SQLCipherConnection: @unchecked Sendable {
         } else {
             predicate = "account_id NOT IN (\(Self.placeholders(sortedAccountIDs.count)))"
         }
-        return try withStatement(
+        var result = try withStatement(
             """
             SELECT DISTINCT entry_id
             FROM journal_posting_index
@@ -1559,42 +1839,88 @@ private final class SQLCipherConnection: @unchecked Sendable {
                       let rawEntryID = sqlite3_column_text(statement, 0) else {
                     throw makeError(code: step == SQLITE_ROW ? SQLITE_CORRUPT : step)
                 }
-                result.insert(String(cString: rawEntryID).lowercased())
+                result.insert(String(cString: rawEntryID))
             }
             return result
         }
+
+        // Account metadata is encrypted generic-record state and therefore is
+        // supplied by the actor-isolated caller. Query mismatches in bounded
+        // batches so books with many accounts never exceed SQLite's variable
+        // limit. A single mismatched posting quarantines its complete entry.
+        let sortedCurrencies = expectedAccountCurrencies.sorted {
+            if $0.key == $1.key { return $0.value < $1.value }
+            return $0.key < $1.key
+        }
+        for batchStart in stride(from: 0, to: sortedCurrencies.count, by: 200) {
+            let batch = Array(
+                sortedCurrencies[batchStart..<min(batchStart + 200, sortedCurrencies.count)]
+            )
+            guard !batch.isEmpty else { continue }
+            let predicate = batch.map { _ in
+                "(account_id = ? AND currency <> ?)"
+            }.joined(separator: " OR ")
+            let mismatches = try withStatement(
+                """
+                SELECT DISTINCT entry_id
+                FROM journal_posting_index
+                WHERE \(predicate)
+                ORDER BY entry_id ASC;
+                """
+            ) { statement in
+                var binding: Int32 = 1
+                for (accountID, currency) in batch {
+                    try bindText(accountID, at: binding, to: statement)
+                    binding += 1
+                    try bindText(currency, at: binding, to: statement)
+                    binding += 1
+                }
+                var mismatches = Set<String>()
+                while true {
+                    let step = sqlite3_step(statement)
+                    if step == SQLITE_DONE { break }
+                    guard step == SQLITE_ROW,
+                          let rawEntryID = sqlite3_column_text(statement, 0) else {
+                        throw makeError(code: step == SQLITE_ROW ? SQLITE_CORRUPT : step)
+                    }
+                    mismatches.insert(String(cString: rawEntryID))
+                }
+                return mismatches
+            }
+            result.formUnion(mismatches)
+        }
+        return result
     }
 
     func fetchQuarantinedJournalPostings(
-        validAccountIDs: Set<String>
+        entryIDs: Set<String>
     ) throws -> [IndexedPostingRow] {
-        let sortedAccountIDs = validAccountIDs.sorted()
-        let invalidPredicate: String
-        if sortedAccountIDs.isEmpty {
-            invalidPredicate = "1 = 1"
-        } else {
-            invalidPredicate = "account_id NOT IN (\(Self.placeholders(sortedAccountIDs.count)))"
-        }
-        return try withStatement(
-            """
-            SELECT posting.entry_id, posting.occurred_at, entry.origin_day_key,
-                posting.posting_id, posting.account_id, posting.currency,
-                posting.amount_text
-            FROM journal_posting_index AS posting
-            JOIN journal_entry_index AS entry ON entry.entry_id = posting.entry_id
-            WHERE posting.entry_id IN (
-                SELECT entry_id
-                FROM journal_posting_index
-                WHERE \(invalidPredicate)
+        let sortedEntryIDs = entryIDs.sorted()
+        var rows: [IndexedPostingRow] = []
+        for batchStart in stride(from: 0, to: sortedEntryIDs.count, by: 400) {
+            let batch = Array(
+                sortedEntryIDs[batchStart..<min(batchStart + 400, sortedEntryIDs.count)]
             )
-            ORDER BY posting.entry_id ASC, posting.posting_id ASC;
-            """
-        ) { statement in
-            for (offset, accountID) in sortedAccountIDs.enumerated() {
-                try bindText(accountID, at: Int32(offset + 1), to: statement)
+            guard !batch.isEmpty else { continue }
+            let fetched = try withStatement(
+                """
+                SELECT posting.entry_id, posting.occurred_at, entry.origin_day_key,
+                    posting.posting_id, posting.account_id, posting.currency,
+                    posting.amount_text
+                FROM journal_posting_index AS posting
+                JOIN journal_entry_index AS entry ON entry.entry_id = posting.entry_id
+                WHERE posting.entry_id IN (\(Self.placeholders(batch.count)))
+                ORDER BY posting.entry_id ASC, posting.posting_id ASC;
+                """
+            ) { statement in
+                for (offset, entryID) in batch.enumerated() {
+                    try bindText(entryID, at: Int32(offset + 1), to: statement)
+                }
+                return try readPostingRows(from: statement)
             }
-            return try readPostingRows(from: statement)
+            rows.append(contentsOf: fetched)
         }
+        return rows
     }
 
     func fetchJournalReferenceCounts(
@@ -1730,6 +2056,40 @@ private final class SQLCipherConnection: @unchecked Sendable {
         }
     }
 
+    /// Returns legacy indexed UUID keys whose spelling is not the exact
+    /// canonical `UUID.uuidString`. If a canonical twin also exists, both
+    /// physical rows are quarantined so balances and history cannot expose
+    /// two logical versions of one transaction.
+    func fetchNoncanonicalJournalEntryIDs() throws -> Set<String> {
+        let aliases: Set<String> = try withStatement(
+            """
+            SELECT entry_id
+            FROM journal_entry_index
+            WHERE entry_id <> UPPER(entry_id)
+            ORDER BY entry_id ASC;
+            """
+        ) { statement in
+            var ids = Set<String>()
+            while true {
+                let result = sqlite3_step(statement)
+                if result == SQLITE_DONE { break }
+                guard result == SQLITE_ROW,
+                      let rawID = sqlite3_column_text(statement, 0) else {
+                    throw makeError(code: result == SQLITE_ROW ? SQLITE_CORRUPT : result)
+                }
+                ids.insert(String(cString: rawID))
+            }
+            return ids
+        }
+        guard !aliases.isEmpty else { return [] }
+        let canonicalCandidates = aliases.compactMap { recordID in
+            UUID(uuidString: recordID)?.uuidString
+        }
+        return aliases.union(
+            try fetchExistingJournalEntryIDs(canonicalCandidates)
+        )
+    }
+
     func containsJournalEntry(sourceFingerprint: String) throws -> Bool {
         try withStatement(
             """
@@ -1825,6 +2185,7 @@ private final class SQLCipherConnection: @unchecked Sendable {
     func receiptAttachmentIndexSnapshot() throws
         -> ReceiptAttachmentIndexSnapshot {
         var metadata: [ReceiptAttachmentMetadata] = []
+        var canonicalIndexedRecordIDs = Set<String>()
         try withStatement(
             """
             SELECT attachment_id, entry_id, media_type, byte_count, created_at
@@ -1838,16 +2199,18 @@ private final class SQLCipherConnection: @unchecked Sendable {
                 guard result == SQLITE_ROW,
                       let rawAttachmentID = sqlite3_column_text(statement, 0),
                       let rawEntryID = sqlite3_column_text(statement, 1),
-                      let rawMediaType = sqlite3_column_text(statement, 2),
-                      let attachmentID = UUID(
-                        uuidString: String(cString: rawAttachmentID)
-                      ),
+                      let rawMediaType = sqlite3_column_text(statement, 2)
+                else {
+                    throw makeError(code: result == SQLITE_ROW ? SQLITE_CORRUPT : result)
+                }
+                let attachmentRecordID = String(cString: rawAttachmentID)
+                guard let attachmentID = UUID(uuidString: attachmentRecordID),
+                      attachmentID.uuidString == attachmentRecordID,
                       let entryID = UUID(uuidString: String(cString: rawEntryID)),
                       let mediaType = ReceiptAttachmentMediaType(
                         rawValue: String(cString: rawMediaType)
-                      ) else {
-                    throw makeError(code: result == SQLITE_ROW ? SQLITE_CORRUPT : result)
-                }
+                      ) else { continue }
+                canonicalIndexedRecordIDs.insert(attachmentRecordID)
                 metadata.append(
                     try ReceiptAttachmentMetadata(
                         id: attachmentID,
@@ -1862,7 +2225,6 @@ private final class SQLCipherConnection: @unchecked Sendable {
             }
         }
 
-        let indexedIDs = Set(metadata.map { $0.id.uuidString.lowercased() })
         let issues = try withStatement(
             """
             SELECT record_id
@@ -1885,7 +2247,7 @@ private final class SQLCipherConnection: @unchecked Sendable {
                     throw makeError(code: result == SQLITE_ROW ? SQLITE_CORRUPT : result)
                 }
                 let recordID = String(cString: rawID)
-                if !indexedIDs.contains(recordID.lowercased()) {
+                if !canonicalIndexedRecordIDs.contains(recordID) {
                     issues.append(
                         RecordDecodeIssue(
                             collection: .receiptAttachments,
@@ -1915,7 +2277,7 @@ private final class SQLCipherConnection: @unchecked Sendable {
             JOIN records
               ON records.collection = ?
              AND records.record_id = receipt_attachment_index.attachment_id
-            WHERE receipt_attachment_index.attachment_id = ? COLLATE NOCASE;
+            WHERE receipt_attachment_index.attachment_id = ?;
             """
         ) { statement in
             try bindText(
@@ -1971,7 +2333,8 @@ private final class SQLCipherConnection: @unchecked Sendable {
 
     func receiptAttachmentIDs(entryID: UUID) throws -> [UUID] {
         try receiptAttachmentRecordIDs(entryID: entryID).map { recordID in
-            guard let id = UUID(uuidString: recordID) else {
+            guard let id = UUID(uuidString: recordID),
+                  id.uuidString == recordID else {
                 throw PersistenceError.invalidStoredRecord(
                     collection: .receiptAttachments,
                     recordID: recordID
@@ -2030,9 +2393,14 @@ private final class SQLCipherConnection: @unchecked Sendable {
                 try stepExpectingDone(statement)
             }
             try execute("COMMIT;")
-        } catch {
-            try? execute("ROLLBACK;")
-            throw error
+        } catch let operationError {
+            do {
+                try execute("ROLLBACK;")
+            } catch {
+                close()
+                throw PersistenceError.transactionStateIndeterminate
+            }
+            throw operationError
         }
     }
 
@@ -2044,6 +2412,41 @@ private final class SQLCipherConnection: @unchecked Sendable {
             let result = sqlite3_step(statement)
             guard result == SQLITE_ROW else { throw makeError(code: result) }
             return Int(sqlite3_column_int64(statement, 0))
+        }
+    }
+
+    func storageMetrics() throws -> DatabaseStorageMetrics {
+        try withStatement(
+            """
+            SELECT COUNT(*),
+                   COALESCE(SUM(length(payload)), 0),
+                   COALESCE(SUM(length(CAST(record_id AS BLOB))), 0),
+                   COALESCE(SUM(length(CAST(collection AS BLOB))), 0)
+            FROM records;
+            """
+        ) { statement in
+            let result = sqlite3_step(statement)
+            guard result == SQLITE_ROW else { throw makeError(code: result) }
+            let recordCount = sqlite3_column_int64(statement, 0)
+            let payloadByteCount = sqlite3_column_int64(statement, 1)
+            let recordIDByteCount = sqlite3_column_int64(statement, 2)
+            let collectionByteCount = sqlite3_column_int64(statement, 3)
+            guard recordCount >= 0,
+                  payloadByteCount >= 0,
+                  recordIDByteCount >= 0,
+                  collectionByteCount >= 0,
+                  recordCount <= Int64(Int.max),
+                  payloadByteCount <= Int64(Int.max),
+                  recordIDByteCount <= Int64(Int.max),
+                  collectionByteCount <= Int64(Int.max) else {
+                throw makeError(code: SQLITE_TOOBIG)
+            }
+            return DatabaseStorageMetrics(
+                recordCount: Int(recordCount),
+                payloadByteCount: Int(payloadByteCount),
+                recordIDByteCount: Int(recordIDByteCount),
+                collectionByteCount: Int(collectionByteCount)
+            )
         }
     }
 
@@ -2060,7 +2463,11 @@ private final class SQLCipherConnection: @unchecked Sendable {
             """
         ) { statement in
             var records: [StoredRecordSnapshot] = []
+            var rowIndex = 0
             while true {
+                if rowIndex.isMultiple(of: 256) {
+                    try Task.checkCancellation()
+                }
                 let result = sqlite3_step(statement)
                 if result == SQLITE_DONE { break }
                 guard result == SQLITE_ROW,
@@ -2076,15 +2483,22 @@ private final class SQLCipherConnection: @unchecked Sendable {
                         updatedAt: sqlite3_column_double(statement, 3)
                     )
                 )
+                rowIndex += 1
             }
             return records
         }
     }
 
-    func replaceAllRecords(with records: [StoredRecordSnapshot]) throws {
+    func replaceAllRecords(
+        with records: [StoredRecordSnapshot],
+        observesCancellation: Bool
+    ) throws {
         let allowedCollections = Set(RecordCollection.allCases.map(\.rawValue))
         var identities = Set<String>()
-        for record in records {
+        for (index, record) in records.enumerated() {
+            if observesCancellation && index.isMultiple(of: 256) {
+                try Task.checkCancellation()
+            }
             guard allowedCollections.contains(record.collection),
                   !record.recordID.isEmpty,
                   !record.payload.isEmpty,
@@ -2100,6 +2514,7 @@ private final class SQLCipherConnection: @unchecked Sendable {
             }
         }
 
+        if observesCancellation { try Task.checkCancellation() }
         try execute("BEGIN IMMEDIATE;")
         do {
             try execute("DELETE FROM journal_entry_index;")
@@ -2107,8 +2522,11 @@ private final class SQLCipherConnection: @unchecked Sendable {
             try execute("DELETE FROM receipt_attachment_index;")
             try execute("DELETE FROM records;")
             var affectedBalances = Set<BalanceKey>()
-            for record in records {
-                let journalIndex = journalIndexWrite(
+            for (index, record) in records.enumerated() {
+                if observesCancellation && index.isMultiple(of: 256) {
+                    try Task.checkCancellation()
+                }
+                let journalIndex = try journalIndexWrite(
                     collection: record.collection,
                     recordID: record.recordID,
                     payload: record.payload
@@ -2128,7 +2546,8 @@ private final class SQLCipherConnection: @unchecked Sendable {
                 if record.collection == RecordCollection.journalEntries.rawValue {
                     try replaceJournalIndex(
                         entryID: record.recordID,
-                        with: journalIndex
+                        with: journalIndex,
+                        observesCancellation: observesCancellation
                     )
                     affectedBalances.formUnion(
                         journalIndex?.postings.map {
@@ -2147,6 +2566,100 @@ private final class SQLCipherConnection: @unchecked Sendable {
                     )
                 }
             }
+            try rebuildBalances(
+                for: affectedBalances,
+                observesCancellation: observesCancellation
+            )
+            if observesCancellation { try Task.checkCancellation() }
+            try execute("COMMIT;")
+        } catch let operationError {
+            do {
+                #if DEBUG
+                if shouldFailNextRestoreRollbackForTesting {
+                    shouldFailNextRestoreRollbackForTesting = false
+                    // Fail without ending the outer transaction so this hook
+                    // exercises the dangerous rollback-indeterminate state.
+                    try execute(
+                        "ROLLBACK TO moneyup_missing_restore_savepoint;"
+                    )
+                }
+                #endif
+                try execute("ROLLBACK;")
+            } catch {
+                // Never leave a possibly partial transaction available to
+                // reads or raw backup. Closing SQLite rolls it back durably;
+                // AppModel fails closed until a fresh store is opened.
+                close()
+                throw PersistenceError.restoreTransactionStateIndeterminate
+            }
+            throw operationError
+        }
+    }
+
+    #if DEBUG
+    func failNextRestoreRollbackForTesting() {
+        shouldFailNextRestoreRollbackForTesting = true
+    }
+
+    func failNextWriteRollbackForTesting() {
+        shouldFailNextWriteRollbackForTesting = true
+    }
+
+    func installLegacyCaseVariantIndexesForTesting() throws {
+        let journalRecords = try fetchAll(
+            collection: RecordCollection.journalEntries.rawValue
+        )
+        let receiptRecords = try fetchAll(
+            collection: RecordCollection.receiptAttachments.rawValue
+        )
+        try execute("BEGIN IMMEDIATE;")
+        do {
+            var affectedBalances = Set<BalanceKey>()
+            for record in journalRecords {
+                guard let physicalID = UUID(uuidString: record.id),
+                      physicalID.uuidString != record.id,
+                      let entry = try? JSONDecoder().decode(
+                        JournalEntry.self,
+                        from: record.payload
+                      ),
+                      entry.id == physicalID else { continue }
+                let index = JournalIndexWrite(entry: entry, recordID: record.id)
+                try withStatement(
+                    """
+                    UPDATE records SET indexed_at = ?
+                    WHERE collection = ? AND record_id = ?;
+                    """
+                ) { statement in
+                    try bindDouble(index.occurredAt, at: 1, to: statement)
+                    try bindText(
+                        RecordCollection.journalEntries.rawValue,
+                        at: 2,
+                        to: statement
+                    )
+                    try bindText(record.id, at: 3, to: statement)
+                    try stepExpectingDone(statement)
+                }
+                try replaceJournalIndex(entryID: record.id, with: index)
+                affectedBalances.formUnion(index.postings.map {
+                    BalanceKey(accountID: $0.accountID, currency: $0.currency)
+                })
+            }
+            for record in receiptRecords {
+                guard let physicalID = UUID(uuidString: record.id),
+                      physicalID.uuidString != record.id,
+                      let attachment = try? JSONDecoder().decode(
+                        ReceiptAttachment.self,
+                        from: record.payload
+                      ),
+                      attachment.id == physicalID else { continue }
+                try upsertReceiptAttachmentIndex(
+                    attachmentID: record.id,
+                    index: ReceiptAttachmentIndexWrite(
+                        attachment: attachment,
+                        recordID: record.id
+                    )
+                )
+            }
             try rebuildBalances(for: affectedBalances)
             try execute("COMMIT;")
         } catch {
@@ -2154,6 +2667,7 @@ private final class SQLCipherConnection: @unchecked Sendable {
             throw error
         }
     }
+    #endif
 
     private func verifyCipher() throws {
         try execute("SELECT count(*) FROM sqlite_master;")
@@ -2174,9 +2688,26 @@ private final class SQLCipherConnection: @unchecked Sendable {
     private func configure() throws {
         try execute("PRAGMA cipher_memory_security = ON;")
         try execute("PRAGMA foreign_keys = ON;")
+        try execute("PRAGMA temp_store = MEMORY;")
+        guard try usesMemoryOnlyTemporaryStorage() else {
+            throw PersistenceError.databaseFailure(
+                code: SQLITE_MISUSE,
+                message: "SQLCipher refused memory-only temporary storage"
+            )
+        }
         try execute("PRAGMA journal_mode = WAL;")
         try execute("PRAGMA synchronous = FULL;")
         try execute("PRAGMA secure_delete = ON;")
+    }
+
+    fileprivate func usesMemoryOnlyTemporaryStorage() throws -> Bool {
+        try withStatement("PRAGMA temp_store;") { statement in
+            guard sqlite3_step(statement) == SQLITE_ROW else {
+                throw makeError()
+            }
+            // SQLite documents 2 as MEMORY (0 is compile-time default, 1 FILE).
+            return sqlite3_column_int(statement, 0) == 2
+        }
     }
 
     private func migrateIfNeeded() throws {
@@ -2240,7 +2771,7 @@ private final class SQLCipherConnection: @unchecked Sendable {
                 for record in try fetchAll(
                     collection: RecordCollection.journalEntries.rawValue
                 ) {
-                    guard let indexedAt = journalIndexedAt(
+                    guard let indexedAt = try journalIndexedAt(
                         collection: RecordCollection.journalEntries.rawValue,
                         payload: record.payload
                     ) else { continue }
@@ -2278,7 +2809,7 @@ private final class SQLCipherConnection: @unchecked Sendable {
                 for record in try fetchAll(
                     collection: RecordCollection.journalEntries.rawValue
                 ) {
-                    guard let index = journalIndexWrite(
+                    guard let index = try journalIndexWrite(
                         collection: RecordCollection.journalEntries.rawValue,
                         recordID: record.id,
                         payload: record.payload
@@ -2449,23 +2980,45 @@ private final class SQLCipherConnection: @unchecked Sendable {
     private func journalIndexedAt(
         collection: String,
         payload: Data
-    ) -> TimeInterval? {
-        guard collection == RecordCollection.journalEntries.rawValue,
-              let entry = try? JSONDecoder().decode(JournalEntry.self, from: payload)
-        else { return nil }
-        return entry.occurredAt.timeIntervalSince1970
+    ) throws -> TimeInterval? {
+        guard collection == RecordCollection.journalEntries.rawValue else {
+            return nil
+        }
+        do {
+            let entry = try JSONDecoder().decode(
+                JournalEntry.self,
+                from: payload
+            )
+            return entry.occurredAt.timeIntervalSince1970
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            return nil
+        }
     }
 
     private func journalIndexWrite(
         collection: String,
         recordID: String,
         payload: Data
-    ) -> JournalIndexWrite? {
-        guard collection == RecordCollection.journalEntries.rawValue,
-              let entry = try? JSONDecoder().decode(JournalEntry.self, from: payload),
-              entry.id.uuidString.caseInsensitiveCompare(recordID) == .orderedSame
-        else { return nil }
-        return JournalIndexWrite(entry: entry, recordID: recordID)
+    ) throws -> JournalIndexWrite? {
+        guard collection == RecordCollection.journalEntries.rawValue else {
+            return nil
+        }
+        do {
+            let entry = try JSONDecoder().decode(
+                JournalEntry.self,
+                from: payload
+            )
+            guard entry.id.uuidString == recordID else {
+                return nil
+            }
+            return JournalIndexWrite(entry: entry, recordID: recordID)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            return nil
+        }
     }
 
     private func receiptAttachmentIndexWrite(
@@ -2478,7 +3031,7 @@ private final class SQLCipherConnection: @unchecked Sendable {
                 ReceiptAttachment.self,
                 from: payload
               ),
-              attachment.id.uuidString.caseInsensitiveCompare(recordID) == .orderedSame
+              attachment.id.uuidString == recordID
         else { return nil }
         return ReceiptAttachmentIndexWrite(
             attachment: attachment,

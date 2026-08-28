@@ -35,17 +35,50 @@ public struct HistoryQuery: Equatable, Sendable {
     public var searchText: String
     public var kind: HistoryKindFilter
     public var accountID: UUID?
-    public var categoryID: UUID?
+    /// Exact category accounts that may satisfy this query. `nil` means no
+    /// category filter, while an empty set deliberately matches nothing.
+    /// The latter is fail-closed so an empty aggregate chart bucket can never
+    /// accidentally expand into all History transactions.
+    public var categoryIDs: Set<UUID>? {
+        didSet {
+            // The currency boundary describes the category scope that was
+            // selected with it. Never carry it into a different scope: doing
+            // so can silently hide otherwise matching postings when a caller
+            // reuses and edits a query.
+            if categoryIDs != oldValue {
+                categoryPostingCurrency = nil
+            }
+        }
+    }
+    /// Optional posting-currency boundary for a category query. Insights uses
+    /// this to keep a base-currency chart drill-through from including foreign
+    /// postings made against the same category account.
+    public var categoryPostingCurrency: CurrencyCode?
     public var startDate: Date?
     public var endDateExclusive: Date?
     public var minimumAmount: Decimal?
     public var maximumAmount: Decimal?
+
+    /// Source-compatible convenience for callers that filter one category.
+    /// Assigning this property replaces any existing multi-category scope and
+    /// clears a currency boundary that belonged to that previous scope.
+    public var categoryID: UUID? {
+        get {
+            guard categoryIDs?.count == 1 else { return nil }
+            return categoryIDs?.first
+        }
+        set {
+            categoryIDs = newValue.map { Set([$0]) }
+        }
+    }
 
     public init(
         searchText: String = "",
         kind: HistoryKindFilter = .all,
         accountID: UUID? = nil,
         categoryID: UUID? = nil,
+        categoryIDs: Set<UUID>? = nil,
+        categoryPostingCurrency: CurrencyCode? = nil,
         startDate: Date? = nil,
         endDateExclusive: Date? = nil,
         minimumAmount: Decimal? = nil,
@@ -54,7 +87,13 @@ public struct HistoryQuery: Equatable, Sendable {
         self.searchText = searchText
         self.kind = kind
         self.accountID = accountID
-        self.categoryID = categoryID
+        let resolvedCategoryIDs = categoryIDs ?? categoryID.map { Set([$0]) }
+        self.categoryIDs = resolvedCategoryIDs
+        // A posting-currency boundary without a category scope has no meaning
+        // and would otherwise become a latent filter if the query is mutated.
+        self.categoryPostingCurrency = resolvedCategoryIDs == nil
+            ? nil
+            : categoryPostingCurrency
         self.startDate = startDate
         self.endDateExclusive = endDateExclusive
         self.minimumAmount = minimumAmount
@@ -67,7 +106,10 @@ public struct HistoryQuery: Equatable, Sendable {
         locale: Locale = .current,
         calendar: Calendar = .current
     ) -> [JournalEntry] {
-        let accountsByID = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0) })
+        let accountsByID = Dictionary(
+            accounts.map { ($0.id, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
         let amountFormatter = NumberFormatter()
         amountFormatter.locale = locale
         amountFormatter.numberStyle = .decimal
@@ -88,7 +130,10 @@ public struct HistoryQuery: Equatable, Sendable {
         for entries: [JournalEntry],
         accounts: [LedgerAccount]
     ) throws -> HistorySummary {
-        let accountsByID = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0) })
+        let accountsByID = Dictionary(
+            accounts.map { ($0.id, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
         var totals: [CurrencyCode: Decimal] = [:]
 
         for entry in entries {
@@ -144,8 +189,14 @@ public struct HistoryQuery: Equatable, Sendable {
         if let accountID, !entry.postings.contains(where: { $0.accountID == accountID }) {
             return false
         }
-        if let categoryID, !entry.postings.contains(where: { $0.accountID == categoryID }) {
-            return false
+        if let allowedCategoryIDs = categoryIDs {
+            let requiredCurrency = categoryPostingCurrency
+            let hasMatchingCategoryPosting = entry.postings.contains { posting in
+                allowedCategoryIDs.contains(posting.accountID)
+                    && (requiredCurrency == nil
+                        || posting.money.currency == requiredCurrency)
+            }
+            if !hasMatchingCategoryPosting { return false }
         }
         guard FinancialPeriodBoundary.contains(
             entry.originContext.attributedDate(in: calendar) ?? entry.occurredAt,

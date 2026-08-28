@@ -162,6 +162,29 @@ final class HistoryQueryTests: XCTestCase {
         XCTAssertEqual(summary.amountsByCurrency[fixture.usd], 100)
     }
 
+    func testDuplicateAccountIdentityCannotTrapHistoryLookup() throws {
+        let fixture = try Fixture()
+        let entry = try fixture.expense(amount: 30)
+        let duplicate = LedgerAccount(
+            id: fixture.wallet.id,
+            name: "Conflicting duplicate",
+            kind: .liability,
+            currency: fixture.sgd
+        )
+        let accounts = fixture.accounts + [duplicate]
+
+        XCTAssertEqual(
+            HistoryQuery(searchText: fixture.wallet.name)
+                .filteredEntries([entry], accounts: accounts).map(\.id),
+            [entry.id]
+        )
+        XCTAssertEqual(
+            try HistoryQuery().summary(for: [entry], accounts: accounts)
+                .amountsByCurrency[fixture.sgd],
+            -30
+        )
+    }
+
     func testSummaryKeepsForeignTransferSidesSeparateByCurrency() throws {
         let fixture = try Fixture()
         let transfer = try TransactionFactory.foreignCurrencyTransfer(
@@ -193,6 +216,76 @@ final class HistoryQueryTests: XCTestCase {
                 .filteredEntries([expense, refund], accounts: fixture.accounts)
                 .map(\.id),
             [refund.id]
+        )
+    }
+
+    func testCategorySetUsesStableIDsAndTheSamePostingCurrency() throws {
+        let fixture = try Fixture()
+        let duplicateName = LedgerAccount(name: fixture.food.name, kind: .expense)
+        let food = try fixture.expense(amount: 10)
+        let transport = try TransactionFactory.expense(
+            amount: Money(20, currency: fixture.sgd),
+            paidFrom: fixture.wallet.id,
+            category: fixture.transport.id
+        )
+        let sameNameWrongID = try TransactionFactory.expense(
+            amount: Money(30, currency: fixture.sgd),
+            paidFrom: fixture.wallet.id,
+            category: duplicateName.id
+        )
+        let selectedCategoryWrongCurrency = try TransactionFactory.expense(
+            amount: Money(40, currency: fixture.usd),
+            paidFrom: fixture.usAccount.id,
+            category: fixture.food.id
+        )
+        let query = HistoryQuery(
+            categoryIDs: [fixture.food.id, fixture.transport.id],
+            categoryPostingCurrency: fixture.sgd
+        )
+
+        XCTAssertEqual(
+            query.filteredEntries(
+                [
+                    sameNameWrongID,
+                    selectedCategoryWrongCurrency,
+                    transport,
+                    food
+                ],
+                accounts: fixture.accounts + [duplicateName]
+            ).map(\.id),
+            [transport.id, food.id]
+        )
+    }
+
+    func testEmptyCategorySetFailsClosedInsteadOfMatchingAllHistory() throws {
+        let fixture = try Fixture()
+        let entry = try fixture.expense(amount: 10)
+
+        XCTAssertTrue(
+            HistoryQuery(categoryIDs: [])
+                .filteredEntries([entry], accounts: fixture.accounts)
+                .isEmpty
+        )
+    }
+
+    func testChangedCategoryScopeClearsItsPreviousPostingCurrencyBoundary() throws {
+        let fixture = try Fixture()
+        var query = HistoryQuery(
+            categoryIDs: [fixture.food.id, fixture.transport.id],
+            categoryPostingCurrency: fixture.sgd
+        )
+
+        query.categoryID = fixture.food.id
+        XCTAssertEqual(query.categoryIDs, Set([fixture.food.id]))
+        XCTAssertNil(query.categoryPostingCurrency)
+
+        query.categoryPostingCurrency = fixture.usd
+        query.categoryIDs = nil
+        XCTAssertNil(query.categoryPostingCurrency)
+
+        XCTAssertNil(
+            HistoryQuery(categoryPostingCurrency: fixture.sgd)
+                .categoryPostingCurrency
         )
     }
 

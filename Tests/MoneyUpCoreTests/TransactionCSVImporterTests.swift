@@ -47,6 +47,173 @@ struct TransactionCSVImporterTests {
     }
 
     @Test
+    func externalIDsAreMarkedAndRemainCaseSensitiveInV2Fingerprint() throws {
+        let csv = """
+        ID,Date,Type,Amount,Payee
+        Source-A,2026-08-20,Expense,12,Cafe
+        source-a,2026-08-20,Expense,12,Cafe
+        ,2026-08-20,Expense,12,Cafe
+        """
+
+        let preview = try TransactionCSVImporter.parse(
+            csv,
+            locale: Locale(identifier: "en_US_POSIX"),
+            timeZone: TimeZone(secondsFromGMT: 0)!
+        )
+
+        #expect(preview.issues.isEmpty)
+        #expect(preview.rows.map(\.hasExternalID) == [true, true, false])
+        #expect(preview.rows[0].id != preview.rows[1].id)
+        #expect(preview.rows[0].id.hasPrefix("sha256:external:v1:"))
+        #expect(preview.rows[0].id == "sha256:external:v1:6d1b1e808a3167ed8e98e8089c39cd432b793a4d75b6c3f87e4c6c2469ac13c9")
+        #expect(preview.rows[1].id.hasPrefix("sha256:external:v1:"))
+        #expect(preview.rows[2].id.hasPrefix("sha256:v2:"))
+    }
+
+    @Test
+    func v2FingerprintCaseFoldsOnlyHumanFields() throws {
+        let csv = """
+        Date,Type,Amount,Currency,Account,Destination Account,Category,Payee,Note
+        2026-08-20,Expense,12,sgd,Cash,Savings,Food,Cafe,Lunch
+        2026-08-20,EXPENSE,12,SGD,CASH,SAVINGS,FOOD,CAFE,LUNCH
+        """
+
+        let preview = try TransactionCSVImporter.parse(
+            csv,
+            locale: Locale(identifier: "en_US_POSIX"),
+            timeZone: TimeZone(secondsFromGMT: 0)!
+        )
+
+        #expect(preview.issues.isEmpty)
+        #expect(preview.rows[0].id == preview.rows[1].id)
+    }
+
+    @Test
+    func correctedRowsWithSameExternalIDKeepOneAuthoritativeIdentity() throws {
+        let csv = """
+        ID,Date,Type,Amount,Account,Category,Payee,Note
+        Bank-Exact-42,2026-08-20,Expense,12,Wallet,Food,Cafe,Lunch
+        Bank-Exact-42,2026-08-21,Income,99,Bank,Salary,Employer,Correction
+        """
+
+        let preview = try TransactionCSVImporter.parse(
+            csv,
+            locale: Locale(identifier: "en_US_POSIX"),
+            timeZone: TimeZone(secondsFromGMT: 0)!
+        )
+
+        #expect(preview.issues.isEmpty)
+        #expect(preview.rows.allSatisfy(\.hasExternalID))
+        #expect(preview.rows[0].id == preview.rows[1].id)
+        #expect(preview.rows[0].legacyFingerprintCandidates
+            != preview.rows[1].legacyFingerprintCandidates)
+    }
+
+    @Test
+    func persistenceFingerprintUsesCanonicalSourceNamespace() {
+        let identity = "sha256:external:v1:fixture"
+        let first = TransactionCSVImporter.persistenceFingerprint(
+            for: identity,
+            sourceSystem: "  Bank   Feed  "
+        )
+        let canonicalEquivalent = TransactionCSVImporter.persistenceFingerprint(
+            for: identity,
+            sourceSystem: "bank feed"
+        )
+        let otherSource = TransactionCSVImporter.persistenceFingerprint(
+            for: identity,
+            sourceSystem: "Card Feed"
+        )
+
+        #expect(first.hasPrefix("sha256:import:v1:"))
+        #expect(first == "sha256:import:v1:e811734d4c5cf389b4c84457c04574475fad170374e45cb0af2e330103cee1ff")
+        #expect(first == canonicalEquivalent)
+        #expect(first != otherSource)
+    }
+
+    @Test
+    func parsedRowsCarryHashedLegacyCompatibilityCandidates() throws {
+        let preview = try TransactionCSVImporter.parse(
+            "ID,Date,Type,Amount\nLegacy-42,2026-08-20,Expense,12\n",
+            locale: Locale(identifier: "en_US_POSIX"),
+            timeZone: TimeZone(secondsFromGMT: 0)!
+        )
+        let row = try #require(preview.rows.first)
+
+        #expect(row.legacyFingerprintCandidates.contains {
+            $0.hasPrefix("fnv1a64:")
+        })
+        #expect(row.legacyFingerprintCandidates.contains(
+            "fnv1a64:c9ce4f424ef7eb9f"
+        ))
+        #expect(row.legacyFingerprintCandidates.contains {
+            $0.hasPrefix("sha256:v2:")
+        })
+        #expect(!row.legacyFingerprintCandidates.contains(row.id))
+    }
+
+    @Test
+    func v2FingerprintCannotCollideAcrossComponentSeparators() throws {
+        let separator = "\u{1f}"
+        let csv = """
+        Date,Type,Amount,Account,Destination Account
+        2026-08-20,Expense,12,Cash\(separator)Reserve,Savings
+        2026-08-20,Expense,12,Cash,Reserve\(separator)Savings
+        """
+
+        let preview = try TransactionCSVImporter.parse(
+            csv,
+            locale: Locale(identifier: "en_US_POSIX"),
+            timeZone: TimeZone(secondsFromGMT: 0)!
+        )
+
+        #expect(preview.issues.isEmpty)
+        #expect(preview.rows[0].id != preview.rows[1].id)
+    }
+
+    @Test
+    func foreignTransferDestinationAmountParticipatesInFingerprint() throws {
+        let csv = """
+        Date,Type,Amount,Destination Amount,Currency,Account,Destination Account
+        2026-08-20,Transfer,100,75,SGD,Wallet,Overseas
+        2026-08-20,Transfer,100,76,SGD,Wallet,Overseas
+        """
+
+        let preview = try TransactionCSVImporter.parse(
+            csv,
+            locale: Locale(identifier: "en_US_POSIX"),
+            timeZone: TimeZone(secondsFromGMT: 0)!
+        )
+
+        #expect(preview.issues.isEmpty)
+        #expect(preview.rows.map(\.destinationAmount) == [Decimal(75), Decimal(76)])
+        #expect(preview.rows[0].id != preview.rows[1].id)
+    }
+
+    @Test
+    func explicitlyInvalidOrZeroDestinationAmountsAreRowIssues() throws {
+        let csv = """
+        Date,Type,Amount,Destination Amount
+        2026-08-20,Transfer,100,0
+        2026-08-21,Transfer,100,-0
+        2026-08-22,Transfer,100,not-a-number
+        """
+
+        let preview = try TransactionCSVImporter.parse(
+            csv,
+            locale: Locale(identifier: "en_US_POSIX"),
+            timeZone: TimeZone(secondsFromGMT: 0)!
+        )
+
+        #expect(preview.rows.isEmpty)
+        #expect(preview.issues.map(\.reason) == [
+            "invalid_destination_amount",
+            "invalid_destination_amount",
+            "invalid_destination_amount"
+        ])
+    }
+
+    @Test
     func safelyAcceptsForeignDecimalSeparatorWithoutTurningItIntoThousands() throws {
         let csv = "Date;Type;Amount\n2026-08-20;Expense;12,50\n"
 
@@ -134,6 +301,57 @@ struct TransactionCSVImporterTests {
     }
 
     @Test
+    func mappingsRequireDirectionAndDistinctInRangeColumns() throws {
+        var mapping = CSVColumnMapping(columns: [.date: 0, .amount: 2])
+        #expect(!mapping.hasRequiredColumns)
+
+        mapping[.kind] = 1
+        #expect(mapping.hasRequiredColumns)
+
+        mapping[.kind] = 0
+        #expect(!mapping.hasRequiredColumns)
+
+        mapping = CSVColumnMapping(columns: [.date: -1, .outflow: 2])
+        #expect(!mapping.hasRequiredColumns)
+
+        let outOfRange = CSVColumnMapping(columns: [
+            .date: 0,
+            .kind: 1,
+            .amount: 99
+        ])
+        do {
+            _ = try TransactionCSVImporter.parse(
+                "When,Flow,Value\n2026-08-20,Expense,12\n",
+                mapping: outOfRange
+            )
+            Issue.record("Expected an out-of-range mapping to be rejected")
+        } catch let error as TransactionCSVImportError {
+            #expect(error == .missingRequiredColumns)
+        } catch {
+            Issue.record("Unexpected error: \(error)")
+        }
+    }
+
+    @Test
+    func amountOnlyFileIsNotReportedAsActionablyMapped() throws {
+        let inspection = try TransactionCSVImporter.inspect(
+            "Date,Amount\n2026-08-20,12\n"
+        )
+        #expect(!inspection.suggestedMapping.hasRequiredColumns)
+
+        do {
+            _ = try TransactionCSVImporter.parse(
+                "Date,Amount\n2026-08-20,12\n"
+            )
+            Issue.record("Expected a directionless amount mapping to be rejected")
+        } catch let error as TransactionCSVImportError {
+            #expect(error == .missingRequiredColumns)
+        } catch {
+            Issue.record("Unexpected error: \(error)")
+        }
+    }
+
+    @Test
     func preservesExplicitImportOffsetForStableOriginDay() throws {
         let csv = "Date,Type,Amount\n2026-08-27T00:30:00+14:00,Expense,5\n"
 
@@ -174,6 +392,46 @@ struct TransactionCSVImporterTests {
         )
 
         #expect(preview.rows.isEmpty)
+        #expect(preview.issues.map(\.reason) == ["invalid_amount"])
+    }
+
+    @Test
+    func enforcesMonetaryNewWriteBoundaryDuringPreview() throws {
+        let maximum = NSDecimalNumber(
+            decimal: MonetaryInputPolicy.maximumAbsoluteNewWrite
+        ).stringValue
+        let csv = """
+        Date,Type,Amount
+        2026-08-20,Expense,\(maximum)
+        2026-08-21,Expense,1000000000000000
+        """
+
+        let preview = try TransactionCSVImporter.parse(
+            csv,
+            locale: Locale(identifier: "en_US_POSIX"),
+            timeZone: TimeZone(secondsFromGMT: 0)!
+        )
+
+        #expect(preview.rows.count == 1)
+        #expect(preview.rows[0].amount == MonetaryInputPolicy.maximumAbsoluteNewWrite)
+        #expect(preview.issues.map(\.reason) == ["invalid_amount"])
+    }
+
+    @Test
+    func enforcesDeclaredCurrencyPrecisionDuringPreview() throws {
+        let csv = """
+        Date,Type,Amount,Currency
+        2026-08-20,Expense,1.5,JPY
+        2026-08-21,Expense,2,JPY
+        """
+
+        let preview = try TransactionCSVImporter.parse(
+            csv,
+            locale: Locale(identifier: "en_US_POSIX"),
+            timeZone: TimeZone(secondsFromGMT: 0)!
+        )
+
+        #expect(preview.rows.map(\.amount) == [Decimal(2)])
         #expect(preview.issues.map(\.reason) == ["invalid_amount"])
     }
 
@@ -286,6 +544,93 @@ struct TransactionCSVImporterTests {
                 Issue.record("Unexpected error: \(error)")
             }
         }
+    }
+
+    @Test
+    func enforcesHeaderFieldAndColumnBoundaries() throws {
+        let maximumHeader = String(
+            repeating: "H",
+            count: TransactionCSVImporter.maximumHeaderByteCount
+        )
+        let acceptedInspection = try TransactionCSVImporter.inspect(
+            "\(maximumHeader),Type,Amount\nvalue,Expense,1\n"
+        )
+        #expect(acceptedInspection.headers[0] == maximumHeader)
+
+        let maximumNote = String(
+            repeating: "n",
+            count: TransactionCSVImporter.maximumFieldByteCount
+        )
+        let acceptedPreview = try TransactionCSVImporter.parse(
+            "Date,Type,Amount,Note\n2026-08-20,Expense,1,\(maximumNote)\n",
+            locale: Locale(identifier: "en_US_POSIX"),
+            timeZone: TimeZone(secondsFromGMT: 0)!
+        )
+        #expect(acceptedPreview.rows.first?.note == maximumNote)
+
+        let tooManyHeaders = (0...TransactionCSVImporter.maximumColumnCount)
+            .map { "C\($0)" }
+            .joined(separator: ",")
+        let malformedInputs = [
+            String(
+                repeating: "H",
+                count: TransactionCSVImporter.maximumHeaderByteCount + 1
+            ) + ",Type,Amount\nvalue,Expense,1\n",
+            "Date,Type,Amount,Note\n2026-08-20,Expense,1,"
+                + String(
+                    repeating: "n",
+                    count: TransactionCSVImporter.maximumFieldByteCount + 1
+                ) + "\n",
+            tooManyHeaders + "\n",
+            "Date,Date,Type,Amount\n2026-08-20,2026-08-20,Expense,1\n"
+        ]
+
+        for csv in malformedInputs {
+            do {
+                _ = try TransactionCSVImporter.inspect(csv)
+                Issue.record("Expected the structural CSV limit to be enforced")
+            } catch let error as TransactionCSVImportError {
+                #expect(error == .malformedCSV)
+            } catch {
+                Issue.record("Unexpected error: \(error)")
+            }
+        }
+    }
+
+    @Test
+    func rejectsInputBeyondCoreByteBoundaryBeforeParsing() {
+        let oversized = String(
+            repeating: "x",
+            count: TransactionCSVImporter.maximumInputByteCount + 1
+        )
+
+        do {
+            _ = try TransactionCSVImporter.inspect(oversized)
+            Issue.record("Expected the core input byte limit to be enforced")
+        } catch let error as TransactionCSVImportError {
+            #expect(error == .inputTooLarge)
+        } catch {
+            Issue.record("Unexpected error: \(error)")
+        }
+    }
+
+    @Test
+    func datesMustConsumeTheCompleteToken() throws {
+        let csv = """
+        Date,Type,Amount
+        2026-08-20 trailing,Expense,1
+        2026-02-31,Expense,1
+        2026-08-20,Expense,1
+        """
+
+        let preview = try TransactionCSVImporter.parse(
+            csv,
+            locale: Locale(identifier: "en_US_POSIX"),
+            timeZone: TimeZone(secondsFromGMT: 0)!
+        )
+
+        #expect(preview.rows.count == 1)
+        #expect(preview.issues.map(\.reason) == ["invalid_date", "invalid_date"])
     }
 
     @Test

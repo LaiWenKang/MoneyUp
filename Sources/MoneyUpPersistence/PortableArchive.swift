@@ -3,6 +3,7 @@ import Foundation
 
 public enum PortableArchiveError: Error, Equatable, Sendable {
     case passwordTooShort
+    case passwordTooLong
     case archiveTooLarge
     case invalidArchive
     case unsupportedVersion(Int)
@@ -15,7 +16,12 @@ public enum PortableArchiveError: Error, Equatable, Sendable {
 /// derives an independent AES-256 key from a user-held password so the book can
 /// be restored on a replacement device without weakening the live database.
 public enum PortableArchive {
+    /// Legacy v1 archives up to the original boundary remain readable. New
+    /// whole-buffer seals use a measured-safe containment ceiling until a
+    /// chunked/streaming archive version removes multi-buffer amplification.
     public static let maximumArchiveByteCount = 250_000_000
+    public static let maximumNewArchiveByteCount = 64_000_000
+    public static let maximumPasswordByteCount = 1_024
 
     private struct Envelope: Codable {
         let version: Int
@@ -27,37 +33,57 @@ public enum PortableArchive {
 
     private static let magic = Data("MONEYUP\u{0}".utf8)
     private static let currentVersion = 1
-    private static let iterations = 120_000
+    /// Version 1 archives use one exact work factor. Accepting attacker-chosen
+    /// values would either weaken password derivation or create a CPU denial of
+    /// service during restore.
+    static let iterationCount = 120_000
+    /// Bounds the cancellation latency of the CPU-bound PBKDF without adding
+    /// meaningful overhead to its fixed version-1 work factor.
+    private static let cancellationCheckIterationInterval = 256
     private static let minimumPasswordLength = 10
 
     public static func seal(
         _ snapshot: DatabaseSnapshot,
         password: String
     ) throws -> Data {
-        guard password.count >= minimumPasswordLength else {
-            throw PortableArchiveError.passwordTooShort
-        }
+        try Task.checkCancellation()
+        let passwordData = try validatedPasswordData(password)
+        try Task.checkCancellation()
         let salt = randomData(count: 16)
-        let key = deriveKey(password: password, salt: salt, iterations: iterations)
+        try Task.checkCancellation()
         let payload = try encoder().encode(snapshot)
+        try Task.checkCancellation()
+        guard isWithinNewArchiveByteLimit(payload.count) else {
+            throw PortableArchiveError.archiveTooLarge
+        }
+        let key = try deriveKey(
+            passwordData: passwordData,
+            salt: salt,
+            iterations: iterationCount
+        )
+        try Task.checkCancellation()
         let aad = associatedData(
             version: currentVersion,
-            iterations: iterations,
+            iterations: iterationCount,
             salt: salt
         )
+        try Task.checkCancellation()
         let sealed = try AES.GCM.seal(payload, using: key, authenticating: aad)
+        try Task.checkCancellation()
         guard let combined = sealed.combined else {
             throw PortableArchiveError.invalidArchive
         }
         let envelope = Envelope(
             version: currentVersion,
             kdf: "PBKDF2-HMAC-SHA256",
-            iterations: iterations,
+            iterations: iterationCount,
             salt: salt,
             ciphertext: combined
         )
+        try Task.checkCancellation()
         let archive = magic + (try encoder().encode(envelope))
-        guard isWithinArchiveByteLimit(archive.count) else {
+        try Task.checkCancellation()
+        guard isWithinNewArchiveByteLimit(archive.count) else {
             throw PortableArchiveError.archiveTooLarge
         }
         return archive
@@ -67,6 +93,7 @@ public enum PortableArchive {
         _ data: Data,
         password: String
     ) throws -> DatabaseSnapshot {
+        try Task.checkCancellation()
         guard isWithinArchiveByteLimit(data.count) else {
             throw PortableArchiveError.archiveTooLarge
         }
@@ -74,6 +101,7 @@ public enum PortableArchive {
               data.prefix(magic.count) == magic else {
             throw PortableArchiveError.invalidArchive
         }
+        try Task.checkCancellation()
         let envelope: Envelope
         do {
             envelope = try decoder().decode(
@@ -81,45 +109,78 @@ public enum PortableArchive {
                 from: Data(data.dropFirst(magic.count))
             )
         } catch {
+            try Task.checkCancellation()
             throw PortableArchiveError.invalidArchive
         }
+        try Task.checkCancellation()
         guard envelope.version == currentVersion else {
             throw PortableArchiveError.unsupportedVersion(envelope.version)
         }
         guard envelope.kdf == "PBKDF2-HMAC-SHA256",
-              (10_000...1_000_000).contains(envelope.iterations),
-              envelope.salt.count == 16 else {
+              envelope.iterations == iterationCount,
+              envelope.salt.count == 16,
+              isWithinArchiveByteLimit(envelope.ciphertext.count) else {
             throw PortableArchiveError.invalidArchive
         }
 
-        let key = deriveKey(
-            password: password,
+        let box: AES.GCM.SealedBox
+        do {
+            box = try AES.GCM.SealedBox(combined: envelope.ciphertext)
+        } catch {
+            try Task.checkCancellation()
+            throw PortableArchiveError.invalidArchive
+        }
+        try Task.checkCancellation()
+
+        // Older version-1 writers imposed no maximum and `open` imposed no
+        // length policy at all. Preserve every previously derivable key.
+        // `derivedKeyData` performs HMAC's equivalent one-time reduction for
+        // long keys so PBKDF2 work remains bounded per round.
+        let passwordData = legacyVersionOnePasswordData(password)
+        try Task.checkCancellation()
+        let key = try deriveKey(
+            passwordData: passwordData,
             salt: envelope.salt,
             iterations: envelope.iterations
         )
+        try Task.checkCancellation()
         let aad = associatedData(
             version: envelope.version,
             iterations: envelope.iterations,
             salt: envelope.salt
         )
+        try Task.checkCancellation()
+        let plaintext: Data
         do {
-            let box = try AES.GCM.SealedBox(combined: envelope.ciphertext)
-            let plaintext = try AES.GCM.open(box, using: key, authenticating: aad)
-            return try decoder().decode(DatabaseSnapshot.self, from: plaintext)
+            plaintext = try AES.GCM.open(box, using: key, authenticating: aad)
         } catch {
+            try Task.checkCancellation()
             throw PortableArchiveError.authenticationFailed
         }
+        try Task.checkCancellation()
+        guard isWithinArchiveByteLimit(plaintext.count) else {
+            throw PortableArchiveError.archiveTooLarge
+        }
+        let snapshot: DatabaseSnapshot
+        do {
+            snapshot = try decoder().decode(DatabaseSnapshot.self, from: plaintext)
+        } catch {
+            try Task.checkCancellation()
+            throw PortableArchiveError.invalidArchive
+        }
+        try Task.checkCancellation()
+        return snapshot
     }
 
     /// RFC 8018 PBKDF2 using HMAC-SHA256. One 32-byte block is sufficient for
     /// AES-256 and keeps portable backup cryptography independently testable.
     private static func deriveKey(
-        password: String,
+        passwordData: Data,
         salt: Data,
         iterations: Int
-    ) -> SymmetricKey {
-        SymmetricKey(data: derivedKeyData(
-            password: password,
+    ) throws -> SymmetricKey {
+        SymmetricKey(data: try derivedKeyData(
+            passwordData: passwordData,
             salt: salt,
             iterations: iterations
         ))
@@ -131,14 +192,39 @@ public enum PortableArchive {
     static func derivedKeyData(
         password: String,
         salt: Data,
-        iterations: Int
-    ) -> Data {
-        precondition(iterations > 0)
-        // Treat canonically equivalent user-visible passwords identically.
-        // This matters when a password is entered with a different keyboard or
-        // restored on another device that emits decomposed Unicode scalars.
+        iterations: Int,
+        cancellationProbe: () throws -> Void = {
+            try Task.checkCancellation()
+        }
+    ) throws -> Data {
+        try cancellationProbe()
         let normalizedPassword = password.precomposedStringWithCanonicalMapping
-        let passwordKey = SymmetricKey(data: Data(normalizedPassword.utf8))
+        try cancellationProbe()
+        return try derivedKeyData(
+            passwordData: Data(normalizedPassword.utf8),
+            salt: salt,
+            iterations: iterations,
+            cancellationProbe: cancellationProbe
+        )
+    }
+
+    private static func derivedKeyData(
+        passwordData: Data,
+        salt: Data,
+        iterations: Int,
+        cancellationProbe: () throws -> Void = {
+            try Task.checkCancellation()
+        }
+    ) throws -> Data {
+        precondition(iterations > 0)
+        try cancellationProbe()
+        // SHA-256 HMAC hashes keys longer than its 64-byte block before use.
+        // Do that once here instead of asking each PBKDF2 round to process an
+        // unbounded legacy password. The resulting HMAC output is identical.
+        let boundedPasswordData = passwordData.count > 64
+            ? Data(SHA256.hash(data: passwordData))
+            : passwordData
+        let passwordKey = SymmetricKey(data: boundedPasswordData)
         var blockInput = salt
         blockInput.append(contentsOf: [0, 0, 0, 1])
 
@@ -148,7 +234,12 @@ public enum PortableArchive {
         ))
         var output = current
         if iterations > 1 {
-            for _ in 1..<iterations {
+            for iteration in 1..<iterations {
+                if iteration.isMultiple(
+                    of: cancellationCheckIterationInterval
+                ) {
+                    try cancellationProbe()
+                }
                 current = Data(HMAC<SHA256>.authenticationCode(
                     for: current,
                     using: passwordKey
@@ -158,7 +249,35 @@ public enum PortableArchive {
                 }
             }
         }
+        try cancellationProbe()
         return output
+    }
+
+    /// Normalization precedes both limits so canonically equivalent passwords
+    /// have identical acceptance and key bytes. The byte cap bounds every HMAC
+    /// operation even when a UI supplies adversarial multi-byte Unicode input.
+    static func validatedPasswordData(_ password: String) throws -> Data {
+        let (normalizedPassword, passwordData) = normalizedPassword(password)
+        guard passwordData.count <= maximumPasswordByteCount else {
+            throw PortableArchiveError.passwordTooLong
+        }
+        guard normalizedPassword.count >= minimumPasswordLength else {
+            throw PortableArchiveError.passwordTooShort
+        }
+        return passwordData
+    }
+
+    private static func legacyVersionOnePasswordData(
+        _ password: String
+    ) -> Data {
+        normalizedPassword(password).1
+    }
+
+    private static func normalizedPassword(
+        _ password: String
+    ) -> (String, Data) {
+        let normalized = password.precomposedStringWithCanonicalMapping
+        return (normalized, Data(normalized.utf8))
     }
 
     private static func associatedData(
@@ -191,5 +310,9 @@ public enum PortableArchive {
     /// and restore cannot silently drift to different aggregate limits.
     public static func isWithinArchiveByteLimit(_ byteCount: Int) -> Bool {
         byteCount >= 0 && byteCount <= maximumArchiveByteCount
+    }
+
+    public static func isWithinNewArchiveByteLimit(_ byteCount: Int) -> Bool {
+        byteCount >= 0 && byteCount <= maximumNewArchiveByteCount
     }
 }

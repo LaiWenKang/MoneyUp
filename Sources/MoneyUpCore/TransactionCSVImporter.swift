@@ -10,6 +10,13 @@ public enum ImportedTransactionKind: String, Sendable {
 
 public struct ImportedTransaction: Equatable, Sendable, Identifiable {
     public let id: String
+    /// `true` only when the source file supplied a non-empty transaction ID.
+    /// Callers can use this to prefer the source system's stable identity over
+    /// weaker semantic matching without exposing the original ID in storage.
+    public let hasExternalID: Bool
+    /// Previous unscoped importer identities for a same-source migration
+    /// check. These are hashes only; the external source ID is never retained.
+    public let legacyFingerprintCandidates: Set<String>
     public let sourceLine: Int
     public let kind: ImportedTransactionKind
     public let occurredAt: Date
@@ -25,6 +32,8 @@ public struct ImportedTransaction: Equatable, Sendable, Identifiable {
 
     public init(
         id: String,
+        hasExternalID: Bool = false,
+        legacyFingerprintCandidates: Set<String> = [],
         sourceLine: Int,
         kind: ImportedTransactionKind,
         occurredAt: Date,
@@ -39,6 +48,8 @@ public struct ImportedTransaction: Equatable, Sendable, Identifiable {
         note: String? = nil
     ) {
         self.id = id
+        self.hasExternalID = hasExternalID
+        self.legacyFingerprintCandidates = legacyFingerprintCandidates
         self.sourceLine = sourceLine
         self.kind = kind
         self.occurredAt = occurredAt
@@ -95,10 +106,18 @@ public struct CSVColumnMapping: Equatable, Sendable {
     }
 
     public var hasRequiredColumns: Bool {
-        columns[.date] != nil
-            && (columns[.amount] != nil
-                || columns[.outflow] != nil
-                || columns[.inflow] != nil)
+        guard columns.values.allSatisfy({ $0 >= 0 }),
+              Set(columns.values).count == columns.count,
+              columns[.date] != nil else {
+            return false
+        }
+        let hasDirectionalAmount = columns[.outflow] != nil
+            || columns[.inflow] != nil
+        // A generic Amount column carries no direction by itself. It is only
+        // actionable when a Type/Kind column is also mapped; directional
+        // outflow/inflow columns can infer the kind without one.
+        return hasDirectionalAmount
+            || (columns[.amount] != nil && columns[.kind] != nil)
     }
 }
 
@@ -122,6 +141,7 @@ public enum TransactionCSVImportError: Error, Equatable, Sendable {
     case emptyFile
     case missingRequiredColumns
     case malformedCSV
+    case inputTooLarge
     case tooManyRows
     case postingLevelExportRequiresArchive
 }
@@ -130,6 +150,44 @@ public enum TransactionCSVImportError: Error, Equatable, Sendable {
 /// headers. The aliases include MoneyUp, generic, and Qianji-style labels; an
 /// unknown row is reported for preview rather than guessed into the ledger.
 public enum TransactionCSVImporter {
+    /// Mirrors the file-picker boundary, but is enforced here as well because
+    /// the core parser is also callable by tests and future non-UI clients.
+    public static let maximumInputByteCount = 10_000_000
+    public static let maximumColumnCount = 256
+    public static let maximumHeaderByteCount = 256
+    public static let maximumFieldByteCount = 4_096
+
+    /// Canonical identity used only for namespacing persisted import hashes.
+    /// User-facing `JournalEntry.sourceSystem` text remains unchanged.
+    public static func canonicalSourceSystem(_ value: String) -> String {
+        value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .folding(
+                options: [.caseInsensitive],
+                locale: Locale(identifier: "en_US_POSIX")
+            )
+            .replacingOccurrences(
+                of: #"\s+"#,
+                with: " ",
+                options: .regularExpression
+            )
+            .precomposedStringWithCanonicalMapping
+    }
+
+    /// Wraps a row identity in its canonical source namespace before it is
+    /// stored in the journal index. Identical vendor IDs from two banks or
+    /// import adapters therefore cannot suppress one another.
+    public static func persistenceFingerprint(
+        for transactionIdentity: String,
+        sourceSystem: String
+    ) -> String {
+        sha256Fingerprint(
+            domain: "moneyup.import.persistence.v1",
+            values: [canonicalSourceSystem(sourceSystem), transactionIdentity],
+            prefix: "sha256:import:v1:"
+        )
+    }
+
     private struct DelimitedRecord {
         let fields: [String]
         let sourceLine: Int
@@ -222,8 +280,9 @@ public enum TransactionCSVImporter {
            normalizedHeaders.contains("postingid") {
             throw TransactionCSVImportError.postingLevelExportRequiresArchive
         }
-        guard indexes[.date] != nil,
-              indexes[.amount] != nil || indexes[.outflow] != nil || indexes[.inflow] != nil else {
+        guard indexes.values.allSatisfy({ headers.indices.contains($0) }),
+              Set(indexes.values).count == indexes.count,
+              hasRequiredFields(indexes) else {
             throw TransactionCSVImportError.missingRequiredColumns
         }
 
@@ -266,6 +325,14 @@ public enum TransactionCSVImporter {
         })
     }
 
+    private static func hasRequiredFields(_ indexes: [Field: Int]) -> Bool {
+        guard indexes[.date] != nil else { return false }
+        let hasDirectionalAmount = indexes[.outflow] != nil
+            || indexes[.inflow] != nil
+        return hasDirectionalAmount
+            || (indexes[.amount] != nil && indexes[.kind] != nil)
+    }
+
     private static func publicField(_ field: Field) -> CSVImportMappedField {
         switch field {
         case .id: .id
@@ -305,6 +372,7 @@ public enum TransactionCSVImporter {
     private enum RowError: String, Error {
         case invalidDate = "invalid_date"
         case invalidAmount = "invalid_amount"
+        case invalidDestinationAmount = "invalid_destination_amount"
         case unsupportedType = "unsupported_type"
     }
 
@@ -331,10 +399,17 @@ public enum TransactionCSVImporter {
         if kindText != nil, explicitKind == nil {
             throw RowError.unsupportedType
         }
+        let currencyCode = value(.currency)?.uppercased()
+        let declaredCurrency = currencyCode.flatMap { try? CurrencyCode($0) }
 
         func amount(_ field: Field) throws -> Decimal? {
             guard let text = value(field) else { return nil }
-            guard let parsed = parsedAmount(text, locale: locale) else {
+            guard let parsed = parsedAmount(text, locale: locale),
+                  !parsed.isNaN,
+                  abs(parsed) <= MonetaryInputPolicy.maximumAbsoluteNewWrite,
+                  declaredCurrency.map({
+                      MonetaryInputPolicy.accepts(parsed, currency: $0)
+                  }) ?? true else {
                 throw RowError.invalidAmount
             }
             return parsed
@@ -387,23 +462,61 @@ public enum TransactionCSVImporter {
             throw RowError.invalidAmount
         }
 
-        let destinationAmount = try amount(.destinationAmount).map { abs($0) }
+        let destinationAmount: Decimal?
+        if let destinationText = value(.destinationAmount) {
+            guard let parsed = parsedAmount(destinationText, locale: locale),
+                  !parsed.isNaN,
+                  abs(parsed) > .zero,
+                  abs(parsed) <= MonetaryInputPolicy.maximumAbsoluteNewWrite else {
+                throw RowError.invalidDestinationAmount
+            }
+            destinationAmount = abs(parsed)
+        } else {
+            destinationAmount = nil
+        }
         let sourceID = value(.id)
-        let identity = fingerprint([
-            sourceID ?? "",
+        let accountName = value(.account)
+        let destinationAccountName = value(.destinationAccount)
+        let categoryName = value(.category)
+        let payee = value(.payee)
+        let note = value(.note)
+        let semanticComponents = [
+            sourceID ?? "", // External IDs are deliberately case-sensitive.
             kind.rawValue,
             ISO8601DateFormatter().string(from: occurredAt),
             NSDecimalNumber(decimal: amount).stringValue,
-            value(.currency) ?? "",
-            value(.account) ?? "",
-            value(.destinationAccount) ?? "",
-            value(.category) ?? "",
-            value(.payee) ?? "",
-            value(.note) ?? ""
-        ])
+            destinationAmount.map { NSDecimalNumber(decimal: $0).stringValue } ?? "",
+            currencyCode ?? "",
+            humanFingerprintValue(accountName),
+            humanFingerprintValue(destinationAccountName),
+            humanFingerprintValue(categoryName),
+            humanFingerprintValue(payee),
+            humanFingerprintValue(note)
+        ]
+        let legacySemanticFingerprint = fingerprintV2(semanticComponents)
+        let identity = sourceID.map(externalIdentityFingerprint)
+            ?? legacySemanticFingerprint
+        var legacyFingerprintCandidates: Set<String> = [
+            legacySemanticFingerprint,
+            legacyFNV1A64Fingerprint([
+                sourceID ?? "",
+                kind.rawValue,
+                ISO8601DateFormatter().string(from: occurredAt),
+                NSDecimalNumber(decimal: amount).stringValue,
+                value(.currency) ?? "",
+                accountName ?? "",
+                destinationAccountName ?? "",
+                categoryName ?? "",
+                payee ?? "",
+                note ?? ""
+            ])
+        ]
+        legacyFingerprintCandidates.remove(identity)
 
         return ImportedTransaction(
             id: identity,
+            hasExternalID: sourceID != nil,
+            legacyFingerprintCandidates: legacyFingerprintCandidates,
             sourceLine: line,
             kind: kind,
             occurredAt: occurredAt,
@@ -414,12 +527,12 @@ public enum TransactionCSVImporter {
             ),
             amount: amount,
             destinationAmount: destinationAmount,
-            currencyCode: value(.currency)?.uppercased(),
-            accountName: value(.account),
-            destinationAccountName: value(.destinationAccount),
-            categoryName: value(.category),
-            payee: value(.payee),
-            note: value(.note)
+            currencyCode: currencyCode,
+            accountName: accountName,
+            destinationAccountName: destinationAccountName,
+            categoryName: categoryName,
+            payee: payee,
+            note: note
         )
     }
 
@@ -531,9 +644,15 @@ public enum TransactionCSVImporter {
         locale: Locale,
         timeZone: TimeZone
     ) -> Date? {
-        let iso = ISO8601DateFormatter()
-        iso.timeZone = timeZone
-        if let date = iso.date(from: value) { return date }
+        let isoPattern = #"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:[Zz]|[+-]\d{2}:\d{2})$"#
+        if value.range(of: isoPattern, options: .regularExpression) != nil {
+            let iso = ISO8601DateFormatter()
+            iso.timeZone = timeZone
+            if value.contains(".") {
+                iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            }
+            if let date = iso.date(from: value) { return date }
+        }
         let fixedFormats = [
             "yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd HH:mm", "yyyy-MM-dd",
             "yyyy/MM/dd HH:mm:ss", "yyyy/MM/dd HH:mm", "yyyy/MM/dd",
@@ -562,7 +681,10 @@ public enum TransactionCSVImporter {
         formatter.isLenient = false
         for format in formats {
             formatter.dateFormat = format
-            if let date = formatter.date(from: value) { return date }
+            if let date = formatter.date(from: value),
+               formatter.string(from: date) == value {
+                return date
+            }
         }
         return nil
     }
@@ -626,16 +748,70 @@ public enum TransactionCSVImporter {
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private static func fingerprint(_ values: [String]) -> String {
-        let data = Data(
-            values.joined(separator: "\u{1f}").lowercased().utf8
+    private static func humanFingerprintValue(_ value: String?) -> String {
+        (value ?? "")
+            .folding(
+                options: [.caseInsensitive],
+                locale: Locale(identifier: "en_US_POSIX")
+            )
+            .precomposedStringWithCanonicalMapping
+    }
+
+    /// Length-prefixed UTF-8 components prevent separator injection from
+    /// making distinct rows hash identically. Only human labels are case-folded
+    /// by the caller; external IDs retain their source-system casing.
+    private static func fingerprintV2(_ values: [String]) -> String {
+        sha256Fingerprint(
+            domain: "moneyup.csv.fingerprint.v2",
+            values: values,
+            prefix: "sha256:v2:"
         )
+    }
+
+    private static func externalIdentityFingerprint(_ externalID: String) -> String {
+        sha256Fingerprint(
+            domain: "moneyup.csv.external-id.v1",
+            values: [externalID],
+            prefix: "sha256:external:v1:"
+        )
+    }
+
+    private static func sha256Fingerprint(
+        domain: String,
+        values: [String],
+        prefix: String
+    ) -> String {
+        var data = Data(domain.utf8)
+        data.append(0)
+        for value in values {
+            let bytes = Array(value.utf8)
+            var length = UInt64(bytes.count).bigEndian
+            Swift.withUnsafeBytes(of: &length) { buffer in
+                data.append(contentsOf: buffer)
+            }
+            data.append(contentsOf: bytes)
+        }
         let digest = SHA256.hash(data: data)
-        return "sha256:" + digest.map { String(format: "%02x", $0) }.joined()
+        return prefix + digest.map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Compatibility with the importer shipped before SHA-256 identities.
+    /// It is consulted only with a matching canonical source system.
+    private static func legacyFNV1A64Fingerprint(_ values: [String]) -> String {
+        let bytes = values.joined(separator: "\u{1f}").lowercased().utf8
+        var hash: UInt64 = 14_695_981_039_346_656_037
+        for byte in bytes {
+            hash ^= UInt64(byte)
+            hash &*= 1_099_511_628_211
+        }
+        return "fnv1a64:\(String(hash, radix: 16))"
     }
 
     private static func parseRecords(_ text: String) throws -> [DelimitedRecord] {
         guard !text.isEmpty else { throw TransactionCSVImportError.emptyFile }
+        guard text.utf8.count <= maximumInputByteCount else {
+            throw TransactionCSVImportError.inputTooLarge
+        }
         let delimiter: Character
         let candidates: [Character] = [",", "\t", ";"]
         delimiter = candidates.max { left, right in
@@ -646,11 +822,30 @@ public enum TransactionCSVImporter {
         var records: [DelimitedRecord] = []
         var record: [String] = []
         var field = ""
+        var fieldByteCount = 0
         var inQuotes = false
         var closedQuotedField = false
         var index = text.startIndex
         var physicalLine = 1
         var recordStartLine = 1
+
+        func appendToField(_ character: Character) throws {
+            let byteCount = String(character).utf8.count
+            guard fieldByteCount <= maximumFieldByteCount - byteCount else {
+                throw TransactionCSVImportError.malformedCSV
+            }
+            field.append(character)
+            fieldByteCount += byteCount
+        }
+
+        func appendCurrentField() throws {
+            guard record.count < maximumColumnCount else {
+                throw TransactionCSVImportError.malformedCSV
+            }
+            record.append(field)
+            field = ""
+            fieldByteCount = 0
+        }
 
         func appendCurrentRecord() throws {
             // The AppModel enforces the same aggregate write budget. Enforce
@@ -658,6 +853,18 @@ public enum TransactionCSVImporter {
             // an unbounded array of row models.
             guard records.count < MonetaryInputPolicy.aggregateRecordBudget + 1 else {
                 throw TransactionCSVImportError.tooManyRows
+            }
+            if records.isEmpty {
+                guard record.allSatisfy({
+                    !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        && $0.utf8.count <= maximumHeaderByteCount
+                }) else {
+                    throw TransactionCSVImportError.malformedCSV
+                }
+                let normalizedHeaders = record.map(normalizedHeader)
+                guard Set(normalizedHeaders).count == normalizedHeaders.count else {
+                    throw TransactionCSVImportError.malformedCSV
+                }
             }
             records.append(DelimitedRecord(
                 fields: record,
@@ -671,14 +878,14 @@ public enum TransactionCSVImporter {
             if inQuotes {
                 if character == "\"" {
                     if next < text.endIndex, text[next] == "\"" {
-                        field.append("\"")
+                        try appendToField("\"")
                         index = text.index(after: next)
                         continue
                     }
                     inQuotes = false
                     closedQuotedField = true
                 } else {
-                    field.append(character)
+                    try appendToField(character)
                     if character == "\n"
                         || (character == "\r"
                             && (next == text.endIndex || text[next] != "\n")) {
@@ -687,12 +894,10 @@ public enum TransactionCSVImporter {
                 }
             } else if closedQuotedField {
                 if character == delimiter {
-                    record.append(field)
-                    field = ""
+                    try appendCurrentField()
                     closedQuotedField = false
                 } else if character == "\n" || character == "\r" {
-                    record.append(field)
-                    field = ""
+                    try appendCurrentField()
                     try appendCurrentRecord()
                     record = []
                     closedQuotedField = false
@@ -711,11 +916,9 @@ public enum TransactionCSVImporter {
                 }
                 inQuotes = true
             } else if character == delimiter {
-                record.append(field)
-                field = ""
+                try appendCurrentField()
             } else if character == "\n" || character == "\r" {
-                record.append(field)
-                field = ""
+                try appendCurrentField()
                 try appendCurrentRecord()
                 record = []
                 physicalLine += 1
@@ -725,13 +928,13 @@ public enum TransactionCSVImporter {
                     continue
                 }
             } else {
-                field.append(character)
+                try appendToField(character)
             }
             index = next
         }
         guard !inQuotes else { throw TransactionCSVImportError.malformedCSV }
         if !field.isEmpty || !record.isEmpty || closedQuotedField {
-            record.append(field)
+            try appendCurrentField()
             try appendCurrentRecord()
         }
         return records

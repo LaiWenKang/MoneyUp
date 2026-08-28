@@ -263,6 +263,28 @@ the app silently resets, or the opening balance is wrong.
   again and confirm all previously accepted rows are reported as duplicates.
 - Do not delete the app until this complete drill passes on the release candidate.
 
+#### 8A. Recovery cancellation and interruption evidence — open until executed
+
+These are required manual cases, not recorded passes. Use only a disposable QA
+book with a separately verified backup; never create a power-loss condition
+against the only copy of real data. Before each case, save a Data inventory JSON,
+record its SHA-256 to bind that evidence file, and independently record the
+visible account balances and entry count. After relaunch, save and hash a second
+inventory and compare every semantic field; `generatedAt` is expected to differ.
+
+| Case | Physical action on the exact candidate | Required result | Evidence to retain |
+|---|---|---|---|
+| `POR-05-TAMPER` | Duplicate a valid `.moneyup` file, flip one byte in the duplicate on a Mac, and try to restore only the modified copy. | Restore is rejected without exposing content; the live book and its inventory remain byte-for-byte/logically unchanged. The untouched archive still restores on the clean QA device. | Candidate version/build; original and modified archive SHA-256; before/after inventory files and hashes; redacted rejection screenshot. |
+| `POR-05-CANCEL` | Separately cancel the backup destination picker, restore source picker, and every restore confirmation/password sheet that offers Cancel. | No success state is shown, no partial candidate replaces the live book, and every inventory field except `generatedAt` plus every balance matches. | Which sheet was cancelled; device/OS; before/after inventory files and hashes; semantic comparison; observed UI state. |
+| `POR-05-INTERRUPT` | With the 10,000-entry fixture and large fictional receipt attachments, force-terminate MoneyUp once during backup generation and once during restore validation, before any success acknowledgement. Repeat during a large import. | Relaunch opens either the complete pre-operation book or the complete committed result—never a mixture. A partial backup is not presented as ready and is rejected if selected. Import has zero partial rows or duplicates. | Timestamped screen recording with private values covered; termination point; before/after counts, balances, inventory hashes, and output-file SHA-256. |
+| `POR-05-POWER-LOSS` | On the disposable physical-device book, start the same receipt-heavy restore, then power the device off while processing and restart it. Repeat once during a transaction save or schedule post. | SQLCipher recovery yields exactly the old state or exactly the committed new state. There is no onboarding reset, key mismatch, orphan attachment, unbalanced entry, partial schedule advance, or duplicate. | Device/OS/battery/power state; approximate interruption point; before/after inventory hashes; balance and schedule reconciliation; redacted video. |
+
+For each case, mark **pass**, **fail**, or **not reached**; never infer a pass
+from an automated unit test or from the absence of a visible crash. Any mismatch,
+unexpected onboarding, inaccessible key, partial state, or duplicate is P0 and
+blocks wider TestFlight promotion. If timing cannot reach the intended phase,
+record **not reached** and keep the case open rather than claiming coverage.
+
 ### 9. Scale, reporting day, and accessibility
 
 Generate the reviewed fictional CSV from the exact release-candidate checkout:

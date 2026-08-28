@@ -10,6 +10,7 @@ public enum JournalEntryKind: String, Codable, CaseIterable, Sendable {
 
 public enum JournalEntryValidationError: Error, Equatable {
     case tooFewPostings
+    case tooManyPostings
     case duplicatePostingID(UUID)
     case zeroPosting(UUID)
     case unbalanced(currency: CurrencyCode, residual: Decimal)
@@ -24,6 +25,7 @@ public enum JournalEntryValidationError: Error, Equatable {
 /// layer while retaining revision metadata. Mutating postings directly would
 /// make audit and reconciliation behavior ambiguous.
 public struct JournalEntry: Codable, Equatable, Identifiable, Sendable {
+    public static let maximumPostingCount = 4_096
     public let id: UUID
     public let kind: JournalEntryKind
     public let occurredAt: Date
@@ -100,6 +102,9 @@ public struct JournalEntry: Codable, Equatable, Identifiable, Sendable {
     private static func validate(_ postings: [Posting]) throws {
         guard postings.count >= 2 else {
             throw JournalEntryValidationError.tooFewPostings
+        }
+        guard postings.count <= maximumPostingCount else {
+            throw JournalEntryValidationError.tooManyPostings
         }
 
         var postingIDs = Set<UUID>()
@@ -208,6 +213,11 @@ public struct JournalEntry: Codable, Equatable, Identifiable, Sendable {
                 sourceFingerprint: sourceFingerprint,
                 originContext: originContext
             )
+        } catch is CancellationError {
+            // Decoding is used while rebuilding the encrypted normalized
+            // journal index. Preserve task cancellation so migration/restore
+            // can roll back instead of quarantining a valid row as malformed.
+            throw CancellationError()
         } catch {
             throw DecodingError.dataCorruptedError(
                 forKey: .postings,

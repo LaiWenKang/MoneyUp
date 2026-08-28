@@ -12,6 +12,9 @@ permissions:
 env:
   XCODEGEN_VERSION: 2.46.0
   XCODEGEN_SHA256: 4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806
+  CI_XCODE_VERSION: "16.4"
+  CI_XCODE_BUILD: 16F6
+  CI_IPHONESIMULATOR_SDK_VERSION: "18.5"
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -30,15 +33,33 @@ jobs:
 
   core-tests:
     name: Core tests
-    runs-on: macos-latest
+    runs-on: macos-15
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Show Swift version
-        run: swift --version
+      - name: Verify the exact CI Xcode toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -x "$DEVELOPER_DIR/usr/bin/xcodebuild"
+          XCODE_VERSION_LINE="$(xcodebuild -version | sed -n '1p')"
+          XCODE_BUILD_LINE="$(xcodebuild -version | sed -n '2p')"
+          if [[ "$XCODE_VERSION_LINE" != "Xcode $CI_XCODE_VERSION" || \
+                "$XCODE_BUILD_LINE" != "Build version $CI_XCODE_BUILD" ]]; then
+            echo "::error::The runner does not contain the reviewed CI Xcode toolchain."
+            exit 1
+          fi
+          printf '%s\n' "$XCODE_VERSION_LINE" "$XCODE_BUILD_LINE"
+          swift --version
       - name: Run domain tests
-        run: swift test --parallel --enable-code-coverage -Xswiftc -warnings-as-errors
+        shell: bash
+        run: |
+          set -euo pipefail
+          swift test --parallel --enable-code-coverage -Xswiftc -warnings-as-errors \
+            2>&1 | tee core-tests.log
       - name: Report domain coverage
         shell: bash
         run: |
@@ -61,21 +82,42 @@ jobs:
                       f"({metric['percent']:.2f}%)"
                   )
           PY
-      - name: Preserve domain coverage
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - name: Preserve domain test evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: core-persistence-coverage
-          path: core-persistence-coverage.json
-          if-no-files-found: error
+          name: core-persistence-test-evidence
+          path: |
+            core-tests.log
+            core-persistence-coverage.json
+          if-no-files-found: warn
           retention-days: 14
 
   ios-build:
     name: iOS Simulator build
-    runs-on: macos-latest
+    runs-on: macos-15
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Verify the exact CI Xcode and simulator SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -x "$DEVELOPER_DIR/usr/bin/xcodebuild"
+          XCODE_VERSION_LINE="$(xcodebuild -version | sed -n '1p')"
+          XCODE_BUILD_LINE="$(xcodebuild -version | sed -n '2p')"
+          SDK_VERSION="$(xcrun --sdk iphonesimulator --show-sdk-version)"
+          if [[ "$XCODE_VERSION_LINE" != "Xcode $CI_XCODE_VERSION" || \
+                "$XCODE_BUILD_LINE" != "Build version $CI_XCODE_BUILD" || \
+                "$SDK_VERSION" != "$CI_IPHONESIMULATOR_SDK_VERSION" ]]; then
+            echo "::error::The runner does not contain the reviewed CI Xcode and simulator SDK."
+            exit 1
+          fi
+          printf '%s\n' "$XCODE_VERSION_LINE" "$XCODE_BUILD_LINE" \
+            "iPhoneSimulator SDK $SDK_VERSION"
       - name: Install checksum-verified XcodeGen
         shell: bash
         run: |
@@ -115,15 +157,19 @@ jobs:
             -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
             -enableCodeCoverage YES \
             -resultBundlePath "$RESULT_BUNDLE" \
+            SWIFT_TREAT_WARNINGS_AS_ERRORS=YES \
             CODE_SIGNING_ALLOWED=NO \
             test
           xcrun xccov view --report "$RESULT_BUNDLE"
           xcrun xccov view --report --json "$RESULT_BUNDLE" \
             > app-model-coverage.json
-      - name: Preserve app-model coverage
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - name: Preserve app-model test evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: app-model-coverage
-          path: app-model-coverage.json
-          if-no-files-found: error
+          name: app-model-test-evidence
+          path: |
+            app-model-coverage.json
+            ${{ runner.temp }}/MoneyUpTests.xcresult
+          if-no-files-found: warn
           retention-days: 14

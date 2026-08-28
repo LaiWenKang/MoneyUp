@@ -1,9 +1,11 @@
 # MoneyUp 0.6.0 File Review Inventory
 
-Reviewed: 27 August 2026
+Reviewed: 28 August 2026
 
 This is the closed inventory for the comprehensive audit. It lists every file
 that will be tracked in the review branch after the audit artifacts are added.
+A total of 180 currently tracked paths and six intended additions reconcile to
+the 186 paths below.
 A listed file is in scope; it does not imply that macOS compilation, physical
 behavior, or release acceptance passed.
 
@@ -12,7 +14,7 @@ behavior, or release acceptance passed.
 | File class | Checks applied | Evidence limit |
 |---|---|---|
 | App/core/persistence Swift | Full-repository lexical checks; manual caller/callee and state/persistence tracing; requirement/test mapping; boundary/error/race review | Exact-candidate Swift/Xcode execution is pending |
-| Test Swift | Declaration inventory; requirement/finding mapping; assertion and failure-injection review | 384 declarations exist; none ran here |
+| Test Swift | Declaration inventory; requirement/finding mapping; assertion and failure-injection review | 509 declarations exist; none ran here |
 | JSON, xcstrings, plist, privacy, entitlements, YAML | Parser validation, release-validator checks, identifier/localization/privacy/capability consistency | Signed entitlements and exact binary remain physical/release gates |
 | PNG/assets | Asset-catalog parse, icon/brand/palette validator, required scale/appearance inventory | Device rendering remains open |
 | Python/scripts | Static inspection plus release-validator/fixture workflow execution where applicable | macOS-only built-bundle validator remains open |
@@ -23,7 +25,7 @@ File-specific findings are recorded in
 [QUALITY_AUDIT_0.6.0.md](QUALITY_AUDIT_0.6.0.md); requirement evidence is in
 [REQUIREMENTS_TEST_MATRIX.md](REQUIREMENTS_TEST_MATRIX.md).
 
-## Complete tracked-file manifest (180)
+## Complete candidate-file manifest (186)
 
 ```text
 .github/dependabot.yml
@@ -67,6 +69,7 @@ App/MoneyUp/Assets.xcassets/MoneyUpScenarioStudio.imageset/MoneyUpScenarioStudio
 App/MoneyUp/AssetsView.swift
 App/MoneyUp/BoundedFileReader.swift
 App/MoneyUp/CSVDocument.swift
+App/MoneyUp/CSVImportNameResolver.swift
 App/MoneyUp/CalendarView.swift
 App/MoneyUp/CurrencyPicker.swift
 App/MoneyUp/DashboardView.swift
@@ -97,6 +100,8 @@ App/MoneyUp/QuickLogDraft.swift
 App/MoneyUp/QuickLogLaunchMode.swift
 App/MoneyUp/QuickLogSheet.swift
 App/MoneyUp/ReceiptScanner.swift
+App/MoneyUp/ReceiptThumbnailDecoder.swift
+App/MoneyUp/ReportingDateFormatting.swift
 App/MoneyUp/Resources/Localizable.xcstrings
 App/MoneyUp/RestoreCandidateValidator.swift
 App/MoneyUp/RootView.swift
@@ -167,6 +172,9 @@ Sources/MoneyUpPersistence/RecordCollection.swift
 Sources/MoneyUpPersistence/RecordWrite.swift
 THIRD_PARTY_NOTICES.md
 Tests/MoneyUpAppTests/AppModelTests.swift
+Tests/MoneyUpAppTests/CSVImportNameResolverTests.swift
+Tests/MoneyUpAppTests/InsightsCategoryBucketTests.swift
+Tests/MoneyUpAppTests/ReceiptThumbnailDecoderTests.swift
 Tests/MoneyUpCoreTests/BudgetRolloverTests.swift
 Tests/MoneyUpCoreTests/BudgetTreeTests.swift
 Tests/MoneyUpCoreTests/CheckedDecimalTests.swift

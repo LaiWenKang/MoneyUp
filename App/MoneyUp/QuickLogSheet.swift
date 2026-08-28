@@ -128,6 +128,10 @@ private struct QuickLogEntryView: View {
     @State private var receiptScanGeneration = 0
     @State private var receiptResult: ReceiptParseResult?
     @State private var splitLines: [QuickLogSplitDraftLine] = []
+    /// Provenance for a draft promoted from the lock-safe capture inbox. This
+    /// must survive every edit so AppModel can complete the cross-store
+    /// exact-once handoff instead of treating the edited draft as unrelated.
+    @State private var sourceCaptureID: UUID?
     /// Transient image bytes. They are intentionally absent from QuickLogDraft
     /// and reach persistence only when the user turns on receipt retention.
     @State private var receiptAttachmentData: Data?
@@ -610,6 +614,13 @@ private struct QuickLogEntryView: View {
                 receiptScanTask?.cancel()
                 receiptScanTask = nil
                 isScanning = false
+                photoItem = nil
+                receiptResult = nil
+                receiptAttachmentData = nil
+                retainReceiptAttachment = false
+                receiptRetentionMessage = nil
+                smartMessage = nil
+                isPresentingReceiptPicker = false
             }
             .scrollDismissesKeyboard(.interactively)
         }
@@ -867,7 +878,8 @@ private struct QuickLogEntryView: View {
             payee: payee,
             note: note,
             smartText: smartText,
-            splitLines: splitLines
+            splitLines: splitLines,
+            sourceCaptureID: sourceCaptureID
         )
     }
 
@@ -918,6 +930,7 @@ private struct QuickLogEntryView: View {
         note = draft.note
         smartText = draft.smartText
         splitLines = draft.splitLines
+        sourceCaptureID = draft.sourceCaptureID
         isShowingOptionalDetails = draft.dateWasEdited
             || !draft.payee.isEmpty
             || !draft.note.isEmpty
@@ -931,6 +944,13 @@ private struct QuickLogEntryView: View {
               requestSequence != handledRequestSequence,
               let launchMode else { return }
         handledRequestSequence = requestSequence
+        if sourceCaptureID != nil {
+            // Unlock promotion itself routes to Log. It is the same durable
+            // draft, not a request to discard it and start another entry.
+            onRequestHandled(launchMode)
+            focusedField = .amount
+            return
+        }
         if draftSnapshot.hasTransactionContent {
             // Every external action means “start or focus an entry.” Protect
             // even same-kind drafts: Smart Entry and receipt parsing can
@@ -954,6 +974,7 @@ private struct QuickLogEntryView: View {
         smartMessage = nil
         receiptResult = nil
         splitLines = []
+        sourceCaptureID = nil
         receiptAttachmentData = nil
         retainReceiptAttachment = false
         receiptRetentionMessage = nil
@@ -1426,6 +1447,7 @@ private struct QuickLogEntryView: View {
             smartMessage = nil
             receiptResult = nil
             splitLines = []
+            sourceCaptureID = nil
             receiptAttachmentData = nil
             retainReceiptAttachment = false
             receiptRetentionMessage = nil

@@ -194,6 +194,8 @@ public enum InvestmentLedgerIntegrity {
             }
         } catch let error as InvestmentLedgerIntegrityError {
             throw error
+        } catch is CancellationError {
+            throw CancellationError()
         } catch {
             throw InvestmentLedgerIntegrityError.arithmeticFailure
         }
@@ -210,6 +212,8 @@ public enum InvestmentLedgerIntegrity {
                 quantity: quantity,
                 unitPrice: price
             )
+        } catch is CancellationError {
+            throw CancellationError()
         } catch {
             throw InvestmentLedgerIntegrityError.arithmeticFailure
         }
@@ -344,6 +348,8 @@ public enum InvestmentLedgerIntegrity {
             }
         } catch let error as InvestmentLedgerIntegrityError {
             throw error
+        } catch is CancellationError {
+            throw CancellationError()
         } catch {
             throw InvestmentLedgerIntegrityError.arithmeticFailure
         }
@@ -377,6 +383,8 @@ public enum InvestmentLedgerIntegrity {
                 amount
             )
             if expected[accountID] == .zero { expected.removeValue(forKey: accountID) }
+        } catch is CancellationError {
+            throw CancellationError()
         } catch {
             throw InvestmentLedgerIntegrityError.arithmeticFailure
         }

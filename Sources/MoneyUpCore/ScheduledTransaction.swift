@@ -205,6 +205,7 @@ public enum ScheduledTransactionError: Error, Equatable, Sendable {
 /// skipped, posted, or matched. Keeping the original anchor avoids the classic
 /// 31 January -> 28 February -> 28 March drift.
 public struct ScheduledTransaction: Codable, Equatable, Identifiable, Sendable {
+    public static let maximumResolutionCount = 4_096
     public let id: UUID
     public var kind: JournalEntryKind
     public var name: String
@@ -346,6 +347,9 @@ public struct ScheduledTransaction: Codable, Equatable, Identifiable, Sendable {
                 [ScheduledOccurrenceResolution].self,
                 forKey: .resolutions
             ) ?? []
+            guard resolutions.count <= Self.maximumResolutionCount else {
+                throw ScheduledTransactionError.invalidLifecycle
+            }
             endedAt = try container.decodeIfPresent(Date.self, forKey: .endedAt)
 
             try validateLifecycle()
@@ -383,7 +387,9 @@ public struct ScheduledTransaction: Codable, Equatable, Identifiable, Sendable {
     }
 
     public func validateLifecycle(calendar suppliedCalendar: Calendar? = nil) throws {
-        guard seriesVersion >= 0,
+        try Task.checkCancellation()
+        guard resolutions.count <= Self.maximumResolutionCount,
+              seriesVersion >= 0,
               currentOccurrenceIndex >= 0,
               nextOccurrence.timeIntervalSinceReferenceDate.isFinite,
               recurrenceAnchor.timeIntervalSinceReferenceDate.isFinite,
@@ -391,13 +397,7 @@ public struct ScheduledTransaction: Codable, Equatable, Identifiable, Sendable {
               currentConfirmation?.scheduledFor.timeIntervalSinceReferenceDate.isFinite
                 != false,
               currentConfirmation?.confirmedAt.timeIntervalSinceReferenceDate.isFinite
-                != false,
-              resolutions.allSatisfy({ resolution in
-                  resolution.scheduledFor.timeIntervalSinceReferenceDate.isFinite
-                      && resolution.resolvedAt.timeIntervalSinceReferenceDate.isFinite
-                      && resolution.entryDeletedAt?
-                          .timeIntervalSinceReferenceDate.isFinite != false
-              }) else {
+                != false else {
             throw ScheduledTransactionError.invalidLifecycle
         }
         switch status {
@@ -411,36 +411,47 @@ public struct ScheduledTransaction: Codable, Equatable, Identifiable, Sendable {
             }
         }
 
-        let resolutionIDs = resolutions.map(\.occurrenceID)
-        let linkedEntryIDs = resolutions.compactMap(\.linkedEntryID)
-        guard Set(resolutionIDs).count == resolutionIDs.count,
-              Set(linkedEntryIDs).count == linkedEntryIDs.count,
-              resolutions.allSatisfy({ resolution in
-                  resolution.occurrenceID.scheduleID == id
-                      && resolution.occurrenceID.seriesVersion <= seriesVersion
-                      && (resolution.entryDeletedAt.map {
-                          $0 >= resolution.resolvedAt
-                      } ?? true)
-              }) else {
-            throw ScheduledTransactionError.invalidLifecycle
-        }
-        for (left, right) in zip(resolutions, resolutions.dropFirst()) {
-            let leftID = left.occurrenceID
-            let rightID = right.occurrenceID
-            guard leftID.seriesVersion < rightID.seriesVersion
-                    || (leftID.seriesVersion == rightID.seriesVersion
-                        && leftID.index < rightID.index) else {
+        var resolutionIDs = Set<ScheduledOccurrenceID>()
+        var linkedEntryIDs = Set<UUID>()
+        var currentSeriesResolutions: [ScheduledOccurrenceResolution] = []
+        var previousOccurrenceID: ScheduledOccurrenceID?
+        for (index, resolution) in resolutions.enumerated() {
+            if index.isMultiple(of: 128) { try Task.checkCancellation() }
+            let occurrenceID = resolution.occurrenceID
+            guard resolution.scheduledFor.timeIntervalSinceReferenceDate.isFinite,
+                  resolution.resolvedAt.timeIntervalSinceReferenceDate.isFinite,
+                  resolution.entryDeletedAt?.timeIntervalSinceReferenceDate.isFinite
+                    != false,
+                  occurrenceID.scheduleID == id,
+                  occurrenceID.seriesVersion <= seriesVersion,
+                  resolution.entryDeletedAt.map({ $0 >= resolution.resolvedAt }) ?? true,
+                  resolutionIDs.insert(occurrenceID).inserted else {
                 throw ScheduledTransactionError.invalidLifecycle
             }
+            if let linkedEntryID = resolution.linkedEntryID,
+               !linkedEntryIDs.insert(linkedEntryID).inserted {
+                throw ScheduledTransactionError.invalidLifecycle
+            }
+            if let previousOccurrenceID {
+                guard previousOccurrenceID.seriesVersion < occurrenceID.seriesVersion
+                        || (previousOccurrenceID.seriesVersion == occurrenceID.seriesVersion
+                            && previousOccurrenceID.index < occurrenceID.index) else {
+                    throw ScheduledTransactionError.invalidLifecycle
+                }
+            }
+            if occurrenceID.seriesVersion == seriesVersion {
+                currentSeriesResolutions.append(resolution)
+            }
+            previousOccurrenceID = occurrenceID
         }
-        let currentSeriesResolutions = resolutions.filter {
-            $0.occurrenceID.seriesVersion == seriesVersion
-        }
-        guard currentSeriesResolutions.count == currentOccurrenceIndex,
-              currentSeriesResolutions.enumerated().allSatisfy({ pair in
-                  pair.element.occurrenceID.index == pair.offset
-              }) else {
+        guard currentSeriesResolutions.count == currentOccurrenceIndex else {
             throw ScheduledTransactionError.invalidLifecycle
+        }
+        for (index, resolution) in currentSeriesResolutions.enumerated() {
+            if index.isMultiple(of: 128) { try Task.checkCancellation() }
+            guard resolution.occurrenceID.index == index else {
+                throw ScheduledTransactionError.invalidLifecycle
+            }
         }
         if let confirmation = currentConfirmation {
             guard status != .ended,
@@ -465,7 +476,8 @@ public struct ScheduledTransaction: Codable, Equatable, Identifiable, Sendable {
             ) == nextOccurrence else {
                 throw ScheduledTransactionError.invalidLifecycle
             }
-            for resolution in currentSeriesResolutions {
+            for (index, resolution) in currentSeriesResolutions.enumerated() {
+                if index.isMultiple(of: 128) { try Task.checkCancellation() }
                 guard anchoredOccurrence(
                     index: resolution.occurrenceID.index,
                     calendar: recurrenceCalendar
@@ -474,10 +486,12 @@ public struct ScheduledTransaction: Codable, Equatable, Identifiable, Sendable {
                 }
             }
         }
+        try Task.checkCancellation()
     }
 
-    /// Returns a series edit while retaining the audit trail. Changing the due
-    /// date or frequency starts a new version so stale UI cannot resolve it.
+    /// Returns a series edit while retaining the audit trail. Any change to the
+    /// occurrence's posting or recurrence semantics starts a new version so a
+    /// confirmation or stale UI created for the old terms cannot resolve it.
     public func updating(
         kind: JournalEntryKind,
         name: String,
@@ -488,6 +502,8 @@ public struct ScheduledTransaction: Codable, Equatable, Identifiable, Sendable {
         frequency: RecurrenceFrequency,
         recurrenceTimeZone: TimeZone? = nil
     ) throws -> ScheduledTransaction {
+        let effectiveTimeZoneIdentifier = recurrenceTimeZone?.identifier
+            ?? recurrenceTimeZoneIdentifier
         var updated = try ScheduledTransaction(
             id: id,
             kind: kind,
@@ -497,14 +513,25 @@ public struct ScheduledTransaction: Codable, Equatable, Identifiable, Sendable {
             categoryAccountID: categoryAccountID,
             nextOccurrence: nextOccurrence,
             frequency: frequency,
-            recurrenceTimeZoneIdentifier: recurrenceTimeZone?.identifier
-                ?? recurrenceTimeZoneIdentifier
+            recurrenceTimeZoneIdentifier: effectiveTimeZoneIdentifier
         )
         updated.status = status
         updated.endedAt = endedAt
         updated.resolutions = resolutions
 
-        if self.nextOccurrence == nextOccurrence, self.frequency == frequency {
+        // Compare the canonical value created above. Cosmetic whitespace that
+        // normalizes back to the stored name is a true no-op, while every
+        // effective posting/recurrence change invalidates stale confirmation.
+        let occurrenceSemanticsAreUnchanged = self.kind == updated.kind
+            && self.name == updated.name
+            && self.amount == updated.amount
+            && self.accountID == updated.accountID
+            && self.categoryAccountID == updated.categoryAccountID
+            && self.nextOccurrence == updated.nextOccurrence
+            && self.frequency == updated.frequency
+            && recurrenceTimeZoneIdentifier
+                == updated.recurrenceTimeZoneIdentifier
+        if occurrenceSemanticsAreUnchanged {
             updated.recurrenceAnchor = recurrenceAnchor
             updated.seriesVersion = seriesVersion
             updated.currentOccurrenceIndex = currentOccurrenceIndex
@@ -515,8 +542,7 @@ public struct ScheduledTransaction: Codable, Equatable, Identifiable, Sendable {
                 throw ScheduledTransactionError.cannotAdvance
             }
             updated.seriesVersion = nextVersion.partialValue
-            updated.recurrenceTimeZoneIdentifier = recurrenceTimeZone?.identifier
-                ?? recurrenceTimeZoneIdentifier
+            updated.recurrenceTimeZoneIdentifier = effectiveTimeZoneIdentifier
         }
         try updated.validateLifecycle(calendar: recurrenceTimeZone.map {
             var calendar = Calendar(identifier: .gregorian)

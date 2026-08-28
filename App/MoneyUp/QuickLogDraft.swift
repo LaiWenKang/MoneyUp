@@ -13,6 +13,7 @@ struct QuickLogSplitDraftLine: Codable, Equatable, Identifiable, Sendable {
 /// images and `PhotosPickerItem` values are deliberately excluded.
 struct QuickLogDraft: Codable, Equatable, Sendable {
     static let primaryRecordID = "current"
+    static let maximumSplitLineCount = 512
 
     var kind: QuickLogKind
     var amountText: String
@@ -97,6 +98,13 @@ struct QuickLogDraft: Codable, Equatable, Sendable {
             [QuickLogSplitDraftLine].self,
             forKey: .splitLines
         ) ?? []
+        guard splitLines.count <= Self.maximumSplitLineCount else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .splitLines,
+                in: container,
+                debugDescription: "Quick Log split limit exceeded"
+            )
+        }
         sourceCaptureID = try container.decodeIfPresent(UUID.self, forKey: .sourceCaptureID)
     }
 }
