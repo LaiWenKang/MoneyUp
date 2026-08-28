@@ -4,23 +4,24 @@ Audit date: 28 August 2026
 
 Baseline: `b0ac219e0eabf0888358dbb0154b1071c35aed66` (`main`)
 
-Review branch: `codex/comprehensive-quality-audit-0.6.0`
+Review branch: `codex/complete-release-gates-0.6.0`
 
 ## Outcome
 
-**Release decision: blocked.** No P0 defect was found, and the review fixed a
-set of P1/P2 correctness, recovery, privacy, input-boundary, race, and evidence
-problems. Two source-derived scalability areas remain open. Portable recovery
-has two unresolved edges: a valid receipt-heavy book can exceed the safe 32 MB
-new-backup payload ceiling and therefore have no complete portable backup, and
-backward-compatible v1 restore still accepts a 250 MB whole-buffer archive
-whose authenticated decode can require several simultaneous copies. Separately,
-budget attribution/rollover work still grows with historical journal volume.
-One P2 privacy-policy gap also remains for EXIF/GPS/device metadata embedded in
-explicitly attached original receipt bytes.
-Exact-candidate macOS CI and coverage, physical power interruption,
-accessibility, performance, upgrade/restore, TestFlight, App Review, and export
-compliance evidence also remain open.
+**Release decision: blocked on evidence, not on a known unremediated current-
+format source defect.** No P0 defect was found. The review and completion pass
+fixed the identified P1/P2 correctness, recovery, privacy, input-boundary, race,
+and scale problems. Portable archive version 2 is file-backed and independently
+authenticates bounded chunks across an envelope that every current accepted book
+must fit. SQLCipher schema 6 adds trigger-maintained store totals, normalized
+budget attribution, and monthly carry checkpoints. Explicitly retained receipt
+pixels are re-encoded without source GPS/EXIF/TIFF device metadata.
+
+Exact-candidate macOS CI/coverage and physical evidence remain open. The latter
+includes compatible near-limit version-1 restore memory, version-2 interruption
+and peak memory, oldest-device budget/checkpoint performance, power interruption,
+accessibility, upgrade/restore, signed TestFlight, App Review, and export
+compliance. Source remediation is not a measured or accepted release.
 
 This report does not claim that software can be proven bug-free. It records
 what was inspected, what changed, what evidence exists, and what is still
@@ -49,15 +50,14 @@ is in [REQUIREMENTS_TEST_MATRIX.md](REQUIREMENTS_TEST_MATRIX.md).
 | Item | Audited scope |
 |---|---:|
 | Baseline tracked files | 175 |
-| Current tracked candidate files | 180 |
-| Intended new candidate files | 6 |
-| Candidate files (tracked plus intended new files) | 186 |
-| Swift files | 116 |
-| Swift source/test/manifest lines | 62,204 |
-| Declared automated tests | 509 |
+| Current tracked candidate files | 189 |
+| Candidate files | 189 |
+| Swift files | 119 |
+| Swift source/test/manifest lines | 65,083 |
+| Declared automated tests | 514 |
 | Core test declarations | 252 |
-| Persistence test declarations | 47 |
-| App-target test declarations | 210 |
+| Persistence test declarations | 49 |
+| App-target test declarations | 213 |
 | Golden requirements | 97 / 97 traced |
 | Runtime Swift package dependencies | 1 |
 
@@ -68,7 +68,7 @@ files. All tracked files were checked for emptiness and parseability where a
 machine-readable format applies. Every Swift file participated in repository-
 wide lexical review; correctness/security/recovery paths were manually traced
 across callers, state transitions, persistence operations, and consumers. The
-closed 186-file candidate manifest and its review treatment are in
+closed pre-completion audit manifest and its review treatment are in
 [FILE_REVIEW_INVENTORY.md](FILE_REVIEW_INVENTORY.md).
 
 ## Architecture and cross-feature map
@@ -144,8 +144,8 @@ The highest-coupling paths were followed end to end:
 | A-014 | P2 | Decimal keyboards lacked a reliable Done route and some Quick Log write failures were inline-only. Shared keyboard toolbars and an accessible alert/field errors were added. | source review; physical accessibility case remains open |
 | A-015 | P2 | CI did not retain coverage/failure evidence and mutable tool/action resolution weakened reproducibility. Actions are commit-pinned, XcodeGen is checksum-verified, Xcode 16.4 build 16F6 and Simulator SDK 18.5 are exact-checked, warnings are errors, and core logs, both coverage reports, and the app-model result bundle are retained. | `.github/workflows/ci.yml`; exact run open |
 | A-016 | P2 | Portable archive input checks lacked independent PBKDF vectors and strict malformed version/KDF/password coverage. These boundaries and tests were added. | `testPortableArchivePBKDFMatchesIndependentSHA256Vectors` and archive negative tests |
-| A-017 | P3 | A no-op OCR downcast produced a warning and schema documentation still named an old schema. The cast was removed and docs now identify schema 4/current collections. | static review and release validator |
-| A-018 | P1 containment | Backup and restore used unrelated literal size policy and could present an archive as ready even when the same UI would reject it. Named policy now limits new seals to 64 MB, retains a 250 MB v1-open/import ceiling for compatibility, and presents safe bilingual errors. SQL preflight further caps a new backup before snapshot materialization. This contains false success and new-backup allocation, but does not close O-001's valid-book backup-availability or legacy whole-buffer restore risks. | portable archive boundary assertions; `testStorageMetricsMatchExactSnapshotByteTotals`; release validator |
+| A-017 | P3 | A no-op OCR downcast produced a warning and schema documentation still named an old schema. The cast was removed and docs were aligned to the then-current schema 4/current collections; A-048 records the later schema-6 completion. | static review and release validator |
+| A-018 | P1 containment | Backup and restore used unrelated literal size policy and could present an archive as ready even when the same UI would reject it. Named policy limited new seals to 64 MB, retained a 250 MB v1-open/import ceiling, and added safe bilingual errors. This containment was superseded by A-047's current-format streaming envelope. | portable archive boundary assertions; `testStorageMetricsMatchExactSnapshotByteTotals`; release validator |
 | A-019 | P1 | TestFlight validated one exported IPA but used a second `exportArchive` operation for upload, so the transferred bytes were not proven identical. The workflow now pins and cross-job compares Xcode build/SDK/runner-image identity, exports once, records the IPA SHA-256, validates and `altool`-uploads that same path, and checks recovery-tree entry type/path/mode/symlink target/file size/content for the xcarchive (including dSYMs) and export directory plus exact IPA bytes after decryption. Owner, timestamps, xattrs, and ACLs are intentionally outside that digest. The validator rejects weaker toolchain checks, missing tree proof, or a second export/upload binary. | `.github/workflows/testflight.yml`; `Scripts/validate_release_assets.py`; local symlink/mode/dSYM round-trip fixture passed; authenticated exact-candidate run open |
 | A-020 | P1 | Locked-capture promotion could cross lock/restore/onboarding boundaries or replay a handoff, and its save API did not bind the submitted mode to the redacted route the user opened. Promotion now participates in lifecycle serialization, preserves FIFO provenance, treats a duplicate append retry as idempotent even at the 100-item capacity boundary, removes the authoritative inbox item before journal commit while retaining the encrypted draft for retry, resumes queued promotion after first-run onboarding, and accepts only the exact eligible requested mode. | `testLockWaitsForCapturePromotionAndKeepsOneDurableDraft`; `testRestoreCannotCrossCapturePromotionHandoff`; `testReviewedCaptureRemovalFailureCannotCreateDuplicateTransaction`; `testLockedCaptureDuplicateRetryRemainsIdempotentAtCapacity`; `testCompletingFirstRunOnboardingPromotesExistingLockedCapture`; `testLockedCaptureRejectsMismatchedAndProtectedRoutes` |
 | A-021 | P1 | Restore accepted several internally decodable but relationally impossible books. Pre-replacement validation now rejects duplicate physical singletons, hierarchy cycles/kind mismatches, malformed or duplicate system roles, unauthorized system-account postings, schedule/link disagreement, unowned/shared investment events or positions, ledger-currency mismatches, and unaudited budget-attribution remaps. | Strict restore suite from `testRestoreRejectsDuplicatePhysicalSingletonRecords` through `testRestoreBudgetAttributionRequiresExactPostingOrAuditedRemap`; `testValidRestoreCommitsAfterIsolatedValidation` |
@@ -169,57 +169,42 @@ The highest-coupling paths were followed end to end:
 | A-039 | P1 | Cancellation during recovering journal decode or page decode could be swallowed as a malformed row and return a truncated success to History, mutation, or recovery callers. Both read paths now propagate `CancellationError` and cannot publish a partial page as complete. | `testCancelledRecoveringJournalFetchCannotReturnATruncatedSuccess`; `testCancelledJournalPageCannotReturnATruncatedSuccess` |
 | A-040 | P1 privacy | The original root overlay did not cover SwiftUI sheets above its presentation controller, and inactive/active, startup, failed-recovery, authentication-cancellation, or deferred-mutation callback order could briefly reveal decoded controls or leave the unlock UI permanently covered. A scene-level shield window now covers sheets as well as the root; the first inactive event immediately hides/disables the underlying accessibility/hit-test tree, launching/failed states participate in expiry, and every cancellation/failure/deferred-lock ordering clears decoded state before revealing locked UI. | `testLaunchingStateTracksExpiredInactivityAndKeepsAuthenticationCover`; `testCancelledStartupAuthenticationClearsCoverInBothCallbackOrders`; `testCancelledAuthenticationClearsDecodedRecoveryState`; `testFailedStartupCompletesDeferredLockBeforeRemovingCover`; `testFailedRecoveryStateAutoLocksAtBackgroundDeadline`; `testExpiredAutoLockKeepsPrivacyCoverWhileRestoreDrains`; source review of `ScenePrivacyShield`; physical sheet/app-switcher/multiwindow/VoiceOver gate remains open |
 | A-041 | P1 | CSV review deduplicated raw names before case/diacritic normalization, so variants such as `Cash`/`CASH` or `Café`/`Cafe` could trap dictionary construction; import resolution could also accept or fall through to hidden system/investment-position accounts. One resolver now normalizes and deduplicates every reviewed name domain, and commit resolution permits only active non-system source/destination accounts and kind-correct non-system categories. | `testReviewedNamesCollapseCaseAndDiacriticVariantsInEveryDomain`; `testImportCannotFallThroughWrongCurrencyMappingToHiddenPosition`; `testImportRejectsMaliciousSystemAccountAndCategoryMappings` |
-| A-042 | P1 | Backup could materialize an unbounded database before learning that the archive was too large, while strict domain validation during backup could either lose a quarantined raw row or make an otherwise exportable recovery copy unavailable. A constant-memory SQL metrics pass now checks at most 100,000 records, 32 MB stored payload, 8 MB record IDs, and 8 MB collection names before snapshot; snapshot fetch observes cancellation; and a shallow identity/byte-limit pass preserves every raw row without domain decoding. | `testStorageMetricsMatchExactSnapshotByteTotals`; `testBackupPreservesQuarantinedRawRowsWithoutRunningStrictRestoreDecode`; O-001 remains open for valid-book backup availability and legacy whole-buffer restore |
+| A-042 | P1 | Backup could materialize an unbounded database before learning that the archive was too large, while strict domain validation during backup could either lose a quarantined raw row or make an otherwise exportable recovery copy unavailable. A constant-memory SQL metrics pass and shallow byte-preserving validation contained that path; A-047 later replaces the snapshot materialization and 32 MB containment ceiling with the v2 streaming envelope. | `testStorageMetricsMatchExactSnapshotByteTotals`; `testBackupPreservesQuarantinedRawRowsWithoutRunningStrictRestoreDecode`; A-047 |
 | A-043 | P1 | An authenticated archive could place excessive work inside one legal top-level row and reach expensive domain decode or SQL replacement before rejection. Restore now bounds top-level record count and aggregate record-ID bytes, per-record collection/ID/payload bytes, and every nested journal-posting, holding-activity, savings movement/reset, schedule-resolution, Quick Log split, budget-timeline, and lifecycle journal/schedule/holding reference shape before domain/SQL work. Domain encode/decode/write boundaries enforce their matching per-record caps; aggregate nested validation stays cancellation-aware. | `testRestoreWorkLimitsRejectOversizedNestedRowsBeforeDomainDecode`; `testLifecycleAuditRejectsCombinedAffectedRecordOverflowOnEncodeAndDecode`; `testScheduleLifecycleValidationPreservesCancellation`; `testInvestmentLedgerIntegrityPreservesCancellation` |
 | A-044 | P1 | Archive derivation/open and isolated restore work could continue after caller cancellation; a crash could accumulate unique validation databases; and even a wrong-password attempt could race past the latest debounced draft. PBKDF, seal/open, schedule/investment replay, snapshot fetch, and detached App tasks now preserve cancellation; restore uses one owned validation directory and scavenges only its exact legacy UUID children at startup and before reuse; every attempt durably flushes the latest draft before archive authentication. | `testPortableArchivePBKDFChecksCancellationDuringDerivation`; `testPortableArchiveSealAndOpenPreserveDetachedCancellation`; `testScheduleLifecycleValidationPreservesCancellation`; `testInvestmentLedgerIntegrityPreservesCancellation`; `testRestoreScavengesPowerLossValidationArtifacts`; `testWrongPasswordRestorePersistsLatestDraftAcrossCloseAndReopen` |
 | A-045 | P1 | Locked-capture recovery treated temporary Keychain/file unavailability like definitive key loss or invalid ciphertext and could discard a recoverable capture after a stale check. Recovery now distinguishes retryable unavailability; a successful or retryable recheck clears/downgrades the stale unrecoverable marker, while destructive discard occurs only after a fresh definitive missing-key/invalid-ciphertext result. | `testLockedCaptureRecoveryNeverDeletesAfterTransientOrStaleFailure` |
 | A-046 | P1 | SQLite rollback failure was suppressed, allowing callers to continue through a transaction whose durable state was indeterminate. Restore rollback failure now closes/poisons the connection and maps a restore-indeterminate error; generic write/remove-all rollback failure likewise closes and maps transaction-state-indeterminate. Reopen proves the old committed snapshot remains readable, while the in-process model fails closed. | `testRestoreRollbackFailureClosesConnectionAndReopenRecoversOldSnapshot`; `testWriteRollbackFailureClosesConnectionAndReopenRecoversOldSnapshot` |
+| A-047 | P1 | The 32 MB backup payload ceiling and whole-book snapshot/archive copies could deny recovery to a valid receipt-heavy book. Archive version 2 now writes a fixed authenticated header plus 1 MiB AES-GCM frames directly from a SQL cursor, binds frame index/length/count to reject truncation/append/duplication/reorder, imports through owned files, and decode-inserts into one rollback-safe SQL transaction. Current writes are capped at 100,000 records/512 MB payload, and v1 remains readable. | `testPortableArchiveVersionTwoStreamsMultipleChunksAndRejectsFrameDamage`; `testBudgetAttributionIndexOverridesRewrittenJournalAndStreamsArchive`; physical near-limit/interruption gate open |
+| A-048 | P1 | Normal startup decoded every budget attribution and recurring rollover replay began at the earliest activation month. Schema 6 now maintains normalized attribution entry/posting indexes with semantic SHA-256 integrity fingerprints, applies historical category overrides in bounded SQL, sends only mismatches/remaps to the exact audit validator, and persists one authoritative opening-carry checkpoint per reporting month. Backdated mutations retain the explicit full-recompute path. | `testBudgetAttributionIndexOverridesRewrittenJournalAndStreamsArchive`; existing attribution-integrity/checkpoint regressions; oldest-device p95 gate open |
+| A-049 | P2 privacy | Explicit attachment previously preserved original GPS/EXIF/TIFF device metadata. The source is now transient for OCR; retention applies orientation, bounds the longest edge to 4,096 pixels, and re-encodes JPEG/PNG pixels without copying source properties. Bilingual UI/privacy/security copy states the boundary. | `testSanitizerRemovesLocationEXIFAndDeviceMetadata`; `testSanitizerAppliesOrientationAndBoundsRetainedPixels`; physical Photos/network gate open |
 
-## Open findings and blockers
+## Remaining blockers and source-remediation evidence
 
-### O-001 — P1: portable-backup availability and legacy restore memory remain bounded but unresolved
+### O-001 — P1 source remediated; archive physical evidence remains open
 
-New backup creation is materially contained: a constant-memory SQL pass rejects
-more than 100,000 rows, 32 MB of stored payloads, 8 MB of record IDs, or 8 MB of
-collection-name bytes before `DatabaseSnapshot` materialization, and new seals
-cannot exceed 64,000,000 archive bytes. That converts unbounded allocation into
-a safe error, but it also means a valid receipt-heavy book above the stored-byte
-ceiling has no complete portable backup. Individual receipts may reach 15 MB
-and the product does not impose an aggregate attachment budget. The app warns
-and refuses the backup; it does not silently omit rows.
+Version 2 closes the current-book availability and whole-book-copy defects in
+source. Trigger-maintained metrics enforce a 100,000-record/512 MB stored-payload
+envelope at every current write. Production backup streams one SQL row into a
+bounded record encoder and 1 MiB authenticated frames; SwiftUI exports the file
+without converting it to one `Data`/`FileWrapper`. Restore imports to an owned
+file, authenticates each header-bound frame, and decode-inserts into a single
+SQLCipher transaction. Frame-count, index, and length authentication rejects
+truncation, append, duplication, and reordering. Every accepted current book has
+a complete v2 representation within the 640 MB archive ceiling.
 
-Those checks also do not change the v1 file format. For backward compatibility,
-bounded import and `PortableArchive.open` still accept a 250,000,000-byte v1
-archive, then retain the input, decode its outer JSON/base64 ciphertext,
-authenticate/decrypt the complete AES-GCM box, and decode the complete snapshot
-graph in memory.
-
-Consequently an authenticated or attacker-supplied near-limit legacy envelope
-can require several hundred megabytes of simultaneous buffers before strict
-record/nested-shape validation runs. The exact peak depends on Foundation and
-CryptoKit allocation behavior; it was not measured on a supported iPhone. The
-64 MB new-seal and 32 MB stored-payload limits reduce future exposure but do not
-make legacy restore streaming or prove it safe on the oldest device.
-
-Required resolution before release:
-
-1. Design a version-2 chunked/streaming authenticated archive with explicit
-   aggregate/chunk bounds and backward-compatible v1 restore; align the valid
-   live-book/attachment limits so every accepted book has a complete export.
-2. Stream archive file I/O and authenticated payload decode instead of holding
-   the archive, ciphertext, plaintext, and snapshot graph together.
-3. Add interruption, corrupted/truncated-chunk, aggregate-limit, and physical
-   near-limit legacy-v1 restore tests on the oldest supported iPhone.
-4. Until measured/chunked, do not represent small archive round trips, the new
-   seal cap, or preflight metrics as proof that every valid book backs up or
-   every legacy archive restores.
-
-This blocks POR-04, POR-05, SEC-05, QA-05, and public release.
+Version 1 remains intentionally compatible through 250 MB. CryptoKit's v1
+single-box format and outer JSON/base64 envelope are memory-mapped but cannot be
+made chunk-authenticated without changing that historical format. This is no
+longer a current-format backup-availability defect, but compatible near-limit v1
+peak memory must be measured on the oldest supported iPhone. Version-2 near-limit
+memory, force termination, corruption, cancellation, and power-loss cases also
+remain required. Until those pass, POR-04/POR-05/SEC-05/QA-05 remain physical
+release gates rather than source-closure claims.
 
 ### O-002 — P1 evidence: exact-candidate compilation/tests/coverage not run
 
 The Linux review environment has no `swift`, `xcodebuild`, `xcodegen`,
-`swiftlint`, `semgrep`, or Apple Simulator. Therefore none of the 509 declared
+`swiftlint`, `semgrep`, or Apple Simulator. Therefore none of the 514 declared
 tests, warnings-as-errors compilation, app/widget build, or coverage reports
 has run against this exact candidate SHA at the time of this report. Baseline
 workflow status predating these changes is not candidate evidence.
@@ -235,7 +220,9 @@ TestFlight installation, clean-device restore, passcode/biometry/Keychain
 behavior, app-switcher and widget privacy, all widget families/appearances,
 English/Simplified Chinese, VoiceOver, largest Dynamic Type, Reduce Motion,
 oldest/current iPhones, receipt/photo-picker behavior, and the Golden p95
-budgets with 10,000 entries and 20 schedules. The cross-store key-first erase
+budgets with 10,000 entries and 20 schedules. Near-limit v2/v1 archive memory,
+monthly checkpoint behavior, receipt metadata fixtures, and archive interruption
+are included in that device work. The cross-store key-first erase
 sequence also needs interruption at each Keychain/filesystem boundary. The
 workflow now fails closed unless TestFlight preflight/signing share the pinned
 Xcode build, SDK, and runner image, and unless the archive/dSYM/export tree and
@@ -246,41 +233,31 @@ release-owner/legal confirmation; repository settings are not proof of those
 external facts. `FIRST_TEST.md` is the execution runbook; a document is not a
 pass result.
 
-### O-004 — P1 scalability: budget attribution and replay grow with history
+### O-004 — P1 source remediated; oldest-device p95 evidence remains open
 
-Recovering startup decodes every `BudgetEntryAttribution` record into an
-in-memory dictionary. The new integrity validator avoids a single unbounded
-journal query by fetching referenced entries in batches of 400, but total
-attribution validation remains proportional to attribution count. Rollover
-projection queries posting events from the earliest required replay month to
-the current month, so a long-lived book can repeatedly do work proportional to
-historical journal volume. The targeted-fetch and lazy-current-month tests
-prove correctness/bounded query shape, not the Golden p95 budget on an old
-10,000-entry book. A-034 removes crafted quadratic restore amplification; it
-does not make legitimate startup attribution or rollover replay independent of
-history.
+Schema 6 stores original attribution day/timestamp/postings in normalized SQL.
+Healthy startup checks compact counts/integrity and does not materialize the
+attribution history. Any day/posting mismatch or lifecycle remap triggers the
+existing exact JSON/audit validator, retaining fail-closed behavior for crafted
+or exceptional books. Closed-month projection reads only the requested indexed
+day range, and the first healthy replay each month persists an opening-carry
+checkpoint. Recurring unlocks begin at the latest checkpoint; backdated edits
+explicitly load/recompute the affected history.
 
-Required resolution before release: add an authenticated aggregate/checkpoint
-or indexed incremental design, define memory/query ceilings, measure cold
-startup and rollover replay on oldest/current supported devices with the
-10,000-entry/20-schedule fixture, and add invalidation/interruption tests for
-the chosen checkpoint. Until then, do not represent the compact recent-entry
-window as proof that budget projection itself is history-independent.
+The 10,000-entry/20-schedule cold-start, checkpoint creation, subsequent unlock,
+backdated invalidation, and rollover p95 measurements remain mandatory on the
+oldest/current supported iPhones. Until measured, TOD-01/PLN-02/PLN-07/QA-04
+remain physical performance gates.
 
-This blocks the budget portions of TOD-01, PLN-02, PLN-07, QA-04, QA-06, and
-public release until the Golden performance evidence is met.
+### O-005 — P2 source remediated; physical privacy evidence remains open
 
-### O-005 — P2 privacy: explicitly attached originals retain embedded metadata
-
-`ReceiptAttachment` encrypts the supplied image bytes as-is. That correctly
-requires an explicit attachment action and does not create network egress, but
-an original selected from Photos can retain EXIF/GPS/device metadata inside the
-encrypted database and portable backup. Thumbnail downsampling changes only UI
-decoding; it is not a metadata-sanitization boundary. Decide whether preserving
-the exact original is a documented user promise or strip nonessential metadata
-before persistence, then add JPEG/HEIC fixtures proving the chosen retention
-policy and reconcile Data Safety/privacy copy. This remains a source-derived
-privacy gap; no attached-image metadata fixture or physical Photos test ran.
+Explicit retention no longer stores original image bytes. The sanitizer applies
+orientation, bounds the longest edge, and re-encodes a fresh JPEG/PNG without
+copying the source property dictionary. Automated fixtures assert removal of
+GPS, EXIF user comments, and TIFF make/model and verify bounded orientation.
+Privacy, security, and bilingual UI copy now describe this behavior. A physical
+Photos fixture plus exact-binary network observation still must confirm the
+integrated picker/OCR/retention path.
 
 ## Independent 0.4.0 audit closure map
 
@@ -352,17 +329,16 @@ Simulator, signed-binary, or physical evidence.
 ## Coverage and promotion decision
 
 - Requirement traceability: 97/97.
-- Test-source inventory: 509 declarations (252 core, 47 persistence, 210 app
+- Test-source inventory: 514 declarations (252 core, 49 persistence, 213 app
   target; XCTest methods plus Swift Testing `@Test` declarations).
 - Exact-branch executed tests: 0 in this environment.
 - Exact-branch line/function/branch coverage: unavailable until CI runs.
-- Open product P1: O-001 backup/restore scale.
-- Open scalability P1: O-004 budget-attribution/startup/replay scale.
-- Open privacy P2: O-005 attached-image metadata policy/evidence.
+- Source-remediated findings awaiting CI/physical evidence: O-001 archive scale,
+  O-004 budget-attribution/checkpoint scale, and O-005 receipt metadata.
 - Open evidence P1s: O-002 exact-candidate CI and O-003
   physical/exact-binary/release-owner gates.
 
-**Do not promote to wider TestFlight or App Review.** First fix O-001, push the
-branch, resolve O-004 against the Golden performance budget, make all
-exact-candidate CI jobs green, review coverage gaps, then run the complete
-physical matrix and reconcile the same candidate SHA/build.
+**Do not promote to wider TestFlight or App Review.** First make every
+exact-candidate CI job green and review coverage gaps. Then run the complete
+physical archive/performance/privacy/accessibility/upgrade matrix and reconcile
+the same candidate SHA/build before any promotion decision.

@@ -1,6 +1,6 @@
 # App Store Submission Working Copy
 
-Last reviewed: 27 August 2026 for the 0.6.0 source candidate
+Last reviewed: 28 August 2026 for the 0.6.0 source candidate
 
 This file is the source of truth for App Store Connect entry. Verify every
 claim against the exact archived binary before submission.
@@ -61,7 +61,8 @@ Description:
 > Smart entry can read a receipt or screenshot and understand a typed phrase.
 > Recognition and suggestions run on your iPhone; images are never uploaded
 > and are retained in encrypted storage only when you explicitly choose to keep
-> one with a transaction. Privacy-redacted Home and Lock Screen widgets open Expense, Income,
+> one with a transaction. Retained images are re-encoded without source location
+> or camera metadata. Privacy-redacted Home and Lock Screen widgets open Expense, Income,
 > Transfer, Refund, Smart Entry, or Receipt actions without displaying financial
 > values. Basic actions can use a separate encrypted capture inbox while the
 > full book remains locked. An optional budget-status configuration receives
@@ -121,7 +122,8 @@ Version 1.0 release notes:
 > 账户、卡片、负债，以及与账本关联并按手动价格估值的投资持仓。
 >
 > 智能录入可识别收据或截图，也能理解一句话记账。识别与建议均在 iPhone
-> 本机运行，图片绝不会上传，且只有你明确选择随交易保留时才会写入加密存储。
+> 本机运行，图片绝不会上传，且只有你明确选择随交易保留时，才会移除源文件中的
+> 位置与相机元数据并重新编码后写入加密存储。
 > 主屏幕与锁定屏幕的隐私保护小组件不会显示
 > 财务金额，可打开支出、收入、转账、退款、智能记账或小票操作。可选预算状态
 > 仅接收百分比与状态，不包含金额、商户、账户名称、持仓、余额、交易或账本

@@ -1,6 +1,6 @@
 # Golden PRD Execution Plan
 
-Last reconciled: 27 August 2026 against the uploaded MoneyUp Golden PRD
+Last reconciled: 28 August 2026 against the uploaded MoneyUp Golden PRD
 (document version 1.0; supplied file label v1.1), the independent 0.4.0 audit,
 and later accepted founder decisions.
 
@@ -22,11 +22,13 @@ requirement ID and its evidence status.
   cover, timed lock, transactional writes, and schema downgrade refusal
 - [x] Quarantine/recovery that preserves encrypted raw records rather than
   locking out the readable book
-- [x] Password-protected `.moneyup` archive and transactional restore
+- [x] File-backed version-2 `.moneyup` archive with bounded authenticated chunks,
+  version-1 compatibility, transactional restore, and file-backed rollback
 - [x] Stable Gregorian reporting calendar, half-open periods, origin time-zone
   context, and stable local-day attribution
-- [x] SQLCipher schema 4 with journal/posting and receipt-metadata indexes,
-  exact compact balance rows, bounded recent activity, and on-demand paging
+- [x] SQLCipher schema 6 with journal/posting, receipt metadata, exact store
+  metrics, and budget-attribution indexes; compact balances, monthly rollover
+  checkpoints, bounded recent activity, and on-demand paging
 - [ ] Exact-candidate Mac core/persistence/app tests and app/widget Simulator
   build
 - [ ] Physical migration, restore, and oldest-device scale evidence
@@ -38,7 +40,8 @@ requirement ID and its evidence status.
   defaults, field-safe validation, exactly-once Save/Undo, and keyboard
   Done/Save/tab reachability
 - [x] Fast-first on-device receipt/screenshot reading with immediate progress,
-  editable suggestions, finite failure, and optional encrypted attachment
+  editable suggestions, finite failure, and optional metadata-stripped encrypted
+  attachment
 - [x] Exact N-way split logging/editing with per-line note and live remainder
 - [x] Locked Quick Capture that owns no live database key or balances
 - [x] Date-indexed/keyset-paged History with search, combined filters,

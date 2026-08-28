@@ -1057,12 +1057,21 @@ private struct QuickLogEntryView: View {
             }
             try Task.checkCancellation()
             guard generation == receiptScanGeneration else { return }
-            if data.count <= ReceiptAttachment.maximumByteCount {
-                receiptAttachmentData = data
+            do {
+                receiptAttachmentData = try await Task.detached(
+                    priority: .userInitiated
+                ) {
+                    try ReceiptImageSanitizer.sanitizedForEncryptedStorage(data)
+                }.value
                 receiptRetentionMessage = nil
-            } else {
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
                 receiptAttachmentData = nil
-                receiptRetentionMessage = ReceiptAttachmentError.tooLarge.localizedDescription
+                receiptRetentionMessage = safeUserMessage(
+                    for: error,
+                    context: .scan
+                )
             }
             if let result = try await model.receiptAnalysis(
                 from: data,

@@ -29,8 +29,10 @@ enum RestoreCandidateValidator {
         InvestmentHolding.maximumActivitiesPerHolding
     static let maximumHoldingActivityCount = 100_000
     static let maximumRecordIDByteCount = RecordWrite.maximumRecordIDByteCount
-    static let maximumAggregateRecordIDByteCount = 8_000_000
-    static let maximumAggregateCollectionByteCount = 8_000_000
+    static let maximumAggregateRecordIDByteCount =
+        maximumCandidateRecordCount * maximumRecordIDByteCount
+    static let maximumAggregateCollectionByteCount =
+        maximumCandidateRecordCount * maximumCollectionByteCount
     static let maximumCollectionByteCount = 64
     static let maximumPayloadByteCount = RecordWrite.maximumPayloadByteCount
     // A 15 MB receipt image expands to roughly 20 MB in its first JSON/base64
@@ -51,7 +53,8 @@ enum RestoreCandidateValidator {
     static let maximumBudgetNodesPerRevision =
         BudgetConfigurationTimeline.maximumNodesPerRevision
     static let maximumBudgetTimelineNodeCount = 100_000
-    static let maximumBackupStoredPayloadByteCount = 32_000_000
+    static let maximumBackupStoredPayloadByteCount =
+        PortableArchive.maximumStoredPayloadByteCount
 
     /// Backup remains a byte-preserving recovery operation even when normal
     /// startup quarantines a malformed known row. This pass therefore bounds

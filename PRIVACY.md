@@ -1,6 +1,6 @@
 # MoneyUp Privacy Policy
 
-Effective: 27 August 2026
+Effective: 28 August 2026
 
 MoneyUp is a local-first personal-finance app. Its core privacy rule is simple:
 financial records are processed on the user's iPhone and are not sent to a
@@ -15,11 +15,13 @@ device. MoneyUp does not require a MoneyUp account and does not operate an
 application backend that receives these records.
 
 The optional receipt and screenshot reader uses Apple's on-device text
-recognition. The selected image is transient by default. MoneyUp stores it in
-the encrypted database and password-protected portable backups only if the user
-explicitly chooses to keep the receipt for that transaction. It is never added
-to drafts, widgets, readable CSV/XLSX exports, or uploaded. Typed smart entry
-and category suggestions also run on the device.
+recognition. The selected image is transient by default. If the user explicitly
+chooses to keep the receipt for that transaction, MoneyUp applies its displayed
+orientation, limits its dimensions, and re-encodes the pixels without the
+source GPS, EXIF, camera/device, caption, or edit-history metadata before storing
+it in the encrypted database and password-protected portable backups. It is
+never added to drafts, widgets, readable CSV/XLSX exports, or uploaded. Typed
+smart entry and category suggestions also run on the device.
 
 If the user explicitly enables budget status for widgets, MoneyUp shares only
 an availability/state value and an integer percentage through its local App
@@ -99,7 +101,7 @@ when available.
 
 # MoneyUp 隐私政策（简体中文）
 
-生效日期：2026 年 8 月 27 日
+生效日期：2026 年 8 月 28 日
 
 MoneyUp 是一款本地优先的个人财务应用。核心隐私原则很简单：财务记录在
 用户的 iPhone 上处理，不会发送到 MoneyUp 服务器。
@@ -111,9 +113,10 @@ MoneyUp 是一款本地优先的个人财务应用。核心隐私原则很简单
 MoneyUp 无需注册，也没有接收这些记录的应用后端。
 
 可选的收据与截图识别使用 Apple 的本机文字识别。所选图片默认只在识别期间
-短暂保留；只有用户明确选择为该笔交易保留收据时，MoneyUp 才会将其写入加密
-数据库及受密码保护的便携备份。图片不会进入草稿、组件、可读的 CSV／XLSX
-导出，也不会上传。文字智能录入和分类建议也完全在设备上运行。
+短暂保留；只有用户明确选择为该笔交易保留收据时，MoneyUp 才会按显示方向处理、
+限制图片尺寸，并仅重新编码像素，不保留源文件中的 GPS、EXIF、相机／设备、说明或
+编辑历史元数据，然后写入加密数据库及受密码保护的便携备份。图片不会进入草稿、
+组件、可读的 CSV／XLSX 导出，也不会上传。文字智能录入和分类建议也完全在设备上运行。
 
 只有用户明确启用小组件预算状态时，MoneyUp 才会通过本机 App Group 共享
 可用性／状态与整数百分比。该快照不含金额、商户、账户名称、持仓、余额、

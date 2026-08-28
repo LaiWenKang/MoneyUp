@@ -74,6 +74,33 @@ final class AppModelTests: XCTestCase {
             ).count,
             100_001
         )
+
+        let copiedURL = directory.appendingPathComponent("bounded-copy.bin")
+        let copiedHandle = try FileHandle(forReadingFrom: url)
+        defer { try? copiedHandle.close() }
+        XCTAssertEqual(
+            try BoundedFileReader.copy(
+                from: copiedHandle,
+                to: copiedURL,
+                maximumByteCount: source.count
+            ),
+            source.count
+        )
+        XCTAssertEqual(try Data(contentsOf: copiedURL), source)
+
+        let rejectedURL = directory.appendingPathComponent("rejected-copy.bin")
+        let rejectedHandle = try FileHandle(forReadingFrom: url)
+        defer { try? rejectedHandle.close() }
+        XCTAssertThrowsError(
+            try BoundedFileReader.copy(
+                from: rejectedHandle,
+                to: rejectedURL,
+                maximumByteCount: 100_000
+            )
+        ) { error in
+            XCTAssertEqual(error as? PortableArchiveError, .archiveTooLarge)
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: rejectedURL.path))
     }
 
     func testSharedCurrencyCatalogIsSearchableAndOnlyReturnsValidatedCodes() throws {
@@ -8841,6 +8868,117 @@ private func storedRecord<Value: Encodable>(
 }
 
 extension AppModelTests {
+    @MainActor
+    func testRecoveringStartupPersistsOneCurrentMonthBudgetCheckpoint()
+        async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let calendar = FinancialPeriodBoundary.gregorianCalendar(
+            timeZoneIdentifier: "GMT"
+        )
+        func date(_ month: Int, _ day: Int) -> Date {
+            calendar.date(from: DateComponents(
+                year: 2026,
+                month: month,
+                day: day,
+                hour: 12
+            ))!
+        }
+        func expense(amount: Decimal, month: Int) throws -> JournalEntry {
+            let candidate = try TransactionFactory.expense(
+                amount: try Money(amount, currency: fixture.sgd),
+                paidFrom: fixture.wallet.id,
+                category: fixture.food.id,
+                occurredAt: date(month, 15),
+                payee: "Checkpoint fixture"
+            )
+            return try JournalEntry(
+                id: candidate.id,
+                kind: candidate.kind,
+                occurredAt: candidate.occurredAt,
+                createdAt: candidate.createdAt,
+                payee: candidate.payee,
+                note: candidate.note,
+                postings: candidate.postings,
+                originContext: .capture(
+                    for: candidate.occurredAt,
+                    timeZone: calendar.timeZone
+                )
+            )
+        }
+
+        let january = try XCTUnwrap(
+            calendar.dateInterval(of: .month, for: date(1, 1))?.start
+        )
+        let march = try XCTUnwrap(
+            calendar.dateInterval(of: .month, for: date(3, 1))?.start
+        )
+        let budget = BudgetNode(
+            id: fixture.food.id,
+            name: fixture.food.name,
+            limit: try Money(100, currency: fixture.sgd),
+            rolloverRule: .positiveOnly,
+            rolloverStartedAt: january
+        )
+        let timeline = try BudgetConfigurationTimeline(
+            currency: fixture.sgd,
+            revisions: [BudgetConfigurationRevision(
+                effectiveMonth: january,
+                nodes: [budget]
+            )]
+        )
+        let profile = UserProfile(
+            baseCurrency: fixture.sgd,
+            reportingTimeZoneIdentifier: "GMT"
+        )
+        try await fixture.seed(
+            profile: profile,
+            accounts: [fixture.wallet, fixture.usAccount, fixture.food],
+            entries: [
+                try expense(amount: 40, month: 1),
+                try expense(amount: 20, month: 2)
+            ],
+            budgetNodes: [budget],
+            budgetConfigurationTimeline: timeline
+        )
+        let model = fixture.model(
+            profile: profile,
+            budgetNodes: [budget],
+            retainsCompleteJournal: false,
+            budgetConfigurationTimeline: timeline,
+            currentDate: { date(3, 15) }
+        )
+
+        try await model.reloadPersistedBookForTesting()
+        let firstCheckpoint = try await fixture.store.fetch(
+            BudgetConfigurationTimeline.self,
+            id: BudgetConfigurationTimeline.primaryRecordID,
+            from: .budgetConfigurationTimelines
+        )
+        XCTAssertEqual(firstCheckpoint?.revisions.count, 2)
+        XCTAssertEqual(
+            firstCheckpoint?.revision(effectiveAt: march)
+                .openingCarryByID?[fixture.food.id]?.amount,
+            140
+        )
+        XCTAssertEqual(model.budgetJournalReplayReadCount, 0)
+
+        try await model.reloadPersistedBookForTesting()
+        let secondCheckpoint = try await fixture.store.fetch(
+            BudgetConfigurationTimeline.self,
+            id: BudgetConfigurationTimeline.primaryRecordID,
+            from: .budgetConfigurationTimelines
+        )
+        XCTAssertEqual(secondCheckpoint?.revisions.count, 2)
+        XCTAssertEqual(
+            secondCheckpoint?.revision(effectiveAt: march)
+                .openingCarryByID?[fixture.food.id]?.amount,
+            140
+        )
+        XCTAssertEqual(model.budgetJournalReplayReadCount, 0)
+        await fixture.store.close()
+    }
+
     @MainActor
     func testLazyBudgetRolloverUsesCompleteClosedMonthProjectionAndRefreshesWidget() async throws {
         let fixture = try AppModelFixture()

@@ -114,6 +114,31 @@ public struct ReceiptAttachmentReadDiagnostics: Equatable, Sendable {
     }
 }
 
+/// Blob-free health summary for the normalized historical budget projection.
+/// Healthy startup work is constant-size; only exceptional record identities
+/// are returned for quarantine presentation.
+public struct BudgetAttributionIndexSnapshot: Sendable {
+    public let recordCount: Int
+    public let indexedEntryCount: Int
+    public let indexedPostingCount: Int
+    public let requiresDetailedValidation: Bool
+    public let issues: [RecordDecodeIssue]
+
+    public init(
+        recordCount: Int,
+        indexedEntryCount: Int,
+        indexedPostingCount: Int,
+        requiresDetailedValidation: Bool,
+        issues: [RecordDecodeIssue]
+    ) {
+        self.recordCount = recordCount
+        self.indexedEntryCount = indexedEntryCount
+        self.indexedPostingCount = indexedPostingCount
+        self.requiresDetailedValidation = requiresDetailedValidation
+        self.issues = issues
+    }
+}
+
 /// Instrumentation for the compact ledger snapshot path. Normal reads return
 /// one row per account/reference aggregate and materialize posting rows only
 /// for the exceptional entries that must be quarantined as a whole.
@@ -280,7 +305,7 @@ private struct IndexedReferenceCountRow {
 /// encrypted SQLite database. Journal entries therefore remain atomic, while
 /// migrations can evolve collections without rewriting an entire user book.
 public actor EncryptedRecordStore {
-    public static let currentSchemaVersion: Int32 = 4
+    public static let currentSchemaVersion: Int32 = 6
 
     private let connection: SQLCipherConnection
 
@@ -371,6 +396,28 @@ public actor EncryptedRecordStore {
     public func lastReceiptAttachmentReadDiagnostics()
         -> ReceiptAttachmentReadDiagnostics {
         connection.lastReceiptAttachmentReadDiagnostics
+    }
+
+    public func budgetAttributionIndexSnapshot() throws
+        -> BudgetAttributionIndexSnapshot {
+        try connection.budgetAttributionIndexSnapshot()
+    }
+
+    /// Historical budget posting rows with attribution overrides applied in
+    /// SQL. The query touches only the requested stable-day range and never
+    /// decodes attribution or journal JSON blobs.
+    public func fetchBudgetPostingEvents(
+        originDayKeyRange: Range<Int>,
+        excludingEntryIDs: Set<UUID> = []
+    ) throws -> [LedgerPostingEvent] {
+        guard !originDayKeyRange.isEmpty else { return [] }
+        return try makePostingEvents(
+            from: connection.fetchBudgetPostings(
+                startDayKey: originDayKeyRange.lowerBound,
+                endDayKeyExclusive: originDayKeyRange.upperBound
+            ),
+            excludingEntryIDs: excludingEntryIDs
+        )
     }
 
     public func fetch<Value: Decodable & Sendable>(
@@ -841,6 +888,35 @@ public actor EncryptedRecordStore {
         try connection.storageMetrics()
     }
 
+    /// Creates the current portable archive directly from the encrypted SQL
+    /// cursor. At most one bounded record and one encryption chunk are resident
+    /// at a time; the complete book is never copied into a process array.
+    public func exportPortableArchive(
+        to destinationURL: URL,
+        password: String
+    ) throws {
+        try connection.exportPortableArchive(
+            to: destinationURL,
+            password: password
+        )
+    }
+
+    /// Replaces the complete logical store from an authenticated archive in
+    /// one SQLite transaction. Every version-2 record is decoded and indexed
+    /// incrementally; any authentication, validation, cancellation, or write
+    /// failure rolls the entire candidate back.
+    public func restorePortableArchive(
+        from sourceURL: URL,
+        password: String,
+        observesCancellation: Bool = true
+    ) throws {
+        try connection.replaceAllRecords(
+            fromPortableArchive: sourceURL,
+            password: password,
+            observesCancellation: observesCancellation
+        )
+    }
+
     /// Replaces the complete logical store in one SQLite transaction.
     /// Callers must decrypt and validate the candidate before invoking this.
     public func restore(
@@ -1051,8 +1127,17 @@ private final class SQLCipherConnection: @unchecked Sendable {
                 )
             }
         }
+        for record in records where record.collection == .budgetEntryAttributions {
+            guard record.budgetAttributionIndex != nil else {
+                throw PersistenceError.invalidStoredRecord(
+                    collection: .budgetEntryAttributions,
+                    recordID: record.id
+                )
+            }
+        }
         try execute("BEGIN IMMEDIATE;")
         do {
+            let metricsBeforeWrite = try storageMetrics()
             let updatedAt = Date().timeIntervalSince1970
             var balanceDeltas: [BalanceKey: Decimal] = [:]
             var priorPostingRowsRead = 0
@@ -1097,6 +1182,13 @@ private final class SQLCipherConnection: @unchecked Sendable {
                         with: attachmentIndex
                     )
                 }
+                if record.collection == .budgetEntryAttributions,
+                   let attributionIndex = record.budgetAttributionIndex {
+                    try replaceBudgetAttributionIndex(
+                        entryID: record.id,
+                        with: attributionIndex
+                    )
+                }
             }
             if let relink {
                 try relinkReceiptAttachments(
@@ -1121,12 +1213,19 @@ private final class SQLCipherConnection: @unchecked Sendable {
                 if deletion.collection == .receiptAttachments {
                     try deleteReceiptAttachmentIndex(attachmentID: deletion.id)
                 }
+                if deletion.collection == .budgetEntryAttributions {
+                    try deleteBudgetAttributionIndex(entryID: deletion.id)
+                }
                 try remove(
                     collection: deletion.collection.rawValue,
                     recordID: deletion.id
                 )
             }
             let compactBalanceRowsRead = try applyBalanceDeltas(balanceDeltas)
+            try enforceLogicalStoreLimits(
+                before: metricsBeforeWrite,
+                after: storageMetrics()
+            )
             try execute("COMMIT;")
             lastJournalWriteDiagnostics = JournalWriteDiagnostics(
                 priorPostingRowsRead: priorPostingRowsRead,
@@ -1276,17 +1375,19 @@ private final class SQLCipherConnection: @unchecked Sendable {
         }
     }
 
-    private func replaceJournalIndex(
+    private func replaceBudgetAttributionIndex(
         entryID: String,
-        with index: JournalIndexWrite?,
-        observesCancellation: Bool = true
+        with index: BudgetAttributionIndexWrite?
     ) throws {
-        try deleteJournalIndex(entryID: entryID)
-        guard let index else { return }
+        try deleteBudgetAttributionIndex(entryID: entryID)
+        guard let index,
+              index.recordID == entryID,
+              index.occurredAt.isFinite,
+              index.originDayKey > 0 else { return }
         try withStatement(
             """
-            INSERT INTO journal_entry_index (
-                entry_id, occurred_at, origin_day_key, source_fingerprint
+            INSERT INTO budget_attribution_entry_index (
+                entry_id, occurred_at, origin_day_key, integrity_fingerprint
             ) VALUES (?, ?, ?, ?);
             """
         ) { statement in
@@ -1297,7 +1398,65 @@ private final class SQLCipherConnection: @unchecked Sendable {
                 3,
                 Int64(index.originDayKey)
             ) == SQLITE_OK else { throw makeError() }
+            try bindBlob(index.integrityFingerprint, at: 4, to: statement)
+            try stepExpectingDone(statement)
+        }
+        for (postingIndex, posting) in index.postings.enumerated() {
+            if postingIndex.isMultiple(of: 128) { try Task.checkCancellation() }
+            try withStatement(
+                """
+                INSERT INTO budget_attribution_posting_index (
+                    entry_id, posting_id, account_id, currency, amount_text
+                ) VALUES (?, ?, ?, ?, ?);
+                """
+            ) { statement in
+                try bindText(entryID, at: 1, to: statement)
+                try bindText(posting.postingID, at: 2, to: statement)
+                try bindText(posting.accountID, at: 3, to: statement)
+                try bindText(posting.currency, at: 4, to: statement)
+                try bindText(posting.amount, at: 5, to: statement)
+                try stepExpectingDone(statement)
+            }
+        }
+    }
+
+    private func deleteBudgetAttributionIndex(entryID: String) throws {
+        try withStatement(
+            "DELETE FROM budget_attribution_entry_index WHERE entry_id = ?;"
+        ) { statement in
+            try bindText(entryID, at: 1, to: statement)
+            try stepExpectingDone(statement)
+        }
+    }
+
+    private func replaceJournalIndex(
+        entryID: String,
+        with index: JournalIndexWrite?,
+        observesCancellation: Bool = true
+    ) throws {
+        try deleteJournalIndex(entryID: entryID)
+        guard let index else { return }
+        try withStatement(
+            """
+            INSERT INTO journal_entry_index (
+                entry_id, occurred_at, origin_day_key, source_fingerprint,
+                budget_integrity_fingerprint
+            ) VALUES (?, ?, ?, ?, ?);
+            """
+        ) { statement in
+            try bindText(entryID, at: 1, to: statement)
+            try bindDouble(index.occurredAt, at: 2, to: statement)
+            guard sqlite3_bind_int64(
+                statement,
+                3,
+                Int64(index.originDayKey)
+            ) == SQLITE_OK else { throw makeError() }
             try bindOptionalText(index.sourceFingerprint, at: 4, to: statement)
+            try bindBlob(
+                index.budgetIntegrityFingerprint,
+                at: 5,
+                to: statement
+            )
             try stepExpectingDone(statement)
         }
         for (postingIndex, posting) in index.postings.enumerated() {
@@ -1807,6 +1966,188 @@ private final class SQLCipherConnection: @unchecked Sendable {
             ) == SQLITE_OK else { throw makeError() }
             return try readPostingRows(from: statement)
         }
+    }
+
+    func fetchBudgetPostings(
+        startDayKey: Int,
+        endDayKeyExclusive: Int
+    ) throws -> [IndexedPostingRow] {
+        try withStatement(
+            """
+            SELECT attribution.entry_id,
+                   attribution.occurred_at,
+                   attribution.origin_day_key,
+                   posting.posting_id,
+                   posting.account_id,
+                   posting.currency,
+                   posting.amount_text
+            FROM budget_attribution_entry_index AS attribution
+            JOIN budget_attribution_posting_index AS posting
+                ON posting.entry_id = attribution.entry_id
+            WHERE attribution.origin_day_key >= ?
+                AND attribution.origin_day_key < ?
+
+            UNION ALL
+
+            SELECT journal.entry_id,
+                   posting.occurred_at,
+                   journal.origin_day_key,
+                   posting.posting_id,
+                   posting.account_id,
+                   posting.currency,
+                   posting.amount_text
+            FROM journal_entry_index AS journal
+            JOIN journal_posting_index AS posting
+                ON posting.entry_id = journal.entry_id
+            WHERE journal.origin_day_key >= ?
+                AND journal.origin_day_key < ?
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM budget_attribution_entry_index AS attribution
+                    WHERE attribution.entry_id = journal.entry_id
+                )
+            ORDER BY 2 DESC, 1 DESC, 4 ASC;
+            """
+        ) { statement in
+            for binding in [Int32(1), Int32(3)] {
+                guard sqlite3_bind_int64(
+                    statement,
+                    binding,
+                    Int64(startDayKey)
+                ) == SQLITE_OK,
+                sqlite3_bind_int64(
+                    statement,
+                    binding + 1,
+                    Int64(endDayKeyExclusive)
+                ) == SQLITE_OK else { throw makeError() }
+            }
+            return try readPostingRows(from: statement)
+        }
+    }
+
+    func budgetAttributionIndexSnapshot() throws
+        -> BudgetAttributionIndexSnapshot {
+        let counts: (Int, Int, Int) = try withStatement(
+            """
+            SELECT
+                (SELECT COUNT(*) FROM records WHERE collection = ?),
+                (SELECT COUNT(*) FROM budget_attribution_entry_index),
+                (SELECT COUNT(*) FROM budget_attribution_posting_index);
+            """
+        ) { statement in
+            try bindText(
+                RecordCollection.budgetEntryAttributions.rawValue,
+                at: 1,
+                to: statement
+            )
+            let result = sqlite3_step(statement)
+            guard result == SQLITE_ROW else { throw makeError(code: result) }
+            return (
+                Int(sqlite3_column_int64(statement, 0)),
+                Int(sqlite3_column_int64(statement, 1)),
+                Int(sqlite3_column_int64(statement, 2))
+            )
+        }
+        // A mismatch can be a valid audited lifecycle remap or a legacy
+        // inferred-day attribution, but either case requires the slower exact
+        // domain validator. Healthy histories avoid decoding attribution JSON.
+        let requiresDetailedValidation: Bool = try withStatement(
+            """
+            SELECT EXISTS (
+                SELECT 1
+                FROM budget_attribution_entry_index AS attribution
+                JOIN journal_entry_index AS journal
+                    ON journal.entry_id = attribution.entry_id
+                WHERE attribution.integrity_fingerprint IS NULL
+                    OR journal.budget_integrity_fingerprint IS NULL
+                    OR attribution.integrity_fingerprint
+                        <> journal.budget_integrity_fingerprint
+                    OR attribution.occurred_at <> journal.occurred_at
+                    OR attribution.origin_day_key <> journal.origin_day_key
+
+                UNION ALL
+
+                SELECT 1
+                FROM budget_attribution_posting_index AS attribution
+                LEFT JOIN journal_posting_index AS journal
+                    ON journal.entry_id = attribution.entry_id
+                    AND journal.posting_id = attribution.posting_id
+                WHERE journal.posting_id IS NULL
+                    OR attribution.account_id <> journal.account_id
+                    OR attribution.currency <> journal.currency
+                    OR attribution.amount_text <> journal.amount_text
+
+                UNION ALL
+
+                SELECT 1
+                FROM journal_posting_index AS journal
+                JOIN budget_attribution_entry_index AS attribution_entry
+                    ON attribution_entry.entry_id = journal.entry_id
+                LEFT JOIN budget_attribution_posting_index AS attribution
+                    ON attribution.entry_id = journal.entry_id
+                    AND attribution.posting_id = journal.posting_id
+                WHERE attribution.posting_id IS NULL
+                LIMIT 1
+            );
+            """
+        ) { statement in
+            let result = sqlite3_step(statement)
+            guard result == SQLITE_ROW else { throw makeError(code: result) }
+            return sqlite3_column_int(statement, 0) != 0
+        }
+        let issueIDs: [String] = try withStatement(
+            """
+            SELECT records.record_id
+            FROM records
+            LEFT JOIN budget_attribution_entry_index AS attribution
+                ON attribution.entry_id = records.record_id
+            WHERE records.collection = ?
+                AND (
+                    attribution.entry_id IS NULL
+                    OR records.record_id <> UPPER(records.record_id)
+                )
+
+            UNION
+
+            SELECT attribution.entry_id
+            FROM budget_attribution_entry_index AS attribution
+            LEFT JOIN journal_entry_index AS journal
+                ON journal.entry_id = attribution.entry_id
+            WHERE journal.entry_id IS NULL
+            ORDER BY 1 ASC;
+            """
+        ) { statement in
+            try bindText(
+                RecordCollection.budgetEntryAttributions.rawValue,
+                at: 1,
+                to: statement
+            )
+            var ids: [String] = []
+            while true {
+                let result = sqlite3_step(statement)
+                if result == SQLITE_DONE { break }
+                guard result == SQLITE_ROW,
+                      let rawID = sqlite3_column_text(statement, 0) else {
+                    throw makeError(
+                        code: result == SQLITE_ROW ? SQLITE_CORRUPT : result
+                    )
+                }
+                ids.append(String(cString: rawID))
+            }
+            return ids
+        }
+        return BudgetAttributionIndexSnapshot(
+            recordCount: counts.0,
+            indexedEntryCount: counts.1,
+            indexedPostingCount: counts.2,
+            requiresDetailedValidation: requiresDetailedValidation,
+            issues: issueIDs.map {
+                RecordDecodeIssue(
+                    collection: .budgetEntryAttributions,
+                    recordID: $0
+                )
+            }
+        )
     }
 
     func fetchInvalidJournalEntryIDs(
@@ -2388,6 +2729,9 @@ private final class SQLCipherConnection: @unchecked Sendable {
             if collection == RecordCollection.receiptAttachments.rawValue {
                 try execute("DELETE FROM receipt_attachment_index;")
             }
+            if collection == RecordCollection.budgetEntryAttributions.rawValue {
+                try execute("DELETE FROM budget_attribution_entry_index;")
+            }
             try withStatement("DELETE FROM records WHERE collection = ?;") { statement in
                 try bindText(collection, at: 1, to: statement)
                 try stepExpectingDone(statement)
@@ -2418,11 +2762,12 @@ private final class SQLCipherConnection: @unchecked Sendable {
     func storageMetrics() throws -> DatabaseStorageMetrics {
         try withStatement(
             """
-            SELECT COUNT(*),
-                   COALESCE(SUM(length(payload)), 0),
-                   COALESCE(SUM(length(CAST(record_id AS BLOB))), 0),
-                   COALESCE(SUM(length(CAST(collection AS BLOB))), 0)
-            FROM records;
+            SELECT record_count,
+                   payload_byte_count,
+                   record_id_byte_count,
+                   collection_byte_count
+            FROM store_metrics
+            WHERE singleton = 1;
             """
         ) { statement in
             let result = sqlite3_step(statement)
@@ -2447,6 +2792,22 @@ private final class SQLCipherConnection: @unchecked Sendable {
                 recordIDByteCount: Int(recordIDByteCount),
                 collectionByteCount: Int(collectionByteCount)
             )
+        }
+    }
+
+    func exportPortableArchive(
+        to destinationURL: URL,
+        password: String
+    ) throws {
+        let metrics = try storageMetrics()
+        try PortableArchiveV2.seal(
+            schemaVersion: schemaVersion(),
+            createdAt: Date(),
+            metrics: metrics,
+            password: password,
+            to: destinationURL
+        ) { consume in
+            try enumerateAllRecords(consume)
         }
     }
 
@@ -2489,6 +2850,100 @@ private final class SQLCipherConnection: @unchecked Sendable {
         }
     }
 
+    private func enumerateAllRecords(
+        _ consume: (StoredRecordSnapshot) throws -> Void
+    ) throws {
+        try withStatement(
+            """
+            SELECT collection, record_id, payload, updated_at
+            FROM records
+            ORDER BY collection ASC, record_id ASC;
+            """
+        ) { statement in
+            var rowIndex = 0
+            while true {
+                if rowIndex.isMultiple(of: 256) {
+                    try Task.checkCancellation()
+                }
+                let result = sqlite3_step(statement)
+                if result == SQLITE_DONE { break }
+                guard result == SQLITE_ROW,
+                      let rawCollection = sqlite3_column_text(statement, 0),
+                      let rawID = sqlite3_column_text(statement, 1) else {
+                    throw makeError(
+                        code: result == SQLITE_ROW ? SQLITE_CORRUPT : result
+                    )
+                }
+                try consume(StoredRecordSnapshot(
+                    collection: String(cString: rawCollection),
+                    recordID: String(cString: rawID),
+                    payload: data(from: statement, column: 2),
+                    updatedAt: sqlite3_column_double(statement, 3)
+                ))
+                rowIndex += 1
+            }
+        }
+    }
+
+    func replaceAllRecords(
+        fromPortableArchive sourceURL: URL,
+        password: String,
+        observesCancellation: Bool
+    ) throws {
+        let allowedCollections = Set(RecordCollection.allCases.map(\.rawValue))
+        var identities = Set<String>()
+        var affectedBalances = Set<BalanceKey>()
+        var restoredRecordCount = 0
+
+        if observesCancellation { try Task.checkCancellation() }
+        try execute("BEGIN IMMEDIATE;")
+        do {
+            try clearRecordsForReplacement()
+            let metadata = try PortableArchiveV2.read(
+                from: sourceURL,
+                password: password
+            ) { record in
+                if observesCancellation,
+                   restoredRecordCount.isMultiple(of: 256) {
+                    try Task.checkCancellation()
+                }
+                try validateReplacementRecord(
+                    record,
+                    allowedCollections: allowedCollections,
+                    identities: &identities
+                )
+                try insertReplacementRecord(
+                    record,
+                    affectedBalances: &affectedBalances,
+                    observesCancellation: observesCancellation
+                )
+                restoredRecordCount += 1
+            }
+            guard metadata.schemaVersion > 0 else {
+                throw PersistenceError.invalidSnapshot
+            }
+            guard metadata.schemaVersion <= supportedSchemaVersion else {
+                throw PersistenceError.unsupportedSchema(
+                    found: metadata.schemaVersion,
+                    supported: supportedSchemaVersion
+                )
+            }
+            guard metadata.createdAt.timeIntervalSince1970.isFinite,
+                  restoredRecordCount == metadata.recordCount else {
+                throw PersistenceError.invalidSnapshot
+            }
+            try enforceLogicalStoreLimits(before: nil, after: storageMetrics())
+            try rebuildBalances(
+                for: affectedBalances,
+                observesCancellation: observesCancellation
+            )
+            if observesCancellation { try Task.checkCancellation() }
+            try execute("COMMIT;")
+        } catch let operationError {
+            try rollbackReplacement(orThrowing: operationError)
+        }
+    }
+
     func replaceAllRecords(
         with records: [StoredRecordSnapshot],
         observesCancellation: Bool
@@ -2499,73 +2954,29 @@ private final class SQLCipherConnection: @unchecked Sendable {
             if observesCancellation && index.isMultiple(of: 256) {
                 try Task.checkCancellation()
             }
-            guard allowedCollections.contains(record.collection),
-                  !record.recordID.isEmpty,
-                  !record.payload.isEmpty,
-                  record.updatedAt.isFinite else {
-                throw PersistenceError.invalidSnapshot
-            }
-            let identity = record.collection + "\u{1f}" + record.recordID
-            guard identities.insert(identity).inserted else {
-                throw PersistenceError.duplicateSnapshotRecord(
-                    collection: record.collection,
-                    recordID: record.recordID
-                )
-            }
+            try validateReplacementRecord(
+                record,
+                allowedCollections: allowedCollections,
+                identities: &identities
+            )
         }
 
         if observesCancellation { try Task.checkCancellation() }
         try execute("BEGIN IMMEDIATE;")
         do {
-            try execute("DELETE FROM journal_entry_index;")
-            try execute("DELETE FROM journal_balance;")
-            try execute("DELETE FROM receipt_attachment_index;")
-            try execute("DELETE FROM records;")
+            try clearRecordsForReplacement()
             var affectedBalances = Set<BalanceKey>()
             for (index, record) in records.enumerated() {
                 if observesCancellation && index.isMultiple(of: 256) {
                     try Task.checkCancellation()
                 }
-                let journalIndex = try journalIndexWrite(
-                    collection: record.collection,
-                    recordID: record.recordID,
-                    payload: record.payload
+                try insertReplacementRecord(
+                    record,
+                    affectedBalances: &affectedBalances,
+                    observesCancellation: observesCancellation
                 )
-                let attachmentIndex = receiptAttachmentIndexWrite(
-                    collection: record.collection,
-                    recordID: record.recordID,
-                    payload: record.payload
-                )
-                try upsertRecord(
-                    collection: record.collection,
-                    recordID: record.recordID,
-                    payload: record.payload,
-                    updatedAt: record.updatedAt,
-                    indexedAt: journalIndex?.occurredAt
-                )
-                if record.collection == RecordCollection.journalEntries.rawValue {
-                    try replaceJournalIndex(
-                        entryID: record.recordID,
-                        with: journalIndex,
-                        observesCancellation: observesCancellation
-                    )
-                    affectedBalances.formUnion(
-                        journalIndex?.postings.map {
-                            BalanceKey(
-                                accountID: $0.accountID,
-                                currency: $0.currency
-                            )
-                        } ?? []
-                    )
-                }
-                if record.collection == RecordCollection.receiptAttachments.rawValue,
-                   let attachmentIndex {
-                    try replaceReceiptAttachmentIndex(
-                        attachmentID: record.recordID,
-                        with: attachmentIndex
-                    )
-                }
             }
+            try enforceLogicalStoreLimits(before: nil, after: storageMetrics())
             try rebuildBalances(
                 for: affectedBalances,
                 observesCancellation: observesCancellation
@@ -2573,27 +2984,142 @@ private final class SQLCipherConnection: @unchecked Sendable {
             if observesCancellation { try Task.checkCancellation() }
             try execute("COMMIT;")
         } catch let operationError {
-            do {
-                #if DEBUG
-                if shouldFailNextRestoreRollbackForTesting {
-                    shouldFailNextRestoreRollbackForTesting = false
-                    // Fail without ending the outer transaction so this hook
-                    // exercises the dangerous rollback-indeterminate state.
-                    try execute(
-                        "ROLLBACK TO moneyup_missing_restore_savepoint;"
-                    )
-                }
-                #endif
-                try execute("ROLLBACK;")
-            } catch {
-                // Never leave a possibly partial transaction available to
-                // reads or raw backup. Closing SQLite rolls it back durably;
-                // AppModel fails closed until a fresh store is opened.
-                close()
-                throw PersistenceError.restoreTransactionStateIndeterminate
-            }
-            throw operationError
+            try rollbackReplacement(orThrowing: operationError)
         }
+    }
+
+    private func clearRecordsForReplacement() throws {
+        try execute("DELETE FROM journal_entry_index;")
+        try execute("DELETE FROM journal_balance;")
+        try execute("DELETE FROM receipt_attachment_index;")
+        try execute("DELETE FROM budget_attribution_entry_index;")
+        try execute("DELETE FROM records;")
+    }
+
+    private func validateReplacementRecord(
+        _ record: StoredRecordSnapshot,
+        allowedCollections: Set<String>,
+        identities: inout Set<String>
+    ) throws {
+        guard allowedCollections.contains(record.collection),
+              !record.recordID.isEmpty,
+              record.recordID.utf8.count <= RecordWrite.maximumRecordIDByteCount,
+              !record.payload.isEmpty,
+              record.payload.count <= RecordWrite.maximumReceiptPayloadByteCount,
+              record.updatedAt.isFinite else {
+            throw PersistenceError.invalidSnapshot
+        }
+        let identity = record.collection + "\u{1f}" + record.recordID
+        guard identities.insert(identity).inserted else {
+            throw PersistenceError.duplicateSnapshotRecord(
+                collection: record.collection,
+                recordID: record.recordID
+            )
+        }
+    }
+
+    private func insertReplacementRecord(
+        _ record: StoredRecordSnapshot,
+        affectedBalances: inout Set<BalanceKey>,
+        observesCancellation: Bool
+    ) throws {
+        let journalIndex = try journalIndexWrite(
+            collection: record.collection,
+            recordID: record.recordID,
+            payload: record.payload
+        )
+        let attachmentIndex = receiptAttachmentIndexWrite(
+            collection: record.collection,
+            recordID: record.recordID,
+            payload: record.payload
+        )
+        let attributionIndex = budgetAttributionIndexWrite(
+            collection: record.collection,
+            recordID: record.recordID,
+            payload: record.payload
+        )
+        try upsertRecord(
+            collection: record.collection,
+            recordID: record.recordID,
+            payload: record.payload,
+            updatedAt: record.updatedAt,
+            indexedAt: journalIndex?.occurredAt
+        )
+        if record.collection == RecordCollection.journalEntries.rawValue {
+            try replaceJournalIndex(
+                entryID: record.recordID,
+                with: journalIndex,
+                observesCancellation: observesCancellation
+            )
+            affectedBalances.formUnion(
+                journalIndex?.postings.map {
+                    BalanceKey(
+                        accountID: $0.accountID,
+                        currency: $0.currency
+                    )
+                } ?? []
+            )
+        }
+        if record.collection == RecordCollection.receiptAttachments.rawValue,
+           let attachmentIndex {
+            try replaceReceiptAttachmentIndex(
+                attachmentID: record.recordID,
+                with: attachmentIndex
+            )
+        }
+        if record.collection
+            == RecordCollection.budgetEntryAttributions.rawValue {
+            try replaceBudgetAttributionIndex(
+                entryID: record.recordID,
+                with: attributionIndex
+            )
+        }
+    }
+
+    private func rollbackReplacement(orThrowing operationError: Error) throws {
+        do {
+            #if DEBUG
+            if shouldFailNextRestoreRollbackForTesting {
+                shouldFailNextRestoreRollbackForTesting = false
+                // Fail without ending the outer transaction so this hook
+                // exercises the dangerous rollback-indeterminate state.
+                try execute("ROLLBACK TO moneyup_missing_restore_savepoint;")
+            }
+            #endif
+            try execute("ROLLBACK;")
+        } catch {
+            // Never leave a possibly partial transaction available to reads or
+            // raw backup. Closing SQLite rolls it back durably; AppModel fails
+            // closed until a fresh store is opened.
+            close()
+            throw PersistenceError.restoreTransactionStateIndeterminate
+        }
+        throw operationError
+    }
+
+    private func enforceLogicalStoreLimits(
+        before: DatabaseStorageMetrics?,
+        after: DatabaseStorageMetrics
+    ) throws {
+        let isWithinLimits = after.recordCount <= PortableArchiveV2.maximumRecordCount
+            && after.payloadByteCount
+                <= PortableArchive.maximumStoredPayloadByteCount
+        if isWithinLimits { return }
+
+        // A pre-v5 beta book may already be above the new portable envelope.
+        // Permit only monotonic cleanup until it is back inside the contract;
+        // never trap a user in a state where deletion itself is impossible.
+        if let before,
+           (before.recordCount > PortableArchiveV2.maximumRecordCount
+                || before.payloadByteCount
+                    > PortableArchive.maximumStoredPayloadByteCount),
+           after.recordCount <= before.recordCount,
+           after.payloadByteCount <= before.payloadByteCount,
+           (after.recordCount < before.recordCount
+                || after.payloadByteCount < before.payloadByteCount) {
+            return
+        }
+        throw PersistenceError.logicalStoreLimitExceeded
     }
 
     #if DEBUG
@@ -2834,34 +3360,220 @@ private final class SQLCipherConnection: @unchecked Sendable {
             }
         }
 
-        guard currentVersion < 4 else { return }
+        if currentVersion < 4 {
+            try execute("BEGIN IMMEDIATE;")
+            do {
+                try createReceiptAttachmentIndexTable()
+                let attachmentRecordIDs = try recordIDs(
+                    collection: RecordCollection.receiptAttachments.rawValue
+                )
+                for recordID in attachmentRecordIDs {
+                    guard let payload = try fetch(
+                        collection: RecordCollection.receiptAttachments.rawValue,
+                        recordID: recordID
+                    ) else { continue }
+                    guard let index = receiptAttachmentIndexWrite(
+                        collection: RecordCollection.receiptAttachments.rawValue,
+                        recordID: recordID,
+                        payload: payload
+                    ) else { continue }
+                    try replaceReceiptAttachmentIndex(
+                        attachmentID: recordID,
+                        with: index
+                    )
+                }
+                try execute("PRAGMA user_version = 4;")
+                try execute("COMMIT;")
+                currentVersion = 4
+            } catch {
+                try? execute("ROLLBACK;")
+                throw error
+            }
+        }
+
+        if currentVersion < 5 {
+            try execute("BEGIN IMMEDIATE;")
+            do {
+                try createStoreMetricsTable()
+                try execute("PRAGMA user_version = 5;")
+                try execute("COMMIT;")
+                currentVersion = 5
+            } catch {
+                try? execute("ROLLBACK;")
+                throw error
+            }
+        }
+
+        guard currentVersion < 6 else { return }
         try execute("BEGIN IMMEDIATE;")
         do {
-            try createReceiptAttachmentIndexTable()
-            let attachmentRecordIDs = try recordIDs(
-                collection: RecordCollection.receiptAttachments.rawValue
-            )
-            for recordID in attachmentRecordIDs {
-                guard let payload = try fetch(
-                    collection: RecordCollection.receiptAttachments.rawValue,
-                    recordID: recordID
+            if try !journalEntryIndexHasBudgetIntegrityFingerprint() {
+                try execute(
+                    """
+                    ALTER TABLE journal_entry_index
+                    ADD COLUMN budget_integrity_fingerprint BLOB
+                    CHECK(
+                        budget_integrity_fingerprint IS NULL
+                        OR length(budget_integrity_fingerprint) = 32
+                    );
+                    """
+                )
+            }
+            try createBudgetAttributionIndexTables()
+            for record in try fetchAll(
+                collection: RecordCollection.journalEntries.rawValue
+            ) {
+                guard let index = try journalIndexWrite(
+                    collection: RecordCollection.journalEntries.rawValue,
+                    recordID: record.id,
+                    payload: record.payload
                 ) else { continue }
-                guard let index = receiptAttachmentIndexWrite(
-                    collection: RecordCollection.receiptAttachments.rawValue,
-                    recordID: recordID,
-                    payload: payload
-                ) else { continue }
-                try replaceReceiptAttachmentIndex(
-                    attachmentID: recordID,
+                try updateJournalBudgetIntegrityFingerprint(
+                    entryID: record.id,
+                    fingerprint: index.budgetIntegrityFingerprint
+                )
+            }
+            for record in try fetchAll(
+                collection: RecordCollection.budgetEntryAttributions.rawValue
+            ) {
+                let index = budgetAttributionIndexWrite(
+                    collection: RecordCollection.budgetEntryAttributions.rawValue,
+                    recordID: record.id,
+                    payload: record.payload
+                )
+                try replaceBudgetAttributionIndex(
+                    entryID: record.id,
                     with: index
                 )
             }
-            try execute("PRAGMA user_version = 4;")
+            try execute("PRAGMA user_version = 6;")
             try execute("COMMIT;")
         } catch {
             try? execute("ROLLBACK;")
             throw error
         }
+    }
+
+    private func journalEntryIndexHasBudgetIntegrityFingerprint() throws
+        -> Bool {
+        try withStatement("PRAGMA table_info(journal_entry_index);") {
+            statement in
+            while true {
+                let result = sqlite3_step(statement)
+                if result == SQLITE_DONE { return false }
+                guard result == SQLITE_ROW,
+                      let rawName = sqlite3_column_text(statement, 1) else {
+                    throw makeError(
+                        code: result == SQLITE_ROW ? SQLITE_CORRUPT : result
+                    )
+                }
+                if String(cString: rawName)
+                    == "budget_integrity_fingerprint" {
+                    return true
+                }
+            }
+        }
+    }
+
+    private func updateJournalBudgetIntegrityFingerprint(
+        entryID: String,
+        fingerprint: Data
+    ) throws {
+        try withStatement(
+            """
+            UPDATE journal_entry_index
+            SET budget_integrity_fingerprint = ?
+            WHERE entry_id = ?;
+            """
+        ) { statement in
+            try bindBlob(fingerprint, at: 1, to: statement)
+            try bindText(entryID, at: 2, to: statement)
+            try stepExpectingDone(statement)
+        }
+    }
+
+    /// Exact O(1) logical-store totals. The triggers share every record write,
+    /// deletion, and restore transaction, so a committed book can be checked
+    /// against the portable-archive contract without rescanning large blobs.
+    private func createStoreMetricsTable() throws {
+        try execute(
+            """
+            CREATE TABLE store_metrics (
+                singleton INTEGER NOT NULL PRIMARY KEY CHECK(singleton = 1),
+                record_count INTEGER NOT NULL CHECK(record_count >= 0),
+                payload_byte_count INTEGER NOT NULL CHECK(payload_byte_count >= 0),
+                record_id_byte_count INTEGER NOT NULL CHECK(record_id_byte_count >= 0),
+                collection_byte_count INTEGER NOT NULL CHECK(collection_byte_count >= 0)
+            ) WITHOUT ROWID;
+            """
+        )
+        try execute(
+            """
+            INSERT INTO store_metrics (
+                singleton,
+                record_count,
+                payload_byte_count,
+                record_id_byte_count,
+                collection_byte_count
+            )
+            SELECT 1,
+                   COUNT(*),
+                   COALESCE(SUM(length(payload)), 0),
+                   COALESCE(SUM(length(CAST(record_id AS BLOB))), 0),
+                   COALESCE(SUM(length(CAST(collection AS BLOB))), 0)
+            FROM records;
+            """
+        )
+        try execute(
+            """
+            CREATE TRIGGER store_metrics_records_insert
+            AFTER INSERT ON records
+            BEGIN
+                UPDATE store_metrics
+                SET record_count = record_count + 1,
+                    payload_byte_count = payload_byte_count + length(NEW.payload),
+                    record_id_byte_count = record_id_byte_count
+                        + length(CAST(NEW.record_id AS BLOB)),
+                    collection_byte_count = collection_byte_count
+                        + length(CAST(NEW.collection AS BLOB))
+                WHERE singleton = 1;
+            END;
+            """
+        )
+        try execute(
+            """
+            CREATE TRIGGER store_metrics_records_update
+            AFTER UPDATE ON records
+            BEGIN
+                UPDATE store_metrics
+                SET payload_byte_count = payload_byte_count
+                        - length(OLD.payload) + length(NEW.payload),
+                    record_id_byte_count = record_id_byte_count
+                        - length(CAST(OLD.record_id AS BLOB))
+                        + length(CAST(NEW.record_id AS BLOB)),
+                    collection_byte_count = collection_byte_count
+                        - length(CAST(OLD.collection AS BLOB))
+                        + length(CAST(NEW.collection AS BLOB))
+                WHERE singleton = 1;
+            END;
+            """
+        )
+        try execute(
+            """
+            CREATE TRIGGER store_metrics_records_delete
+            AFTER DELETE ON records
+            BEGIN
+                UPDATE store_metrics
+                SET record_count = record_count - 1,
+                    payload_byte_count = payload_byte_count - length(OLD.payload),
+                    record_id_byte_count = record_id_byte_count
+                        - length(CAST(OLD.record_id AS BLOB)),
+                    collection_byte_count = collection_byte_count
+                        - length(CAST(OLD.collection AS BLOB))
+                WHERE singleton = 1;
+            END;
+            """
+        )
     }
 
     private func recordIDs(collection: String) throws -> [String] {
@@ -2908,6 +3620,48 @@ private final class SQLCipherConnection: @unchecked Sendable {
         )
     }
 
+    private func createBudgetAttributionIndexTables() throws {
+        try execute(
+            """
+            CREATE TABLE budget_attribution_entry_index (
+                entry_id TEXT NOT NULL PRIMARY KEY,
+                occurred_at REAL NOT NULL,
+                origin_day_key INTEGER NOT NULL
+                    CHECK(origin_day_key BETWEEN 10101 AND 99991231),
+                integrity_fingerprint BLOB NOT NULL
+                    CHECK(length(integrity_fingerprint) = 32)
+            ) WITHOUT ROWID;
+            """
+        )
+        try execute(
+            """
+            CREATE INDEX budget_attribution_entry_day
+            ON budget_attribution_entry_index(origin_day_key, entry_id);
+            """
+        )
+        try execute(
+            """
+            CREATE TABLE budget_attribution_posting_index (
+                entry_id TEXT NOT NULL,
+                posting_id TEXT NOT NULL,
+                account_id TEXT NOT NULL,
+                currency TEXT NOT NULL,
+                amount_text TEXT NOT NULL CHECK(length(amount_text) > 0),
+                PRIMARY KEY (entry_id, posting_id),
+                FOREIGN KEY (entry_id)
+                    REFERENCES budget_attribution_entry_index(entry_id)
+                    ON DELETE CASCADE
+            ) WITHOUT ROWID;
+            """
+        )
+        try execute(
+            """
+            CREATE INDEX budget_attribution_posting_account
+            ON budget_attribution_posting_index(account_id, entry_id);
+            """
+        )
+    }
+
     private func createJournalIndexTables() throws {
         try execute(
             """
@@ -2915,7 +3669,12 @@ private final class SQLCipherConnection: @unchecked Sendable {
                 entry_id TEXT NOT NULL PRIMARY KEY,
                 occurred_at REAL NOT NULL,
                 origin_day_key INTEGER NOT NULL,
-                source_fingerprint TEXT
+                source_fingerprint TEXT,
+                budget_integrity_fingerprint BLOB
+                    CHECK(
+                        budget_integrity_fingerprint IS NULL
+                        OR length(budget_integrity_fingerprint) = 32
+                    )
             ) WITHOUT ROWID;
             """
         )
@@ -3035,6 +3794,23 @@ private final class SQLCipherConnection: @unchecked Sendable {
         else { return nil }
         return ReceiptAttachmentIndexWrite(
             attachment: attachment,
+            recordID: recordID
+        )
+    }
+
+    private func budgetAttributionIndexWrite(
+        collection: String,
+        recordID: String,
+        payload: Data
+    ) -> BudgetAttributionIndexWrite? {
+        guard collection == RecordCollection.budgetEntryAttributions.rawValue,
+              let attribution = try? JSONDecoder().decode(
+                BudgetEntryAttribution.self,
+                from: payload
+              ),
+              attribution.id.uuidString == recordID else { return nil }
+        return try? BudgetAttributionIndexWrite(
+            attribution: attribution,
             recordID: recordID
         )
     }

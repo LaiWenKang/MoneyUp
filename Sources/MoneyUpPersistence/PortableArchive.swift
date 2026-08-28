@@ -16,11 +16,14 @@ public enum PortableArchiveError: Error, Equatable, Sendable {
 /// derives an independent AES-256 key from a user-held password so the book can
 /// be restored on a replacement device without weakening the live database.
 public enum PortableArchive {
-    /// Legacy v1 archives up to the original boundary remain readable. New
-    /// whole-buffer seals use a measured-safe containment ceiling until a
-    /// chunked/streaming archive version removes multi-buffer amplification.
-    public static let maximumArchiveByteCount = 250_000_000
-    public static let maximumNewArchiveByteCount = 64_000_000
+    /// Version 2 is a bounded, chunk-authenticated binary stream. Its archive
+    /// ceiling is deliberately aligned with the logical-store payload budget,
+    /// so every book accepted by current write paths has a complete portable
+    /// representation. Version 1 keeps its original compatibility boundary.
+    public static let maximumArchiveByteCount = 640_000_000
+    public static let maximumLegacyArchiveByteCount = 250_000_000
+    public static let maximumNewArchiveByteCount = 640_000_000
+    public static let maximumStoredPayloadByteCount = 512_000_000
     public static let maximumPasswordByteCount = 1_024
 
     private struct Envelope: Codable {
@@ -31,8 +34,9 @@ public enum PortableArchive {
         let ciphertext: Data
     }
 
-    private static let magic = Data("MONEYUP\u{0}".utf8)
-    private static let currentVersion = 1
+    static let magic = Data("MONEYUP\u{0}".utf8)
+    static let legacyVersion = 1
+    static let currentVersion = 2
     /// Version 1 archives use one exact work factor. Accepting attacker-chosen
     /// values would either weaken password derivation or create a CPU denial of
     /// service during restore.
@@ -46,6 +50,31 @@ public enum PortableArchive {
         _ snapshot: DatabaseSnapshot,
         password: String
     ) throws -> Data {
+        try PortableArchiveV2.seal(snapshot, password: password)
+    }
+
+    /// Writes the current archive format without materializing the complete
+    /// encrypted file in memory. Production backup uses the store-level
+    /// streaming API; this snapshot overload remains useful to tests and
+    /// migration tools that already own a bounded snapshot.
+    public static func seal(
+        _ snapshot: DatabaseSnapshot,
+        password: String,
+        to destinationURL: URL
+    ) throws {
+        try PortableArchiveV2.seal(
+            snapshot,
+            password: password,
+            to: destinationURL
+        )
+    }
+
+    /// Retained only for compatibility fixtures. New callers must use the
+    /// chunked version-2 writer above.
+    static func sealVersionOne(
+        _ snapshot: DatabaseSnapshot,
+        password: String
+    ) throws -> Data {
         try Task.checkCancellation()
         let passwordData = try validatedPasswordData(password)
         try Task.checkCancellation()
@@ -53,7 +82,7 @@ public enum PortableArchive {
         try Task.checkCancellation()
         let payload = try encoder().encode(snapshot)
         try Task.checkCancellation()
-        guard isWithinNewArchiveByteLimit(payload.count) else {
+        guard payload.count <= maximumLegacyArchiveByteCount else {
             throw PortableArchiveError.archiveTooLarge
         }
         let key = try deriveKey(
@@ -63,7 +92,7 @@ public enum PortableArchive {
         )
         try Task.checkCancellation()
         let aad = associatedData(
-            version: currentVersion,
+            version: legacyVersion,
             iterations: iterationCount,
             salt: salt
         )
@@ -74,7 +103,7 @@ public enum PortableArchive {
             throw PortableArchiveError.invalidArchive
         }
         let envelope = Envelope(
-            version: currentVersion,
+            version: legacyVersion,
             kdf: "PBKDF2-HMAC-SHA256",
             iterations: iterationCount,
             salt: salt,
@@ -83,7 +112,7 @@ public enum PortableArchive {
         try Task.checkCancellation()
         let archive = magic + (try encoder().encode(envelope))
         try Task.checkCancellation()
-        guard isWithinNewArchiveByteLimit(archive.count) else {
+        guard archive.count <= maximumLegacyArchiveByteCount else {
             throw PortableArchiveError.archiveTooLarge
         }
         return archive
@@ -93,8 +122,36 @@ public enum PortableArchive {
         _ data: Data,
         password: String
     ) throws -> DatabaseSnapshot {
+        guard data.count > magic.count,
+              data.prefix(magic.count) == magic else {
+            throw PortableArchiveError.invalidArchive
+        }
+        let discriminator = data[data.startIndex + magic.count]
+        if discriminator == UInt8(currentVersion) {
+            return try PortableArchiveV2.open(data, password: password)
+        }
+        guard discriminator == UInt8(ascii: "{") else {
+            throw PortableArchiveError.unsupportedVersion(Int(discriminator))
+        }
+        return try openVersionOne(data, password: password)
+    }
+
+    /// Opens an archive from disk. Version 2 is decrypted and decoded one
+    /// bounded chunk/record at a time; version 1 remains memory-mapped for
+    /// backward compatibility with already-issued backups.
+    public static func open(
+        from sourceURL: URL,
+        password: String
+    ) throws -> DatabaseSnapshot {
+        try PortableArchiveV2.open(sourceURL, password: password)
+    }
+
+    static func openVersionOne(
+        _ data: Data,
+        password: String
+    ) throws -> DatabaseSnapshot {
         try Task.checkCancellation()
-        guard isWithinArchiveByteLimit(data.count) else {
+        guard data.count <= maximumLegacyArchiveByteCount else {
             throw PortableArchiveError.archiveTooLarge
         }
         guard data.count > magic.count,
@@ -113,13 +170,13 @@ public enum PortableArchive {
             throw PortableArchiveError.invalidArchive
         }
         try Task.checkCancellation()
-        guard envelope.version == currentVersion else {
+        guard envelope.version == legacyVersion else {
             throw PortableArchiveError.unsupportedVersion(envelope.version)
         }
         guard envelope.kdf == "PBKDF2-HMAC-SHA256",
               envelope.iterations == iterationCount,
               envelope.salt.count == 16,
-              isWithinArchiveByteLimit(envelope.ciphertext.count) else {
+              envelope.ciphertext.count <= maximumLegacyArchiveByteCount else {
             throw PortableArchiveError.invalidArchive
         }
 
@@ -158,7 +215,7 @@ public enum PortableArchive {
             throw PortableArchiveError.authenticationFailed
         }
         try Task.checkCancellation()
-        guard isWithinArchiveByteLimit(plaintext.count) else {
+        guard plaintext.count <= maximumLegacyArchiveByteCount else {
             throw PortableArchiveError.archiveTooLarge
         }
         let snapshot: DatabaseSnapshot
@@ -174,7 +231,7 @@ public enum PortableArchive {
 
     /// RFC 8018 PBKDF2 using HMAC-SHA256. One 32-byte block is sufficient for
     /// AES-256 and keeps portable backup cryptography independently testable.
-    private static func deriveKey(
+    static func deriveKey(
         passwordData: Data,
         salt: Data,
         iterations: Int
@@ -208,7 +265,7 @@ public enum PortableArchive {
         )
     }
 
-    private static func derivedKeyData(
+    static func derivedKeyData(
         passwordData: Data,
         salt: Data,
         iterations: Int,
@@ -267,13 +324,13 @@ public enum PortableArchive {
         return passwordData
     }
 
-    private static func legacyVersionOnePasswordData(
+    static func legacyVersionOnePasswordData(
         _ password: String
     ) -> Data {
         normalizedPassword(password).1
     }
 
-    private static func normalizedPassword(
+    static func normalizedPassword(
         _ password: String
     ) -> (String, Data) {
         let normalized = password.precomposedStringWithCanonicalMapping
@@ -291,7 +348,7 @@ public enum PortableArchive {
         return data
     }
 
-    private static func randomData(count: Int) -> Data {
+    static func randomData(count: Int) -> Data {
         var generator = SystemRandomNumberGenerator()
         return Data((0..<count).map { _ in
             UInt8.random(in: .min ... .max, using: &generator)

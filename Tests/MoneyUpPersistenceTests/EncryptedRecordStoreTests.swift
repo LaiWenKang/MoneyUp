@@ -806,6 +806,145 @@ final class EncryptedRecordStoreTests: XCTestCase {
         await store.close()
     }
 
+    func testBudgetAttributionIndexOverridesRewrittenJournalAndStreamsArchive()
+        async throws {
+        let fixture = try TemporaryDatabaseFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.directoryURL) }
+        let store = try EncryptedRecordStore(
+            databaseURL: fixture.databaseURL,
+            key: fixture.key
+        )
+        let cashID = UUID()
+        let historicalCategoryID = UUID()
+        let replacementCategoryID = UUID()
+        let entryID = UUID()
+        let occurredAt = Date(timeIntervalSince1970: 1_767_268_800)
+        let original = try makeExpenseEntry(
+            id: entryID,
+            occurredAt: occurredAt,
+            amount: 42,
+            firstAccountID: cashID,
+            secondAccountID: historicalCategoryID
+        )
+        let attribution = try BudgetEntryAttribution(
+            entry: original,
+            originTimeZoneIdentifier: "UTC"
+        )
+        try await store.write([
+            try RecordWrite(
+                original,
+                id: original.id.uuidString,
+                in: .journalEntries
+            ),
+            try RecordWrite(
+                attribution,
+                id: attribution.id.uuidString,
+                in: .budgetEntryAttributions
+            )
+        ])
+        let exactIndex = try await store.budgetAttributionIndexSnapshot()
+        XCTAssertFalse(exactIndex.requiresDetailedValidation)
+
+        // Memo and origin-context fields are not duplicated into the posting
+        // columns. Their semantic fingerprint must still route a forged
+        // attribution/journal disagreement to the exact domain validator.
+        let memoRewritten = try JournalEntry(
+            id: original.id,
+            kind: original.kind,
+            occurredAt: original.occurredAt,
+            createdAt: original.createdAt,
+            payee: original.payee,
+            note: original.note,
+            postings: original.postings.enumerated().map { index, posting in
+                Posting(
+                    id: posting.id,
+                    accountID: posting.accountID,
+                    money: posting.money,
+                    memo: index == 0 ? "changed memo" : posting.memo
+                )
+            },
+            originContext: original.originContext
+        )
+        try await store.upsert(
+            memoRewritten,
+            id: memoRewritten.id.uuidString,
+            in: .journalEntries
+        )
+        let memoMismatchIndex = try await store
+            .budgetAttributionIndexSnapshot()
+        XCTAssertTrue(memoMismatchIndex.requiresDetailedValidation)
+        try await store.upsert(
+            original,
+            id: original.id.uuidString,
+            in: .journalEntries
+        )
+        let restoredExactIndex = try await store
+            .budgetAttributionIndexSnapshot()
+        XCTAssertFalse(restoredExactIndex.requiresDetailedValidation)
+
+        let rewritten = try makeExpenseEntry(
+            id: entryID,
+            occurredAt: occurredAt,
+            amount: 42,
+            firstAccountID: cashID,
+            secondAccountID: replacementCategoryID
+        )
+        try await store.upsert(
+            rewritten,
+            id: rewritten.id.uuidString,
+            in: .journalEntries
+        )
+
+        let indexed = try await store.budgetAttributionIndexSnapshot()
+        XCTAssertEqual(indexed.recordCount, 1)
+        XCTAssertEqual(indexed.indexedEntryCount, 1)
+        XCTAssertEqual(indexed.indexedPostingCount, 2)
+        XCTAssertTrue(indexed.requiresDetailedValidation)
+        XCTAssertTrue(indexed.issues.isEmpty)
+        let budgetEvents = try await store.fetchBudgetPostingEvents(
+            originDayKeyRange: 20_260_101..<20_270_101
+        )
+        XCTAssertTrue(
+            budgetEvents.contains {
+                $0.posting.accountID == historicalCategoryID
+            }
+        )
+        XCTAssertFalse(
+            budgetEvents.contains {
+                $0.posting.accountID == replacementCategoryID
+            }
+        )
+
+        let archiveURL = fixture.directoryURL.appendingPathComponent(
+            "streamed.moneyup"
+        )
+        try await store.exportPortableArchive(
+            to: archiveURL,
+            password: "streamed archive password"
+        )
+        let restoredFixture = try TemporaryDatabaseFixture()
+        defer {
+            try? FileManager.default.removeItem(at: restoredFixture.directoryURL)
+        }
+        let restored = try EncryptedRecordStore(
+            databaseURL: restoredFixture.databaseURL,
+            key: restoredFixture.key
+        )
+        try await restored.restorePortableArchive(
+            from: archiveURL,
+            password: "streamed archive password"
+        )
+        let restoredEvents = try await restored.fetchBudgetPostingEvents(
+            originDayKeyRange: 20_260_101..<20_270_101
+        )
+        XCTAssertEqual(restoredEvents, budgetEvents)
+        let restoredMetrics = try await restored.storageMetrics()
+        let originalMetrics = try await store.storageMetrics()
+        XCTAssertEqual(restoredMetrics, originalMetrics)
+        await restored.close()
+        await store.close()
+    }
+
     func testJournalBalanceOverflowRollsBackRecordAndIndexAtomically() async throws {
         let fixture = try TemporaryDatabaseFixture()
         let store = try EncryptedRecordStore(
@@ -1944,8 +2083,10 @@ final class EncryptedRecordStoreTests: XCTestCase {
     }
 
     func testPortableArchiveRoundTripsAndRejectsWrongPassword() throws {
-        XCTAssertEqual(PortableArchive.maximumArchiveByteCount, 250_000_000)
-        XCTAssertEqual(PortableArchive.maximumNewArchiveByteCount, 64_000_000)
+        XCTAssertEqual(PortableArchive.maximumArchiveByteCount, 640_000_000)
+        XCTAssertEqual(PortableArchive.maximumLegacyArchiveByteCount, 250_000_000)
+        XCTAssertEqual(PortableArchive.maximumNewArchiveByteCount, 640_000_000)
+        XCTAssertEqual(PortableArchive.maximumStoredPayloadByteCount, 512_000_000)
         XCTAssertTrue(
             PortableArchive.isWithinArchiveByteLimit(
                 PortableArchive.maximumArchiveByteCount
@@ -2023,22 +2164,8 @@ final class EncryptedRecordStoreTests: XCTestCase {
         }
 
         let magic = Data("MONEYUP\u{0}".utf8)
-        var tamperedObject = try XCTUnwrap(
-            JSONSerialization.jsonObject(
-                with: Data(archive.dropFirst(magic.count))
-            ) as? [String: Any]
-        )
-        var tamperedCiphertext = try XCTUnwrap(
-            (tamperedObject["ciphertext"] as? String)
-                .flatMap { Data(base64Encoded: $0) }
-        )
-        let tamperedIndex = tamperedCiphertext.index(
-            before: tamperedCiphertext.endIndex
-        )
-        tamperedCiphertext[tamperedIndex] ^= 0x01
-        tamperedObject["ciphertext"] = tamperedCiphertext.base64EncodedString()
-        let tampered = magic
-            + (try JSONSerialization.data(withJSONObject: tamperedObject))
+        var tampered = archive
+        tampered[tampered.index(before: tampered.endIndex)] ^= 0x01
         XCTAssertThrowsError(
             try PortableArchive.open(
                 tampered,
@@ -2048,21 +2175,15 @@ final class EncryptedRecordStoreTests: XCTestCase {
             XCTAssertEqual(error as? PortableArchiveError, .authenticationFailed)
         }
 
-        var unsupportedObject = try XCTUnwrap(
-            JSONSerialization.jsonObject(
-                with: Data(archive.dropFirst(Data("MONEYUP\u{0}".utf8).count))
-            ) as? [String: Any]
-        )
-        unsupportedObject["version"] = 2
-        let unsupported = magic
-            + (try JSONSerialization.data(withJSONObject: unsupportedObject))
+        var unsupported = archive
+        unsupported[magic.count] = 3
         XCTAssertThrowsError(
             try PortableArchive.open(
                 unsupported,
                 password: "correct horse battery staple"
             )
         ) { error in
-            XCTAssertEqual(error as? PortableArchiveError, .unsupportedVersion(2))
+            XCTAssertEqual(error as? PortableArchiveError, .unsupportedVersion(3))
         }
     }
 
@@ -2096,6 +2217,80 @@ final class EncryptedRecordStoreTests: XCTestCase {
             try PortableArchive.seal(snapshot, password: tooLong)
         ) { error in
             XCTAssertEqual(error as? PortableArchiveError, .passwordTooLong)
+        }
+    }
+
+    func testPortableArchiveVersionTwoStreamsMultipleChunksAndRejectsFrameDamage()
+        throws {
+        let password = "chunked archive test password"
+        let snapshot = DatabaseSnapshot(
+            schemaVersion: EncryptedRecordStore.currentSchemaVersion,
+            createdAt: Date(timeIntervalSince1970: 1_800_000_000),
+            records: [
+                StoredRecordSnapshot(
+                    collection: RecordCollection.receiptAttachments.rawValue,
+                    recordID: UUID().uuidString,
+                    payload: Data(repeating: 0x31, count: 800_000),
+                    updatedAt: 101
+                ),
+                StoredRecordSnapshot(
+                    collection: RecordCollection.receiptAttachments.rawValue,
+                    recordID: UUID().uuidString,
+                    payload: Data(repeating: 0x52, count: 800_000),
+                    updatedAt: 102
+                )
+            ]
+        )
+        let fixture = try TemporaryDatabaseFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.directoryURL) }
+        let archiveURL = fixture.directoryURL.appendingPathComponent(
+            "multi-chunk.moneyup"
+        )
+        try PortableArchive.seal(
+            snapshot,
+            password: password,
+            to: archiveURL
+        )
+        XCTAssertEqual(
+            try PortableArchive.open(from: archiveURL, password: password),
+            snapshot
+        )
+
+        let archive = try Data(contentsOf: archiveURL)
+        XCTAssertEqual(
+            archive[PortableArchive.magic.count],
+            UInt8(PortableArchive.currentVersion)
+        )
+        XCTAssertGreaterThan(
+            archive.count,
+            PortableArchiveV2.headerByteCount
+                + PortableArchiveV2.chunkByteCount
+        )
+
+        let truncated = Data(archive.dropLast())
+        XCTAssertThrowsError(
+            try PortableArchive.open(truncated, password: password)
+        ) { error in
+            XCTAssertEqual(error as? PortableArchiveError, .invalidArchive)
+        }
+
+        let firstFrameStart = PortableArchiveV2.headerByteCount
+        let fullFrameByteCount = PortableArchiveV2.framePrefixByteCount
+            + PortableArchiveV2.chunkByteCount
+            + PortableArchiveV2.tagByteCount
+        let secondFrameStart = firstFrameStart + fullFrameByteCount
+        var reordered = Data(archive.prefix(firstFrameStart))
+        reordered.append(archive[secondFrameStart...])
+        reordered.append(
+            archive[firstFrameStart..<secondFrameStart]
+        )
+        XCTAssertThrowsError(
+            try PortableArchive.open(reordered, password: password)
+        ) { error in
+            XCTAssertTrue(
+                error as? PortableArchiveError == .invalidArchive
+                    || error as? PortableArchiveError == .authenticationFailed
+            )
         }
     }
 

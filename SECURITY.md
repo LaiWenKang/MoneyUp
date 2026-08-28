@@ -21,7 +21,7 @@ and App Review remain separate release gates.
 | iOS file protection for the database | Implemented |
 | Privacy-redacted quick-action widget with no financial values | Implemented |
 | Opt-in App Group widget snapshot restricted to percentage/state only | Implemented; signing/device gate open |
-| On-device receipt reading; optional explicit SQLCipher-encrypted retention; no upload | Implemented |
+| On-device receipt reading; optional metadata-stripped SQLCipher-encrypted retention; no upload | Implemented; exact-candidate and physical fixture evidence open |
 | Plaintext CSV/XLSX warning and user-selected destination | Implemented |
 | Destructive recovery reset with explicit confirmation | Implemented |
 | App privacy manifest with no tracking or collected-data declarations | Implemented |
@@ -29,9 +29,9 @@ and App Review remain separate release gates.
 | Confirmed deletion for transactions, schedules, and holdings | Implemented |
 | Wrong-key, plaintext-leak, decimal round-trip, and atomic-rollback tests | Test coverage present; exact-candidate execution open |
 | Separate encrypted, no-balance Quick Capture inbox while locked | Implemented |
-| Password-protected portable backup and transactional restore | Implemented with test coverage; exact-candidate execution open |
+| File-backed chunk-authenticated portable backup and transactional restore | Implemented with v1 compatibility and test coverage; exact-candidate/physical execution open |
 | Previewable local CSV/Qianji import with atomic commit | Implemented with test coverage; exact-candidate execution open |
-| SQLCipher schema-4 journal/posting indexes and compact exact balances | Implemented; exact-candidate tests open |
+| SQLCipher schema-6 journal/posting/receipt/budget indexes, store metrics, and compact exact balances | Implemented; exact-candidate tests open |
 | Optional end-to-end-encrypted device sync | Explicitly deferred from 1.0 |
 
 ## Privacy guarantee
@@ -42,12 +42,14 @@ Data leaves the app only when the user invokes an export and chooses a
 destination.
 
 Smart entry does not change this. Receipt text recognition runs through the
-on-device Vision framework. The selected image is transient by default and is
-written to SQLCipher only after the user explicitly enables encrypted receipt
-retention for that transaction; it never enters a draft, diagnostic log,
-widget, CSV, or XLSX export and is never transmitted. Typed-phrase parsing and
-category suggestions are plain arithmetic and string matching over the user's
-own records. No remote model receives a receipt, an amount, or a payee.
+on-device Vision framework. The selected source is transient by default. When
+the user explicitly enables encrypted retention, MoneyUp applies orientation,
+bounds the longest edge, and re-encodes new JPEG/PNG pixels without copying GPS,
+EXIF, TIFF device, caption, or edit-history metadata into SQLCipher. The image
+never enters a draft, diagnostic log, widget, CSV, or XLSX export and is never
+transmitted. Typed-phrase parsing and category suggestions are plain arithmetic
+and string matching over the user's own records. No remote model receives a
+receipt, an amount, or a payee.
 
 The opt-in budget-status widget does not change the network guarantee. The app
 writes a versioned availability/state plus integer percentage to
@@ -93,10 +95,11 @@ The guarantee does not cover:
   WAL journaling, secure deletion, and foreign-key enforcement.
 - The database uses a versioned schema and rejects a schema newer than the app
   supports.
-- Schema 4 stores journal/posting lookup indexes, exact account/currency balance
-  rows, and bounded receipt-attachment metadata inside SQLCipher. Routine entry
-  mutations apply exact deltas in the same transaction; rebuild is reserved for
-  migration, restore, or repair.
+- Schema 6 stores journal/posting lookup indexes, exact account/currency balance
+  rows, bounded receipt metadata, trigger-maintained store totals, and historical
+  budget-attribution indexes inside SQLCipher. Routine mutations update each
+  projection in the same transaction; rebuild is reserved for migration,
+  restore, or repair.
 - Normal unlock retains only bounded recent activity plus compact reference and
   balance state; whole-book operations page from the encrypted store on demand.
 - Multi-record setup and reconciliation operations use a single immediate
@@ -111,11 +114,18 @@ The guarantee does not cover:
 
 The live Keychain key uses a this-device-only policy. Before deleting the app or
 changing devices, the user can create a `.moneyup` archive encrypted and
-authenticated with an independent password. Restore validates the candidate and
-rolls the current logical store back if loading fails. MoneyUp cannot recover a
-forgotten archive password. CSV and XLSX exports are readable and useful in
-Numbers or Excel, but neither is a full-fidelity restore format. The live database directory
-remains excluded from system backup because its device-bound key cannot migrate.
+authenticated with an independent password. Version 2 streams a SQL cursor into
+independently authenticated 1 MiB AES-GCM chunks and binds the header, index,
+length, and total chunk count; production export/import remains file-backed.
+Current writes enforce the archive's 100,000-record/512 MB stored-payload
+envelope. Restore validates in an isolated SQLCipher store, replaces the live
+logical store transactionally, and uses a separate encrypted file-backed
+rollback archive if post-commit loading fails. Legacy version-1 archives remain
+readable within their compatibility limit and require near-limit physical-memory
+measurement before release. MoneyUp cannot recover a forgotten archive
+password. CSV and XLSX exports are readable and useful in Numbers or Excel, but
+neither is a full-fidelity restore format. The live database directory remains
+excluded from system backup because its device-bound key cannot migrate.
 
 ## App Group capability
 

@@ -146,6 +146,8 @@ extension PersistenceError: @retroactive LocalizedError {
             String(localized: "error.persistence_update_required")
         case .invalidStoredRecord, .invalidSnapshot, .duplicateSnapshotRecord:
             String(localized: "error.persistence_data_invalid")
+        case .logicalStoreLimitExceeded:
+            String(localized: "backup.error.too_large")
         case .invalidKeyLength, .databaseClosed, .databaseFailure,
              .cipherUnavailable, .transactionStateIndeterminate,
              .restoreTransactionStateIndeterminate:

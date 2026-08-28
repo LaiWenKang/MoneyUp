@@ -7,7 +7,7 @@ flowchart TD
     Widget["Redacted widget"] --> Capture["Encrypted Quick Capture inbox"]
     App["Authenticated SwiftUI app"] --> Core["MoneyUpCore"]
     App --> Store["MoneyUpPersistence"]
-    Store --> Cipher["SQLCipher schema 4"]
+    Store --> Cipher["SQLCipher schema 6"]
     App --> Shared["Percent/state-only App Group"]
     Shared --> Widget
     App --> Files["CSV/XLSX/import/archive"]
@@ -33,7 +33,7 @@ runtime backend is required.
 | MoneyUpCore | Exact money, ledger, hierarchy, recurrence, goals, investments, reports, export rules | Implemented in source; exact-candidate core tests open |
 | MoneyUpPersistence | SQLCipher schema/migrations, normalized encrypted indexes, atomic writes, snapshots | Implemented in source; Mac test gate open |
 | Widget | Redacted actions plus opt-in percentage/state status | Implemented in source; App Group registration/signing and device matrix open |
-| Portability | CSV/XLSX, mapped local import, encrypted attachment/archive lifecycle | Implemented in source; physical restore/export drills open |
+| Portability | CSV/XLSX, mapped local import, sanitized encrypted attachments, file-backed archive lifecycle | Implemented in source; exact-candidate and physical restore/export drills open |
 
 `BudgetTree`, `BudgetRollover`, `SavingsGoal`, and `FinancialGuidance` own the
 exact plan arithmetic. `InvestmentHolding`, `TransactionFactory`, and
@@ -50,10 +50,12 @@ closes the actor-isolated store, clears decoded records and caches, and returns
 to the locked state. Receipt bytes never enter a draft.
 
 On unlock, Keychain enforces local user presence before returning the
-this-device-only SQLCipher key. Normal startup loads non-journal records, exact
-compact balances/reference counts, and at most a bounded recent-activity page;
-it does not decode or retain the complete journal. Malformed or orphaned rows
-are quarantined from calculations while their encrypted raw records remain
+this-device-only SQLCipher key. Normal startup loads compact non-journal state,
+exact balances/reference counts, budget-attribution index health, and at most a
+bounded recent-activity page; it does not decode or retain the complete journal
+or a healthy attribution history. An indexed mismatch triggers the exact
+historical validator and fails budget projection closed. Malformed or orphaned
+rows are quarantined from calculations while their encrypted raw records remain
 available to backup/repair paths.
 
 Saving, editing, deleting, importing, reconciling, posting a schedule, changing
@@ -62,7 +64,7 @@ transaction for all affected records. The operation either commits completely
 or rolls back completely. The six-second Undo is offered only after a committed
 save and reverses the same derived effects once.
 
-## Ledger and SQLCipher schema 4
+## Ledger and SQLCipher schema 6
 
 Normal views do not create postings directly. `TransactionFactory` creates
 balanced expense, income, transfer, foreign-exchange, refund, reconciliation,
@@ -70,16 +72,19 @@ split, investment purchase/sale, and valuation entries. `JournalEntry`
 validates each currency independently at initialization and decoding, and
 retains originating calendar/time-zone facts plus a stable local-day key.
 
-Schema 4 retains deterministic encrypted record payloads and the normalized
-encrypted ledger support tables, and adds attachment metadata indexing so lists
-never decode receipt-image bytes:
+Schema 6 retains deterministic encrypted record payloads and the normalized
+encrypted support tables. It adds constant-size store totals and historical
+budget-attribution indexes to the schema-4 ledger and attachment projections:
 
 | Table/index | Purpose |
 |---|---|
-| `journal_entry_index` | Chronological identity, source fingerprint, and day/range lookup without decoding every payload |
+| `journal_entry_index` | Chronological identity, source fingerprint, stable day/range lookup, and a semantic budget-integrity fingerprint without decoding every payload |
 | `journal_posting_index` | Account/category/currency posting events for reports, Calendar, lifecycle counts, and bounded scans |
 | `journal_balance` | Exact materialized balance per account/currency |
 | `receipt_attachment_index` | Entry relationship, MIME type, byte count, and creation time without loading the encrypted image payload |
+| `store_metrics` | Trigger-maintained exact record/payload/identity totals used to enforce the portable-recovery envelope in O(1) memory |
+| `budget_attribution_entry_index` | Stable historical budget day, entry timestamp, and matching semantic integrity fingerprint without attribution JSON decode |
+| `budget_attribution_posting_index` | Historical category/currency/amount postings used by bounded rollover queries |
 
 Routine writes apply exact `-old + new` posting deltas to compact balance rows
 inside the same transaction. A full rebuild is reserved for migration,
@@ -90,14 +95,17 @@ recent cache into an accidental full journal.
 
 Schema-1/2 books migrate by decoding each legacy journal payload once to build
 the normalized indexes without changing the original payload, timestamp, or
-identifier. Books that already carry the ledger indexes migrate to schema 4 by
-adding the receipt metadata index without rewriting valid attachment payloads.
-Raw malformed rows remain quarantined instead of blocking the readable book.
+identifier. Later migrations add receipt metadata, exact store metrics, and
+budget-attribution projections without rewriting valid payloads. Raw malformed
+rows remain quarantined instead of blocking the readable book.
 
 ## Planning and investment records
 
 Budget rollover has an explicit activation day and uses half-open Gregorian
 reporting periods, so enabling it never retroactively invents carry-forward.
+The first healthy indexed replay in a reporting month persists an authoritative
+opening-carry checkpoint. Later unlocks query only the bounded range since the
+latest checkpoint; backdated edits explicitly recompute affected checkpoints.
 Savings and sinking goals retain dated contributions, withdrawals, manual or
 automatic resets, archive state, target date, and reporting time zone.
 
@@ -118,10 +126,16 @@ cells for valid financial values. Neither format includes receipt bytes.
 
 Import is local, preview-first, row-aware, duplicate-detecting, and atomic.
 Unknown CSV/TSV layouts can be mapped column by column. Full-fidelity recovery
-uses an authenticated `.moneyup` archive derived from a user-held password;
-attachments, user rates, goals, snapshots, and encrypted raw records remain in
-that archive. Restore validates first and leaves the current book untouched on
-wrong password, tampering, cancellation, future schema, or failure.
+uses an authenticated `.moneyup` archive derived from a user-held password.
+Version 2 writes fixed metadata plus independently authenticated 1 MiB chunks
+directly from a SQL cursor to a file; the header, chunk index, length, and
+declared chunk count reject truncation, append, duplication, and reordering.
+Current writes enforce a 100,000-record/512 MB stored-payload envelope, while
+legacy version-1 archives remain readable within their compatibility limit.
+Attachments, user rates, goals, snapshots, and quarantined encrypted raw
+records remain in the archive. Restore streams into an isolated SQLCipher store
+and then one live transaction; wrong password, tampering, cancellation, future
+schema, or failure leaves or restores the prior book.
 
 The Data inventory is a separate metadata-only JSON manifest for upgrade and
 restore reconciliation. Every durable collection count comes from one

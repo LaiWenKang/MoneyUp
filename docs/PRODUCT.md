@@ -37,10 +37,10 @@ end-to-end encryption and authorization design is approved.
 | Today guidance | Flexible Today uses only explicitly flexible allocations and their commitments, plus separate cash, debt, and net-cash position |
 | Finance calendar | Indexed actual flows plus recurring forecasts with edit, pause, end, skip, confirm, match, and exactly-once posting |
 | Assets | Lifecycle-managed accounts/categories; ledger-linked holdings; dated prices; stale warnings; FIFO lots/disposals; currency-separated net-worth history |
-| Portability | Posting-level CSV and native XLSX, mapped CSV/TSV import, encrypted receipt attachments, dated user FX rates, and authenticated `.moneyup` backup/restore |
+| Portability | Posting-level CSV and native XLSX, mapped CSV/TSV import, metadata-stripped encrypted receipt attachments, dated user FX rates, and file-backed chunk-authenticated `.moneyup` backup/restore |
 | Easy logging | Amount-first center Log, encrypted drafts, smart defaults, refund, exact splits, date-indexed History/edit, and Undo; keyboard Done, Save, and tab navigation remain reachable |
 | Smart entry | Responsive fast-first on-device receipt and screenshot reading with immediate progress and visible populated suggestions, typed-phrase parsing, and category suggestions learned from the user's own history |
-| Scale architecture | SQLCipher schema-4 journal/posting indexes, compact exact balances, bounded recent activity, and on-demand History/Calendar/export loading |
+| Scale architecture | SQLCipher schema-6 journal/posting/receipt/budget indexes, trigger-maintained store metrics, compact balances, monthly rollover checkpoints, bounded recent activity, and on-demand History/Calendar/export loading |
 | Languages | English and Simplified Chinese with locale-correct dates and amounts |
 
 These rows describe source implementation in the unified candidate. They do

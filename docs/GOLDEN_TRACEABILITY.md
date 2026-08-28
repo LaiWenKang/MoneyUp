@@ -1,6 +1,6 @@
 # Golden PRD Traceability - MoneyUp 0.6.0 Candidate
 
-Reconciled: 27 August 2026
+Reconciled: 28 August 2026
 
 This is the requirement-to-evidence map for the source-integrated MoneyUp 0.6.0
 candidate (source build 8). It prevents "implemented in source" from being
@@ -77,7 +77,7 @@ exact-candidate run.
 | PLN-04 | Plan/Today disclose excluded non-base activity by currency/amount and do not claim on-track over hidden spending. | Source implemented; multi-currency reconciliation open. |
 | PLN-05 | Calendar/report models distinguish scheduled forecasts from actual/matched/posted entries. | Source implemented; physical semantic/visual check open. |
 | PLN-06 | Schedule models/UI/AppModel support edit, pause, end, skip, confirm, match, and exactly-once posting/advance. | Source implemented; repeated-tap/background physical drill open. |
-| PLN-07 | `BudgetRollover`, `SavingsGoal`, Plan goal views, and AppModel support explicit rollover activation, sinking/savings targets, dated movements, resets, archive, and delete. | Source implemented; final merge tests and month-boundary drill open. |
+| PLN-07 | `BudgetRollover`, normalized attribution indexes, monthly opening-carry checkpoints, `SavingsGoal`, Plan goal views, and AppModel support explicit rollover activation, sinking/savings targets, dated movements, resets, archive, and delete. | Source implemented; exact-candidate tests and oldest-device month-boundary/p95 drill open. |
 | PLN-08 | Calendar loads actual posting events by range, omits false zero days, and retains per-currency flows. | Source implemented; Calendar physical matrix open. |
 | PLN-09 | `ScheduledTransaction` performs direct arithmetic lookup where possible and bounded recurrence otherwise. | Source implemented; 20-long-lived-schedule device budget open. |
 | PLN-10 | `FinancialPeriodBoundary`, profile reporting calendar, origin context/day key, date pickers, reports, goals, rates, and schedules share Gregorian half-open rules. | Source implemented; UTC-12/UTC+14/DST physical regression open. |
@@ -117,8 +117,8 @@ exact-candidate run.
 | POR-01 | `LedgerCSVExporter`/`LedgerXLSXExporter` include entry/posting/account/hierarchy IDs, exact decimals, timestamps, currencies, names, types, and origin context. | Source implemented; exported fixture review open. |
 | POR-02 | CSV emits UTF-8 BOM and neutralizes formula-like user text without changing valid negative numerics. | Source implemented; exact-candidate exporter tests open. |
 | POR-03 | Export UI warns that CSV/XLSX are readable plaintext and uses the system destination picker. | Source implemented; physical sheet/picker check open. |
-| POR-04 | `PortableArchive`/`MoneyUpArchive` create versioned authenticated encrypted archives from a user password independent of the live key. | Source implemented for bounded fixtures with one shared 250 MB seal/open/import limit; P1 receipt-heavy whole-buffer/backup-availability blocker and clean-device physical proof open. |
-| POR-05 | Restore validates and rolls back on wrong password/tamper/duplicates/cancel/future schema/interruption. | Source implemented for bounded fixtures; P1 large whole-buffer archive blocker, Mac fault execution, and physical restore gate open. |
+| POR-04 | `PortableArchiveV2`, `EncryptedRecordStore.exportPortableArchive`, and `MoneyUpArchiveTransfer` create file-backed authenticated archives from a user password independent of the live key. Fixed 1 MiB chunks cover current books within the enforced 100,000-record/512 MB stored-payload envelope; v1 remains readable. | Source implementation complete; exact-candidate Mac tests plus clean-device, near-limit v2, and compatible-v1 physical proof open. |
+| POR-05 | File-backed restore authenticates/decode-inserts bounded records into an isolated SQLCipher store, then replaces the live book transactionally with a separate encrypted rollback archive. Header/frame authentication rejects wrong password, tamper, truncation, append, duplication, reorder, cancel, and future schema. | Source implementation complete; exact-candidate fault execution, interruption/power-loss, and physical restore gates open. |
 | POR-06 | `TransactionCSVImporter` and import UI implement local preview, row issues, duplicate detection, mappings, and atomic commit. | Source implemented; mapped fixture/device review open. |
 | POR-07 | Unknown CSV/TSV mapping UI and dependency-free native OOXML XLSX export are present; spreadsheets remain non-live. | Source implemented; Numbers/Excel physical-open check open. |
 | POR-08 | Quarantine/recovery preserves bad raw encrypted rows and offers backup/export/restore before destructive erase. | Source implemented; corrupted-book recovery drill open. |
@@ -149,8 +149,8 @@ exact-candidate run.
 | SEC-02 | `DatabaseKeyStore` generates a random 256-bit this-device-only, non-synchronizing, user-presence Keychain key for SQLCipher. | Source implemented; physical passcode/biometry behavior open. |
 | SEC-03 | Scene privacy cover, timeout, safe draft flush, store close, and decoded/cache clearing live in AppModel. | Source implemented; physical timing/background matrix open. |
 | SEC-04 | Locked Quick Capture uses a separate encrypted store and has no live book key, snapshot, balance, history payee, or account data. | Source implemented; physical widget/capture privacy gate open. |
-| SEC-05 | Data Safety/recovery copy warns about passcode/app-deletion cliffs and prioritizes `.moneyup` backup/restore before destructive recovery. | Source implemented; physical warning/recovery drill open. |
-| SEC-06 | Vision processing is on device; receipt bytes are transient unless explicitly attached in SQLCipher/archive and never exported/read by widgets. | Source implemented; physical retention/network observation open. |
+| SEC-05 | Data Safety/recovery copy warns about passcode/app-deletion cliffs and prioritizes file-backed `.moneyup` backup/restore before destructive recovery. Current writes cannot outgrow the v2 portable envelope. | Source implemented; exact-candidate and physical warning/recovery drill open. |
+| SEC-06 | Vision processing is on device; receipt sources are transient unless explicitly retained, then orientation-applied pixels are bounded and re-encoded without GPS/EXIF/TIFF device metadata before SQLCipher/archive persistence. They are never exported/read by widgets. | Source implemented with metadata fixture; exact-candidate and physical retention/network observation open. |
 | SEC-07 | Runtime data egress is explicit export only; privacy/security docs require new review before any network integration. | Source implemented; exact-binary network review open. |
 | SEC-08 | Redacted logging/diagnostics, privacy cover, Quick Capture design, and percentage/state-only widget snapshot exclude sensitive values. | Source implemented; physical feedback/widget/log audit open. |
 | SEC-09 | `PRIVACY.md`, privacy manifest, store working copy, support/release docs, and workflow define exact-binary reconciliation. | Release gate open; no submitted binary has been reviewed. |
@@ -163,8 +163,8 @@ exact-candidate run.
 | QA-01 | CI/TestFlight workflows configure warnings-as-errors core tests, app-model XCTest, and app/widget Simulator builds on PR/main/release paths. | Workflow configured; final unified SHA has not been proven green. |
 | QA-02 | `MoneyUpAppTests/AppModelTests` covers lock/save/scan/deep-link/erase/stale-generation/capture-promotion and additional lifecycle paths. | Test source implemented; exact-candidate macOS execution open. |
 | QA-03 | Core/persistence/app suites cover audit defects, minor units, locales, currency edits, revisions, caches/indexes, BOM, and rollback. | Test source implemented; exact-candidate execution open. |
-| QA-04 | `FIRST_TEST.md` defines the required iPhone/language/appearance/Dynamic Type/VoiceOver/Reduce Motion/widget matrix. | Physical gate open. |
-| QA-05 | `DataSafetyView` exports a privacy-safe inventory from one payload-free store count snapshot, the fixture generator creates 10,000 deterministic fictional imports, and `FIRST_TEST.md` binds both to in-place upgrade and clean-device `.moneyup` restore reconciliation. | Source tooling implemented; physical gate open. |
+| QA-04 | `FIRST_TEST.md` defines the required iPhone/language/appearance/Dynamic Type/VoiceOver/Reduce Motion/widget matrix plus oldest-device archive/checkpoint measurements. | Physical gate open. |
+| QA-05 | `DataSafetyView` exports a privacy-safe inventory from one payload-free store count snapshot, the fixture generator creates 10,000 deterministic fictional imports, and `FIRST_TEST.md` binds both to in-place upgrade and clean-device v2/compatible-v1 restore reconciliation. | Source tooling implemented; exact-candidate and physical gates open. |
 | QA-06 | Roadmap/launch plan prohibit wider testing or App Review while mandatory evidence is open. | Gate enforced in documentation; wider-test/review approval remains open. |
 | QA-07 | Workflow and store checklist bind metadata, screenshots, review notes, privacy, languages, version/build, archive, widget, App Group, and binary capabilities. | Exact-binary/App Store gate open. |
 

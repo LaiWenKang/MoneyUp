@@ -111,27 +111,33 @@ than three visible levels and uses tags for orthogonal context.
 
 ## SQLCipher records and normalized indexes
 
-Deterministic encrypted payloads remain the recovery source of truth. Schema 4
-includes the normalized ledger support tables and attachment metadata indexing:
+Deterministic encrypted payloads remain the recovery source of truth. Schema 6
+includes normalized ledger, attachment, store-envelope, and historical budget
+projections:
 
 | Structure | Contract |
 |---|---|
-| `journal_entry_index` | Chronological/date/source lookup without full payload decode |
+| `journal_entry_index` | Chronological/date/source lookup plus a semantic budget-integrity fingerprint without full payload decode |
 | `journal_posting_index` | Posting events for account references, reports, Calendar, and lifecycle operations |
 | `journal_balance` | Exact materialized amount per account and currency |
 | `receipt_attachment_index` | Receipt-to-entry relationship and bounded metadata without loading attachment bytes |
+| `store_metrics` | Trigger-maintained exact record, payload, record-ID, and collection-byte totals |
+| `budget_attribution_entry_index` | Stable historical budget day/timestamp plus a semantic integrity fingerprint per attributed entry |
+| `budget_attribution_posting_index` | Original category/currency/amount postings used after audited lifecycle rewrites |
 
-Normal unlock loads non-journal records, compact exact balances/counts, and a
-bounded recent page rather than the complete journal. History uses keyset
-paging. Calendar/report ranges use posting events. Routine mutations update
-indexes and balance deltas in the same transaction. Full rebuild is limited to
+Normal unlock loads compact non-journal state, exact balances/counts, indexed
+budget-attribution health, and a bounded recent page rather than the complete
+journal or healthy attribution history. History uses keyset paging.
+Calendar/report/budget ranges use posting events. A normalized mismatch invokes
+the exact attribution/audit validator. Routine mutations update indexes,
+metrics, and balance deltas in the same transaction. Full rebuild is limited to
 migration, restore, or repair.
 
 Malformed or orphaned rows are quarantined from calculations but their raw
 encrypted records remain in snapshots and archives. Schema-1/2 migration builds
 the ledger indexes without changing valid legacy payloads, identifiers,
-timestamps, or stored decimal precision; schema-4 migration builds the receipt
-metadata index without rewriting valid attachment payloads.
+timestamps, or stored decimal precision; later migrations add receipt metadata,
+store metrics, and budget attribution indexes without rewriting valid payloads.
 
 ## Quick-log draft and receipt attachment
 
@@ -141,12 +147,14 @@ successful save atomically writes the entry, any explicitly retained encrypted
 receipt attachment, and draft deletion. The cleared form can retain only a new
 encrypted preference snapshot without reviving the old amount.
 
-Receipt attachments are optional entry-keyed records containing size-validated
-image bytes with signature-derived MIME metadata. Entry replacement relinks
-them atomically; confirmed
-attachment or entry deletion removes them. Password-protected raw snapshot
-backup preserves them. CSV/XLSX, drafts, widgets, logs, and diagnostics never
-receive the bytes.
+Receipt attachments are optional entry-keyed records. The selected source is
+transient for OCR; explicit retention decodes orientation, bounds the longest
+edge to 4,096 pixels, and re-encodes new JPEG/PNG pixels without copying the
+source metadata dictionary. GPS, EXIF, TIFF device identifiers, captions, and
+edit history therefore do not cross the persistence boundary. Entry replacement
+relinks attachments atomically; confirmed attachment or entry deletion removes
+them. Password-protected portable backup preserves the sanitized bytes.
+CSV/XLSX, drafts, widgets, logs, and diagnostics never receive them.
 
 ## Dated exchange rates
 
@@ -174,11 +182,15 @@ currencies; names; and account types. CSV begins with a UTF-8 BOM and
 neutralizes spreadsheet-formula prefixes only in user text. XLSX stores user
 text as inline strings and valid financial values as numeric cells.
 
-An authenticated `.moneyup` archive wraps a raw logical database snapshot. Its
+An authenticated `.moneyup` archive wraps the complete logical database. Its
 key derives from a user-held password independent of the live device key.
-Restore validates collection identities and payloads, replaces records in one
-transaction, reloads invariants, and restores the pre-operation snapshot on
-failure.
+Version 2 is file-backed and chunk-authenticated: a SQL cursor feeds bounded
+records into 1 MiB AES-GCM chunks, and restore authenticates each frame while
+inserting it into one transaction. Header/chunk metadata detects truncation,
+append, duplication, and reordering. Version 1 remains readable for backward
+compatibility. Restore validates collection identities and domain relationships,
+reloads invariants, and uses a separate file-backed rollback archive if a
+post-commit load fails.
 
 CSV/Qianji import is local and preview-first. Invalid rows are surfaced,
 unknown CSV/TSV layouts can be mapped column by column, account/category
