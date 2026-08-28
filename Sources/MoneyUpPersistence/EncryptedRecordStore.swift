@@ -2907,12 +2907,12 @@ private final class SQLCipherConnection: @unchecked Sendable {
                    restoredRecordCount.isMultiple(of: 256) {
                     try Task.checkCancellation()
                 }
-                try validateReplacementRecord(
+                try self.validateReplacementRecord(
                     record,
                     allowedCollections: allowedCollections,
                     identities: &identities
                 )
-                try insertReplacementRecord(
+                try self.insertReplacementRecord(
                     record,
                     affectedBalances: &affectedBalances,
                     observesCancellation: observesCancellation

@@ -82,7 +82,7 @@ enum PortableArchiveV2 {
         password: String,
         to destinationURL: URL,
         enumerateRecords: (
-            (_ consume: (StoredRecordSnapshot) throws -> Void) throws -> Void
+            _ consume: (StoredRecordSnapshot) throws -> Void
         ) throws -> Void
     ) throws {
         try Task.checkCancellation()
