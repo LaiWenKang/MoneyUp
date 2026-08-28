@@ -8941,12 +8941,13 @@ extension AppModelTests {
             budgetNodes: [budget],
             budgetConfigurationTimeline: timeline
         )
+        let checkpointCurrentDate = date(3, 15)
         let model = fixture.model(
             profile: profile,
             budgetNodes: [budget],
             retainsCompleteJournal: false,
             budgetConfigurationTimeline: timeline,
-            currentDate: { date(3, 15) }
+            currentDate: { checkpointCurrentDate }
         )
 
         try await model.reloadPersistedBookForTesting()
