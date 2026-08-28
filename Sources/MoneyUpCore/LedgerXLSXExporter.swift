@@ -27,9 +27,12 @@ public enum LedgerXLSXExporter {
         rates: [DatedExchangeRate] = [],
         attachmentMetadata: [ReceiptAttachmentMetadata] = []
     ) -> Data {
+        var seenAccountIDs = Set<UUID>()
+        let uniqueAccounts = accounts.filter {
+            seenAccountIDs.insert($0.id).inserted
+        }
         let accountByID = Dictionary(
-            accounts.map { ($0.id, $0) },
-            uniquingKeysWith: { first, _ in first }
+            uniqueKeysWithValues: uniqueAccounts.map { ($0.id, $0) }
         )
         let attachmentCounts = Dictionary(grouping: attachmentMetadata, by: \.entryID)
             .mapValues { $0.count }
@@ -82,7 +85,9 @@ public enum LedgerXLSXExporter {
             .text("currency"), .text("account_type"), .text("system_role"),
             .text("parent_account_id"), .text("archived")
         ]]
-        accountRows += accounts.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        accountRows += uniqueAccounts.sorted {
+            $0.name.localizedStandardCompare($1.name) == .orderedAscending
+        }
             .map { account in
                 [
                     .text(account.id.uuidString.lowercased()),

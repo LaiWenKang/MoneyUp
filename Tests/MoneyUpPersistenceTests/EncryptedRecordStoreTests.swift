@@ -1499,13 +1499,15 @@ final class EncryptedRecordStoreTests: XCTestCase {
             id: attachmentID,
             entryID: entry.id,
             mediaType: .jpeg,
-            data: Data([0xff, 0x01])
+            data: Data([0xff, 0x01]),
+            createdAt: Date(timeIntervalSinceReferenceDate: 100)
         )
         let aliasedAttachment = try ReceiptAttachment(
             id: attachmentID,
             entryID: entry.id,
             mediaType: .jpeg,
-            data: Data([0xff, 0x02])
+            data: Data([0xff, 0x02]),
+            createdAt: Date(timeIntervalSinceReferenceDate: 200)
         )
         let journalAlias = entryID.uuidString.lowercased()
         let receiptAlias = attachmentID.uuidString.lowercased()

@@ -9210,13 +9210,14 @@ extension AppModelTests {
                 updatedAt: 1
             )]
         ))
+        let aprilNow = date(4, 15)
         let model = fixture.model(
             profile: profile,
             budgetNodes: [budget],
             scheduledTransactions: [schedule],
             retainsCompleteJournal: false,
             budgetConfigurationTimeline: timeline,
-            currentDate: { date(4, 15) }
+            currentDate: { aprilNow }
         )
 
         let quickLogID = try await model.logExpense(
@@ -9318,12 +9319,13 @@ extension AppModelTests {
                 updatedAt: 1
             )]
         ))
+        let aprilNow = date(4, 15)
         let model = fixture.model(
             profile: profile,
             budgetNodes: [budget],
             retainsCompleteJournal: false,
             budgetConfigurationTimeline: timeline,
-            currentDate: { date(4, 15) }
+            currentDate: { aprilNow }
         )
 
         let entryID = try await model.logExpense(
