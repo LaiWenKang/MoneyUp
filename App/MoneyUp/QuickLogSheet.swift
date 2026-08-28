@@ -86,7 +86,7 @@ struct QuickLogSheet: View {
 /// begins.
 @MainActor
 enum QuickLogReceiptPipeline {
-    static func run<Suggestion>(
+    static func run<Suggestion: Sendable>(
         recognize: () async throws -> Suggestion?,
         handleSuggestions: (Suggestion) -> Bool,
         handleNoSuggestions: () -> Bool,

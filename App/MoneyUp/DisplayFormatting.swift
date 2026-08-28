@@ -164,7 +164,8 @@ func transactionDisplayAmountsResult(
                 TransactionDisplayAmount(money: money, role: .income)
             ])
         case .transfer:
-            let amounts = entry.postings.compactMap { posting in
+            let amounts: [TransactionDisplayAmount] = entry.postings.compactMap {
+                posting -> TransactionDisplayAmount? in
                 guard let account = accountsByID[posting.accountID],
                       account.systemRole == nil,
                       account.kind == .asset || account.kind == .liability else {
@@ -198,7 +199,8 @@ func transactionDisplayAmountsResult(
                 )
             ])
         case .investment:
-            let amounts = entry.postings.compactMap { posting in
+            let amounts: [TransactionDisplayAmount] = entry.postings.compactMap {
+                posting -> TransactionDisplayAmount? in
                 guard let account = accountsByID[posting.accountID],
                       account.systemRole == nil,
                       account.kind == .asset || account.kind == .liability else {
