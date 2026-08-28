@@ -335,12 +335,7 @@ struct InsightsView: View {
                                         toGranularity: .month
                                     ) ? 1 : 0.34
                             )
-                            .accessibilityLabel(
-                                "\(point.month.formattedForReporting(
-                                    .dateTime.month(.wide).year(),
-                                    calendar: model.reportingCalendar
-                                )), \(point.series)"
-                            )
+                            .accessibilityLabel(flowAccessibilityLabel(point))
                             .accessibilityValue(formattedMoney(point.money))
                         }
                     }
@@ -386,6 +381,14 @@ struct InsightsView: View {
                 }
             }
         }
+    }
+
+    private func flowAccessibilityLabel(_ point: FlowPoint) -> String {
+        let month = point.month.formattedForReporting(
+            .dateTime.month(.wide).year(),
+            calendar: model.reportingCalendar
+        )
+        return "\(month), \(point.series)"
     }
 
     private func selectedCategoryCard(

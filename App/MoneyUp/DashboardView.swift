@@ -698,6 +698,19 @@ private struct FlexibleTodayBreakdownSheet: View {
         breakdown.periodEnd.addingTimeInterval(-1)
     }
 
+    private var displayedPeriodDescription: String {
+        let style = Date.FormatStyle(date: .abbreviated, time: .omitted)
+        let start = breakdown.periodStart.formattedForReporting(
+            style,
+            calendar: model.reportingCalendar
+        )
+        let end = displayedPeriodEnd.formattedForReporting(
+            style,
+            calendar: model.reportingCalendar
+        )
+        return "\(start) – \(end)"
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -747,17 +760,9 @@ private struct FlexibleTodayBreakdownSheet: View {
                         VStack(alignment: .leading, spacing: 10) {
                             Label("dashboard.safe_to_spend.period", systemImage: "calendar")
                                 .font(.headline)
-                            Text(
-                                "\(breakdown.periodStart.formattedForReporting(
-                                    Date.FormatStyle(date: .abbreviated, time: .omitted),
-                                    calendar: model.reportingCalendar
-                                )) – \(displayedPeriodEnd.formattedForReporting(
-                                    Date.FormatStyle(date: .abbreviated, time: .omitted),
-                                    calendar: model.reportingCalendar
-                                ))"
-                            )
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            Text(displayedPeriodDescription)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
                         }
                     }
 

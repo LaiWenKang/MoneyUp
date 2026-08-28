@@ -3075,7 +3075,7 @@ final class AppModel: ObservableObject {
     }
 
     func endScheduledTransaction(id: UUID, at date: Date = Date()) async throws {
-        try await mutateSchedule(id: id) { $0.end(at: date) }
+        try await mutateSchedule(id: id) { try $0.end(at: date) }
     }
 
     func confirmScheduledOccurrence(
@@ -5498,14 +5498,16 @@ final class AppModel: ObservableObject {
             CSVImportNameResolver.normalizedKey(for: value)
         }
 
-        let sameSourceLegacyFingerprints = Set(existingEntries.compactMap { entry in
-            guard TransactionCSVImporter.canonicalSourceSystem(
-                entry.sourceSystem ?? ""
-            ) == canonicalImportSource else {
-                return nil
+        let sameSourceLegacyFingerprints: Set<String> = Set(
+            existingEntries.compactMap { entry -> String? in
+                guard TransactionCSVImporter.canonicalSourceSystem(
+                    entry.sourceSystem ?? ""
+                ) == canonicalImportSource else {
+                    return nil
+                }
+                return entry.sourceFingerprint
             }
-            return entry.sourceFingerprint
-        })
+        )
 
         var candidateAccounts = accounts
         var newAccounts: [LedgerAccount] = []

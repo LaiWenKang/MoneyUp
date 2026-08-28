@@ -103,7 +103,10 @@ struct TransactionCSVImporterTests {
         )
 
         #expect(preview.issues.isEmpty)
-        #expect(preview.rows.allSatisfy(\.hasExternalID))
+        let allRowsHaveExternalIDs = preview.rows.allSatisfy {
+            $0.hasExternalID
+        }
+        #expect(allRowsHaveExternalIDs)
         #expect(preview.rows[0].id == preview.rows[1].id)
         #expect(preview.rows[0].legacyFingerprintCandidates
             != preview.rows[1].legacyFingerprintCandidates)
