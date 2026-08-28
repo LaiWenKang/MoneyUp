@@ -1,6 +1,6 @@
 # MoneyUp Rollout Plan
 
-Last updated: 27 August 2026
+Last updated: 28 August 2026
 
 ## Release decision
 
@@ -15,9 +15,10 @@ later explicit product, privacy, and threat-model decision.
 | Area | Status | Release meaning |
 |---|---|---|
 | Product | Source-integrated 0.6.0 candidate, source build 8 | Golden functional surfaces are implemented across logging, Today/History/Insights, planning/goals, assets/investments, settings/widgets, portability, data, and security |
-| Scale architecture | Implemented in source | SQLCipher schema 3, normalized journal/posting indexes, compact balances, bounded recent activity, and on-demand reads still require exact-candidate Mac and physical measurements |
-| Privacy | Source and policy aligned | Local processing, no tracking/backend, optional encrypted receipts, and a percentage/state-only App Group widget snapshot |
-| CI | Configured, exact-candidate result open | Release validator, core tests, app-model XCTest, and unsigned app/widget Simulator build must run on the final merged SHA |
+| Scale architecture | Implemented; Mac CI passed | SQLCipher schema 6 adds exact store metrics, normalized budget attribution, monthly carry checkpoints, compact balances, bounded recent activity, and on-demand reads; physical measurements remain open |
+| Privacy | Source and policy aligned | Local processing, no tracking/backend, metadata-stripped optional encrypted receipts, and a percentage/state-only App Group widget snapshot |
+| CI | Exact candidate passed | Run 141 passed release validation, 251 core/persistence tests, 213 app tests, coverage reporting, and the unsigned app/widget Simulator build on `41b44f60178485f76940c14175131ce2884c2f7f` |
+| Backup scale | Source remediation and Mac CI passed; physical evidence open | Version 2 streams file-backed 1 MiB authenticated chunks across a 100,000-record/512 MB stored-payload envelope, so current accepted books have a complete export; interruption, near-limit v2, and compatible-v1 physical-memory evidence remain required |
 | Apple capability | Manual account-holder action open | Register `group.com.laiwenkang.MoneyUp` and enable it on both existing App IDs before signed validation |
 | Distribution | 0.5.1 installed; 0.6.0 not uploaded | Signed validation, upload, Apple processing, internal install, and external Beta App Review remain open |
 | Physical QA | Open | Upgrade/restore, 10,000-entry/20-schedule performance, bilingual accessibility/widget matrix, and the founder/co-tester seven-day run remain open |
@@ -72,25 +73,29 @@ The workflow must verify:
   signed App Group entitlements;
 - Apple accepts IPA validation.
 
-Exit gate: signed validation succeeds and the encrypted unsigned archive/dSYM
-recovery artifact is retained. Validation does not mean a TestFlight upload or
-App Review occurred.
+Exit gate: signed validation succeeds for the exact IPA and its SHA-256 is
+recorded. Validation does not create the upload-only encrypted recovery artifact
+and does not mean a TestFlight upload or App Review occurred.
 
 ## Stage 2 - internal TestFlight and physical acceptance
 
-After a separately confirmed upload and Apple processing, add the exact build
-to **Founders Internal**. Update the account holder's installed 0.5.1 build in
-place; never delete it as an upgrade procedure.
+After a separately confirmed upload, verify the encrypted recovery artifact was
+retained before the upload step and contains the archive/dSYMs, complete export
+directory, exact validated IPA, and matching SHA-256 manifest. After Apple
+processing, add that exact build to **Founders Internal**. Update the account
+holder's installed 0.5.1 build in place; never delete it as an upgrade procedure.
 
 Complete [the founder/co-tester runbook](FIRST_TEST.md), including:
 
 - pre/post inventory across profile, accounts, entries, budgets, goals,
   schedules, holdings/lots, rates, snapshots, attachments, settings, pending
   captures, widgets, and Keychain access;
-- password-protected archive restore on a clean/fresh install plus wrong
-  password, tampering/cancellation/failure atomicity;
-- amount-keypad Done/Save/tab reachability and receipt/screenshot latency/error
-  paths on the founder and co-tester iPhones;
+- password-protected v2 archive restore on a clean/fresh install plus v1
+  compatibility, wrong password, tampering/cancellation/failure atomicity, and
+  near-limit memory observation;
+- amount-keypad Done/Save/tab reachability and receipt/screenshot latency/error,
+  orientation, and metadata-stripping fixture paths on the founder and co-tester
+  iPhones;
 - schedule post/match exactly once, split edit, lifecycle operations, rollover,
   goals, investment purchase/sale/reprice, and CSV/XLSX/import paths;
 - every widget family in light/dark/tinted/redacted states, including opt-in
@@ -164,11 +169,14 @@ After approval, the account holder manually releases 1.0. For 72 hours:
 
 ## Remaining engineering and evidence queue
 
-1. Final unified conflict review and exact-candidate Mac CI.
-2. Apple App Group registration and signed entitlement validation.
-3. Physical 0.5.1-to-0.6.0 upgrade and clean-device restore.
-4. Oldest-device 10,000-entry/20-schedule performance measurements.
-5. Bilingual accessibility, appearance, widget, and receipt matrices.
+1. Apple App Group registration and signed entitlement validation.
+2. Reconcile the signed candidate with the green exact-source CI evidence.
+3. Physical 0.5.1-to-0.6.0 upgrade, clean-device v2 restore, compatible-v1
+   restore, and receipt-heavy interruption/near-limit memory evidence.
+4. Oldest-device 10,000-entry/20-schedule cold-start, monthly-checkpoint,
+   rollover, and interaction measurements.
+5. Bilingual accessibility, appearance, widget, and metadata-stripped receipt
+   matrices.
 6. Founder/co-tester seven-day run and 14-day closed beta.
 7. Exact-binary store compliance, App Review, manual release, and monitoring.
 

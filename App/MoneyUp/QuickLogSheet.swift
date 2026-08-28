@@ -128,6 +128,10 @@ private struct QuickLogEntryView: View {
     @State private var receiptScanGeneration = 0
     @State private var receiptResult: ReceiptParseResult?
     @State private var splitLines: [QuickLogSplitDraftLine] = []
+    /// Provenance for a draft promoted from the lock-safe capture inbox. This
+    /// must survive every edit so AppModel can complete the cross-store
+    /// exact-once handoff instead of treating the edited draft as unrelated.
+    @State private var sourceCaptureID: UUID?
     /// Transient image bytes. They are intentionally absent from QuickLogDraft
     /// and reach persistence only when the user turns on receipt retention.
     @State private var receiptAttachmentData: Data?
@@ -136,6 +140,10 @@ private struct QuickLogEntryView: View {
 
     private var amount: Decimal? {
         guard let value = decimalAmount(from: amountText), value > .zero else { return nil }
+        if let currency = selectedAccountCurrency,
+           !MonetaryInputPolicy.accepts(value, currency: currency) {
+            return nil
+        }
         return value
     }
 
@@ -162,7 +170,29 @@ private struct QuickLogEntryView: View {
         guard let value = decimalAmount(from: destinationAmountText), value > .zero else {
             return nil
         }
+        if let currency = selectedDestinationCurrency,
+           !MonetaryInputPolicy.accepts(value, currency: currency) {
+            return nil
+        }
         return value
+    }
+
+    private func monetaryInputError(
+        text: String,
+        currency: CurrencyCode?
+    ) -> String? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        guard let value = decimalAmount(from: trimmed), value > .zero else {
+            return String(localized: "error.invalid_amount")
+        }
+        guard let currency else { return nil }
+        do {
+            try MonetaryInputPolicy.validate(value, currency: currency)
+            return nil
+        } catch {
+            return safeUserMessage(for: error, context: .save)
+        }
     }
 
     private var splitRemainder: Decimal? {
@@ -274,6 +304,15 @@ private struct QuickLogEntryView: View {
                                 .accessibilityLabel("transaction.currency")
                         }
                     }
+                    if let message = monetaryInputError(
+                        text: amountText,
+                        currency: selectedAccountCurrency
+                    ) {
+                        Label(message, systemImage: "exclamationmark.circle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                            .accessibilityAddTraits(.isStaticText)
+                    }
 
                     Picker(
                         kind == .transfer ? "transaction.from_account" : "transaction.account",
@@ -311,6 +350,15 @@ private struct QuickLogEntryView: View {
                                     Text(currency.value)
                                         .foregroundStyle(.secondary)
                                 }
+                            }
+                            if let message = monetaryInputError(
+                                text: destinationAmountText,
+                                currency: selectedDestinationCurrency
+                            ) {
+                                Label(message, systemImage: "exclamationmark.circle.fill")
+                                    .font(.caption)
+                                    .foregroundStyle(.red)
+                                    .accessibilityAddTraits(.isStaticText)
                             }
 
                             if case let .available(.some(conversion)) =
@@ -436,11 +484,6 @@ private struct QuickLogEntryView: View {
                     }
                 }
 
-                if let errorMessage {
-                    Section {
-                        Text(errorMessage).foregroundStyle(.red)
-                    }
-                }
             }
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
@@ -571,6 +614,13 @@ private struct QuickLogEntryView: View {
                 receiptScanTask?.cancel()
                 receiptScanTask = nil
                 isScanning = false
+                photoItem = nil
+                receiptResult = nil
+                receiptAttachmentData = nil
+                retainReceiptAttachment = false
+                receiptRetentionMessage = nil
+                smartMessage = nil
+                isPresentingReceiptPicker = false
             }
             .scrollDismissesKeyboard(.interactively)
         }
@@ -646,6 +696,14 @@ private struct QuickLogEntryView: View {
             // so the same external request cannot remain stuck indefinitely.
             pendingLaunchMode = nil
             onRequestHandled(mode)
+        }
+        .alert("error.could_not_save", isPresented: Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } }
+        )) {
+            Button("action.okay", role: .cancel) { errorMessage = nil }
+        } message: {
+            Text(errorMessage ?? "")
         }
     }
 
@@ -759,6 +817,15 @@ private struct QuickLogEntryView: View {
                         .accessibilityLabel("quick_log.split_remove")
                     }
                 }
+                if let message = monetaryInputError(
+                    text: splitLines[index].amountText,
+                    currency: selectedAccountCurrency
+                ) {
+                    Label(message, systemImage: "exclamationmark.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .accessibilityAddTraits(.isStaticText)
+                }
 
                 TextField(
                     "quick_log.split_memo",
@@ -811,7 +878,8 @@ private struct QuickLogEntryView: View {
             payee: payee,
             note: note,
             smartText: smartText,
-            splitLines: splitLines
+            splitLines: splitLines,
+            sourceCaptureID: sourceCaptureID
         )
     }
 
@@ -862,6 +930,7 @@ private struct QuickLogEntryView: View {
         note = draft.note
         smartText = draft.smartText
         splitLines = draft.splitLines
+        sourceCaptureID = draft.sourceCaptureID
         isShowingOptionalDetails = draft.dateWasEdited
             || !draft.payee.isEmpty
             || !draft.note.isEmpty
@@ -875,6 +944,13 @@ private struct QuickLogEntryView: View {
               requestSequence != handledRequestSequence,
               let launchMode else { return }
         handledRequestSequence = requestSequence
+        if sourceCaptureID != nil {
+            // Unlock promotion itself routes to Log. It is the same durable
+            // draft, not a request to discard it and start another entry.
+            onRequestHandled(launchMode)
+            focusedField = .amount
+            return
+        }
         if draftSnapshot.hasTransactionContent {
             // Every external action means “start or focus an entry.” Protect
             // even same-kind drafts: Smart Entry and receipt parsing can
@@ -898,6 +974,7 @@ private struct QuickLogEntryView: View {
         smartMessage = nil
         receiptResult = nil
         splitLines = []
+        sourceCaptureID = nil
         receiptAttachmentData = nil
         retainReceiptAttachment = false
         receiptRetentionMessage = nil
@@ -980,12 +1057,21 @@ private struct QuickLogEntryView: View {
             }
             try Task.checkCancellation()
             guard generation == receiptScanGeneration else { return }
-            if data.count <= ReceiptAttachment.maximumByteCount {
-                receiptAttachmentData = data
+            do {
+                receiptAttachmentData = try await Task.detached(
+                    priority: .userInitiated
+                ) {
+                    try ReceiptImageSanitizer.sanitizedForEncryptedStorage(data)
+                }.value
                 receiptRetentionMessage = nil
-            } else {
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
                 receiptAttachmentData = nil
-                receiptRetentionMessage = ReceiptAttachmentError.tooLarge.localizedDescription
+                receiptRetentionMessage = safeUserMessage(
+                    for: error,
+                    context: .scan
+                )
             }
             if let result = try await model.receiptAnalysis(
                 from: data,
@@ -1370,6 +1456,7 @@ private struct QuickLogEntryView: View {
             smartMessage = nil
             receiptResult = nil
             splitLines = []
+            sourceCaptureID = nil
             receiptAttachmentData = nil
             retainReceiptAttachment = false
             receiptRetentionMessage = nil

@@ -140,10 +140,12 @@ GitHub secret, and use the replacement key for the next run.
 
 GitHub never needs an Apple password, a `.p12` certificate, a certificate
 password, or manually downloaded provisioning profiles for this design.
-The archive password encrypts the exact unsigned Xcode release archive and its
-dSYMs before they leave the temporary runner; it never appears in the artifact
-or workflow log. The signed IPA is validated separately and is not included in
-this recovery artifact.
+The archive password encrypts the entitlement-seeded Xcode release archive and
+its dSYMs, the complete Apple Distribution export directory, the exact validated
+IPA, and a manifest containing that IPA's SHA-256. The workflow decrypts the
+artifact into a fresh directory and byte-compares the recovered IPA before the
+artifact leaves the temporary runner. The password never appears in the
+artifact or workflow log.
 
 ## 6. Validate, then upload
 
@@ -153,26 +155,33 @@ Open the repository's **Actions** tab and choose **TestFlight**.
    verifies a cloud-signed IPA but does not upload it.
 2. If validation succeeds, run it again from `main` with operation **upload**
    and type `UPLOAD` in the confirmation field. Before Apple receives the
-   build, the workflow must successfully store an encrypted archive artifact.
+   build, the workflow must successfully store the encrypted release-recovery
+   artifact.
 3. A successful workflow means Apple accepted the binary transfer. Build
    processing and TestFlight availability happen afterward in App Store
    Connect.
 4. Open that successful GitHub workflow run, find **Artifacts**, download the
-   `MoneyUp-encrypted-xcarchive-...` artifact, and save it in a private iCloud
-   Drive folder. GitHub deletes public-repository workflow artifacts after at
-   most 90 days, so do this immediately. Keep its password in the Passwords
-   app. The saved ciphertext is the recovery copy of the exact
-   entitlement-seeded release archive and dSYMs; it does not need to be opened
-   on the iPhone.
+   `MoneyUp-encrypted-release-recovery-...` artifact, and save it in a private
+   iCloud Drive folder. GitHub deletes public-repository workflow artifacts
+   after at most 90 days, so do this immediately. Keep its password in the
+   Passwords app. The saved ciphertext is the recovery copy of the exact
+   archive, dSYMs, distribution export, validated IPA, and SHA-256 manifest; it
+   does not need to be opened on the iPhone.
+5. Copy both the encrypted recovery-bundle SHA-256 and the exact IPA SHA-256 from
+   the workflow summary into the private release evidence record. When the
+   artifact is later moved or decrypted on a Mac, recompute both hashes and stop
+   if either differs; a successful workflow is not evidence that a later copy
+   remained intact.
 
 The workflow verifies source version 0.6.0 build 8, then creates a unique upload
 build number for every attempt. It verifies Xcode 26 and the iOS 26 SDK, checks
 the app and widget versions and identifiers, checks both source entitlement
 files, checks privacy and bilingual resources, verifies that both distribution
 profiles and both signed bundles authorize only
-`group.com.laiwenkang.MoneyUp`, asks Apple to validate the IPA, uploads symbols
-for crash diagnosis, and removes the temporary private key and release products
-before the runner is destroyed.
+`group.com.laiwenkang.MoneyUp`, asks Apple to validate the IPA, round-trip
+verifies the encrypted recovery artifact, rechecks the IPA SHA-256, uploads that
+same validated IPA with `altool`, retains dSYMs for crash diagnosis, and removes
+the temporary private key and release products before the runner is destroyed.
 Because this repository is public, treat the GitHub artifact as potentially
 public ciphertext: the strong, separately stored archive password is required.
 
@@ -183,9 +192,10 @@ distribution signatures and cannot be shipped. Authenticated `exportArchive`
 replaces them with Apple Distribution signing and App Store Connect profiles.
 The workflow checks the App Group in the archive and then checks the team,
 App IDs, App Group, profile type, profile expiry, and signed entitlements again
-in both exported bundles before validation or upload. If MoneyUp adds another
-entitlement or capability, review this signing design before releasing it; the
-release validator intentionally blocks unreviewed changes.
+in both exported bundles. It performs one `exportArchive`; validation and upload
+both address that one IPA by path and SHA-256. If MoneyUp adds another entitlement
+or capability, review this signing design before releasing it; the release
+validator intentionally blocks unreviewed changes.
 
 If an upload step loses its connection after transfer begins, check App Store
 Connect **Build Uploads** before running it again. Never try to reuse an old

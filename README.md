@@ -68,7 +68,8 @@ The beta includes:
   encrypted Quick Capture inbox that does not reveal balances while locked;
   and an opt-in App Group snapshot containing only budget percentage/state,
   never amounts, payees, accounts, holdings, balances, or ledger identifiers;
-- password-protected `.moneyup` backup with authenticated, transactional restore;
+- file-backed password-protected `.moneyup` v2 backup with bounded authenticated
+  chunks, v1 compatibility, and transactional restore/rollback;
 - preview-first local import for Qianji-style and generic CSV/TSV exports, with
   manual column mapping, reviewed account/category targets, duplicate
   detection, row-level issues, and atomic saving;
@@ -86,9 +87,10 @@ The beta includes:
 - an App Store privacy manifest, an in-app bilingual privacy and beta guide,
   backup exclusion for non-restorable ciphertext, and confirmations before
   permanent transaction, schedule, or holding deletion;
-- SQLCipher schema-3 normalized journal indexes, compact exact balance rows,
-  a bounded recent-activity cache, and on-demand History/Calendar/export reads
-  so normal unlock does not retain the full journal;
+- SQLCipher schema-6 normalized journal, receipt, budget-attribution, and exact
+  store-metric indexes; compact balances, monthly rollover checkpoints, a
+  bounded recent-activity cache, and on-demand History/Calendar/export reads so
+  normal unlock does not retain the full journal or healthy attribution history;
 - source-configured Swift domain and app-model suites plus an unsigned iOS
   Simulator app/widget build gate in CI.
 
@@ -140,10 +142,12 @@ See [Beta installation and use](docs/BETA_INSTALL.md) for the complete setup,
 first-run checklist, widget steps, and data-retention caveats.
 The release gates and founder/co-tester TestFlight protocol are in the
 [launch plan](docs/LAUNCH_PLAN.md) and [first-test runbook](docs/FIRST_TEST.md).
-Entitlement-seeded release archives and Apple Distribution-signed IPAs use the protected, manual
-[TestFlight workflow](.github/workflows/testflight.yml), which requires Xcode
-26, the iOS 26 SDK, immutable dependencies, explicit confirmation, and
-encrypted archive/dSYM retention before Apple receives an upload.
+Entitlement-seeded release archives and Apple Distribution-signed IPAs use the
+protected, manual [TestFlight workflow](.github/workflows/testflight.yml), which
+requires Xcode 26, the iOS 26 SDK, immutable dependencies, explicit
+confirmation, and round-trip-verified encrypted retention of the archive,
+dSYMs, export directory, exact IPA, and IPA SHA-256 before Apple receives that
+same validated IPA.
 
 ## Product principles
 

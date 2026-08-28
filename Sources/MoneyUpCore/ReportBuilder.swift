@@ -195,6 +195,13 @@ public extension FinanceCalculator {
         }
         categorySpending.sort { first, second in
             if first.amount.amount == second.amount.amount {
+                if first.name == second.name {
+                    // Dictionary iteration is intentionally unordered. Use
+                    // ledger identity as the final tie-breaker so duplicate
+                    // category names cannot drift across the visible/Other
+                    // chart boundary between otherwise identical reports.
+                    return first.accountID.uuidString < second.accountID.uuidString
+                }
                 return first.name < second.name
             }
             return first.amount.amount > second.amount.amount

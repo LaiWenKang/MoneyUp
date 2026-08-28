@@ -468,6 +468,31 @@ struct LedgerPortabilityTests {
         #expect(data.range(of: Data("Transactions".utf8)) != nil)
     }
 
+    @Test
+    func xlsxDuplicateAccountIdentityUsesFirstValueWithoutTrapping() throws {
+        let wallet = LedgerAccount(name: "Primary Wallet", kind: .asset, currency: sgd)
+        let duplicate = LedgerAccount(
+            id: wallet.id,
+            name: "Conflicting Duplicate",
+            kind: .liability,
+            currency: sgd
+        )
+        let food = LedgerAccount(name: "Food", kind: .expense)
+        let entry = try TransactionFactory.expense(
+            amount: Money(12.34, currency: sgd),
+            paidFrom: wallet.id,
+            category: food.id
+        )
+
+        let data = LedgerXLSXExporter.export(
+            entries: [entry],
+            accounts: [wallet, duplicate, food]
+        )
+
+        #expect(data.range(of: Data("Primary Wallet".utf8)) != nil)
+        #expect(data.range(of: Data("Conflicting Duplicate".utf8)) == nil)
+    }
+
     private func date(_ value: String) -> Date {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")

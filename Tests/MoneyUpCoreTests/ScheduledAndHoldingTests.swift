@@ -81,9 +81,141 @@ final class ScheduledAndHoldingTests: XCTestCase {
         XCTAssertNotEqual(edited.currentOccurrenceID, oldOccurrence)
         XCTAssertEqual(edited.resolutions, schedule.resolutions)
 
-        schedule.end(at: date)
+        try schedule.end(at: date)
         XCTAssertEqual(schedule.status, .ended)
         XCTAssertThrowsError(try schedule.resume())
+    }
+
+    func testEditingConfirmedScheduleTermsInvalidatesTheOldOccurrence() throws {
+        let date = Date(timeIntervalSinceReferenceDate: 2_000)
+        var schedule = try ScheduledTransaction(
+            kind: .expense,
+            name: "Rent",
+            amount: try Money(1_000, currency: CurrencyCode("SGD")),
+            accountID: UUID(),
+            categoryAccountID: UUID(),
+            nextOccurrence: date,
+            frequency: .monthly,
+            recurrenceTimeZoneIdentifier: "Asia/Singapore"
+        )
+        let oldOccurrence = schedule.currentOccurrenceID
+        try schedule.confirmCurrent(occurrenceID: oldOccurrence, at: date)
+
+        var edited = try schedule.updating(
+            kind: schedule.kind,
+            name: schedule.name,
+            amount: try Money(1_100, currency: CurrencyCode("SGD")),
+            accountID: schedule.accountID,
+            categoryAccountID: schedule.categoryAccountID,
+            nextOccurrence: schedule.nextOccurrence,
+            frequency: schedule.frequency
+        )
+
+        XCTAssertNotEqual(edited.currentOccurrenceID, oldOccurrence)
+        XCTAssertNil(edited.currentConfirmation)
+        XCTAssertThrowsError(
+            try edited.resolveCurrent(
+                occurrenceID: oldOccurrence,
+                as: .skipped,
+                calendar: Calendar(identifier: .gregorian)
+            )
+        ) { error in
+            XCTAssertEqual(error as? ScheduledTransactionError, .staleOccurrence)
+        }
+    }
+
+    func testNoOpScheduleEditPreservesConfirmedOccurrenceIdentity() throws {
+        let date = Date(timeIntervalSinceReferenceDate: 2_500)
+        var schedule = try ScheduledTransaction(
+            kind: .income,
+            name: "Salary",
+            amount: try Money(5_000, currency: CurrencyCode("SGD")),
+            accountID: UUID(),
+            categoryAccountID: UUID(),
+            nextOccurrence: date,
+            frequency: .monthly,
+            recurrenceTimeZoneIdentifier: "Asia/Singapore"
+        )
+        let occurrence = schedule.currentOccurrenceID
+        try schedule.confirmCurrent(occurrenceID: occurrence, at: date)
+
+        let unchanged = try schedule.updating(
+            kind: schedule.kind,
+            name: "  \(schedule.name)\n",
+            amount: schedule.amount,
+            accountID: schedule.accountID,
+            categoryAccountID: schedule.categoryAccountID,
+            nextOccurrence: schedule.nextOccurrence,
+            frequency: schedule.frequency
+        )
+
+        XCTAssertEqual(unchanged.currentOccurrenceID, occurrence)
+        XCTAssertEqual(unchanged.currentConfirmation, schedule.currentConfirmation)
+        XCTAssertEqual(unchanged.name, schedule.name)
+    }
+
+    func testEveryEffectiveScheduleTermInvalidatesConfirmation() throws {
+        let date = Date(timeIntervalSinceReferenceDate: 2_750)
+        var schedule = try ScheduledTransaction(
+            kind: .income,
+            name: "Salary",
+            amount: try Money(5_000, currency: CurrencyCode("SGD")),
+            accountID: UUID(),
+            categoryAccountID: UUID(),
+            nextOccurrence: date,
+            frequency: .monthly,
+            recurrenceTimeZoneIdentifier: "Asia/Singapore"
+        )
+        let occurrence = schedule.currentOccurrenceID
+        try schedule.confirmCurrent(occurrenceID: occurrence, at: date)
+
+        func edited(
+            kind: JournalEntryKind? = nil,
+            name: String? = nil,
+            amount: Money? = nil,
+            accountID: UUID? = nil,
+            categoryAccountID: UUID? = nil,
+            nextOccurrence: Date? = nil,
+            frequency: RecurrenceFrequency? = nil,
+            timeZone: TimeZone? = nil
+        ) throws -> ScheduledTransaction {
+            try schedule.updating(
+                kind: kind ?? schedule.kind,
+                name: name ?? schedule.name,
+                amount: amount ?? schedule.amount,
+                accountID: accountID ?? schedule.accountID,
+                categoryAccountID: categoryAccountID
+                    ?? schedule.categoryAccountID,
+                nextOccurrence: nextOccurrence ?? schedule.nextOccurrence,
+                frequency: frequency ?? schedule.frequency,
+                recurrenceTimeZone: timeZone
+            )
+        }
+
+        let variants: [(String, ScheduledTransaction)] = [
+            ("kind", try edited(kind: .expense)),
+            ("name", try edited(name: "Bonus")),
+            (
+                "amount",
+                try edited(amount: Money(5_001, currency: CurrencyCode("SGD")))
+            ),
+            ("account", try edited(accountID: UUID())),
+            ("category", try edited(categoryAccountID: UUID())),
+            (
+                "date",
+                try edited(nextOccurrence: date.addingTimeInterval(86_400))
+            ),
+            ("frequency", try edited(frequency: .weekly)),
+            (
+                "time zone",
+                try edited(timeZone: XCTUnwrap(TimeZone(identifier: "UTC")))
+            )
+        ]
+
+        for (field, variant) in variants {
+            XCTAssertNotEqual(variant.currentOccurrenceID, occurrence, field)
+            XCTAssertNil(variant.currentConfirmation, field)
+        }
     }
 
     func testLegacyScheduleJSONDecodesWithoutLifecycleFields() throws {
@@ -120,6 +252,56 @@ final class ScheduledAndHoldingTests: XCTestCase {
         XCTAssertEqual(decoded.recurrenceAnchor, due)
         XCTAssertEqual(decoded.currentOccurrenceIndex, 0)
         XCTAssertTrue(decoded.resolutions.isEmpty)
+    }
+
+    func testScheduleRejectsNonFiniteLifecycleDatesAtEveryWriteBoundary() throws {
+        let sgd = try CurrencyCode("SGD")
+        let invalid = Date(timeIntervalSinceReferenceDate: .infinity)
+        XCTAssertThrowsError(
+            try ScheduledTransaction(
+                kind: .expense,
+                name: "Invalid",
+                amount: try Money(1, currency: sgd),
+                accountID: UUID(),
+                categoryAccountID: UUID(),
+                nextOccurrence: invalid,
+                frequency: .monthly
+            )
+        ) { error in
+            XCTAssertEqual(error as? ScheduledTransactionError, .invalidLifecycle)
+        }
+
+        var schedule = try ScheduledTransaction(
+            kind: .expense,
+            name: "Valid",
+            amount: try Money(1, currency: sgd),
+            accountID: UUID(),
+            categoryAccountID: UUID(),
+            nextOccurrence: Date(timeIntervalSinceReferenceDate: 1_000),
+            frequency: .monthly
+        )
+        XCTAssertThrowsError(
+            try schedule.confirmCurrent(
+                occurrenceID: schedule.currentOccurrenceID,
+                at: invalid
+            )
+        ) { error in
+            XCTAssertEqual(error as? ScheduledTransactionError, .invalidLifecycle)
+        }
+        XCTAssertThrowsError(try schedule.end(at: invalid)) { error in
+            XCTAssertEqual(error as? ScheduledTransactionError, .invalidLifecycle)
+        }
+        XCTAssertThrowsError(
+            try ScheduledOccurrenceResolution(
+                occurrenceID: schedule.currentOccurrenceID,
+                scheduledFor: schedule.nextOccurrence,
+                kind: .skipped,
+                linkedEntryID: nil,
+                resolvedAt: invalid
+            )
+        ) { error in
+            XCTAssertEqual(error as? ScheduledTransactionError, .invalidLifecycle)
+        }
     }
 
     func testScheduledJournalLinkCanBeRelinkedThenExplicitlyDeleted() throws {
@@ -394,5 +576,79 @@ final class ScheduledAndHoldingTests: XCTestCase {
         XCTAssertEqual(holding.symbol, "MU")
         XCTAssertEqual(value?.amount, Decimal(string: "125.500")!)
         XCTAssertEqual(value?.currency, usd)
+    }
+
+    func testScheduleLifecycleValidationPreservesCancellation() async throws {
+        let sgd = try CurrencyCode("SGD")
+        let schedule = try ScheduledTransaction(
+            kind: .expense,
+            name: "Rent",
+            amount: try Money(1_000, currency: sgd),
+            accountID: UUID(),
+            categoryAccountID: UUID(),
+            nextOccurrence: Date(timeIntervalSinceReferenceDate: 1_000),
+            frequency: .monthly
+        )
+
+        let preservedCancellation = await Task.detached { () -> Bool in
+            withUnsafeCurrentTask { task in task?.cancel() }
+            do {
+                try schedule.validateLifecycle()
+                return false
+            } catch is CancellationError {
+                return true
+            } catch {
+                return false
+            }
+        }.value
+
+        XCTAssertTrue(preservedCancellation)
+    }
+
+    func testInvestmentLedgerIntegrityPreservesCancellation() async throws {
+        let usd = try CurrencyCode("USD")
+        let funding = LedgerAccount(
+            name: "Brokerage",
+            kind: .asset,
+            currency: usd,
+            accountType: .brokerage
+        )
+        let position = LedgerAccount(
+            name: "Position",
+            kind: .asset,
+            currency: usd,
+            systemRole: .investmentPosition
+        )
+        let holding = try InvestmentHolding(
+            accountID: funding.id,
+            symbol: "MU",
+            name: "Micron",
+            quantity: .zero,
+            price: try Money(100, currency: usd),
+            priceAsOf: Date(timeIntervalSinceReferenceDate: 1_000),
+            positionAccountID: position.id
+        )
+        let accountsByID = [
+            funding.id: funding,
+            position.id: position
+        ]
+
+        let preservedCancellation = await Task.detached { () -> Bool in
+            withUnsafeCurrentTask { $0?.cancel() }
+            do {
+                try InvestmentLedgerIntegrity.validate(
+                    holding: holding,
+                    accountsByID: accountsByID,
+                    entriesByID: [:]
+                )
+                return false
+            } catch is CancellationError {
+                return true
+            } catch {
+                return false
+            }
+        }.value
+
+        XCTAssertTrue(preservedCancellation)
     }
 }

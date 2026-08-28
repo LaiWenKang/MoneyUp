@@ -39,4 +39,51 @@ final class LedgerAccountLifecycleTests: XCTestCase {
         XCTAssertEqual(decoded.after?.name, "Food")
         XCTAssertEqual(decoded.affectedJournalEntryIDs, [affectedEntryID])
     }
+
+    func testLifecycleAuditRejectsCombinedAffectedRecordOverflowOnEncodeAndDecode() throws {
+        let source = LedgerAccount(name: "Source", kind: .expense)
+        let oversized = LedgerAccountLifecycleAudit(
+            action: .merged,
+            before: source,
+            after: nil,
+            affectedJournalEntryIDs: Array(
+                repeating: UUID(),
+                count: LedgerAccountLifecycleAudit.maximumAffectedRecordCount
+            ),
+            affectedScheduleIDs: [UUID()]
+        )
+        XCTAssertThrowsError(try JSONEncoder().encode(oversized)) { error in
+            XCTAssertEqual(
+                error as? LedgerAccountLifecycleAuditValidationError,
+                .tooManyAffectedRecords
+            )
+        }
+
+        let baseline = LedgerAccountLifecycleAudit(
+            action: .merged,
+            before: source,
+            after: nil
+        )
+        let encoded = try JSONEncoder().encode(baseline)
+        var object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+        )
+        object["affectedHoldingIDs"] = Array(
+            repeating: UUID().uuidString,
+            count: LedgerAccountLifecycleAudit.maximumAffectedRecordCount
+        )
+        object["affectedScheduleIDs"] = [UUID().uuidString]
+        let crafted = try JSONSerialization.data(withJSONObject: object)
+        XCTAssertThrowsError(
+            try JSONDecoder().decode(
+                LedgerAccountLifecycleAudit.self,
+                from: crafted
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? LedgerAccountLifecycleAuditValidationError,
+                .tooManyAffectedRecords
+            )
+        }
+    }
 }

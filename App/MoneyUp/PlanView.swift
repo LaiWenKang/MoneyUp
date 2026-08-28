@@ -529,6 +529,7 @@ private struct BudgetSimulatorView: View {
         .background { MoneyUpBackdrop() }
         .navigationTitle("simulator.title")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar { MoneyUpKeyboardDoneToolbar() }
     }
 
     private var simulatorIntroduction: some View {
@@ -848,6 +849,7 @@ private struct BudgetEditorSheet: View {
                                 || (!amountText.isEmpty && purpose == .unclassified)
                         )
                 }
+                MoneyUpKeyboardDoneToolbar()
             }
         }
         .presentationDetents([.medium])

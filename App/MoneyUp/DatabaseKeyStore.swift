@@ -9,6 +9,79 @@ enum DatabaseKeyStoreError: Error, Equatable, Sendable {
     case invalidStoredKey
 }
 
+/// A pure, fail-closed decision boundary for first-install key creation.
+///
+/// SQLCipher may leave the main file, write-ahead log, or shared-memory file
+/// behind independently after an interruption. Any one of them is evidence of
+/// an existing encrypted book. Creating a replacement key in that state would
+/// make recovery impossible while presenting the failure as a fresh install.
+enum DatabaseKeyCreationPolicy {
+    static func mayCreateKey(
+        databaseExists: Bool,
+        writeAheadLogExists: Bool,
+        sharedMemoryExists: Bool
+    ) -> Bool {
+        !databaseExists && !writeAheadLogExists && !sharedMemoryExists
+    }
+
+    static func artifactURLs(for databaseURL: URL) -> [URL] {
+        [
+            databaseURL,
+            URL(fileURLWithPath: databaseURL.path + "-wal"),
+            URL(fileURLWithPath: databaseURL.path + "-shm")
+        ]
+    }
+}
+
+/// A device-only, non-sensitive tombstone that makes an explicit erase request
+/// crash-consistent across the independently keyed SQLCipher book and locked
+/// capture inbox. Startup must resolve this marker before reading either data
+/// key. The marker is removed only after both keys and every owned ciphertext
+/// artifact have been removed.
+enum DataEraseIntentStore {
+    private static let service = "com.laiwenkang.MoneyUp.data-erase-intent"
+    private static let account = "primary"
+
+    static func isPending() throws -> Bool {
+        let status = SecItemCopyMatching(baseQuery as CFDictionary, nil)
+        switch status {
+        case errSecSuccess:
+            return true
+        case errSecItemNotFound:
+            return false
+        default:
+            throw DatabaseKeyStoreError.unexpectedStatus(status)
+        }
+    }
+
+    static func markPending() throws {
+        var query = baseQuery
+        query[kSecValueData as String] = Data([1])
+        query[kSecAttrAccessible as String] =
+            kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        let status = SecItemAdd(query as CFDictionary, nil)
+        guard status == errSecSuccess || status == errSecDuplicateItem else {
+            throw DatabaseKeyStoreError.unexpectedStatus(status)
+        }
+    }
+
+    static func clear() throws {
+        let status = SecItemDelete(baseQuery as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else {
+            throw DatabaseKeyStoreError.unexpectedStatus(status)
+        }
+    }
+
+    private static var baseQuery: [String: Any] {
+        [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecAttrSynchronizable as String: false
+        ]
+    }
+}
+
 extension DatabaseKeyStoreError: LocalizedError {
     var errorDescription: String? {
         switch self {
@@ -33,7 +106,7 @@ enum DatabaseKeyStore {
     private static let account = "primary"
     private static let keyLength = 32
 
-    static func loadOrCreateKey() throws -> Data {
+    static func loadOrCreateKey(databaseURL: URL) throws -> Data {
         switch loadKey() {
         case let .success(key):
             return key
@@ -41,6 +114,19 @@ enum DatabaseKeyStore {
             guard case let .unexpectedStatus(status) = error,
                   status == errSecItemNotFound else {
                 throw error
+            }
+            let artifacts = DatabaseKeyCreationPolicy.artifactURLs(
+                for: databaseURL
+            )
+            let exists = artifacts.map {
+                FileManager.default.fileExists(atPath: $0.path)
+            }
+            guard DatabaseKeyCreationPolicy.mayCreateKey(
+                databaseExists: exists[0],
+                writeAheadLogExists: exists[1],
+                sharedMemoryExists: exists[2]
+            ) else {
+                throw DatabaseKeyStoreError.invalidStoredKey
             }
             return try createKey()
         }

@@ -69,12 +69,33 @@ public struct BudgetEntryAttribution: Codable, Equatable, Identifiable, Sendable
         entry: JournalEntry,
         originTimeZoneIdentifier: String
     ) throws {
-        try self.init(
-            id: entry.id,
-            occurredAt: entry.occurredAt,
-            originTimeZoneIdentifier: originTimeZoneIdentifier,
-            postings: entry.postings
-        )
+        if entry.originContext.wasInferred {
+            // A legacy row had no persisted origin context. Attribute it in
+            // the explicit reporting zone supplied by the caller.
+            try self.init(
+                id: entry.id,
+                occurredAt: entry.occurredAt,
+                originTimeZoneIdentifier: originTimeZoneIdentifier,
+                postings: entry.postings
+            )
+        } else {
+            // CSV offsets and scheduled recurrence zones are authoring facts.
+            // Recomputing them in the profile zone can cross a month boundary.
+            let dayKey = entry.originContext.dayKey
+            self.init(
+                id: entry.id,
+                occurredAt: entry.occurredAt,
+                originDayKey: String(
+                    format: "%04d-%02d-%02d",
+                    dayKey / 10_000,
+                    dayKey / 100 % 100,
+                    dayKey % 100
+                ),
+                originTimeZoneIdentifier: entry.originContext.timeZoneIdentifier,
+                originUTCOffsetSeconds: entry.originContext.utcOffsetSeconds,
+                postings: entry.postings
+            )
+        }
     }
 
     /// Rebuilds an attribution for an edited immutable journal entry. An
@@ -131,22 +152,24 @@ public struct BudgetEntryAttribution: Codable, Equatable, Identifiable, Sendable
             String.self,
             forKey: .originTimeZoneIdentifier
         )
-        guard let zone = TimeZone(identifier: decodedZone)?.identifier else {
+        guard let originTimeZone = TimeZone(identifier: decodedZone) else {
             throw DecodingError.dataCorruptedError(
                 forKey: .originTimeZoneIdentifier,
                 in: container,
                 debugDescription: "Invalid budget-attribution origin time zone"
             )
         }
+        let zone = originTimeZone.identifier
         let offset = try container.decode(
             Int.self,
             forKey: .originUTCOffsetSeconds
         )
-        guard TimeZone(secondsFromGMT: offset) != nil else {
+        guard TimeZone(secondsFromGMT: offset) != nil,
+              originTimeZone.secondsFromGMT(for: occurredAt) == offset else {
             throw DecodingError.dataCorruptedError(
                 forKey: .originUTCOffsetSeconds,
                 in: container,
-                debugDescription: "Invalid budget-attribution origin offset"
+                debugDescription: "Budget-attribution zone and offset disagree"
             )
         }
         let day = try container.decode(
@@ -178,6 +201,8 @@ public struct BudgetEntryAttribution: Codable, Equatable, Identifiable, Sendable
                 createdAt: occurredAt,
                 postings: postings
             )
+        } catch is CancellationError {
+            throw CancellationError()
         } catch {
             throw DecodingError.dataCorruptedError(
                 forKey: .postings,
@@ -364,6 +389,9 @@ public struct BudgetConfigurationRevision: Codable, Equatable, Identifiable, Sen
 /// month immutable.
 public struct BudgetConfigurationTimeline: Codable, Equatable, Sendable {
     public static let primaryRecordID = "primary"
+    public static let maximumRevisionCount = 1_200
+    public static let maximumNodesPerRevision = 10_000
+    public static let maximumNodeCount = 100_000
 
     public let currency: CurrencyCode
     public let revisions: [BudgetConfigurationRevision]
@@ -374,6 +402,14 @@ public struct BudgetConfigurationTimeline: Codable, Equatable, Sendable {
     ) throws {
         guard !revisions.isEmpty else {
             throw BudgetRolloverError.emptyConfigurationTimeline
+        }
+        guard revisions.count <= Self.maximumRevisionCount,
+              revisions.allSatisfy({
+                  $0.nodes.count <= Self.maximumNodesPerRevision
+              }),
+              revisions.reduce(0, { $0 + $1.nodes.count })
+                <= Self.maximumNodeCount else {
+            throw BudgetRolloverError.invalidCarryMapping
         }
         let normalized = revisions.map { revision in
             BudgetConfigurationRevision(

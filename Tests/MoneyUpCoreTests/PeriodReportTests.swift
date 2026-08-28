@@ -317,6 +317,48 @@ final class PeriodReportTests: XCTestCase {
         XCTAssertEqual(report.categorySpending.map(\.name), ["Rent", "Food"])
     }
 
+    func testEqualDuplicateCategoryNamesUseStableLedgerIdentityOrdering() throws {
+        let sgd = try CurrencyCode("SGD")
+        let firstID = try XCTUnwrap(
+            UUID(uuidString: "00000000-0000-0000-0000-000000000001")
+        )
+        let secondID = try XCTUnwrap(
+            UUID(uuidString: "00000000-0000-0000-0000-000000000002")
+        )
+        let bank = LedgerAccount(
+            name: "Bank",
+            kind: .asset,
+            currency: sgd,
+            accountType: .bank
+        )
+        let second = LedgerAccount(id: secondID, name: "Food", kind: .expense)
+        let first = LedgerAccount(id: firstID, name: "Food", kind: .expense)
+        let entries = [
+            try TransactionFactory.expense(
+                amount: Money(10, currency: sgd),
+                paidFrom: bank.id,
+                category: second.id,
+                occurredAt: try date(2026, 3, 2)
+            ),
+            try TransactionFactory.expense(
+                amount: Money(10, currency: sgd),
+                paidFrom: bank.id,
+                category: first.id,
+                occurredAt: try date(2026, 3, 2)
+            )
+        ]
+
+        let report = try FinanceCalculator.report(
+            interval: try interval(.thisMonth, containing: try date(2026, 3, 15)),
+            accounts: [bank, second, first],
+            entries: entries,
+            baseCurrency: sgd,
+            calendar: calendar
+        )
+
+        XCTAssertEqual(report.categorySpending.map(\.accountID), [firstID, secondID])
+    }
+
     func testSavingsRateIsUndefinedWithoutIncome() throws {
         let sgd = try CurrencyCode("SGD")
         let bank = LedgerAccount(name: "Bank", kind: .asset, currency: sgd, accountType: .bank)

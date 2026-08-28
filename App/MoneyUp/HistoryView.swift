@@ -4,11 +4,18 @@ import SwiftUI
 import UIKit
 
 struct HistoryPreset: Equatable {
-    let categoryID: UUID?
+    let categoryIDs: Set<UUID>?
+    let categoryPostingCurrency: CurrencyCode?
     let interval: DateInterval?
 
-    init(categoryID: UUID? = nil, interval: DateInterval? = nil) {
-        self.categoryID = categoryID
+    init(
+        categoryID: UUID? = nil,
+        categoryIDs: Set<UUID>? = nil,
+        categoryPostingCurrency: CurrencyCode? = nil,
+        interval: DateInterval? = nil
+    ) {
+        self.categoryIDs = categoryIDs ?? categoryID.map { Set([$0]) }
+        self.categoryPostingCurrency = categoryPostingCurrency
         self.interval = interval
     }
 }
@@ -29,7 +36,8 @@ private extension HistoryKindFilter {
 private struct HistoryFilterDraft: Hashable {
     var kind: HistoryKindFilter = .all
     var accountID: UUID?
-    var categoryID: UUID?
+    var categoryIDs: Set<UUID>?
+    var categoryPostingCurrency: CurrencyCode?
     var includesStartDate = false
     var startDate: Date
     var includesEndDate = false
@@ -45,9 +53,8 @@ private struct HistoryFilterDraft: Hashable {
         startDate = calendar.dateInterval(of: .month, for: now)?.start ?? now
         endDate = now
 
-        if let categoryID = preset?.categoryID {
-            self.categoryID = categoryID
-        }
+        categoryIDs = preset?.categoryIDs
+        categoryPostingCurrency = preset?.categoryPostingCurrency
         if let interval = preset?.interval {
             includesStartDate = true
             startDate = interval.start
@@ -57,7 +64,7 @@ private struct HistoryFilterDraft: Hashable {
     }
 
     var hasActiveFilters: Bool {
-        kind != .all || accountID != nil || categoryID != nil
+        kind != .all || accountID != nil || categoryIDs != nil
             || includesStartDate || includesEndDate
             || !minimumAmountText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             || !maximumAmountText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -119,7 +126,8 @@ private struct HistoryFilterDraft: Hashable {
             searchText: searchText,
             kind: kind,
             accountID: accountID,
-            categoryID: categoryID,
+            categoryIDs: categoryIDs,
+            categoryPostingCurrency: categoryPostingCurrency,
             startDate: start,
             endDateExclusive: end,
             minimumAmount: minimumAmount,
@@ -219,79 +227,89 @@ struct HistoryView: View {
                     }
                 }
 
-                Section {
-                    if let summary {
-                        HistorySummaryView(summary: summary)
-                    } else {
-                        HStack(spacing: 10) {
-                            ProgressView()
-                            Text("history.loading_summary")
-                                .foregroundStyle(.secondary)
+                if !model.journalRecentEntriesAreCurrent {
+                    Section {
+                        DerivedValueUnavailableView(issue: .appNotReady)
+                            .padding(.vertical, 8)
+                        Button("action.retry") {
+                            model.retryUnavailableJournalProjection()
                         }
-                        .accessibilityElement(children: .combine)
-                    }
-                }
-
-                if dayGroups.isEmpty {
-                    if isLoadingPage {
-                        HStack {
-                            Spacer()
-                            ProgressView()
-                                .controlSize(.large)
-                                .accessibilityLabel("history.loading")
-                            Spacer()
-                        }
-                        .listRowBackground(Color.clear)
-                    } else if !model.hasJournalEntries,
-                       appliedSearchText.isEmpty,
-                       !filters.hasActiveFilters {
-                        VStack(spacing: 10) {
-                            MoneyUpIllustration("MoneyUpMoneyWorld", role: .empty)
-                            Text(unavailableTitle)
-                                .font(.title2.bold())
-                            Text(unavailableDetail)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                                .multilineTextAlignment(.center)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                        .listRowBackground(Color.clear)
-                    } else {
-                        ContentUnavailableView(
-                            unavailableTitle,
-                            systemImage: "clock.arrow.circlepath",
-                            description: Text(unavailableDetail)
-                        )
-                        .listRowBackground(Color.clear)
                     }
                 } else {
-                    ForEach(dayGroups) { group in
-                        Section {
-                            ForEach(group.entries) { entry in
-                                Button {
-                                    selectedEntry = entry
-                                } label: {
-                                    TransactionRow(entry: entry)
-                                        .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
-                                .onAppear {
-                                    guard entry.id == loadedEntries.last?.id else { return }
-                                    Task { await loadNextPage() }
-                                }
-                                .swipeActions(edge: .trailing) {
-                                    if !model.isProtectedJournalEntry(entry) {
-                                        Button(role: .destructive) {
-                                            entryPendingDeletion = entry
-                                        } label: {
-                                            Label("action.delete", systemImage: "trash")
+                    Section {
+                        if let summary {
+                            HistorySummaryView(summary: summary)
+                        } else {
+                            HStack(spacing: 10) {
+                                ProgressView()
+                                Text("history.loading_summary")
+                                    .foregroundStyle(.secondary)
+                            }
+                            .accessibilityElement(children: .combine)
+                        }
+                    }
+
+                    if dayGroups.isEmpty {
+                        if isLoadingPage {
+                            HStack {
+                                Spacer()
+                                ProgressView()
+                                    .controlSize(.large)
+                                    .accessibilityLabel("history.loading")
+                                Spacer()
+                            }
+                            .listRowBackground(Color.clear)
+                        } else if !model.hasJournalEntries,
+                           appliedSearchText.isEmpty,
+                           !filters.hasActiveFilters {
+                            VStack(spacing: 10) {
+                                MoneyUpIllustration("MoneyUpMoneyWorld", role: .empty)
+                                Text(unavailableTitle)
+                                    .font(.title2.bold())
+                                Text(unavailableDetail)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                    .multilineTextAlignment(.center)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                            .listRowBackground(Color.clear)
+                        } else {
+                            ContentUnavailableView(
+                                unavailableTitle,
+                                systemImage: "clock.arrow.circlepath",
+                                description: Text(unavailableDetail)
+                            )
+                            .listRowBackground(Color.clear)
+                        }
+                    } else {
+                        ForEach(dayGroups) { group in
+                            Section {
+                                ForEach(group.entries) { entry in
+                                    Button {
+                                        selectedEntry = entry
+                                    } label: {
+                                        TransactionRow(entry: entry)
+                                            .contentShape(Rectangle())
+                                    }
+                                    .buttonStyle(.plain)
+                                    .onAppear {
+                                        guard entry.id == loadedEntries.last?.id else { return }
+                                        Task { await loadNextPage() }
+                                    }
+                                    .swipeActions(edge: .trailing) {
+                                        if !model.isProtectedJournalEntry(entry) {
+                                            Button(role: .destructive) {
+                                                entryPendingDeletion = entry
+                                            } label: {
+                                                Label("action.delete", systemImage: "trash")
+                                            }
                                         }
                                     }
                                 }
+                            } header: {
+                                Text(group.date, format: .dateTime.weekday(.wide).month().day().year())
                             }
-                        } header: {
-                            Text(group.date, format: .dateTime.weekday(.wide).month().day().year())
                         }
                     }
                 }
@@ -316,6 +334,13 @@ struct HistoryView: View {
             }
             .task(id: loadIdentifier) {
                 await reloadHistory()
+            }
+            .onChange(of: model.journalRecentEntriesAreCurrent) { _, isCurrent in
+                loadedEntries = []
+                nextCursor = nil
+                summary = nil
+                isLoadingPage = false
+                if isCurrent { refreshGeneration &+= 1 }
             }
             .toolbar {
                 if showsChartReturn {
@@ -401,6 +426,13 @@ struct HistoryView: View {
 
     @MainActor
     private func reloadHistory() async {
+        guard model.journalRecentEntriesAreCurrent else {
+            loadedEntries = []
+            nextCursor = nil
+            summary = nil
+            isLoadingPage = false
+            return
+        }
         let expectedIdentifier = loadIdentifier
         let querySnapshot = query
         loadedEntries = []
@@ -511,6 +543,9 @@ private struct HistorySummaryView: View {
 }
 
 private struct HistoryFilterSheet: View {
+    private static let anyCategorySelection = "history-category:any"
+    private static let chartGroupSelection = "history-category:chart-group"
+
     @Environment(\.dismiss) private var dismiss
     @State private var draft: HistoryFilterDraft
 
@@ -521,6 +556,52 @@ private struct HistoryFilterSheet: View {
 
     private var selectedCurrency: CurrencyCode? {
         accounts.first(where: { $0.id == draft.accountID })?.currency
+    }
+
+    private var categorySelection: Binding<String> {
+        Binding(
+            get: {
+                guard let categoryIDs = draft.categoryIDs else {
+                    return Self.anyCategorySelection
+                }
+                guard categoryIDs.count == 1, let categoryID = categoryIDs.first else {
+                    return Self.chartGroupSelection
+                }
+                return Self.selectionKey(for: categoryID)
+            },
+            set: { selection in
+                if selection == Self.anyCategorySelection {
+                    draft.categoryIDs = nil
+                    draft.categoryPostingCurrency = nil
+                } else if selection == Self.chartGroupSelection {
+                    // Keep the exact chart bucket when its existing row is
+                    // reselected. This tag is only offered for that scope.
+                } else if let categoryID = Self.categoryID(from: selection) {
+                    draft.categoryIDs = [categoryID]
+                    draft.categoryPostingCurrency = nil
+                } else {
+                    // Unknown tags fail closed instead of silently broadening
+                    // a chart drill-through to every category.
+                    draft.categoryIDs = []
+                    draft.categoryPostingCurrency = nil
+                }
+            }
+        )
+    }
+
+    private var hasChartCategoryGroup: Bool {
+        guard let categoryIDs = draft.categoryIDs else { return false }
+        return categoryIDs.count != 1
+    }
+
+    private static func selectionKey(for categoryID: UUID) -> String {
+        "history-category:id:\(categoryID.uuidString.lowercased())"
+    }
+
+    private static func categoryID(from selection: String) -> UUID? {
+        let prefix = "history-category:id:"
+        guard selection.hasPrefix(prefix) else { return nil }
+        return UUID(uuidString: String(selection.dropFirst(prefix.count)))
     }
 
     init(
@@ -552,11 +633,20 @@ private struct HistoryFilterSheet: View {
                             Text(account.name).tag(Optional(account.id))
                         }
                     }
-                    Picker("history.filter.category", selection: $draft.categoryID) {
-                        Text("history.filter.any_category").tag(nil as UUID?)
-                        ForEach(categories) { category in
-                            Text(category.name).tag(Optional(category.id))
+                    Picker("history.filter.category", selection: categorySelection) {
+                        Text("history.filter.any_category")
+                            .tag(Self.anyCategorySelection)
+                        if hasChartCategoryGroup {
+                            Text("insights.other_category")
+                                .tag(Self.chartGroupSelection)
                         }
+                        ForEach(categories) { category in
+                            Text(category.name)
+                                .tag(Self.selectionKey(for: category.id))
+                        }
+                    }
+                    if let currency = draft.categoryPostingCurrency {
+                        LabeledContent("transaction.currency", value: currency.value)
                     }
                 }
 
@@ -616,6 +706,7 @@ private struct HistoryFilterSheet: View {
                     }
                     .disabled(!draft.isValid(calendar: calendar))
                 }
+                MoneyUpKeyboardDoneToolbar()
             }
         }
         .environment(\.calendar, calendar)
@@ -634,10 +725,15 @@ private struct EditableEntryValues {
 
     init?(entry: JournalEntry, accounts: [LedgerAccount]) {
         let userIDs = Set(accounts.filter {
-            $0.kind == .asset || $0.kind == .liability
+            ($0.kind == .asset || $0.kind == .liability)
+                && $0.systemRole == nil
         }.map(\.id))
-        let expenseIDs = Set(accounts.filter { $0.kind == .expense }.map(\.id))
-        let incomeIDs = Set(accounts.filter { $0.kind == .income }.map(\.id))
+        let expenseIDs = Set(accounts.filter {
+            $0.kind == .expense && $0.systemRole == nil
+        }.map(\.id))
+        let incomeIDs = Set(accounts.filter {
+            $0.kind == .income && $0.systemRole == nil
+        }.map(\.id))
 
         switch entry.kind {
         case .expense:
@@ -730,6 +826,7 @@ private struct TransactionEditView: View {
     @State private var isConfirmingAttachmentDelete = false
     @State private var attachmentImages: [UUID: UIImage] = [:]
     @State private var attachmentLoadFailures = Set<UUID>()
+    @State private var attachmentLoadTokens: [UUID: UUID] = [:]
 
     private let isEditable: Bool
 
@@ -753,16 +850,40 @@ private struct TransactionEditView: View {
         isEditable = entry.kind == .expense || entry.kind == .income || entry.kind == .transfer
     }
 
+    private var originalLedgerItemIDs: Set<UUID> {
+        Set(entry.postings.map(\.accountID))
+    }
+
+    /// Active choices plus the archived, user-owned choices already present on
+    /// this historical entry. System accounts never enter an edit picker.
+    private var editableUserAccounts: [LedgerAccount] {
+        model.accounts.filter { account in
+            (account.kind == .asset || account.kind == .liability)
+                && account.systemRole == nil
+                && (!account.isArchived || originalLedgerItemIDs.contains(account.id))
+        }
+    }
+
     private var categories: [LedgerAccount] {
-        kind == .income ? model.incomeCategories : model.expenseCategories
+        let expectedKind: LedgerAccountKind = kind == .income ? .income : .expense
+        return model.accounts.filter { category in
+            category.kind == expectedKind
+                && category.systemRole == nil
+                && (!category.isArchived || originalLedgerItemIDs.contains(category.id))
+        }
+    }
+
+    private func editorLabel(for item: LedgerAccount) -> String {
+        guard item.isArchived else { return item.name }
+        return "\(item.name) (\(String(localized: "lifecycle.archived")))"
     }
 
     private var sourceCurrency: CurrencyCode? {
-        model.userAccounts.first(where: { $0.id == accountID })?.currency
+        editableUserAccounts.first(where: { $0.id == accountID })?.currency
     }
 
     private var destinationCurrency: CurrencyCode? {
-        model.userAccounts.first(where: { $0.id == destinationAccountID })?.currency
+        editableUserAccounts.first(where: { $0.id == destinationAccountID })?.currency
     }
 
     private var needsDestinationAmount: Bool {
@@ -806,12 +927,15 @@ private struct TransactionEditView: View {
         guard isEditable,
               decimalAmount(from: amountText).map({ $0 > .zero }) == true,
               let accountID,
-              model.userAccounts.contains(where: { $0.id == accountID }) else {
+              editableUserAccounts.contains(where: { $0.id == accountID }) else {
             return false
         }
         if kind == .transfer {
             guard let destinationAccountID,
-                  destinationAccountID != accountID else { return false }
+                  destinationAccountID != accountID,
+                  editableUserAccounts.contains(where: {
+                      $0.id == destinationAccountID
+                  }) else { return false }
             return !needsDestinationAmount
                 || decimalAmount(from: destinationAmountText).map { $0 > .zero } == true
         }
@@ -835,7 +959,8 @@ private struct TransactionEditView: View {
                     )
                 ) {
                     ForEach(categories) { category in
-                        Text(category.name).tag(Optional(category.id))
+                        Text(verbatim: editorLabel(for: category))
+                            .tag(Optional(category.id))
                     }
                 }
 
@@ -921,15 +1046,19 @@ private struct TransactionEditView: View {
                                 : "transaction.account",
                             selection: $accountID
                         ) {
-                            ForEach(model.userAccounts) { account in
-                                Text(account.name).tag(Optional(account.id))
+                            ForEach(editableUserAccounts) { account in
+                                Text(verbatim: editorLabel(for: account))
+                                    .tag(Optional(account.id))
                             }
                         }
 
                         if kind == .transfer {
                             Picker("transaction.to_account", selection: $destinationAccountID) {
-                                ForEach(model.userAccounts.filter { $0.id != accountID }) { account in
-                                    Text(account.name).tag(Optional(account.id))
+                                ForEach(
+                                    editableUserAccounts.filter { $0.id != accountID }
+                                ) { account in
+                                    Text(verbatim: editorLabel(for: account))
+                                        .tag(Optional(account.id))
                                 }
                             }
                             if needsDestinationAmount {
@@ -971,7 +1100,8 @@ private struct TransactionEditView: View {
                             } else {
                                 Picker("transaction.category", selection: $categoryID) {
                                     ForEach(categories) { category in
-                                        Text(category.name).tag(Optional(category.id))
+                                        Text(verbatim: editorLabel(for: category))
+                                            .tag(Optional(category.id))
                                     }
                                 }
                             }
@@ -1067,12 +1197,15 @@ private struct TransactionEditView: View {
                             .disabled(!canSave || isSaving)
                     }
                 }
+                MoneyUpKeyboardDoneToolbar()
             }
             .task { loadValues() }
+            .onDisappear {
+                invalidateAttachmentPreviews()
+            }
             .onChange(of: model.state) { _, state in
                 if state != .ready {
-                    attachmentImages.removeAll()
-                    attachmentLoadFailures.removeAll()
+                    invalidateAttachmentPreviews()
                 }
             }
             .onChange(of: kind) { _, newKind in
@@ -1129,13 +1262,13 @@ private struct TransactionEditView: View {
     }
 
     private func selectValidDefaults() {
-        if !model.userAccounts.contains(where: { $0.id == accountID }) {
-            accountID = model.userAccounts.first?.id
+        if !editableUserAccounts.contains(where: { $0.id == accountID }) {
+            accountID = editableUserAccounts.first?.id
         }
         if kind == .transfer {
             if destinationAccountID == accountID
-                || !model.userAccounts.contains(where: { $0.id == destinationAccountID }) {
-                destinationAccountID = model.userAccounts.first { $0.id != accountID }?.id
+                || !editableUserAccounts.contains(where: { $0.id == destinationAccountID }) {
+                destinationAccountID = editableUserAccounts.first { $0.id != accountID }?.id
             }
         } else if !categories.contains(where: { $0.id == categoryID }) {
             categoryID = categories.first?.id
@@ -1218,6 +1351,7 @@ private struct TransactionEditView: View {
     private func deleteAttachment(_ id: UUID) async {
         do {
             try await model.deleteReceiptAttachment(id: id)
+            attachmentLoadTokens[id] = nil
             attachmentImages[id] = nil
             attachmentLoadFailures.remove(id)
             pendingAttachmentDeletionID = nil
@@ -1227,20 +1361,43 @@ private struct TransactionEditView: View {
     }
 
     private func loadAttachmentImage(_ id: UUID) async {
-        guard attachmentImages[id] == nil else { return }
+        guard model.state == .ready,
+              attachmentImages[id] == nil,
+              attachmentLoadTokens[id] == nil,
+              attachmentMetadata.contains(where: { $0.id == id }) else { return }
+        let loadToken = UUID()
+        attachmentLoadTokens[id] = loadToken
+        defer {
+            if attachmentLoadTokens[id] == loadToken {
+                attachmentLoadTokens[id] = nil
+            }
+        }
         do {
             let attachment = try await model.receiptAttachment(id: id)
             try Task.checkCancellation()
-            guard let image = UIImage(data: attachment.data) else {
-                throw ReceiptAttachmentError.emptyData
-            }
+            let image = try await ReceiptThumbnailDecoder.image(from: attachment.data)
+            try Task.checkCancellation()
+            guard isCurrentAttachmentLoad(id: id, token: loadToken) else { return }
             attachmentImages[id] = image
             attachmentLoadFailures.remove(id)
         } catch is CancellationError {
             return
         } catch {
+            guard isCurrentAttachmentLoad(id: id, token: loadToken) else { return }
             attachmentLoadFailures.insert(id)
             errorMessage = safeUserMessage(for: error, context: .read)
         }
+    }
+
+    private func isCurrentAttachmentLoad(id: UUID, token: UUID) -> Bool {
+        model.state == .ready
+            && attachmentLoadTokens[id] == token
+            && attachmentMetadata.contains(where: { $0.id == id })
+    }
+
+    private func invalidateAttachmentPreviews() {
+        attachmentLoadTokens.removeAll()
+        attachmentImages.removeAll()
+        attachmentLoadFailures.removeAll()
     }
 }

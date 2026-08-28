@@ -77,6 +77,9 @@ public struct HoldingPricePoint: Codable, Equatable, Identifiable, Sendable {
         guard price.amount >= .zero else {
             throw InvestmentHoldingError.priceCannotBeNegative
         }
+        guard asOf.timeIntervalSinceReferenceDate.isFinite else {
+            throw InvestmentHoldingError.historyMismatch
+        }
         guard activitySequence >= 0 else {
             throw InvestmentHoldingError.historyMismatch
         }
@@ -129,6 +132,9 @@ public struct InvestmentLot: Codable, Equatable, Identifiable, Sendable {
     ) throws {
         guard originalQuantity > .zero else {
             throw InvestmentHoldingError.lotQuantityMustBePositive
+        }
+        guard acquiredAt.timeIntervalSinceReferenceDate.isFinite else {
+            throw InvestmentHoldingError.historyMismatch
         }
         let remaining = remainingQuantity ?? originalQuantity
         guard remaining >= .zero, remaining <= originalQuantity else {
@@ -196,7 +202,24 @@ public struct InvestmentDisposal: Codable, Equatable, Identifiable, Sendable {
         realizedGainLoss: Money,
         saleEntryID: UUID,
         activitySequence: Int64 = 0
-    ) {
+    ) throws {
+        guard occurredAt.timeIntervalSinceReferenceDate.isFinite,
+              quantity > .zero,
+              costBasis.amount >= .zero,
+              proceeds.amount >= .zero,
+              costBasis.currency == proceeds.currency,
+              costBasis.currency == realizedGainLoss.currency,
+              activitySequence >= 0 else {
+            throw InvestmentHoldingError.invalidDisposal
+        }
+        let expectedRealized = try checkedInvestmentDifference(
+            proceeds.amount,
+            costBasis.amount
+        )
+        guard realizedGainLoss.amount
+                == realizedGainLoss.currency.rounded(expectedRealized) else {
+            throw InvestmentHoldingError.invalidDisposal
+        }
         self.id = id
         self.occurredAt = occurredAt
         self.quantity = quantity
@@ -214,7 +237,7 @@ public struct InvestmentDisposal: Codable, Equatable, Identifiable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.init(
+        try self.init(
             id: try container.decode(UUID.self, forKey: .id),
             occurredAt: try container.decode(Date.self, forKey: .occurredAt),
             quantity: try container.decode(Decimal.self, forKey: .quantity),
@@ -286,6 +309,9 @@ public struct InvestmentActivityCorrection: Codable, Equatable, Identifiable, Se
         guard activitySequence > 0 else {
             throw InvestmentHoldingError.historyMismatch
         }
+        guard occurredAt.timeIntervalSinceReferenceDate.isFinite else {
+            throw InvestmentHoldingError.historyMismatch
+        }
         guard targetEntryID == nil || targetEntryID != correctionEntryID else {
             throw InvestmentHoldingError.duplicateLinkedEntry
         }
@@ -307,6 +333,8 @@ public struct InvestmentCorrectionOutcome: Equatable, Sendable {
 }
 
 public struct InvestmentHolding: Codable, Equatable, Identifiable, Sendable {
+    public static let maximumActivitiesPerCollection = 2_048
+    public static let maximumActivitiesPerHolding = 4_096
     public let id: UUID
     public var accountID: UUID
     public var symbol: String
@@ -338,8 +366,35 @@ public struct InvestmentHolding: Codable, Equatable, Identifiable, Sendable {
         corrections: [InvestmentActivityCorrection] = [],
         isArchived: Bool = false
     ) throws {
+        let activityCounts = [
+            priceHistory.count,
+            lots.count,
+            disposals.count,
+            corrections.count
+        ]
+        guard activityCounts.allSatisfy({
+            $0 <= Self.maximumActivitiesPerCollection
+        }),
+        activityCounts.reduce(0, +) <= Self.maximumActivitiesPerHolding else {
+            throw InvestmentHoldingError.historyMismatch
+        }
         guard quantity >= .zero else {
             throw InvestmentHoldingError.quantityCannotBeNegative
+        }
+        guard priceAsOf?.timeIntervalSinceReferenceDate.isFinite != false,
+              priceHistory.allSatisfy({
+                  $0.asOf.timeIntervalSinceReferenceDate.isFinite
+              }),
+              lots.allSatisfy({
+                  $0.acquiredAt.timeIntervalSinceReferenceDate.isFinite
+              }),
+              disposals.allSatisfy({
+                  $0.occurredAt.timeIntervalSinceReferenceDate.isFinite
+              }),
+              corrections.allSatisfy({
+                  $0.occurredAt.timeIntervalSinceReferenceDate.isFinite
+              }) else {
+            throw InvestmentHoldingError.historyMismatch
         }
         guard !isArchived || quantity == .zero else {
             throw InvestmentHoldingError.historyMismatch
@@ -436,7 +491,10 @@ public struct InvestmentHolding: Codable, Equatable, Identifiable, Sendable {
                 ($0.saleEntryID, ($0.occurredAt, $0.activitySequence))
             }
         )
-        for correction in sortedCorrections {
+        for (correctionIndex, correction) in sortedCorrections.enumerated() {
+            if correctionIndex.isMultiple(of: 8) {
+                try Task.checkCancellation()
+            }
             if let entryID = correction.correctionEntryID {
                 linkedActivities[entryID] = (
                     correction.occurredAt,
@@ -465,7 +523,10 @@ public struct InvestmentHolding: Codable, Equatable, Identifiable, Sendable {
         }
         var correctedActivityIDs = Set<UUID>()
         var lastCorrectionDate: Date?
-        for correction in sortedCorrections {
+        for (correctionIndex, correction) in sortedCorrections.enumerated() {
+            if correctionIndex.isMultiple(of: 8) {
+                try Task.checkCancellation()
+            }
             let historyBeforeCorrection = sortedHistory.filter {
                 $0.activitySequence < correction.activitySequence
             }
@@ -561,7 +622,10 @@ public struct InvestmentHolding: Codable, Equatable, Identifiable, Sendable {
             )
         }
 
-        for disposal in sortedDisposals {
+        for (disposalIndex, disposal) in sortedDisposals.enumerated() {
+            if disposalIndex.isMultiple(of: 32) {
+                try Task.checkCancellation()
+            }
             guard disposal.quantity > .zero,
                   disposal.costBasis.amount >= .zero,
                   disposal.proceeds.amount >= .zero,
@@ -583,10 +647,16 @@ public struct InvestmentHolding: Codable, Equatable, Identifiable, Sendable {
         // and cost-basis history remains internally valid, even when a later
         // correction removes an event from the current projection.
         var historicalRemaining = sortedLots.map(\.originalQuantity)
-        for disposal in sortedDisposals {
+        for (disposalIndex, disposal) in sortedDisposals.enumerated() {
+            if disposalIndex.isMultiple(of: 8) {
+                try Task.checkCancellation()
+            }
             var remainingToConsume = disposal.quantity
             var basis = Decimal.zero
             for index in sortedLots.indices where remainingToConsume > .zero {
+                if index.isMultiple(of: 128) {
+                    try Task.checkCancellation()
+                }
                 let lotPrecedesDisposal = sortedLots[index].acquiredAt < disposal.occurredAt
                     || (sortedLots[index].acquiredAt == disposal.occurredAt
                         && sortedLots[index].activitySequence < disposal.activitySequence)
@@ -805,7 +875,11 @@ public struct InvestmentHolding: Codable, Equatable, Identifiable, Sendable {
         relativeTo date: Date = Date(),
         calendar: Calendar = .current
     ) -> Bool {
-        guard let priceAsOf else { return true }
+        guard date.timeIntervalSinceReferenceDate.isFinite,
+              let priceAsOf,
+              priceAsOf.timeIntervalSinceReferenceDate.isFinite else {
+            return true
+        }
         guard let threshold = calendar.date(byAdding: .day, value: -7, to: date) else {
             return true
         }
@@ -968,7 +1042,7 @@ public struct InvestmentHolding: Codable, Equatable, Identifiable, Sendable {
             )
         )
         var updatedDisposals = disposals
-        updatedDisposals.append(InvestmentDisposal(
+        updatedDisposals.append(try InvestmentDisposal(
             occurredAt: occurredAt,
             quantity: soldQuantity,
             costBasis: breakdown.costBasis,
@@ -1022,11 +1096,16 @@ public struct InvestmentHolding: Codable, Equatable, Identifiable, Sendable {
         let disposalByEntry = Dictionary(
             uniqueKeysWithValues: disposals.map { ($0.saleEntryID, $0) }
         )
+        let priceSequenceByEntry = Dictionary(
+            priceHistory.compactMap { point in
+                point.priceEntryID.map { ($0, point.activitySequence) }
+            },
+            uniquingKeysWith: max
+        )
         var candidates: [SourceTargetCandidate] = []
         for lot in lots where !correctedActivityIDs.contains(lot.id) {
-            let pairedSequence = lot.purchaseEntryID.flatMap { entryID in
-                priceHistory.first(where: { $0.priceEntryID == entryID })?
-                    .activitySequence
+            let pairedSequence = lot.purchaseEntryID.flatMap {
+                priceSequenceByEntry[$0]
             }
             candidates.append(SourceTargetCandidate(
                 target: InvestmentCorrectionTarget(
@@ -1039,9 +1118,7 @@ public struct InvestmentHolding: Codable, Equatable, Identifiable, Sendable {
             ))
         }
         for disposal in disposals where !correctedActivityIDs.contains(disposal.id) {
-            let pairedSequence = priceHistory.first(where: {
-                $0.priceEntryID == disposal.saleEntryID
-            })?.activitySequence
+            let pairedSequence = priceSequenceByEntry[disposal.saleEntryID]
             candidates.append(SourceTargetCandidate(
                 target: InvestmentCorrectionTarget(
                     id: disposal.id,
@@ -1111,24 +1188,39 @@ public struct InvestmentHolding: Codable, Equatable, Identifiable, Sendable {
     ) -> EffectivePriceEvent? {
         let correctedIDs = Set(corrections.map(\.targetActivityID))
         let replacementIDs = Set(corrections.compactMap(\.restorationPricePointID))
-        var events = priceHistory.filter { point in
-            latestActiveSourcePricePoint(
-                priceHistory: [point],
-                lots: lots,
-                disposals: disposals,
-                correctedActivityIDs: correctedIDs,
-                replacementPricePointIDs: replacementIDs
-            ) != nil
-        }.map {
-            EffectivePriceEvent(
-                sequence: $0.activitySequence,
-                price: $0.price,
-                asOf: $0.asOf
+        let purchaseTargetByEntry = Dictionary(
+            uniqueKeysWithValues: lots.compactMap { lot in
+                lot.purchaseEntryID.map { ($0, lot.id) }
+            }
+        )
+        let saleTargetByEntry = Dictionary(
+            uniqueKeysWithValues: disposals.map { ($0.saleEntryID, $0.id) }
+        )
+        let historyByID = Dictionary(
+            uniqueKeysWithValues: priceHistory.map { ($0.id, $0) }
+        )
+        var events = priceHistory.compactMap { point -> EffectivePriceEvent? in
+            guard !replacementIDs.contains(point.id),
+                  !correctedIDs.contains(point.id) else { return nil }
+            if let entryID = point.priceEntryID {
+                if let targetID = purchaseTargetByEntry[entryID],
+                   correctedIDs.contains(targetID) {
+                    return nil
+                }
+                if let targetID = saleTargetByEntry[entryID],
+                   correctedIDs.contains(targetID) {
+                    return nil
+                }
+            }
+            return EffectivePriceEvent(
+                sequence: point.activitySequence,
+                price: point.price,
+                asOf: point.asOf
             )
         }
         for correction in corrections {
             if let restorationID = correction.restorationPricePointID,
-               let point = priceHistory.first(where: { $0.id == restorationID }) {
+               let point = historyByID[restorationID] {
                 events.append(EffectivePriceEvent(
                     sequence: point.activitySequence,
                     price: point.price,
@@ -1153,9 +1245,17 @@ public struct InvestmentHolding: Codable, Equatable, Identifiable, Sendable {
         var remaining = lots.map { lot in
             correctedActivityIDs.contains(lot.id) ? Decimal.zero : lot.originalQuantity
         }
+        var disposalIteration = 0
         for disposal in disposals where !correctedActivityIDs.contains(disposal.id) {
+            if disposalIteration.isMultiple(of: 8) {
+                try Task.checkCancellation()
+            }
+            disposalIteration += 1
             var remainingToConsume = disposal.quantity
             for index in lots.indices where remainingToConsume > .zero {
+                if index.isMultiple(of: 128) {
+                    try Task.checkCancellation()
+                }
                 guard !correctedActivityIDs.contains(lots[index].id) else { continue }
                 let lotPrecedesDisposal = lots[index].acquiredAt < disposal.occurredAt
                     || (lots[index].acquiredAt == disposal.occurredAt
@@ -1240,7 +1340,7 @@ public struct InvestmentHolding: Codable, Equatable, Identifiable, Sendable {
                 )
             case 1:
                 let disposal = disposals[slot.index]
-                migratedDisposals[slot.index] = InvestmentDisposal(
+                migratedDisposals[slot.index] = try InvestmentDisposal(
                     id: disposal.id,
                     occurredAt: disposal.occurredAt,
                     quantity: disposal.quantity,
@@ -1276,6 +1376,9 @@ public struct InvestmentHolding: Codable, Equatable, Identifiable, Sendable {
     }
 
     private func requireChronologicalActivity(_ date: Date) throws {
+        guard date.timeIntervalSinceReferenceDate.isFinite else {
+            throw InvestmentHoldingError.historyMismatch
+        }
         if let latestActivityDate, date < latestActivityDate {
             throw InvestmentHoldingError.activityOutOfOrder
         }

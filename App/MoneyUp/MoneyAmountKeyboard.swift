@@ -41,3 +41,22 @@ extension View {
         )
     }
 }
+
+/// Decimal and number pads have no Return key. Screens that do not own a more
+/// specific FocusState toolbar use this shared escape so the keyboard can
+/// never cover the final action or trap Switch Control/Voice Control users.
+struct MoneyUpKeyboardDoneToolbar: ToolbarContent {
+    var body: some ToolbarContent {
+        ToolbarItemGroup(placement: .keyboard) {
+            Spacer()
+            Button("action.done") {
+                UIApplication.shared.sendAction(
+                    #selector(UIResponder.resignFirstResponder),
+                    to: nil,
+                    from: nil,
+                    for: nil
+                )
+            }
+        }
+    }
+}

@@ -402,15 +402,40 @@ public struct BudgetTree: Codable, Equatable, Sendable {
         nodes: [BudgetNode],
         index: [UUID: BudgetNode]
     ) throws {
+        enum VisitState {
+            case visiting
+            case visited
+        }
+
+        // A missing state is white, `visiting` is gray, and `visited` is
+        // black. Because every node has at most one parent, each node enters a
+        // path once and is then permanently memoized. Keeping the traversal
+        // iterative also avoids overflowing the stack for deeply nested
+        // category trees.
+        var states: [UUID: VisitState] = [:]
+        states.reserveCapacity(nodes.count)
+
         for node in nodes {
-            var visited = Set<UUID>()
+            guard states[node.id] == nil else { continue }
+
+            var path: [UUID] = []
             var currentID: UUID? = node.id
 
             while let id = currentID {
-                guard visited.insert(id).inserted else {
+                switch states[id] {
+                case .visiting:
                     throw BudgetTreeError.cycle(nodeID: id)
+                case .visited:
+                    currentID = nil
+                case nil:
+                    states[id] = .visiting
+                    path.append(id)
+                    currentID = index[id]?.parentID
                 }
-                currentID = index[id]?.parentID
+            }
+
+            for id in path {
+                states[id] = .visited
             }
         }
     }

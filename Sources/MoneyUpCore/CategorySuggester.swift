@@ -41,7 +41,11 @@ public enum CategorySuggester {
                 if first.value != second.value { return first.value < second.value }
                 let firstDate = mostRecent[first.key] ?? .distantPast
                 let secondDate = mostRecent[second.key] ?? .distantPast
-                return firstDate < secondDate
+                if firstDate != secondDate { return firstDate < secondDate }
+                // Dictionary iteration order is intentionally unspecified.
+                // A final stable key prevents an identical book from offering
+                // a different category after a process restart.
+                return first.key.uuidString > second.key.uuidString
             }?
             .key
     }

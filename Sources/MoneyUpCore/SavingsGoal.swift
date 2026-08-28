@@ -32,6 +32,7 @@ public enum SavingsGoalError: Error, Equatable {
     case duplicateMovementID
     case duplicateResetID
     case invalidOriginContext
+    case invalidDate
     case unsupportedPrecision(CurrencyCode)
     case calculationFailed
 }
@@ -109,6 +110,9 @@ public struct SavingsGoalMovement: Codable, Equatable, Identifiable, Sendable {
         guard money.amount > .zero else {
             throw SavingsGoalError.nonPositiveMovement
         }
+        guard occurredAt.timeIntervalSinceReferenceDate.isFinite else {
+            throw SavingsGoalError.invalidDate
+        }
         guard money.currency.supports(money.amount) else {
             throw SavingsGoalError.unsupportedPrecision(money.currency)
         }
@@ -141,6 +145,9 @@ public struct SavingsGoalMovement: Codable, Equatable, Identifiable, Sendable {
             let kind = try container.decode(SavingsGoalMovementKind.self, forKey: .kind)
             let money = try container.decode(Money.self, forKey: .money)
             let occurredAt = try container.decode(Date.self, forKey: .occurredAt)
+            guard occurredAt.timeIntervalSinceReferenceDate.isFinite else {
+                throw SavingsGoalError.invalidDate
+            }
             let zone = try container.decode(
                 String.self,
                 forKey: .originTimeZoneIdentifier
@@ -217,6 +224,9 @@ public struct SavingsGoalReset: Codable, Equatable, Identifiable, Sendable {
         occurredAt: Date = Date(),
         originTimeZoneIdentifier: String = TimeZone.current.identifier
     ) throws {
+        guard occurredAt.timeIntervalSinceReferenceDate.isFinite else {
+            throw SavingsGoalError.invalidDate
+        }
         guard let zone = TimeZone(identifier: originTimeZoneIdentifier) else {
             throw SavingsGoalError.invalidOriginContext
         }
@@ -241,6 +251,13 @@ public struct SavingsGoalReset: Codable, Equatable, Identifiable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let id = try container.decode(UUID.self, forKey: .id)
         let occurredAt = try container.decode(Date.self, forKey: .occurredAt)
+        guard occurredAt.timeIntervalSinceReferenceDate.isFinite else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .occurredAt,
+                in: container,
+                debugDescription: "Goal reset date is invalid"
+            )
+        }
         let zone = try container.decode(
             String.self,
             forKey: .originTimeZoneIdentifier
@@ -315,6 +332,9 @@ public struct SavingsGoalSummary: Equatable, Sendable {
 /// transactions: they describe earmarking within the user's plan, retain exact
 /// Decimal values, and are encrypted in SQLCipher with the rest of the book.
 public struct SavingsGoal: Codable, Equatable, Identifiable, Sendable {
+    public static let maximumMovementCount = 1_024
+    public static let maximumResetCount = 256
+    public static let maximumActivityCount = 1_024
     public let id: UUID
     public var name: String
     public var kind: SavingsGoalKind
@@ -340,8 +360,23 @@ public struct SavingsGoal: Codable, Equatable, Identifiable, Sendable {
         isArchived: Bool = false,
         reportingTimeZoneIdentifier: String = TimeZone.current.identifier
     ) throws {
+        guard movements.count <= Self.maximumMovementCount,
+              resets.count <= Self.maximumResetCount,
+              movements.count + resets.count <= Self.maximumActivityCount else {
+            throw SavingsGoalError.calculationFailed
+        }
         let normalizedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedName.isEmpty else { throw SavingsGoalError.emptyName }
+        guard createdAt.timeIntervalSinceReferenceDate.isFinite,
+              targetDate.timeIntervalSinceReferenceDate.isFinite,
+              movements.allSatisfy({
+                  $0.occurredAt.timeIntervalSinceReferenceDate.isFinite
+              }),
+              resets.allSatisfy({
+                  $0.occurredAt.timeIntervalSinceReferenceDate.isFinite
+              }) else {
+            throw SavingsGoalError.invalidDate
+        }
         guard target.amount > .zero else { throw SavingsGoalError.nonPositiveTarget }
         guard target.currency.supports(target.amount) else {
             throw SavingsGoalError.unsupportedPrecision(target.currency)
@@ -377,6 +412,9 @@ public struct SavingsGoal: Codable, Equatable, Identifiable, Sendable {
         asOf: Date,
         calendar: Calendar? = nil
     ) throws -> SavingsGoalSummary {
+        guard asOf.timeIntervalSinceReferenceDate.isFinite else {
+            throw SavingsGoalError.invalidDate
+        }
         let calendar = calendar ?? FinancialPeriodBoundary.gregorianCalendar(
             timeZoneIdentifier: reportingTimeZoneIdentifier
         )
@@ -429,6 +467,8 @@ public struct SavingsGoal: Codable, Equatable, Identifiable, Sendable {
                 targetDate: targetDate,
                 asOf: asOf
             )
+        } catch is CancellationError {
+            throw CancellationError()
         } catch let error as SavingsGoalError {
             throw error
         } catch {
@@ -519,7 +559,10 @@ public struct SavingsGoal: Codable, Equatable, Identifiable, Sendable {
             timeZoneIdentifier: reportingTimeZoneIdentifier
         )
         var accepted: [SavingsGoalMovement] = []
-        for movement in movements {
+        for (movementIndex, movement) in movements.enumerated() {
+            if movementIndex.isMultiple(of: 8) {
+                try Task.checkCancellation()
+            }
             guard movement.money.currency == target.currency else {
                 throw SavingsGoalError.currencyMismatch(
                     expected: target.currency,
@@ -552,6 +595,8 @@ public struct SavingsGoal: Codable, Equatable, Identifiable, Sendable {
                             )
                         }
                     }
+                } catch is CancellationError {
+                    throw CancellationError()
                 } catch {
                     throw SavingsGoalError.calculationFailed
                 }
@@ -718,6 +763,8 @@ public struct SavingsGoal: Codable, Equatable, Identifiable, Sendable {
                     forKey: .reportingTimeZoneIdentifier
                 )
             )
+        } catch is CancellationError {
+            throw CancellationError()
         } catch {
             throw DecodingError.dataCorruptedError(
                 forKey: .target,

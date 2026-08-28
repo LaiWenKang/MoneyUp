@@ -26,6 +26,10 @@ concurrency:
 env:
   XCODEGEN_VERSION: 2.46.0
   XCODEGEN_SHA256: 4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806
+  DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+  RELEASE_XCODE_VERSION: "26.6"
+  RELEASE_XCODE_BUILD: 17F113
+  RELEASE_IPHONEOS_SDK_VERSION: "26.5"
   MARKETING_VERSION: 0.6.0
   SOURCE_BUILD_NUMBER: 8
   APP_BUNDLE_ID: com.laiwenkang.MoneyUp
@@ -37,6 +41,8 @@ jobs:
     name: Secretless release preflight
     runs-on: macos-26
     timeout-minutes: 45
+    outputs:
+      toolchain_fingerprint: ${{ steps.release_toolchain.outputs.fingerprint }}
     steps:
       - name: Require main and explicit upload confirmation
         shell: bash
@@ -55,7 +61,7 @@ jobs:
           fi
 
       - name: Check out the dispatched commit
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
@@ -70,19 +76,28 @@ jobs:
             exit 1
           fi
 
-      - name: Verify the Apple upload toolchain
+      - name: Verify the exact Apple upload toolchain
+        id: release_toolchain
         shell: bash
         run: |
           set -euo pipefail
-          xcodebuild -version
-          XCODE_MAJOR="$(xcodebuild -version | awk 'NR == 1 { split($2, part, "."); print part[1] }')"
+          test -x "$DEVELOPER_DIR/usr/bin/xcodebuild"
+          : "${ImageOS:?GitHub runner ImageOS metadata is unavailable}"
+          : "${ImageVersion:?GitHub runner ImageVersion metadata is unavailable}"
+          XCODE_VERSION_LINE="$(xcodebuild -version | sed -n '1p')"
+          XCODE_BUILD_LINE="$(xcodebuild -version | sed -n '2p')"
           SDK_VERSION="$(xcrun --sdk iphoneos --show-sdk-version)"
-          SDK_MAJOR="${SDK_VERSION%%.*}"
-          if (( XCODE_MAJOR < 26 || SDK_MAJOR < 26 )); then
-            echo "::error::Apple uploads require Xcode 26+ with the iOS 26+ SDK."
+          if [[ "$XCODE_VERSION_LINE" != "Xcode $RELEASE_XCODE_VERSION" || \
+                "$XCODE_BUILD_LINE" != "Build version $RELEASE_XCODE_BUILD" || \
+                "$SDK_VERSION" != "$RELEASE_IPHONEOS_SDK_VERSION" ]]; then
+            echo "::error::The runner does not contain the reviewed release toolchain."
             exit 1
           fi
-          echo "Using iPhoneOS SDK $SDK_VERSION"
+          TOOLCHAIN_FINGERPRINT="${XCODE_VERSION_LINE}|${XCODE_BUILD_LINE}|iphoneos-${SDK_VERSION}|${ImageOS}|${ImageVersion}"
+          echo "fingerprint=$TOOLCHAIN_FINGERPRINT" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$XCODE_VERSION_LINE" "$XCODE_BUILD_LINE" \
+            "iPhoneOS SDK $SDK_VERSION" \
+            "Runner image $ImageOS $ImageVersion"
 
       - name: Install checksum-verified XcodeGen
         shell: bash
@@ -284,7 +299,7 @@ jobs:
       ASC_ISSUER_ID: ${{ vars.ASC_ISSUER_ID }}
     steps:
       - name: Check out the preflighted commit
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
@@ -306,19 +321,34 @@ jobs:
             exit 1
           fi
 
-      - name: Verify the Apple upload toolchain
+      - name: Verify the preflighted Apple upload toolchain
         shell: bash
+        env:
+          PREFLIGHT_TOOLCHAIN_FINGERPRINT: ${{ needs.preflight.outputs.toolchain_fingerprint }}
         run: |
           set -euo pipefail
-          xcodebuild -version
-          XCODE_MAJOR="$(xcodebuild -version | awk 'NR == 1 { split($2, part, "."); print part[1] }')"
+          test -x "$DEVELOPER_DIR/usr/bin/xcodebuild"
+          : "${ImageOS:?GitHub runner ImageOS metadata is unavailable}"
+          : "${ImageVersion:?GitHub runner ImageVersion metadata is unavailable}"
+          XCODE_VERSION_LINE="$(xcodebuild -version | sed -n '1p')"
+          XCODE_BUILD_LINE="$(xcodebuild -version | sed -n '2p')"
           SDK_VERSION="$(xcrun --sdk iphoneos --show-sdk-version)"
-          SDK_MAJOR="${SDK_VERSION%%.*}"
-          if (( XCODE_MAJOR < 26 || SDK_MAJOR < 26 )); then
-            echo "::error::Apple uploads require Xcode 26+ with the iOS 26+ SDK."
+          if [[ "$XCODE_VERSION_LINE" != "Xcode $RELEASE_XCODE_VERSION" || \
+                "$XCODE_BUILD_LINE" != "Build version $RELEASE_XCODE_BUILD" || \
+                "$SDK_VERSION" != "$RELEASE_IPHONEOS_SDK_VERSION" ]]; then
+            echo "::error::The signing runner does not contain the reviewed release toolchain."
             exit 1
           fi
-          echo "Using iPhoneOS SDK $SDK_VERSION"
+          TOOLCHAIN_FINGERPRINT="${XCODE_VERSION_LINE}|${XCODE_BUILD_LINE}|iphoneos-${SDK_VERSION}|${ImageOS}|${ImageVersion}"
+          if [[ -z "$PREFLIGHT_TOOLCHAIN_FINGERPRINT" || \
+                "$TOOLCHAIN_FINGERPRINT" != "$PREFLIGHT_TOOLCHAIN_FINGERPRINT" ]]; then
+            echo "::error::Preflight and signing did not use the same exact runner toolchain image."
+            exit 1
+          fi
+          echo "RELEASE_TOOLCHAIN_FINGERPRINT=$TOOLCHAIN_FINGERPRINT" >> "$GITHUB_ENV"
+          printf '%s\n' "$XCODE_VERSION_LINE" "$XCODE_BUILD_LINE" \
+            "iPhoneOS SDK $SDK_VERSION" \
+            "Runner image $ImageOS $ImageVersion"
 
       - name: Install checksum-verified XcodeGen
         shell: bash
@@ -483,12 +513,37 @@ jobs:
             -authenticationKeyPath "$ASC_KEY_PATH" \
             -authenticationKeyID "$ASC_KEY_ID" \
             -authenticationKeyIssuerID "$ASC_ISSUER_ID"
-          IPA_PATH="$(find "$EXPORT_DIRECTORY" -maxdepth 1 -type f -name '*.ipa' -print -quit)"
-          if [[ -z "$IPA_PATH" ]]; then
-            echo "::error::Xcode did not export an IPA."
-            exit 1
-          fi
-          echo "IPA_PATH=$IPA_PATH" >> "$GITHUB_ENV"
+          IPA_PATH="$(python3 - "$EXPORT_DIRECTORY" <<'PY'
+          import pathlib
+          import sys
+
+          candidates = sorted(pathlib.Path(sys.argv[1]).glob("*.ipa"))
+          if len(candidates) != 1:
+              raise SystemExit(
+                  f"error: expected exactly one exported IPA; found {len(candidates)}"
+              )
+          print(candidates[0])
+          PY
+          )"
+          case "$IPA_PATH" in
+            "$EXPORT_DIRECTORY"/*) ;;
+            *)
+              echo "::error::The exported IPA is outside the reviewed export directory."
+              exit 1
+              ;;
+          esac
+          IPA_RELATIVE_PATH="$(basename "$EXPORT_DIRECTORY")/${IPA_PATH#"$EXPORT_DIRECTORY"/}"
+          IPA_SHA256="$(shasum -a 256 "$IPA_PATH" | awk '{print $1}')"
+          {
+            echo "IPA_PATH=$IPA_PATH"
+            echo "IPA_RELATIVE_PATH=$IPA_RELATIVE_PATH"
+            echo "IPA_SHA256=$IPA_SHA256"
+          } >> "$GITHUB_ENV"
+          {
+            echo
+            echo "Exported IPA: \`$IPA_RELATIVE_PATH\`"
+            echo "Exported candidate SHA-256: \`$IPA_SHA256\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Inspect distribution signing and contents
         shell: bash
@@ -609,8 +664,12 @@ jobs:
             --type ios \
             --apiKey "$ASC_KEY_ID" \
             --apiIssuer "$ASC_ISSUER_ID"
+          {
+            echo
+            echo "Apple validation passed for IPA SHA-256 \`$IPA_SHA256\`."
+          } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Encrypt the entitlement-seeded release archive backup
+      - name: Encrypt and round-trip verify the exact release recovery bundle
         if: ${{ inputs.operation == 'upload' }}
         shell: bash
         env:
@@ -622,64 +681,177 @@ jobs:
             echo "::error::Set ARCHIVE_ENCRYPTION_PASSWORD to a random value of at least 32 characters."
             exit 1
           fi
-          MANIFEST_PATH="$RUNNER_TEMP/MoneyUp-Archive-Manifest.txt"
-          ENCRYPTED_PATH="$RUNNER_TEMP/MoneyUp-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.xcarchive.tar.gz.enc"
+          : "${RELEASE_TOOLCHAIN_FINGERPRINT:?Verified release toolchain fingerprint is unavailable}"
+          MANIFEST_PATH="$RUNNER_TEMP/MoneyUp-Release-Recovery-Manifest.txt"
+          ENCRYPTED_PATH="$RUNNER_TEMP/MoneyUp-Release-Recovery-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.tar.gz.enc"
+          RECOVERY_VERIFY_DIRECTORY="$RUNNER_TEMP/MoneyUp-recovery-verify"
+          ARCHIVE_RELATIVE_PATH="$(basename "$ARCHIVE_PATH")"
+          EXPORT_RELATIVE_PATH="$(basename "$EXPORT_DIRECTORY")"
+          tree_digest() {
+            python3 - "$1" <<'PY'
+          import hashlib
+          import os
+          import stat
+          import sys
+
+          root = os.path.abspath(sys.argv[1])
+          if not os.path.isdir(root):
+              raise SystemExit(f"error: tree digest root is not a directory: {root}")
+
+          digest = hashlib.sha256()
+          digest.update(b"MoneyUp deterministic tree digest v1\0")
+
+          def update_field(value):
+              digest.update(len(value).to_bytes(8, "big"))
+              digest.update(value)
+
+          def add_metadata(kind, relative_path, mode):
+              update_field(kind)
+              update_field(os.fsencode(relative_path))
+              update_field(f"{mode:04o}".encode("ascii"))
+
+          root_stat = os.lstat(root)
+          add_metadata(b"D", ".", stat.S_IMODE(root_stat.st_mode))
+
+          def visit(directory):
+              with os.scandir(directory) as entries:
+                  ordered = sorted(entries, key=lambda entry: os.fsencode(entry.name))
+              for entry in ordered:
+                  path = entry.path
+                  relative_path = os.path.relpath(path, root).replace(os.sep, "/")
+                  metadata = entry.stat(follow_symlinks=False)
+                  mode = stat.S_IMODE(metadata.st_mode)
+                  if stat.S_ISDIR(metadata.st_mode):
+                      add_metadata(b"D", relative_path, mode)
+                      visit(path)
+                  elif stat.S_ISREG(metadata.st_mode):
+                      add_metadata(b"F", relative_path, mode)
+                      update_field(str(metadata.st_size).encode("ascii"))
+                      with open(path, "rb") as source:
+                          while chunk := source.read(1024 * 1024):
+                              digest.update(chunk)
+                  elif stat.S_ISLNK(metadata.st_mode):
+                      add_metadata(b"L", relative_path, mode)
+                      update_field(os.fsencode(os.readlink(path)))
+                  else:
+                      raise SystemExit(
+                          f"error: unsupported release-tree entry: {relative_path}"
+                      )
+
+          visit(root)
+          print(digest.hexdigest())
+          PY
+          }
+          test -d "$ARCHIVE_PATH/dSYMs"
+          DSYM_COUNT="$(find "$ARCHIVE_PATH/dSYMs" -type d -name '*.dSYM' -prune | wc -l | tr -d ' ')"
+          if (( DSYM_COUNT < 1 )); then
+            echo "::error::The release archive contains no dSYM bundle to preserve."
+            exit 1
+          fi
+          ARCHIVE_TREE_SHA256="$(tree_digest "$ARCHIVE_PATH")"
+          EXPORT_TREE_SHA256="$(tree_digest "$EXPORT_DIRECTORY")"
           {
-            echo "MoneyUp entitlement-seeded release archive backup"
+            echo "MoneyUp exact release recovery bundle"
             echo "Commit: $GITHUB_SHA"
             echo "Version: $MARKETING_VERSION"
             echo "Build: $BUILD_NUMBER"
+            echo "Toolchain and runner image fingerprint: $RELEASE_TOOLCHAIN_FINGERPRINT"
+            echo "Archive: $ARCHIVE_RELATIVE_PATH"
+            echo "Export directory: $EXPORT_RELATIVE_PATH"
+            echo "IPA: $IPA_RELATIVE_PATH"
+            echo "IPA SHA-256: $IPA_SHA256"
+            echo "Archive tree SHA-256: $ARCHIVE_TREE_SHA256"
+            echo "Export tree SHA-256: $EXPORT_TREE_SHA256"
             xcodebuild -version
             echo "iPhoneOS SDK: $(xcrun --sdk iphoneos --show-sdk-version)"
           } > "$MANIFEST_PATH"
           tar -C "$RUNNER_TEMP" -czf - \
-            "$(basename "$ARCHIVE_PATH")" \
+            "$ARCHIVE_RELATIVE_PATH" \
+            "$EXPORT_RELATIVE_PATH" \
             "$(basename "$MANIFEST_PATH")" | \
             openssl enc -aes-256-cbc -salt -pbkdf2 -iter 600000 -md sha256 \
               -pass env:ARCHIVE_ENCRYPTION_PASSWORD \
               -out "$ENCRYPTED_PATH"
+
+          mkdir -p "$RECOVERY_VERIFY_DIRECTORY"
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -md sha256 \
+            -pass env:ARCHIVE_ENCRYPTION_PASSWORD \
+            -in "$ENCRYPTED_PATH" | \
+            tar -C "$RECOVERY_VERIFY_DIRECTORY" -xzpf -
+          RECOVERED_IPA="$RECOVERY_VERIFY_DIRECTORY/$IPA_RELATIVE_PATH"
+          RECOVERED_MANIFEST="$RECOVERY_VERIFY_DIRECTORY/$(basename "$MANIFEST_PATH")"
+          RECOVERED_ARCHIVE="$RECOVERY_VERIFY_DIRECTORY/$ARCHIVE_RELATIVE_PATH"
+          RECOVERED_EXPORT="$RECOVERY_VERIFY_DIRECTORY/$EXPORT_RELATIVE_PATH"
+          test -d "$RECOVERED_ARCHIVE"
+          test -d "$RECOVERED_EXPORT"
+          test -f "$RECOVERED_IPA"
+          test -f "$RECOVERED_MANIFEST"
+          RECOVERED_ARCHIVE_TREE_SHA256="$(tree_digest "$RECOVERED_ARCHIVE")"
+          RECOVERED_EXPORT_TREE_SHA256="$(tree_digest "$RECOVERED_EXPORT")"
+          if [[ "$RECOVERED_ARCHIVE_TREE_SHA256" != "$ARCHIVE_TREE_SHA256" ]]; then
+            echo "::error::The encrypted recovery bundle changed the xcarchive tree, including its dSYMs."
+            exit 1
+          fi
+          if [[ "$RECOVERED_EXPORT_TREE_SHA256" != "$EXPORT_TREE_SHA256" ]]; then
+            echo "::error::The encrypted recovery bundle changed the export tree."
+            exit 1
+          fi
+          RECOVERED_IPA_SHA256="$(shasum -a 256 "$RECOVERED_IPA" | awk '{print $1}')"
+          if [[ "$RECOVERED_IPA_SHA256" != "$IPA_SHA256" ]]; then
+            echo "::error::The encrypted recovery bundle changed the exact IPA."
+            exit 1
+          fi
+          if ! cmp -s "$IPA_PATH" "$RECOVERED_IPA"; then
+            echo "::error::The recovered IPA is not byte-for-byte identical."
+            exit 1
+          fi
+          grep -Fqx "IPA: $IPA_RELATIVE_PATH" "$RECOVERED_MANIFEST"
+          grep -Fqx "IPA SHA-256: $IPA_SHA256" "$RECOVERED_MANIFEST"
+          grep -Fqx "Toolchain and runner image fingerprint: $RELEASE_TOOLCHAIN_FINGERPRINT" "$RECOVERED_MANIFEST"
+          grep -Fqx "Archive tree SHA-256: $ARCHIVE_TREE_SHA256" "$RECOVERED_MANIFEST"
+          grep -Fqx "Export tree SHA-256: $EXPORT_TREE_SHA256" "$RECOVERED_MANIFEST"
+          rm -rf -- "$RECOVERY_VERIFY_DIRECTORY"
+
           ENCRYPTED_SHA256="$(shasum -a 256 "$ENCRYPTED_PATH" | awk '{print $1}')"
           {
             echo
-            echo "Encrypted archive SHA-256: \`$ENCRYPTED_SHA256\`"
-            echo "Download the encrypted archive artifact to durable private storage before its 90-day expiry."
+            echo "Encrypted recovery bundle SHA-256: \`$ENCRYPTED_SHA256\`"
+            echo "Recovery xcarchive tree (including dSYMs): \`$ARCHIVE_TREE_SHA256\` verified."
+            echo "Recovery export tree: \`$EXPORT_TREE_SHA256\` verified."
+            echo "Recovery exact IPA: \`$IPA_SHA256\` verified byte-for-byte."
+            echo "Download the encrypted recovery artifact to durable private storage before its 90-day expiry."
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Retain the encrypted archive and dSYMs
+      - name: Retain the encrypted exact release recovery bundle
         if: ${{ inputs.operation == 'upload' }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: MoneyUp-encrypted-xcarchive-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/MoneyUp-${{ github.run_id }}-${{ github.run_attempt }}.xcarchive.tar.gz.enc
+          name: MoneyUp-encrypted-release-recovery-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/MoneyUp-Release-Recovery-${{ github.run_id }}-${{ github.run_attempt }}.tar.gz.enc
           if-no-files-found: error
           retention-days: 90
           compression-level: 0
 
-      - name: Upload the archive and symbols to TestFlight
+      - name: Upload the exact validated IPA to TestFlight
         if: ${{ inputs.operation == 'upload' }}
         shell: bash
         run: |
           set -euo pipefail
-          UPLOAD_OPTIONS_PATH="$RUNNER_TEMP/MoneyUp-UploadOptions.plist"
-          UPLOAD_DIRECTORY="$RUNNER_TEMP/MoneyUp-upload"
-          cp "$EXPORT_OPTIONS_PATH" "$UPLOAD_OPTIONS_PATH"
-          plutil -replace destination -string upload "$UPLOAD_OPTIONS_PATH"
-          {
-            echo "UPLOAD_OPTIONS_PATH=$UPLOAD_OPTIONS_PATH"
-            echo "UPLOAD_DIRECTORY=$UPLOAD_DIRECTORY"
-          } >> "$GITHUB_ENV"
-          xcodebuild \
-            -exportArchive \
-            -archivePath "$ARCHIVE_PATH" \
-            -exportPath "$UPLOAD_DIRECTORY" \
-            -exportOptionsPlist "$UPLOAD_OPTIONS_PATH" \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath "$ASC_KEY_PATH" \
-            -authenticationKeyID "$ASC_KEY_ID" \
-            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+          UPLOAD_IPA_SHA256="$(shasum -a 256 "$IPA_PATH" | awk '{print $1}')"
+          if [[ "$UPLOAD_IPA_SHA256" != "$IPA_SHA256" ]]; then
+            echo "::error::The validated IPA changed before upload."
+            exit 1
+          fi
+          xcrun altool \
+            --upload-app \
+            --file "$IPA_PATH" \
+            --type ios \
+            --apiKey "$ASC_KEY_ID" \
+            --apiIssuer "$ASC_ISSUER_ID"
           {
             echo
-            echo "Apple accepted the archive and symbols. App Store Connect processing is now separate."
+            echo "Apple accepted transfer of the exact validated IPA \`$IPA_SHA256\`."
+            echo "App Store Connect processing is now separate."
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Remove credentials and temporary release products
@@ -693,13 +865,10 @@ jobs:
           if [[ -n "${EXPORT_OPTIONS_PATH:-}" ]]; then
             rm -f -- "$EXPORT_OPTIONS_PATH"
           fi
-          if [[ -n "${UPLOAD_OPTIONS_PATH:-}" ]]; then
-            rm -f -- "$UPLOAD_OPTIONS_PATH"
-          fi
           rm -f -- \
-            "$RUNNER_TEMP/MoneyUp-Archive-Manifest.txt" \
-            "$RUNNER_TEMP/MoneyUp-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.xcarchive.tar.gz.enc"
-          for RELEASE_PATH in "${ARCHIVE_PATH:-}" "${EXPORT_DIRECTORY:-}" "${IPA_EXPANDED_DIRECTORY:-}" "${UPLOAD_DIRECTORY:-}"; do
+            "$RUNNER_TEMP/MoneyUp-Release-Recovery-Manifest.txt" \
+            "$RUNNER_TEMP/MoneyUp-Release-Recovery-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.tar.gz.enc"
+          for RELEASE_PATH in "${ARCHIVE_PATH:-}" "${EXPORT_DIRECTORY:-}" "${IPA_EXPANDED_DIRECTORY:-}" "$RUNNER_TEMP/MoneyUp-recovery-verify"; do
             if [[ -z "$RELEASE_PATH" ]]; then
               continue
             fi

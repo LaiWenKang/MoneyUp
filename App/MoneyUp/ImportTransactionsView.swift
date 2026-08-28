@@ -271,7 +271,16 @@ struct ImportTransactionsView: View {
             }
             let accessed = url.startAccessingSecurityScopedResource()
             defer { if accessed { url.stopAccessingSecurityScopedResource() } }
-            let data = try Data(contentsOf: url, options: [.mappedIfSafe])
+            let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize
+            if let size, size > 10_000_000 {
+                throw AppModelError.importTooLarge
+            }
+            let handle = try FileHandle(forReadingFrom: url)
+            defer { try? handle.close() }
+            let data = try BoundedFileReader.read(
+                from: handle,
+                maximumByteCount: 10_000_000
+            )
             guard data.count <= 10_000_000 else { throw AppModelError.importTooLarge }
             let text = String(data: data, encoding: .utf8)
                 ?? String(data: data, encoding: .utf16)
@@ -326,6 +335,8 @@ struct ImportTransactionsView: View {
             let rows = preview.rows.map { row in
                 ImportedTransaction(
                     id: row.id,
+                    hasExternalID: row.hasExternalID,
+                    legacyFingerprintCandidates: row.legacyFingerprintCandidates,
                     sourceLine: row.sourceLine,
                     kind: row.kind,
                     occurredAt: row.occurredAt,
@@ -366,44 +377,37 @@ struct ImportTransactionsView: View {
 
     private func prepareReviewedMappings(for preview: CSVImportPreview?) {
         guard let preview else { return }
-        accountMappings = Dictionary(uniqueKeysWithValues: sourceAccountNames(in: preview).compactMap {
-            name in
-            let selected = exactAccount(named: name)?.id ?? fallbackAccountID
-            return selected.map { (normalizedName(name), $0) }
-        })
-        expenseCategoryMappings = Dictionary(
-            uniqueKeysWithValues: sourceCategoryNames(in: preview, kind: .expense).compactMap {
-                name in
-                let selected = exactCategory(named: name, kind: .expense)?.id
-                    ?? fallbackExpenseCategoryID
-                return selected.map { (normalizedName(name), $0) }
-            }
-        )
-        incomeCategoryMappings = Dictionary(
-            uniqueKeysWithValues: sourceCategoryNames(in: preview, kind: .income).compactMap {
-                name in
-                let selected = exactCategory(named: name, kind: .income)?.id
-                    ?? fallbackIncomeCategoryID
-                return selected.map { (normalizedName(name), $0) }
-            }
-        )
+        accountMappings = CSVImportNameResolver.reviewedMappings(
+            for: sourceAccountNames(in: preview)
+        ) { name in
+            exactAccount(named: name)?.id ?? fallbackAccountID
+        }
+        expenseCategoryMappings = CSVImportNameResolver.reviewedMappings(
+            for: sourceCategoryNames(in: preview, kind: .expense)
+        ) { name in
+            exactCategory(named: name, kind: .expense)?.id
+                ?? fallbackExpenseCategoryID
+        }
+        incomeCategoryMappings = CSVImportNameResolver.reviewedMappings(
+            for: sourceCategoryNames(in: preview, kind: .income)
+        ) { name in
+            exactCategory(named: name, kind: .income)?.id
+                ?? fallbackIncomeCategoryID
+        }
     }
 
     private func sourceAccountNames(in preview: CSVImportPreview) -> [String] {
-        Set(preview.rows.flatMap { [$0.accountName, $0.destinationAccountName].compactMap { $0 } })
-            .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+        CSVImportNameResolver.sourceNames(in: preview, domain: .account)
     }
 
     private func sourceCategoryNames(
         in preview: CSVImportPreview,
         kind: LedgerAccountKind
     ) -> [String] {
-        Set(preview.rows.compactMap { row in
-            let matches = kind == .income
-                ? row.kind == .income
-                : row.kind == .expense || row.kind == .refund
-            return matches ? row.categoryName : nil
-        }).sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+        CSVImportNameResolver.sourceNames(
+            in: preview,
+            domain: kind == .income ? .incomeCategory : .expenseCategory
+        )
     }
 
     private func reviewedBinding(
@@ -433,8 +437,7 @@ struct ImportTransactionsView: View {
     }
 
     private func normalizedName(_ value: String) -> String {
-        value.trimmingCharacters(in: .whitespacesAndNewlines)
-            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+        CSVImportNameResolver.normalizedKey(for: value)
     }
 
     private func localizedField(_ field: CSVImportMappedField) -> String {
@@ -459,6 +462,8 @@ struct ImportTransactionsView: View {
         switch reason {
         case "invalid_date": String(localized: "import.issue.invalid_date")
         case "invalid_amount": String(localized: "import.issue.invalid_amount")
+        case "invalid_destination_amount":
+            String(localized: "import.issue.invalid_destination_amount")
         case "unsupported_type": String(localized: "import.issue.unsupported_type")
         default: String(localized: "import.issue.invalid_row")
         }
@@ -488,6 +493,8 @@ extension TransactionCSVImportError: @retroactive LocalizedError {
         case .emptyFile: String(localized: "import.error.empty")
         case .missingRequiredColumns: String(localized: "import.error.columns")
         case .malformedCSV: String(localized: "import.error.malformed")
+        case .inputTooLarge: String(localized: "import.error.too_large")
+        case .tooManyRows: String(localized: "import.error.too_many_rows")
         case .postingLevelExportRequiresArchive:
             String(localized: "import.error.moneyup_export")
         }

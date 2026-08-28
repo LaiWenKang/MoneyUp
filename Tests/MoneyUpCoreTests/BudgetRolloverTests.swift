@@ -408,15 +408,31 @@ final class BudgetRolloverTests: XCTestCase {
         )))
         let accountID = UUID()
         let categoryID = UUID()
-        let entry = try TransactionFactory.expense(
+        let originZone = try XCTUnwrap(
+            TimeZone(identifier: "Pacific/Kiritimati")
+        )
+        let candidate = try TransactionFactory.expense(
             amount: try Money(10, currency: sgd),
             paidFrom: accountID,
             category: categoryID,
             occurredAt: instant
         )
+        let entry = try JournalEntry(
+            id: candidate.id,
+            kind: candidate.kind,
+            occurredAt: candidate.occurredAt,
+            createdAt: candidate.createdAt,
+            payee: candidate.payee,
+            note: candidate.note,
+            postings: candidate.postings,
+            originContext: .capture(
+                for: instant,
+                timeZone: originZone
+            )
+        )
         let attribution = try BudgetEntryAttribution(
             entry: entry,
-            originTimeZoneIdentifier: "Pacific/Kiritimati"
+            originTimeZoneIdentifier: "Etc/GMT+12"
         )
         let travelledCalendar = FinancialPeriodBoundary.gregorianCalendar(
             timeZoneIdentifier: "Etc/GMT+12"
@@ -434,30 +450,92 @@ final class BudgetRolloverTests: XCTestCase {
         XCTAssertEqual(travelledCalendar.component(.day, from: attributed), 1)
     }
 
-    func testAttributionDecoderRejectsMismatchedDayAndInvalidZone() throws {
+    func testLegacyEntryWithoutOriginContextUsesSuppliedReportingZone() throws {
         let sgd = try CurrencyCode("SGD")
+        let utc = FinancialPeriodBoundary.gregorianCalendar(
+            timeZoneIdentifier: "GMT"
+        )
+        let instant = try XCTUnwrap(utc.date(from: DateComponents(
+            year: 2026,
+            month: 7,
+            day: 31,
+            hour: 10,
+            minute: 30
+        )))
         let entry = try TransactionFactory.expense(
             amount: try Money(10, currency: sgd),
             paidFrom: UUID(),
             category: UUID(),
-            occurredAt: date(2026, 8, 1)
+            occurredAt: instant
+        )
+        var object = try XCTUnwrap(
+            JSONSerialization.jsonObject(
+                with: JSONEncoder().encode(entry)
+            ) as? [String: Any]
+        )
+        object.removeValue(forKey: "originContext")
+        let legacy = try JSONDecoder().decode(
+            JournalEntry.self,
+            from: try JSONSerialization.data(withJSONObject: object)
+        )
+        XCTAssertTrue(legacy.originContext.wasInferred)
+
+        let attribution = try BudgetEntryAttribution(
+            entry: legacy,
+            originTimeZoneIdentifier: "Pacific/Kiritimati"
+        )
+
+        XCTAssertEqual(attribution.originDayKey, "2026-08-01")
+        XCTAssertEqual(attribution.originUTCOffsetSeconds, 14 * 60 * 60)
+    }
+
+    func testAttributionDecoderRejectsMismatchedDayAndInvalidZone() throws {
+        let sgd = try CurrencyCode("SGD")
+        let utc = FinancialPeriodBoundary.gregorianCalendar(
+            timeZoneIdentifier: "GMT"
+        )
+        let instant = try XCTUnwrap(utc.date(from: DateComponents(
+            year: 2026,
+            month: 7,
+            day: 31,
+            hour: 10,
+            minute: 30
+        )))
+        let entry = try TransactionFactory.expense(
+            amount: try Money(10, currency: sgd),
+            paidFrom: UUID(),
+            category: UUID(),
+            occurredAt: instant
         )
         let attribution = try BudgetEntryAttribution(
-            entry: entry,
-            originTimeZoneIdentifier: "Asia/Singapore"
+            id: entry.id,
+            occurredAt: instant,
+            originTimeZoneIdentifier: "Pacific/Kiritimati",
+            postings: entry.postings
         )
         let encoded = try JSONEncoder().encode(attribution)
-        var object = try XCTUnwrap(
+        let original = try XCTUnwrap(
             JSONSerialization.jsonObject(with: encoded) as? [String: Any]
         )
+        var object = original
         object["originDayKey"] = "2026-07-31"
         XCTAssertThrowsError(try JSONDecoder().decode(
             BudgetEntryAttribution.self,
             from: try JSONSerialization.data(withJSONObject: object)
         ))
 
-        object["originDayKey"] = attribution.originDayKey
+        object = original
         object["originTimeZoneIdentifier"] = "Not/AZone"
+        XCTAssertThrowsError(try JSONDecoder().decode(
+            BudgetEntryAttribution.self,
+            from: try JSONSerialization.data(withJSONObject: object)
+        ))
+
+        // GMT's offset and day are internally coherent for this instant, but
+        // they cannot be paired with the persisted +14 named zone.
+        object = original
+        object["originUTCOffsetSeconds"] = 0
+        object["originDayKey"] = "2026-07-31"
         XCTAssertThrowsError(try JSONDecoder().decode(
             BudgetEntryAttribution.self,
             from: try JSONSerialization.data(withJSONObject: object)

@@ -1,3 +1,4 @@
+import CoreTransferable
 import Foundation
 import MoneyUpPersistence
 import SwiftUI
@@ -15,6 +16,10 @@ extension PortableArchiveError: @retroactive LocalizedError {
         switch self {
         case .passwordTooShort:
             String(localized: "backup.error.password_short")
+        case .passwordTooLong:
+            String(localized: "backup.error.password_long")
+        case .archiveTooLarge:
+            String(localized: "backup.error.too_large")
         case .invalidArchive:
             String(localized: "backup.error.invalid")
         case let .unsupportedVersion(version):
@@ -43,5 +48,18 @@ struct MoneyUpArchiveDocument: FileDocument {
 
     func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
         FileWrapper(regularFileWithContents: data)
+    }
+}
+
+/// A file-backed export item. SwiftUI hands the existing encrypted file to the
+/// destination provider instead of asking `FileDocument` to materialize its
+/// complete contents as `Data` and `FileWrapper` copies.
+struct MoneyUpArchiveTransfer: Transferable {
+    let fileURL: URL
+
+    static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(exportedContentType: .moneyUpArchive) { archive in
+            SentTransferredFile(archive.fileURL)
+        }
     }
 }

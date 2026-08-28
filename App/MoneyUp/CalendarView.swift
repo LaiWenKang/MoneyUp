@@ -329,7 +329,10 @@ struct CalendarView: View {
                         Text("schedule.match_none")
                     } else {
                         ForEach(matches.prefix(8)) { entry in
-                            Button(entry.payee ?? entry.occurredAt.formatted(date: .abbreviated, time: .omitted)) {
+                            Button(entry.payee ?? entry.occurredAt.formattedForReporting(
+                                Date.FormatStyle(date: .abbreviated, time: .omitted),
+                                calendar: model.reportingCalendar
+                            )) {
                                 perform {
                                     try await model.matchScheduledOccurrence(
                                         scheduleID: item.id,
@@ -538,6 +541,7 @@ private struct AddScheduleSheet: View {
                     Button("action.save") { Task { await save() } }
                         .disabled(!canSave || isSaving)
                 }
+                MoneyUpKeyboardDoneToolbar()
             }
             .onAppear { selectDefaults() }
             .onChange(of: kind) { _, _ in selectDefaults() }
