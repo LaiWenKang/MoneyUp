@@ -114,13 +114,13 @@ The following constraints are immutable for this work:
 
 ## Verification and release evidence
 
-The audited `main` baseline had a green CI run at [GitHub Actions run 33188996669](https://github.com/LaiWenKang/MoneyUp/actions/runs/33188996669). Code-candidate commit `4dfc5ed460aede23b1193f8666894d21b3706b08` subsequently passed every automated job in [GitHub Actions run 33195628666](https://github.com/LaiWenKang/MoneyUp/actions/runs/33195628666); the only following source change is this evidence update. The candidate evidence does not close the physical-device or TestFlight gates below.
+The audited `main` baseline had a green CI run at [GitHub Actions run 33188996669](https://github.com/LaiWenKang/MoneyUp/actions/runs/33188996669). Code-candidate commit `2813c1497663526d0ea57b9aeca858138f2be52f` subsequently passed every automated job in [GitHub Actions run 33218504147](https://github.com/LaiWenKang/MoneyUp/actions/runs/33218504147); the only following source change is this evidence update. The candidate evidence does not close the physical-device or TestFlight gates below.
 
 | Check | Required evidence before merge | Current state |
 |---|---|---|
 | Diff hygiene | `git diff --check` and focused review of every touched persistence/security boundary | Passed locally on 2026-08-28; final bounded review found no confirmed compile, concurrency, localization-signature, financial-correctness, or receipt-state blocker |
-| Formatting/static release validation | Configured formatter (none is present), Python syntax, and `python3 Scripts/validate_release_assets.py` | Passed locally on 2026-08-28; validator covered 897 bilingual strings, offline/privacy boundaries, icons, contrast, bundle/version parity, project structure, CI, and TestFlight workflow structure |
-| Core and app-model behavior | Full core and app-model XCTest suites, including new transaction-presentation and receipt-pipeline tests | Passed on exact remote SHA: 50 core/persistence tests and 233 app-model tests, zero failures |
+| Formatting/static release validation | Configured formatter (none is present), Python syntax, and `python3 Scripts/validate_release_assets.py` | Passed locally and remotely on 2026-08-28; validator covered 901 bilingual strings, offline/privacy boundaries, icons, contrast, bundle/version parity, project structure, CI, and TestFlight workflow structure |
+| Core and app-model behavior | Full core and app-model XCTest suites, including new reporting-boundary, split-focus, History-cancellation, transaction-presentation, and receipt-pipeline tests | Passed on exact remote code-candidate SHA: 50 core/persistence tests and 237 app-model tests, zero failures |
 | App build | Release-compatible iPhone Simulator app build | Passed on Xcode 16.4 build 16F6 with iOS Simulator SDK 18.5 |
 | Widget build | Widget extension compiles with the current deployment target | Passed as part of the Release `MoneyUp` scheme build; family/tinted visual previews remain device QA |
 | Localization | English and Simplified Chinese catalogs pass literal-reference, placeholder, accessibility-key, and chart-dimension checks | Static catalog/reference checks passed locally; runtime bilingual QA remains pending |
