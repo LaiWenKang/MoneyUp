@@ -180,6 +180,7 @@ private struct MainTabView: View {
     var body: some View {
         TabView(selection: $selectedSection) {
             DashboardView(
+                initialReportingDate: model.currentDateForUserAction(),
                 onOpenLog: { selectedSection = .log },
                 onOpenPlan: { selectedSection = .plan },
                 onOpenAssets: { selectedSection = .assets }

@@ -1354,19 +1354,26 @@ final class EncryptedRecordStoreTests: XCTestCase {
             databaseURL: fixture.databaseURL,
             key: fixture.key
         )
-        let entry = try makeExpenseEntry(
-            occurredAt: Date(timeIntervalSinceReferenceDate: 100),
-            amount: 12
-        )
-        try await store.upsert(
-            entry,
-            id: entry.id.uuidString,
-            in: .journalEntries
+        let start = Date(timeIntervalSinceReferenceDate: 100)
+        let firstAccountID = UUID()
+        let secondAccountID = UUID()
+        let entries = try (0..<501).map { offset in
+            try makeExpenseEntry(
+                occurredAt: start.addingTimeInterval(TimeInterval(offset)),
+                amount: Decimal((offset % 20) + 1),
+                firstAccountID: firstAccountID,
+                secondAccountID: secondAccountID
+            )
+        }
+        try await store.write(
+            try entries.map {
+                try RecordWrite($0, id: $0.id.uuidString, in: .journalEntries)
+            }
         )
         let gate = RestoreStartGate()
         let fetch = Task {
             await gate.suspend()
-            return try await store.fetchJournalEntryPage(limit: 10)
+            return try await store.fetchJournalEntryPage(limit: 500)
         }
 
         await gate.waitUntilReached()
@@ -1378,6 +1385,22 @@ final class EncryptedRecordStoreTests: XCTestCase {
         } catch is CancellationError {
             // History and mutation callers cannot observe an incomplete page.
         }
+
+        let firstPage = try await store.fetchJournalEntryPage(limit: 500)
+        XCTAssertEqual(firstPage.entries.count, 500)
+        XCTAssertTrue(firstPage.issues.isEmpty)
+        XCTAssertNotNil(firstPage.nextCursor)
+        let finalPage = try await store.fetchJournalEntryPage(
+            after: firstPage.nextCursor,
+            limit: 500
+        )
+        XCTAssertEqual(finalPage.entries.count, 1)
+        XCTAssertTrue(finalPage.issues.isEmpty)
+        XCTAssertNil(finalPage.nextCursor)
+        XCTAssertEqual(
+            Set((firstPage.entries + finalPage.entries).map(\.id)),
+            Set(entries.map(\.id))
+        )
         await store.close()
     }
 

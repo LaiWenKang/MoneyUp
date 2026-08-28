@@ -1047,13 +1047,18 @@ private struct TransactionEditView: View {
 
     @ViewBuilder
     private var splitEditor: some View {
-        ForEach(splitLines.indices, id: \.self) { index in
+        ForEach(Array(splitLines.enumerated()), id: \.element.id) { index, line in
+            let lineID = line.id
             VStack(alignment: .leading, spacing: 8) {
                 Picker(
                     "quick_log.split_category",
                     selection: Binding(
-                        get: { splitLines[index].categoryID },
-                        set: { splitLines[index].categoryID = $0 }
+                        get: {
+                            splitLines.first(where: { $0.id == lineID })?.categoryID
+                        },
+                        set: { value in
+                            updateSplitLine(lineID) { $0.categoryID = value }
+                        }
                     )
                 ) {
                     ForEach(categories) { category in
@@ -1061,39 +1066,80 @@ private struct TransactionEditView: View {
                             .tag(Optional(category.id))
                     }
                 }
+                .accessibilityLabel(
+                    Text(
+                        String(
+                            format: String(localized: "quick_log.split_category_numbered"),
+                            index + 1
+                        )
+                    )
+                )
 
                 HStack {
                     TextField(
                         "quick_log.split_amount",
                         text: Binding(
-                            get: { splitLines[index].amountText },
-                            set: { splitLines[index].amountText = $0 }
+                            get: {
+                                splitLines.first(where: { $0.id == lineID })?.amountText
+                                    ?? ""
+                            },
+                            set: { value in
+                                updateSplitLine(lineID) { $0.amountText = value }
+                            }
                         )
                     )
                     .moneyAmountKeyboard(currency: sourceCurrency)
-                    .accessibilityLabel("quick_log.split_amount")
+                    .accessibilityLabel(
+                        Text(
+                            String(
+                                format: String(localized: "quick_log.split_amount_numbered"),
+                                index + 1
+                            )
+                        )
+                    )
                     if let sourceCurrency {
                         Text(sourceCurrency.value).foregroundStyle(.secondary)
                     }
                     if splitLines.count > 2 {
                         Button(role: .destructive) {
-                            splitLines.remove(at: index)
+                            splitLines.removeAll { $0.id == lineID }
                         } label: {
                             Image(systemName: "minus.circle.fill")
                                 .frame(minWidth: 44, minHeight: 44)
                         }
-                        .accessibilityLabel("quick_log.split_remove")
+                        .accessibilityLabel(
+                            Text(
+                                String(
+                                    format: String(
+                                        localized: "quick_log.split_remove_numbered"
+                                    ),
+                                    index + 1
+                                )
+                            )
+                        )
                     }
                 }
 
                 TextField(
                     "quick_log.split_memo",
                     text: Binding(
-                        get: { splitLines[index].memo },
-                        set: { splitLines[index].memo = $0 }
+                        get: {
+                            splitLines.first(where: { $0.id == lineID })?.memo ?? ""
+                        },
+                        set: { value in
+                            updateSplitLine(lineID) { $0.memo = value }
+                        }
                     )
                 )
                 .font(.caption)
+                .accessibilityLabel(
+                    Text(
+                        String(
+                            format: String(localized: "quick_log.split_memo_numbered"),
+                            index + 1
+                        )
+                    )
+                )
             }
             .padding(.vertical, 4)
         }
@@ -1119,6 +1165,16 @@ private struct TransactionEditView: View {
                     : Text("quick_log.split_not_balanced")
             )
         }
+    }
+
+    private func updateSplitLine(
+        _ lineID: UUID,
+        update: (inout QuickLogSplitDraftLine) -> Void
+    ) {
+        guard let index = splitLines.firstIndex(where: { $0.id == lineID }) else {
+            return
+        }
+        update(&splitLines[index])
     }
 
     var body: some View {
@@ -1192,7 +1248,6 @@ private struct TransactionEditView: View {
                                     }
                                 )
                             )
-                            .accessibilityHint("quick_log.split_not_balanced")
 
                             if isSplitTransaction {
                                 splitEditor

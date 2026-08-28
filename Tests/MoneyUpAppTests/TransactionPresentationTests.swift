@@ -3,6 +3,85 @@ import MoneyUpCore
 import XCTest
 
 final class TransactionPresentationTests: XCTestCase {
+    func testDashboardRefreshUsesReportingMidnightAcrossDifferentZones() throws {
+        let now = try XCTUnwrap(
+            ISO8601DateFormatter().date(from: "2026-08-28T15:59:00Z")
+        )
+        let singapore = FinancialPeriodBoundary.gregorianCalendar(
+            timeZoneIdentifier: "Asia/Singapore"
+        )
+        let utc = FinancialPeriodBoundary.gregorianCalendar(
+            timeZoneIdentifier: "UTC"
+        )
+
+        let reportingBoundary = try XCTUnwrap(
+            DashboardReportingClockPolicy.nextRefresh(
+                after: now,
+                calendar: singapore
+            )
+        )
+        let deviceBoundary = try XCTUnwrap(
+            DashboardReportingClockPolicy.nextRefresh(after: now, calendar: utc)
+        )
+
+        XCTAssertEqual(reportingBoundary.timeIntervalSince(now), 60)
+        XCTAssertNotEqual(reportingBoundary, deviceBoundary)
+    }
+
+    func testDashboardRefreshDoesNotAssumeFixedLengthDays() throws {
+        let now = try XCTUnwrap(
+            ISO8601DateFormatter().date(from: "2026-03-08T08:30:00Z")
+        )
+        let losAngeles = FinancialPeriodBoundary.gregorianCalendar(
+            timeZoneIdentifier: "America/Los_Angeles"
+        )
+
+        let boundary = try XCTUnwrap(
+            DashboardReportingClockPolicy.nextRefresh(
+                after: now,
+                calendar: losAngeles
+            )
+        )
+
+        XCTAssertEqual(boundary.timeIntervalSince(now), 22.5 * 60 * 60)
+    }
+
+    func testDashboardRefreshAdvancesPastAnIntradaySchedule() throws {
+        let now = try XCTUnwrap(
+            ISO8601DateFormatter().date(from: "2026-08-28T02:00:00Z")
+        )
+        let occurrence = now.addingTimeInterval(5 * 60)
+        let singapore = FinancialPeriodBoundary.gregorianCalendar(
+            timeZoneIdentifier: "Asia/Singapore"
+        )
+
+        let refresh = try XCTUnwrap(
+            DashboardReportingClockPolicy.nextRefresh(
+                after: now,
+                calendar: singapore,
+                scheduledOccurrences: [occurrence]
+            )
+        )
+
+        XCTAssertEqual(refresh, occurrence.addingTimeInterval(1))
+    }
+
+    func testQuickLogSplitFocusUsesStableLineIdentity() {
+        let first = UUID()
+        let second = UUID()
+
+        XCTAssertNotEqual(
+            QuickLogFieldFocus.splitAmount(first),
+            QuickLogFieldFocus.splitMemo(first)
+        )
+        XCTAssertNotEqual(
+            QuickLogFieldFocus.splitAmount(first),
+            QuickLogFieldFocus.splitAmount(second)
+        )
+        XCTAssertEqual(QuickLogFieldFocus.splitMemo(first).splitLineID, first)
+        XCTAssertNil(QuickLogFieldFocus.note.splitLineID)
+    }
+
     func testOccurrenceDateRefreshesOnlyForAnUntouchedNewDraft() {
         XCTAssertTrue(
             QuickLogOccurrencePolicy.shouldRefresh(

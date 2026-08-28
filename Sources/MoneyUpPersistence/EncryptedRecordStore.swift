@@ -577,6 +577,7 @@ public actor EncryptedRecordStore {
         after cursor: JournalEntryPageCursor? = nil,
         limit: Int = 80
     ) throws -> JournalEntryPage {
+        try Task.checkCancellation()
         let boundedLimit = min(max(limit, 1), 500)
         let rawPage = try connection.fetchJournalEntryPage(
             startDate: startDate,
@@ -588,7 +589,8 @@ public actor EncryptedRecordStore {
         )
         var entries: [JournalEntry] = []
         var issues: [RecordDecodeIssue] = []
-        for record in rawPage.records {
+        for (offset, record) in rawPage.records.enumerated() {
+            if offset.isMultiple(of: 128) { try Task.checkCancellation() }
             do {
                 let entry = try Self.makeDecoder().decode(
                     JournalEntry.self,
@@ -612,6 +614,7 @@ public actor EncryptedRecordStore {
                 )
             }
         }
+        try Task.checkCancellation()
         return JournalEntryPage(
             entries: entries,
             issues: issues,
@@ -1799,6 +1802,7 @@ private final class SQLCipherConnection: @unchecked Sendable {
         after cursor: JournalEntryPageCursor?,
         limit: Int
     ) throws -> IndexedPayloadPage {
+        try Task.checkCancellation()
         var predicates = [
             "records.collection = ?",
             "records.indexed_at IS NOT NULL"
@@ -1886,6 +1890,9 @@ private final class SQLCipherConnection: @unchecked Sendable {
 
             var rows: [IndexedPayloadRecord] = []
             while true {
+                if rows.count.isMultiple(of: 128) {
+                    try Task.checkCancellation()
+                }
                 let result = sqlite3_step(statement)
                 if result == SQLITE_DONE { break }
                 guard result == SQLITE_ROW,
@@ -1900,6 +1907,7 @@ private final class SQLCipherConnection: @unchecked Sendable {
                     )
                 )
             }
+            try Task.checkCancellation()
 
             let hasMore = rows.count > limit
             let visibleRows = hasMore ? Array(rows.prefix(limit)) : rows

@@ -128,19 +128,30 @@ enum QuickLogOccurrencePolicy {
     }
 }
 
+enum QuickLogFieldFocus: Hashable {
+    case amount
+    case destinationAmount
+    case smartEntry
+    case payee
+    case note
+    case splitAmount(UUID)
+    case splitMemo(UUID)
+
+    var splitLineID: UUID? {
+        switch self {
+        case let .splitAmount(id), let .splitMemo(id):
+            return id
+        case .amount, .destinationAmount, .smartEntry, .payee, .note:
+            return nil
+        }
+    }
+}
+
 private struct QuickLogEntryView: View {
     private static let receiptSignposter = OSSignposter(
         subsystem: "com.laiwenkang.MoneyUp",
         category: "QuickLogReceipt"
     )
-
-    private enum FocusedField: Hashable {
-        case amount
-        case destinationAmount
-        case smartEntry
-        case payee
-        case note
-    }
 
     private struct ReceiptScanBaseline: Equatable {
         let amountText: String
@@ -157,7 +168,7 @@ private struct QuickLogEntryView: View {
     @Environment(\.accessibilityVoiceOverEnabled) private var isVoiceOverEnabled
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @EnvironmentObject private var model: AppModel
-    @FocusState private var focusedField: FocusedField?
+    @FocusState private var focusedField: QuickLogFieldFocus?
 
     @Binding var kind: QuickLogKind
     let dismissAfterSave: Bool
@@ -480,6 +491,7 @@ private struct QuickLogEntryView: View {
                                             QuickLogSplitDraftLine(categoryID: initialCategory)
                                         ]
                                     } else {
+                                        clearSplitFocus()
                                         splitLines = []
                                     }
                                     persistUserDraftChange { snapshot in
@@ -659,6 +671,7 @@ private struct QuickLogEntryView: View {
                     receiptAttachmentData = nil
                     retainReceiptAttachment = false
                     receiptRetentionMessage = nil
+                    clearSplitFocus()
                     splitLines = []
                 }
                 selectDefaults()
@@ -923,15 +936,17 @@ private struct QuickLogEntryView: View {
 
     @ViewBuilder
     private var splitEditor: some View {
-        ForEach(splitLines.indices, id: \.self) { index in
+        ForEach(Array(splitLines.enumerated()), id: \.element.id) { index, line in
+            let lineID = line.id
             VStack(alignment: .leading, spacing: 8) {
                 Picker(
                     "quick_log.split_category",
                     selection: Binding(
-                        get: { splitLines[index].categoryID },
+                        get: {
+                            splitLines.first(where: { $0.id == lineID })?.categoryID
+                        },
                         set: { value in
-                            splitLines[index].categoryID = value
-                            persistUserDraftChange { $0.splitLines = splitLines }
+                            updateSplitLine(lineID) { $0.categoryID = value }
                         }
                     )
                 ) {
@@ -939,36 +954,62 @@ private struct QuickLogEntryView: View {
                         Text(category.name).tag(Optional(category.id))
                     }
                 }
+                .accessibilityLabel(
+                    Text(
+                        String(
+                            format: String(localized: "quick_log.split_category_numbered"),
+                            index + 1
+                        )
+                    )
+                )
 
                 HStack {
                     TextField(
                         "quick_log.split_amount",
                         text: Binding(
-                            get: { splitLines[index].amountText },
+                            get: {
+                                splitLines.first(where: { $0.id == lineID })?.amountText
+                                    ?? ""
+                            },
                             set: { value in
-                                splitLines[index].amountText = value
-                                persistUserDraftChange { $0.splitLines = splitLines }
+                                updateSplitLine(lineID) { $0.amountText = value }
                             }
                         )
                     )
                     .moneyAmountKeyboard(currency: selectedAccountCurrency)
-                    .accessibilityLabel("quick_log.split_amount")
+                    .focused($focusedField, equals: .splitAmount(lineID))
+                    .accessibilityLabel(
+                        Text(
+                            String(
+                                format: String(localized: "quick_log.split_amount_numbered"),
+                                index + 1
+                            )
+                        )
+                    )
                     if let currency = selectedAccountCurrency {
                         Text(currency.value).foregroundStyle(.secondary)
                     }
                     if splitLines.count > 2 {
                         Button(role: .destructive) {
-                            splitLines.remove(at: index)
-                            persistUserDraftChange { $0.splitLines = splitLines }
+                            removeSplitLine(lineID)
                         } label: {
                             Image(systemName: "minus.circle.fill")
                                 .frame(minWidth: 44, minHeight: 44)
                         }
-                        .accessibilityLabel("quick_log.split_remove")
+                        .accessibilityLabel(
+                            Text(
+                                String(
+                                    format: String(
+                                        localized: "quick_log.split_remove_numbered"
+                                    ),
+                                    index + 1
+                                )
+                            )
+                        )
                     }
                 }
                 if let message = monetaryInputError(
-                    text: splitLines[index].amountText,
+                    text: line.amountText,
                     currency: selectedAccountCurrency
                 ) {
                     Label(message, systemImage: "exclamationmark.circle.fill")
@@ -980,14 +1021,24 @@ private struct QuickLogEntryView: View {
                 TextField(
                     "quick_log.split_memo",
                     text: Binding(
-                        get: { splitLines[index].memo },
+                        get: {
+                            splitLines.first(where: { $0.id == lineID })?.memo ?? ""
+                        },
                         set: { value in
-                            splitLines[index].memo = value
-                            persistUserDraftChange { $0.splitLines = splitLines }
+                            updateSplitLine(lineID) { $0.memo = value }
                         }
                     )
                 )
                 .font(.caption)
+                .focused($focusedField, equals: .splitMemo(lineID))
+                .accessibilityLabel(
+                    Text(
+                        String(
+                            format: String(localized: "quick_log.split_memo_numbered"),
+                            index + 1
+                        )
+                    )
+                )
             }
             .padding(.vertical, 4)
         }
@@ -1014,6 +1065,23 @@ private struct QuickLogEntryView: View {
                     : Text("quick_log.split_not_balanced")
             )
         }
+    }
+
+    private func updateSplitLine(
+        _ lineID: UUID,
+        update: (inout QuickLogSplitDraftLine) -> Void
+    ) {
+        guard let index = splitLines.firstIndex(where: { $0.id == lineID }) else {
+            return
+        }
+        update(&splitLines[index])
+        persistUserDraftChange { $0.splitLines = splitLines }
+    }
+
+    private func removeSplitLine(_ lineID: UUID) {
+        clearSplitFocus(for: lineID)
+        splitLines.removeAll { $0.id == lineID }
+        persistUserDraftChange { $0.splitLines = splitLines }
     }
 
     private var draftSnapshot: QuickLogDraft {
@@ -1814,8 +1882,15 @@ private struct QuickLogEntryView: View {
         photoItem = nil
     }
 
-    /// Decimal pads have no return key. Keeping dismissal entirely focus-driven
-    /// also makes leaving Log a pure UI action: no transaction is saved and the
+    private func clearSplitFocus(for lineID: UUID? = nil) {
+        guard let focusedLineID = focusedField?.splitLineID,
+              lineID == nil || lineID == focusedLineID else { return }
+        focusedField = nil
+    }
+
+    /// Decimal pads have no return key. Every Quick Log text field, including
+    /// stable split-line identities, participates in this one focus boundary.
+    /// Leaving Log remains a pure UI action: no transaction is saved and the
     /// unfinished draft is neither cleared nor reinterpreted as completed.
     private func dismissKeyboard() {
         focusedField = nil

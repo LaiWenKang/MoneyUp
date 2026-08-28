@@ -6306,12 +6306,26 @@ final class AppModelTests: XCTestCase {
     func testFlexibleTodayUsesProfileMonthAcrossDeviceZoneBoundary() async throws {
         let fixture = try AppModelFixture()
         defer { fixture.removeFiles() }
+        let asOf = try XCTUnwrap(
+            ISO8601DateFormatter().date(from: "2026-03-01T07:30:00Z")
+        )
+        let modelClock = try XCTUnwrap(
+            ISO8601DateFormatter().date(from: "2026-03-01T08:30:00Z")
+        )
+        let februaryExpense = try TransactionFactory.expense(
+            amount: Money(12, currency: fixture.sgd),
+            paidFrom: fixture.wallet.id,
+            category: fixture.food.id,
+            occurredAt: asOf.addingTimeInterval(-60 * 60),
+            payee: "Reporting boundary"
+        )
         let profile = UserProfile(
             baseCurrency: fixture.sgd,
             reportingTimeZoneIdentifier: "America/Los_Angeles"
         )
         let model = fixture.model(
             profile: profile,
+            entries: [februaryExpense],
             budgetNodes: [
                 BudgetNode(
                     id: fixture.food.id,
@@ -6319,10 +6333,8 @@ final class AppModelTests: XCTestCase {
                     limit: try Money(600, currency: fixture.sgd),
                     purpose: .flexible
                 )
-            ]
-        )
-        let asOf = try XCTUnwrap(
-            ISO8601DateFormatter().date(from: "2026-03-01T07:30:00Z")
+            ],
+            currentDate: { modelClock }
         )
         let expectedMonth = try XCTUnwrap(
             model.reportingCalendar.dateInterval(of: .month, for: asOf)
@@ -6341,6 +6353,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(breakdown.periodStart, model.reportingCalendar.startOfDay(for: asOf))
         XCTAssertEqual(breakdown.periodEnd, expectedMonth.end)
         XCTAssertEqual(breakdown.remainingDayCount, 1)
+        XCTAssertEqual(breakdown.flexibleBudgetRemaining.amount, 588)
         await fixture.store.close()
     }
 
