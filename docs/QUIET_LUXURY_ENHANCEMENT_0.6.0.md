@@ -3,7 +3,7 @@
 **Document date:** 2026-08-28  
 **Working branch:** `codex/quiet-luxury-trust-polish`  
 **Audited baseline:** `d231c039bec4005d4013d68734e518b77795b832` (`main`)  
-**Status:** implementation in progress; final macOS builds, remote CI, device QA, screenshots, and merge are not yet complete
+**Status:** implementation and exact-SHA automated CI complete; physical-device QA, screenshots, TestFlight continuity, and merge are not yet complete
 
 This is an incremental enhancement plan and implementation record for the existing native SwiftUI application. It is not authorization for a redesign, rebrand, architecture replacement, or data-model rewrite.
 
@@ -32,7 +32,7 @@ The following constraints are immutable for this work:
 
 ## Status vocabulary
 
-- **Implemented — verification pending:** the change and relevant tests are present in the working tree, but the final branch build/CI/device matrix has not passed yet.
+- **Implemented — verification pending:** the change and relevant tests are present, and the exact remote SHA passed the automated gates recorded below; the applicable physical-device/runtime matrix is still open.
 - **Retained:** explicitly reviewed and intentionally unchanged.
 - **Deferred:** valuable follow-up work that is outside this focused slice or needs a physical device, production-sized data, or release credentials.
 - **Release blocker:** must pass before merge or distribution.
@@ -111,21 +111,21 @@ The following constraints are immutable for this work:
 
 ## Verification and release evidence
 
-The audited `main` baseline had a green 144-test CI run at [GitHub Actions run 33188996669](https://github.com/LaiWenKang/MoneyUp/actions/runs/33188996669). That evidence applies only to baseline commit `d231c039bec4005d4013d68734e518b77795b832`; it does **not** validate this working branch.
+The audited `main` baseline had a green CI run at [GitHub Actions run 33188996669](https://github.com/LaiWenKang/MoneyUp/actions/runs/33188996669). Code-candidate commit `4dfc5ed460aede23b1193f8666894d21b3706b08` subsequently passed every automated job in [GitHub Actions run 33195628666](https://github.com/LaiWenKang/MoneyUp/actions/runs/33195628666); the only following source change is this evidence update. The candidate evidence does not close the physical-device or TestFlight gates below.
 
 | Check | Required evidence before merge | Current state |
 |---|---|---|
 | Diff hygiene | `git diff --check` and focused review of every touched persistence/security boundary | Passed locally on 2026-08-28; final bounded review found no confirmed compile, concurrency, localization-signature, financial-correctness, or receipt-state blocker |
 | Formatting/static release validation | Configured formatter (none is present), Python syntax, and `python3 Scripts/validate_release_assets.py` | Passed locally on 2026-08-28; validator covered 897 bilingual strings, offline/privacy boundaries, icons, contrast, bundle/version parity, project structure, CI, and TestFlight workflow structure |
-| Core and app-model behavior | Full core and app-model XCTest suites, including new transaction-presentation and receipt-pipeline tests | Pending macOS/remote CI |
-| App build | Release-compatible iPhone Simulator app build | Pending macOS/remote CI |
-| Widget build | All widget families compile with the current deployment target | Pending macOS/remote CI |
+| Core and app-model behavior | Full core and app-model XCTest suites, including new transaction-presentation and receipt-pipeline tests | Passed on exact remote SHA: 50 core/persistence tests and 233 app-model tests, zero failures |
+| App build | Release-compatible iPhone Simulator app build | Passed on Xcode 16.4 build 16F6 with iOS Simulator SDK 18.5 |
+| Widget build | Widget extension compiles with the current deployment target | Passed as part of the Release `MoneyUp` scheme build; family/tinted visual previews remain device QA |
 | Localization | English and Simplified Chinese catalogs pass literal-reference, placeholder, accessibility-key, and chart-dimension checks | Static catalog/reference checks passed locally; runtime bilingual QA remains pending |
 | Accessibility | VoiceOver, Dynamic Type, Reduce Motion, Reduce Transparency, contrast, target size, and focus-order review | Pending simulator and physical-device QA |
 | Visual QA | Light/dark, English/Chinese, small/large iPhone, keyboard-visible, large text, privacy cover, and tinted-widget screenshots | Pending; no screenshots claimed |
 | Performance | Instruments/signpost evidence against PRD budgets on representative hardware and large data | Pending physical-device QA |
 | Data safety | TestFlight upgrade, encrypted backup/restore, migration, device-passcode recovery, and bundle-ID continuity | Pending physical release gate |
-| Remote integration | Focused commit, push, pull request checks, then merge only when every required automated check is green | Not yet complete |
+| Remote integration | Focused commit, push, pull request checks, then merge only when every required gate is green | Branch published and [draft PR #22](https://github.com/LaiWenKang/MoneyUp/pull/22) opened; all automated checks are green; deliberately not merged while physical release blockers remain |
 
 ## Intentionally unchanged
 
@@ -135,4 +135,4 @@ The audited `main` baseline had a green 144-test CI run at [GitHub Actions run 3
 - No app-icon replacement, rebrand, generic financial illustration, floating-coin motif, neon treatment, or broad glassmorphism layer is introduced.
 - No unavailable calculation is converted to zero, and no currencies are combined without an explicit dated rate.
 
-This document should be updated with exact command output, CI links, screenshot paths, measured timings, and any newly discovered risk before the branch is declared complete or merged.
+No screenshots or measured physical timings are claimed because this workspace has neither Xcode/Simulator nor access to the required devices, biometric/passcode states, TestFlight build, or representative production ledger. Those gates must be appended here before the branch is declared release-ready or merged.
