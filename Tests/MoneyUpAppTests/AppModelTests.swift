@@ -6312,16 +6312,32 @@ final class AppModelTests: XCTestCase {
         let modelClock = try XCTUnwrap(
             ISO8601DateFormatter().date(from: "2026-03-01T08:30:00Z")
         )
-        let februaryExpense = try TransactionFactory.expense(
+        let reportingZone = try XCTUnwrap(
+            TimeZone(identifier: "America/Los_Angeles")
+        )
+        let candidate = try TransactionFactory.expense(
             amount: Money(12, currency: fixture.sgd),
             paidFrom: fixture.wallet.id,
             category: fixture.food.id,
             occurredAt: asOf.addingTimeInterval(-60 * 60),
             payee: "Reporting boundary"
         )
+        let februaryExpense = try JournalEntry(
+            id: candidate.id,
+            kind: candidate.kind,
+            occurredAt: candidate.occurredAt,
+            createdAt: candidate.createdAt,
+            payee: candidate.payee,
+            note: candidate.note,
+            postings: candidate.postings,
+            originContext: .capture(
+                for: candidate.occurredAt,
+                timeZone: reportingZone
+            )
+        )
         let profile = UserProfile(
             baseCurrency: fixture.sgd,
-            reportingTimeZoneIdentifier: "America/Los_Angeles"
+            reportingTimeZoneIdentifier: reportingZone.identifier
         )
         let model = fixture.model(
             profile: profile,
@@ -6345,6 +6361,7 @@ final class AppModelTests: XCTestCase {
             simulatedDeviceCalendar.dateInterval(of: .month, for: asOf)
         )
         XCTAssertNotEqual(expectedMonth, deviceMonth)
+        XCTAssertEqual(februaryExpense.originContext.dayKey, 20260228)
 
         guard case let .available(.available(breakdown)) = model.flexibleTodayResult(asOf: asOf)
         else {
