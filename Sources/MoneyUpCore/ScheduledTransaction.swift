@@ -73,6 +73,11 @@ public struct ScheduledOccurrenceResolution: Codable, Equatable, Sendable, Ident
         resolvedAt: Date,
         entryDeletedAt: Date? = nil
     ) throws {
+        guard scheduledFor.timeIntervalSinceReferenceDate.isFinite,
+              resolvedAt.timeIntervalSinceReferenceDate.isFinite,
+              entryDeletedAt?.timeIntervalSinceReferenceDate.isFinite != false else {
+            throw ScheduledTransactionError.invalidLifecycle
+        }
         switch kind {
         case .posted, .matched:
             guard linkedEntryID != nil, entryDeletedAt == nil else {
@@ -137,6 +142,44 @@ public struct ScheduledOccurrenceConfirmation: Codable, Equatable, Sendable {
     public let occurrenceID: ScheduledOccurrenceID
     public let scheduledFor: Date
     public let confirmedAt: Date
+
+    public init(
+        occurrenceID: ScheduledOccurrenceID,
+        scheduledFor: Date,
+        confirmedAt: Date
+    ) throws {
+        guard scheduledFor.timeIntervalSinceReferenceDate.isFinite,
+              confirmedAt.timeIntervalSinceReferenceDate.isFinite else {
+            throw ScheduledTransactionError.invalidLifecycle
+        }
+        self.occurrenceID = occurrenceID
+        self.scheduledFor = scheduledFor
+        self.confirmedAt = confirmedAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case occurrenceID, scheduledFor, confirmedAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        do {
+            try self.init(
+                occurrenceID: container.decode(
+                    ScheduledOccurrenceID.self,
+                    forKey: .occurrenceID
+                ),
+                scheduledFor: container.decode(Date.self, forKey: .scheduledFor),
+                confirmedAt: container.decode(Date.self, forKey: .confirmedAt)
+            )
+        } catch let error as ScheduledTransactionError {
+            throw DecodingError.dataCorruptedError(
+                forKey: .confirmedAt,
+                in: container,
+                debugDescription: "Invalid occurrence confirmation: \(error)"
+            )
+        }
+    }
 }
 
 public enum ScheduledTransactionError: Error, Equatable, Sendable {
@@ -213,6 +256,9 @@ public struct ScheduledTransaction: Codable, Equatable, Identifiable, Sendable {
         }
         guard amount.amount > .zero else {
             throw ScheduledTransactionError.amountMustBePositive
+        }
+        guard nextOccurrence.timeIntervalSinceReferenceDate.isFinite else {
+            throw ScheduledTransactionError.invalidLifecycle
         }
         let normalizedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedName.isEmpty else {
@@ -337,7 +383,21 @@ public struct ScheduledTransaction: Codable, Equatable, Identifiable, Sendable {
     }
 
     public func validateLifecycle(calendar suppliedCalendar: Calendar? = nil) throws {
-        guard seriesVersion >= 0, currentOccurrenceIndex >= 0 else {
+        guard seriesVersion >= 0,
+              currentOccurrenceIndex >= 0,
+              nextOccurrence.timeIntervalSinceReferenceDate.isFinite,
+              recurrenceAnchor.timeIntervalSinceReferenceDate.isFinite,
+              endedAt?.timeIntervalSinceReferenceDate.isFinite != false,
+              currentConfirmation?.scheduledFor.timeIntervalSinceReferenceDate.isFinite
+                != false,
+              currentConfirmation?.confirmedAt.timeIntervalSinceReferenceDate.isFinite
+                != false,
+              resolutions.allSatisfy({ resolution in
+                  resolution.scheduledFor.timeIntervalSinceReferenceDate.isFinite
+                      && resolution.resolvedAt.timeIntervalSinceReferenceDate.isFinite
+                      && resolution.entryDeletedAt?
+                          .timeIntervalSinceReferenceDate.isFinite != false
+              }) else {
             throw ScheduledTransactionError.invalidLifecycle
         }
         switch status {
@@ -476,7 +536,10 @@ public struct ScheduledTransaction: Codable, Equatable, Identifiable, Sendable {
         status = .active
     }
 
-    public mutating func end(at date: Date = Date()) {
+    public mutating func end(at date: Date = Date()) throws {
+        guard date.timeIntervalSinceReferenceDate.isFinite else {
+            throw ScheduledTransactionError.invalidLifecycle
+        }
         status = .ended
         endedAt = date
         currentConfirmation = nil
@@ -491,7 +554,7 @@ public struct ScheduledTransaction: Codable, Equatable, Identifiable, Sendable {
         guard !resolutions.contains(where: { $0.occurrenceID == occurrenceID }) else {
             throw ScheduledTransactionError.occurrenceAlreadyResolved
         }
-        currentConfirmation = ScheduledOccurrenceConfirmation(
+        currentConfirmation = try ScheduledOccurrenceConfirmation(
             occurrenceID: occurrenceID,
             scheduledFor: nextOccurrence,
             confirmedAt: date

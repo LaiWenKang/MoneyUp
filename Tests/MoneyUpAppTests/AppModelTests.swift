@@ -12,6 +12,39 @@ final class AppModelTests: XCTestCase {
         return percentUsed
     }
 
+    func testBoundedFileReaderConsumesToEOFAndStopsOneBytePastTheLimit() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("bounded-read.bin")
+        let source = Data(repeating: 0xa5, count: 150_000)
+        try source.write(to: url, options: .atomic)
+
+        let completeHandle = try FileHandle(forReadingFrom: url)
+        defer { try? completeHandle.close() }
+        XCTAssertEqual(
+            try BoundedFileReader.read(
+                from: completeHandle,
+                maximumByteCount: source.count
+            ),
+            source
+        )
+
+        let limitedHandle = try FileHandle(forReadingFrom: url)
+        defer { try? limitedHandle.close() }
+        XCTAssertEqual(
+            try BoundedFileReader.read(
+                from: limitedHandle,
+                maximumByteCount: 100_000
+            ).count,
+            100_001
+        )
+    }
+
     func testSharedCurrencyCatalogIsSearchableAndOnlyReturnsValidatedCodes() throws {
         let english = Locale(identifier: "en_US")
         let custom = try CurrencyCode("USDT")
@@ -61,6 +94,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(decimalAmount(from: "1e6", locale: french))
         XCTAssertNil(decimalAmount(from: "1 000,50", locale: french))
         XCTAssertNil(decimalAmount(from: "１２,５０", locale: french))
+        XCTAssertNil(decimalAmount(from: String(repeating: "1", count: 129)))
         XCTAssertEqual(
             decimalAmount(from: "+12.50", locale: french),
             Decimal(string: "12.50")
@@ -73,6 +107,41 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(
             decimalAmount(from: text, locale: Locale(identifier: "en_US_POSIX")),
             Decimal(string: text, locale: Locale(identifier: "en_US_POSIX"))
+        )
+    }
+
+    func testLockedCaptureRejectsUnboundedOrInvalidEnvelopeFields() {
+        XCTAssertTrue(
+            LockedCapture(kind: .expense, amountText: "12.50").isStructurallyValid
+        )
+        XCTAssertFalse(
+            LockedCapture(kind: .expense, amountText: "   ").isStructurallyValid
+        )
+        XCTAssertFalse(
+            LockedCapture(
+                kind: .expense,
+                amountText: String(
+                    repeating: "1",
+                    count: LockedCapture.maximumAmountByteCount + 1
+                )
+            ).isStructurallyValid
+        )
+        XCTAssertFalse(
+            LockedCapture(
+                kind: .expense,
+                amountText: "1",
+                note: String(
+                    repeating: "x",
+                    count: LockedCapture.maximumNoteByteCount + 1
+                )
+            ).isStructurallyValid
+        )
+        XCTAssertFalse(
+            LockedCapture(
+                kind: .expense,
+                amountText: "1",
+                occurredAt: Date(timeIntervalSinceReferenceDate: .infinity)
+            ).isStructurallyValid
         )
     }
 
@@ -119,7 +188,8 @@ final class AppModelTests: XCTestCase {
                 currency: sgd,
                 residual: 123
             ),
-            BudgetTreeError.missingParent(nodeID: postingID, parentID: postingID)
+            BudgetTreeError.missingParent(nodeID: postingID, parentID: postingID),
+            SavingsGoalError.currencyMismatch(expected: sgd, actual: try CurrencyCode("USD"))
         ]
 
         for error in rawErrors {
@@ -132,6 +202,42 @@ final class AppModelTests: XCTestCase {
             XCTAssertFalse(description.contains("MoneyUpCore."))
             XCTAssertFalse(description.contains("MoneyUpPersistence."))
         }
+    }
+
+    func testEverySavingsGoalFailureUsesSafeLocalizedLanguage() throws {
+        let sgd = try CurrencyCode("SGD")
+        let usd = try CurrencyCode("USD")
+        let errors: [SavingsGoalError] = [
+            .emptyName,
+            .nonPositiveTarget,
+            .targetBeforeCreation,
+            .nonPositiveMovement,
+            .currencyMismatch(expected: sgd, actual: usd),
+            .movementBeforeCreation,
+            .withdrawalExceedsBalance,
+            .resetBeforeCreation,
+            .duplicateMovementID,
+            .duplicateResetID,
+            .invalidOriginContext,
+            .invalidDate,
+            .unsupportedPrecision(sgd),
+            .calculationFailed
+        ]
+
+        for error in errors {
+            let message = safeUserMessage(for: error, context: .save)
+            XCTAssertFalse(message.isEmpty)
+            XCTAssertFalse(message.contains("SavingsGoalError"))
+            XCTAssertFalse(message.contains("MoneyUpCore."))
+            XCTAssertFalse(message.contains("expected:"))
+        }
+        XCTAssertEqual(
+            safeUserMessage(
+                for: SavingsGoalError.withdrawalExceedsBalance,
+                context: .save
+            ),
+            SavingsGoalError.withdrawalExceedsBalance.localizedDescription
+        )
     }
 
     func testSafePresentationBoundaryRedactsUnknownFileAndSystemPayloads() {
@@ -398,6 +504,69 @@ final class AppModelTests: XCTestCase {
         }
         XCTAssertEqual(model.profile?.autoLockDelay, 300)
         await fixture.store.close()
+    }
+
+    @MainActor
+    func testAutoLockUsesExactBoundaryAndTreatsClockRollbackAsUnsafe() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let profile = UserProfile(baseCurrency: fixture.sgd, autoLockDelay: 60)
+        let model = fixture.model(profile: profile)
+        let backgroundedAt = Date(timeIntervalSinceReferenceDate: 10_000)
+
+        model.sceneDidEnterBackground(at: backgroundedAt)
+        model.sceneDidBecomeActive(
+            at: backgroundedAt.addingTimeInterval(59.999)
+        )
+        XCTAssertEqual(model.state, .ready)
+
+        let laterBackground = backgroundedAt.addingTimeInterval(120)
+        model.sceneDidEnterBackground(at: laterBackground)
+        model.sceneDidBecomeActive(at: laterBackground.addingTimeInterval(60))
+
+        XCTAssertEqual(model.state, .locked)
+        await model.waitForPendingStoreClose()
+
+        let rollbackFixture = try AppModelFixture()
+        defer { rollbackFixture.removeFiles() }
+        let rollbackModel = rollbackFixture.model(profile: UserProfile(
+            baseCurrency: rollbackFixture.sgd,
+            autoLockDelay: 60
+        ))
+        rollbackModel.sceneDidEnterBackground(at: laterBackground)
+        rollbackModel.sceneDidBecomeActive(
+            at: laterBackground.addingTimeInterval(-1)
+        )
+
+        XCTAssertEqual(rollbackModel.state, .locked)
+        await rollbackModel.waitForPendingStoreClose()
+    }
+
+    @MainActor
+    func testZeroDelayAndInvalidLifecycleClockLockImmediately() async throws {
+        let immediateFixture = try AppModelFixture()
+        defer { immediateFixture.removeFiles() }
+        let immediateProfile = UserProfile(
+            baseCurrency: immediateFixture.sgd,
+            autoLockDelay: 0
+        )
+        let immediateModel = immediateFixture.model(profile: immediateProfile)
+
+        immediateModel.sceneDidEnterBackground()
+
+        XCTAssertEqual(immediateModel.state, .locked)
+        await immediateModel.waitForPendingStoreClose()
+
+        let invalidClockFixture = try AppModelFixture()
+        defer { invalidClockFixture.removeFiles() }
+        let invalidClockModel = invalidClockFixture.model()
+
+        invalidClockModel.sceneDidEnterBackground(
+            at: Date(timeIntervalSinceReferenceDate: .infinity)
+        )
+
+        XCTAssertEqual(invalidClockModel.state, .locked)
+        await invalidClockModel.waitForPendingStoreClose()
     }
 
     @MainActor
@@ -960,6 +1129,224 @@ final class AppModelTests: XCTestCase {
         ) { error in
             XCTAssertTrue(error is AppModelError)
         }
+    }
+
+    func testRestoreRevisionIdentityRequiresAnExactSupportedSuffix() throws {
+        let sgd = try CurrencyCode("SGD")
+        let entry = try TransactionFactory.expense(
+            amount: Money(1, currency: sgd),
+            paidFrom: UUID(),
+            category: UUID()
+        )
+        let ordinaryRevisionID = "\(entry.id.uuidString)-\(UUID().uuidString)"
+        let lifecycleRevisionID = "\(entry.id.uuidString)-lifecycle-\(UUID().uuidString)"
+
+        for recordID in [ordinaryRevisionID, lifecycleRevisionID] {
+            let candidate = DatabaseSnapshot(
+                schemaVersion: EncryptedRecordStore.currentSchemaVersion,
+                records: [
+                    try storedRecord(
+                        entry,
+                        id: recordID,
+                        in: .journalEntryRevisions
+                    )
+                ]
+            )
+            XCTAssertNoThrow(
+                try RestoreCandidateValidator.validateSnapshotIdentities(candidate)
+            )
+        }
+
+        for recordID in [
+            "\(entry.id.uuidString)-not-a-uuid",
+            "\(entry.id.uuidString)-lifecycle-not-a-uuid",
+            "\(entry.id.uuidString)-\(UUID().uuidString)-trailing"
+        ] {
+            let candidate = DatabaseSnapshot(
+                schemaVersion: EncryptedRecordStore.currentSchemaVersion,
+                records: [
+                    try storedRecord(
+                        entry,
+                        id: recordID,
+                        in: .journalEntryRevisions
+                    )
+                ]
+            )
+            XCTAssertThrowsError(
+                try RestoreCandidateValidator.validateSnapshotIdentities(candidate)
+            ) { error in
+                XCTAssertTrue(error is AppModelError)
+            }
+        }
+    }
+
+    func testRestoreRelationshipValidationUsesTheDraftTransactionKindForSplits() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let profile = UserProfile(baseCurrency: fixture.sgd)
+        let salary = LedgerAccount(name: "Salary", kind: .income)
+        let splitID = UUID()
+        let validIncomeDraft = QuickLogDraft(
+            kind: .income,
+            amountText: "100",
+            destinationAmountText: "",
+            accountID: fixture.wallet.id,
+            destinationAccountID: nil,
+            categoryID: salary.id,
+            occurredAt: Date(timeIntervalSinceReferenceDate: 500),
+            dateWasEdited: false,
+            payee: "Employer",
+            note: "",
+            smartText: "",
+            splitLines: [
+                QuickLogSplitDraftLine(
+                    id: splitID,
+                    categoryID: salary.id,
+                    amountText: "50"
+                ),
+                QuickLogSplitDraftLine(
+                    categoryID: salary.id,
+                    amountText: "50"
+                )
+            ]
+        )
+
+        try await RestoreCandidateValidator.validateRelationships(
+            profile: profile,
+            accounts: [fixture.wallet, salary],
+            budgetNodes: [],
+            scheduledTransactions: [],
+            investmentHoldings: [],
+            netWorthSnapshots: [],
+            quickLogDraft: validIncomeDraft,
+            in: fixture.store
+        )
+
+        var mismatchedKind = validIncomeDraft
+        mismatchedKind.splitLines[0].categoryID = fixture.food.id
+        do {
+            try await RestoreCandidateValidator.validateRelationships(
+                profile: profile,
+                accounts: [fixture.wallet, fixture.food, salary],
+                budgetNodes: [],
+                scheduledTransactions: [],
+                investmentHoldings: [],
+                netWorthSnapshots: [],
+                quickLogDraft: mismatchedKind,
+                in: fixture.store
+            )
+            XCTFail("Expected a mismatched income split category to be rejected")
+        } catch {
+            XCTAssertTrue(error is AppModelError)
+        }
+
+        var duplicateLineIDs = validIncomeDraft
+        duplicateLineIDs.splitLines[1].id = splitID
+        do {
+            try await RestoreCandidateValidator.validateRelationships(
+                profile: profile,
+                accounts: [fixture.wallet, salary],
+                budgetNodes: [],
+                scheduledTransactions: [],
+                investmentHoldings: [],
+                netWorthSnapshots: [],
+                quickLogDraft: duplicateLineIDs,
+                in: fixture.store
+            )
+            XCTFail("Expected duplicate draft split identities to be rejected")
+        } catch {
+            XCTAssertTrue(error is AppModelError)
+        }
+        await fixture.store.close()
+    }
+
+    func testRestoreRejectsDuplicateUnorderedExchangeRatePairOnSameDay() throws {
+        let sgd = try CurrencyCode("SGD")
+        let usd = try CurrencyCode("USD")
+        let utc = TimeZone(secondsFromGMT: 0)!
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = utc
+        let effectiveAt = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026,
+            month: 8,
+            day: 26
+        )))
+        let direct = try DatedExchangeRate(
+            baseCurrency: sgd,
+            quoteCurrency: usd,
+            rate: Decimal(string: "0.78")!,
+            effectiveAt: effectiveAt,
+            calendar: calendar,
+            timeZone: utc
+        )
+        let inverse = try DatedExchangeRate(
+            baseCurrency: usd,
+            quoteCurrency: sgd,
+            rate: Decimal(string: "1.28")!,
+            effectiveAt: effectiveAt.addingTimeInterval(3_600),
+            calendar: calendar,
+            timeZone: utc
+        )
+        let candidate = DatabaseSnapshot(
+            schemaVersion: EncryptedRecordStore.currentSchemaVersion,
+            records: [
+                try storedRecord(
+                    direct,
+                    id: direct.id.uuidString,
+                    in: .exchangeRates
+                ),
+                try storedRecord(
+                    inverse,
+                    id: inverse.id.uuidString,
+                    in: .exchangeRates
+                )
+            ]
+        )
+
+        XCTAssertThrowsError(
+            try RestoreCandidateValidator.validateSnapshotIdentities(candidate)
+        ) { error in
+            XCTAssertTrue(error is AppModelError)
+        }
+    }
+
+    func testRestoreAllowsSameExchangeRatePairOnDifferentDays() throws {
+        let sgd = try CurrencyCode("SGD")
+        let usd = try CurrencyCode("USD")
+        let utc = TimeZone(secondsFromGMT: 0)!
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = utc
+        let firstDay = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026,
+            month: 8,
+            day: 26
+        )))
+        let rates = try [0, 1].map { dayOffset in
+            try DatedExchangeRate(
+                baseCurrency: sgd,
+                quoteCurrency: usd,
+                rate: Decimal(string: "0.78")!,
+                effectiveAt: firstDay.addingTimeInterval(
+                    TimeInterval(dayOffset * 86_400)
+                ),
+                calendar: calendar,
+                timeZone: utc
+            )
+        }
+        let candidate = DatabaseSnapshot(
+            schemaVersion: EncryptedRecordStore.currentSchemaVersion,
+            records: try rates.map {
+                try storedRecord(
+                    $0,
+                    id: $0.id.uuidString,
+                    in: .exchangeRates
+                )
+            }
+        )
+
+        XCTAssertNoThrow(
+            try RestoreCandidateValidator.validateSnapshotIdentities(candidate)
+        )
     }
 
     @MainActor
@@ -3484,6 +3871,116 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(
             model.entries.first?.postings.contains {
                 $0.accountID == fixture.food.id && $0.money.amount == 6
+            } == true
+        )
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testSkippedImportRowCannotLeakItsProposedCategoryIntoLaterCommit() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let salary = LedgerAccount(name: "Salary", kind: .income)
+        let profile = UserProfile(baseCurrency: fixture.sgd)
+        try await fixture.seed(
+            profile: profile,
+            accounts: [fixture.wallet, fixture.food, salary]
+        )
+        let model = fixture.model(
+            profile: profile,
+            accounts: [fixture.wallet, fixture.food, salary]
+        )
+        let occurredAt = try XCTUnwrap(
+            ISO8601DateFormatter().date(from: "2026-08-26T12:00:00Z")
+        )
+        let wrongDay = try TransactionOriginContext(
+            calendarIdentifier: "gregorian",
+            timeZoneIdentifier: "UTC",
+            utcOffsetSeconds: 0,
+            dayKey: 20260827
+        )
+        let rejected = ImportedTransaction(
+            id: "rejected-with-new-category",
+            sourceLine: 2,
+            kind: .expense,
+            occurredAt: occurredAt,
+            originContext: wrongDay,
+            amount: 2,
+            categoryName: "Must not be created"
+        )
+        let accepted = ImportedTransaction(
+            id: "accepted-fallback",
+            sourceLine: 3,
+            kind: .expense,
+            occurredAt: occurredAt,
+            amount: 3
+        )
+
+        let result = try await model.importTransactions(
+            [rejected, accepted],
+            fallbackAccountID: fixture.wallet.id,
+            fallbackExpenseCategoryID: fixture.food.id,
+            fallbackIncomeCategoryID: salary.id
+        )
+
+        XCTAssertEqual(result.imported, 1)
+        XCTAssertEqual(result.skipped, 1)
+        XCTAssertEqual(result.categoriesCreated, 0)
+        XCTAssertFalse(model.accounts.contains { $0.name == "Must not be created" })
+        let persistedAccountCount = try await fixture.store.count(in: .accounts)
+        XCTAssertEqual(persistedAccountCount, 3)
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testImportNeverPostsToArchivedCategoryWithMatchingName() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let salary = LedgerAccount(name: "Salary", kind: .income)
+        let archived = LedgerAccount(
+            name: "Legacy dining",
+            kind: .expense,
+            isArchived: true
+        )
+        let accounts = [
+            fixture.wallet,
+            fixture.food,
+            salary,
+            archived
+        ]
+        let model = fixture.model(accounts: accounts)
+        let row = ImportedTransaction(
+            id: "archived-category-name",
+            sourceLine: 2,
+            kind: .expense,
+            occurredAt: Date(timeIntervalSinceReferenceDate: 1_000),
+            amount: 12,
+            categoryName: archived.name
+        )
+
+        let result = try await model.importTransactions(
+            [row],
+            fallbackAccountID: fixture.wallet.id,
+            fallbackExpenseCategoryID: fixture.food.id,
+            fallbackIncomeCategoryID: salary.id
+        )
+
+        XCTAssertEqual(result.imported, 1)
+        XCTAssertEqual(result.categoriesCreated, 1)
+        let activeReplacement = try XCTUnwrap(model.accounts.first {
+            $0.kind == .expense
+                && !$0.isArchived
+                && $0.name == archived.name
+        })
+        XCTAssertNotEqual(activeReplacement.id, archived.id)
+        XCTAssertTrue(
+            model.entries.first?.postings.contains {
+                $0.accountID == activeReplacement.id && $0.money.amount == 12
+            } == true
+        )
+        XCTAssertFalse(
+            model.entries.first?.postings.contains {
+                $0.accountID == archived.id
             } == true
         )
         await fixture.store.close()

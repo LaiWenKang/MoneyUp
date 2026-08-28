@@ -86,7 +86,7 @@ The beta includes:
 - an App Store privacy manifest, an in-app bilingual privacy and beta guide,
   backup exclusion for non-restorable ciphertext, and confirmations before
   permanent transaction, schedule, or holding deletion;
-- SQLCipher schema-3 normalized journal indexes, compact exact balance rows,
+- SQLCipher schema-4 normalized journal indexes, compact exact balance rows,
   a bounded recent-activity cache, and on-demand History/Calendar/export reads
   so normal unlock does not retain the full journal;
 - source-configured Swift domain and app-model suites plus an unsigned iOS

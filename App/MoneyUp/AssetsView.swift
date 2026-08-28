@@ -638,6 +638,7 @@ private struct AddAccountSheet: View {
                     Button("action.save") { Task { await save() } }
                         .disabled(isSaving)
                 }
+                MoneyUpKeyboardDoneToolbar()
             }
             .onAppear {
                 currencyCode = model.profile?.baseCurrency.value ?? "SGD"
@@ -823,6 +824,7 @@ private struct AccountManagementSheet: View {
                     Button("action.save") { Task { await save() } }
                         .disabled(isSaving)
                 }
+                MoneyUpKeyboardDoneToolbar()
             }
             .onAppear {
                 guard balanceText.isEmpty else { return }
@@ -1038,6 +1040,7 @@ private struct AddHoldingSheet: View {
                     Button("action.save") { Task { await save() } }
                         .disabled(!canSave || isSaving)
                 }
+                MoneyUpKeyboardDoneToolbar()
             }
             .onAppear {
                 accountID = accounts.first?.id
@@ -1260,6 +1263,7 @@ private struct HoldingManagementSheet: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("action.done") { dismiss() }
                 }
+                MoneyUpKeyboardDoneToolbar()
             }
             .onAppear {
                 if let price = holding?.price { priceText = editableAmount(price.amount) }

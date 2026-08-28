@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 public enum ImportedTransactionKind: String, Sendable {
@@ -121,6 +122,7 @@ public enum TransactionCSVImportError: Error, Equatable, Sendable {
     case emptyFile
     case missingRequiredColumns
     case malformedCSV
+    case tooManyRows
     case postingLevelExportRequiresArchive
 }
 
@@ -128,6 +130,11 @@ public enum TransactionCSVImportError: Error, Equatable, Sendable {
 /// headers. The aliases include MoneyUp, generic, and Qianji-style labels; an
 /// unknown row is reported for preview rather than guessed into the ledger.
 public enum TransactionCSVImporter {
+    private struct DelimitedRecord {
+        let fields: [String]
+        let sourceLine: Int
+    }
+
     private enum Field: Hashable {
         case id, date, kind, amount, destinationAmount, currency
         case account, destinationAccount, category, payee, note, outflow, inflow
@@ -148,6 +155,9 @@ public enum TransactionCSVImporter {
         .outflow: ["outflow", "支出金额"],
         .inflow: ["inflow", "收入金额"]
     ]
+    private static let isoCurrencyCodes = Set(
+        Locale.Currency.isoCurrencies.map(\.identifier)
+    )
 
     public static func parse(
         _ text: String,
@@ -155,7 +165,7 @@ public enum TransactionCSVImporter {
         timeZone: TimeZone = .current
     ) throws -> CSVImportPreview {
         let records = try parseRecords(text)
-        guard let headers = records.first, !headers.isEmpty else {
+        guard let headers = records.first?.fields, !headers.isEmpty else {
             throw TransactionCSVImportError.emptyFile
         }
         let indexes = fieldIndexes(headers)
@@ -169,13 +179,13 @@ public enum TransactionCSVImporter {
 
     public static func inspect(_ text: String) throws -> DelimitedImportInspection {
         let records = try parseRecords(text)
-        guard let headers = records.first, !headers.isEmpty else {
+        guard let headers = records.first?.fields, !headers.isEmpty else {
             throw TransactionCSVImportError.emptyFile
         }
         let indexes = fieldIndexes(headers)
         return DelimitedImportInspection(
             headers: headers,
-            sampleRows: Array(records.dropFirst().prefix(5)),
+            sampleRows: records.dropFirst().prefix(5).map(\.fields),
             suggestedMapping: publicMapping(indexes)
         )
     }
@@ -187,7 +197,7 @@ public enum TransactionCSVImporter {
         timeZone: TimeZone = .current
     ) throws -> CSVImportPreview {
         let records = try parseRecords(text)
-        guard records.first?.isEmpty == false else {
+        guard records.first?.fields.isEmpty == false else {
             throw TransactionCSVImportError.emptyFile
         }
         return try preview(
@@ -199,12 +209,12 @@ public enum TransactionCSVImporter {
     }
 
     private static func preview(
-        records: [[String]],
+        records: [DelimitedRecord],
         indexes: [Field: Int],
         locale: Locale,
         timeZone: TimeZone
     ) throws -> CSVImportPreview {
-        guard let headers = records.first else {
+        guard let headers = records.first?.fields else {
             throw TransactionCSVImportError.emptyFile
         }
         let normalizedHeaders = Set(headers.map(normalizedHeader))
@@ -219,8 +229,9 @@ public enum TransactionCSVImporter {
 
         var rows: [ImportedTransaction] = []
         var issues: [CSVImportIssue] = []
-        for (offset, columns) in records.dropFirst().enumerated() {
-            let line = offset + 2
+        for record in records.dropFirst() {
+            let columns = record.fields
+            let line = record.sourceLine
             if columns.allSatisfy({ normalizedValue($0).isEmpty }) { continue }
             do {
                 rows.append(
@@ -315,31 +326,68 @@ public enum TransactionCSVImporter {
             throw RowError.invalidDate
         }
 
-        let explicitKind = value(.kind).flatMap(importKind)
-        let outflow = value(.outflow).flatMap { parsedAmount($0, locale: locale) }
-        let inflow = value(.inflow).flatMap { parsedAmount($0, locale: locale) }
+        let kindText = value(.kind)
+        let explicitKind = kindText.flatMap(importKind)
+        if kindText != nil, explicitKind == nil {
+            throw RowError.unsupportedType
+        }
+
+        func amount(_ field: Field) throws -> Decimal? {
+            guard let text = value(field) else { return nil }
+            guard let parsed = parsedAmount(text, locale: locale) else {
+                throw RowError.invalidAmount
+            }
+            return parsed
+        }
+
+        let explicitAmount = try amount(.amount)
+        let outflow = try amount(.outflow)
+        let inflow = try amount(.inflow)
+        let nonzeroOutflow = outflow.map { abs($0) }
+            .flatMap { $0 == .zero ? nil : $0 }
+        let nonzeroInflow = inflow.map { abs($0) }
+            .flatMap { $0 == .zero ? nil : $0 }
+        guard nonzeroOutflow == nil || nonzeroInflow == nil else {
+            // A row cannot honestly be inferred as both money-in and
+            // money-out. Make the user fix its mapping instead of silently
+            // preferring one column.
+            throw RowError.invalidAmount
+        }
+
         let kind: ImportedTransactionKind
         let amount: Decimal
         if let explicitKind {
             kind = explicitKind
-            guard let parsed = value(.amount).flatMap({ parsedAmount($0, locale: locale) }),
+            let matchingFlow: Decimal?
+            switch explicitKind {
+            case .expense:
+                guard nonzeroInflow == nil else { throw RowError.invalidAmount }
+                matchingFlow = nonzeroOutflow
+            case .income, .refund:
+                guard nonzeroOutflow == nil else { throw RowError.invalidAmount }
+                matchingFlow = nonzeroInflow
+            case .transfer:
+                matchingFlow = nonzeroOutflow ?? nonzeroInflow
+            }
+            let normalizedExplicit = explicitAmount.map { abs($0) }
+            if let normalizedExplicit, let matchingFlow,
+               normalizedExplicit != matchingFlow {
+                throw RowError.invalidAmount
+            }
+            guard let parsed = normalizedExplicit ?? matchingFlow,
                   parsed != .zero else { throw RowError.invalidAmount }
-            amount = abs(parsed)
-        } else if let outflow, outflow != .zero {
+            amount = parsed
+        } else if let nonzeroOutflow {
             kind = .expense
-            amount = abs(outflow)
-        } else if let inflow, inflow != .zero {
+            amount = nonzeroOutflow
+        } else if let nonzeroInflow {
             kind = .income
-            amount = abs(inflow)
-        } else if value(.kind) != nil {
-            throw RowError.unsupportedType
+            amount = nonzeroInflow
         } else {
             throw RowError.invalidAmount
         }
 
-        let destinationAmount = value(.destinationAmount)
-            .flatMap { parsedAmount($0, locale: locale) }
-            .map { abs($0) }
+        let destinationAmount = try amount(.destinationAmount).map { abs($0) }
         let sourceID = value(.id)
         let identity = fingerprint([
             sourceID ?? "",
@@ -386,38 +434,96 @@ public enum TransactionCSVImporter {
     }
 
     private static func parsedAmount(_ value: String, locale: Locale) -> Decimal? {
+        guard value.utf8.count <= 128 else { return nil }
         var text = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        text = text.replacingOccurrences(
-            of: "[^0-9+,.\\-]",
-            with: "",
-            options: .regularExpression
-        )
         guard !text.isEmpty else { return nil }
+
+        var isParenthesizedNegative = false
+        if text.first == "(" || text.last == ")" {
+            guard text.first == "(", text.last == ")" else { return nil }
+            isParenthesizedNegative = true
+            text = String(text.dropFirst().dropLast())
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        var sign: Decimal = 1
+        var hasLeadingSign = false
         if text.first == "+" || text.first == "-" {
+            guard !isParenthesizedNegative else { return nil }
+            hasLeadingSign = true
+            if text.first == "-" { sign = -1 }
             text.removeFirst()
+            text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         }
         guard !text.isEmpty else { return nil }
 
-        if let local = TextScanner.decimal(from: text, locale: locale) {
-            return local
+        guard let firstDigit = text.firstIndex(where: \.isNumber),
+              let lastDigit = text.lastIndex(where: \.isNumber) else {
+            return nil
+        }
+        var prefix = String(text[..<firstDigit])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let numericEnd = text.index(after: lastDigit)
+        let suffix = String(text[numericEnd...])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        var number = String(text[firstDigit..<numericEnd])
+
+        // Some exports put the sign between a currency symbol and the number
+        // (for example `$-12.50`). It is still accepted only when every other
+        // character is a recognized currency decoration.
+        if prefix.last == "+" || prefix.last == "-" {
+            guard !hasLeadingSign, !isParenthesizedNegative else { return nil }
+            if prefix.last == "-" { sign = -1 }
+            prefix.removeLast()
+            prefix = prefix.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        guard prefix.isEmpty || suffix.isEmpty,
+              isCurrencyDecoration(prefix),
+              isCurrencyDecoration(suffix) else {
+            return nil
         }
 
-        // Imports often come from a device with a different locale. Only use
-        // the alternate separator when the token contains one separator kind;
-        // mixed separators remain locale-dependent and are rejected if invalid.
-        let decimalSeparator = locale.decimalSeparator ?? "."
-        let alternate = decimalSeparator == "." ? "," : "."
-        guard text.contains(alternate), !text.contains(decimalSeparator) else { return nil }
-        let parts = text.components(separatedBy: alternate)
-        guard parts.count == 2,
-              !parts[0].isEmpty,
-              !parts[1].isEmpty,
-              parts[0].allSatisfy(\.isNumber),
-              parts[1].allSatisfy(\.isNumber) else { return nil }
-        return Decimal(
-            string: parts[0] + "." + parts[1],
-            locale: Locale(identifier: "en_US_POSIX")
-        )
+        let parsed: Decimal?
+        if let local = TextScanner.decimal(from: number, locale: locale) {
+            parsed = local
+        } else {
+            // Imports often come from a device with a different locale. Only
+            // use the alternate separator when the token contains one
+            // separator kind; mixed separators remain locale-dependent.
+            let decimalSeparator = locale.decimalSeparator ?? "."
+            let alternate = decimalSeparator == "." ? "," : "."
+            guard number.contains(alternate),
+                  !number.contains(decimalSeparator) else { return nil }
+            let parts = number.components(separatedBy: alternate)
+            guard parts.count == 2,
+                  !parts[0].isEmpty,
+                  !parts[1].isEmpty,
+                  parts[0].allSatisfy(\.isNumber),
+                  parts[1].allSatisfy(\.isNumber) else { return nil }
+            number = parts[0] + "." + parts[1]
+            parsed = Decimal(
+                string: number,
+                locale: Locale(identifier: "en_US_POSIX")
+            )
+        }
+        guard let parsed else { return nil }
+        let effectiveSign: Decimal = isParenthesizedNegative ? -1 : sign
+        return parsed * effectiveSign
+    }
+
+    private static func isCurrencyDecoration(_ value: String) -> Bool {
+        guard !value.isEmpty else { return true }
+        let uppercased = value.uppercased()
+        if isoCurrencyCodes.contains(uppercased) {
+            return true
+        }
+        let commonSymbols: Set<String> = [
+            "RM", "RMB", "US$", "S$", "HK$", "A$", "C$", "NZ$", "CN¥", "JP¥"
+        ]
+        if commonSymbols.contains(uppercased) { return true }
+        return value.unicodeScalars.allSatisfy {
+            $0.properties.generalCategory == .currencySymbol
+        }
     }
 
     private static func parsedDate(
@@ -428,13 +534,28 @@ public enum TransactionCSVImporter {
         let iso = ISO8601DateFormatter()
         iso.timeZone = timeZone
         if let date = iso.date(from: value) { return date }
-        let formats = [
+        let fixedFormats = [
             "yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd HH:mm", "yyyy-MM-dd",
             "yyyy/MM/dd HH:mm:ss", "yyyy/MM/dd HH:mm", "yyyy/MM/dd",
-            "yyyy.MM.dd HH:mm:ss", "yyyy.MM.dd HH:mm", "yyyy.MM.dd",
-            "dd/MM/yyyy HH:mm:ss", "dd/MM/yyyy HH:mm", "dd/MM/yyyy",
-            "MM/dd/yyyy HH:mm:ss", "MM/dd/yyyy HH:mm", "MM/dd/yyyy"
+            "yyyy.MM.dd HH:mm:ss", "yyyy.MM.dd HH:mm", "yyyy.MM.dd"
         ]
+        let dayFirstFormats = ["/", "-", "."].flatMap { separator in
+            [
+                "dd\(separator)MM\(separator)yyyy HH:mm:ss",
+                "dd\(separator)MM\(separator)yyyy HH:mm",
+                "dd\(separator)MM\(separator)yyyy"
+            ]
+        }
+        let monthFirstFormats = ["/", "-", "."].flatMap { separator in
+            [
+                "MM\(separator)dd\(separator)yyyy HH:mm:ss",
+                "MM\(separator)dd\(separator)yyyy HH:mm",
+                "MM\(separator)dd\(separator)yyyy"
+            ]
+        }
+        let formats = fixedFormats + (prefersDayFirst(locale)
+            ? dayFirstFormats + monthFirstFormats
+            : monthFirstFormats + dayFirstFormats)
         let formatter = DateFormatter()
         formatter.locale = locale
         formatter.timeZone = timeZone
@@ -444,6 +565,19 @@ public enum TransactionCSVImporter {
             if let date = formatter.date(from: value) { return date }
         }
         return nil
+    }
+
+    private static func prefersDayFirst(_ locale: Locale) -> Bool {
+        guard let format = DateFormatter.dateFormat(
+            fromTemplate: "yMd",
+            options: 0,
+            locale: locale
+        ),
+        let day = format.firstIndex(of: "d"),
+        let month = format.firstIndex(of: "M") else {
+            return false
+        }
+        return day < month
     }
 
     private static func originTimeZone(from value: String) -> TimeZone? {
@@ -493,29 +627,43 @@ public enum TransactionCSVImporter {
     }
 
     private static func fingerprint(_ values: [String]) -> String {
-        let bytes = values.joined(separator: "\u{1f}").lowercased().utf8
-        var hash: UInt64 = 14_695_981_039_346_656_037
-        for byte in bytes {
-            hash ^= UInt64(byte)
-            hash &*= 1_099_511_628_211
-        }
-        return "fnv1a64:\(String(hash, radix: 16))"
+        let data = Data(
+            values.joined(separator: "\u{1f}").lowercased().utf8
+        )
+        let digest = SHA256.hash(data: data)
+        return "sha256:" + digest.map { String(format: "%02x", $0) }.joined()
     }
 
-    private static func parseRecords(_ text: String) throws -> [[String]] {
+    private static func parseRecords(_ text: String) throws -> [DelimitedRecord] {
         guard !text.isEmpty else { throw TransactionCSVImportError.emptyFile }
-        let firstLine = text.prefix { $0 != "\n" && $0 != "\r" }
         let delimiter: Character
         let candidates: [Character] = [",", "\t", ";"]
         delimiter = candidates.max { left, right in
-            firstLine.filter { $0 == left }.count < firstLine.filter { $0 == right }.count
+            delimiterCount(left, inFirstRecordOf: text)
+                < delimiterCount(right, inFirstRecordOf: text)
         } ?? ","
 
-        var records: [[String]] = []
+        var records: [DelimitedRecord] = []
         var record: [String] = []
         var field = ""
         var inQuotes = false
+        var closedQuotedField = false
         var index = text.startIndex
+        var physicalLine = 1
+        var recordStartLine = 1
+
+        func appendCurrentRecord() throws {
+            // The AppModel enforces the same aggregate write budget. Enforce
+            // it while parsing too, before an oversized preview can allocate
+            // an unbounded array of row models.
+            guard records.count < MonetaryInputPolicy.aggregateRecordBudget + 1 else {
+                throw TransactionCSVImportError.tooManyRows
+            }
+            records.append(DelimitedRecord(
+                fields: record,
+                sourceLine: recordStartLine
+            ))
+        }
 
         while index < text.endIndex {
             let character = text[index]
@@ -528,10 +676,39 @@ public enum TransactionCSVImporter {
                         continue
                     }
                     inQuotes = false
+                    closedQuotedField = true
                 } else {
                     field.append(character)
+                    if character == "\n"
+                        || (character == "\r"
+                            && (next == text.endIndex || text[next] != "\n")) {
+                        physicalLine += 1
+                    }
                 }
-            } else if character == "\"" && field.isEmpty {
+            } else if closedQuotedField {
+                if character == delimiter {
+                    record.append(field)
+                    field = ""
+                    closedQuotedField = false
+                } else if character == "\n" || character == "\r" {
+                    record.append(field)
+                    field = ""
+                    try appendCurrentRecord()
+                    record = []
+                    closedQuotedField = false
+                    physicalLine += 1
+                    recordStartLine = physicalLine
+                    if character == "\r", next < text.endIndex, text[next] == "\n" {
+                        index = text.index(after: next)
+                        continue
+                    }
+                } else {
+                    throw TransactionCSVImportError.malformedCSV
+                }
+            } else if character == "\"" {
+                guard field.isEmpty else {
+                    throw TransactionCSVImportError.malformedCSV
+                }
                 inQuotes = true
             } else if character == delimiter {
                 record.append(field)
@@ -539,8 +716,10 @@ public enum TransactionCSVImporter {
             } else if character == "\n" || character == "\r" {
                 record.append(field)
                 field = ""
-                records.append(record)
+                try appendCurrentRecord()
                 record = []
+                physicalLine += 1
+                recordStartLine = physicalLine
                 if character == "\r", next < text.endIndex, text[next] == "\n" {
                     index = text.index(after: next)
                     continue
@@ -551,10 +730,36 @@ public enum TransactionCSVImporter {
             index = next
         }
         guard !inQuotes else { throw TransactionCSVImportError.malformedCSV }
-        if !field.isEmpty || !record.isEmpty {
+        if !field.isEmpty || !record.isEmpty || closedQuotedField {
             record.append(field)
-            records.append(record)
+            try appendCurrentRecord()
         }
         return records
+    }
+
+    private static func delimiterCount(
+        _ delimiter: Character,
+        inFirstRecordOf text: String
+    ) -> Int {
+        var count = 0
+        var inQuotes = false
+        var index = text.startIndex
+        while index < text.endIndex {
+            let character = text[index]
+            let next = text.index(after: index)
+            if character == "\"" {
+                if inQuotes, next < text.endIndex, text[next] == "\"" {
+                    index = text.index(after: next)
+                    continue
+                }
+                inQuotes.toggle()
+            } else if !inQuotes, character == delimiter {
+                count += 1
+            } else if !inQuotes, character == "\n" || character == "\r" {
+                break
+            }
+            index = next
+        }
+        return count
     }
 }

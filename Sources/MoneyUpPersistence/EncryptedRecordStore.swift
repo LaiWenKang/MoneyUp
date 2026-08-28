@@ -279,7 +279,7 @@ public actor EncryptedRecordStore {
         // restored on another device. Excluding the ciphertext directory from
         // system backups prevents an unusable database from being restored
         // without its key. Portable recovery is provided separately by an
-        // authenticated MoneyUp archive once that feature ships.
+        // authenticated MoneyUp archive created explicitly by the user.
         var protectedDirectory = directory
         var resourceValues = URLResourceValues()
         resourceValues.isExcludedFromBackup = true

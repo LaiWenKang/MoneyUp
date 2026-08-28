@@ -62,6 +62,64 @@ final class InvestmentPortfolioTests: XCTestCase {
         XCTAssertTrue(stale.isPriceStale(relativeTo: now, calendar: calendar))
     }
 
+    func testInvestmentLifecycleRejectsNonFiniteDatesWithoutMutation() throws {
+        let usd = try CurrencyCode("USD")
+        let invalid = Date(timeIntervalSinceReferenceDate: .infinity)
+        XCTAssertThrowsError(
+            try InvestmentHolding(
+                accountID: UUID(),
+                symbol: "MU",
+                name: "Micron",
+                quantity: 1,
+                price: try Money(10, currency: usd),
+                priceAsOf: invalid
+            )
+        ) { error in
+            XCTAssertEqual(error as? InvestmentHoldingError, .historyMismatch)
+        }
+        XCTAssertThrowsError(
+            try InvestmentDisposal(
+                occurredAt: invalid,
+                quantity: 1,
+                costBasis: try Money(10, currency: usd),
+                proceeds: try Money(11, currency: usd),
+                realizedGainLoss: try Money(1, currency: usd),
+                saleEntryID: UUID()
+            )
+        ) { error in
+            XCTAssertEqual(error as? InvestmentHoldingError, .invalidDisposal)
+        }
+
+        var holding = try InvestmentHolding(
+            accountID: UUID(),
+            symbol: "MU",
+            name: "Micron",
+            quantity: .zero,
+            positionAccountID: UUID()
+        )
+        let before = holding
+        XCTAssertThrowsError(
+            try holding.recordPurchase(
+                quantity: 1,
+                unitCost: try Money(10, currency: usd),
+                occurredAt: invalid,
+                entryID: UUID()
+            )
+        ) { error in
+            XCTAssertEqual(error as? InvestmentHoldingError, .historyMismatch)
+        }
+        XCTAssertThrowsError(
+            try holding.recordPrice(
+                try Money(10, currency: usd),
+                asOf: invalid
+            )
+        ) { error in
+            XCTAssertEqual(error as? InvestmentHoldingError, .historyMismatch)
+        }
+        XCTAssertEqual(holding, before)
+        XCTAssertTrue(holding.isPriceStale(relativeTo: invalid))
+    }
+
     func testFIFOIsDeterministicAndRecordsRealizedBookkeeping() throws {
         let usd = try CurrencyCode("USD")
         let accountID = UUID()

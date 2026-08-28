@@ -11,6 +11,7 @@ enum RestoreCandidateValidator {
     ) throws {
         let decoder = JSONDecoder()
         var logicalIDsByCollection: [String: Set<UUID>] = [:]
+        var exchangeRatePairDays = Set<String>()
 
         do {
             for record in snapshot.records {
@@ -43,8 +44,10 @@ enum RestoreCandidateValidator {
                         JournalEntry.self,
                         from: record.payload
                     )
-                    let expectedPrefix = entry.id.uuidString.lowercased() + "-"
-                    guard record.recordID.lowercased().hasPrefix(expectedPrefix) else {
+                    guard isValidJournalRevisionRecordID(
+                        record.recordID,
+                        entryID: entry.id
+                    ) else {
                         throw AppModelError.invalidBook
                     }
                     logicalID = nil
@@ -85,10 +88,20 @@ enum RestoreCandidateValidator {
                         from: record.payload
                     ).id
                 case .exchangeRates:
-                    logicalID = try decoder.decode(
+                    let rate = try decoder.decode(
                         DatedExchangeRate.self,
                         from: record.payload
-                    ).id
+                    )
+                    let pair = [
+                        rate.baseCurrency.value,
+                        rate.quoteCurrency.value
+                    ].sorted()
+                    let pairDay = pair.joined(separator: "\u{1f}")
+                        + "\u{1f}\(rate.effectiveContext.dayKey)"
+                    guard exchangeRatePairDays.insert(pairDay).inserted else {
+                        throw AppModelError.invalidBook
+                    }
+                    logicalID = rate.id
                 case .savingsGoals:
                     logicalID = try decoder.decode(
                         SavingsGoal.self,
@@ -130,6 +143,28 @@ enum RestoreCandidateValidator {
             // restore boundary exposes only a generic integrity failure.
             throw AppModelError.invalidBook
         }
+    }
+
+    private static func isValidJournalRevisionRecordID(
+        _ recordID: String,
+        entryID: UUID
+    ) -> Bool {
+        let expectedPrefix = entryID.uuidString + "-"
+        guard recordID.count > expectedPrefix.count,
+              String(recordID.prefix(expectedPrefix.count))
+                .caseInsensitiveCompare(expectedPrefix) == .orderedSame else {
+            return false
+        }
+
+        let suffix = String(recordID.dropFirst(expectedPrefix.count))
+        if UUID(uuidString: suffix) != nil {
+            return true
+        }
+        let lifecyclePrefix = "lifecycle-"
+        guard suffix.lowercased().hasPrefix(lifecyclePrefix) else {
+            return false
+        }
+        return UUID(uuidString: String(suffix.dropFirst(lifecyclePrefix.count))) != nil
     }
 
     static func validateRelationships(
@@ -336,6 +371,11 @@ enum RestoreCandidateValidator {
         }
 
         if let quickLogDraft {
+            guard quickLogDraft.occurredAt.timeIntervalSinceReferenceDate.isFinite,
+                  Set(quickLogDraft.splitLines.map(\.id)).count
+                    == quickLogDraft.splitLines.count else {
+                throw AppModelError.invalidBook
+            }
             for id in [
                 quickLogDraft.accountID,
                 quickLogDraft.destinationAccountID,
@@ -343,9 +383,21 @@ enum RestoreCandidateValidator {
             ].compactMap({ $0 }) where accountByID[id] == nil {
                 throw AppModelError.invalidBook
             }
+            let expectedSplitKind: LedgerAccountKind?
+            switch quickLogDraft.kind {
+            case .expense, .refund:
+                expectedSplitKind = .expense
+            case .income:
+                expectedSplitKind = .income
+            case .transfer:
+                expectedSplitKind = nil
+            }
+            guard expectedSplitKind != nil || quickLogDraft.splitLines.isEmpty else {
+                throw AppModelError.invalidBook
+            }
             for split in quickLogDraft.splitLines {
                 if let categoryID = split.categoryID,
-                   accountByID[categoryID]?.kind != .expense {
+                   accountByID[categoryID]?.kind != expectedSplitKind {
                     throw AppModelError.invalidBook
                 }
             }

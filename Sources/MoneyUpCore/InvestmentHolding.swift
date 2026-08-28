@@ -77,6 +77,9 @@ public struct HoldingPricePoint: Codable, Equatable, Identifiable, Sendable {
         guard price.amount >= .zero else {
             throw InvestmentHoldingError.priceCannotBeNegative
         }
+        guard asOf.timeIntervalSinceReferenceDate.isFinite else {
+            throw InvestmentHoldingError.historyMismatch
+        }
         guard activitySequence >= 0 else {
             throw InvestmentHoldingError.historyMismatch
         }
@@ -129,6 +132,9 @@ public struct InvestmentLot: Codable, Equatable, Identifiable, Sendable {
     ) throws {
         guard originalQuantity > .zero else {
             throw InvestmentHoldingError.lotQuantityMustBePositive
+        }
+        guard acquiredAt.timeIntervalSinceReferenceDate.isFinite else {
+            throw InvestmentHoldingError.historyMismatch
         }
         let remaining = remainingQuantity ?? originalQuantity
         guard remaining >= .zero, remaining <= originalQuantity else {
@@ -196,7 +202,24 @@ public struct InvestmentDisposal: Codable, Equatable, Identifiable, Sendable {
         realizedGainLoss: Money,
         saleEntryID: UUID,
         activitySequence: Int64 = 0
-    ) {
+    ) throws {
+        guard occurredAt.timeIntervalSinceReferenceDate.isFinite,
+              quantity > .zero,
+              costBasis.amount >= .zero,
+              proceeds.amount >= .zero,
+              costBasis.currency == proceeds.currency,
+              costBasis.currency == realizedGainLoss.currency,
+              activitySequence >= 0 else {
+            throw InvestmentHoldingError.invalidDisposal
+        }
+        let expectedRealized = try checkedInvestmentDifference(
+            proceeds.amount,
+            costBasis.amount
+        )
+        guard realizedGainLoss.amount
+                == realizedGainLoss.currency.rounded(expectedRealized) else {
+            throw InvestmentHoldingError.invalidDisposal
+        }
         self.id = id
         self.occurredAt = occurredAt
         self.quantity = quantity
@@ -214,7 +237,7 @@ public struct InvestmentDisposal: Codable, Equatable, Identifiable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.init(
+        try self.init(
             id: try container.decode(UUID.self, forKey: .id),
             occurredAt: try container.decode(Date.self, forKey: .occurredAt),
             quantity: try container.decode(Decimal.self, forKey: .quantity),
@@ -286,6 +309,9 @@ public struct InvestmentActivityCorrection: Codable, Equatable, Identifiable, Se
         guard activitySequence > 0 else {
             throw InvestmentHoldingError.historyMismatch
         }
+        guard occurredAt.timeIntervalSinceReferenceDate.isFinite else {
+            throw InvestmentHoldingError.historyMismatch
+        }
         guard targetEntryID == nil || targetEntryID != correctionEntryID else {
             throw InvestmentHoldingError.duplicateLinkedEntry
         }
@@ -340,6 +366,21 @@ public struct InvestmentHolding: Codable, Equatable, Identifiable, Sendable {
     ) throws {
         guard quantity >= .zero else {
             throw InvestmentHoldingError.quantityCannotBeNegative
+        }
+        guard priceAsOf?.timeIntervalSinceReferenceDate.isFinite != false,
+              priceHistory.allSatisfy({
+                  $0.asOf.timeIntervalSinceReferenceDate.isFinite
+              }),
+              lots.allSatisfy({
+                  $0.acquiredAt.timeIntervalSinceReferenceDate.isFinite
+              }),
+              disposals.allSatisfy({
+                  $0.occurredAt.timeIntervalSinceReferenceDate.isFinite
+              }),
+              corrections.allSatisfy({
+                  $0.occurredAt.timeIntervalSinceReferenceDate.isFinite
+              }) else {
+            throw InvestmentHoldingError.historyMismatch
         }
         guard !isArchived || quantity == .zero else {
             throw InvestmentHoldingError.historyMismatch
@@ -805,7 +846,11 @@ public struct InvestmentHolding: Codable, Equatable, Identifiable, Sendable {
         relativeTo date: Date = Date(),
         calendar: Calendar = .current
     ) -> Bool {
-        guard let priceAsOf else { return true }
+        guard date.timeIntervalSinceReferenceDate.isFinite,
+              let priceAsOf,
+              priceAsOf.timeIntervalSinceReferenceDate.isFinite else {
+            return true
+        }
         guard let threshold = calendar.date(byAdding: .day, value: -7, to: date) else {
             return true
         }
@@ -968,7 +1013,7 @@ public struct InvestmentHolding: Codable, Equatable, Identifiable, Sendable {
             )
         )
         var updatedDisposals = disposals
-        updatedDisposals.append(InvestmentDisposal(
+        updatedDisposals.append(try InvestmentDisposal(
             occurredAt: occurredAt,
             quantity: soldQuantity,
             costBasis: breakdown.costBasis,
@@ -1240,7 +1285,7 @@ public struct InvestmentHolding: Codable, Equatable, Identifiable, Sendable {
                 )
             case 1:
                 let disposal = disposals[slot.index]
-                migratedDisposals[slot.index] = InvestmentDisposal(
+                migratedDisposals[slot.index] = try InvestmentDisposal(
                     id: disposal.id,
                     occurredAt: disposal.occurredAt,
                     quantity: disposal.quantity,
@@ -1276,6 +1321,9 @@ public struct InvestmentHolding: Codable, Equatable, Identifiable, Sendable {
     }
 
     private func requireChronologicalActivity(_ date: Date) throws {
+        guard date.timeIntervalSinceReferenceDate.isFinite else {
+            throw InvestmentHoldingError.historyMismatch
+        }
         if let latestActivityDate, date < latestActivityDate {
             throw InvestmentHoldingError.activityOutOfOrder
         }

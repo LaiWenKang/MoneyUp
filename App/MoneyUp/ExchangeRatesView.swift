@@ -120,6 +120,7 @@ struct ExchangeRatesView: View {
         .background(Color.moneyUpBackground)
         .navigationTitle("fx.title")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar { MoneyUpKeyboardDoneToolbar() }
         .onAppear {
             if let base = model.profile?.baseCurrency.value { baseCode = base }
         }

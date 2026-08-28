@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+env:
+  XCODEGEN_VERSION: 2.46.0
+  XCODEGEN_SHA256: 4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -18,7 +22,9 @@ jobs:
     name: Release assets
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - name: Validate privacy, localization, icons, and launch docs
         run: python3 Scripts/validate_release_assets.py
 
@@ -26,19 +32,61 @@ jobs:
     name: Core tests
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - name: Show Swift version
         run: swift --version
       - name: Run domain tests
-        run: swift test --parallel -Xswiftc -warnings-as-errors
+        run: swift test --parallel --enable-code-coverage -Xswiftc -warnings-as-errors
+      - name: Report domain coverage
+        shell: bash
+        run: |
+          set -euo pipefail
+          COVERAGE_PATH="$(swift test --show-codecov-path)"
+          test -s "$COVERAGE_PATH"
+          cp "$COVERAGE_PATH" core-persistence-coverage.json
+          python3 - "$COVERAGE_PATH" <<'PY'
+          import json
+          import sys
+
+          with open(sys.argv[1], encoding="utf-8") as source:
+              payload = json.load(source)
+          totals = payload["data"][0]["totals"]
+          for name in ("lines", "functions", "regions", "branches"):
+              metric = totals.get(name)
+              if metric:
+                  print(
+                      f"{name}: {metric['covered']}/{metric['count']} "
+                      f"({metric['percent']:.2f}%)"
+                  )
+          PY
+      - name: Preserve domain coverage
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: core-persistence-coverage
+          path: core-persistence-coverage.json
+          if-no-files-found: error
+          retention-days: 14
 
   ios-build:
     name: iOS Simulator build
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Install XcodeGen
-        run: brew install xcodegen
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Install checksum-verified XcodeGen
+        shell: bash
+        run: |
+          set -euo pipefail
+          ARCHIVE="$RUNNER_TEMP/xcodegen.zip"
+          curl --fail --location --silent --show-error \
+            --output "$ARCHIVE" \
+            "https://github.com/yonaskolb/XcodeGen/releases/download/${XCODEGEN_VERSION}/xcodegen.zip"
+          printf '%s  %s\n' "$XCODEGEN_SHA256" "$ARCHIVE" | shasum -a 256 -c -
+          ditto -x -k "$ARCHIVE" "$RUNNER_TEMP/xcodegen-release"
+          echo "$RUNNER_TEMP/xcodegen-release/xcodegen/bin" >> "$GITHUB_PATH"
       - name: Generate Xcode project
         run: xcodegen generate
       - name: Build app
@@ -51,16 +99,31 @@ jobs:
           CODE_SIGNING_ALLOWED=NO
           build
       - name: Run app model tests
+        shell: bash
         run: |
+          set -euo pipefail
           SIMULATOR_ID="$(
             xcrun simctl list devices available -j |
               python3 -c 'import json, sys; data = json.load(sys.stdin); print(next(device["udid"] for devices in data["devices"].values() for device in devices if device["name"].startswith("iPhone")))'
           )"
           test -n "$SIMULATOR_ID"
+          RESULT_BUNDLE="$RUNNER_TEMP/MoneyUpTests.xcresult"
           xcodebuild \
             -project MoneyUp.xcodeproj \
             -scheme MoneyUp \
             -configuration Debug \
             -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
+            -enableCodeCoverage YES \
+            -resultBundlePath "$RESULT_BUNDLE" \
             CODE_SIGNING_ALLOWED=NO \
             test
+          xcrun xccov view --report "$RESULT_BUNDLE"
+          xcrun xccov view --report --json "$RESULT_BUNDLE" \
+            > app-model-coverage.json
+      - name: Preserve app-model coverage
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: app-model-coverage
+          path: app-model-coverage.json
+          if-no-files-found: error
+          retention-days: 14

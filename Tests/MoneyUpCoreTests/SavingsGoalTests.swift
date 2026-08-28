@@ -85,6 +85,47 @@ final class SavingsGoalTests: XCTestCase {
         }
     }
 
+    func testGoalRejectsNonFiniteDatesAtCreationMovementResetAndSummary() throws {
+        let sgd = try CurrencyCode("SGD")
+        let invalid = Date(timeIntervalSinceReferenceDate: .infinity)
+        XCTAssertThrowsError(
+            try SavingsGoal(
+                name: "Invalid",
+                kind: .savingsGoal,
+                target: try Money(100, currency: sgd),
+                targetDate: invalid,
+                createdAt: date(2026, 1, 1)
+            )
+        ) { error in
+            XCTAssertEqual(error as? SavingsGoalError, .invalidDate)
+        }
+        XCTAssertThrowsError(
+            try SavingsGoalMovement(
+                kind: .contribution,
+                money: try Money(1, currency: sgd),
+                occurredAt: invalid
+            )
+        ) { error in
+            XCTAssertEqual(error as? SavingsGoalError, .invalidDate)
+        }
+        XCTAssertThrowsError(
+            try SavingsGoalReset(occurredAt: invalid)
+        ) { error in
+            XCTAssertEqual(error as? SavingsGoalError, .invalidDate)
+        }
+
+        let goal = try SavingsGoal(
+            name: "Valid",
+            kind: .savingsGoal,
+            target: try Money(100, currency: sgd),
+            targetDate: date(2027, 1, 1),
+            createdAt: date(2026, 1, 1)
+        )
+        XCTAssertThrowsError(try goal.summary(asOf: invalid)) { error in
+            XCTAssertEqual(error as? SavingsGoalError, .invalidDate)
+        }
+    }
+
     func testPastDueUsesTheRequestedAsOfInstantNotWallClockTime() throws {
         let sgd = try CurrencyCode("SGD")
         let goal = try SavingsGoal(

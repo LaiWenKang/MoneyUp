@@ -278,4 +278,51 @@ final class CategorySuggesterTests: XCTestCase {
             )
         )
     }
+
+    func testEqualCountAndRecencyTieIsDeterministicAcrossInputOrder() throws {
+        let sgd = try CurrencyCode("SGD")
+        let bank = LedgerAccount(name: "Bank", kind: .asset, currency: sgd)
+        let lowerID = try XCTUnwrap(
+            UUID(uuidString: "00000000-0000-0000-0000-000000000001")
+        )
+        let higherID = try XCTUnwrap(
+            UUID(uuidString: "00000000-0000-0000-0000-000000000002")
+        )
+        let first = LedgerAccount(id: lowerID, name: "Coffee", kind: .expense)
+        let second = LedgerAccount(id: higherID, name: "Snacks", kind: .expense)
+        let occurredAt = Date(timeIntervalSinceReferenceDate: 1_000)
+        let entries = [
+            try TransactionFactory.expense(
+                amount: try Money(6, currency: sgd),
+                paidFrom: bank.id,
+                category: first.id,
+                occurredAt: occurredAt,
+                payee: "Tie Cafe"
+            ),
+            try TransactionFactory.expense(
+                amount: try Money(7, currency: sgd),
+                paidFrom: bank.id,
+                category: second.id,
+                occurredAt: occurredAt,
+                payee: "Tie Cafe"
+            )
+        ]
+
+        XCTAssertEqual(
+            CategorySuggester.suggestedCategory(
+                forPayee: "Tie Cafe",
+                entries: entries,
+                accounts: [bank, first, second]
+            ),
+            lowerID
+        )
+        XCTAssertEqual(
+            CategorySuggester.suggestedCategory(
+                forPayee: "Tie Cafe",
+                entries: Array(entries.reversed()),
+                accounts: [second, bank, first]
+            ),
+            lowerID
+        )
+    }
 }

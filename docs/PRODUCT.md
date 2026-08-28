@@ -40,7 +40,7 @@ end-to-end encryption and authorization design is approved.
 | Portability | Posting-level CSV and native XLSX, mapped CSV/TSV import, encrypted receipt attachments, dated user FX rates, and authenticated `.moneyup` backup/restore |
 | Easy logging | Amount-first center Log, encrypted drafts, smart defaults, refund, exact splits, date-indexed History/edit, and Undo; keyboard Done, Save, and tab navigation remain reachable |
 | Smart entry | Responsive fast-first on-device receipt and screenshot reading with immediate progress and visible populated suggestions, typed-phrase parsing, and category suggestions learned from the user's own history |
-| Scale architecture | SQLCipher schema-3 journal/posting indexes, compact exact balances, bounded recent activity, and on-demand History/Calendar/export loading |
+| Scale architecture | SQLCipher schema-4 journal/posting indexes, compact exact balances, bounded recent activity, and on-demand History/Calendar/export loading |
 | Languages | English and Simplified Chinese with locale-correct dates and amounts |
 
 These rows describe source implementation in the unified candidate. They do

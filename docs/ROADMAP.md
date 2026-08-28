@@ -25,8 +25,8 @@ requirement ID and its evidence status.
 - [x] Password-protected `.moneyup` archive and transactional restore
 - [x] Stable Gregorian reporting calendar, half-open periods, origin time-zone
   context, and stable local-day attribution
-- [x] SQLCipher schema 3 with journal/posting indexes, exact compact balance
-  rows, bounded recent activity, and on-demand paging
+- [x] SQLCipher schema 4 with journal/posting and receipt-metadata indexes,
+  exact compact balance rows, bounded recent activity, and on-demand paging
 - [ ] Exact-candidate Mac core/persistence/app tests and app/widget Simulator
   build
 - [ ] Physical migration, restore, and oldest-device scale evidence

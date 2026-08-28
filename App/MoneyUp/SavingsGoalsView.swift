@@ -268,7 +268,7 @@ private struct GoalEditorSheet: View {
             try await model.addSavingsGoal(goal)
             dismiss()
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = safeUserMessage(for: error, context: .save)
         }
     }
 }
@@ -474,7 +474,7 @@ private struct GoalManagementSheet: View {
             )
             dismiss()
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = safeUserMessage(for: error, context: .save)
         }
     }
 
@@ -483,13 +483,13 @@ private struct GoalManagementSheet: View {
         do {
             try await model.setSavingsGoalArchived(id: goalID, isArchived: !goal.isArchived)
             dismiss()
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage = safeUserMessage(for: error, context: .save) }
     }
 
     private func resetGoal() async {
         pendingAction = nil
         do { try await model.resetSavingsGoal(id: goalID) }
-        catch { errorMessage = error.localizedDescription }
+        catch { errorMessage = safeUserMessage(for: error, context: .save) }
     }
 
     private func deleteGoal() async {
@@ -497,7 +497,7 @@ private struct GoalManagementSheet: View {
         do {
             try await model.deleteSavingsGoal(id: goalID)
             dismiss()
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage = safeUserMessage(for: error, context: .save) }
     }
 }
 
@@ -562,7 +562,7 @@ private struct GoalMovementSheet: View {
                 occurredAt: occurredAt
             )
             dismiss()
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage = safeUserMessage(for: error, context: .save) }
     }
 }
 

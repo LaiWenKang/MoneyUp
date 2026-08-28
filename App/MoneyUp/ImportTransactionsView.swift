@@ -271,7 +271,16 @@ struct ImportTransactionsView: View {
             }
             let accessed = url.startAccessingSecurityScopedResource()
             defer { if accessed { url.stopAccessingSecurityScopedResource() } }
-            let data = try Data(contentsOf: url, options: [.mappedIfSafe])
+            let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize
+            if let size, size > 10_000_000 {
+                throw AppModelError.importTooLarge
+            }
+            let handle = try FileHandle(forReadingFrom: url)
+            defer { try? handle.close() }
+            let data = try BoundedFileReader.read(
+                from: handle,
+                maximumByteCount: 10_000_000
+            )
             guard data.count <= 10_000_000 else { throw AppModelError.importTooLarge }
             let text = String(data: data, encoding: .utf8)
                 ?? String(data: data, encoding: .utf16)
@@ -488,6 +497,7 @@ extension TransactionCSVImportError: @retroactive LocalizedError {
         case .emptyFile: String(localized: "import.error.empty")
         case .missingRequiredColumns: String(localized: "import.error.columns")
         case .malformedCSV: String(localized: "import.error.malformed")
+        case .tooManyRows: String(localized: "import.error.too_many_rows")
         case .postingLevelExportRequiresArchive:
             String(localized: "import.error.moneyup_export")
         }

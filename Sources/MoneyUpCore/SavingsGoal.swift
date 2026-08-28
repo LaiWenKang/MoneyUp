@@ -32,6 +32,7 @@ public enum SavingsGoalError: Error, Equatable {
     case duplicateMovementID
     case duplicateResetID
     case invalidOriginContext
+    case invalidDate
     case unsupportedPrecision(CurrencyCode)
     case calculationFailed
 }
@@ -109,6 +110,9 @@ public struct SavingsGoalMovement: Codable, Equatable, Identifiable, Sendable {
         guard money.amount > .zero else {
             throw SavingsGoalError.nonPositiveMovement
         }
+        guard occurredAt.timeIntervalSinceReferenceDate.isFinite else {
+            throw SavingsGoalError.invalidDate
+        }
         guard money.currency.supports(money.amount) else {
             throw SavingsGoalError.unsupportedPrecision(money.currency)
         }
@@ -141,6 +145,9 @@ public struct SavingsGoalMovement: Codable, Equatable, Identifiable, Sendable {
             let kind = try container.decode(SavingsGoalMovementKind.self, forKey: .kind)
             let money = try container.decode(Money.self, forKey: .money)
             let occurredAt = try container.decode(Date.self, forKey: .occurredAt)
+            guard occurredAt.timeIntervalSinceReferenceDate.isFinite else {
+                throw SavingsGoalError.invalidDate
+            }
             let zone = try container.decode(
                 String.self,
                 forKey: .originTimeZoneIdentifier
@@ -217,6 +224,9 @@ public struct SavingsGoalReset: Codable, Equatable, Identifiable, Sendable {
         occurredAt: Date = Date(),
         originTimeZoneIdentifier: String = TimeZone.current.identifier
     ) throws {
+        guard occurredAt.timeIntervalSinceReferenceDate.isFinite else {
+            throw SavingsGoalError.invalidDate
+        }
         guard let zone = TimeZone(identifier: originTimeZoneIdentifier) else {
             throw SavingsGoalError.invalidOriginContext
         }
@@ -241,6 +251,13 @@ public struct SavingsGoalReset: Codable, Equatable, Identifiable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let id = try container.decode(UUID.self, forKey: .id)
         let occurredAt = try container.decode(Date.self, forKey: .occurredAt)
+        guard occurredAt.timeIntervalSinceReferenceDate.isFinite else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .occurredAt,
+                in: container,
+                debugDescription: "Goal reset date is invalid"
+            )
+        }
         let zone = try container.decode(
             String.self,
             forKey: .originTimeZoneIdentifier
@@ -342,6 +359,16 @@ public struct SavingsGoal: Codable, Equatable, Identifiable, Sendable {
     ) throws {
         let normalizedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedName.isEmpty else { throw SavingsGoalError.emptyName }
+        guard createdAt.timeIntervalSinceReferenceDate.isFinite,
+              targetDate.timeIntervalSinceReferenceDate.isFinite,
+              movements.allSatisfy({
+                  $0.occurredAt.timeIntervalSinceReferenceDate.isFinite
+              }),
+              resets.allSatisfy({
+                  $0.occurredAt.timeIntervalSinceReferenceDate.isFinite
+              }) else {
+            throw SavingsGoalError.invalidDate
+        }
         guard target.amount > .zero else { throw SavingsGoalError.nonPositiveTarget }
         guard target.currency.supports(target.amount) else {
             throw SavingsGoalError.unsupportedPrecision(target.currency)
@@ -377,6 +404,9 @@ public struct SavingsGoal: Codable, Equatable, Identifiable, Sendable {
         asOf: Date,
         calendar: Calendar? = nil
     ) throws -> SavingsGoalSummary {
+        guard asOf.timeIntervalSinceReferenceDate.isFinite else {
+            throw SavingsGoalError.invalidDate
+        }
         let calendar = calendar ?? FinancialPeriodBoundary.gregorianCalendar(
             timeZoneIdentifier: reportingTimeZoneIdentifier
         )

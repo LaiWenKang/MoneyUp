@@ -4,6 +4,34 @@ import Foundation
 import XCTest
 
 final class EncryptedRecordStoreTests: XCTestCase {
+    func testPortableArchivePBKDFMatchesIndependentSHA256Vectors() {
+        let expected: [(iterations: Int, bytes: [UInt8])] = [
+            (1, [
+                0x12, 0x0f, 0xb6, 0xcf, 0xfc, 0xf8, 0xb3, 0x2c,
+                0x43, 0xe7, 0x22, 0x52, 0x56, 0xc4, 0xf8, 0x37,
+                0xa8, 0x65, 0x48, 0xc9, 0x2c, 0xcc, 0x35, 0x48,
+                0x08, 0x05, 0x98, 0x7c, 0xb7, 0x0b, 0xe1, 0x7b
+            ]),
+            (2, [
+                0xae, 0x4d, 0x0c, 0x95, 0xaf, 0x6b, 0x46, 0xd3,
+                0x2d, 0x0a, 0xdf, 0xf9, 0x28, 0xf0, 0x6d, 0xd0,
+                0x2a, 0x30, 0x3f, 0x8e, 0xf3, 0xc2, 0x51, 0xdf,
+                0xd6, 0xe2, 0xd8, 0x5a, 0x95, 0x47, 0x4c, 0x43
+            ])
+        ]
+
+        for vector in expected {
+            XCTAssertEqual(
+                PortableArchive.derivedKeyData(
+                    password: "password",
+                    salt: Data("salt".utf8),
+                    iterations: vector.iterations
+                ),
+                Data(vector.bytes)
+            )
+        }
+    }
+
     func testBudgetConfigurationTimelineRoundTripsDatedTreeAndCarryMapping() async throws {
         let fixture = try TemporaryDatabaseFixture()
         let store = try EncryptedRecordStore(
@@ -1188,6 +1216,55 @@ final class EncryptedRecordStoreTests: XCTestCase {
             try PortableArchive.open(unicodeArchive, password: composed),
             snapshot
         )
+
+        XCTAssertThrowsError(
+            try PortableArchive.seal(snapshot, password: "too short")
+        ) { error in
+            XCTAssertEqual(error as? PortableArchiveError, .passwordTooShort)
+        }
+
+        let magic = Data("MONEYUP\u{0}".utf8)
+        var tamperedObject = try XCTUnwrap(
+            JSONSerialization.jsonObject(
+                with: Data(archive.dropFirst(magic.count))
+            ) as? [String: Any]
+        )
+        var tamperedCiphertext = try XCTUnwrap(
+            (tamperedObject["ciphertext"] as? String)
+                .flatMap { Data(base64Encoded: $0) }
+        )
+        let tamperedIndex = tamperedCiphertext.index(
+            before: tamperedCiphertext.endIndex
+        )
+        tamperedCiphertext[tamperedIndex] ^= 0x01
+        tamperedObject["ciphertext"] = tamperedCiphertext.base64EncodedString()
+        let tampered = magic
+            + (try JSONSerialization.data(withJSONObject: tamperedObject))
+        XCTAssertThrowsError(
+            try PortableArchive.open(
+                tampered,
+                password: "correct horse battery staple"
+            )
+        ) { error in
+            XCTAssertEqual(error as? PortableArchiveError, .authenticationFailed)
+        }
+
+        var unsupportedObject = try XCTUnwrap(
+            JSONSerialization.jsonObject(
+                with: Data(archive.dropFirst(Data("MONEYUP\u{0}".utf8).count))
+            ) as? [String: Any]
+        )
+        unsupportedObject["version"] = 2
+        let unsupported = magic
+            + (try JSONSerialization.data(withJSONObject: unsupportedObject))
+        XCTAssertThrowsError(
+            try PortableArchive.open(
+                unsupported,
+                password: "correct horse battery staple"
+            )
+        ) { error in
+            XCTAssertEqual(error as? PortableArchiveError, .unsupportedVersion(2))
+        }
     }
 
     private func makeExpenseEntry(

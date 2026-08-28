@@ -2,6 +2,8 @@ import Foundation
 import MoneyUpCore
 import SwiftUI
 
+let maximumMoneyAmountTextByteCount = 128
+
 @MainActor
 private final class MoneyFormatterCache {
     static let shared = MoneyFormatterCache()
@@ -43,6 +45,12 @@ func formattedPercent(_ value: Decimal, fractionDigits: Int = 0) -> String {
 }
 
 func decimalAmount(from text: String, locale: Locale = .current) -> Decimal? {
+    // Decimal has 38 significant digits. The larger byte allowance leaves
+    // room for a sign, separator, and pasted whitespace while keeping regex
+    // and Foundation parsing work bounded on every amount field.
+    guard text.utf8.count <= maximumMoneyAmountTextByteCount else {
+        return nil
+    }
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { return nil }
 

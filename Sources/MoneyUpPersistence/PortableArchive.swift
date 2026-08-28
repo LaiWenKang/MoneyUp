@@ -108,6 +108,22 @@ public enum PortableArchive {
         salt: Data,
         iterations: Int
     ) -> SymmetricKey {
+        SymmetricKey(data: derivedKeyData(
+            password: password,
+            salt: salt,
+            iterations: iterations
+        ))
+    }
+
+    /// Internal so the persistence test target can verify the implementation
+    /// against independent PBKDF2-HMAC-SHA256 vectors. Archive round trips
+    /// alone would not detect the same derivation mistake on both code paths.
+    static func derivedKeyData(
+        password: String,
+        salt: Data,
+        iterations: Int
+    ) -> Data {
+        precondition(iterations > 0)
         // Treat canonically equivalent user-visible passwords identically.
         // This matters when a password is entered with a different keyboard or
         // restored on another device that emits decomposed Unicode scalars.
@@ -132,7 +148,7 @@ public enum PortableArchive {
                 }
             }
         }
-        return SymmetricKey(data: output)
+        return output
     }
 
     private static func associatedData(

@@ -146,4 +146,185 @@ struct TransactionCSVImporterTests {
         #expect(preview.rows.first?.originContext?.dayKey == 20260827)
         #expect(preview.rows.first?.originContext?.utcOffsetSeconds == 14 * 3_600)
     }
+
+    @Test
+    func rejectsGarbageSuffixInsteadOfSilentlyTruncatingAmount() throws {
+        let csv = "Date,Type,Amount\n2026-08-20,Expense,12abc\n"
+
+        let preview = try TransactionCSVImporter.parse(
+            csv,
+            locale: Locale(identifier: "en_US_POSIX"),
+            timeZone: TimeZone(secondsFromGMT: 0)!
+        )
+
+        #expect(preview.rows.isEmpty)
+        #expect(preview.issues.map(\.reason) == ["invalid_amount"])
+    }
+
+    @Test
+    func rejectsOversizedAmountTokensBeforeNumericParsing() throws {
+        let csv = "Date,Type,Amount\n2026-08-20,Expense,"
+            + String(repeating: "1", count: 129)
+            + "\n"
+
+        let preview = try TransactionCSVImporter.parse(
+            csv,
+            locale: Locale(identifier: "en_US_POSIX"),
+            timeZone: TimeZone(secondsFromGMT: 0)!
+        )
+
+        #expect(preview.rows.isEmpty)
+        #expect(preview.issues.map(\.reason) == ["invalid_amount"])
+    }
+
+    @Test
+    func acceptsOnlyRecognizedCurrencyDecorationsAroundCompleteAmount() throws {
+        let csv = """
+        Date,Type,Amount
+        2026-08-20,Expense,$12.50
+        2026-08-21,Income,SGD 8.25
+        2026-08-22,Refund,7.00 SGD
+        """
+
+        let preview = try TransactionCSVImporter.parse(
+            csv,
+            locale: Locale(identifier: "en_US_POSIX"),
+            timeZone: TimeZone(secondsFromGMT: 0)!
+        )
+
+        #expect(preview.issues.isEmpty)
+        #expect(preview.rows.map(\.amount) == [
+            Decimal(string: "12.50")!,
+            Decimal(string: "8.25")!,
+            Decimal(string: "7.00")!
+        ])
+    }
+
+    @Test
+    func ambiguousSlashDateUsesImportLocaleOrder() throws {
+        let csv = "Date,Type,Amount\n03/04/2026,Expense,1\n"
+        let utc = TimeZone(secondsFromGMT: 0)!
+
+        let us = try TransactionCSVImporter.parse(
+            csv,
+            locale: Locale(identifier: "en_US"),
+            timeZone: utc
+        )
+        let gb = try TransactionCSVImporter.parse(
+            csv,
+            locale: Locale(identifier: "en_GB"),
+            timeZone: utc
+        )
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = utc
+
+        #expect(calendar.component(.month, from: us.rows[0].occurredAt) == 3)
+        #expect(calendar.component(.day, from: us.rows[0].occurredAt) == 4)
+        #expect(calendar.component(.month, from: gb.rows[0].occurredAt) == 4)
+        #expect(calendar.component(.day, from: gb.rows[0].occurredAt) == 3)
+    }
+
+    @Test
+    func explicitTypeCanUseMappedOutflowAndInflowWithoutAmountColumn() throws {
+        let csv = """
+        Date,Type,Outflow,Inflow
+        2026-08-20,Expense,12.50,
+        2026-08-21,Income,,2000
+        2026-08-22,Refund,,3.25
+        """
+
+        let preview = try TransactionCSVImporter.parse(
+            csv,
+            locale: Locale(identifier: "en_US_POSIX"),
+            timeZone: TimeZone(secondsFromGMT: 0)!
+        )
+
+        #expect(preview.issues.isEmpty)
+        #expect(preview.rows.map(\.kind) == [.expense, .income, .refund])
+        #expect(preview.rows.map(\.amount) == [
+            Decimal(string: "12.50")!,
+            Decimal(2000),
+            Decimal(string: "3.25")!
+        ])
+    }
+
+    @Test
+    func rejectsContradictoryOrMismatchedFlowColumns() throws {
+        let csv = """
+        Date,Type,Amount,Outflow,Inflow
+        2026-08-20,Expense,,12,5
+        2026-08-21,Income,10,,9
+        2026-08-22,Income,,4,
+        """
+
+        let preview = try TransactionCSVImporter.parse(
+            csv,
+            locale: Locale(identifier: "en_US_POSIX"),
+            timeZone: TimeZone(secondsFromGMT: 0)!
+        )
+
+        #expect(preview.rows.isEmpty)
+        #expect(preview.issues.map(\.reason) == [
+            "invalid_amount", "invalid_amount", "invalid_amount"
+        ])
+    }
+
+    @Test
+    func rejectsMalformedQuotePlacementAndTrailingCharacters() {
+        let malformedInputs = [
+            "Date,Type,Amount\n2026-08-20,Exp\"ense,12\n",
+            "Date,Type,Amount\n2026-08-20,\"Expense\"oops,12\n"
+        ]
+
+        for csv in malformedInputs {
+            do {
+                _ = try TransactionCSVImporter.parse(csv)
+                Issue.record("Expected malformed quote placement to be rejected")
+            } catch let error as TransactionCSVImportError {
+                #expect(error == .malformedCSV)
+            } catch {
+                Issue.record("Unexpected error: \(error)")
+            }
+        }
+    }
+
+    @Test
+    func rejectsRowsBeyondTheAggregateImportBudgetDuringParsing() {
+        let header = "Date,Type,Amount\n"
+        let row = "2026-08-20,Expense,1\n"
+        let csv = header + String(
+            repeating: row,
+            count: MonetaryInputPolicy.aggregateRecordBudget + 1
+        )
+
+        do {
+            _ = try TransactionCSVImporter.parse(csv)
+            Issue.record("Expected oversized row count to be rejected")
+        } catch let error as TransactionCSVImportError {
+            #expect(error == .tooManyRows)
+        } catch {
+            Issue.record("Unexpected error: \(error)")
+        }
+    }
+
+    @Test
+    func issueLinesRemainPhysicalAfterQuotedMultilineFields() throws {
+        let csv = """
+        Date,Type,Amount,Note
+        2026-08-20,Expense,12,"first line
+        second line"
+        bad date,Expense,3,invalid
+        """
+
+        let preview = try TransactionCSVImporter.parse(
+            csv,
+            locale: Locale(identifier: "en_US_POSIX"),
+            timeZone: TimeZone(secondsFromGMT: 0)!
+        )
+
+        #expect(preview.rows.count == 1)
+        #expect(preview.rows.first?.sourceLine == 2)
+        #expect(preview.rows.first?.note == "first line\nsecond line")
+        #expect(preview.issues.map(\.line) == [4])
+    }
 }

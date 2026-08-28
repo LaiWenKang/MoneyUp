@@ -81,7 +81,7 @@ final class ScheduledAndHoldingTests: XCTestCase {
         XCTAssertNotEqual(edited.currentOccurrenceID, oldOccurrence)
         XCTAssertEqual(edited.resolutions, schedule.resolutions)
 
-        schedule.end(at: date)
+        try schedule.end(at: date)
         XCTAssertEqual(schedule.status, .ended)
         XCTAssertThrowsError(try schedule.resume())
     }
@@ -120,6 +120,56 @@ final class ScheduledAndHoldingTests: XCTestCase {
         XCTAssertEqual(decoded.recurrenceAnchor, due)
         XCTAssertEqual(decoded.currentOccurrenceIndex, 0)
         XCTAssertTrue(decoded.resolutions.isEmpty)
+    }
+
+    func testScheduleRejectsNonFiniteLifecycleDatesAtEveryWriteBoundary() throws {
+        let sgd = try CurrencyCode("SGD")
+        let invalid = Date(timeIntervalSinceReferenceDate: .infinity)
+        XCTAssertThrowsError(
+            try ScheduledTransaction(
+                kind: .expense,
+                name: "Invalid",
+                amount: try Money(1, currency: sgd),
+                accountID: UUID(),
+                categoryAccountID: UUID(),
+                nextOccurrence: invalid,
+                frequency: .monthly
+            )
+        ) { error in
+            XCTAssertEqual(error as? ScheduledTransactionError, .invalidLifecycle)
+        }
+
+        var schedule = try ScheduledTransaction(
+            kind: .expense,
+            name: "Valid",
+            amount: try Money(1, currency: sgd),
+            accountID: UUID(),
+            categoryAccountID: UUID(),
+            nextOccurrence: Date(timeIntervalSinceReferenceDate: 1_000),
+            frequency: .monthly
+        )
+        XCTAssertThrowsError(
+            try schedule.confirmCurrent(
+                occurrenceID: schedule.currentOccurrenceID,
+                at: invalid
+            )
+        ) { error in
+            XCTAssertEqual(error as? ScheduledTransactionError, .invalidLifecycle)
+        }
+        XCTAssertThrowsError(try schedule.end(at: invalid)) { error in
+            XCTAssertEqual(error as? ScheduledTransactionError, .invalidLifecycle)
+        }
+        XCTAssertThrowsError(
+            try ScheduledOccurrenceResolution(
+                occurrenceID: schedule.currentOccurrenceID,
+                scheduledFor: schedule.nextOccurrence,
+                kind: .skipped,
+                linkedEntryID: nil,
+                resolvedAt: invalid
+            )
+        ) { error in
+            XCTAssertEqual(error as? ScheduledTransactionError, .invalidLifecycle)
+        }
     }
 
     func testScheduledJournalLinkCanBeRelinkedThenExplicitlyDeleted() throws {

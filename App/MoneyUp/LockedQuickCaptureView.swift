@@ -14,7 +14,10 @@ struct LockedQuickCaptureView: View {
     @FocusState private var isAmountFocused: Bool
 
     private var canSave: Bool {
-        guard let amount = decimalAmount(from: amountText) else { return false }
+        guard amountText.utf8.count <= LockedCapture.maximumAmountByteCount,
+              payee.utf8.count <= LockedCapture.maximumPayeeByteCount,
+              note.utf8.count <= LockedCapture.maximumNoteByteCount,
+              let amount = decimalAmount(from: amountText) else { return false }
         return amount > .zero
     }
 
@@ -78,6 +81,17 @@ struct LockedQuickCaptureView: View {
                             .font(.system(.largeTitle, design: .rounded, weight: .bold))
                             .monospacedDigit()
                             .focused($isAmountFocused)
+                        if !amountText.isEmpty && !canSave
+                            && payee.utf8.count <= LockedCapture.maximumPayeeByteCount
+                            && note.utf8.count <= LockedCapture.maximumNoteByteCount {
+                            Label(
+                                "error.invalid_amount",
+                                systemImage: "exclamationmark.circle.fill"
+                            )
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                            .accessibilityAddTraits(.isStaticText)
+                        }
 
                         DisclosureGroup(
                             "capture.add_details",
@@ -85,9 +99,26 @@ struct LockedQuickCaptureView: View {
                         ) {
                             if mode != .transfer {
                                 TextField("transaction.payee", text: $payee)
+                                if payee.utf8.count
+                                    > LockedCapture.maximumPayeeByteCount {
+                                    Label(
+                                        "capture.input_too_long",
+                                        systemImage: "exclamationmark.circle.fill"
+                                    )
+                                    .font(.caption)
+                                    .foregroundStyle(.red)
+                                }
                             }
                             TextField("quick_log.note", text: $note, axis: .vertical)
                                 .lineLimit(2...4)
+                            if note.utf8.count > LockedCapture.maximumNoteByteCount {
+                                Label(
+                                    "capture.input_too_long",
+                                    systemImage: "exclamationmark.circle.fill"
+                                )
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                            }
                         }
                     } header: {
                         Text(mode.kind.title)
@@ -113,9 +144,6 @@ struct LockedQuickCaptureView: View {
                         }
                     }
 
-                    if let errorMessage {
-                        Section { Text(errorMessage).foregroundStyle(.red) }
-                    }
                 }
             }
             .scrollContentBackground(.hidden)
@@ -144,6 +172,14 @@ struct LockedQuickCaptureView: View {
             isAmountFocused = true
         }
         .sensoryFeedback(.success, trigger: didSave)
+        .alert("error.could_not_save", isPresented: Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } }
+        )) {
+            Button("action.okay", role: .cancel) { errorMessage = nil }
+        } message: {
+            Text(errorMessage ?? "")
+        }
     }
 
     private func save() async {

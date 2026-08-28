@@ -111,14 +111,16 @@ than three visible levels and uses tags for orthogonal context.
 
 ## SQLCipher records and normalized indexes
 
-Deterministic encrypted payloads remain the recovery source of truth. Schema 3
-adds normalized encrypted support tables:
+Deterministic encrypted payloads remain the recovery source of truth. Schema 4
+includes the schema-3 ledger support tables and adds attachment metadata
+indexing:
 
 | Structure | Contract |
 |---|---|
 | `journal_entry_index` | Chronological/date/source lookup without full payload decode |
 | `journal_posting_index` | Posting events for account references, reports, Calendar, and lifecycle operations |
 | `journal_balance` | Exact materialized amount per account and currency |
+| `receipt_attachment_index` | Receipt-to-entry relationship and bounded metadata without loading attachment bytes |
 
 Normal unlock loads non-journal records, compact exact balances/counts, and a
 bounded recent page rather than the complete journal. History uses keyset
@@ -128,8 +130,9 @@ migration, restore, or repair.
 
 Malformed or orphaned rows are quarantined from calculations but their raw
 encrypted records remain in snapshots and archives. Schema-1/2 migration builds
-the indexes without changing valid legacy payloads, identifiers, timestamps,
-or stored decimal precision.
+the ledger indexes without changing valid legacy payloads, identifiers,
+timestamps, or stored decimal precision; schema-4 migration builds the receipt
+metadata index without rewriting valid attachment payloads.
 
 ## Quick-log draft and receipt attachment
 
@@ -139,8 +142,9 @@ successful save atomically writes the entry, any explicitly retained encrypted
 receipt attachment, and draft deletion. The cleared form can retain only a new
 encrypted preference snapshot without reviving the old amount.
 
-Receipt attachments are optional entry-keyed records containing validated
-JPEG, PNG, or HEIC bytes. Entry replacement relinks them atomically; confirmed
+Receipt attachments are optional entry-keyed records containing size-validated
+image bytes with signature-derived MIME metadata. Entry replacement relinks
+them atomically; confirmed
 attachment or entry deletion removes them. Password-protected raw snapshot
 backup preserves them. CSV/XLSX, drafts, widgets, logs, and diagnostics never
 receive the bytes.

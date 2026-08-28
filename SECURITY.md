@@ -31,7 +31,7 @@ and App Review remain separate release gates.
 | Separate encrypted, no-balance Quick Capture inbox while locked | Implemented |
 | Password-protected portable backup and transactional restore | Implemented with test coverage; exact-candidate execution open |
 | Previewable local CSV/Qianji import with atomic commit | Implemented with test coverage; exact-candidate execution open |
-| SQLCipher schema-3 journal/posting indexes and compact exact balances | Implemented; exact-candidate tests open |
+| SQLCipher schema-4 journal/posting indexes and compact exact balances | Implemented; exact-candidate tests open |
 | Optional end-to-end-encrypted device sync | Explicitly deferred from 1.0 |
 
 ## Privacy guarantee

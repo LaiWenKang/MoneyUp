@@ -616,6 +616,7 @@ private struct HistoryFilterSheet: View {
                     }
                     .disabled(!draft.isValid(calendar: calendar))
                 }
+                MoneyUpKeyboardDoneToolbar()
             }
         }
         .environment(\.calendar, calendar)
@@ -1067,6 +1068,7 @@ private struct TransactionEditView: View {
                             .disabled(!canSave || isSaving)
                     }
                 }
+                MoneyUpKeyboardDoneToolbar()
             }
             .task { loadValues() }
             .onChange(of: model.state) { _, state in

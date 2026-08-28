@@ -267,7 +267,7 @@ private final class ReceiptRecognitionOperation: @unchecked Sendable {
         }
         try checkCancellation()
 
-        let observations = request.results as? [VNRecognizedTextObservation] ?? []
+        let observations = request.results ?? []
         return Self.readingOrderText(from: observations)
     }
 

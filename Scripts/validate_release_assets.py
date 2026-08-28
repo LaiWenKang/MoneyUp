@@ -22,6 +22,14 @@ PRINTF_PLACEHOLDER = re.compile(
     r"%(?:(\d+)\$)?[-+# 0']*(?:\d+|\*)?(?:\.(?:\d+|\*))?"
     r"(?:hh|h|ll|l|L|z|j|t|q)?([@diouxXfFeEgGaAcCsSp])"
 )
+LOCALIZED_STRING_REFERENCE = re.compile(
+    r'String\(localized:\s*"([^"]+)"'
+)
+SWIFTUI_LOCALIZED_REFERENCE = re.compile(
+    r'(?:Text|Button|Label|Picker|Toggle|SecureField|TextField|Section|'
+    r'NavigationLink|DisclosureGroup|LabeledContent)\(\s*'
+    r'"([A-Za-z0-9_.-]+)"'
+)
 
 
 def fail(message: str) -> None:
@@ -140,6 +148,65 @@ def validate_localizations() -> None:
                     )
 
     print(f"Validated {checked} bilingual strings in {len(catalogs)} catalogs")
+
+    catalog_keys = {
+        catalog: set(json.loads(catalog.read_text(encoding="utf-8"))["strings"])
+        for catalog in catalogs
+    }
+    source_catalogs = (
+        (
+            app_root,
+            catalog_keys[app_root / "Resources" / "Localizable.xcstrings"],
+        ),
+        (
+            widget_root,
+            catalog_keys[widget_root / "Localizable.xcstrings"],
+        ),
+    )
+    for source_root, keys in source_catalogs:
+        for source in source_root.rglob("*.swift"):
+            text = source.read_text(encoding="utf-8")
+            referenced = {
+                match.group(1)
+                for pattern in (
+                    LOCALIZED_STRING_REFERENCE,
+                    SWIFTUI_LOCALIZED_REFERENCE,
+                )
+                for match in pattern.finditer(text)
+            }
+            missing = sorted(referenced - keys)
+            if missing:
+                fail(
+                    f"{source.relative_to(ROOT)} references missing localized "
+                    f"key(s): {', '.join(missing)}"
+                )
+    print("Validated literal Swift localization references")
+
+
+def validate_offline_runtime_boundary() -> None:
+    forbidden_runtime_symbols = (
+        "import Network",
+        "import WebKit",
+        "URLSession",
+        "NWConnection",
+        "WKWebView",
+        "CFNetwork",
+        "Network.framework",
+        "Alamofire",
+        "Moya",
+    )
+    for source_root in (ROOT / "App", ROOT / "Sources"):
+        for source in source_root.rglob("*.swift"):
+            text = source.read_text(encoding="utf-8")
+            matches = [
+                symbol for symbol in forbidden_runtime_symbols if symbol in text
+            ]
+            if matches:
+                fail(
+                    f"{source.relative_to(ROOT)} crosses the reviewed offline "
+                    f"runtime boundary: {', '.join(matches)}"
+                )
+    print("Validated offline runtime boundary")
 
 
 def validate_privacy_manifest() -> None:
@@ -621,6 +688,8 @@ def validate_project_configuration() -> None:
 
     if "SWIFT_EMIT_LOC_STRINGS: YES" not in spec:
         fail("project.yml must enable compiler extraction of Swift strings")
+    if "SWIFT_TREAT_WARNINGS_AS_ERRORS: YES" not in spec:
+        fail("project.yml must treat app and widget warnings as errors")
     if "DEBUG_INFORMATION_FORMAT: dwarf-with-dsym" not in spec:
         fail("project.yml must emit dSYMs for release crash diagnosis")
     if "UIColorName: BrandBackground" not in spec:
@@ -694,6 +763,8 @@ def validate_project_configuration() -> None:
     package = (ROOT / "Package.swift").read_text(encoding="utf-8")
     if f'revision: "{SQLCIPHER_REVISION}"' not in package:
         fail("SQLCipher.swift must remain pinned to its reviewed commit")
+    if package.count(".package(") != 1:
+        fail("SQLCipher.swift must remain the only runtime package dependency")
 
     print("Validated matching app/widget versions and automatic signing")
 
@@ -847,6 +918,7 @@ def validate_testflight_workflow() -> None:
 
 def main() -> None:
     validate_localizations()
+    validate_offline_runtime_boundary()
     validate_privacy_manifest()
     validate_info_plist_localizations()
     validate_icons()

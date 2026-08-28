@@ -97,7 +97,12 @@ struct PrivacySafeDataInventory: Codable, Equatable, Sendable {
             with: "-",
             options: .regularExpression
         )
-        let epochSecond = Int(generatedAt.timeIntervalSince1970.rounded(.down))
+        let epoch = generatedAt.timeIntervalSince1970.rounded(.down)
+        let epochSecond = epoch.isFinite
+            && epoch >= Double(Int.min)
+            && epoch <= Double(Int.max)
+            ? Int(epoch)
+            : 0
         return "MoneyUp-Inventory-\(safeVersion)-\(safeBuild)-\(epochSecond).json"
     }
 }

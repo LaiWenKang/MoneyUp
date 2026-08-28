@@ -7,7 +7,7 @@ flowchart TD
     Widget["Redacted widget"] --> Capture["Encrypted Quick Capture inbox"]
     App["Authenticated SwiftUI app"] --> Core["MoneyUpCore"]
     App --> Store["MoneyUpPersistence"]
-    Store --> Cipher["SQLCipher schema 3"]
+    Store --> Cipher["SQLCipher schema 4"]
     App --> Shared["Percent/state-only App Group"]
     Shared --> Widget
     App --> Files["CSV/XLSX/import/archive"]
@@ -62,7 +62,7 @@ transaction for all affected records. The operation either commits completely
 or rolls back completely. The six-second Undo is offered only after a committed
 save and reverses the same derived effects once.
 
-## Ledger and SQLCipher schema 3
+## Ledger and SQLCipher schema 4
 
 Normal views do not create postings directly. `TransactionFactory` creates
 balanced expense, income, transfer, foreign-exchange, refund, reconciliation,
@@ -70,14 +70,16 @@ split, investment purchase/sale, and valuation entries. `JournalEntry`
 validates each currency independently at initialization and decoding, and
 retains originating calendar/time-zone facts plus a stable local-day key.
 
-Schema 3 retains deterministic encrypted record payloads and adds normalized
-encrypted support tables:
+Schema 4 retains deterministic encrypted record payloads and the normalized
+encrypted support tables introduced in schema 3, then adds attachment metadata
+indexing so lists never decode receipt-image bytes:
 
 | Table/index | Purpose |
 |---|---|
 | `journal_entry_index` | Chronological identity, source fingerprint, and day/range lookup without decoding every payload |
 | `journal_posting_index` | Account/category/currency posting events for reports, Calendar, lifecycle counts, and bounded scans |
 | `journal_balance` | Exact materialized balance per account/currency |
+| `receipt_attachment_index` | Entry relationship, MIME type, byte count, and creation time without loading the encrypted image payload |
 
 Routine writes apply exact `-old + new` posting deltas to compact balance rows
 inside the same transaction. A full rebuild is reserved for migration,
@@ -88,8 +90,9 @@ recent cache into an accidental full journal.
 
 Schema-1/2 books migrate by decoding each legacy journal payload once to build
 the normalized indexes without changing the original payload, timestamp, or
-identifier. Raw malformed rows remain quarantined instead of blocking the
-readable book.
+identifier. Schema-3 books add the receipt metadata index without rewriting
+valid attachment payloads. Raw malformed rows remain quarantined instead of
+blocking the readable book.
 
 ## Planning and investment records
 

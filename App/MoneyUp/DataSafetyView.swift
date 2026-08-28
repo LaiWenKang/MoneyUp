@@ -241,11 +241,20 @@ struct DataSafetyView: View {
                 }
                 let accessed = url.startAccessingSecurityScopedResource()
                 defer { if accessed { url.stopAccessingSecurityScopedResource() } }
-                let fileSize = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
-                guard fileSize <= 250_000_000 else {
+                let fileSize = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize
+                if let fileSize, fileSize > 250_000_000 {
                     throw CocoaError(.fileReadTooLarge)
                 }
-                pendingRestoreData = try Data(contentsOf: url, options: [.mappedIfSafe])
+                let handle = try FileHandle(forReadingFrom: url)
+                defer { try? handle.close() }
+                let data = try BoundedFileReader.read(
+                    from: handle,
+                    maximumByteCount: 250_000_000
+                )
+                guard data.count <= 250_000_000 else {
+                    throw CocoaError(.fileReadTooLarge)
+                }
+                pendingRestoreData = data
                 isConfirmingRestore = true
             } catch {
                 errorMessage = safeUserMessage(for: error, context: .read)
@@ -274,9 +283,12 @@ struct DataSafetyView: View {
         message = nil
         defer { isWorking = false }
         do {
+            let password = backupPassword
             archiveDocument = MoneyUpArchiveDocument(
-                data: try await model.encryptedBackup(password: backupPassword)
+                data: try await model.encryptedBackup(password: password)
             )
+            backupPassword = ""
+            backupConfirmation = ""
             isExporting = true
             message = String(localized: "backup.ready")
         } catch {
@@ -309,6 +321,7 @@ struct DataSafetyView: View {
         defer {
             isWorking = false
             self.pendingRestoreData = nil
+            restorePassword = ""
         }
         do {
             try await model.restoreEncryptedBackup(

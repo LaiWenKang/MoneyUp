@@ -538,6 +538,7 @@ private struct AddScheduleSheet: View {
                     Button("action.save") { Task { await save() } }
                         .disabled(!canSave || isSaving)
                 }
+                MoneyUpKeyboardDoneToolbar()
             }
             .onAppear { selectDefaults() }
             .onChange(of: kind) { _, _ in selectDefaults() }

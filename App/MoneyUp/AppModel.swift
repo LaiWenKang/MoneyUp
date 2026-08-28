@@ -595,6 +595,10 @@ final class AppModel: ObservableObject {
 
     func sceneDidEnterBackground(at date: Date = Date()) {
         guard state == .ready || state == .onboarding else { return }
+        guard date.timeIntervalSinceReferenceDate.isFinite else {
+            lock()
+            return
+        }
         backgroundedAt = date
         autoLockTask?.cancel()
         let delay = profile?.autoLockDelay ?? 60
@@ -619,7 +623,8 @@ final class AppModel: ObservableObject {
         guard let backgroundedAt else { return }
         self.backgroundedAt = nil
         let delay = profile?.autoLockDelay ?? 60
-        if date.timeIntervalSince(backgroundedAt) >= delay {
+        let elapsed = date.timeIntervalSince(backgroundedAt)
+        if !elapsed.isFinite || elapsed < 0 || elapsed >= delay {
             lock()
         }
     }
@@ -4772,7 +4777,9 @@ final class AppModel: ObservableObject {
     ) async throws -> TransactionImportResult {
         try beginStandaloneJournalMutation()
         defer { endStandaloneJournalMutation() }
-        guard rows.count <= 20_000 else { throw AppModelError.importTooLarge }
+        guard rows.count <= MonetaryInputPolicy.aggregateRecordBudget else {
+            throw AppModelError.importTooLarge
+        }
         guard let fallbackAccount = userAccounts.first(where: {
             $0.id == fallbackAccountID
         }), expenseCategories.contains(where: {
@@ -4915,7 +4922,9 @@ final class AppModel: ObservableObject {
                 return mapped
             }
             if let existing = candidateAccounts.first(where: {
-                $0.kind == kind && normalizedName($0.name) == normalized
+                $0.kind == kind
+                    && !$0.isArchived
+                    && normalizedName($0.name) == normalized
             }) {
                 return existing
             }
@@ -4965,6 +4974,10 @@ final class AppModel: ObservableObject {
                 duplicates += 1
                 continue
             }
+
+            let candidateAccountsCheckpoint = candidateAccounts.count
+            let newAccountsCheckpoint = newAccounts.count
+            let newBudgetNodesCheckpoint = newBudgetNodes.count
 
             let baseEntry: JournalEntry
             do {
@@ -5073,6 +5086,9 @@ final class AppModel: ObservableObject {
                     )
                 )
             } catch {
+                candidateAccounts.removeSubrange(candidateAccountsCheckpoint...)
+                newAccounts.removeSubrange(newAccountsCheckpoint...)
+                newBudgetNodes.removeSubrange(newBudgetNodesCheckpoint...)
                 fingerprints.remove(row.id)
                 duplicateKeys.remove(rowDuplicateKey)
                 skipped += 1
@@ -6151,21 +6167,34 @@ final class AppModel: ObservableObject {
             return unique
         }
 
-        var accountIDs = Set(accounts.map(\.id))
-        var changed = true
-        while changed {
-            let invalid = Set(accounts.compactMap { account -> UUID? in
-                guard let parentID = account.parentID,
-                      !accountIDs.contains(parentID) else { return nil }
-                return account.id
-            })
-            changed = !invalid.isEmpty
-            if changed {
-                recoveryIssues.append(contentsOf: invalid.map { "accounts/orphan-\($0)" })
-                accounts.removeAll { invalid.contains($0.id) }
-                accountIDs = Set(accounts.map(\.id))
+        let accountByID = Dictionary(
+            uniqueKeysWithValues: accounts.map { ($0.id, $0) }
+        )
+        let invalidHierarchyIDs = Set(accounts.compactMap { account -> UUID? in
+            var currentID: UUID? = account.id
+            var visited = Set<UUID>()
+            while let id = currentID {
+                guard visited.insert(id).inserted,
+                      let current = accountByID[id] else {
+                    return account.id
+                }
+                if let parentID = current.parentID {
+                    guard let parent = accountByID[parentID],
+                          parent.kind == current.kind else {
+                        return account.id
+                    }
+                }
+                currentID = current.parentID
             }
+            return nil
+        })
+        if !invalidHierarchyIDs.isEmpty {
+            recoveryIssues.append(contentsOf: invalidHierarchyIDs.map {
+                "accounts/orphan-or-cycle-\($0)"
+            })
+            accounts.removeAll { invalidHierarchyIDs.contains($0.id) }
         }
+        var accountIDs = Set(accounts.map(\.id))
 
         let expenseIDs = Set(accounts.filter { $0.kind == .expense }.map(\.id))
         let invalidBudgetIDs = Set(budgetNodes.filter {

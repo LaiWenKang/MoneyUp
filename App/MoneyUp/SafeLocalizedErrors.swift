@@ -65,6 +65,7 @@ func safeUserMessage(
          is TransactionSplitError,
          is ReceiptAttachmentError,
          is ExchangeRateError,
+         is SavingsGoalError,
          is TransactionCSVImportError,
          is CSVImportViewError,
          is DerivedValueIssue:
@@ -214,6 +215,33 @@ extension InvestmentHoldingError: @retroactive LocalizedError {
             String(localized: "error.invalid_book")
         case .correctionUnavailable:
             String(localized: "holding.error.invalid_trade")
+        }
+    }
+}
+
+extension SavingsGoalError: @retroactive LocalizedError {
+    public var errorDescription: String? {
+        switch self {
+        case .emptyName:
+            String(localized: "error.empty_name")
+        case .nonPositiveTarget, .nonPositiveMovement:
+            String(localized: "error.amount_must_be_positive")
+        case .currencyMismatch:
+            String(localized: "error.balance_currency_mismatch")
+        case .withdrawalExceedsBalance:
+            String(localized: "goal.error.withdrawal_exceeds_balance")
+        case let .unsupportedPrecision(currency):
+            String(
+                format: String(localized: "error.currency_precision"),
+                currency.value,
+                currency.minorUnits
+            )
+        case .calculationFailed:
+            String(localized: "error.calculation_unavailable")
+        case .targetBeforeCreation, .movementBeforeCreation,
+             .resetBeforeCreation, .duplicateMovementID, .duplicateResetID,
+             .invalidOriginContext, .invalidDate:
+            String(localized: "goal.error.invalid")
         }
     }
 }

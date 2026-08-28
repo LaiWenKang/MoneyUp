@@ -15,7 +15,7 @@ later explicit product, privacy, and threat-model decision.
 | Area | Status | Release meaning |
 |---|---|---|
 | Product | Source-integrated 0.6.0 candidate, source build 8 | Golden functional surfaces are implemented across logging, Today/History/Insights, planning/goals, assets/investments, settings/widgets, portability, data, and security |
-| Scale architecture | Implemented in source | SQLCipher schema 3, normalized journal/posting indexes, compact balances, bounded recent activity, and on-demand reads still require exact-candidate Mac and physical measurements |
+| Scale architecture | Implemented in source | SQLCipher schema 4, normalized journal/posting and receipt-metadata indexes, compact balances, bounded recent activity, and on-demand reads still require exact-candidate Mac and physical measurements |
 | Privacy | Source and policy aligned | Local processing, no tracking/backend, optional encrypted receipts, and a percentage/state-only App Group widget snapshot |
 | CI | Configured, exact-candidate result open | Release validator, core tests, app-model XCTest, and unsigned app/widget Simulator build must run on the final merged SHA |
 | Apple capability | Manual account-holder action open | Register `group.com.laiwenkang.MoneyUp` and enable it on both existing App IDs before signed validation |

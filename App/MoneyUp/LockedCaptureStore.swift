@@ -10,6 +10,10 @@ enum LockedCaptureKind: String, Codable, Sendable {
 }
 
 struct LockedCapture: Codable, Equatable, Identifiable, Sendable {
+    static let maximumAmountByteCount = maximumMoneyAmountTextByteCount
+    static let maximumPayeeByteCount = 512
+    static let maximumNoteByteCount = 2_048
+
     let id: UUID
     let kind: LockedCaptureKind
     let amountText: String
@@ -31,6 +35,14 @@ struct LockedCapture: Codable, Equatable, Identifiable, Sendable {
         self.occurredAt = occurredAt
         self.payee = payee
         self.note = note
+    }
+
+    var isStructurallyValid: Bool {
+        !amountText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && amountText.utf8.count <= Self.maximumAmountByteCount
+            && payee.utf8.count <= Self.maximumPayeeByteCount
+            && note.utf8.count <= Self.maximumNoteByteCount
+            && occurredAt.timeIntervalSinceReferenceDate.isFinite
     }
 }
 
@@ -63,17 +75,39 @@ actor LockedCaptureStore {
     private static let service = "com.laiwenkang.MoneyUp.locked-capture-key"
     private static let account = "primary"
     private static let maximumCount = 100
+    // Covers the worst-case JSON escaping of every bounded field in 100
+    // captures while preventing a corrupt file from causing an unbounded read.
+    private static let maximumEncryptedByteCount = 2_000_000
 
     func all() async throws -> [LockedCapture] {
-        guard FileManager.default.fileExists(atPath: try fileURL().path) else { return [] }
+        let url = try fileURL()
+        guard FileManager.default.fileExists(atPath: url.path) else { return [] }
         var key = try loadOrCreateKey()
         defer { key.resetBytes(in: 0..<key.count) }
         do {
-            let encrypted = try Data(contentsOf: fileURL())
+            let fileSize = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize
+            guard fileSize.map({ $0 <= Self.maximumEncryptedByteCount }) != false else {
+                throw LockedCaptureStoreError.invalidData
+            }
+            let handle = try FileHandle(forReadingFrom: url)
+            defer { try? handle.close() }
+            let encrypted = try BoundedFileReader.read(
+                from: handle,
+                maximumByteCount: Self.maximumEncryptedByteCount
+            )
+            guard !encrypted.isEmpty,
+                  encrypted.count <= Self.maximumEncryptedByteCount else {
+                throw LockedCaptureStoreError.invalidData
+            }
             let box = try AES.GCM.SealedBox(combined: encrypted)
             let plaintext = try AES.GCM.open(box, using: SymmetricKey(data: key))
-            return try JSONDecoder().decode([LockedCapture].self, from: plaintext)
-                .sorted { $0.occurredAt < $1.occurredAt }
+            let captures = try JSONDecoder().decode([LockedCapture].self, from: plaintext)
+            guard captures.count <= Self.maximumCount,
+                  Set(captures.map(\.id)).count == captures.count,
+                  captures.allSatisfy(\.isStructurallyValid) else {
+                throw LockedCaptureStoreError.invalidData
+            }
+            return captures.sorted { $0.occurredAt < $1.occurredAt }
         } catch let error as LockedCaptureStoreError {
             throw error
         } catch {
@@ -83,6 +117,9 @@ actor LockedCaptureStore {
 
     func append(_ capture: LockedCapture) async throws {
         var captures = try await all()
+        guard capture.isStructurallyValid else {
+            throw LockedCaptureStoreError.invalidData
+        }
         guard captures.count < Self.maximumCount else {
             throw LockedCaptureStoreError.queueFull
         }
@@ -110,7 +147,8 @@ actor LockedCaptureStore {
         defer { key.resetBytes(in: 0..<key.count) }
         let plaintext = try JSONEncoder().encode(captures)
         let sealed = try AES.GCM.seal(plaintext, using: SymmetricKey(data: key))
-        guard let combined = sealed.combined else {
+        guard let combined = sealed.combined,
+              combined.count <= Self.maximumEncryptedByteCount else {
             throw LockedCaptureStoreError.unavailable
         }
         try combined.write(to: url, options: [.atomic, .completeFileProtectionUnlessOpen])

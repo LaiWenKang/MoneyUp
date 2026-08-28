@@ -136,6 +136,10 @@ private struct QuickLogEntryView: View {
 
     private var amount: Decimal? {
         guard let value = decimalAmount(from: amountText), value > .zero else { return nil }
+        if let currency = selectedAccountCurrency,
+           !MonetaryInputPolicy.accepts(value, currency: currency) {
+            return nil
+        }
         return value
     }
 
@@ -162,7 +166,29 @@ private struct QuickLogEntryView: View {
         guard let value = decimalAmount(from: destinationAmountText), value > .zero else {
             return nil
         }
+        if let currency = selectedDestinationCurrency,
+           !MonetaryInputPolicy.accepts(value, currency: currency) {
+            return nil
+        }
         return value
+    }
+
+    private func monetaryInputError(
+        text: String,
+        currency: CurrencyCode?
+    ) -> String? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        guard let value = decimalAmount(from: trimmed), value > .zero else {
+            return String(localized: "error.invalid_amount")
+        }
+        guard let currency else { return nil }
+        do {
+            try MonetaryInputPolicy.validate(value, currency: currency)
+            return nil
+        } catch {
+            return safeUserMessage(for: error, context: .save)
+        }
     }
 
     private var splitRemainder: Decimal? {
@@ -274,6 +300,15 @@ private struct QuickLogEntryView: View {
                                 .accessibilityLabel("transaction.currency")
                         }
                     }
+                    if let message = monetaryInputError(
+                        text: amountText,
+                        currency: selectedAccountCurrency
+                    ) {
+                        Label(message, systemImage: "exclamationmark.circle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                            .accessibilityAddTraits(.isStaticText)
+                    }
 
                     Picker(
                         kind == .transfer ? "transaction.from_account" : "transaction.account",
@@ -311,6 +346,15 @@ private struct QuickLogEntryView: View {
                                     Text(currency.value)
                                         .foregroundStyle(.secondary)
                                 }
+                            }
+                            if let message = monetaryInputError(
+                                text: destinationAmountText,
+                                currency: selectedDestinationCurrency
+                            ) {
+                                Label(message, systemImage: "exclamationmark.circle.fill")
+                                    .font(.caption)
+                                    .foregroundStyle(.red)
+                                    .accessibilityAddTraits(.isStaticText)
                             }
 
                             if case let .available(.some(conversion)) =
@@ -436,11 +480,6 @@ private struct QuickLogEntryView: View {
                     }
                 }
 
-                if let errorMessage {
-                    Section {
-                        Text(errorMessage).foregroundStyle(.red)
-                    }
-                }
             }
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
@@ -647,6 +686,14 @@ private struct QuickLogEntryView: View {
             pendingLaunchMode = nil
             onRequestHandled(mode)
         }
+        .alert("error.could_not_save", isPresented: Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } }
+        )) {
+            Button("action.okay", role: .cancel) { errorMessage = nil }
+        } message: {
+            Text(errorMessage ?? "")
+        }
     }
 
     private var smartEntrySection: some View {
@@ -758,6 +805,15 @@ private struct QuickLogEntryView: View {
                         }
                         .accessibilityLabel("quick_log.split_remove")
                     }
+                }
+                if let message = monetaryInputError(
+                    text: splitLines[index].amountText,
+                    currency: selectedAccountCurrency
+                ) {
+                    Label(message, systemImage: "exclamationmark.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .accessibilityAddTraits(.isStaticText)
                 }
 
                 TextField(
