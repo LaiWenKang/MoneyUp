@@ -17,9 +17,11 @@ must fit. SQLCipher schema 6 adds trigger-maintained store totals, normalized
 budget attribution, and monthly carry checkpoints. Explicitly retained receipt
 pixels are re-encoded without source GPS/EXIF/TIFF device metadata.
 
-Exact-candidate macOS CI/coverage and physical evidence remain open. The latter
-includes compatible near-limit version-1 restore memory, version-2 interruption
-and peak memory, oldest-device budget/checkpoint performance, power interruption,
+Exact-candidate macOS CI and coverage passed on commit
+`41b44f60178485f76940c14175131ce2884c2f7f` in CI run 141. Physical evidence
+remains open, including compatible near-limit version-1 restore memory,
+version-2 interruption and peak memory, oldest-device budget/checkpoint
+performance, power interruption,
 accessibility, upgrade/restore, signed TestFlight, App Review, and export
 compliance. Source remediation is not a measured or accepted release.
 
@@ -201,17 +203,16 @@ memory, force termination, corruption, cancellation, and power-loss cases also
 remain required. Until those pass, POR-04/POR-05/SEC-05/QA-05 remain physical
 release gates rather than source-closure claims.
 
-### O-002 — P1 evidence: exact-candidate compilation/tests/coverage not run
+### O-002 — Closed: exact-candidate compilation/tests/coverage passed
 
-The Linux review environment has no `swift`, `xcodebuild`, `xcodegen`,
-`swiftlint`, `semgrep`, or Apple Simulator. Therefore none of the 514 declared
-tests, warnings-as-errors compilation, app/widget build, or coverage reports
-has run against this exact candidate SHA at the time of this report. Baseline
-workflow status predating these changes is not candidate evidence.
-
-Required resolution: push this branch, run the pinned CI workflow, inspect all
-failures/warnings, publish the two coverage artifacts, review uncovered
-critical branches, and repeat on the final SHA.
+Pinned [CI run 141](https://github.com/LaiWenKang/MoneyUp/actions/runs/33187164652)
+passed on exact candidate `41b44f60178485f76940c14175131ce2884c2f7f`:
+release validation; warnings-as-errors core/persistence compilation and 251
+tests; app/widget Simulator build; and 213 app-model tests. The workflow
+retained both coverage artifacts. Core/persistence coverage was 92.62% lines,
+93.06% functions, and 85.87% regions. Xcode's app report recorded 25.48% for
+`MoneyUp.app`; the deliberately UI-heavy widget target recorded 11.73%.
+Physical and signed-binary evidence remains tracked by O-003.
 
 ### O-003 — P1 release evidence: physical and exact-binary gates remain open
 
@@ -331,14 +332,14 @@ Simulator, signed-binary, or physical evidence.
 - Requirement traceability: 97/97.
 - Test-source inventory: 514 declarations (252 core, 49 persistence, 213 app
   target; XCTest methods plus Swift Testing `@Test` declarations).
-- Exact-branch executed tests: 0 in this environment.
-- Exact-branch line/function/branch coverage: unavailable until CI runs.
-- Source-remediated findings awaiting CI/physical evidence: O-001 archive scale,
+- Exact-candidate CI: run 141 passed 251 core/persistence tests and 213 app tests
+  with zero failures, plus the unsigned app/widget Simulator build.
+- Core/persistence coverage: 92.62% lines, 93.06% functions, 85.87% regions;
+  app executable coverage: 25.48%; widget executable coverage: 11.73%.
+- Source-remediated findings awaiting physical evidence: O-001 archive scale,
   O-004 budget-attribution/checkpoint scale, and O-005 receipt metadata.
-- Open evidence P1s: O-002 exact-candidate CI and O-003
-  physical/exact-binary/release-owner gates.
+- Open evidence P1: O-003 physical/exact-binary/release-owner gates.
 
-**Do not promote to wider TestFlight or App Review.** First make every
-exact-candidate CI job green and review coverage gaps. Then run the complete
-physical archive/performance/privacy/accessibility/upgrade matrix and reconcile
-the same candidate SHA/build before any promotion decision.
+**Do not promote to wider TestFlight or App Review.** Run the complete physical
+archive/performance/privacy/accessibility/upgrade matrix and reconcile the same
+candidate SHA/build before any promotion decision.

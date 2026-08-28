@@ -9,10 +9,11 @@ invariants remain non-negotiable. The earlier PRD is supporting evidence only
 where it does not conflict. Its StoreKit and CloudKit requirements are
 superseded: the approved first public release is free and local-only.
 
-Checked source items describe the source-integrated 0.6.0 candidate. They do
-not close exact-candidate Mac CI, physical-device, TestFlight, closed-beta, or
-App Store gates. See [Golden PRD traceability](GOLDEN_TRACEABILITY.md) for every
-requirement ID and its evidence status.
+Checked source items describe the source-integrated 0.6.0 candidate. Exact-
+candidate Mac CI passed in run 141; checked source items do not close physical-
+device, TestFlight, closed-beta, or App Store gates. See [Golden PRD
+traceability](GOLDEN_TRACEABILITY.md) for every requirement ID and its evidence
+status.
 
 ## Foundation
 
@@ -130,8 +131,9 @@ requirement ID and its evidence status.
 - [x] Bilingual in-app 0.6.0 release notes
 - [x] Current product, architecture, data, privacy, security, Apple setup,
   tester, launch, and store working documents reconciled
-- [ ] Exact unified SHA passes release validator, Swift tests, app-model XCTest,
-  and app/widget Simulator build on macOS
+- [x] Exact unified SHA passed release validator, 251 core/persistence tests,
+  213 app-model tests, coverage reporting, and app/widget Simulator build on
+  macOS in CI run 141
 
 ## G2 - before wider testers
 
@@ -152,7 +154,7 @@ requirement ID and its evidence status.
 ## G3 - before public App Store 1.0
 
 - [x] All Golden functional source surfaces mapped in traceability
-- [ ] Exact-candidate Mac/Simulator gate
+- [x] Exact-candidate Mac/Simulator gate (CI run 141)
 - [ ] Founder/co-tester seven-day run without P0/open P1
 - [ ] Fourteen-day invited closed beta and update/restore evidence
 - [ ] Final accessibility, performance, energy, recovery, and privacy matrices
