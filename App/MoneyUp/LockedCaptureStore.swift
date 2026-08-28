@@ -115,7 +115,8 @@ actor LockedCaptureStore {
         }
     }
 
-    func append(_ capture: LockedCapture) async throws {
+    @discardableResult
+    func append(_ capture: LockedCapture) async throws -> Int {
         var captures = try await all()
         guard capture.isStructurallyValid else {
             throw LockedCaptureStoreError.invalidData
@@ -123,15 +124,20 @@ actor LockedCaptureStore {
         guard captures.count < Self.maximumCount else {
             throw LockedCaptureStoreError.queueFull
         }
-        guard !captures.contains(where: { $0.id == capture.id }) else { return }
+        guard !captures.contains(where: { $0.id == capture.id }) else {
+            return captures.count
+        }
         captures.append(capture)
         try write(captures)
+        return captures.count
     }
 
-    func remove(id: UUID) async throws {
+    @discardableResult
+    func remove(id: UUID) async throws -> Int {
         var captures = try await all()
         captures.removeAll { $0.id == id }
         try write(captures)
+        return captures.count
     }
 
     private func write(_ captures: [LockedCapture]) throws {

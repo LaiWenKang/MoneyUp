@@ -5,8 +5,10 @@ import Foundation
 /// production application-support directory.
 protocol LockedCaptureStoring: Sendable {
     func all() async throws -> [LockedCapture]
-    func append(_ capture: LockedCapture) async throws
-    func remove(id: UUID) async throws
+    @discardableResult
+    func append(_ capture: LockedCapture) async throws -> Int
+    @discardableResult
+    func remove(id: UUID) async throws -> Int
 }
 
 extension LockedCaptureStore: LockedCaptureStoring {}

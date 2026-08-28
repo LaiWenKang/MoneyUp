@@ -18,6 +18,7 @@ later explicit product, privacy, and threat-model decision.
 | Scale architecture | Implemented in source | SQLCipher schema 4, normalized journal/posting and receipt-metadata indexes, compact balances, bounded recent activity, and on-demand reads still require exact-candidate Mac and physical measurements |
 | Privacy | Source and policy aligned | Local processing, no tracking/backend, optional encrypted receipts, and a percentage/state-only App Group widget snapshot |
 | CI | Configured, exact-candidate result open | Release validator, core tests, app-model XCTest, and unsigned app/widget Simulator build must run on the final merged SHA |
+| Backup scale | P1 engineering blocker | Seal/open/import now share one 250 MB boundary, but whole-book archive creation/restoration still uses multiple in-memory buffers and a receipt-heavy book can lose backup availability; streaming/chunking is required before promotion |
 | Apple capability | Manual account-holder action open | Register `group.com.laiwenkang.MoneyUp` and enable it on both existing App IDs before signed validation |
 | Distribution | 0.5.1 installed; 0.6.0 not uploaded | Signed validation, upload, Apple processing, internal install, and external Beta App Review remain open |
 | Physical QA | Open | Upgrade/restore, 10,000-entry/20-schedule performance, bilingual accessibility/widget matrix, and the founder/co-tester seven-day run remain open |
@@ -164,13 +165,14 @@ After approval, the account holder manually releases 1.0. For 72 hours:
 
 ## Remaining engineering and evidence queue
 
-1. Final unified conflict review and exact-candidate Mac CI.
-2. Apple App Group registration and signed entitlement validation.
-3. Physical 0.5.1-to-0.6.0 upgrade and clean-device restore.
-4. Oldest-device 10,000-entry/20-schedule performance measurements.
-5. Bilingual accessibility, appearance, widget, and receipt matrices.
-6. Founder/co-tester seven-day run and 14-day closed beta.
-7. Exact-binary store compliance, App Review, manual release, and monitoring.
+1. Replace the whole-buffer portable archive path with bounded streaming/chunked backup and restore, including receipt-heavy interruption tests.
+2. Final unified conflict review and exact-candidate Mac CI.
+3. Apple App Group registration and signed entitlement validation.
+4. Physical 0.5.1-to-0.6.0 upgrade and clean-device restore.
+5. Oldest-device 10,000-entry/20-schedule performance measurements.
+6. Bilingual accessibility, appearance, widget, and receipt matrices.
+7. Founder/co-tester seven-day run and 14-day closed beta.
+8. Exact-binary store compliance, App Review, manual release, and monitoring.
 
 Sync, shared books, bank aggregation, automatic market pricing, hosted AI,
 two-way spreadsheet editing, and commerce remain outside this queue because

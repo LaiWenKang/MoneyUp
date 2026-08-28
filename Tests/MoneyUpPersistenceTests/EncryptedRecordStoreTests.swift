@@ -1180,6 +1180,19 @@ final class EncryptedRecordStoreTests: XCTestCase {
     }
 
     func testPortableArchiveRoundTripsAndRejectsWrongPassword() throws {
+        XCTAssertTrue(
+            PortableArchive.isWithinArchiveByteLimit(
+                PortableArchive.maximumArchiveByteCount
+            )
+        )
+        XCTAssertFalse(
+            PortableArchive.isWithinArchiveByteLimit(
+                PortableArchive.maximumArchiveByteCount + 1
+            )
+        )
+        XCTAssertTrue(PortableArchive.isWithinArchiveByteLimit(0))
+        XCTAssertFalse(PortableArchive.isWithinArchiveByteLimit(-1))
+
         let snapshot = DatabaseSnapshot(
             schemaVersion: EncryptedRecordStore.currentSchemaVersion,
             records: [

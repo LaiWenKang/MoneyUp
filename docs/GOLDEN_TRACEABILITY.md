@@ -6,6 +6,12 @@ This is the requirement-to-evidence map for the source-integrated MoneyUp 0.6.0
 candidate (source build 8). It prevents "implemented in source" from being
 misreported as "released" or "accepted."
 
+The exact 97-row requirement-to-test mapping is in
+[REQUIREMENTS_TEST_MATRIX.md](REQUIREMENTS_TEST_MATRIX.md). The complete source,
+dependency, defect, test-design, and release-blocker review is in
+[QUALITY_AUDIT_0.6.0.md](QUALITY_AUDIT_0.6.0.md), with the closed file manifest
+in [FILE_REVIEW_INVENTORY.md](FILE_REVIEW_INVENTORY.md).
+
 ## Evidence vocabulary
 
 | Label | Meaning |
@@ -111,8 +117,8 @@ exact-candidate run.
 | POR-01 | `LedgerCSVExporter`/`LedgerXLSXExporter` include entry/posting/account/hierarchy IDs, exact decimals, timestamps, currencies, names, types, and origin context. | Source implemented; exported fixture review open. |
 | POR-02 | CSV emits UTF-8 BOM and neutralizes formula-like user text without changing valid negative numerics. | Source implemented; exact-candidate exporter tests open. |
 | POR-03 | Export UI warns that CSV/XLSX are readable plaintext and uses the system destination picker. | Source implemented; physical sheet/picker check open. |
-| POR-04 | `PortableArchive`/`MoneyUpArchive` create versioned authenticated encrypted archives from a user password independent of the live key. | Source implemented; clean-device physical proof open. |
-| POR-05 | Restore validates and rolls back on wrong password/tamper/duplicates/cancel/future schema/interruption. | Source implemented; Mac fault tests and physical restore gate open. |
+| POR-04 | `PortableArchive`/`MoneyUpArchive` create versioned authenticated encrypted archives from a user password independent of the live key. | Source implemented for bounded fixtures with one shared 250 MB seal/open/import limit; P1 receipt-heavy whole-buffer/backup-availability blocker and clean-device physical proof open. |
+| POR-05 | Restore validates and rolls back on wrong password/tamper/duplicates/cancel/future schema/interruption. | Source implemented for bounded fixtures; P1 large whole-buffer archive blocker, Mac fault execution, and physical restore gate open. |
 | POR-06 | `TransactionCSVImporter` and import UI implement local preview, row issues, duplicate detection, mappings, and atomic commit. | Source implemented; mapped fixture/device review open. |
 | POR-07 | Unknown CSV/TSV mapping UI and dependency-free native OOXML XLSX export are present; spreadsheets remain non-live. | Source implemented; Numbers/Excel physical-open check open. |
 | POR-08 | Quarantine/recovery preserves bad raw encrypted rows and offers backup/export/restore before destructive erase. | Source implemented; corrupted-book recovery drill open. |

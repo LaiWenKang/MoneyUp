@@ -333,6 +333,7 @@
     "backup.error.authentication" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"The password is wrong or the archive has been modified."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"密码错误，或备份文件已被修改。"}}}},
     "backup.error.invalid" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"This is not a valid MoneyUp backup."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"这不是有效的 MoneyUp 备份。"}}}},
     "backup.error.password_short" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Use a password with at least 10 characters."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"密码必须至少包含 10 个字符。"}}}},
+    "backup.error.too_large" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"This book is too large for the current backup format. Remove large receipt attachments and try again."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"此账本超出当前备份格式的大小限制。请移除较大的收据附件后重试。"}}}},
     "backup.error.version" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Backup version %d is not supported by this build."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"此版本不支持备份格式 %d。"}}}},
     "backup.password" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Backup password"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"备份密码"}}}},
     "backup.password_confirm" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Confirm password"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"确认密码"}}}},

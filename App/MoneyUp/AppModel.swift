@@ -476,10 +476,14 @@ final class AppModel: ObservableObject {
                 state = .onboarding
             } else {
                 try validateLoadedBook()
-                try await promoteLockedCaptureIfPossible(
-                    to: openedStore,
-                    generation: storeGeneration
-                )
+                do {
+                    try await promoteLockedCaptureIfPossible(
+                        to: openedStore,
+                        generation: storeGeneration
+                    )
+                } catch is LockedCaptureStoreError {
+                    recordRecoveryIssue("locked_captures/unavailable")
+                }
                 state = .ready
             }
             if lockAfterStart {
@@ -687,7 +691,7 @@ final class AppModel: ObservableObject {
         case .expense, .smartEntry, .scanReceipt:
             kind = .expense
         }
-        try await lockedCaptureStore.append(
+        pendingLockedCaptureCount = try await lockedCaptureStore.append(
             LockedCapture(
                 kind: kind,
                 amountText: amountText,
@@ -695,8 +699,7 @@ final class AppModel: ObservableObject {
                 note: note
             )
         )
-        let pendingCaptures = try? await lockedCaptureStore.all()
-        pendingLockedCaptureCount = pendingCaptures?.count ?? 0
+        recoveryIssues.removeAll { $0.hasPrefix("locked_captures/") }
     }
 
     func consumeQuickLogRequest(_ mode: QuickLogLaunchMode) {
@@ -5491,7 +5494,7 @@ final class AppModel: ObservableObject {
         defer { endJournalMutation() }
         let entry = try appAuthoredEntry(entry)
         let generation = storeGeneration
-        let completedLockedCapture = quickLogDraft?.sourceCaptureID != nil
+        let completedLockedCaptureID = quickLogDraft?.sourceCaptureID
         if let existingCommit = quickLogCommit {
             guard existingCommit.generation != generation else {
                 throw AppModelError.transactionInProgress
@@ -5561,6 +5564,22 @@ final class AppModel: ObservableObject {
                 try budgetConfigurationTimelineWrite(candidateTimeline)
             )
         }
+        // A capture is represented durably by the SQLCipher draft before it is
+        // removed from the redacted inbox. Remove any surviving inbox copy
+        // before committing the journal entry: if this fails, the encrypted
+        // draft remains retryable; if the process stops afterward, either the
+        // draft or the committed journal entry remains, never a promotable
+        // duplicate of an already committed transaction.
+        if let completedLockedCaptureID {
+            let remainingCaptureCount = try await lockedCaptureStore.remove(
+                id: completedLockedCaptureID
+            )
+            guard ownsStoreGeneration(generation) else {
+                throw AppModelError.locked
+            }
+            pendingLockedCaptureCount = remainingCaptureCount
+            recoveryIssues.removeAll { $0.hasPrefix("locked_captures/") }
+        }
         let writes = pendingWrites
         let commitTask = Task {
             await pendingDraftWrite?.value
@@ -5599,12 +5618,20 @@ final class AppModel: ObservableObject {
         budgetEntryAttributions = candidateAttributions
         if retainsCompleteJournal { entries = candidateEntries }
         await refreshJournalAfterMutation()
-        if completedLockedCapture {
-            try? await promoteLockedCaptureIfPossible(
-                to: transactionStore,
-                generation: generation,
-                requestLogRoute: false
-            )
+        if completedLockedCaptureID != nil {
+            do {
+                try await promoteLockedCaptureIfPossible(
+                    to: transactionStore,
+                    generation: generation,
+                    requestLogRoute: false
+                )
+            } catch is LockedCaptureStoreError {
+                recordRecoveryIssue("locked_captures/unavailable")
+            } catch {
+                // The journal entry is already durable. Surface a safe
+                // recovery signal instead of reporting Save as failed.
+                recordRecoveryIssue("locked_captures/promotion-unavailable")
+            }
         }
         return entry.id
     }
@@ -6095,17 +6122,21 @@ final class AppModel: ObservableObject {
         generation: Int,
         requestLogRoute: Bool = true
     ) async throws {
-        let captures = (try? await lockedCaptureStore.all()) ?? []
+        let captures = try await lockedCaptureStore.all()
         guard ownsStoreGeneration(generation) else { return }
         pendingLockedCaptureCount = captures.count
 
         if let sourceID = quickLogDraft?.sourceCaptureID {
-            try? await lockedCaptureStore.remove(id: sourceID)
+            let remainingCaptureCount = try await lockedCaptureStore.remove(id: sourceID)
             guard ownsStoreGeneration(generation) else { return }
-            pendingLockedCaptureCount = max(0, captures.count - 1)
+            pendingLockedCaptureCount = remainingCaptureCount
+            recoveryIssues.removeAll { $0.hasPrefix("locked_captures/") }
             return
         }
-        guard quickLogDraft == nil, let capture = captures.first else { return }
+        guard quickLogDraft == nil, let capture = captures.first else {
+            recoveryIssues.removeAll { $0.hasPrefix("locked_captures/") }
+            return
+        }
 
         let kind: QuickLogKind
         let mode: QuickLogLaunchMode
@@ -6145,10 +6176,16 @@ final class AppModel: ObservableObject {
         await lifecycleHooks.checkpoint(.afterCaptureDraftPersisted)
         guard ownsStoreGeneration(generation) else { return }
         quickLogDraft = draft
-        try await lockedCaptureStore.remove(id: capture.id)
+        let remainingCaptureCount = try await lockedCaptureStore.remove(id: capture.id)
         guard ownsStoreGeneration(generation) else { return }
-        pendingLockedCaptureCount = max(0, captures.count - 1)
+        pendingLockedCaptureCount = remainingCaptureCount
+        recoveryIssues.removeAll { $0.hasPrefix("locked_captures/") }
         if requestLogRoute { requestedQuickLogMode = mode }
+    }
+
+    private func recordRecoveryIssue(_ issue: String) {
+        guard !recoveryIssues.contains(issue) else { return }
+        recoveryIssues.append(issue)
     }
 
     /// Invalid rows remain untouched in SQLCipher and in portable backups, but

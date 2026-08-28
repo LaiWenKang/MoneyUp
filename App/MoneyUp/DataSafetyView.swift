@@ -242,17 +242,18 @@ struct DataSafetyView: View {
                 let accessed = url.startAccessingSecurityScopedResource()
                 defer { if accessed { url.stopAccessingSecurityScopedResource() } }
                 let fileSize = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize
-                if let fileSize, fileSize > 250_000_000 {
-                    throw CocoaError(.fileReadTooLarge)
+                if let fileSize,
+                   !PortableArchive.isWithinArchiveByteLimit(fileSize) {
+                    throw PortableArchiveError.archiveTooLarge
                 }
                 let handle = try FileHandle(forReadingFrom: url)
                 defer { try? handle.close() }
                 let data = try BoundedFileReader.read(
                     from: handle,
-                    maximumByteCount: 250_000_000
+                    maximumByteCount: PortableArchive.maximumArchiveByteCount
                 )
-                guard data.count <= 250_000_000 else {
-                    throw CocoaError(.fileReadTooLarge)
+                guard PortableArchive.isWithinArchiveByteLimit(data.count) else {
+                    throw PortableArchiveError.archiveTooLarge
                 }
                 pendingRestoreData = data
                 isConfirmingRestore = true

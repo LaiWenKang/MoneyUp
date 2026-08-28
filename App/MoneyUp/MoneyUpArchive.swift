@@ -15,6 +15,8 @@ extension PortableArchiveError: @retroactive LocalizedError {
         switch self {
         case .passwordTooShort:
             String(localized: "backup.error.password_short")
+        case .archiveTooLarge:
+            String(localized: "backup.error.too_large")
         case .invalidArchive:
             String(localized: "backup.error.invalid")
         case let .unsupportedVersion(version):

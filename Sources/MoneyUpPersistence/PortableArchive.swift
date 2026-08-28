@@ -3,6 +3,7 @@ import Foundation
 
 public enum PortableArchiveError: Error, Equatable, Sendable {
     case passwordTooShort
+    case archiveTooLarge
     case invalidArchive
     case unsupportedVersion(Int)
     case authenticationFailed
@@ -14,6 +15,8 @@ public enum PortableArchiveError: Error, Equatable, Sendable {
 /// derives an independent AES-256 key from a user-held password so the book can
 /// be restored on a replacement device without weakening the live database.
 public enum PortableArchive {
+    public static let maximumArchiveByteCount = 250_000_000
+
     private struct Envelope: Codable {
         let version: Int
         let kdf: String
@@ -53,13 +56,20 @@ public enum PortableArchive {
             salt: salt,
             ciphertext: combined
         )
-        return magic + (try encoder().encode(envelope))
+        let archive = magic + (try encoder().encode(envelope))
+        guard isWithinArchiveByteLimit(archive.count) else {
+            throw PortableArchiveError.archiveTooLarge
+        }
+        return archive
     }
 
     public static func open(
         _ data: Data,
         password: String
     ) throws -> DatabaseSnapshot {
+        guard isWithinArchiveByteLimit(data.count) else {
+            throw PortableArchiveError.archiveTooLarge
+        }
         guard data.count > magic.count,
               data.prefix(magic.count) == magic else {
             throw PortableArchiveError.invalidArchive
@@ -176,4 +186,10 @@ public enum PortableArchive {
     }
 
     private static func decoder() -> JSONDecoder { JSONDecoder() }
+
+    /// Shared by the app's bounded file reader and persistence tests so backup
+    /// and restore cannot silently drift to different aggregate limits.
+    public static func isWithinArchiveByteLimit(_ byteCount: Int) -> Bool {
+        byteCount >= 0 && byteCount <= maximumArchiveByteCount
+    }
 }

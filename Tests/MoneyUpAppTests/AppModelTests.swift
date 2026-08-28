@@ -1834,6 +1834,115 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testReviewedCaptureRemovalFailureCannotCreateDuplicateTransaction() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let capture = LockedCapture(
+            kind: .expense,
+            amountText: "12.50",
+            occurredAt: Date(timeIntervalSinceReferenceDate: 401),
+            payee: "Retry-safe cafe"
+        )
+        let captureStore = InMemoryLockedCaptureStore(
+            captures: [capture],
+            removeFailuresRemaining: 1
+        )
+        let model = fixture.model(lockedCaptureStore: captureStore)
+
+        do {
+            try await model.promotePendingLockedCapture()
+            XCTFail("Expected the injected inbox removal failure")
+        } catch LockedCaptureStoreError.unavailable {
+            // The SQLCipher draft and redacted queue copy intentionally both
+            // survive this interrupted handoff.
+        }
+
+        XCTAssertEqual(model.quickLogDraft?.sourceCaptureID, capture.id)
+        XCTAssertEqual(model.pendingLockedCaptureCount, 1)
+        let capturesAfterFailedHandoff = try await captureStore.all()
+        let persistedDraftCount = try await fixture.store.count(in: .quickLogDrafts)
+        XCTAssertEqual(capturesAfterFailedHandoff, [capture])
+        XCTAssertEqual(model.entries.count, 0)
+        XCTAssertEqual(persistedDraftCount, 1)
+
+        _ = try await model.logExpense(
+            amount: 12.50,
+            accountID: fixture.wallet.id,
+            categoryID: fixture.food.id,
+            occurredAt: capture.occurredAt,
+            payee: capture.payee,
+            note: nil
+        )
+
+        let capturesAfterSave = try await captureStore.all()
+        let persistedDraftCountAfterSave = try await fixture.store.count(
+            in: .quickLogDrafts
+        )
+        XCTAssertTrue(capturesAfterSave.isEmpty)
+        XCTAssertNil(model.quickLogDraft)
+        XCTAssertEqual(model.pendingLockedCaptureCount, 0)
+        XCTAssertEqual(model.entries.count, 1)
+        XCTAssertEqual(persistedDraftCountAfterSave, 0)
+        try await model.promotePendingLockedCapture()
+        XCTAssertNil(model.quickLogDraft)
+        XCTAssertEqual(model.entries.count, 1)
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testLockAfterCaptureHandoffCommitsExactlyOnceAndLeavesNoQueueCopy() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let capture = LockedCapture(
+            kind: .expense,
+            amountText: "8.75",
+            occurredAt: Date(timeIntervalSinceReferenceDate: 402),
+            payee: "Background cafe"
+        )
+        let captureStore = InMemoryLockedCaptureStore(captures: [capture])
+        let gate = AsyncGate()
+        let model = fixture.model(
+            lockedCaptureStore: captureStore,
+            lifecycleHooks: hooks(pausing: .beforeJournalCommit, at: gate)
+        )
+        try await model.promotePendingLockedCapture()
+
+        let saveTask = Task { @MainActor in
+            try await model.logExpense(
+                amount: 8.75,
+                accountID: fixture.wallet.id,
+                categoryID: fixture.food.id,
+                occurredAt: capture.occurredAt,
+                payee: capture.payee,
+                note: nil
+            )
+        }
+        await gate.waitUntilReached()
+        let capturesBeforeCommit = try await captureStore.all()
+        XCTAssertTrue(capturesBeforeCommit.isEmpty)
+
+        model.lock()
+        await gate.release()
+        let savedID = try await saveTask.value
+        XCTAssertNotNil(savedID)
+        await model.waitForPendingStoreClose()
+
+        let reopened = try fixture.reopenStore()
+        let persistedEntries = try await reopened.fetchAll(
+            JournalEntry.self,
+            from: .journalEntries
+        )
+        let persistedDraftCount = try await reopened.count(in: .quickLogDrafts)
+        let capturesAfterCommit = try await captureStore.all()
+        XCTAssertEqual(model.state, .locked)
+        XCTAssertEqual(persistedEntries.count, 1)
+        XCTAssertEqual(persistedEntries.first?.payee, capture.payee)
+        XCTAssertEqual(persistedDraftCount, 0)
+        XCTAssertTrue(capturesAfterCommit.isEmpty)
+        await reopened.close()
+    }
+
+    @MainActor
     func testInvalidBudgetReturnsUnavailableStateInsteadOfEmptyOrZeroValues() async throws {
         let fixture = try AppModelFixture()
         defer { fixture.removeFiles() }
@@ -6634,21 +6743,33 @@ private actor AsyncGate {
 
 private actor InMemoryLockedCaptureStore: LockedCaptureStoring {
     private var captures: [LockedCapture]
+    private var removeFailuresRemaining: Int
 
-    init(captures: [LockedCapture]) {
+    init(captures: [LockedCapture], removeFailuresRemaining: Int = 0) {
         self.captures = captures
+        self.removeFailuresRemaining = removeFailuresRemaining
     }
 
     func all() async throws -> [LockedCapture] {
         captures
     }
 
-    func append(_ capture: LockedCapture) async throws {
-        guard !captures.contains(where: { $0.id == capture.id }) else { return }
+    @discardableResult
+    func append(_ capture: LockedCapture) async throws -> Int {
+        guard !captures.contains(where: { $0.id == capture.id }) else {
+            return captures.count
+        }
         captures.append(capture)
+        return captures.count
     }
 
-    func remove(id: UUID) async throws {
+    @discardableResult
+    func remove(id: UUID) async throws -> Int {
+        if removeFailuresRemaining > 0 {
+            removeFailuresRemaining -= 1
+            throw LockedCaptureStoreError.unavailable
+        }
         captures.removeAll { $0.id == id }
+        return captures.count
     }
 }
