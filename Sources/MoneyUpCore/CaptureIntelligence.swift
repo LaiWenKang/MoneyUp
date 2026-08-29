@@ -200,14 +200,16 @@ public enum CaptureSuggestionEngine {
             }
             let exactPayeeMatch = payeeKey != nil && storedPayeeKey == payeeKey
 
-            let matchingFinancialAccounts = Set(entry.postings.lazy.compactMap { posting in
-                guard posting.money.currency == query.currency,
-                      directions.accountSign.matches(posting.money.amount),
-                      financialAccountIDs.contains(posting.accountID) else {
-                    return nil
+            let matchingFinancialAccounts: Set<UUID> = Set(
+                entry.postings.lazy.compactMap { posting -> UUID? in
+                    guard posting.money.currency == query.currency,
+                          directions.accountSign.matches(posting.money.amount),
+                          financialAccountIDs.contains(posting.accountID) else {
+                        return nil
+                    }
+                    return posting.accountID
                 }
-                return posting.accountID
-            })
+            )
             if !matchingFinancialAccounts.isEmpty {
                 accountEligibleEntryCount += 1
                 for accountID in matchingFinancialAccounts {
@@ -218,13 +220,15 @@ public enum CaptureSuggestionEngine {
                 }
             }
 
-            let categoryLegIDs = Set(entry.postings.lazy.compactMap { posting in
-                guard posting.money.currency == query.currency,
-                      directions.categorySign.matches(posting.money.amount) else {
-                    return nil
+            let categoryLegIDs: Set<UUID> = Set(
+                entry.postings.lazy.compactMap { posting -> UUID? in
+                    guard posting.money.currency == query.currency,
+                          directions.categorySign.matches(posting.money.amount) else {
+                        return nil
+                    }
+                    return posting.accountID
                 }
-                return posting.accountID
-            })
+            )
             // A transaction split across multiple categories is evidence for
             // the split itself, not for choosing one category for a future
             // unsplit capture. Exclude that ambiguous vote so repeated A+B
