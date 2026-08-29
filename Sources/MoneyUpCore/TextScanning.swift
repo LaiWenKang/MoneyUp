@@ -59,11 +59,24 @@ public enum TextScanner {
         calendar: Calendar,
         prefersDayFirst: Bool
     ) -> DateComponents? {
+        dateMatch(
+            in: text,
+            calendar: calendar,
+            prefersDayFirst: prefersDayFirst
+        )?.components
+    }
+
+    static func dateMatch(
+        in text: String,
+        calendar: Calendar,
+        prefersDayFirst: Bool
+    ) -> (components: DateComponents, text: String)? {
         for pattern in datePatterns {
             guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
             let full = NSRange(text.startIndex..<text.endIndex, in: text)
             guard let match = regex.firstMatch(in: text, range: full),
-                  match.numberOfRanges == 4 else { continue }
+                  match.numberOfRanges == 4,
+                  let matchedRange = Range(match.range, in: text) else { continue }
 
             let parts = (1...3).compactMap { index -> Int? in
                 guard let range = Range(match.range(at: index), in: text) else { return nil }
@@ -96,9 +109,26 @@ public enum TextScanner {
                 continue
             }
             components.calendar = calendar
-            return components
+            return (components, String(text[matchedRange]))
         }
         return nil
+    }
+
+    /// True when text contains one of the supported explicit date shapes,
+    /// even if its month/day values are invalid. Natural-language capture uses
+    /// this to prevent a rejected date component from becoming an amount.
+    static func explicitDateShapeCount(in text: String) -> Int {
+        let full = NSRange(text.startIndex..<text.endIndex, in: text)
+        var ranges = Set<String>()
+        for pattern in datePatterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern) else {
+                continue
+            }
+            for match in regex.matches(in: text, range: full) {
+                ranges.insert("\(match.range.location):\(match.range.length)")
+            }
+        }
+        return ranges.count
     }
 
     /// Case- and diacritic-insensitive comparison key, so "Café Nero" typed
