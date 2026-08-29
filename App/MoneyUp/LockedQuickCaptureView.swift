@@ -1,8 +1,16 @@
 import SwiftUI
 
 struct LockedQuickCaptureView: View {
+    private enum FocusedField: Hashable {
+        case amount
+        case payee
+        case note
+    }
+
     @EnvironmentObject private var model: AppModel
     let mode: QuickLogLaunchMode
+
+    private let unlockMethod = UnlockMethod.current
 
     @State private var amountText = ""
     @State private var payee = ""
@@ -11,14 +19,34 @@ struct LockedQuickCaptureView: View {
     @State private var errorMessage: String?
     @State private var isShowingOptionalDetails = false
     @State private var didSave = false
-    @FocusState private var isAmountFocused: Bool
+    @FocusState private var focusedField: FocusedField?
 
-    private var canSave: Bool {
+    private var hasValidAmount: Bool {
         guard amountText.utf8.count <= LockedCapture.maximumAmountByteCount,
-              payee.utf8.count <= LockedCapture.maximumPayeeByteCount,
-              note.utf8.count <= LockedCapture.maximumNoteByteCount,
               let amount = decimalAmount(from: amountText) else { return false }
         return amount > .zero
+    }
+
+    private var detailsFitCapture: Bool {
+        payee.utf8.count <= LockedCapture.maximumPayeeByteCount
+            && note.utf8.count <= LockedCapture.maximumNoteByteCount
+    }
+
+    private var canSave: Bool {
+        hasValidAmount && detailsFitCapture
+    }
+
+    private var hasUnsavedInput: Bool {
+        !amountText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !payee.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var pendingCaptureCountText: String {
+        String(
+            format: String(localized: "capture.pending_count"),
+            model.pendingLockedCaptureCount
+        )
     }
 
     var body: some View {
@@ -37,12 +65,7 @@ struct LockedQuickCaptureView: View {
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                                 .multilineTextAlignment(.center)
-                            Text(
-                                String(
-                                    format: String(localized: "capture.pending_count"),
-                                    model.pendingLockedCaptureCount
-                                )
-                            )
+                            Text(pendingCaptureCountText)
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
                         }
@@ -58,13 +81,18 @@ struct LockedQuickCaptureView: View {
                                 .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.borderedProminent)
+                        .tint(.moneyUpAction)
 
                         Button {
                             Task { await unlock() }
                         } label: {
-                            Label("capture.review_now", systemImage: "faceid")
+                            Label(
+                                "capture.review_now",
+                                systemImage: unlockMethod.systemImage
+                            )
                                 .frame(maxWidth: .infinity)
                         }
+                        .disabled(!unlockMethod.isAvailable)
                     }
                 } else {
                     Section {
@@ -73,6 +101,11 @@ struct LockedQuickCaptureView: View {
                         Text("capture.detail")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
+                        if model.pendingLockedCaptureCount > 0 {
+                            Text(pendingCaptureCountText)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                        }
                     }
 
                     Section {
@@ -80,7 +113,7 @@ struct LockedQuickCaptureView: View {
                             .keyboardType(.decimalPad)
                             .font(.system(.largeTitle, design: .rounded, weight: .bold))
                             .monospacedDigit()
-                            .focused($isAmountFocused)
+                            .focused($focusedField, equals: .amount)
                         if !amountText.isEmpty && !canSave
                             && payee.utf8.count <= LockedCapture.maximumPayeeByteCount
                             && note.utf8.count <= LockedCapture.maximumNoteByteCount {
@@ -99,6 +132,7 @@ struct LockedQuickCaptureView: View {
                         ) {
                             if mode != .transfer {
                                 TextField("transaction.payee", text: $payee)
+                                    .focused($focusedField, equals: .payee)
                                 if payee.utf8.count
                                     > LockedCapture.maximumPayeeByteCount {
                                     Label(
@@ -111,6 +145,7 @@ struct LockedQuickCaptureView: View {
                             }
                             TextField("quick_log.note", text: $note, axis: .vertical)
                                 .lineLimit(2...4)
+                                .focused($focusedField, equals: .note)
                             if note.utf8.count > LockedCapture.maximumNoteByteCount {
                                 Label(
                                     "capture.input_too_long",
@@ -123,7 +158,10 @@ struct LockedQuickCaptureView: View {
                     } header: {
                         Text(mode.kind.title)
                     } footer: {
-                        Text("capture.reconcile_later")
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("capture.currency_unassigned")
+                            Text("capture.reconcile_later")
+                        }
                     }
 
                     Section {
@@ -134,20 +172,26 @@ struct LockedQuickCaptureView: View {
                                 .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.borderedProminent)
+                        .tint(.moneyUpAction)
                         .disabled(!canSave || isSaving)
 
                         Button {
                             Task { await unlock() }
                         } label: {
-                            Label("capture.unlock_instead", systemImage: "faceid")
+                            Label(
+                                "capture.unlock_instead",
+                                systemImage: unlockMethod.systemImage
+                            )
                                 .frame(maxWidth: .infinity)
                         }
+                        .disabled(!unlockMethod.isAvailable)
                     }
 
                 }
             }
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
+            .scrollDismissesKeyboard(.interactively)
             .disabled(isSaving)
             .navigationTitle("capture.title")
             .navigationBarTitleDisplayMode(.inline)
@@ -159,9 +203,11 @@ struct LockedQuickCaptureView: View {
                 }
                 if !didSave {
                     ToolbarItemGroup(placement: .keyboard) {
-                        Spacer()
                         Button("capture.save") { Task { await save() } }
                             .disabled(!canSave || isSaving)
+                        Spacer()
+                        Button("action.done") { focusedField = nil }
+                            .fontWeight(.semibold)
                     }
                 }
             }
@@ -169,7 +215,7 @@ struct LockedQuickCaptureView: View {
         .task {
             guard !didSave else { return }
             await Task.yield()
-            isAmountFocused = true
+            focusedField = .amount
         }
         .sensoryFeedback(.success, trigger: didSave)
         .alert("error.could_not_save", isPresented: Binding(
@@ -183,7 +229,7 @@ struct LockedQuickCaptureView: View {
     }
 
     private func save() async {
-        guard canSave else { return }
+        guard canSave, !isSaving else { return }
         isSaving = true
         errorMessage = nil
         defer { isSaving = false }
@@ -194,7 +240,7 @@ struct LockedQuickCaptureView: View {
                 payee: payee,
                 note: note
             )
-            isAmountFocused = false
+            focusedField = nil
             didSave = true
         } catch {
             errorMessage = safeUserMessage(for: error, context: .save)
@@ -202,8 +248,45 @@ struct LockedQuickCaptureView: View {
     }
 
     private func unlock() async {
+        guard !isSaving, unlockMethod.isAvailable else { return }
         isSaving = true
+        errorMessage = nil
         defer { isSaving = false }
+
+        // A valid form is first appended to the existing device-only encrypted
+        // inbox. `didSave` is the view-level idempotency boundary: if
+        // authentication is cancelled and the user retries, the same input is
+        // not appended again. Promotion into authenticated Log remains the
+        // model's existing exactly-once path and still requires normal review.
+        if hasUnsavedInput, !didSave {
+            guard hasValidAmount else {
+                errorMessage = String(localized: "error.invalid_amount")
+                focusedField = .amount
+                return
+            }
+            guard detailsFitCapture else {
+                errorMessage = String(localized: "capture.input_too_long")
+                isShowingOptionalDetails = true
+                focusedField = payee.utf8.count > LockedCapture.maximumPayeeByteCount
+                    ? .payee : .note
+                return
+            }
+        }
+        if canSave, !didSave {
+            do {
+                try await model.saveLockedCapture(
+                    mode: mode,
+                    amountText: amountText,
+                    payee: payee,
+                    note: note
+                )
+                focusedField = nil
+                didSave = true
+            } catch {
+                errorMessage = safeUserMessage(for: error, context: .save)
+                return
+            }
+        }
         await model.start()
     }
 }

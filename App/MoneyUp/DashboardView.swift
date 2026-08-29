@@ -1,5 +1,27 @@
 import MoneyUpCore
 import SwiftUI
+import UIKit
+
+enum DashboardReportingClockPolicy {
+    /// Uses the book's reporting calendar so daylight-saving transitions and a
+    /// reporting zone that differs from the device zone never become a fixed
+    /// 86,400-second approximation.
+    static func nextRefresh(
+        after date: Date,
+        calendar: Calendar,
+        scheduledOccurrences: [Date] = []
+    ) -> Date? {
+        guard let dayEnd = calendar.dateInterval(of: .day, for: date)?.end else {
+            return nil
+        }
+        guard let nextOccurrence = scheduledOccurrences
+            .filter({ $0 >= date })
+            .min() else { return dayEnd }
+        // Move just beyond an occurrence because `occurrence(onOrAfter:)`
+        // intentionally includes an occurrence exactly equal to its argument.
+        return min(dayEnd, nextOccurrence.addingTimeInterval(1))
+    }
+}
 
 struct DashboardView: View {
     @MainActor
@@ -20,17 +42,25 @@ struct DashboardView: View {
     }
 
     @EnvironmentObject private var model: AppModel
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var isShowingFlexibleTodayBreakdown = false
+    @State private var reportingNow: Date?
+    @State private var reportingClockGeneration = 0
     let onOpenLog: () -> Void
     let onOpenPlan: () -> Void
+    let onOpenAssets: () -> Void
 
     init(
+        initialReportingDate: Date? = nil,
         onOpenLog: @escaping () -> Void = {},
-        onOpenPlan: @escaping () -> Void = {}
+        onOpenPlan: @escaping () -> Void = {},
+        onOpenAssets: @escaping () -> Void = {}
     ) {
+        _reportingNow = State(initialValue: initialReportingDate)
         self.onOpenLog = onOpenLog
         self.onOpenPlan = onOpenPlan
+        self.onOpenAssets = onOpenAssets
     }
 
     private var spendableAccounts: [LedgerAccount] {
@@ -130,7 +160,7 @@ struct DashboardView: View {
     }
 
     private var nextScheduledTransaction: UpcomingSchedule? {
-        let now = Date()
+        let now = reportingDate
         return model.scheduledTransactions
             .compactMap { transaction in
                 transaction.occurrence(
@@ -144,12 +174,12 @@ struct DashboardView: View {
     }
 
     private var budgetSummary: DerivedValue<BudgetPlanSummary?> {
-        model.budgetPlanSummaryThisMonthResult()
+        model.budgetPlanSummaryThisMonthResult(asOf: reportingDate)
     }
 
     private var monthElapsed: Double {
         let calendar = model.reportingCalendar
-        let now = Date()
+        let now = reportingDate
         guard let month = calendar.dateInterval(of: .month, for: now) else { return 0 }
         let span = month.end.timeIntervalSince(month.start)
         guard span > 0 else { return 0 }
@@ -159,26 +189,11 @@ struct DashboardView: View {
     private func budgetRatio(
         _ summary: BudgetPlanSummary
     ) -> DerivedValue<Double> {
-        guard summary.limit.amount > .zero else {
-            return .available(summary.spent.amount > .zero ? 1 : 0)
-        }
-        do {
-            return .available(
-                NSDecimalNumber(
-                    decimal: try CheckedDecimal.ratio(
-                        summary.spent.amount,
-                        summary.limit.amount
-                    )
-                ).doubleValue
-            )
-        } catch {
-            DerivedValueDiagnostics.record(
-                .amountCalculationFailed,
-                operation: "dashboard-budget-ratio",
-                error: error
-            )
-            return .unavailable(.amountCalculationFailed)
-        }
+        moneyUpPaceRatio(
+            spent: summary.spent.amount,
+            limit: summary.limit.amount,
+            operation: "dashboard-budget-ratio"
+        )
     }
 
     var body: some View {
@@ -187,7 +202,7 @@ struct DashboardView: View {
                 LazyVStack(spacing: 16) {
                     safeToSpendHero
 
-                    DashboardCard {
+                    MoneyUpCard {
                         VStack(alignment: .leading, spacing: 14) {
                             Label("dashboard.position_title", systemImage: "scale.3d")
                                 .font(.headline)
@@ -258,7 +273,7 @@ struct DashboardView: View {
                         }
                     }
 
-                    DashboardCard {
+                    MoneyUpCard {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("dashboard.monthly_budget")
                                 .font(.headline)
@@ -266,7 +281,11 @@ struct DashboardView: View {
                             case let .available(.some(summary)):
                                 let ratioResult = budgetRatio(summary)
                                 if case let .available(ratio) = ratioResult {
-                                    MoneyUpPaceBar(ratio: ratio, elapsed: monthElapsed)
+                                    MoneyUpPaceBar(
+                                        ratio: ratio,
+                                        elapsed: monthElapsed,
+                                        announcesStatus: false
+                                    )
                                 } else if case let .unavailable(issue) = ratioResult {
                                     DerivedValueUnavailableView(issue: issue)
                                 }
@@ -296,7 +315,9 @@ struct DashboardView: View {
                                     .foregroundStyle(.secondary)
                                     .accessibilityElement(children: .combine)
                                 }
-                                switch model.excludedForeignSpendingThisMonthResult() {
+                            switch model.excludedForeignSpendingThisMonthResult(
+                                asOf: reportingDate
+                            ) {
                                 case let .available(foreignSpending):
                                     ForEach(foreignSpending, id: \.currency) { money in
                                         HStack {
@@ -330,7 +351,7 @@ struct DashboardView: View {
                     }
 
                     if let upcoming = nextScheduledTransaction {
-                        DashboardCard {
+                        MoneyUpCard {
                             VStack(alignment: .leading, spacing: 12) {
                                 Label(
                                     "dashboard.upcoming",
@@ -364,7 +385,7 @@ struct DashboardView: View {
                         }
                     }
 
-                    DashboardCard {
+                    MoneyUpCard {
                         VStack(spacing: 0) {
                             NavigationLink {
                                 InsightsView()
@@ -377,8 +398,8 @@ struct DashboardView: View {
 
                             Divider()
 
-                            NavigationLink {
-                                AssetsView()
+                            Button {
+                                onOpenAssets()
                             } label: {
                                 Label("dashboard.open_assets", systemImage: "wallet.bifold.fill")
                                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -388,7 +409,7 @@ struct DashboardView: View {
                         }
                     }
 
-                    DashboardCard {
+                    MoneyUpCard {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("dashboard.recent")
                                 .font(.headline)
@@ -428,7 +449,7 @@ struct DashboardView: View {
                         }
                     }
 
-                    DashboardCard {
+                    MoneyUpCard {
                         HStack(alignment: .top, spacing: 12) {
                             Image(systemName: "lock.shield.fill")
                                 .font(.title2)
@@ -448,7 +469,9 @@ struct DashboardView: View {
             .background { MoneyUpBackdrop() }
             .navigationTitle("tab.today")
             .sheet(isPresented: $isShowingFlexibleTodayBreakdown) {
-                if case let .available(.available(breakdown)) = model.flexibleTodayResult() {
+                if case let .available(.available(breakdown)) = model.flexibleTodayResult(
+                    asOf: reportingDate
+                ) {
                     FlexibleTodayBreakdownSheet(breakdown: breakdown)
                 }
             }
@@ -464,6 +487,23 @@ struct DashboardView: View {
         }
         .environment(\.calendar, model.reportingCalendar)
         .environment(\.timeZone, model.reportingCalendar.timeZone)
+        .task(id: reportingClockTaskID) {
+            await refreshAtReportingDayBoundaries()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            guard newPhase == .active else { return }
+            restartReportingClock()
+        }
+        .onChange(of: model.scheduledTransactions) { _, _ in
+            restartReportingClock()
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: UIApplication.significantTimeChangeNotification
+            )
+        ) { _ in
+            restartReportingClock()
+        }
     }
 
     private var safeToSpendHero: some View {
@@ -482,7 +522,7 @@ struct DashboardView: View {
                 )
 
             VStack(alignment: .leading, spacing: 14) {
-                switch model.flexibleTodayResult() {
+                switch model.flexibleTodayResult(asOf: reportingDate) {
                 case let .available(.available(breakdown)):
                     Group {
                         if dynamicTypeSize.isAccessibilitySize {
@@ -556,6 +596,44 @@ struct DashboardView: View {
                 .stroke(Color.accentColor.opacity(0.18), lineWidth: 1)
         }
         .accessibilityElement(children: .contain)
+    }
+
+    private var reportingDate: Date {
+        reportingNow ?? model.currentDateForUserAction()
+    }
+
+    private var reportingClockTaskID: String {
+        "\(model.reportingCalendar.timeZone.identifier):\(reportingClockGeneration)"
+    }
+
+    private func restartReportingClock() {
+        reportingNow = model.currentDateForUserAction()
+        reportingClockGeneration &+= 1
+    }
+
+    /// A sleeping foreground task is effectively free, is cancelled with the
+    /// view, and is paired with the scene-phase refresh for suspended apps.
+    /// Every Today calculation reads the resulting single reporting instant.
+    @MainActor
+    private func refreshAtReportingDayBoundaries() async {
+        while !Task.isCancelled {
+            let now = model.currentDateForUserAction()
+            reportingNow = now
+            let scheduledOccurrences = model.scheduledTransactions.compactMap {
+                $0.occurrence(onOrAfter: now, calendar: model.reportingCalendar)
+            }
+            guard let nextRefresh = DashboardReportingClockPolicy.nextRefresh(
+                after: now,
+                calendar: model.reportingCalendar,
+                scheduledOccurrences: scheduledOccurrences
+            ) else { return }
+            let delay = max(nextRefresh.timeIntervalSince(now), 0.001)
+            do {
+                try await Task.sleep(for: .seconds(delay))
+            } catch {
+                return
+            }
+        }
     }
 
     private var heroIllustration: some View {
@@ -728,7 +806,7 @@ private struct FlexibleTodayBreakdownSheet: View {
                         }
                     }
 
-                    DashboardCard {
+                    MoneyUpCard {
                         VStack(spacing: 0) {
                             calculationRow(
                                 "dashboard.safe_to_spend.budget_remaining",
@@ -756,7 +834,7 @@ private struct FlexibleTodayBreakdownSheet: View {
                         }
                     }
 
-                    DashboardCard {
+                    MoneyUpCard {
                         VStack(alignment: .leading, spacing: 10) {
                             Label("dashboard.safe_to_spend.period", systemImage: "calendar")
                                 .font(.headline)
@@ -766,7 +844,7 @@ private struct FlexibleTodayBreakdownSheet: View {
                         }
                     }
 
-                    DashboardCard {
+                    MoneyUpCard {
                         VStack(alignment: .leading, spacing: 12) {
                             Label(
                                 "dashboard.safe_to_spend.exclusions",
@@ -874,31 +952,5 @@ private struct FlexibleTodayBreakdownSheet: View {
         Label(key, systemImage: "circle.dashed")
             .font(.subheadline)
             .foregroundStyle(.secondary)
-    }
-}
-
-struct DashboardCard<Content: View>: View {
-    let content: Content
-    let backgroundColor: Color
-
-    init(
-        backgroundColor: Color = .moneyUpSurfaceElevated,
-        @ViewBuilder content: () -> Content
-    ) {
-        self.backgroundColor = backgroundColor
-        self.content = content()
-    }
-
-    var body: some View {
-        content
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(18)
-            .background(backgroundColor)
-            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .stroke(Color.accentColor.opacity(0.10), lineWidth: 1)
-            }
-            .accessibilityElement(children: .contain)
     }
 }

@@ -115,6 +115,7 @@ private struct CurrencySelectionSheet: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .moneyUpAccessibilitySelected(code == selection)
             }
             .searchable(text: $query, prompt: "currency.search")
             .navigationTitle(title)
@@ -124,6 +125,17 @@ private struct CurrencySelectionSheet: View {
                     Button("action.cancel") { dismiss() }
                 }
             }
+        }
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func moneyUpAccessibilitySelected(_ isSelected: Bool) -> some View {
+        if isSelected {
+            accessibilityAddTraits(.isSelected)
+        } else {
+            self
         }
     }
 }

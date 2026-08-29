@@ -43,38 +43,45 @@ private struct LockedView: View {
     private let method = UnlockMethod.current
 
     var body: some View {
-        VStack(spacing: 20) {
-            Image(systemName: method.systemImage)
-                .font(.system(size: 52))
-                .foregroundStyle(method.isAvailable ? Color.accentColor : Color.orange)
-                .accessibilityHidden(true)
-            Text("lock.title")
-                .font(.largeTitle.bold())
+        GeometryReader { proxy in
+            ScrollView {
+                VStack(spacing: 20) {
+                    Image(systemName: method.systemImage)
+                        .font(.system(size: 52))
+                        .foregroundStyle(
+                            method.isAvailable ? Color.accentColor : Color.orange
+                        )
+                        .accessibilityHidden(true)
+                    Text("lock.title")
+                        .font(.largeTitle.bold())
 
-            if method.isAvailable {
-                Text("lock.detail")
-                    .multilineTextAlignment(.center)
-                    .foregroundStyle(.secondary)
-                Button {
-                    Task { await model.start() }
-                } label: {
-                    Label(method.unlockTitle, systemImage: method.systemImage)
-                        .frame(maxWidth: .infinity)
+                    if method.isAvailable {
+                        Text("lock.detail")
+                            .multilineTextAlignment(.center)
+                            .foregroundStyle(.secondary)
+                        Button {
+                            Task { await model.start() }
+                        } label: {
+                            Label(method.unlockTitle, systemImage: method.systemImage)
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.moneyUpAction)
+                        .controlSize(.large)
+                        .disabled(model.isWorking)
+                    } else {
+                        // The database key is stored WhenPasscodeSetThisDeviceOnly, so
+                        // without a device passcode there is nothing to unlock with.
+                        Text("lock.no_passcode")
+                            .multilineTextAlignment(.center)
+                            .foregroundStyle(.secondary)
+                    }
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .disabled(model.isWorking)
-            } else {
-                // The database key is stored WhenPasscodeSetThisDeviceOnly, so
-                // without a device passcode there is nothing to unlock with.
-                Text("lock.no_passcode")
-                    .multilineTextAlignment(.center)
-                    .foregroundStyle(.secondary)
+                .padding(32)
+                .frame(maxWidth: 480)
+                .frame(maxWidth: .infinity, minHeight: proxy.size.height)
             }
         }
-        .padding(32)
-        .frame(maxWidth: 480, maxHeight: .infinity)
-        .frame(maxWidth: .infinity)
         .background { MoneyUpBackdrop() }
     }
 }
@@ -86,36 +93,46 @@ private struct RecoveryView: View {
     @State private var isShowingDataSafety = false
 
     var body: some View {
-        VStack(spacing: 18) {
-            Image(systemName: "exclamationmark.shield.fill")
-                .font(.system(size: 48))
-                .foregroundStyle(.orange)
-            Text("error.could_not_open")
-                .font(.title2.bold())
-            Text(message)
-                .multilineTextAlignment(.center)
-                .foregroundStyle(.secondary)
-            Button("action.try_again") {
-                Task { await model.start() }
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(model.isWorking)
+        GeometryReader { proxy in
+            ScrollView {
+                VStack(spacing: 18) {
+                    Image(systemName: "exclamationmark.shield.fill")
+                        .font(.system(size: 48))
+                        .foregroundStyle(.orange)
+                        .accessibilityHidden(true)
+                    Text("error.could_not_open")
+                        .font(.title2.bold())
+                    Text(message)
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(.secondary)
+                    Button("action.try_again") {
+                        Task { await model.start() }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.moneyUpAction)
+                    .disabled(model.isWorking)
 
-            Button {
-                isShowingDataSafety = true
-            } label: {
-                Label("recovery.backup_or_restore", systemImage: "externaldrive.badge.shield.checkmark")
-            }
-            .buttonStyle(.bordered)
-            .disabled(model.isWorking)
+                    Button {
+                        isShowingDataSafety = true
+                    } label: {
+                        Label(
+                            "recovery.backup_or_restore",
+                            systemImage: "externaldrive.badge.shield.checkmark"
+                        )
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(model.isWorking)
 
-            Button("recovery.erase", role: .destructive) {
-                isConfirmingReset = true
+                    Button("recovery.erase", role: .destructive) {
+                        isConfirmingReset = true
+                    }
+                    .disabled(model.isWorking)
+                }
+                .padding(32)
+                .frame(maxWidth: 480)
+                .frame(maxWidth: .infinity, minHeight: proxy.size.height)
             }
-            .disabled(model.isWorking)
         }
-        .padding(32)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background { MoneyUpBackdrop() }
         .confirmationDialog(
             "recovery.erase_title",
@@ -163,13 +180,17 @@ private struct MainTabView: View {
     var body: some View {
         TabView(selection: $selectedSection) {
             DashboardView(
+                initialReportingDate: model.currentDateForUserAction(),
                 onOpenLog: { selectedSection = .log },
-                onOpenPlan: { selectedSection = .plan }
+                onOpenPlan: { selectedSection = .plan },
+                onOpenAssets: { selectedSection = .assets }
             )
                 .tabItem { Label("tab.today", systemImage: "house.fill") }
                 .tag(MoneyUpSection.today)
 
-            HistoryView()
+            NavigationStack {
+                HistoryView()
+            }
                 .tabItem { Label("tab.history", systemImage: "clock.arrow.circlepath") }
                 .tag(MoneyUpSection.history)
 

@@ -3,6 +3,7 @@ import SwiftUI
 
 struct TransactionRow: View {
     @EnvironmentObject private var model: AppModel
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let entry: JournalEntry
 
     private var categoryName: String? {
@@ -15,7 +16,10 @@ struct TransactionRow: View {
     }
 
     private var title: String {
-        entry.payee ?? categoryName ?? String(localized: entry.kind.localizedKey)
+        entry.payee
+            ?? transferRouteTitle
+            ?? categoryName
+            ?? localizedKind
     }
 
     private var isRefund: Bool {
@@ -38,39 +42,163 @@ struct TransactionRow: View {
         }
     }
 
-    var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon)
-                .frame(width: 34, height: 34)
-                .background(Color.accentColor.opacity(0.12))
-                .clipShape(Circle())
+    private var iconColor: Color {
+        switch entry.kind {
+        case .expense: isRefund ? .green : .orange
+        case .income: .green
+        case .transfer: .accentColor
+        case .adjustment: .secondary
+        case .investment: .accentColor
+        }
+    }
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .lineLimit(1)
-                HStack(spacing: 5) {
-                    Text(entry.occurredAt, format: .dateTime.month().day().hour().minute())
-                    if let categoryName, categoryName != title {
-                        Text("•")
-                        Text(categoryName)
-                    }
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
+    private var financialAccountNames: [String] {
+        entry.postings.compactMap { posting in
+            guard let account = model.accountsByID[posting.accountID],
+                  account.systemRole == nil,
+                  account.kind == .asset || account.kind == .liability else {
+                return nil
             }
-            Spacer()
-            if let money = displayMoney(for: entry, accountsByID: model.accountsByID) {
-                Text(formattedMoney(isRefund ? money.negated : money))
-                    .font(.subheadline.monospacedDigit().weight(.semibold))
-                    .foregroundStyle(entry.kind == .income || isRefund ? .green : .primary)
+            return account.name
+        }
+    }
+
+    private var transferRouteTitle: String? {
+        guard entry.kind == .transfer, financialAccountNames.count >= 2 else {
+            return nil
+        }
+        return "\(financialAccountNames[0]) → \(financialAccountNames[1])"
+    }
+
+    private var displayedAmountsResult: DerivedValue<[TransactionDisplayAmount]> {
+        transactionDisplayAmountsResult(
+            for: entry,
+            accountsByID: model.accountsByID,
+            isRefund: isRefund
+        )
+    }
+
+    private var localizedKind: String {
+        isRefund
+            ? String(localized: "transaction.refund")
+            : String(localized: entry.kind.localizedKey)
+    }
+
+    private var reportingDateDescription: String {
+        entry.occurredAt.formattedForReporting(
+            .dateTime.month().day().hour().minute(),
+            calendar: model.reportingCalendar
+        )
+    }
+
+    private var accessibilityValue: String {
+        var components: [String] = []
+        if localizedKind != title { components.append(localizedKind) }
+        if let categoryName, categoryName != title { components.append(categoryName) }
+        components.append(reportingDateDescription)
+        switch displayedAmountsResult {
+        case let .available(amounts):
+            components.append(contentsOf: amounts.map(formattedTransactionAmount))
+        case let .unavailable(issue):
+            components.append(issue.localizedDescription)
+        }
+        return components.joined(separator: ", ")
+    }
+
+    var body: some View {
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 9) {
+                    HStack(spacing: 10) {
+                        transactionIcon
+                        Text(title)
+                            .fontWeight(.semibold)
+                            .lineLimit(3)
+                    }
+                    transactionMetadata
+                    amountContent
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
             } else {
-                Text("transaction.transfer")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 12) {
+                    transactionIcon
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(title)
+                            .lineLimit(1)
+                        transactionMetadata
+                    }
+                    Spacer()
+                    amountContent
+                }
             }
         }
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title)
+        .accessibilityValue(accessibilityValue)
+    }
+
+    private var transactionIcon: some View {
+        Image(systemName: icon)
+            .foregroundStyle(iconColor)
+            .frame(width: 34, height: 34)
+            .background(iconColor.opacity(0.11))
+            .clipShape(Circle())
+            .accessibilityHidden(true)
+    }
+
+    private var transactionMetadata: some View {
+        HStack(spacing: 5) {
+            Text(reportingDateDescription)
+            if let categoryName, categoryName != title {
+                Text("•")
+                Text(categoryName)
+            }
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
+    }
+
+    @ViewBuilder
+    private var amountContent: some View {
+        if case let .available(amounts) = displayedAmountsResult,
+           !amounts.isEmpty {
+            VStack(
+                alignment: dynamicTypeSize.isAccessibilitySize ? .leading : .trailing,
+                spacing: 2
+            ) {
+                ForEach(Array(amounts.prefix(2).enumerated()), id: \.offset) {
+                    _, amount in
+                    Text(formattedTransactionAmount(amount))
+                        .font(.subheadline.monospacedDigit().weight(.semibold))
+                        .foregroundStyle(
+                            amount.role == .income
+                                || amount.role == .refund
+                                || amount.role == .incoming
+                                ? Color.green
+                                : Color.primary
+                        )
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.78)
+                }
+            }
+        } else if case let .unavailable(issue) = displayedAmountsResult {
+            VStack(
+                alignment: dynamicTypeSize.isAccessibilitySize ? .leading : .trailing,
+                spacing: 2
+            ) {
+                Text("—")
+                    .font(.subheadline.monospacedDigit().weight(.semibold))
+                Text(issue.localizedDescription)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+        } else {
+            Text(localizedKind)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
     }
 }
 

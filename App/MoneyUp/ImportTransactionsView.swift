@@ -84,7 +84,15 @@ struct ImportTransactionsView: View {
                     if !preview.issues.isEmpty {
                         DisclosureGroup("import.review_issues") {
                             ForEach(preview.issues.prefix(20)) { issue in
-                                Text("\(String(localized: "import.line")) \(issue.line): \(localizedIssue(issue.reason))")
+                                Text(
+                                    String(
+                                        format: String(
+                                            localized: "import.issue_line_format"
+                                        ),
+                                        issue.line,
+                                        localizedIssue(issue.reason)
+                                    )
+                                )
                                     .font(.caption)
                             }
                         }

@@ -18,16 +18,39 @@ private enum AutoLockChoice: TimeInterval, CaseIterable, Identifiable {
         case .oneHour: "settings.lock.one_hour"
         }
     }
-
-    static func closest(to seconds: TimeInterval) -> AutoLockChoice {
-        allCases.min { abs($0.rawValue - seconds) < abs($1.rawValue - seconds) }
-            ?? .oneMinute
-    }
 }
 
 struct AppSettingsView: View {
     @EnvironmentObject private var model: AppModel
     @State private var errorMessage: String?
+
+    private var selectedAutoLockDelay: TimeInterval {
+        model.profile?.autoLockDelay ?? AutoLockChoice.oneMinute.rawValue
+    }
+
+    /// Older releases offered additional whole-minute delays. The decoder
+    /// intentionally preserves those values, so Settings must show that exact
+    /// security policy until the user explicitly chooses a current option.
+    private var legacyAutoLockDelay: TimeInterval? {
+        let seconds = selectedAutoLockDelay
+        guard AutoLockChoice(rawValue: seconds) == nil,
+              seconds.isFinite,
+              seconds >= 0,
+              seconds.truncatingRemainder(dividingBy: 60) == 0 else {
+            return nil
+        }
+        return seconds
+    }
+
+    private func legacyAutoLockTitle(seconds: TimeInterval) -> String {
+        let minutes = (seconds / 60).formatted(
+            .number.precision(.fractionLength(0))
+        )
+        return String(
+            format: String(localized: "settings.lock.legacy_minutes_format"),
+            minutes
+        )
+    }
 
     var body: some View {
         Form {
@@ -35,18 +58,18 @@ struct AppSettingsView: View {
                 Picker(
                     "settings.auto_lock",
                     selection: Binding(
-                        get: {
-                            AutoLockChoice.closest(
-                                to: model.profile?.autoLockDelay ?? 60
-                            )
-                        },
-                        set: { choice in
-                            Task { await update { try await model.updateAutoLockDelay(choice.rawValue) } }
+                        get: { selectedAutoLockDelay },
+                        set: { seconds in
+                            Task { await update { try await model.updateAutoLockDelay(seconds) } }
                         }
                     )
                 ) {
                     ForEach(AutoLockChoice.allCases) { choice in
-                        Text(choice.title).tag(choice)
+                        Text(choice.title).tag(choice.rawValue)
+                    }
+                    if let legacyAutoLockDelay {
+                        Text(legacyAutoLockTitle(seconds: legacyAutoLockDelay))
+                            .tag(legacyAutoLockDelay)
                     }
                 }
 

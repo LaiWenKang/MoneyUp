@@ -513,6 +513,13 @@ final class AppModel: ObservableObject {
         )
     }
 
+    /// One injected clock for user-authored timestamps and local parsers keeps
+    /// financial-day attribution testable and aligned with the book's fixed
+    /// reporting zone.
+    func currentDateForUserAction() -> Date {
+        currentDate()
+    }
+
     /// Onboarding is safe only when no encrypted domain row exists. Iterating
     /// the exhaustive collection enum makes future schema additions fail
     /// closed instead of requiring another hand-maintained startup list.
@@ -980,6 +987,8 @@ final class AppModel: ObservableObject {
         guard isCurrentStoreGeneration(generation) else { return nil }
         return ReceiptTextParser.analyze(
             fromLines: lines,
+            now: currentDate(),
+            calendar: reportingCalendar,
             prefersDayFirst: prefersDayFirst,
             accounts: accounts
         )
@@ -4443,9 +4452,12 @@ final class AppModel: ObservableObject {
     /// The period report used by every reporting screen. Results are cached
     /// until the journal changes or the calendar day rolls over, so a SwiftUI
     /// body evaluation never rescans the whole journal.
-    func reportResult(for period: ReportPeriod) -> DerivedValue<PeriodReport> {
+    func reportResult(
+        for period: ReportPeriod,
+        asOf requestedDate: Date? = nil
+    ) -> DerivedValue<PeriodReport> {
         let calendar = reportingCalendar
-        let now = currentDate()
+        let now = requestedDate ?? currentDate()
         let today = calendar.startOfDay(for: now)
         if reportCacheDay != today {
             reportCache.removeAll()
@@ -4501,8 +4513,10 @@ final class AppModel: ObservableObject {
         return result
     }
 
-    func spendingThisMonthResult() -> DerivedValue<[UUID: Money]> {
-        switch reportResult(for: .thisMonth) {
+    func spendingThisMonthResult(
+        asOf requestedDate: Date? = nil
+    ) -> DerivedValue<[UUID: Money]> {
+        switch reportResult(for: .thisMonth, asOf: requestedDate) {
         case let .available(report):
             return .available(
                 Dictionary(
@@ -4516,8 +4530,10 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func excludedForeignSpendingThisMonthResult() -> DerivedValue<[Money]> {
-        switch reportResult(for: .thisMonth) {
+    func excludedForeignSpendingThisMonthResult(
+        asOf requestedDate: Date? = nil
+    ) -> DerivedValue<[Money]> {
+        switch reportResult(for: .thisMonth, asOf: requestedDate) {
         case let .available(report):
             return .available(
                 report.foreignFlows
@@ -5309,14 +5325,17 @@ final class AppModel: ObservableObject {
         return month
     }
 
-    func budgetProgressThisMonthResult() -> DerivedValue<[BudgetProgress]> {
+    func budgetProgressThisMonthResult(
+        asOf requestedDate: Date? = nil
+    ) -> DerivedValue<[BudgetProgress]> {
         guard let currency = profile?.baseCurrency else {
             return .unavailable(.appNotReady)
         }
+        let date = requestedDate ?? currentDate()
         do {
             let tree = try reportingBudgetTree(currency: currency)
-            let rollover = try currentBudgetRolloverSnapshot(tree: tree)
-            switch spendingThisMonthResult() {
+            let rollover = try currentBudgetRolloverSnapshot(tree: tree, asOf: date)
+            switch spendingThisMonthResult(asOf: date) {
             case let .available(spending):
                 return .available(try tree.progress(
                     directSpending: spendingRepresented(in: tree, from: spending),
@@ -5335,14 +5354,17 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func budgetPlanSummaryThisMonthResult() -> DerivedValue<BudgetPlanSummary?> {
+    func budgetPlanSummaryThisMonthResult(
+        asOf requestedDate: Date? = nil
+    ) -> DerivedValue<BudgetPlanSummary?> {
         guard let currency = profile?.baseCurrency else {
             return .unavailable(.appNotReady)
         }
+        let date = requestedDate ?? currentDate()
         do {
             let tree = try reportingBudgetTree(currency: currency)
-            let rollover = try currentBudgetRolloverSnapshot(tree: tree)
-            switch spendingThisMonthResult() {
+            let rollover = try currentBudgetRolloverSnapshot(tree: tree, asOf: date)
+            switch spendingThisMonthResult(asOf: date) {
             case let .available(spending):
                 return .available(try tree.planSummary(
                     directSpending: spendingRepresented(in: tree, from: spending),
@@ -5361,19 +5383,22 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func flexibleTodayResult(asOf date: Date = Date()) -> DerivedValue<FlexibleTodayStatus> {
+    func flexibleTodayResult(
+        asOf requestedDate: Date? = nil
+    ) -> DerivedValue<FlexibleTodayStatus> {
         guard let currency = profile?.baseCurrency else {
             return .unavailable(.appNotReady)
         }
+        let date = requestedDate ?? currentDate()
         let spending: [UUID: Money]
-        switch spendingThisMonthResult() {
+        switch spendingThisMonthResult(asOf: date) {
         case let .available(values):
             spending = values
         case let .unavailable(issue):
             return .unavailable(issue)
         }
         let foreignSpending: [Money]
-        switch excludedForeignSpendingThisMonthResult() {
+        switch excludedForeignSpendingThisMonthResult(asOf: date) {
         case let .available(values):
             foreignSpending = values
         case let .unavailable(issue):
@@ -5382,7 +5407,7 @@ final class AppModel: ObservableObject {
 
         do {
             let tree = try reportingBudgetTree(currency: currency)
-            let rollover = try currentBudgetRolloverSnapshot(tree: tree)
+            let rollover = try currentBudgetRolloverSnapshot(tree: tree, asOf: date)
             let representedSpending = spendingRepresented(in: tree, from: spending)
             guard try tree.planSummary(
                 directSpending: representedSpending,
@@ -6570,7 +6595,9 @@ final class AppModel: ObservableObject {
         }
 
         let percentage: Int?
-        if case let .available(.some(summary)) = budgetPlanSummaryThisMonthResult(),
+        if case let .available(.some(summary)) = budgetPlanSummaryThisMonthResult(
+            asOf: now
+        ),
            summary.limit.amount > .zero {
             do {
                 var raw = try CheckedDecimal.multiplying(

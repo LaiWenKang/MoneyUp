@@ -149,7 +149,18 @@ private struct HistoryDayGroup: Identifiable {
 }
 
 struct HistoryView: View {
-    @Environment(\.dismiss) private var dismiss
+    private enum InitialPageOutcome: Sendable {
+        case available(AppModel.HistoryPageResult)
+        case unavailable(String)
+        case cancelled
+    }
+
+    private enum SummaryOutcome: Sendable {
+        case available(HistorySummary)
+        case unavailable(String)
+        case cancelled
+    }
+
     @EnvironmentObject private var model: AppModel
     @State private var searchText = ""
     @State private var appliedSearchText = ""
@@ -162,12 +173,12 @@ struct HistoryView: View {
     @State private var summary: HistorySummary?
     @State private var nextCursor: JournalEntryPageCursor?
     @State private var isLoadingPage = false
+    @State private var initialPageErrorMessage: String?
+    @State private var summaryErrorMessage: String?
+    @State private var paginationErrorMessage: String?
     @State private var refreshGeneration = 0
     @State private var didInitializeReportingDates = false
-    private let showsChartReturn: Bool
-
     init(preset: HistoryPreset? = nil) {
-        showsChartReturn = preset != nil
         _filters = State(initialValue: HistoryFilterDraft(preset: preset))
     }
 
@@ -208,8 +219,7 @@ struct HistoryView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            List {
+        List {
                 if filters.hasActiveFilters {
                     Section {
                         HStack {
@@ -239,6 +249,21 @@ struct HistoryView: View {
                     Section {
                         if let summary {
                             HistorySummaryView(summary: summary)
+                        } else if let summaryErrorMessage {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Label(
+                                    "history.summary_unavailable",
+                                    systemImage: "exclamationmark.circle"
+                                )
+                                .font(.subheadline.weight(.semibold))
+                                Text(summaryErrorMessage)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Button("action.retry") {
+                                    refreshGeneration &+= 1
+                                }
+                            }
+                            .accessibilityElement(children: .contain)
                         } else {
                             HStack(spacing: 10) {
                                 ProgressView()
@@ -250,7 +275,22 @@ struct HistoryView: View {
                     }
 
                     if dayGroups.isEmpty {
-                        if isLoadingPage {
+                        if let initialPageErrorMessage {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Label(
+                                    "history.entries_unavailable",
+                                    systemImage: "exclamationmark.circle"
+                                )
+                                .font(.headline)
+                                Text(initialPageErrorMessage)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                Button("action.retry") {
+                                    refreshGeneration &+= 1
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        } else if isLoadingPage {
                             HStack {
                                 Spacer()
                                 ProgressView()
@@ -311,6 +351,34 @@ struct HistoryView: View {
                                 Text(group.date, format: .dateTime.weekday(.wide).month().day().year())
                             }
                         }
+
+                        if isLoadingPage {
+                            Section {
+                                HStack(spacing: 10) {
+                                    ProgressView()
+                                    Text("history.loading")
+                                        .foregroundStyle(.secondary)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .center)
+                                .accessibilityElement(children: .combine)
+                            }
+                        } else if let paginationErrorMessage {
+                            Section {
+                                VStack(alignment: .leading, spacing: 10) {
+                                    Label(
+                                        "history.page_unavailable",
+                                        systemImage: "exclamationmark.circle"
+                                    )
+                                    .font(.subheadline.weight(.semibold))
+                                    Text(paginationErrorMessage)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                    Button("action.retry") {
+                                        Task { await loadNextPage() }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -340,21 +408,12 @@ struct HistoryView: View {
                 nextCursor = nil
                 summary = nil
                 isLoadingPage = false
+                initialPageErrorMessage = nil
+                summaryErrorMessage = nil
+                paginationErrorMessage = nil
                 if isCurrent { refreshGeneration &+= 1 }
             }
             .toolbar {
-                if showsChartReturn {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button {
-                            dismiss()
-                        } label: {
-                            Label(
-                                "insights.back_to_chart",
-                                systemImage: "chevron.backward"
-                            )
-                        }
-                    }
-                }
                 ToolbarItem(placement: .primaryAction) {
                     Button {
                         showingFilters = true
@@ -372,7 +431,8 @@ struct HistoryView: View {
                 HistoryFilterSheet(
                     filters: filters,
                     accounts: model.accounts.filter {
-                        $0.kind == .asset || $0.kind == .liability
+                        ($0.kind == .asset || $0.kind == .liability)
+                            && $0.systemRole == nil
                     },
                     categories: model.accounts.filter {
                         $0.kind == .expense || $0.kind == .income
@@ -410,7 +470,6 @@ struct HistoryView: View {
             } message: {
                 Text(errorMessage ?? "")
             }
-        }
         .environment(\.calendar, model.reportingCalendar)
         .environment(\.timeZone, model.reportingCalendar.timeZone)
     }
@@ -431,6 +490,9 @@ struct HistoryView: View {
             nextCursor = nil
             summary = nil
             isLoadingPage = false
+            initialPageErrorMessage = nil
+            summaryErrorMessage = nil
+            paginationErrorMessage = nil
             return
         }
         let expectedIdentifier = loadIdentifier
@@ -438,27 +500,61 @@ struct HistoryView: View {
         loadedEntries = []
         nextCursor = nil
         summary = nil
+        initialPageErrorMessage = nil
+        summaryErrorMessage = nil
+        paginationErrorMessage = nil
         isLoadingPage = true
 
-        do {
-            let firstPage = try await model.historyPage(query: querySnapshot)
-            try Task.checkCancellation()
-            guard loadIdentifier == expectedIdentifier else { return }
-            loadedEntries = firstPage.entries
-            nextCursor = firstPage.nextCursor
-            isLoadingPage = false
+        async let pageOutcome = initialPageOutcome(query: querySnapshot)
+        async let totalsOutcome = summaryOutcome(query: querySnapshot)
+        let resolvedPage = await pageOutcome
 
-            let resolvedSummary = try await model.historySummary(query: querySnapshot)
-            try Task.checkCancellation()
-            guard loadIdentifier == expectedIdentifier else { return }
+        guard !Task.isCancelled,
+              loadIdentifier == expectedIdentifier else { return }
+        isLoadingPage = false
+
+        switch resolvedPage {
+        case let .available(page):
+            loadedEntries = page.entries
+            nextCursor = page.nextCursor
+        case let .unavailable(message):
+            initialPageErrorMessage = message
+        case .cancelled:
+            return
+        }
+
+        let resolvedSummary = await totalsOutcome
+        guard !Task.isCancelled,
+              loadIdentifier == expectedIdentifier else { return }
+        switch resolvedSummary {
+        case let .available(resolvedSummary):
             summary = resolvedSummary
+        case let .unavailable(message):
+            summaryErrorMessage = message
+        case .cancelled:
+            return
+        }
+    }
+
+    @MainActor
+    private func initialPageOutcome(query: HistoryQuery) async -> InitialPageOutcome {
+        do {
+            return .available(try await model.historyPage(query: query))
         } catch is CancellationError {
-            if loadIdentifier == expectedIdentifier { isLoadingPage = false }
+            return .cancelled
         } catch {
-            if loadIdentifier == expectedIdentifier {
-                isLoadingPage = false
-                errorMessage = safeUserMessage(for: error, context: .read)
-            }
+            return .unavailable(safeUserMessage(for: error, context: .read))
+        }
+    }
+
+    @MainActor
+    private func summaryOutcome(query: HistoryQuery) async -> SummaryOutcome {
+        do {
+            return .available(try await model.historySummary(query: query))
+        } catch is CancellationError {
+            return .cancelled
+        } catch {
+            return .unavailable(safeUserMessage(for: error, context: .read))
         }
     }
 
@@ -468,6 +564,7 @@ struct HistoryView: View {
         let expectedIdentifier = loadIdentifier
         let querySnapshot = query
         isLoadingPage = true
+        paginationErrorMessage = nil
         do {
             let page = try await model.historyPage(
                 query: querySnapshot,
@@ -486,7 +583,7 @@ struct HistoryView: View {
         } catch {
             if loadIdentifier == expectedIdentifier {
                 isLoadingPage = false
-                errorMessage = safeUserMessage(for: error, context: .read)
+                paginationErrorMessage = safeUserMessage(for: error, context: .read)
             }
         }
     }
@@ -805,6 +902,7 @@ private struct EditableEntryValues {
 
 private struct TransactionEditView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @EnvironmentObject private var model: AppModel
 
     let entry: JournalEntry
@@ -949,13 +1047,18 @@ private struct TransactionEditView: View {
 
     @ViewBuilder
     private var splitEditor: some View {
-        ForEach(splitLines.indices, id: \.self) { index in
+        ForEach(Array(splitLines.enumerated()), id: \.element.id) { index, line in
+            let lineID = line.id
             VStack(alignment: .leading, spacing: 8) {
                 Picker(
                     "quick_log.split_category",
                     selection: Binding(
-                        get: { splitLines[index].categoryID },
-                        set: { splitLines[index].categoryID = $0 }
+                        get: {
+                            splitLines.first(where: { $0.id == lineID })?.categoryID
+                        },
+                        set: { value in
+                            updateSplitLine(lineID) { $0.categoryID = value }
+                        }
                     )
                 ) {
                     ForEach(categories) { category in
@@ -963,38 +1066,80 @@ private struct TransactionEditView: View {
                             .tag(Optional(category.id))
                     }
                 }
+                .accessibilityLabel(
+                    Text(
+                        String(
+                            format: String(localized: "quick_log.split_category_numbered"),
+                            index + 1
+                        )
+                    )
+                )
 
                 HStack {
                     TextField(
                         "quick_log.split_amount",
                         text: Binding(
-                            get: { splitLines[index].amountText },
-                            set: { splitLines[index].amountText = $0 }
+                            get: {
+                                splitLines.first(where: { $0.id == lineID })?.amountText
+                                    ?? ""
+                            },
+                            set: { value in
+                                updateSplitLine(lineID) { $0.amountText = value }
+                            }
                         )
                     )
                     .moneyAmountKeyboard(currency: sourceCurrency)
-                    .accessibilityLabel("quick_log.split_amount")
+                    .accessibilityLabel(
+                        Text(
+                            String(
+                                format: String(localized: "quick_log.split_amount_numbered"),
+                                index + 1
+                            )
+                        )
+                    )
                     if let sourceCurrency {
                         Text(sourceCurrency.value).foregroundStyle(.secondary)
                     }
                     if splitLines.count > 2 {
                         Button(role: .destructive) {
-                            splitLines.remove(at: index)
+                            splitLines.removeAll { $0.id == lineID }
                         } label: {
                             Image(systemName: "minus.circle.fill")
+                                .frame(minWidth: 44, minHeight: 44)
                         }
-                        .accessibilityLabel("quick_log.split_remove")
+                        .accessibilityLabel(
+                            Text(
+                                String(
+                                    format: String(
+                                        localized: "quick_log.split_remove_numbered"
+                                    ),
+                                    index + 1
+                                )
+                            )
+                        )
                     }
                 }
 
                 TextField(
                     "quick_log.split_memo",
                     text: Binding(
-                        get: { splitLines[index].memo },
-                        set: { splitLines[index].memo = $0 }
+                        get: {
+                            splitLines.first(where: { $0.id == lineID })?.memo ?? ""
+                        },
+                        set: { value in
+                            updateSplitLine(lineID) { $0.memo = value }
+                        }
                     )
                 )
                 .font(.caption)
+                .accessibilityLabel(
+                    Text(
+                        String(
+                            format: String(localized: "quick_log.split_memo_numbered"),
+                            index + 1
+                        )
+                    )
+                )
             }
             .padding(.vertical, 4)
         }
@@ -1006,6 +1151,7 @@ private struct TransactionEditView: View {
         } label: {
             Label("quick_log.split_add", systemImage: "plus.circle")
         }
+        .disabled(splitLines.count >= QuickLogDraft.maximumSplitLineCount)
 
         if let remainder = splitRemainder, let sourceCurrency {
             LabeledContent("quick_log.split_remainder") {
@@ -1021,16 +1167,25 @@ private struct TransactionEditView: View {
         }
     }
 
+    private func updateSplitLine(
+        _ lineID: UUID,
+        update: (inout QuickLogSplitDraftLine) -> Void
+    ) {
+        guard let index = splitLines.firstIndex(where: { $0.id == lineID }) else {
+            return
+        }
+        update(&splitLines[index])
+    }
+
     var body: some View {
         NavigationStack {
             Form {
                 if isEditable {
-                    Picker("transaction.kind", selection: $kind) {
-                        ForEach(QuickLogKind.allCases) { option in
-                            Text(option.title).tag(option)
-                        }
+                    if dynamicTypeSize.isAccessibilitySize {
+                        kindPicker(style: .menu)
+                    } else {
+                        kindPicker(style: .segmented)
                     }
-                    .pickerStyle(.segmented)
 
                     Section {
                         HStack {
@@ -1093,7 +1248,6 @@ private struct TransactionEditView: View {
                                     }
                                 )
                             )
-                            .accessibilityHint("quick_log.split_not_balanced")
 
                             if isSplitTransaction {
                                 splitEditor
@@ -1245,6 +1399,15 @@ private struct TransactionEditView: View {
         }
         .environment(\.calendar, model.reportingCalendar)
         .environment(\.timeZone, model.reportingCalendar.timeZone)
+    }
+
+    private func kindPicker<Style: PickerStyle>(style: Style) -> some View {
+        Picker("transaction.kind", selection: $kind) {
+            ForEach(QuickLogKind.allCases) { option in
+                Text(option.title).tag(option)
+            }
+        }
+        .pickerStyle(style)
     }
 
     private func loadValues() {

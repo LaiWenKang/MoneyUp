@@ -41,6 +41,10 @@ SWIFTUI_LOCALIZED_REFERENCE = re.compile(
     r'navigationTitle|alert)\(\s*'
     r'"([A-Za-z0-9_.-]+)"'
 )
+ACCESSIBILITY_LOCALIZED_REFERENCE = re.compile(
+    r'\.accessibility(?:Label|Hint)\(\s*"([A-Za-z0-9_.-]+)"'
+)
+HARD_CODED_CHART_DIMENSION = re.compile(r'\.value\(\s*"[^"]+"')
 
 
 def fail(message: str) -> None:
@@ -182,6 +186,7 @@ def validate_localizations() -> None:
                 for pattern in (
                     LOCALIZED_STRING_REFERENCE,
                     SWIFTUI_LOCALIZED_REFERENCE,
+                    ACCESSIBILITY_LOCALIZED_REFERENCE,
                 )
                 for match in pattern.finditer(text)
             }
@@ -190,6 +195,11 @@ def validate_localizations() -> None:
                 fail(
                     f"{source.relative_to(ROOT)} references missing localized "
                     f"key(s): {', '.join(missing)}"
+                )
+            if HARD_CODED_CHART_DIMENSION.search(text):
+                fail(
+                    f"{source.relative_to(ROOT)} contains a hard-coded chart "
+                    "dimension; use String(localized:)"
                 )
     print("Validated literal Swift localization references")
 
@@ -255,21 +265,26 @@ def validate_privacy_manifest() -> None:
 
 def validate_info_plist_localizations() -> None:
     expected = {
-        "en": "Unlock your private MoneyUp financial data.",
-        "zh-Hans": "解锁你在 MoneyUp 中的私密财务数据。",
+        "en": {
+            "NSFaceIDUsageDescription": "Unlock your private MoneyUp financial data.",
+            "UTTypeDescription": "MoneyUp Encrypted Backup",
+        },
+        "zh-Hans": {
+            "NSFaceIDUsageDescription": "解锁你在 MoneyUp 中的私密财务数据。",
+            "UTTypeDescription": "MoneyUp 加密备份",
+        },
     }
-    for language, value in expected.items():
+    for language, declarations in expected.items():
         path = ROOT / "App" / "MoneyUp" / f"{language}.lproj" / "InfoPlist.strings"
         try:
             text = path.read_text(encoding="utf-8")
         except OSError as error:
             fail(f"cannot read {path.relative_to(ROOT)}: {error}")
-        declaration = f'"NSFaceIDUsageDescription" = "{value}";'
-        if declaration not in text:
-            fail(
-                f"{path.relative_to(ROOT)} must localize NSFaceIDUsageDescription"
-            )
-    print("Validated bilingual Face ID purpose strings")
+        for key, value in declarations.items():
+            declaration = f'"{key}" = "{value}";'
+            if declaration not in text:
+                fail(f"{path.relative_to(ROOT)} must localize {key}")
+    print("Validated bilingual Info.plist user-facing strings")
 
 
 def png_metadata(path: Path) -> tuple[int, int, int, bool]:
@@ -563,7 +578,10 @@ def validate_brand_palette() -> None:
         "BrandBackground": ["#F7F9F6", "#101512"],
         "BrandSurface": ["#EEF4F0", "#18211D"],
         "BrandSurfaceElevated": ["#FAFBF9", "#202923"],
-        "BrandAction": ["#34785F", "#82CEAE"],
+        # Filled actions intentionally stay forest green in both appearances.
+        # The brighter dark-mode accent remains available for links and icons,
+        # but is not safe behind the white foreground used by prominent controls.
+        "BrandAction": ["#34785F", "#34785F"],
         "BrandMist": ["#D4EAD8", "#3C6349"],
     }
     for name, expected_colors in expected.items():
@@ -587,6 +605,37 @@ def validate_brand_palette() -> None:
         if any(color in {"#FFFFFF", "#000000"} for color in actual):
             fail(f"{name} must not use pure white or pure black")
 
+    def relative_luminance(color: str) -> float:
+        components = [int(color[index:index + 2], 16) / 255 for index in (1, 3, 5)]
+        linear = [
+            value / 12.92
+            if value <= 0.04045
+            else ((value + 0.055) / 1.055) ** 2.4
+            for value in components
+        ]
+        return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+
+    def contrast(first: str, second: str) -> float:
+        first_luminance = relative_luminance(first)
+        second_luminance = relative_luminance(second)
+        lighter = max(first_luminance, second_luminance)
+        darker = min(first_luminance, second_luminance)
+        return (lighter + 0.05) / (darker + 0.05)
+
+    for action in expected["BrandAction"]:
+        if contrast(action, "#FFFFFF") < 4.5:
+            fail(f"BrandAction does not support a white control foreground: {action}")
+    if contrast(expected["BrandAction"][1], expected["BrandBackground"][1]) < 3:
+        fail("dark BrandAction is not distinguishable from BrandBackground")
+
+    widget_source = (
+        ROOT / "App" / "MoneyUpWidget" / "MoneyUpWidget.swift"
+    ).read_text(encoding="utf-8")
+    if "colors: [Color.moneyUpAction, Color.moneyUpActionDeep]" not in widget_source:
+        fail("widget action gradient must keep every white-bearing stop contrast-safe")
+    if contrast("#255C48", "#FFFFFF") < 4.5:
+        fail("widget deep action stop does not support a white foreground")
+
     if (assets / "GoldAccent.colorset" / "Contents.json").exists():
         fail("the retired gold accent must not return to the primary palette")
     if not (ROOT / "Scripts" / "generate_brand_icons.py").is_file():
@@ -598,6 +647,17 @@ def validate_brand_palette() -> None:
         fail("in-app brand surfaces must use the shared horned-money mark")
     if "MoneyUpGrowthMark" in theme or 'Image(systemName: "arrow.up.right")' in theme:
         fail("the retired three-bar/up-arrow brand mark must not return")
+    for path in (ROOT / "App" / "MoneyUp").glob("*.swift"):
+        lines = path.read_text(encoding="utf-8").splitlines()
+        for index, line in enumerate(lines):
+            if ".buttonStyle(.borderedProminent)" not in line:
+                continue
+            nearby = "\n".join(lines[index + 1:index + 5])
+            if ".tint(.moneyUpAction)" not in nearby:
+                fail(
+                    f"{path.relative_to(ROOT)}:{index + 1} prominent action "
+                    "must use the contrast-safe BrandAction token"
+                )
     print("Validated adaptive soft-green semantic palette")
 
 

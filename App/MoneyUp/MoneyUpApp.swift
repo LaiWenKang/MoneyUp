@@ -128,10 +128,13 @@ private final class PrivacyShieldAnchorView: UIView {
             shield.windowLevel = UIWindow.Level(
                 rawValue: UIWindow.Level.normal.rawValue + 1
             )
-            shield.backgroundColor = .systemBackground
+            let brandBackground = UIColor(named: "BrandBackground") ?? .systemBackground
+            shield.backgroundColor = brandBackground
             shield.isUserInteractionEnabled = true
-            let host = UIHostingController(rootView: PrivacyCoverView())
-            host.view.backgroundColor = .systemBackground
+            let host = UIHostingController(
+                rootView: PrivacyCoverView().tint(.accentColor)
+            )
+            host.view.backgroundColor = brandBackground
             host.view.accessibilityViewIsModal = true
             shield.rootViewController = host
             shieldWindow = shield
@@ -158,5 +161,6 @@ private struct PrivacyCoverView: View {
             .accessibilityElement(children: .combine)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .tint(.accentColor)
     }
 }

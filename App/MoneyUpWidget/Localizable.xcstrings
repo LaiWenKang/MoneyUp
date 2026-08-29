@@ -257,6 +257,7 @@
     "widget.budget_stale" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Open MoneyUp to refresh this month’s private status."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"请打开 MoneyUp，刷新本月的私密状态。"}}}},
     "widget.budget_status" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Budget status"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"预算状态"}}}},
     "widget.budget_used" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"used"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"已用"}}}},
+    "widget.budget_used_format" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"%d%% used"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"已用 %d%%"}}}},
     "widget.configuration.content" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Widget content"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"小组件内容"}}}},
     "widget.configuration.content_type" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Content"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"内容"}}}},
     "widget.content.budget_status" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Budget status (percentage only)"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"预算状态（仅百分比）"}}}},

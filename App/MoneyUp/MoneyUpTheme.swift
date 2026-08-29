@@ -11,6 +11,18 @@ extension Color {
     static let moneyUpMist = Color("BrandMist")
 }
 
+/// A deliberately small layout scale for the surfaces touched most often.
+/// Keeping these values semantic lets cards, forms, and empty states become
+/// more consistent without replacing native SwiftUI controls.
+enum MoneyUpLayout {
+    static let compactSpacing: CGFloat = 8
+    static let standardSpacing: CGFloat = 16
+    static let cardPadding: CGFloat = 18
+    static let cardRadius: CGFloat = 22
+    static let heroRadius: CGFloat = 26
+    static let readableContentWidth: CGFloat = 620
+}
+
 /// A calm, adaptive canvas. Decorative layers never carry information and are
 /// intentionally restrained when transparency is reduced.
 struct MoneyUpBackdrop: View {
@@ -32,17 +44,29 @@ struct MoneyUpBackdrop: View {
             )
 
             if !reduceTransparency {
-                Circle()
-                    .fill(Color.accentColor.opacity(0.10))
-                    .frame(width: 260, height: 260)
-                    .blur(radius: 48)
-                    .offset(x: 150, y: -260)
+                Ellipse()
+                    .fill(
+                        RadialGradient(
+                            colors: [Color.accentColor.opacity(0.13), .clear],
+                            center: .center,
+                            startRadius: 0,
+                            endRadius: 140
+                        )
+                    )
+                    .frame(width: 300, height: 240)
+                    .offset(x: 150, y: -270)
 
-                Circle()
-                    .fill(Color.moneyUpMist.opacity(0.14))
-                    .frame(width: 220, height: 220)
-                    .blur(radius: 56)
-                    .offset(x: -170, y: 300)
+                Ellipse()
+                    .fill(
+                        RadialGradient(
+                            colors: [Color.moneyUpMist.opacity(0.18), .clear],
+                            center: .center,
+                            startRadius: 0,
+                            endRadius: 130
+                        )
+                    )
+                    .frame(width: 280, height: 250)
+                    .offset(x: -170, y: 310)
             }
         }
         .ignoresSafeArea()
@@ -73,20 +97,43 @@ struct MoneyUpBrandMark: View {
 
 struct MoneyUpCard<Content: View>: View {
     let content: Content
+    let backgroundColor: Color
 
-    init(@ViewBuilder content: () -> Content) {
+    init(
+        backgroundColor: Color = .moneyUpSurfaceElevated,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.backgroundColor = backgroundColor
         self.content = content()
     }
 
     var body: some View {
         content
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(18)
-            .background(Color.moneyUpSurfaceElevated)
-            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .padding(MoneyUpLayout.cardPadding)
+            .background(backgroundColor)
+            .clipShape(
+                RoundedRectangle(
+                    cornerRadius: MoneyUpLayout.cardRadius,
+                    style: .continuous
+                )
+            )
             .overlay {
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .stroke(Color.accentColor.opacity(0.12), lineWidth: 1)
+                RoundedRectangle(
+                    cornerRadius: MoneyUpLayout.cardRadius,
+                    style: .continuous
+                )
+                .stroke(
+                    LinearGradient(
+                        colors: [
+                            Color.accentColor.opacity(0.18),
+                            Color.primary.opacity(0.055)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1
+                )
             }
             .accessibilityElement(children: .contain)
     }

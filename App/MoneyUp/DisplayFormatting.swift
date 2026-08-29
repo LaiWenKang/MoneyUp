@@ -83,17 +83,167 @@ func displayMoney(
     for entry: JournalEntry,
     accountsByID: [UUID: LedgerAccount]
 ) -> Money? {
+    try? categoryDisplayMoney(for: entry, accountsByID: accountsByID)
+}
+
+private enum TransactionDisplayError: Error {
+    case mixedCategoryCurrencies
+}
+
+/// Split transactions are one consumer event. Sum every category leg with
+/// checked decimal arithmetic instead of displaying whichever posting happens
+/// to appear first.
+private func categoryDisplayMoney(
+    for entry: JournalEntry,
+    accountsByID: [UUID: LedgerAccount]
+) throws -> Money? {
+    let categoryKind: LedgerAccountKind
     switch entry.kind {
-    case .expense:
-        return entry.postings.first {
-            accountsByID[$0.accountID]?.kind == .expense
-        }?.money
-    case .income:
-        return entry.postings.first {
-            accountsByID[$0.accountID]?.kind == .income
-        }?.money.negated
-    case .transfer, .adjustment, .investment:
-        return nil
+    case .expense: categoryKind = .expense
+    case .income: categoryKind = .income
+    case .transfer, .adjustment, .investment: return nil
+    }
+
+    var currency: CurrencyCode?
+    var total = Decimal.zero
+    for posting in entry.postings where accountsByID[posting.accountID]?.kind == categoryKind {
+        if let currency, currency != posting.money.currency {
+            throw TransactionDisplayError.mixedCategoryCurrencies
+        }
+        currency = posting.money.currency
+        total = try CheckedDecimal.adding(total, posting.money.amount)
+    }
+    guard let currency else { return nil }
+    let signedTotal = entry.kind == .income
+        ? try CheckedDecimal.subtracting(.zero, total)
+        : total
+    return try Money(signedTotal, currency: currency)
+}
+
+enum TransactionDisplayAmountRole: Equatable {
+    case expense
+    case income
+    case refund
+    case outgoing
+    case incoming
+    case change
+}
+
+struct TransactionDisplayAmount: Equatable {
+    let money: Money
+    let role: TransactionDisplayAmountRole
+}
+
+/// Produces only user-facing financial legs. System trading, equity, and
+/// gain/loss postings remain available in transaction details but never crowd
+/// a compact row or make a cross-currency transfer look like one invented sum.
+func transactionDisplayAmountsResult(
+    for entry: JournalEntry,
+    accountsByID: [UUID: LedgerAccount],
+    isRefund: Bool = false
+) -> DerivedValue<[TransactionDisplayAmount]> {
+    do {
+        switch entry.kind {
+        case .expense:
+            guard let money = try categoryDisplayMoney(
+                for: entry,
+                accountsByID: accountsByID
+            ) else { return unavailableTransactionAmounts() }
+            return .available([
+                TransactionDisplayAmount(
+                    money: isRefund ? money.negated : money,
+                    role: isRefund ? .refund : .expense
+                )
+            ])
+        case .income:
+            guard let money = try categoryDisplayMoney(
+                for: entry,
+                accountsByID: accountsByID
+            ) else { return unavailableTransactionAmounts() }
+            return .available([
+                TransactionDisplayAmount(money: money, role: .income)
+            ])
+        case .transfer:
+            let amounts: [TransactionDisplayAmount] = entry.postings.compactMap {
+                posting -> TransactionDisplayAmount? in
+                guard let account = accountsByID[posting.accountID],
+                      account.systemRole == nil,
+                      account.kind == .asset || account.kind == .liability else {
+                    return nil
+                }
+                return TransactionDisplayAmount(
+                    money: posting.money.amount < .zero
+                        ? posting.money.negated
+                        : posting.money,
+                    role: posting.money.amount < .zero ? .outgoing : .incoming
+                )
+            }
+            guard amounts.count >= 2 else {
+                return unavailableTransactionAmounts()
+            }
+            return .available(amounts)
+        case .adjustment:
+            guard let posting = entry.postings.first(where: { posting in
+                guard let account = accountsByID[posting.accountID] else { return false }
+                return account.systemRole == nil
+                    && (account.kind == .asset || account.kind == .liability)
+            }), let account = accountsByID[posting.accountID] else {
+                return unavailableTransactionAmounts()
+            }
+            return .available([
+                TransactionDisplayAmount(
+                    money: account.kind == .liability
+                        ? posting.money.negated
+                        : posting.money,
+                    role: .change
+                )
+            ])
+        case .investment:
+            let amounts: [TransactionDisplayAmount] = entry.postings.compactMap {
+                posting -> TransactionDisplayAmount? in
+                guard let account = accountsByID[posting.accountID],
+                      account.systemRole == nil,
+                      account.kind == .asset || account.kind == .liability else {
+                    return nil
+                }
+                return TransactionDisplayAmount(money: posting.money, role: .change)
+            }
+            guard !amounts.isEmpty else {
+                return unavailableTransactionAmounts()
+            }
+            return .available(amounts)
+        }
+    } catch {
+        DerivedValueDiagnostics.record(
+            .amountCalculationFailed,
+            operation: "transaction-row-amounts",
+            error: error
+        )
+        return .unavailable(.amountCalculationFailed)
+    }
+}
+
+private func unavailableTransactionAmounts() -> DerivedValue<[TransactionDisplayAmount]> {
+    DerivedValueDiagnostics.record(
+        .amountCalculationFailed,
+        operation: "transaction-row-amounts"
+    )
+    return .unavailable(.amountCalculationFailed)
+}
+
+@MainActor
+func formattedTransactionAmount(_ amount: TransactionDisplayAmount) -> String {
+    let absoluteMoney = amount.money.amount < .zero ? amount.money.negated : amount.money
+    let value = formattedMoney(absoluteMoney)
+    switch amount.role {
+    case .outgoing:
+        return "−\(value)"
+    case .incoming:
+        return "+\(value)"
+    case .change:
+        return amount.money.amount < .zero ? "−\(value)" : "+\(value)"
+    case .expense, .income, .refund:
+        return value
     }
 }
 
