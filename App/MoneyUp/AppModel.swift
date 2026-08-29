@@ -994,15 +994,16 @@ final class AppModel: ObservableObject {
         // A malicious or pathological image can produce thousands of short
         // observations. Preserve both receipt header and footer (where totals
         // normally live) while keeping regex work strictly bounded off-main.
-        let lines = Self.boundedReceiptLines(recognition.lines)
+        let boundedRecognition = Self.boundedReceiptRecognition(recognition)
         let parsingTask = Task.detached(priority: .userInitiated) {
             ReceiptTextParser.analyze(
-                fromLines: lines,
+                fromLines: boundedRecognition.lines,
                 now: now,
                 calendar: calendar,
                 prefersDayFirst: prefersDayFirst,
                 accounts: accountsSnapshot,
-                ocrConfidence: recognition.meanConfidence
+                ocrConfidence: boundedRecognition.meanConfidence,
+                ocrLineConfidences: boundedRecognition.lineConfidences
             )
         }
         let result = await withTaskCancellationHandler {
@@ -1017,17 +1018,40 @@ final class AppModel: ObservableObject {
     }
 
     static func boundedReceiptLines(_ lines: [String]) -> [String] {
+        boundedReceiptRecognition(
+            ReceiptRecognitionResult(lines: lines)
+        ).lines
+    }
+
+    static func boundedReceiptRecognition(
+        _ recognition: ReceiptRecognitionResult
+    ) -> ReceiptRecognitionResult {
         let maximumLineCount = 160
         let maximumLineUTF8Count = 512
-        let selected: [String]
-        if lines.count > maximumLineCount {
+        let selectedIndices: [Int]
+        if recognition.lines.count > maximumLineCount {
             let edgeCount = maximumLineCount / 2
-            selected = Array(lines.prefix(edgeCount))
-                + Array(lines.suffix(edgeCount))
+            selectedIndices = Array(0..<edgeCount)
+                + Array(
+                    (recognition.lines.count - edgeCount)
+                        ..<recognition.lines.count
+                )
         } else {
-            selected = lines
+            selectedIndices = Array(recognition.lines.indices)
         }
-        return selected.compactMap { line in
+
+        let alignedLineConfidences = recognition.lineConfidences.flatMap {
+            $0.count == recognition.lines.count ? $0 : nil
+        }
+        var boundedLines: [String] = []
+        var boundedLineConfidences: [Float] = []
+        boundedLines.reserveCapacity(selectedIndices.count)
+        if alignedLineConfidences != nil {
+            boundedLineConfidences.reserveCapacity(selectedIndices.count)
+        }
+
+        for index in selectedIndices {
+            let line = recognition.lines[index]
             var bytes = Array(line.utf8.prefix(maximumLineUTF8Count))
             // `line` is valid UTF-8, so only a truncated final scalar can make
             // this prefix invalid. Remove at most that partial scalar instead
@@ -1039,8 +1063,19 @@ final class AppModel: ObservableObject {
             }
             let bounded = String(decoding: bytes, as: UTF8.self)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            return bounded.isEmpty ? nil : bounded
+            guard !bounded.isEmpty else { continue }
+            boundedLines.append(bounded)
+            if let alignedLineConfidences {
+                boundedLineConfidences.append(alignedLineConfidences[index])
+            }
         }
+
+        return ReceiptRecognitionResult(
+            lines: boundedLines,
+            meanConfidence: recognition.meanConfidence,
+            lineConfidences: alignedLineConfidences == nil
+                ? nil : boundedLineConfidences
+        )
     }
 
     /// Compatibility helper for tests and callers that only need the proposed

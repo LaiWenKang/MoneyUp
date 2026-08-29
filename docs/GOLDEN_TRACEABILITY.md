@@ -180,8 +180,8 @@ exact-candidate run.
 
 ## Proposed amendment PA-2026-08-29-r1 — Explainable capture guardrails
 
-This task-authorized proposal is not text from the Golden PRD and is not an
-approved release claim until its pull request is reviewed and merged. It
+This task-authorized amendment is not text from the Golden PRD. It is approved
+by review and merge of PR #28, but is not a release promotion. It
 extends `LOG-04`, `LOG-07`, `LOG-08`, `DAT-09`, and `SEC-06` without changing
 navigation, accounting semantics, persistence schema, archive shape, bundle
 identity, or network capability.
@@ -190,7 +190,7 @@ identity, or network capability.
 |---|---|---|
 | PA-CAP-01 | Smart Entry and receipt-assisted Quick Log rank account and category suggestions from the current valid recent-entry cache. Every result carries a deterministic confidence band and count/date evidence; only high-confidence untouched fields may prefill, parser/user choices win, and ambiguous split history never collapses to one category. | Derive on demand inside the unlocked book; persist no profile, score, OCR text, or evidence. Removing the scorer restores prior UI behavior without touching user data. |
 | PA-CAP-02 | Before an interactive Save, exact amount/currency/kind/account semantics plus bounded time/payee/source evidence may produce an advisory recent-duplicate warning. The user can review History, cancel, or save anyway; the warning never deletes, merges, or blocks a legitimate repeat. | Inspect only valid in-memory recent entries, never raw/quarantined rows. A versioned draft fingerprint authorizes one unchanged Save attempt only. No database or archive migration. |
-| PA-CAP-03 | Receipt amount, merchant, date, and category candidates retain rule evidence and field-relative confidence. Aggregate Vision confidence may only lower a band. Impossible civil/DST times fail closed; low-confidence candidates remain explicit review actions and never silently replace an edited field or cross an account change. Published review evidence survives ordinary tab navigation with the unfinished draft. | Vision remains on device. Images and OCR text remain transient unless the existing explicit encrypted-attachment control is enabled; semantic evidence contains no receipt text. Unsaved image bytes are discarded when Log becomes inactive. |
+| PA-CAP-03 | Receipt amount, merchant, date, and category candidates retain rule evidence and field-relative confidence. Per-line and aggregate Vision confidence may only lower a band; a weak amount row cannot hide behind a strong document mean. Impossible civil/DST times fail closed; low-confidence candidates remain explicit review actions and never silently replace an edited field, cross an account change, or offer a category incompatible with the selected kind. Published review evidence survives ordinary tab navigation with the unfinished draft. | Vision remains on device. Images and OCR text remain transient unless the existing explicit encrypted-attachment control is enabled; semantic evidence contains no receipt text. Unsaved image bytes are discarded when Log becomes inactive. |
 | PA-CAP-04 | Receipt parsing is bounded to 160 header/footer lines, computed outside the main actor, and checked against store generation plus journal/account projection revision before publication. | Cancellation/lock/restore suppress stale publication. The bounded fallback always leaves manual entry available. |
 | PA-CAP-05 | Latin kind/date tokens use Unicode letter/number boundaries while CJK tokens retain intentional substring matching. Impossible explicit civil dates fail closed instead of becoming a normalized day or invented amount. | Pure parsing change with no stored state; identical input, locale, clock, and book state remain deterministic. |
 

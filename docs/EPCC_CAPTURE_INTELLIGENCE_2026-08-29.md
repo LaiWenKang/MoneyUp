@@ -4,8 +4,8 @@ Date: 29 August 2026
 
 This is the evidence record for `codex/advanced-intelligence-epcc`. It records
 what was inspected, why this slice was selected, the validation boundary, and
-the checks that still require macOS CI or physical iPhones. It does not promote
-the branch or replace the 97-row Golden requirement matrix.
+the checks that still require physical iPhones or exact release binaries. It
+does not promote a release or replace the 97-row Golden requirement matrix.
 
 ## Explore baseline
 
@@ -79,7 +79,7 @@ python3 Scripts/validate_release_assets.py
 | 7 | Persistent learning, recurring/anomaly models, and predictive guidance | Potential value but higher migration, false-positive, and long-term maintenance burden | Do not add opaque or inert state in this slice. Existing exact Today/budget/schedule/stale-price/missing-rate guidance remains the proactive foundation. |
 
 No unresolved P0/P1 accounting, privacy, recovery, or migration source defect
-was found in the selected path. Physical and exact-candidate evidence remains a
+was found in the selected path. Physical and exact-binary evidence remains a
 release gate, not an implied pass.
 
 ## Plan and selected vertical slice
@@ -160,8 +160,10 @@ namespace, App Group, entitlement, or deployment target.
 
 ## Validation record
 
-The exact-candidate macOS, Simulator, coverage, and built-bundle results will be
-recorded in the pull request after CI runs against the final pushed SHA. The
+The exact reviewed candidate passed the pinned macOS workflow with Swift 6
+warnings as errors: 345 core/persistence tests, 243 app tests, and the Release
+app plus embedded widget build. The workflow also produced coverage and proved
+that both target-scoped privacy manifests reached their built bundles. The
 following local checks pass on the current working tree:
 
 ```text
@@ -176,13 +178,12 @@ python3 Scripts/validate_release_assets.py
 Static size delta and exact test counts are recorded at final handoff. No local
 Xcode, Simulator, memory, CPU, energy, binary-size, screenshot, network-capture,
 upgrade, restore, or physical accessibility result is claimed from this Linux
-host.
+host or from hosted Simulator execution.
 
 ## Open evidence and ownership
 
-- CI must compile Swift 6 with warnings as errors, execute all core,
-  persistence, and app tests, and build the Release app plus embedded widget on
-  the exact final SHA.
+- Any commit after the recorded exact-head pass must repeat the pinned Swift 6
+  warnings-as-errors tests and Release app/embedded-widget build before merge.
 - Oldest/current physical iPhones must execute issue #26 and the capture
   procedure in `LAUNCH_PLAN.md`, including 20 bilingual receipt/screenshot
   samples, p50/p95 latency, accuracy/fallback counts, lock/background races,

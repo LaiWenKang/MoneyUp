@@ -191,6 +191,27 @@ final class TransactionPresentationTests: XCTestCase {
                 currentKind: .income
             )
         )
+
+        let expense = LedgerAccount(name: "Food", kind: .expense)
+        let income = LedgerAccount(name: "Salary", kind: .income)
+        XCTAssertTrue(
+            QuickLogSuggestionPolicy.receiptCategoryIsCompatible(
+                expense,
+                with: .refund
+            )
+        )
+        XCTAssertFalse(
+            QuickLogSuggestionPolicy.receiptCategoryIsCompatible(
+                expense,
+                with: .income
+            )
+        )
+        XCTAssertTrue(
+            QuickLogSuggestionPolicy.receiptCategoryIsCompatible(
+                income,
+                with: .income
+            )
+        )
     }
 
     func testDuplicateReviewUsesFrozenOriginDayForHistory() throws {

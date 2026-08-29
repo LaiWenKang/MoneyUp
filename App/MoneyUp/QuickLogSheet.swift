@@ -156,6 +156,23 @@ enum QuickLogSuggestionPolicy {
     ) -> Bool {
         scannedKind == currentKind
     }
+
+    static func receiptCategoryIsCompatible(
+        _ category: LedgerAccount,
+        with kind: QuickLogKind
+    ) -> Bool {
+        guard !category.isArchived, category.systemRole == nil else {
+            return false
+        }
+        switch kind {
+        case .expense, .refund:
+            return category.kind == .expense
+        case .income:
+            return category.kind == .income
+        case .transfer:
+            return false
+        }
+    }
 }
 
 enum QuickLogDuplicateReviewPolicy {
@@ -1594,7 +1611,10 @@ private struct QuickLogEntryView: View {
         if accountID != baseline.accountID { reviewDraft.accountID = nil }
         if let parsedCategoryID = reviewDraft.categoryID,
            let category = model.accountsByID[parsedCategoryID],
-           category.kind != (kind == .income ? .income : .expense) {
+           !QuickLogSuggestionPolicy.receiptCategoryIsCompatible(
+               category,
+               with: kind
+           ) {
             reviewDraft.categoryID = nil
         }
         _ = apply(
@@ -1757,6 +1777,11 @@ private struct QuickLogEntryView: View {
             if splitLines.isEmpty,
                let categoryID = result.draft.categoryID,
                let category = model.accountsByID[categoryID],
+               categories.contains(where: { $0.id == categoryID }),
+               QuickLogSuggestionPolicy.receiptCategoryIsCompatible(
+                   category,
+                   with: kind
+               ),
                let candidate = result.categoryCandidateDetails.first {
                 Text("quick_log.scan_category_candidate")
                     .font(.caption.weight(.semibold))

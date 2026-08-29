@@ -147,6 +147,7 @@ private final class ReceiptRecognitionOperation: @unchecked Sendable {
     private struct OCRResult {
         let lines: [String]
         let meanConfidence: Float
+        let lineConfidences: [Float]
     }
 
     private struct Fragment {
@@ -241,7 +242,8 @@ private final class ReceiptRecognitionOperation: @unchecked Sendable {
         if let fast, Self.isActionable(fast) {
             return ReceiptRecognitionResult(
                 lines: fast.lines,
-                meanConfidence: fast.meanConfidence
+                meanConfidence: fast.meanConfidence,
+                lineConfidences: fast.lineConfidences
             )
         }
 
@@ -249,7 +251,8 @@ private final class ReceiptRecognitionOperation: @unchecked Sendable {
         let accurate = try recognize(in: image, level: .accurate)
         return ReceiptRecognitionResult(
             lines: accurate.lines,
-            meanConfidence: accurate.meanConfidence
+            meanConfidence: accurate.meanConfidence,
+            lineConfidences: accurate.lineConfidences
         )
     }
 
@@ -393,6 +396,7 @@ private final class ReceiptRecognitionOperation: @unchecked Sendable {
         }
         var lines: [String] = []
         var confidences: [Float] = []
+        var lineConfidences: [Float] = []
         for (rowIndex, row) in orderedRows.enumerated() {
             if rowIndex.isMultiple(of: 32) { try checkCancellation() }
             let orderedFragments = row.fragments.sorted { lhs, rhs in
@@ -409,13 +413,23 @@ private final class ReceiptRecognitionOperation: @unchecked Sendable {
             if lines.last != line {
                 lines.append(line)
                 confidences.append(contentsOf: orderedFragments.map(\.confidence))
+                // A row can contain a high-confidence label and a weak amount
+                // fragment. Use the weakest fragment so the amount cannot be
+                // promoted by unrelated text on the same visual row.
+                lineConfidences.append(
+                    orderedFragments.map(\.confidence).min() ?? 0
+                )
             }
         }
 
         let meanConfidence = confidences.isEmpty
             ? 0
             : confidences.reduce(0, +) / Float(confidences.count)
-        return OCRResult(lines: lines, meanConfidence: meanConfidence)
+        return OCRResult(
+            lines: lines,
+            meanConfidence: meanConfidence,
+            lineConfidences: lineConfidences
+        )
     }
 
     private static func boundedUTF8(
@@ -435,8 +449,15 @@ private final class ReceiptRecognitionOperation: @unchecked Sendable {
         // Use the authoritative parser as the quality gate so fast OCR and the
         // final parse cannot disagree about decimal commas, grouping, or safe
         // OCR digit repair.
-        let parsed = ReceiptTextParser.analyze(fromLines: result.lines)
-        guard parsed.draft.amount != nil else { return false }
+        let parsed = ReceiptTextParser.analyze(
+            fromLines: result.lines,
+            ocrConfidence: result.meanConfidence,
+            ocrLineConfidences: result.lineConfidences
+        )
+        guard let amountConfidence = parsed.amountCandidateDetails.first?.confidence,
+              amountConfidence != .low else {
+            return false
+        }
 
         let strongLabels = [
             "grand total", "amount due", "amount payable", "amount paid", "you paid",

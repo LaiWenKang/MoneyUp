@@ -3681,7 +3681,8 @@ final class AppModelTests: XCTestCase {
         let model = fixture.model(receiptRecognizer: { _ in
             ReceiptRecognitionResult(
                 lines: ["Cafe Nero", "TOTAL S$ 12.50"],
-                meanConfidence: 0.32
+                meanConfidence: 0.92,
+                lineConfidences: [0.94, 0.32]
             )
         })
 
@@ -3690,7 +3691,7 @@ final class AppModelTests: XCTestCase {
             prefersDayFirst: true
         )
 
-        XCTAssertEqual(result?.ocrConfidence, 0.32)
+        XCTAssertEqual(result?.ocrConfidence, 0.92)
         XCTAssertEqual(result?.overallConfidence, .low)
         XCTAssertEqual(result?.amountCandidateDetails.first?.confidence, .low)
         XCTAssertEqual(result?.draft.amount, Decimal(string: "12.50"))
@@ -3706,10 +3707,23 @@ final class AppModelTests: XCTestCase {
             + (2..<240).map { "Item line \($0)" }
             + ["TOTAL S$ 12.50"]
         let boundedLines = AppModel.boundedReceiptLines(recognizedLines)
+        var lineConfidences = [Float](
+            repeating: 0.91,
+            count: recognizedLines.count
+        )
+        lineConfidences[lineConfidences.index(before: lineConfidences.endIndex)] = 0.44
+        let boundedRecognition = AppModel.boundedReceiptRecognition(
+            ReceiptRecognitionResult(
+                lines: recognizedLines,
+                meanConfidence: 0.90,
+                lineConfidences: lineConfidences
+            )
+        )
         let model = fixture.model(receiptRecognizer: { _ in
             ReceiptRecognitionResult(
                 lines: recognizedLines,
-                meanConfidence: 0.95
+                meanConfidence: 0.95,
+                lineConfidences: lineConfidences
             )
         })
 
@@ -3720,6 +3734,9 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertEqual(result?.draft.amount, Decimal(string: "12.50"))
         XCTAssertEqual(boundedLines.count, 160)
+        XCTAssertEqual(boundedRecognition.lines, boundedLines)
+        XCTAssertEqual(boundedRecognition.lineConfidences?.count, 160)
+        XCTAssertEqual(boundedRecognition.lineConfidences?.last, 0.44)
         XCTAssertTrue(boundedLines.allSatisfy { $0.utf8.count <= 512 })
         XCTAssertEqual(boundedLines.last, "TOTAL S$ 12.50")
         XCTAssertTrue(

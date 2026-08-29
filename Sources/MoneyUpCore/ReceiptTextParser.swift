@@ -260,7 +260,8 @@ public enum ReceiptTextParser {
         prefersDayFirst: Bool = true,
         locale: Locale = .current,
         accounts: [LedgerAccount] = [],
-        ocrConfidence: Float? = nil
+        ocrConfidence: Float? = nil,
+        ocrLineConfidences: [Float]? = nil
     ) -> TransactionDraft {
         analyze(
             fromLines: lines,
@@ -269,7 +270,8 @@ public enum ReceiptTextParser {
             prefersDayFirst: prefersDayFirst,
             locale: locale,
             accounts: accounts,
-            ocrConfidence: ocrConfidence
+            ocrConfidence: ocrConfidence,
+            ocrLineConfidences: ocrLineConfidences
         ).draft
     }
 
@@ -282,13 +284,29 @@ public enum ReceiptTextParser {
         prefersDayFirst: Bool = true,
         locale: Locale = .current,
         accounts: [LedgerAccount] = [],
-        ocrConfidence: Float? = nil
+        ocrConfidence: Float? = nil,
+        ocrLineConfidences: [Float]? = nil
     ) -> ReceiptParseResult {
-        let cleaned = lines
-            .map(cleanLine)
-            .filter { !$0.isEmpty }
+        let hasAlignedLineConfidences = ocrLineConfidences?.count == lines.count
+        var cleaned: [String] = []
+        var cleanedLineConfidences: [Float] = []
+        cleaned.reserveCapacity(lines.count)
+        if hasAlignedLineConfidences {
+            cleanedLineConfidences.reserveCapacity(lines.count)
+        }
+        for (index, line) in lines.enumerated() {
+            let value = cleanLine(line)
+            guard !value.isEmpty else { continue }
+            cleaned.append(value)
+            if hasAlignedLineConfidences,
+               let confidence = ocrLineConfidences?[index] {
+                cleanedLineConfidences.append(sanitizeOCRConfidence(confidence) ?? 0)
+            }
+        }
 
         let normalizedOCRConfidence = sanitizeOCRConfidence(ocrConfidence)
+        let normalizedLineConfidences: [Float]? = hasAlignedLineConfidences
+            ? cleanedLineConfidences : nil
 
         let amounts = rankedAmounts(in: cleaned, locale: locale)
         let merchants = rankedMerchants(in: cleaned)
@@ -314,7 +332,11 @@ public enum ReceiptTextParser {
                     score: $0.score,
                     parserConfidence: amountConfidence(for: $0),
                     evidence: $0.evidence,
-                    ocrConfidence: normalizedOCRConfidence
+                    ocrConfidence: fieldOCRConfidence(
+                        lineIndex: $0.lineIndex,
+                        lineConfidences: normalizedLineConfidences,
+                        fallback: normalizedOCRConfidence
+                    )
                 )
             }
         )
@@ -325,7 +347,11 @@ public enum ReceiptTextParser {
                     score: $0.score,
                     parserConfidence: merchantConfidence(for: $0),
                     evidence: $0.evidence,
-                    ocrConfidence: normalizedOCRConfidence
+                    ocrConfidence: fieldOCRConfidence(
+                        lineIndex: $0.lineIndex,
+                        lineConfidences: normalizedLineConfidences,
+                        fallback: normalizedOCRConfidence
+                    )
                 )
             }
         )
@@ -336,7 +362,11 @@ public enum ReceiptTextParser {
                     score: $0.score,
                     parserConfidence: dateConfidence(for: $0),
                     evidence: $0.evidence,
-                    ocrConfidence: normalizedOCRConfidence
+                    ocrConfidence: fieldOCRConfidence(
+                        lineIndex: $0.lineIndex,
+                        lineConfidences: normalizedLineConfidences,
+                        fallback: normalizedOCRConfidence
+                    )
                 )
             }
         )
@@ -346,7 +376,8 @@ public enum ReceiptTextParser {
                 score: $0.score,
                 parserConfidence: categoryConfidence(for: $0),
                 evidence: $0.evidence,
-                ocrConfidence: normalizedOCRConfidence
+                ocrConfidence: normalizedLineConfidences?.min()
+                    ?? normalizedOCRConfidence
             )
         }
 
@@ -368,6 +399,10 @@ public enum ReceiptTextParser {
             noteCandidate: noteCandidate(in: cleaned),
             ocrConfidence: normalizedOCRConfidence,
             overallConfidence: overallConfidence(
+                confidenceBand(
+                    for: normalizedLineConfidences?.min()
+                        ?? normalizedOCRConfidence
+                ),
                 amountDetails.first?.confidence,
                 merchantDetails.first?.confidence,
                 dateDetails.first?.confidence,
@@ -1146,6 +1181,26 @@ public enum ReceiptTextParser {
         guard let value else { return nil }
         guard value.isFinite else { return 0 }
         return min(max(value, 0), 1)
+    }
+
+    private static func fieldOCRConfidence(
+        lineIndex: Int,
+        lineConfidences: [Float]?,
+        fallback: Float?
+    ) -> Float? {
+        guard let lineConfidences,
+              lineConfidences.indices.contains(lineIndex) else {
+            return fallback
+        }
+        return lineConfidences[lineIndex]
+    }
+
+    private static func confidenceBand(for ocrConfidence: Float?)
+        -> CaptureConfidence? {
+        guard let ocrConfidence else { return nil }
+        if ocrConfidence < 0.5 { return .low }
+        if ocrConfidence < 0.8 { return .medium }
+        return .high
     }
 
     private static func overallConfidence(

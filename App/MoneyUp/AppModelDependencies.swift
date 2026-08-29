@@ -98,10 +98,23 @@ struct ReceiptRecognitionResult: Equatable, Sendable,
     ExpressibleByArrayLiteral {
     let lines: [String]
     let meanConfidence: Float?
+    /// Conservative Vision confidence for each line in `lines`.
+    ///
+    /// A field candidate must use its own line's quality instead of allowing
+    /// unrelated high-confidence header text to raise a weak amount or date.
+    /// `nil` preserves compatibility with injected recognizers that only
+    /// provide document-wide quality.
+    let lineConfidences: [Float]?
 
-    init(lines: [String], meanConfidence: Float? = nil) {
+    init(
+        lines: [String],
+        meanConfidence: Float? = nil,
+        lineConfidences: [Float]? = nil
+    ) {
         self.lines = lines
         self.meanConfidence = meanConfidence
+        self.lineConfidences = lineConfidences?.count == lines.count
+            ? lineConfidences : nil
     }
 
     init(arrayLiteral elements: String...) {

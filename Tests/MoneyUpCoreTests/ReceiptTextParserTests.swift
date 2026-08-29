@@ -603,6 +603,24 @@ final class ReceiptTextParserTests: XCTestCase {
         )
     }
 
+    func testLowConfidenceAmountLineCannotHideBehindStrongDocumentMean() throws {
+        let result = ReceiptTextParser.analyze(
+            fromLines: ["CAFE NERO", "TOTAL S$ 12.50"],
+            ocrConfidence: 0.94,
+            ocrLineConfidences: [0.96, 0.31]
+        )
+
+        XCTAssertEqual(result.draft.amount, Decimal(string: "12.50"))
+        XCTAssertEqual(result.ocrConfidence, 0.94)
+        XCTAssertEqual(result.amountCandidateDetails.first?.confidence, .low)
+        XCTAssertEqual(result.overallConfidence, .low)
+        XCTAssertTrue(
+            result.amountCandidateDetails.first?.evidence.contains(
+                .lowOCRConfidence
+            ) == true
+        )
+    }
+
     func testLegacyResultInitializerBuildsReviewableCompatibilityDetails() throws {
         let amount = Decimal(string: "9.80")!
         let parsedDate = try date(2026, 8, 26, hour: 0)
