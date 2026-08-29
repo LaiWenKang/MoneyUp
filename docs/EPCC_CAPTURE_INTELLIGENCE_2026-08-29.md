@@ -194,4 +194,3 @@ host.
   matrix. Source tests cannot close them.
 - Issue #27 owns the future full-book encrypted-query design. Implementing it
   without its product/SQLCipher amendment is not authorized by this slice.
-
