@@ -1,3 +1,4 @@
+import MoneyUpCore
 import SwiftUI
 
 struct RootView: View {
@@ -174,6 +175,8 @@ private struct MainTabView: View {
     @State private var quickLogKind: QuickLogKind = .expense
     @State private var quickLogLaunchMode: QuickLogLaunchMode?
     @State private var logRequestSequence = 0
+    @State private var historyReviewDate: Date?
+    @State private var historyReviewSequence = 0
     @State private var isShowingWhatsNew = false
     @State private var hasCheckedForUpdate = false
 
@@ -189,8 +192,9 @@ private struct MainTabView: View {
                 .tag(MoneyUpSection.today)
 
             NavigationStack {
-                HistoryView()
+                HistoryView(preset: historyPreset(for: historyReviewDate))
             }
+                .id(historyReviewSequence)
                 .tabItem { Label("tab.history", systemImage: "clock.arrow.circlepath") }
                 .tag(MoneyUpSection.history)
 
@@ -206,7 +210,14 @@ private struct MainTabView: View {
                     switch destination {
                     case .today:
                         selectedSection = .today
-                    case .history:
+                    case let .history(reviewDate):
+                        if let reviewDate {
+                            historyReviewDate = reviewDate
+                            historyReviewSequence &+= 1
+                        } else if historyReviewDate != nil {
+                            historyReviewDate = nil
+                            historyReviewSequence &+= 1
+                        }
                         selectedSection = .history
                     case .plan:
                         selectedSection = .plan
@@ -235,6 +246,25 @@ private struct MainTabView: View {
         .onChange(of: model.requestedQuickLogMode) { _, _ in
             openRequestedLog()
         }
+    }
+
+    private func historyPreset(for reviewDate: Date?) -> HistoryPreset? {
+        guard let reviewDate else { return nil }
+        let calendar = model.reportingCalendar
+        let start = FinancialPeriodBoundary.startOfDay(
+            containing: reviewDate,
+            calendar: calendar
+        )
+        guard let end = FinancialPeriodBoundary.endOfDayExclusive(
+            containing: reviewDate,
+            calendar: calendar
+        ) else { return nil }
+        return HistoryPreset(
+            interval: DateInterval(
+                start: start,
+                end: end
+            )
+        )
     }
 
     /// Private TestFlight and source installs show these notes once per version.

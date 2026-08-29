@@ -113,6 +113,132 @@ final class TransactionPresentationTests: XCTestCase {
         )
     }
 
+    func testSuggestionPolicyRequiresReviewForLowConfidenceOrEditedFields() {
+        XCTAssertFalse(
+            QuickLogSuggestionPolicy.shouldPrefillReceiptCandidate(
+                confidence: .low,
+                fieldIsUnchanged: true
+            )
+        )
+        XCTAssertFalse(
+            QuickLogSuggestionPolicy.shouldPrefillReceiptCandidate(
+                confidence: .high,
+                fieldIsUnchanged: false
+            )
+        )
+        XCTAssertTrue(
+            QuickLogSuggestionPolicy.shouldPrefillReceiptCandidate(
+                confidence: .medium,
+                fieldIsUnchanged: true
+            )
+        )
+
+        XCTAssertTrue(
+            QuickLogSuggestionPolicy.shouldPrefillHistorySuggestion(
+                confidence: .high,
+                fieldWasEdited: false,
+                parserSuppliedValue: false
+            )
+        )
+        for confidence in [CaptureConfidence.low, .medium] {
+            XCTAssertFalse(
+                QuickLogSuggestionPolicy.shouldPrefillHistorySuggestion(
+                    confidence: confidence,
+                    fieldWasEdited: false,
+                    parserSuppliedValue: false
+                )
+            )
+        }
+        XCTAssertFalse(
+            QuickLogSuggestionPolicy.shouldPrefillHistorySuggestion(
+                confidence: .high,
+                fieldWasEdited: true,
+                parserSuppliedValue: false
+            )
+        )
+        XCTAssertFalse(
+            QuickLogSuggestionPolicy.shouldPrefillHistorySuggestion(
+                confidence: .high,
+                fieldWasEdited: false,
+                parserSuppliedValue: true
+            )
+        )
+        XCTAssertFalse(
+            QuickLogSuggestionPolicy.shouldPrefillHistorySuggestion(
+                confidence: .high,
+                fieldWasEdited: false,
+                parserSuppliedValue: false,
+                hasFixedDefault: true
+            )
+        )
+        XCTAssertFalse(
+            QuickLogSuggestionPolicy.shouldPrefillHistorySuggestion(
+                confidence: .high,
+                fieldWasEdited: false,
+                parserSuppliedValue: false,
+                usedPayeeHistory: false
+            )
+        )
+        XCTAssertTrue(
+            QuickLogSuggestionPolicy.receiptContextIsCurrent(
+                scannedKind: .expense,
+                currentKind: .expense
+            )
+        )
+        XCTAssertFalse(
+            QuickLogSuggestionPolicy.receiptContextIsCurrent(
+                scannedKind: .expense,
+                currentKind: .income
+            )
+        )
+    }
+
+    func testDuplicateReviewUsesFrozenOriginDayForHistory() throws {
+        var utc = Calendar(identifier: .gregorian)
+        utc.timeZone = try XCTUnwrap(TimeZone(identifier: "UTC"))
+        var losAngeles = Calendar(identifier: .gregorian)
+        losAngeles.timeZone = try XCTUnwrap(
+            TimeZone(identifier: "America/Los_Angeles")
+        )
+        let occurredAt = try XCTUnwrap(
+            ISO8601DateFormatter().date(from: "2026-01-01T01:00:00Z")
+        )
+        let currency = try CurrencyCode("USD")
+        let entry = try JournalEntry(
+            kind: .expense,
+            occurredAt: occurredAt,
+            postings: [
+                Posting(accountID: UUID(), money: try Money(1, currency: currency)),
+                Posting(accountID: UUID(), money: try Money(-1, currency: currency))
+            ],
+            originContext: .capture(
+                for: occurredAt,
+                calendar: utc,
+                timeZone: utc.timeZone
+            )
+        )
+
+        let historyDate = QuickLogDuplicateReviewPolicy.historyDate(
+            for: entry,
+            calendar: losAngeles
+        )
+
+        XCTAssertEqual(
+            FinancialPeriodBoundary.dayKey(
+                for: historyDate,
+                calendar: losAngeles
+            ),
+            20260101
+        )
+        XCTAssertEqual(
+            FinancialPeriodBoundary.dayKey(
+                for: occurredAt,
+                calendar: losAngeles
+            ),
+            20251231
+        )
+    }
+
     func testZeroBudgetLimitWithSpendingIsConsistentlyOverPlan() {
         let result = moneyUpPaceRatio(
             spent: 1,

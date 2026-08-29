@@ -27,7 +27,7 @@ enum QuickLogKind: String, CaseIterable, Codable, Identifiable, Sendable {
 /// route keeps all four sibling tabs reachable without abandoning the draft.
 enum QuickLogNavigationDestination: Hashable, Sendable {
     case today
-    case history
+    case history(Date?)
     case plan
     case assets
 }
@@ -128,6 +128,45 @@ enum QuickLogOccurrencePolicy {
     }
 }
 
+enum QuickLogSuggestionPolicy {
+    static func shouldPrefillReceiptCandidate(
+        confidence: CaptureConfidence?,
+        fieldIsUnchanged: Bool
+    ) -> Bool {
+        fieldIsUnchanged && confidence != nil && confidence != .low
+    }
+
+    static func shouldPrefillHistorySuggestion(
+        confidence: CaptureConfidence,
+        fieldWasEdited: Bool,
+        parserSuppliedValue: Bool,
+        hasFixedDefault: Bool = false,
+        usedPayeeHistory: Bool = true
+    ) -> Bool {
+        confidence == .high
+            && !fieldWasEdited
+            && !parserSuppliedValue
+            && !hasFixedDefault
+            && usedPayeeHistory
+    }
+
+    static func receiptContextIsCurrent(
+        scannedKind: QuickLogKind,
+        currentKind: QuickLogKind
+    ) -> Bool {
+        scannedKind == currentKind
+    }
+}
+
+enum QuickLogDuplicateReviewPolicy {
+    static func historyDate(
+        for entry: JournalEntry,
+        calendar: Calendar
+    ) -> Date {
+        entry.originContext.attributedDate(in: calendar) ?? entry.occurredAt
+    }
+}
+
 enum QuickLogFieldFocus: Hashable {
     case amount
     case destinationAmount
@@ -154,6 +193,7 @@ private struct QuickLogEntryView: View {
     )
 
     private struct ReceiptScanBaseline: Equatable {
+        let kind: QuickLogKind
         let amountText: String
         let occurredAt: Date
         let dateWasEdited: Bool
@@ -161,6 +201,12 @@ private struct QuickLogEntryView: View {
         let note: String
         let accountID: UUID?
         let categoryID: UUID?
+    }
+
+    private struct PendingDuplicateReview {
+        let queryFingerprint: String
+        let match: CaptureDuplicateMatch
+        let historyDate: Date?
     }
 
     @Environment(\.dismiss) private var dismiss
@@ -183,6 +229,8 @@ private struct QuickLogEntryView: View {
     @State private var accountID: UUID?
     @State private var destinationAccountID: UUID?
     @State private var categoryID: UUID?
+    @State private var accountWasEdited = false
+    @State private var categoryWasEdited = false
     @State private var occurredAt = Date()
     @State private var dateWasEdited = false
     @State private var payee = ""
@@ -207,6 +255,11 @@ private struct QuickLogEntryView: View {
     @State private var receiptScanGeneration = 0
     @State private var receiptScanBaseline: ReceiptScanBaseline?
     @State private var receiptResult: ReceiptParseResult?
+    @State private var captureSuggestionResult: CaptureSuggestionResult?
+    @State private var pendingDuplicateReview: PendingDuplicateReview?
+    @State private var preservesCaptureSuggestionsAcrossNextKindChange = false
+    @State private var autoAppliedAccountSuggestionID: UUID?
+    @State private var autoAppliedCategorySuggestionID: UUID?
     @State private var splitLines: [QuickLogSplitDraftLine] = []
     /// Provenance for a draft promoted from the lock-safe capture inbox. This
     /// must survive every edit so AppModel can complete the cross-store
@@ -397,7 +450,17 @@ private struct QuickLogEntryView: View {
 
                     Picker(
                         kind == .transfer ? "transaction.from_account" : "transaction.account",
-                        selection: trackedBinding($accountID, \.accountID)
+                        selection: trackedBinding(
+                            $accountID,
+                            \.accountID,
+                            onUserEdit: {
+                                accountWasEdited = true
+                                autoAppliedAccountSuggestionID = nil
+                                invalidateCaptureSuggestions(
+                                    preservingAccount: true
+                                )
+                            }
+                        )
                     ) {
                         ForEach(model.userAccounts) { account in
                             Text(account.name).tag(Optional(account.id))
@@ -504,7 +567,14 @@ private struct QuickLogEntryView: View {
                         if splitLines.isEmpty {
                             Picker(
                                 "transaction.category",
-                                selection: trackedBinding($categoryID, \.categoryID)
+                                selection: trackedBinding(
+                                    $categoryID,
+                                    \.categoryID,
+                                    onUserEdit: {
+                                        categoryWasEdited = true
+                                        autoAppliedCategorySuggestionID = nil
+                                    }
+                                )
                             ) {
                                 ForEach(categories) { category in
                                     Text(category.name).tag(Optional(category.id))
@@ -532,6 +602,7 @@ private struct QuickLogEntryView: View {
                                 set: { newDate in
                                     occurredAt = newDate
                                     dateWasEdited = true
+                                    invalidateCaptureSuggestions()
                                     persistUserDraftChange { snapshot in
                                         snapshot.occurredAt = newDate
                                         snapshot.dateWasEdited = true
@@ -547,7 +618,10 @@ private struct QuickLogEntryView: View {
                                 text: trackedBinding(
                                     $payee,
                                     \.payee,
-                                    refreshesOccurrenceDate: true
+                                    refreshesOccurrenceDate: true,
+                                    onUserEdit: {
+                                        invalidateCaptureSuggestions()
+                                    }
                                 )
                             )
                             .focused($focusedField, equals: .payee)
@@ -600,7 +674,7 @@ private struct QuickLogEntryView: View {
                                 Label("tab.today", systemImage: "house.fill")
                             }
                             Button {
-                                navigate(to: .history)
+                                navigate(to: .history(nil))
                             } label: {
                                 Label("tab.history", systemImage: "clock.arrow.circlepath")
                             }
@@ -620,7 +694,7 @@ private struct QuickLogEntryView: View {
                     }
 
                     Button {
-                        Task { await save() }
+                        Task { await attemptSave() }
                     } label: {
                         Label("action.save", systemImage: "checkmark.circle.fill")
                     }
@@ -651,11 +725,10 @@ private struct QuickLogEntryView: View {
             .onChange(of: isActive) { _, newValue in
                 if !newValue {
                     cancelReceiptProcessing()
-                    receiptResult = nil
+                    pendingDuplicateReview = nil
                     receiptAttachmentData = nil
                     retainReceiptAttachment = false
                     receiptRetentionMessage = nil
-                    smartMessage = nil
                     isPresentingReceiptPicker = false
                     dismissKeyboard()
                     isHandlingFocusedLaunch = false
@@ -665,12 +738,18 @@ private struct QuickLogEntryView: View {
                 }
             }
             .onChange(of: kind) { _, newKind in
+                if preservesCaptureSuggestionsAcrossNextKindChange {
+                    preservesCaptureSuggestionsAcrossNextKindChange = false
+                } else {
+                    invalidateCaptureSuggestions(restoresDefaults: false)
+                }
+                pendingDuplicateReview = nil
+                cancelReceiptProcessing()
+                receiptResult = nil
+                receiptAttachmentData = nil
+                retainReceiptAttachment = false
+                receiptRetentionMessage = nil
                 if newKind == .transfer {
-                    cancelReceiptProcessing()
-                    receiptResult = nil
-                    receiptAttachmentData = nil
-                    retainReceiptAttachment = false
-                    receiptRetentionMessage = nil
                     clearSplitFocus()
                     splitLines = []
                 }
@@ -702,17 +781,16 @@ private struct QuickLogEntryView: View {
                     receiptScanBaseline = nil
                     if !isActive {
                         photoItem = nil
-                        receiptResult = nil
                         receiptAttachmentData = nil
                         retainReceiptAttachment = false
                         receiptRetentionMessage = nil
-                        smartMessage = nil
                         isScanning = false
                     }
                     return
                 }
                 refreshUntouchedOccurrenceDate()
                 receiptScanBaseline = ReceiptScanBaseline(
+                    kind: kind,
                     amountText: amountText,
                     occurredAt: occurredAt,
                     dateWasEdited: dateWasEdited,
@@ -724,6 +802,8 @@ private struct QuickLogEntryView: View {
                 isScanning = true
                 smartMessage = nil
                 receiptResult = nil
+                invalidateCaptureSuggestions()
+                pendingDuplicateReview = nil
                 receiptAttachmentData = nil
                 retainReceiptAttachment = false
                 receiptRetentionMessage = nil
@@ -744,11 +824,10 @@ private struct QuickLogEntryView: View {
                 cancelReceiptProcessing()
                 receiptScanTask = nil
                 photoItem = nil
-                receiptResult = nil
+                pendingDuplicateReview = nil
                 receiptAttachmentData = nil
                 retainReceiptAttachment = false
                 receiptRetentionMessage = nil
-                smartMessage = nil
                 isPresentingReceiptPicker = false
             }
             .scrollDismissesKeyboard(.interactively)
@@ -788,7 +867,7 @@ private struct QuickLogEntryView: View {
                 )
             } else {
                 Button {
-                    Task { await save() }
+                    Task { await attemptSave() }
                 } label: {
                     Label("action.save", systemImage: "checkmark.circle.fill")
                         .frame(maxWidth: .infinity)
@@ -840,6 +919,34 @@ private struct QuickLogEntryView: View {
             // so the same external request cannot remain stuck indefinitely.
             pendingLaunchMode = nil
             onRequestHandled(mode)
+        }
+        .confirmationDialog(
+            "quick_log.duplicate_title",
+            isPresented: Binding(
+                get: { pendingDuplicateReview != nil },
+                set: { if !$0 { pendingDuplicateReview = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("quick_log.duplicate_save_anyway") {
+                guard let pending = pendingDuplicateReview else { return }
+                pendingDuplicateReview = nil
+                Task { await confirmDuplicateSave(pending) }
+            }
+            Button("quick_log.duplicate_review") {
+                let matchDate = pendingDuplicateReview?.historyDate
+                pendingDuplicateReview = nil
+                if dismissAfterSave {
+                    dismiss()
+                } else {
+                    navigate(to: .history(matchDate))
+                }
+            }
+            Button("action.cancel", role: .cancel) {
+                pendingDuplicateReview = nil
+            }
+        } message: {
+            Text(duplicateReviewMessage)
         }
         .alert("error.could_not_save", isPresented: Binding(
             get: { errorMessage != nil },
@@ -901,6 +1008,13 @@ private struct QuickLogEntryView: View {
 
             if let receiptResult {
                 receiptSuggestions(receiptResult)
+            }
+
+            if let captureSuggestionResult,
+               captureSuggestionResult.accountSuggestion != nil
+                || (splitLines.isEmpty
+                    && captureSuggestionResult.categorySuggestion != nil) {
+                captureSuggestions(captureSuggestionResult)
             }
 
             if receiptAttachmentData != nil {
@@ -1108,7 +1222,8 @@ private struct QuickLogEntryView: View {
     private func trackedBinding<Value>(
         _ binding: Binding<Value>,
         _ keyPath: WritableKeyPath<QuickLogDraft, Value>,
-        refreshesOccurrenceDate: Bool = false
+        refreshesOccurrenceDate: Bool = false,
+        onUserEdit: @escaping () -> Void = {}
     ) -> Binding<Value> {
         Binding(
             get: { binding.wrappedValue },
@@ -1117,6 +1232,7 @@ private struct QuickLogEntryView: View {
                     refreshUntouchedOccurrenceDate(persist: false)
                 }
                 binding.wrappedValue = newValue
+                onUserEdit()
                 persistUserDraftChange { snapshot in
                     snapshot[keyPath: keyPath] = newValue
                 }
@@ -1149,6 +1265,10 @@ private struct QuickLogEntryView: View {
 
     private func restoreDraftIfAvailable() {
         guard !dismissAfterSave, let draft = model.quickLogDraft else { return }
+        if hasRestoredDraft, draft == draftSnapshot { return }
+        if hasRestoredDraft {
+            clearPerTransactionReviewState()
+        }
         // Restore first. A conflicting widget request is resolved explicitly
         // below instead of silently reinterpreting or discarding this content.
         applyDraft(draft)
@@ -1161,6 +1281,8 @@ private struct QuickLogEntryView: View {
         accountID = draft.accountID
         destinationAccountID = draft.destinationAccountID
         categoryID = draft.categoryID
+        accountWasEdited = draft.accountID != nil
+        categoryWasEdited = draft.categoryID != nil
         occurredAt = draft.hasTransactionContent
             ? draft.occurredAt : model.currentDateForUserAction()
         dateWasEdited = draft.dateWasEdited
@@ -1203,6 +1325,8 @@ private struct QuickLogEntryView: View {
 
     private func discardDraftAndLaunch(_ launchMode: QuickLogLaunchMode) {
         cancelReceiptProcessing()
+        accountWasEdited = false
+        categoryWasEdited = false
         amountText = ""
         destinationAmountText = ""
         occurredAt = model.currentDateForUserAction()
@@ -1212,6 +1336,10 @@ private struct QuickLogEntryView: View {
         smartText = ""
         smartMessage = nil
         receiptResult = nil
+        captureSuggestionResult = nil
+        autoAppliedAccountSuggestionID = nil
+        autoAppliedCategorySuggestionID = nil
+        pendingDuplicateReview = nil
         splitLines = []
         sourceCaptureID = nil
         receiptAttachmentData = nil
@@ -1260,6 +1388,8 @@ private struct QuickLogEntryView: View {
 
     private func applyTypedPhrase() {
         receiptResult = nil
+        invalidateCaptureSuggestions()
+        pendingDuplicateReview = nil
         let draft = NaturalLanguageEntryParser.draft(
             from: smartText,
             accounts: model.accounts,
@@ -1416,6 +1546,14 @@ private struct QuickLogEntryView: View {
             receiptResult = nil
             return false
         }
+        guard QuickLogSuggestionPolicy.receiptContextIsCurrent(
+            scannedKind: baseline.kind,
+            currentKind: kind
+        ) else {
+            receiptResult = nil
+            smartMessage = String(localized: "quick_log.scan_context_changed")
+            return false
+        }
         guard !result.draft.isEmpty else {
             receiptResult = nil
             smartMessage = String(localized: "quick_log.smart_nothing_found")
@@ -1423,31 +1561,52 @@ private struct QuickLogEntryView: View {
         }
 
         var reviewDraft = result.draft
+        if !QuickLogSuggestionPolicy.shouldPrefillReceiptCandidate(
+            confidence: result.amountCandidateDetails.first?.confidence,
+            fieldIsUnchanged: amountText == baseline.amountText
+                && accountID == baseline.accountID
+        ) {
+            reviewDraft.amount = nil
+        }
+        if !QuickLogSuggestionPolicy.shouldPrefillReceiptCandidate(
+            confidence: result.merchantCandidateDetails.first?.confidence,
+            fieldIsUnchanged: payee == baseline.payee
+        ) {
+            reviewDraft.payee = nil
+        }
+        if !QuickLogSuggestionPolicy.shouldPrefillReceiptCandidate(
+            confidence: result.dateCandidateDetails.first?.confidence,
+            fieldIsUnchanged: occurredAt == baseline.occurredAt
+                && dateWasEdited == baseline.dateWasEdited
+        ) {
+            reviewDraft.occurredAt = nil
+        }
+        if !QuickLogSuggestionPolicy.shouldPrefillReceiptCandidate(
+            confidence: result.categoryCandidateDetails.first?.confidence,
+            fieldIsUnchanged: splitLines.isEmpty
+                && categoryID == baseline.categoryID
+        ) {
+            reviewDraft.categoryID = nil
+        }
         // Suggestions may arrive after the user has corrected a field. Apply
         // only values whose field still matches the scan-start snapshot, and
         // never reinterpret the explicitly selected transaction kind.
-        if amountText != baseline.amountText { reviewDraft.amount = nil }
-        if occurredAt != baseline.occurredAt
-            || dateWasEdited != baseline.dateWasEdited {
-            reviewDraft.occurredAt = nil
-        }
-        if payee != baseline.payee { reviewDraft.payee = nil }
         if accountID != baseline.accountID { reviewDraft.accountID = nil }
-        if categoryID != baseline.categoryID {
-            reviewDraft.categoryID = nil
-        } else if let parsedCategoryID = reviewDraft.categoryID,
-                  let category = model.accountsByID[parsedCategoryID],
-                  category.kind != (kind == .income ? .income : .expense) {
+        if let parsedCategoryID = reviewDraft.categoryID,
+           let category = model.accountsByID[parsedCategoryID],
+           category.kind != (kind == .income ? .income : .expense) {
             reviewDraft.categoryID = nil
         }
         _ = apply(
             reviewDraft,
             preservesKind: true,
-            suggestsLearnedCategory: false
+            suggestsLearnedCategory: true
         )
 
         if note == baseline.note,
            note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           let overallConfidence = result.overallConfidence,
+           overallConfidence != .low,
            let noteCandidate = result.noteCandidate {
             note = noteCandidate
         }
@@ -1475,26 +1634,44 @@ private struct QuickLogEntryView: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
 
-            if result.amountCandidates.count > 1 {
-                Text("quick_log.scan_alternative_amounts")
+            if let confidence = result.overallConfidence {
+                Label(
+                    captureConfidenceText(confidence),
+                    systemImage: confidence == .low
+                        ? "questionmark.circle" : "checkmark.seal"
+                )
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            }
+
+            if !result.amountCandidateDetails.isEmpty {
+                Text("quick_log.scan_amount_candidates")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
                         ForEach(
-                            Array(result.amountCandidates.prefix(4).enumerated()),
+                            Array(result.amountCandidateDetails.prefix(4).enumerated()),
                             id: \.offset
                         ) { _, candidate in
                             Button {
-                                amountText = editableAmount(candidate)
+                                amountText = editableAmount(candidate.value)
                                 persistUserDraftChange { snapshot in
                                     snapshot.amountText = amountText
                                 }
                             } label: {
-                                if let currency = selectedAccountCurrency {
-                                    Text("\(editableAmount(candidate)) \(currency.value)")
-                                } else {
-                                    Text(editableAmount(candidate))
+                                VStack(alignment: .leading, spacing: 2) {
+                                    if let currency = selectedAccountCurrency {
+                                        Text("\(editableAmount(candidate.value)) \(currency.value)")
+                                            .font(.body.monospacedDigit())
+                                        Text("quick_log.scan_amount_account_currency")
+                                            .font(.caption2)
+                                    } else {
+                                        Text(editableAmount(candidate.value))
+                                            .font(.body.monospacedDigit())
+                                    }
+                                    Text(receiptCandidateDetail(candidate))
+                                        .font(.caption2)
                                 }
                             }
                             .buttonStyle(.bordered)
@@ -1502,8 +1679,141 @@ private struct QuickLogEntryView: View {
                     }
                 }
             }
+
+            if !result.merchantCandidateDetails.isEmpty {
+                Text("quick_log.scan_merchant_candidates")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(
+                            Array(result.merchantCandidateDetails.prefix(3).enumerated()),
+                            id: \.offset
+                        ) { _, candidate in
+                            Button {
+                                invalidateCaptureSuggestions()
+                                payee = candidate.value
+                                isShowingOptionalDetails = true
+                                persistUserDraftChange { $0.payee = candidate.value }
+                                refreshCaptureSuggestions(
+                                    for: TransactionDraft(
+                                        kind: kind == .income ? .income
+                                            : kind == .refund ? .refund : .expense,
+                                        payee: candidate.value,
+                                        source: .receipt
+                                    )
+                                )
+                                if !dismissAfterSave {
+                                    model.updateQuickLogDraft(draftSnapshot)
+                                }
+                            } label: {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(candidate.value)
+                                    Text(receiptCandidateDetail(candidate))
+                                        .font(.caption2)
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                    }
+                }
+            }
+
+            if !result.dateCandidateDetails.isEmpty {
+                Text("quick_log.scan_date_candidates")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(
+                            Array(result.dateCandidateDetails.prefix(3).enumerated()),
+                            id: \.offset
+                        ) { _, candidate in
+                            Button {
+                                occurredAt = candidate.value
+                                dateWasEdited = true
+                                invalidateCaptureSuggestions()
+                                isShowingOptionalDetails = true
+                                persistUserDraftChange { snapshot in
+                                    snapshot.occurredAt = candidate.value
+                                    snapshot.dateWasEdited = true
+                                }
+                            } label: {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(candidate.value.formattedForReporting(
+                                        .dateTime.year().month(.abbreviated).day(),
+                                        calendar: model.reportingCalendar
+                                    ))
+                                    Text(receiptCandidateDetail(candidate))
+                                        .font(.caption2)
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                    }
+                }
+            }
+
+            if splitLines.isEmpty,
+               let categoryID = result.draft.categoryID,
+               let category = model.accountsByID[categoryID],
+               let candidate = result.categoryCandidateDetails.first {
+                Text("quick_log.scan_category_candidate")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Button {
+                    self.categoryID = categoryID
+                    categoryWasEdited = true
+                    autoAppliedCategorySuggestionID = nil
+                    persistUserDraftChange { $0.categoryID = categoryID }
+                } label: {
+                    HStack {
+                        Text(category.name)
+                        Spacer(minLength: 8)
+                        Text(receiptCandidateDetail(candidate))
+                            .font(.caption2)
+                    }
+                }
+                .buttonStyle(.bordered)
+            }
         }
         .accessibilityElement(children: .contain)
+    }
+
+    private func receiptCandidateDetail<Value>(
+        _ candidate: ReceiptCandidate<Value>
+    ) -> String where Value: Equatable & Sendable {
+        "\(captureConfidenceText(candidate.confidence)) · "
+            + receiptEvidenceText(candidate.evidence)
+    }
+
+    private func receiptEvidenceText(_ evidence: [ReceiptCandidateEvidence]) -> String {
+        if evidence.contains(.lowOCRConfidence) {
+            return String(localized: "quick_log.scan_reason_low_ocr")
+        }
+        if evidence.contains(.payableAmountLabel)
+            || evidence.contains(.precedingPayableAmountLabel) {
+            return String(localized: "quick_log.scan_reason_total_label")
+        }
+        if evidence.contains(.explicitMerchantLabel)
+            || evidence.contains(.businessNameMarker)
+            || evidence.contains(.receiptHeaderPosition) {
+            return String(localized: "quick_log.scan_reason_merchant")
+        }
+        if evidence.contains(.transactionDateLabel)
+            || evidence.contains(.genericDateLabel)
+            || evidence.contains(.timeComponent) {
+            return String(localized: "quick_log.scan_reason_date")
+        }
+        if evidence.contains(.categoryKeywordMatch)
+            || evidence.contains(.multipleCategoryKeywordMatches) {
+            return String(localized: "quick_log.scan_reason_category")
+        }
+        if evidence.contains(.currencyMarker)
+            || evidence.contains(.fractionalAmount) {
+            return String(localized: "quick_log.scan_reason_amount_shape")
+        }
+        return String(localized: "quick_log.scan_reason_pattern")
     }
 
     /// Applies whatever the reader was sure about and leaves the rest alone.
@@ -1520,11 +1830,18 @@ private struct QuickLogEntryView: View {
             return false
         }
 
+        invalidateCaptureSuggestions()
+
         if !preservesKind {
+            let parsedKind: QuickLogKind
             switch draft.kind {
-            case .expense: kind = .expense
-            case .income: kind = .income
-            case .refund: kind = .refund
+            case .expense: parsedKind = .expense
+            case .income: parsedKind = .income
+            case .refund: parsedKind = .refund
+            }
+            if parsedKind != kind {
+                preservesCaptureSuggestionsAcrossNextKindChange = true
+                kind = parsedKind
             }
         }
         if let amount = draft.amount {
@@ -1535,31 +1852,264 @@ private struct QuickLogEntryView: View {
             dateWasEdited = true
         }
         if let parsedPayee = draft.payee { payee = parsedPayee }
-        if let parsedAccount = draft.accountID { accountID = parsedAccount }
+        if let parsedAccount = draft.accountID {
+            accountID = parsedAccount
+            accountWasEdited = true
+        }
 
         if let parsedCategory = draft.categoryID {
             categoryID = parsedCategory
-        } else if suggestsLearnedCategory,
-                  let parsedPayee = draft.payee,
-                  let learned = CategorySuggester.suggestedCategory(
-                      forPayee: parsedPayee,
-                      kind: draft.kind == .income ? .income : .expense,
-                      entries: model.entries,
-                      accounts: model.accounts
-                  ) {
-            categoryID = learned
+            categoryWasEdited = true
         }
 
-        smartMessage = nil
+        if suggestsLearnedCategory {
+            refreshCaptureSuggestions(for: draft)
+        }
+
+        if draft.source == .naturalLanguage {
+            smartMessage = String(localized: "quick_log.smart_review")
+        } else {
+            smartMessage = nil
+        }
         dismissKeyboard()
         if !dismissAfterSave { model.updateQuickLogDraft(draftSnapshot) }
         return true
+    }
+
+    private func invalidateCaptureSuggestions(
+        preservingAccount: Bool = false,
+        preservingCategory: Bool = false,
+        restoresDefaults: Bool = true
+    ) {
+        var revertedField = false
+        if !preservingAccount,
+           let autoAppliedAccountSuggestionID,
+           accountID == autoAppliedAccountSuggestionID {
+            accountID = nil
+            accountWasEdited = false
+            revertedField = true
+        }
+        if !preservingCategory,
+           let autoAppliedCategorySuggestionID,
+           categoryID == autoAppliedCategorySuggestionID {
+            categoryID = nil
+            categoryWasEdited = false
+            revertedField = true
+        }
+        autoAppliedAccountSuggestionID = nil
+        autoAppliedCategorySuggestionID = nil
+        captureSuggestionResult = nil
+        if restoresDefaults, revertedField {
+            selectDefaults()
+        }
+    }
+
+    /// Restoring another durable draft removes prior explanation provenance
+    /// without changing values that belong to the new draft.
+    private func clearCaptureSuggestionProvenance() {
+        autoAppliedAccountSuggestionID = nil
+        autoAppliedCategorySuggestionID = nil
+        captureSuggestionResult = nil
+    }
+
+    private func clearPerTransactionReviewState() {
+        smartMessage = nil
+        receiptResult = nil
+        clearCaptureSuggestionProvenance()
+        pendingDuplicateReview = nil
+        receiptAttachmentData = nil
+        retainReceiptAttachment = false
+        receiptRetentionMessage = nil
+        photoItem = nil
+        errorMessage = nil
+    }
+
+    private func refreshCaptureSuggestions(for draft: TransactionDraft) {
+        guard model.journalRecentEntriesAreCurrent,
+              let currency = selectedAccountCurrency else {
+            captureSuggestionResult = nil
+            return
+        }
+        let suggestionKind: CaptureIntelligenceKind
+        switch draft.kind {
+        case .expense: suggestionKind = .expense
+        case .income: suggestionKind = .income
+        case .refund: suggestionKind = .refund
+        }
+        let query = CaptureSuggestionQuery(
+            kind: suggestionKind,
+            payee: draft.payee,
+            currency: currency,
+            occurredAt: draft.occurredAt ?? occurredAt
+        )
+        let result = CaptureSuggestionEngine.suggestions(
+            for: query,
+            entries: model.entries,
+            accounts: model.accounts
+        )
+        captureSuggestionResult = result
+
+        if let suggestion = result.accountSuggestion,
+           QuickLogSuggestionPolicy.shouldPrefillHistorySuggestion(
+               confidence: suggestion.confidence,
+               fieldWasEdited: accountWasEdited,
+               parserSuppliedValue: draft.accountID != nil,
+               hasFixedDefault: validPreferred(
+                   model.profile?.preferredAccountID,
+                   in: model.userAccounts
+               ) != nil,
+               usedPayeeHistory: suggestion.evidence.usedPayeeHistory
+           ),
+           model.userAccounts.contains(where: {
+               $0.id == suggestion.ledgerAccountID
+           }) {
+            accountID = suggestion.ledgerAccountID
+            autoAppliedAccountSuggestionID = suggestion.ledgerAccountID
+        }
+        if splitLines.isEmpty,
+           let suggestion = result.categorySuggestion,
+           QuickLogSuggestionPolicy.shouldPrefillHistorySuggestion(
+               confidence: suggestion.confidence,
+               fieldWasEdited: categoryWasEdited,
+               parserSuppliedValue: draft.categoryID != nil,
+               hasFixedDefault: preferredCategoryIDForCurrentKind != nil,
+               usedPayeeHistory: suggestion.evidence.usedPayeeHistory
+           ),
+           categories.contains(where: {
+               $0.id == suggestion.ledgerAccountID
+           }) {
+            categoryID = suggestion.ledgerAccountID
+            autoAppliedCategorySuggestionID = suggestion.ledgerAccountID
+        }
+    }
+
+    private var preferredCategoryIDForCurrentKind: UUID? {
+        switch kind {
+        case .income:
+            validPreferred(
+                model.profile?.preferredIncomeCategoryID,
+                in: model.incomeCategories
+            )
+        case .expense, .refund:
+            validPreferred(
+                model.profile?.preferredExpenseCategoryID,
+                in: model.expenseCategories
+            )
+        case .transfer:
+            nil
+        }
+    }
+
+    @ViewBuilder
+    private func captureSuggestions(_ result: CaptureSuggestionResult) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("quick_log.suggestions_from_recent", systemImage: "lightbulb.max")
+                .font(.subheadline.weight(.semibold))
+
+            if let suggestion = result.accountSuggestion,
+               let account = model.accountsByID[suggestion.ledgerAccountID] {
+                captureSuggestionRow(
+                    title: String(localized: "quick_log.suggested_account"),
+                    account: account,
+                    suggestion: suggestion,
+                    isApplied: accountID == account.id
+                ) {
+                    accountID = account.id
+                    accountWasEdited = true
+                    autoAppliedAccountSuggestionID = nil
+                    persistUserDraftChange { $0.accountID = account.id }
+                }
+            }
+
+            if splitLines.isEmpty,
+               let suggestion = result.categorySuggestion,
+               let category = model.accountsByID[suggestion.ledgerAccountID] {
+                captureSuggestionRow(
+                    title: String(localized: "quick_log.suggested_category"),
+                    account: category,
+                    suggestion: suggestion,
+                    isApplied: categoryID == category.id
+                ) {
+                    categoryID = category.id
+                    categoryWasEdited = true
+                    autoAppliedCategorySuggestionID = nil
+                    persistUserDraftChange { $0.categoryID = category.id }
+                }
+            }
+
+            Text("quick_log.suggestions_recent_scope")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private func captureSuggestionRow(
+        title: String,
+        account: LedgerAccount,
+        suggestion: CaptureFieldSuggestion,
+        isApplied: Bool,
+        apply: @escaping () -> Void
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(account.name)
+                    .font(.body.weight(.medium))
+                Spacer(minLength: 8)
+                if isApplied {
+                    Label("quick_log.suggestion_applied", systemImage: "checkmark")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                } else {
+                    Button("quick_log.use_suggestion", action: apply)
+                        .buttonStyle(.borderless)
+                }
+            }
+            Text(
+                "\(captureConfidenceText(suggestion.confidence)) · "
+                    + captureEvidenceText(suggestion.evidence)
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+    }
+
+    private func captureConfidenceText(_ confidence: CaptureConfidence) -> String {
+        switch confidence {
+        case .low: String(localized: "quick_log.confidence_low")
+        case .medium: String(localized: "quick_log.confidence_medium")
+        case .high: String(localized: "quick_log.confidence_high")
+        }
+    }
+
+    private func captureEvidenceText(_ evidence: CaptureSuggestionEvidence) -> String {
+        let format = evidence.usedPayeeHistory
+            ? String(localized: "quick_log.suggestion_payee_evidence_format")
+            : String(localized: "quick_log.suggestion_kind_evidence_format")
+        let count = String(
+            format: format,
+            evidence.supportingEntryCount,
+            evidence.eligibleEntryCount
+        )
+        let date = evidence.mostRecentUse.formattedForReporting(
+            .dateTime.year().month(.abbreviated).day(),
+            calendar: model.reportingCalendar
+        )
+        return String(
+            format: String(localized: "quick_log.suggestion_last_used_format"),
+            count,
+            date
+        )
     }
 
     /// Fills what is still unset. It must not overwrite a value the user or a
     /// parsed draft already chose, because it also runs when the kind changes.
     private func selectDefaults() {
         if !model.userAccounts.contains(where: { $0.id == accountID }) {
+            accountWasEdited = false
             accountID = validPreferred(
                 model.profile?.preferredAccountID,
                 in: model.userAccounts
@@ -1568,6 +2118,7 @@ private struct QuickLogEntryView: View {
         switch kind {
         case .expense:
             if !model.expenseCategories.contains(where: { $0.id == categoryID }) {
+                categoryWasEdited = false
                 categoryID = validPreferred(
                     model.profile?.preferredExpenseCategoryID,
                     in: model.expenseCategories
@@ -1577,6 +2128,7 @@ private struct QuickLogEntryView: View {
             }
         case .income:
             if !model.incomeCategories.contains(where: { $0.id == categoryID }) {
+                categoryWasEdited = false
                 categoryID = validPreferred(
                     model.profile?.preferredIncomeCategoryID,
                     in: model.incomeCategories
@@ -1585,6 +2137,7 @@ private struct QuickLogEntryView: View {
             }
         case .refund:
             if !model.expenseCategories.contains(where: { $0.id == categoryID }) {
+                categoryWasEdited = false
                 categoryID = validPreferred(
                     model.profile?.preferredExpenseCategoryID,
                     in: model.expenseCategories
@@ -1660,7 +2213,169 @@ private struct QuickLogEntryView: View {
         }
     }
 
-    private func save() async {
+    private func attemptSave() async {
+        guard !isSaving, canSave else { return }
+        pendingDuplicateReview = nil
+        if model.journalRecentEntriesAreCurrent,
+           let query = duplicateQuery() {
+            let result = CaptureDuplicateDetector.matches(
+                for: query,
+                in: model.entries
+            )
+            if let match = result.matches.first {
+                let historyDate = model.entries.first(where: {
+                    $0.id == match.entryID
+                }).map { entry in
+                    QuickLogDuplicateReviewPolicy.historyDate(
+                        for: entry,
+                        calendar: model.reportingCalendar
+                    )
+                }
+                dismissKeyboard()
+                pendingDuplicateReview = PendingDuplicateReview(
+                    queryFingerprint: result.queryFingerprint,
+                    match: match,
+                    historyDate: historyDate
+                )
+                return
+            }
+        }
+        await commitSave()
+    }
+
+    private func confirmDuplicateSave(_ pending: PendingDuplicateReview) async {
+        guard duplicateQuery()?.fingerprint == pending.queryFingerprint else {
+            await attemptSave()
+            return
+        }
+        await commitSave()
+    }
+
+    private var duplicateReviewMessage: String {
+        guard let pending = pendingDuplicateReview else {
+            return String(localized: "quick_log.duplicate_message_fallback")
+        }
+        let date = pending.historyDate?.formattedForReporting(
+            .dateTime.year().month(.abbreviated).day(),
+            calendar: model.reportingCalendar
+        ) ?? String(localized: "quick_log.duplicate_recent_time")
+        let evidence = pending.match.evidence
+        let reason: String
+        if evidence.sourceMatched {
+            reason = String(localized: "quick_log.duplicate_reason_source")
+        } else if evidence.categoryMatched && evidence.descriptorMatched {
+            reason = String(localized: "quick_log.duplicate_reason_category_payee")
+        } else if evidence.descriptorMatched {
+            reason = String(localized: "quick_log.duplicate_reason_payee")
+        } else if evidence.categoryMatched {
+            reason = String(localized: "quick_log.duplicate_reason_category")
+        } else {
+            reason = String(localized: "quick_log.duplicate_reason_time")
+        }
+        return String(
+            format: String(localized: "quick_log.duplicate_message_format"),
+            date,
+            reason,
+            captureConfidenceText(pending.match.confidence)
+        )
+    }
+
+    private func duplicateQuery() -> CaptureDuplicateQuery? {
+        guard let amount,
+              let accountID,
+              let sourceCurrency = selectedAccountCurrency,
+              let sourceAmount = try? Money(amount, currency: sourceCurrency) else {
+            return nil
+        }
+        let sourceReference = sourceCaptureID.map {
+            CaptureSourceReference(
+                system: AppModel.lockedCaptureSourceSystem,
+                fingerprint: AppModel.lockedCaptureFingerprint($0)
+            )
+        }
+        do {
+            switch kind {
+            case .expense:
+                return try .expense(
+                    amount: sourceAmount,
+                    paidFrom: accountID,
+                    category: splitLines.isEmpty ? categoryID : nil,
+                    occurredAt: occurredAt,
+                    payee: payee,
+                    sourceReference: sourceReference
+                )
+            case .income:
+                return try .income(
+                    amount: sourceAmount,
+                    depositedInto: accountID,
+                    category: splitLines.isEmpty ? categoryID : nil,
+                    occurredAt: occurredAt,
+                    payee: payee,
+                    sourceReference: sourceReference
+                )
+            case .refund:
+                return try .refund(
+                    amount: sourceAmount,
+                    returnedTo: accountID,
+                    category: splitLines.isEmpty ? categoryID : nil,
+                    occurredAt: occurredAt,
+                    payee: payee,
+                    sourceReference: sourceReference
+                )
+            case .transfer:
+                guard let destinationAccountID,
+                      let destinationCurrency = selectedDestinationCurrency else {
+                    return nil
+                }
+                if destinationCurrency == sourceCurrency {
+                    return try .transfer(
+                        amount: sourceAmount,
+                        from: accountID,
+                        to: destinationAccountID,
+                        occurredAt: occurredAt,
+                        note: note,
+                        sourceReference: sourceReference
+                    )
+                }
+                guard let destinationAmount,
+                      let received = try? Money(
+                          destinationAmount,
+                          currency: destinationCurrency
+                      ),
+                      let sourceTrading = model.accounts.first(where: {
+                          $0.kind == .trading
+                              && $0.systemRole == .foreignExchange
+                              && $0.currency == sourceCurrency
+                      }),
+                      let destinationTrading = model.accounts.first(where: {
+                          $0.kind == .trading
+                              && $0.systemRole == .foreignExchange
+                              && $0.currency == destinationCurrency
+                      }) else {
+                    // A first FX transfer has no persisted clearing accounts,
+                    // so by definition there is no prior matching entry.
+                    return nil
+                }
+                return try .foreignCurrencyTransfer(
+                    sourceAmount: sourceAmount,
+                    destinationAmount: received,
+                    from: accountID,
+                    to: destinationAccountID,
+                    sourceTradingAccountID: sourceTrading.id,
+                    destinationTradingAccountID: destinationTrading.id,
+                    occurredAt: occurredAt,
+                    note: note,
+                    sourceReference: sourceReference
+                )
+            }
+        } catch {
+            // Duplicate intelligence is advisory. Existing validation remains
+            // authoritative and manual Save never depends on this helper.
+            return nil
+        }
+    }
+
+    private func commitSave() async {
         guard !isSaving, canSave else { return }
         guard let amount, let accountID else { return }
         isSaving = true
@@ -1800,9 +2515,15 @@ private struct QuickLogEntryView: View {
         if let nextCapture = model.quickLogDraft,
            nextCapture.sourceCaptureID != nil,
            !dismissAfterSave {
+            // A queued locked capture is a distinct transaction. Keep its
+            // durable draft, but never carry receipt bytes, candidates,
+            // advisories, or errors from the capture that just committed.
+            clearPerTransactionReviewState()
             applyDraft(nextCapture)
             selectDefaults()
         } else {
+            accountWasEdited = false
+            categoryWasEdited = false
             amountText = ""
             destinationAmountText = ""
             occurredAt = model.currentDateForUserAction()
@@ -1812,6 +2533,10 @@ private struct QuickLogEntryView: View {
             smartText = ""
             smartMessage = nil
             receiptResult = nil
+            captureSuggestionResult = nil
+            autoAppliedAccountSuggestionID = nil
+            autoAppliedCategorySuggestionID = nil
+            pendingDuplicateReview = nil
             splitLines = []
             sourceCaptureID = nil
             receiptAttachmentData = nil

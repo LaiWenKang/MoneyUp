@@ -89,7 +89,28 @@ struct AppModelLifecycleHooks: Sendable {
     static let none = AppModelLifecycleHooks { _ in }
 }
 
-typealias ReceiptLineRecognizer = @Sendable (Data) async throws -> [String]
+/// Ephemeral output from the on-device Vision pass.
+///
+/// OCR text and confidence are never persisted. Keeping the aggregate quality
+/// beside the lines lets the pure receipt parser lower the confidence of every
+/// proposed field when Vision itself was uncertain.
+struct ReceiptRecognitionResult: Equatable, Sendable,
+    ExpressibleByArrayLiteral {
+    let lines: [String]
+    let meanConfidence: Float?
+
+    init(lines: [String], meanConfidence: Float? = nil) {
+        self.lines = lines
+        self.meanConfidence = meanConfidence
+    }
+
+    init(arrayLiteral elements: String...) {
+        self.init(lines: elements)
+    }
+}
+
+typealias ReceiptLineRecognizer = @Sendable (Data) async throws
+    -> ReceiptRecognitionResult
 
 /// FIFO serialization per goal ID. `@MainActor` methods may interleave at any
 /// store await, so actor isolation of the model alone is not a transaction

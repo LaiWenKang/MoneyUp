@@ -332,7 +332,7 @@ final class AppModel: ObservableObject {
     init(dataEraseIntent: DataEraseIntentAccess = .production) {
         lockedCaptureStore = LockedCaptureStore()
         receiptRecognizer = { data in
-            try await ReceiptScanner.recognizeLines(inImageData: data)
+            try await ReceiptScanner.recognize(inImageData: data)
         }
         lifecycleHooks = .none
         databaseURLForErase = nil
@@ -365,7 +365,7 @@ final class AppModel: ObservableObject {
         quickLogDraft: QuickLogDraft? = nil,
         lockedCaptureStore: any LockedCaptureStoring = LockedCaptureStore(),
         receiptRecognizer: @escaping ReceiptLineRecognizer = { data in
-            try await ReceiptScanner.recognizeLines(inImageData: data)
+            try await ReceiptScanner.recognize(inImageData: data)
         },
         lifecycleHooks: AppModelLifecycleHooks = .none,
         databaseURLForErase: URL? = nil,
@@ -981,17 +981,66 @@ final class AppModel: ObservableObject {
     ) async throws -> ReceiptParseResult? {
         guard state == .ready else { return nil }
         let generation = storeGeneration
+        let projectionRevision = journalProjectionRevision
+        let accountsSnapshot = accounts
+        let now = currentDate()
+        let calendar = reportingCalendar
         try Task.checkCancellation()
-        let lines = try await receiptRecognizer(imageData)
+        let recognition = try await receiptRecognizer(imageData)
         try Task.checkCancellation()
-        guard isCurrentStoreGeneration(generation) else { return nil }
-        return ReceiptTextParser.analyze(
-            fromLines: lines,
-            now: currentDate(),
-            calendar: reportingCalendar,
-            prefersDayFirst: prefersDayFirst,
-            accounts: accounts
-        )
+        guard isCurrentStoreGeneration(generation),
+              projectionRevision == journalProjectionRevision else { return nil }
+
+        // A malicious or pathological image can produce thousands of short
+        // observations. Preserve both receipt header and footer (where totals
+        // normally live) while keeping regex work strictly bounded off-main.
+        let lines = Self.boundedReceiptLines(recognition.lines)
+        let parsingTask = Task.detached(priority: .userInitiated) {
+            ReceiptTextParser.analyze(
+                fromLines: lines,
+                now: now,
+                calendar: calendar,
+                prefersDayFirst: prefersDayFirst,
+                accounts: accountsSnapshot,
+                ocrConfidence: recognition.meanConfidence
+            )
+        }
+        let result = await withTaskCancellationHandler {
+            await parsingTask.value
+        } onCancel: {
+            parsingTask.cancel()
+        }
+        try Task.checkCancellation()
+        guard isCurrentStoreGeneration(generation),
+              projectionRevision == journalProjectionRevision else { return nil }
+        return result
+    }
+
+    static func boundedReceiptLines(_ lines: [String]) -> [String] {
+        let maximumLineCount = 160
+        let maximumLineUTF8Count = 512
+        let selected: [String]
+        if lines.count > maximumLineCount {
+            let edgeCount = maximumLineCount / 2
+            selected = Array(lines.prefix(edgeCount))
+                + Array(lines.suffix(edgeCount))
+        } else {
+            selected = lines
+        }
+        return selected.compactMap { line in
+            var bytes = Array(line.utf8.prefix(maximumLineUTF8Count))
+            // `line` is valid UTF-8, so only a truncated final scalar can make
+            // this prefix invalid. Remove at most that partial scalar instead
+            // of decoding it as a three-byte replacement character that would
+            // exceed the declared byte cap.
+            while !bytes.isEmpty,
+                  String(bytes: bytes, encoding: .utf8) == nil {
+                bytes.removeLast()
+            }
+            let bounded = String(decoding: bytes, as: UTF8.self)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return bounded.isEmpty ? nil : bounded
+        }
     }
 
     /// Compatibility helper for tests and callers that only need the proposed
@@ -3153,11 +3202,9 @@ final class AppModel: ObservableObject {
         defer {
             endJournalAndScheduleMutation(scheduleIDs: mutationScheduleIDs)
         }
-        guard let index = scheduledTransactions.firstIndex(where: { $0.id == scheduleID }) else {
+        guard let schedule = scheduledTransactions.first(where: { $0.id == scheduleID }) else {
             throw AppModelError.missingRecord
         }
-
-        let schedule = scheduledTransactions[index]
         guard schedule.currentOccurrenceID == occurrenceID else {
             throw ScheduledTransactionError.staleOccurrence
         }
@@ -3275,8 +3322,7 @@ final class AppModel: ObservableObject {
         )
         try await scheduleStore.write(writes)
         guard isCurrentStoreGeneration(generation) else { return nil }
-        scheduledTransactions[index] = updated
-        scheduledTransactions.sort { $0.nextOccurrence < $1.nextOccurrence }
+        try publishUpdatedSchedule(updated)
         if let candidateTimeline { budgetConfigurationTimeline = candidateTimeline }
         budgetEntryAttributions = candidateAttributions
         if retainsCompleteJournal, let candidateEntries { entries = candidateEntries }
@@ -3326,12 +3372,12 @@ final class AppModel: ObservableObject {
         }) else {
             throw AppModelError.scheduleEntryAlreadyMatched
         }
-        guard let index = scheduledTransactions.firstIndex(where: {
+        guard let schedule = scheduledTransactions.first(where: {
             $0.id == scheduleID
         }) else {
             throw AppModelError.missingRecord
         }
-        var updated = scheduledTransactions[index]
+        var updated = schedule
         guard updated.matches(entry) else {
             throw AppModelError.scheduleEntryMismatch
         }
@@ -3350,8 +3396,7 @@ final class AppModel: ObservableObject {
             in: .scheduledTransactions
         )
         guard isCurrentStoreGeneration(generation) else { return }
-        scheduledTransactions[index] = updated
-        scheduledTransactions.sort { $0.nextOccurrence < $1.nextOccurrence }
+        try publishUpdatedSchedule(updated)
         existingScheduledLinkedEntryIDs.insert(entryID)
     }
 
@@ -3371,10 +3416,10 @@ final class AppModel: ObservableObject {
     ) async throws {
         try beginScheduleMutation(id: id)
         defer { endScheduleMutation(id: id) }
-        guard let index = scheduledTransactions.firstIndex(where: { $0.id == id }) else {
+        guard let schedule = scheduledTransactions.first(where: { $0.id == id }) else {
             throw AppModelError.missingRecord
         }
-        var updated = scheduledTransactions[index]
+        var updated = schedule
         try mutation(&updated)
 
         let generation = storeGeneration
@@ -3387,7 +3432,22 @@ final class AppModel: ObservableObject {
             in: .scheduledTransactions
         )
         guard isCurrentStoreGeneration(generation) else { return }
-        scheduledTransactions[index] = updated
+        try publishUpdatedSchedule(updated)
+    }
+
+    /// Main-actor isolation permits reentrancy at every store await. Schedule
+    /// mutation barriers currently prevent another public mutation from
+    /// changing this collection mid-transaction, but resolving the logical ID
+    /// again at publication keeps that safety local if those barriers evolve.
+    private func publishUpdatedSchedule(
+        _ updated: ScheduledTransaction
+    ) throws {
+        guard let publicationIndex = scheduledTransactions.firstIndex(where: {
+            $0.id == updated.id
+        }) else {
+            throw AppModelError.missingRecord
+        }
+        scheduledTransactions[publicationIndex] = updated
         scheduledTransactions.sort { $0.nextOccurrence < $1.nextOccurrence }
     }
 
@@ -6667,7 +6727,7 @@ final class AppModel: ObservableObject {
         let entry = try appAuthoredEntry(
             entry,
             sourceSystemOverride: completedLockedCaptureID == nil
-                ? nil : "MoneyUp Locked Capture",
+                ? nil : Self.lockedCaptureSourceSystem,
             sourceFingerprintOverride: completedLockedCaptureID.map(
                 Self.lockedCaptureFingerprint
             )
@@ -7678,7 +7738,9 @@ final class AppModel: ObservableObject {
         applyDeferredLockIfPossible()
     }
 
-    private static func lockedCaptureFingerprint(_ id: UUID) -> String {
+    static let lockedCaptureSourceSystem = "MoneyUp Locked Capture"
+
+    static func lockedCaptureFingerprint(_ id: UUID) -> String {
         "locked-capture:\(id.uuidString.lowercased())"
     }
 
