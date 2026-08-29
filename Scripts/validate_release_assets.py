@@ -28,6 +28,7 @@ CI_IPHONESIMULATOR_SDK_VERSION = "18.5"
 RELEASE_XCODE_VERSION = "26.6"
 RELEASE_XCODE_BUILD = "17F113"
 RELEASE_IPHONEOS_SDK_VERSION = "26.5"
+TESTFLIGHT_CONTROL_ISSUE = 23
 PRINTF_PLACEHOLDER = re.compile(
     r"%(?:(\d+)\$)?[-+# 0']*(?:\d+|\*)?(?:\.(?:\d+|\*))?"
     r"(?:hh|h|ll|l|L|z|j|t|q)?([@diouxXfFeEgGaAcCsSp])"
@@ -959,6 +960,8 @@ def validate_testflight_workflow() -> None:
 
     required = [
         "workflow_dispatch:",
+        "expected_sha:",
+        "Optional exact main commit required by an owner-command dispatch",
         "runs-on: macos-26",
         "environment: testflight",
         "cancel-in-progress: false",
@@ -1016,6 +1019,10 @@ def validate_testflight_workflow() -> None:
     )
     for declaration in [
         '"$GITHUB_REF" != "refs/heads/main"',
+        'EXPECTED_SHA: ${{ inputs.expected_sha }}',
+        '! "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$',
+        '"$GITHUB_SHA" != "$EXPECTED_SHA"',
+        "Main moved after the owner command was authorized.",
         '"$OPERATION" == "upload"',
         '"$CONFIRMATION" != "UPLOAD"',
     ]:
@@ -1293,6 +1300,92 @@ def validate_testflight_workflow() -> None:
     print("Validated protected, pinned TestFlight distribution workflow structure")
 
 
+def validate_testflight_owner_command_workflow() -> None:
+    path = ROOT / ".github" / "workflows" / "testflight-owner-command.yml"
+    try:
+        workflow = path.read_text(encoding="utf-8")
+    except OSError as error:
+        fail(f"cannot read TestFlight owner-command workflow: {error}")
+
+    required = [
+        "issue_comment:",
+        "types: [created]",
+        "actions: write",
+        "contents: read",
+        "cancel-in-progress: false",
+        f"github.event.issue.number == {TESTFLIGHT_CONTROL_ISSUE}",
+        "github.event.issue.pull_request == null",
+        "github.actor == github.repository_owner",
+        "github.event.comment.user.login == github.repository_owner",
+        "github.event.comment.author_association == 'OWNER'",
+        "github.event.comment.body == '/moneyup-testflight validate'",
+        "github.event.comment.body == '/moneyup-testflight upload UPLOAD'",
+        "runs-on: ubuntu-24.04",
+        "timeout-minutes: 5",
+        "GH_TOKEN: ${{ github.token }}",
+    ]
+    for declaration in required:
+        if declaration not in workflow:
+            fail(f"TestFlight owner-command workflow is missing {declaration}")
+
+    for forbidden in [
+        "pull_request_target:",
+        "secrets.",
+        "contents: write",
+        "issues: write",
+        "id-token: write",
+        "actions/checkout@",
+        "startsWith(",
+        "contains(",
+        "curl ",
+        "wget ",
+    ]:
+        if forbidden in workflow:
+            fail(
+                "TestFlight owner-command workflow must not contain "
+                f"{forbidden}"
+            )
+
+    resolve_body = workflow_step(
+        workflow, "Resolve exact owner command and current main"
+    )
+    for declaration in [
+        '"$GITHUB_ACTOR" != "$REPOSITORY_OWNER"',
+        '"$COMMENT_AUTHOR" != "$REPOSITORY_OWNER"',
+        '"$AUTHOR_ASSOCIATION" != "OWNER"',
+        f'"$ISSUE_NUMBER" != "{TESTFLIGHT_CONTROL_ISSUE}"',
+        'case "$COMMENT_BODY" in',
+        '"/moneyup-testflight validate")',
+        '"/moneyup-testflight upload UPLOAD")',
+        "gh api --method GET",
+        '"repos/$REPOSITORY/git/ref/heads/main"',
+        "--jq '.object.sha'",
+        '! "$MAIN_SHA" =~ ^[0-9a-f]{40}$',
+        'echo "operation=$OPERATION" >> "$GITHUB_OUTPUT"',
+        'echo "confirmation=$CONFIRMATION" >> "$GITHUB_OUTPUT"',
+        'echo "expected_sha=$MAIN_SHA" >> "$GITHUB_OUTPUT"',
+    ]:
+        if declaration not in resolve_body:
+            fail(f"owner-command resolution is missing {declaration}")
+
+    dispatch_body = workflow_step(
+        workflow, "Dispatch the pinned TestFlight workflow"
+    )
+    for declaration in [
+        "workflow run testflight.yml",
+        "--ref main",
+        '--raw-field "operation=$OPERATION"',
+        '--raw-field "expected_sha=$EXPECTED_SHA"',
+        'if [[ "$OPERATION" == "upload" ]]',
+        '--raw-field "confirmation=$CONFIRMATION"',
+        'gh "${ARGS[@]}"',
+    ]:
+        if declaration not in dispatch_body:
+            fail(f"owner-command dispatch is missing {declaration}")
+
+    print("Validated owner-only, SHA-pinned TestFlight command workflow")
+
+
 def main() -> None:
     validate_localizations()
     validate_offline_runtime_boundary()
@@ -1305,6 +1398,7 @@ def main() -> None:
     validate_project_configuration()
     validate_ci_workflow()
     validate_testflight_workflow()
+    validate_testflight_owner_command_workflow()
     print("Release asset validation passed")
 
 

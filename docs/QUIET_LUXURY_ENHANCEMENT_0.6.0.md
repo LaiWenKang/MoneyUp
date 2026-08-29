@@ -3,7 +3,7 @@
 **Document date:** 2026-08-28  
 **Working branch:** `codex/quiet-luxury-trust-polish`  
 **Audited baseline:** `d231c039bec4005d4013d68734e518b77795b832` (`main`)  
-**Status:** implementation and exact-SHA automated CI complete; physical-device QA, screenshots, TestFlight continuity, and merge are not yet complete
+**Status:** implementation merged with exact-SHA automated CI complete; physical-device QA, screenshots, and TestFlight continuity are not yet complete
 
 This is an incremental enhancement plan and implementation record for the existing native SwiftUI application. It is not authorization for a redesign, rebrand, architecture replacement, or data-model rewrite.
 
@@ -114,7 +114,7 @@ The following constraints are immutable for this work:
 
 ## Verification and release evidence
 
-The audited `main` baseline had a green CI run at [GitHub Actions run 33188996669](https://github.com/LaiWenKang/MoneyUp/actions/runs/33188996669). Code-candidate commit `2813c1497663526d0ea57b9aeca858138f2be52f` subsequently passed every automated job in [GitHub Actions run 33218504147](https://github.com/LaiWenKang/MoneyUp/actions/runs/33218504147); the only following source change is this evidence update. The candidate evidence does not close the physical-device or TestFlight gates below.
+The audited `main` baseline had a green CI run at [GitHub Actions run 33188996669](https://github.com/LaiWenKang/MoneyUp/actions/runs/33188996669). Code-candidate commit `2813c1497663526d0ea57b9aeca858138f2be52f` subsequently passed every automated job in [GitHub Actions run 33218504147](https://github.com/LaiWenKang/MoneyUp/actions/runs/33218504147). Pull request #22 then merged as `eab0b24fb259a2b50194284a8f679a01bee68dd3`, and the merged `main` tree passed every job in [GitHub Actions run 33232473072](https://github.com/LaiWenKang/MoneyUp/actions/runs/33232473072). This evidence does not close the physical-device or TestFlight gates below.
 
 | Check | Required evidence before merge | Current state |
 |---|---|---|
@@ -128,7 +128,7 @@ The audited `main` baseline had a green CI run at [GitHub Actions run 3318899666
 | Visual QA | Light/dark, English/Chinese, small/large iPhone, keyboard-visible, large text, privacy cover, and tinted-widget screenshots | Pending; no screenshots claimed |
 | Performance | Instruments/signpost evidence against PRD budgets on representative hardware and large data | Pending physical-device QA |
 | Data safety | TestFlight upgrade, encrypted backup/restore, migration, device-passcode recovery, and bundle-ID continuity | Pending physical release gate |
-| Remote integration | Focused commit, push, pull request checks, then merge only when every required gate is green | Branch published and [draft PR #22](https://github.com/LaiWenKang/MoneyUp/pull/22) opened; all automated checks are green; deliberately not merged while physical release blockers remain |
+| Remote integration | Focused commit, push, pull request checks, then merge only when every required automated gate is green | [PR #22](https://github.com/LaiWenKang/MoneyUp/pull/22) merged after all automated checks passed; the merged `main` tree then passed [post-merge CI](https://github.com/LaiWenKang/MoneyUp/actions/runs/33232473072). Physical release gates remain open. |
 
 ## Intentionally unchanged
 
@@ -138,4 +138,4 @@ The audited `main` baseline had a green CI run at [GitHub Actions run 3318899666
 - No app-icon replacement, rebrand, generic financial illustration, floating-coin motif, neon treatment, or broad glassmorphism layer is introduced.
 - No unavailable calculation is converted to zero, and no currencies are combined without an explicit dated rate.
 
-No screenshots or measured physical timings are claimed because this workspace has neither Xcode/Simulator nor access to the required devices, biometric/passcode states, TestFlight build, or representative production ledger. Those gates must be appended here before the branch is declared release-ready or merged.
+No screenshots or measured physical timings are claimed because this workspace has neither Xcode/Simulator nor access to the required devices, biometric/passcode states, TestFlight build, or representative production ledger. Those gates must be appended here before 0.6.0 is declared release-ready or promoted to TestFlight or App Review.

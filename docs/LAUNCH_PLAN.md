@@ -59,7 +59,11 @@ The account holder performs these actions without sharing Apple credentials:
 3. Verify current agreements, the existing `MoneyUp: CowCome` app record, the
    protected GitHub `testflight` environment, and export-compliance readiness.
 4. Dispatch the TestFlight workflow from the final `main` commit in `validate`
-   mode.
+   mode, either through **Actions** or by posting the exact owner-only command
+   `/moneyup-testflight validate` on
+   [release-control issue #23](https://github.com/LaiWenKang/MoneyUp/issues/23).
+   The issue relay pins the authorized `main` SHA, and TestFlight preflight
+   rejects the run if `main` moved before it started.
 
 The workflow must verify:
 

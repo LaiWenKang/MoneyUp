@@ -149,14 +149,35 @@ artifact or workflow log.
 
 ## 6. Validate, then upload
 
-Open the repository's **Actions** tab and choose **TestFlight**.
+Use either the repository's **Actions** tab or the phone-friendly owner-command
+route in [release-control issue #23](https://github.com/LaiWenKang/MoneyUp/issues/23).
+For the owner-command route, post one of these exact, single-line comments:
+
+```text
+/moneyup-testflight validate
+/moneyup-testflight upload UPLOAD
+```
+
+The relay runs only for a new comment on issue #23 when GitHub identifies both
+the actor and comment author as the repository owner with `OWNER` association.
+It ignores pull-request comments, other issues, other users, edited comments,
+extra whitespace, and near-matching commands. It captures the current `main`
+commit and sends that SHA to the TestFlight workflow; preflight fails closed if
+`main` moves before the dispatched run starts. The relay checks out no code and
+receives no Apple or archive secret. These commands are authorization signals,
+not places to paste credentials.
+
+The equivalent manual path is **Actions** → **TestFlight** and the matching
+workflow inputs below.
 
 1. Run the workflow from `main` with operation **validate**. This creates and
-   verifies a cloud-signed IPA but does not upload it.
+   verifies a cloud-signed IPA but does not upload it. The exact owner-command
+   equivalent is `/moneyup-testflight validate` on issue #23.
 2. If validation succeeds, run it again from `main` with operation **upload**
    and type `UPLOAD` in the confirmation field. Before Apple receives the
    build, the workflow must successfully store the encrypted release-recovery
-   artifact.
+   artifact. The exact owner-command equivalent is
+   `/moneyup-testflight upload UPLOAD`; never post it merely to test the relay.
 3. A successful workflow means Apple accepted the binary transfer. Build
    processing and TestFlight availability happen afterward in App Store
    Connect.

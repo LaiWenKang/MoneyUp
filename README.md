@@ -147,7 +147,12 @@ protected, manual [TestFlight workflow](.github/workflows/testflight.yml), which
 requires Xcode 26, the iOS 26 SDK, immutable dependencies, explicit
 confirmation, and round-trip-verified encrypted retention of the archive,
 dSYMs, export directory, exact IPA, and IPA SHA-256 before Apple receives that
-same validated IPA.
+same validated IPA. The repository owner can also dispatch that workflow from
+the dedicated [release-control issue](https://github.com/LaiWenKang/MoneyUp/issues/23)
+with the exact command `/moneyup-testflight validate` or, only after an explicit
+upload decision, `/moneyup-testflight upload UPLOAD`. The relay rejects every
+other author, issue, pull-request comment, and command spelling, and the
+TestFlight workflow rejects the run if `main` moves after authorization.
 
 ## Product principles
 

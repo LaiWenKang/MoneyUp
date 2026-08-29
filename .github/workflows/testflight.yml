@@ -15,6 +15,10 @@ on:
         description: Type UPLOAD when operation is upload
         required: false
         type: string
+      expected_sha:
+        description: Optional exact main commit required by an owner-command dispatch
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -49,10 +53,19 @@ jobs:
         env:
           OPERATION: ${{ inputs.operation }}
           CONFIRMATION: ${{ inputs.confirmation }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
         run: |
           set -euo pipefail
           if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
             echo "::error::TestFlight runs are allowed only from the main branch."
+            exit 1
+          fi
+          if [[ -n "$EXPECTED_SHA" && ! "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::The owner-command expected SHA is malformed."
+            exit 1
+          fi
+          if [[ -n "$EXPECTED_SHA" && "$GITHUB_SHA" != "$EXPECTED_SHA" ]]; then
+            echo "::error::Main moved after the owner command was authorized."
             exit 1
           fi
           if [[ "$OPERATION" == "upload" && "$CONFIRMATION" != "UPLOAD" ]]; then
