@@ -1,0 +1,100 @@
+name: TestFlight owner command
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: moneyup-testflight-owner-command
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    name: Dispatch owner-authorized TestFlight command
+    if: >-
+      github.event.issue.number == 23 &&
+      github.event.issue.pull_request == null &&
+      github.actor == github.repository_owner &&
+      github.event.comment.user.login == github.repository_owner &&
+      github.event.comment.author_association == 'OWNER' &&
+      (github.event.comment.body == '/moneyup-testflight validate' ||
+       github.event.comment.body == '/moneyup-testflight upload UPLOAD')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Resolve exact owner command and current main
+        id: command
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          COMMENT_AUTHOR: ${{ github.event.comment.user.login }}
+          AUTHOR_ASSOCIATION: ${{ github.event.comment.author_association }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          REPOSITORY: ${{ github.repository }}
+          REPOSITORY_OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_ACTOR" != "$REPOSITORY_OWNER" || \
+                "$COMMENT_AUTHOR" != "$REPOSITORY_OWNER" || \
+                "$AUTHOR_ASSOCIATION" != "OWNER" || \
+                "$ISSUE_NUMBER" != "23" ]]; then
+            echo "::error::The TestFlight command is not owner-authorized."
+            exit 1
+          fi
+
+          case "$COMMENT_BODY" in
+            "/moneyup-testflight validate")
+              OPERATION="validate"
+              CONFIRMATION=""
+              ;;
+            "/moneyup-testflight upload UPLOAD")
+              OPERATION="upload"
+              CONFIRMATION="UPLOAD"
+              ;;
+            *)
+              echo "::error::The TestFlight command must match an approved form exactly."
+              exit 1
+              ;;
+          esac
+
+          MAIN_SHA="$(
+            gh api --method GET \
+              "repos/$REPOSITORY/git/ref/heads/main" \
+              --jq '.object.sha'
+          )"
+          if [[ ! "$MAIN_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::GitHub did not return an exact main commit SHA."
+            exit 1
+          fi
+
+          echo "operation=$OPERATION" >> "$GITHUB_OUTPUT"
+          echo "confirmation=$CONFIRMATION" >> "$GITHUB_OUTPUT"
+          echo "expected_sha=$MAIN_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch the pinned TestFlight workflow
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OPERATION: ${{ steps.command.outputs.operation }}
+          CONFIRMATION: ${{ steps.command.outputs.confirmation }}
+          EXPECTED_SHA: ${{ steps.command.outputs.expected_sha }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          ARGS=(
+            workflow run testflight.yml
+            --repo "$REPOSITORY"
+            --ref main
+            --raw-field "operation=$OPERATION"
+            --raw-field "expected_sha=$EXPECTED_SHA"
+          )
+          if [[ "$OPERATION" == "upload" ]]; then
+            ARGS+=(--raw-field "confirmation=$CONFIRMATION")
+          fi
+          gh "${ARGS[@]}"
+          echo "Dispatched $OPERATION for main commit $EXPECTED_SHA."
