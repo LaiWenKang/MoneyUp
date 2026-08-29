@@ -246,20 +246,30 @@ def validate_privacy_manifest() -> None:
     if manifest.get("NSPrivacyTrackingDomains") != []:
         fail("privacy manifest must not declare tracking domains")
 
-    accessed = manifest.get("NSPrivacyAccessedAPITypes", [])
-    user_defaults = next(
-        (
-            item
-            for item in accessed
-            if item.get("NSPrivacyAccessedAPIType")
-            == "NSPrivacyAccessedAPICategoryUserDefaults"
-        ),
-        None,
-    )
-    if user_defaults is None or "CA92.1" not in user_defaults.get(
-        "NSPrivacyAccessedAPITypeReasons", []
+    accessed = manifest.get("NSPrivacyAccessedAPITypes")
+    if not isinstance(accessed, list) or len(accessed) != 1:
+        fail("privacy manifest must declare exactly the reviewed UserDefaults API")
+
+    user_defaults = accessed[0]
+    if (
+        not isinstance(user_defaults, dict)
+        or user_defaults.get("NSPrivacyAccessedAPIType")
+        != "NSPrivacyAccessedAPICategoryUserDefaults"
     ):
-        fail("privacy manifest must declare UserDefaults reason CA92.1")
+        fail("privacy manifest must declare exactly the reviewed UserDefaults API")
+
+    reasons = user_defaults.get("NSPrivacyAccessedAPITypeReasons")
+    expected_reasons = {"CA92.1", "1C8F.1"}
+    if (
+        not isinstance(reasons, list)
+        or not all(isinstance(reason, str) for reason in reasons)
+        or len(reasons) != len(expected_reasons)
+        or set(reasons) != expected_reasons
+    ):
+        fail(
+            "privacy manifest must declare exactly UserDefaults reasons CA92.1 "
+            "(app-only standard defaults) and 1C8F.1 (same-App-Group defaults)"
+        )
 
     print("Validated PrivacyInfo.xcprivacy")
 

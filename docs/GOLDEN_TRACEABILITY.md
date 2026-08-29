@@ -1,10 +1,20 @@
 # Golden PRD Traceability - MoneyUp 0.6.0 Candidate
 
-Reconciled: 28 August 2026
+Reconciled: 29 August 2026
 
 This is the requirement-to-evidence map for the source-integrated MoneyUp 0.6.0
 candidate (source build 8). It prevents "implemented in source" from being
 misreported as "released" or "accepted."
+
+The latest approved `main` baseline is
+`ff272da89de9f4e3cb9c44d4abd27deae7d2b338`. Main CI
+[run 163](https://github.com/LaiWenKang/MoneyUp/actions/runs/33237514942)
+passed 301 core/persistence and 237 app tests plus an app/widget Release
+Simulator build. TestFlight
+[run 20](https://github.com/LaiWenKang/MoneyUp/actions/runs/33243930699)
+validated and uploaded 0.6.0 (1020.1) from that exact SHA. Those results do not
+validate later source changes, prove Apple processing, or close any physical
+gate below.
 
 The exact 97-row requirement-to-test mapping is in
 [REQUIREMENTS_TEST_MATRIX.md](REQUIREMENTS_TEST_MATRIX.md). The complete source,
@@ -167,6 +177,43 @@ exact-candidate run.
 | QA-05 | `DataSafetyView` exports a privacy-safe inventory from one payload-free store count snapshot, the fixture generator creates 10,000 deterministic fictional imports, and `FIRST_TEST.md` binds both to in-place upgrade and clean-device v2/compatible-v1 restore reconciliation. | Source tooling implemented; exact-candidate and physical gates open. |
 | QA-06 | Roadmap/launch plan prohibit wider testing or App Review while mandatory evidence is open. | Gate enforced in documentation; wider-test/review approval remains open. |
 | QA-07 | Workflow and store checklist bind metadata, screenshots, review notes, privacy, languages, version/build, archive, widget, App Group, and binary capabilities. | Exact-binary/App Store gate open. |
+
+## Proposed amendment PA-2026-08-29-r1 — Explainable capture guardrails
+
+This task-authorized proposal is not text from the Golden PRD and is not an
+approved release claim until its pull request is reviewed and merged. It
+extends `LOG-04`, `LOG-07`, `LOG-08`, `DAT-09`, and `SEC-06` without changing
+navigation, accounting semantics, persistence schema, archive shape, bundle
+identity, or network capability.
+
+| Proposed ID | Behavior and acceptance | Data/privacy/rollback |
+|---|---|---|
+| PA-CAP-01 | Smart Entry and receipt-assisted Quick Log rank account and category suggestions from the current valid recent-entry cache. Every result carries a deterministic confidence band and count/date evidence; only high-confidence untouched fields may prefill, parser/user choices win, and ambiguous split history never collapses to one category. | Derive on demand inside the unlocked book; persist no profile, score, OCR text, or evidence. Removing the scorer restores prior UI behavior without touching user data. |
+| PA-CAP-02 | Before an interactive Save, exact amount/currency/kind/account semantics plus bounded time/payee/source evidence may produce an advisory recent-duplicate warning. The user can review History, cancel, or save anyway; the warning never deletes, merges, or blocks a legitimate repeat. | Inspect only valid in-memory recent entries, never raw/quarantined rows. A versioned draft fingerprint authorizes one unchanged Save attempt only. No database or archive migration. |
+| PA-CAP-03 | Receipt amount, merchant, date, and category candidates retain rule evidence and field-relative confidence. Aggregate Vision confidence may only lower a band. Impossible civil/DST times fail closed; low-confidence candidates remain explicit review actions and never silently replace an edited field or cross an account change. Published review evidence survives ordinary tab navigation with the unfinished draft. | Vision remains on device. Images and OCR text remain transient unless the existing explicit encrypted-attachment control is enabled; semantic evidence contains no receipt text. Unsaved image bytes are discarded when Log becomes inactive. |
+| PA-CAP-04 | Receipt parsing is bounded to 160 header/footer lines, computed outside the main actor, and checked against store generation plus journal/account projection revision before publication. | Cancellation/lock/restore suppress stale publication. The bounded fallback always leaves manual entry available. |
+| PA-CAP-05 | Latin kind/date tokens use Unicode letter/number boundaries while CJK tokens retain intentional substring matching. Impossible explicit civil dates fail closed instead of becoming a normalized day or invented amount. | Pure parsing change with no stored state; identical input, locale, clock, and book state remain deterministic. |
+
+Explicit non-goals for this amendment are persistent learning state, Core ML,
+remote inference, recurring-pattern discovery, unusual-spend prediction,
+investment advice, automatic schedule creation, receipt line-item splitting,
+and a new setting. Those require a later versioned decision, false-positive
+budget, migration/reset design where applicable, and dedicated physical
+evidence.
+
+Candidate acceptance targets are intentionally stricter than “a value was
+returned”: exact movement/currency mismatches have zero tolerated duplicate
+advisories in the automated matrix; high-confidence history prefill requires at
+least three supporting entries and at least 75% of eligible evidence; low OCR
+confidence never prefills; and no suggestion may commit without the existing
+Save path. On the oldest supported physical iPhone, recent-history suggestion
+and duplicate computation target p95 below 50 ms, bounded post-Vision parsing
+targets p95 below 100 ms, and clear-image Vision-to-review targets p95 below
+4 seconds. A 20-item bilingual receipt/screenshot drill targets at least 90%
+top-candidate accuracy for payable amount and zero low-confidence prefills.
+Timeout, cancellation, ambiguity, stale generation, or missing context must
+leave every field manually editable and publish no stale result. These physical
+latency/accuracy targets remain open until the exact candidate is measured.
 
 ## Non-functional promotion gates
 

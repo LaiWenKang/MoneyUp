@@ -1,6 +1,6 @@
 # MoneyUp Rollout Plan
 
-Last updated: 28 August 2026
+Last updated: 29 August 2026
 
 ## Release decision
 
@@ -14,13 +14,13 @@ later explicit product, privacy, and threat-model decision.
 
 | Area | Status | Release meaning |
 |---|---|---|
-| Product | Source-integrated 0.6.0 candidate, source build 8 | Golden functional surfaces are implemented across logging, Today/History/Insights, planning/goals, assets/investments, settings/widgets, portability, data, and security |
+| Product | Main baseline `ff272da8`, 0.6.0 source build 8 | Golden functional surfaces are implemented across logging, Today/History/Insights, planning/goals, assets/investments, settings/widgets, portability, data, and security; this document does not promote the current intelligence branch |
 | Scale architecture | Implemented; Mac CI passed | SQLCipher schema 6 adds exact store metrics, normalized budget attribution, monthly carry checkpoints, compact balances, bounded recent activity, and on-demand reads; physical measurements remain open |
 | Privacy | Source and policy aligned | Local processing, no tracking/backend, metadata-stripped optional encrypted receipts, and a percentage/state-only App Group widget snapshot |
-| CI | Exact candidate passed | Run 141 passed release validation, 251 core/persistence tests, 213 app tests, coverage reporting, and the unsigned app/widget Simulator build on `41b44f60178485f76940c14175131ce2884c2f7f` |
+| CI | Main baseline passed | [Run 163](https://github.com/LaiWenKang/MoneyUp/actions/runs/33237514942) passed release validation, 301 core/persistence tests, 237 app tests, coverage reporting, and the unsigned app/widget Simulator build on `ff272da89de9f4e3cb9c44d4abd27deae7d2b338`; every later PR still needs its own green run |
 | Backup scale | Source remediation and Mac CI passed; physical evidence open | Version 2 streams file-backed 1 MiB authenticated chunks across a 100,000-record/512 MB stored-payload envelope, so current accepted books have a complete export; interruption, near-limit v2, and compatible-v1 physical-memory evidence remain required |
-| Apple capability | Manual account-holder action open | Register `group.com.laiwenkang.MoneyUp` and enable it on both existing App IDs before signed validation |
-| Distribution | 0.5.1 installed; 0.6.0 not uploaded | Signed validation, upload, Apple processing, internal install, and external Beta App Review remain open |
+| Apple capability | Signed validation passed for the main baseline | TestFlight [run 20](https://github.com/LaiWenKang/MoneyUp/actions/runs/33243930699) exported and validated app/widget signatures and App Group entitlements; future binaries must repeat the exact-binary check |
+| Distribution | 0.6.0 (1020.1) uploaded from `ff272da8` | Apple accepted the upload on 29 August 2026; processing, tester-group availability, installation, and external Beta App Review are not proven by the workflow result |
 | Physical QA | Open | Upgrade/restore, 10,000-entry/20-schedule performance, bilingual accessibility/widget matrix, and the founder/co-tester seven-day run remain open |
 | Public release | Blocked | Closed beta, exact-binary compliance, App Review, manual release, and 72-hour operations evidence are not complete |
 
@@ -113,6 +113,48 @@ Exit gate: no P0, no open/reproducible P1 in a core workflow, zero reproducible
 crash in the candidate, reconciled financial results, and recorded version,
 build, device, OS, language, and measurements.
 
+### Explainable-capture physical procedure
+
+Run this procedure on the oldest supported iPhone and a current large iPhone
+against the exact pull-request SHA; record device, OS, book size, language,
+appearance, accessibility settings, timings, and screenshots:
+
+1. Seed three matching-payee entries plus competing category/account history.
+   Use Smart Entry in English and Simplified Chinese. Confirm only the
+   high-confidence untouched fields prefill, count/date evidence is readable,
+   changing payee/date removes stale auto-applied values, and a user or pinned
+   choice is never overwritten.
+2. With the keyboard visible, switch through Today, History, Log, Plan, and
+   Assets and return to Log. The exact unfinished values and confidence/evidence
+   must remain; no Save occurs. Unsaved receipt image bytes and their retention
+   toggle must be gone, because receipt images are not part of the durable
+   draft.
+3. Scan at least 20 representative English/Chinese receipts and payment
+   screenshots, including rotated, blurred, comma-decimal, JPY, and CJK cases.
+   Record Vision-to-review and post-Vision parse p50/p95, top payable-amount
+   correctness, and every fallback. Target p95 is 4 seconds end-to-end, 100 ms
+   post-Vision, at least 90% top payable-amount accuracy, and zero
+   low-confidence prefills. Manual entry must remain immediately available.
+4. Create exact and near-match expense, income, refund, same-currency transfer,
+   and dated foreign-transfer cases. Confirm only exact money/currency/directed
+   legs advise, Review opens the attributed History day, Cancel changes
+   nothing, Save anyway creates exactly one entry, repeated taps do not create
+   another, and Undo/Edit use existing revision behavior.
+5. Repeat scan, suggestion generation, advisory, and Save while backgrounding
+   and locking. No stale result, cross-book/account suggestion, retained source
+   image, sensitive app-switcher content, or duplicate commit may appear after
+   unlock. Exercise app, widget, Shortcut/App Intent, and URL launch paths with
+   locked capture both enabled and disabled.
+6. Repeat the changed surfaces in both languages, light/dark mode, largest
+   Dynamic Type, VoiceOver, and Reduce Motion. Currency must be announced and
+   status meaning must remain available without color. Capture before/after
+   screenshots for normal, low-confidence, duplicate-review, and locked states.
+
+Any wrong-money result, low-confidence prefill, stale cross-context suggestion,
+duplicate commit, retained unselected receipt, inaccessible action, sustained
+main-thread stall, or p95 miss fails this gate. Physical execution and
+screenshots are currently pending; source or Simulator evidence cannot close it.
+
 ## Stage 3 - founder/co-tester seven-day run
 
 Invite the co-tester through the private **Founders External** group only
@@ -173,8 +215,10 @@ After approval, the account holder manually releases 1.0. For 72 hours:
 
 ## Remaining engineering and evidence queue
 
-1. Apple App Group registration and signed entitlement validation.
-2. Reconcile the signed candidate with the green exact-source CI evidence.
+1. Repeat signed entitlement and exact-binary validation for any future release
+   candidate; do not reuse the `ff272da8` result for a changed binary.
+2. Confirm Apple processing, tester-group availability, and installation for
+   uploaded build 0.6.0 (1020.1); upload success alone is not that evidence.
 3. Physical 0.5.1-to-0.6.0 upgrade, clean-device v2 restore, compatible-v1
    restore, and receipt-heavy interruption/near-limit memory evidence.
 4. Oldest-device 10,000-entry/20-schedule cold-start, monthly-checkpoint,

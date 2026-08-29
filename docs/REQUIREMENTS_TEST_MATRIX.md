@@ -1,6 +1,6 @@
 # MoneyUp 0.6.0 Requirement Traceability Matrix
 
-Reviewed: 28 August 2026
+Reviewed: 29 August 2026
 
 This matrix traces all 97 requirements in the controlling Golden PRD to source
 and at least one automated or manual acceptance case. The uploaded Word file is
@@ -19,6 +19,10 @@ the earlier `MoneyUp-PRD-v1.1.pdf` is contextual where it does not conflict.
 
 Test names are exact function names unless prefixed `STATIC` or `MANUAL`.
 Automated source presence is not reported as an execution pass.
+
+The latest approved-main baseline `ff272da8` passed 301 core/persistence and
+237 app tests in CI run 163. That evidence does not convert this later branch's
+`AUTO-PENDING` rows to pass; its exact SHA still needs a green macOS run.
 
 ## Log and transaction capture
 
@@ -172,12 +176,27 @@ Automated source presence is not reported as an execution pass.
 | QA-06 | Critical | No wider test/App Review while required physical/accessibility/recovery/migration/performance box is open. | `LAUNCH_PLAN.md`, `ROADMAP.md`; MANUAL `QA-06-PROMOTION-CHECK` signed by release owner. Current decision is blocked. | BLOCKED-P1 |
 | QA-07 | Critical | Store metadata, screenshots, notes, privacy, language, version/build, archive, widget, and binary capabilities match exact candidate. | `APP_STORE_SUBMISSION.md`, TestFlight workflow, release validator; STATIC `QA-07-SOURCE-CHECK`; MANUAL `QA-07-EXACT-ARCHIVE`. | STATIC-PASS; MANUAL-OPEN |
 
+## Proposed amendment PA-2026-08-29-r1
+
+These rows trace the current task's proposed explainable-capture behavior. They
+do not change the controlling count of 97 Golden requirements and are not an
+approved release claim until review and merge.
+
+| ID | Risk | Acceptance summary | Source / test cases | State |
+|---|---|---|---|---|
+| PA-CAP-01 | High | Account/category suggestions are deterministic, carry count/date evidence, respect kind/currency/archive/system roles, and only high-confidence payee-specific results may prefill an untouched smart-default field. Fixed defaults and parser/user choices win; ambiguous multi-category splits never collapse into one category. | `CaptureSuggestionEngine`, `QuickLogSuggestionPolicy`, `QuickLogSheet`; `CaptureSuggestionEngineTests.testSuggestsAccountAndCategoryWithInspectableHighConfidenceEvidence`, `.testOneSupportingEntryRemainsExplicitlyLowConfidence`, `.testStableTieUsesLowerUUIDRegardlessOfInputOrder`, `.testKindCurrencyArchiveAndSystemRoleFiltersFailClosed`, `.testRefundHistoryIsNotConflatedWithOrdinaryExpenseHistory`, `.testAmbiguousMultiCategorySplitsNeverCreateASingleCategorySuggestion`; `TransactionPresentationTests.testSuggestionPolicyRequiresReviewForLowConfidenceOrEditedFields`; MANUAL `PA-CAP-01-E2E-A11Y`. | AUTO-PENDING; MANUAL-OPEN |
+| PA-CAP-02 | Critical | Pre-save duplicate matching requires exact amount/currency/account direction and applicable transfer legs; category/payee/time/source evidence controls an advisory band. It never converts, deletes, merges, or blocks Save anyway, and Review routes to the matching attributed reporting day in History. | `CaptureDuplicateDetector`, `CaptureDuplicateQuery`, `QuickLogDuplicateReviewPolicy`, `QuickLogSheet`, `RootView`; `CaptureDuplicateDetectorTests.testExactExpenseProducesExplainableHighConfidenceAdvisory`, `.testExpenseIncomeAndRefundDirectionsNeverCrossMatch`, `.testDifferentCurrencyAmountOrAccountNeverMatches`, `.testSameCurrencyTransferRequiresBothDirectedLegs`, `.testForeignTransferRequiresAllFourExactCurrencyLegs`, `.testKWDAndBTCUseExactDecimalAndCurrencyWithoutConversion`, `.testMissingDescriptorIsLowConfidenceAndSplitCategoryCanBeOmitted`; `TransactionPresentationTests.testDuplicateReviewUsesFrozenOriginDayForHistory`; MANUAL `PA-CAP-02-SAVE-REVIEW-UNDO`. | AUTO-PENDING; MANUAL-OPEN |
+| PA-CAP-03 | High | Receipt candidates retain field-relative scores, semantic evidence, and aggregate Vision quality; OCR quality can only lower confidence, impossible local times are rejected, and low-confidence fields remain explicit review actions. Review evidence and the unfinished draft survive ordinary tab navigation, while unsaved image bytes do not. | `ReceiptScanner`, `ReceiptTextParser`, `QuickLogSuggestionPolicy`, `QuickLogSheet`; `ReceiptTextParserTests.testCandidateDetailsPreserveScoresConfidenceAndRuleEvidence`, `.testWeakParserSignalsRemainExplicitlyLowConfidence`, `.testOCRConfidenceConservativelyCapsParserConfidenceWithoutChangingValues`, `.testLegacyResultInitializerBuildsReviewableCompatibilityDetails`, `.testNonexistentDSTGapTimeFailsClosed`; `AppModelTests.testReceiptAnalysisCarriesVisionConfidenceIntoReviewBands`; `TransactionPresentationTests.testSuggestionPolicyRequiresReviewForLowConfidenceOrEditedFields`; MANUAL `PA-CAP-03-REAL-OCR` and `PA-CAP-03-TAB-PROVENANCE`. | AUTO-PENDING; MANUAL-OPEN |
+| PA-CAP-04 | High | Regex parsing is bounded to receipt header/footer lines, runs outside MainActor, and suppresses publication after lock or account/book projection changes. Manual entry remains available on timeout, cancellation, or no result. | `AppModel.receiptAnalysis`, `ReceiptRecognitionResult`, `QuickLogReceiptPipeline`; `AppModelTests.testReceiptAnalysisBoundsPathologicalInputButKeepsFooterTotal`, `.testAccountChangeDuringReceiptRecognitionSuppressesStaleSuggestions`, `.testLockDuringReceiptScanDiscardsTheStaleResult`; MANUAL `PA-CAP-04-LATENCY-BACKGROUND-LOCK`. | AUTO-PENDING; MANUAL-OPEN |
+| PA-CAP-05 | High | Latin kind/date/weekday tokens require Unicode letter/number boundaries; CJK tokens retain intentional substring matching; impossible or conflicting explicit civil dates fail closed without becoming amounts; locale amount behavior remains unchanged. | `NaturalLanguageEntryParser`; `NaturalLanguageEntryParserTests.testLatinKindKeywordsDoNotMatchInsidePayeeWords`, `.testLatinDateTokenDoesNotMatchOrStripTomorrowlandPayee`, `.testUnicodeBoundariesProtectPayeesAndLocaleAmount`, `.testCJKTokensKeepSubstringMatchingWithoutSpaces`, `.testCJKRefundKeywordKeepsSubstringMatching`, `.testImpossibleCivilDateFailsClosedWithoutInventingAnAmount`, `.testMultipleExplicitDatesFailClosedWithoutInventingAnAmount`, `.testLeapDayIsAcceptedOnlyInALeapYear`. | AUTO-PENDING |
+| PA-PRIV-01 | Critical | The privacy manifest declares both app-only standard defaults and same-App-Group defaults required reasons, exactly once, matching actual app/widget use. | `PrivacyInfo.xcprivacy`, `validate_release_assets.py`; STATIC `PA-PRIV-01-REQUIRED-REASONS`; exact-binary privacy review remains `SEC-09`. | STATIC-PASS; MANUAL-OPEN |
+
 ## Coverage accounting
 
 - Requirements traced: **97 / 97**.
 - Requirements with at least one named automated or manual case: **97 / 97**.
-- Declared automated tests in source after this review: **514** (252 core, 49
-  persistence, and 213 app-target declarations; XCTest methods plus Swift
+- Declared automated tests in source after this review: **587** (295 core, 49
+  persistence, and 243 app-target declarations; XCTest methods plus Swift
   Testing `@Test` declarations).
 - Tests executed against this exact candidate in this environment: **0**;
   Swift and Xcode are unavailable here, and the macOS CI run is pending.

@@ -21,9 +21,10 @@ integer percentage. The shared container never receives amounts, payees,
 account names, holdings, balances, transaction data, ledger identifiers, the
 SQLCipher database, or its Keychain key.
 
-`MoneyUpCore` has no UI, database, network, or Apple-framework dependency
-beyond Foundation. Financial invariants remain independently testable, and no
-runtime backend is required.
+`MoneyUpCore` has no UI, database, or network dependency. It uses Foundation
+for domain behavior and CryptoKit only to create local import fingerprints.
+Financial invariants remain independently testable, and no runtime backend is
+required.
 
 ## Module boundaries
 
