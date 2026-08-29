@@ -106,6 +106,80 @@ final class NaturalLanguageEntryParserTests: XCTestCase {
         XCTAssertEqual(draft.amount, Decimal(40))
     }
 
+    func testLatinKindKeywordsDoNotMatchInsidePayeeWords() throws {
+        let salaryman = NaturalLanguageEntryParser.draft(
+            from: "Salaryman 25",
+            accounts: accounts,
+            now: try now(),
+            calendar: calendar,
+            locale: Locale(identifier: "en_SG")
+        )
+        let refundable = NaturalLanguageEntryParser.draft(
+            from: "Refundable deposit 40",
+            accounts: accounts,
+            now: try now(),
+            calendar: calendar,
+            locale: Locale(identifier: "en_SG")
+        )
+
+        XCTAssertEqual(salaryman.kind, .expense)
+        XCTAssertEqual(salaryman.payee, "Salaryman")
+        XCTAssertEqual(refundable.kind, .expense)
+        XCTAssertEqual(refundable.payee, "Refundable deposit")
+    }
+
+    func testLatinDateTokenDoesNotMatchOrStripTomorrowlandPayee() throws {
+        let draft = NaturalLanguageEntryParser.draft(
+            from: "Tomorrowland 42",
+            accounts: accounts,
+            now: try now(),
+            calendar: calendar,
+            locale: Locale(identifier: "en_SG")
+        )
+
+        XCTAssertNil(draft.occurredAt)
+        XCTAssertEqual(draft.amount, Decimal(42))
+        XCTAssertEqual(draft.payee, "Tomorrowland")
+    }
+
+    func testStandaloneDateTokenDoesNotStripEarlierPrefixedPayee() throws {
+        let reference = try now()
+        let draft = NaturalLanguageEntryParser.draft(
+            from: "Tomorrowland 42 tomorrow",
+            accounts: accounts,
+            now: reference,
+            calendar: calendar,
+            locale: Locale(identifier: "en_SG")
+        )
+
+        let expected = try XCTUnwrap(calendar.date(byAdding: .day, value: 1, to: reference))
+        XCTAssertEqual(draft.occurredAt, expected)
+        XCTAssertEqual(draft.payee, "Tomorrowland")
+    }
+
+    func testUnicodeBoundariesProtectPayeesAndLocaleAmount() throws {
+        let draft = NaturalLanguageEntryParser.draft(
+            from: "érefundé café 1.234,50",
+            accounts: accounts,
+            now: try now(),
+            calendar: calendar,
+            locale: Locale(identifier: "de_DE")
+        )
+        let nonLatinBoundary = NaturalLanguageEntryParser.draft(
+            from: "界tomorrow界 9",
+            accounts: accounts,
+            now: try now(),
+            calendar: calendar,
+            locale: Locale(identifier: "en_SG")
+        )
+
+        XCTAssertEqual(draft.kind, .expense)
+        XCTAssertEqual(draft.amount, Decimal(string: "1234.50"))
+        XCTAssertEqual(draft.payee, "érefundé café")
+        XCTAssertNil(nonLatinBoundary.occurredAt)
+        XCTAssertEqual(nonLatinBoundary.payee, "界tomorrow界")
+    }
+
     func testExplicitDateIsPreferredAndNotMistakenForTheAmount() throws {
         let draft = NaturalLanguageEntryParser.draft(
             from: "dinner 88.00 on 15/03/2026",
@@ -149,6 +223,104 @@ final class NaturalLanguageEntryParserTests: XCTestCase {
         XCTAssertEqual(draft.payee, "午餐")
         let expected = try XCTUnwrap(calendar.date(byAdding: .day, value: -1, to: reference))
         XCTAssertEqual(draft.occurredAt, expected)
+    }
+
+    func testImpossibleCivilDateFailsClosedWithoutInventingAnAmount() throws {
+        for phrase in [
+            "31/02/2026 dinner 20",
+            "2026-13-01 dinner 20",
+            "32/01/2026 dinner 20"
+        ] {
+            let draft = NaturalLanguageEntryParser.draft(
+                from: phrase,
+                accounts: accounts,
+                now: try now(),
+                calendar: calendar,
+                locale: Locale(identifier: "en_SG")
+            )
+
+            XCTAssertNil(draft.occurredAt, phrase)
+            XCTAssertNil(draft.amount, phrase)
+        }
+    }
+
+    func testLeapDayIsAcceptedOnlyInALeapYear() throws {
+        let invalid = NaturalLanguageEntryParser.draft(
+            from: "29/02/2025 dinner 20",
+            accounts: accounts,
+            now: try now(),
+            calendar: calendar,
+            locale: Locale(identifier: "en_SG")
+        )
+        let valid = NaturalLanguageEntryParser.draft(
+            from: "29/02/2024 dinner 20",
+            accounts: accounts,
+            now: try now(),
+            calendar: calendar,
+            locale: Locale(identifier: "en_SG")
+        )
+        let expected = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2024,
+            month: 2,
+            day: 29,
+            hour: calendar.component(.hour, from: try now()),
+            minute: calendar.component(.minute, from: try now()),
+            second: calendar.component(.second, from: try now())
+        )))
+
+        XCTAssertNil(invalid.occurredAt)
+        XCTAssertNil(invalid.amount)
+        XCTAssertEqual(valid.occurredAt, expected)
+        XCTAssertEqual(valid.amount, Decimal(20))
+    }
+
+    func testMultipleExplicitDatesFailClosedWithoutInventingAnAmount() throws {
+        for phrase in [
+            "15/03/2026 2026-04-01 dinner 20",
+            "2026-04-01 31/02/2026 dinner 20",
+            "31/02/2026 2026-04-01 dinner 20"
+        ] {
+            let draft = NaturalLanguageEntryParser.draft(
+                from: phrase,
+                accounts: accounts,
+                now: try now(),
+                calendar: calendar,
+                locale: Locale(identifier: "en_SG")
+            )
+
+            XCTAssertNil(draft.occurredAt, phrase)
+            XCTAssertNil(draft.amount, phrase)
+        }
+    }
+
+    func testCJKTokensKeepSubstringMatchingWithoutSpaces() throws {
+        let reference = try now()
+        let draft = NaturalLanguageEntryParser.draft(
+            from: "昨天午餐 12.50",
+            accounts: accounts,
+            now: reference,
+            calendar: calendar,
+            locale: Locale(identifier: "zh_CN")
+        )
+
+        let expected = try XCTUnwrap(calendar.date(byAdding: .day, value: -1, to: reference))
+        XCTAssertEqual(draft.occurredAt, expected)
+        XCTAssertEqual(draft.amount, Decimal(string: "12.50"))
+        XCTAssertEqual(draft.payee, "午餐")
+    }
+
+    func testCJKRefundKeywordKeepsSubstringMatching() throws {
+        let draft = NaturalLanguageEntryParser.draft(
+            from: "退款到账 40 food",
+            accounts: accounts,
+            now: try now(),
+            calendar: calendar,
+            locale: Locale(identifier: "zh_CN")
+        )
+
+        XCTAssertEqual(draft.kind, .refund)
+        XCTAssertEqual(draft.categoryID, food.id)
+        XCTAssertEqual(draft.amount, Decimal(40))
     }
 
     func testLongerAccountNameWinsOverAShorterOneItContains() throws {

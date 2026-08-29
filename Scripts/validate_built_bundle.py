@@ -106,6 +106,8 @@ def validate(args: argparse.Namespace) -> None:
 
     if not (app / "PrivacyInfo.xcprivacy").is_file():
         fail("PrivacyInfo.xcprivacy is missing from the built app")
+    if not (widget / "PrivacyInfo.xcprivacy").is_file():
+        fail("PrivacyInfo.xcprivacy is missing from the built widget")
 
     require_localizations(app, "app")
     require_localizations(widget, "widget")
@@ -116,7 +118,7 @@ def validate(args: argparse.Namespace) -> None:
     print(
         "Validated MoneyUp "
         f"{args.marketing_version} ({args.build_number}), embedded widget, "
-        "privacy manifest, and bilingual resources"
+        "app/widget privacy manifests, and bilingual resources"
     )
 
 

@@ -29,12 +29,13 @@ enum ReceiptScanner {
     /// PhotosPicker transfer and main-actor form population.
     private static let timeoutNanoseconds: UInt64 = 7_500_000_000
 
-    static func recognizeLines(inImageData data: Data) async throws -> [String] {
+    static func recognize(inImageData data: Data) async throws
+        -> ReceiptRecognitionResult {
         try Task.checkCancellation()
         let operation = ReceiptRecognitionOperation(imageData: data)
         let race = ReceiptRecognitionRace()
         let recognitionTask = Task.detached(priority: .userInitiated) {
-            let result: Result<[String], Error>
+            let result: Result<ReceiptRecognitionResult, Error>
             do {
                 result = .success(try operation.run())
             } catch {
@@ -62,7 +63,7 @@ enum ReceiptScanner {
         }
         defer { timeoutTask.cancel() }
 
-        let lines = try await withTaskCancellationHandler {
+        let result = try await withTaskCancellationHandler {
             try await race.value()
         } onCancel: {
             if race.resolve(with: .failure(CancellationError())) {
@@ -73,8 +74,13 @@ enum ReceiptScanner {
         }
 
         try Task.checkCancellation()
-        guard !lines.isEmpty else { throw ReceiptScannerError.noTextFound }
-        return lines
+        guard !result.lines.isEmpty else { throw ReceiptScannerError.noTextFound }
+        return result
+    }
+
+    /// Compatibility helper for narrow callers that do not need OCR quality.
+    static func recognizeLines(inImageData data: Data) async throws -> [String] {
+        try await recognize(inImageData: data).lines
     }
 }
 
@@ -84,16 +90,16 @@ enum ReceiptScanner {
 private final class ReceiptRecognitionRace: @unchecked Sendable {
     private enum State {
         case pending
-        case waiting(CheckedContinuation<[String], Error>)
-        case completed(Result<[String], Error>)
+        case waiting(CheckedContinuation<ReceiptRecognitionResult, Error>)
+        case completed(Result<ReceiptRecognitionResult, Error>)
     }
 
     private let lock = NSLock()
     private var state: State = .pending
 
-    func value() async throws -> [String] {
+    func value() async throws -> ReceiptRecognitionResult {
         try await withCheckedThrowingContinuation { continuation in
-            var completedResult: Result<[String], Error>?
+            var completedResult: Result<ReceiptRecognitionResult, Error>?
             lock.lock()
             switch state {
             case .pending:
@@ -115,8 +121,8 @@ private final class ReceiptRecognitionRace: @unchecked Sendable {
 
     /// Returns true only to the winner, which owns cancellation of losing work.
     @discardableResult
-    func resolve(with result: Result<[String], Error>) -> Bool {
-        var continuation: CheckedContinuation<[String], Error>?
+    func resolve(with result: Result<ReceiptRecognitionResult, Error>) -> Bool {
+        var continuation: CheckedContinuation<ReceiptRecognitionResult, Error>?
         lock.lock()
         switch state {
         case .pending:
@@ -141,6 +147,7 @@ private final class ReceiptRecognitionOperation: @unchecked Sendable {
     private struct OCRResult {
         let lines: [String]
         let meanConfidence: Float
+        let lineConfidences: [Float]
     }
 
     private struct Fragment {
@@ -154,20 +161,22 @@ private final class ReceiptRecognitionOperation: @unchecked Sendable {
         var minimumY: CGFloat
         var maximumY: CGFloat
         var averageMidY: CGFloat
+        var midYSum: CGFloat
 
         init(_ fragment: Fragment) {
             fragments = [fragment]
             minimumY = fragment.box.minY
             maximumY = fragment.box.maxY
             averageMidY = fragment.box.midY
+            midYSum = fragment.box.midY
         }
 
         mutating func append(_ fragment: Fragment) {
             fragments.append(fragment)
             minimumY = min(minimumY, fragment.box.minY)
             maximumY = max(maximumY, fragment.box.maxY)
-            averageMidY = fragments.map { $0.box.midY }.reduce(0, +)
-                / CGFloat(fragments.count)
+            midYSum += fragment.box.midY
+            averageMidY = midYSum / CGFloat(fragments.count)
         }
 
         func matches(_ fragment: Fragment) -> Bool {
@@ -210,7 +219,7 @@ private final class ReceiptRecognitionOperation: @unchecked Sendable {
         request?.cancel()
     }
 
-    func run() throws -> [String] {
+    func run() throws -> ReceiptRecognitionResult {
         try checkCancellation()
         guard let image = Self.preparedImage(from: imageData) else {
             throw ReceiptScannerError.unreadableImage
@@ -231,11 +240,20 @@ private final class ReceiptRecognitionOperation: @unchecked Sendable {
             fast = nil
         }
         if let fast, Self.isActionable(fast) {
-            return fast.lines
+            return ReceiptRecognitionResult(
+                lines: fast.lines,
+                meanConfidence: fast.meanConfidence,
+                lineConfidences: fast.lineConfidences
+            )
         }
 
         try checkCancellation()
-        return try recognize(in: image, level: .accurate).lines
+        let accurate = try recognize(in: image, level: .accurate)
+        return ReceiptRecognitionResult(
+            lines: accurate.lines,
+            meanConfidence: accurate.meanConfidence,
+            lineConfidences: accurate.lineConfidences
+        )
     }
 
     private func recognize(
@@ -268,7 +286,7 @@ private final class ReceiptRecognitionOperation: @unchecked Sendable {
         try checkCancellation()
 
         let observations = request.results ?? []
-        return Self.readingOrderText(from: observations)
+        return try readingOrderText(from: observations)
     }
 
     private func register(_ request: VNRecognizeTextRequest) throws {
@@ -326,27 +344,44 @@ private final class ReceiptRecognitionOperation: @unchecked Sendable {
     /// Vision observations can split a single visual row into label and amount
     /// fragments. Group aligned fragments first, then sort rows top-to-bottom
     /// and fragments left-to-right so the parser receives actual reading order.
-    private static func readingOrderText(
+    private func readingOrderText(
         from observations: [VNRecognizedTextObservation]
-    ) -> OCRResult {
-        let fragments = observations.compactMap { observation -> Fragment? in
-            guard let candidate = observation.topCandidates(1).first else { return nil }
-            let text = candidate.string.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !text.isEmpty, candidate.confidence >= 0.12 else { return nil }
-            return Fragment(text: text, confidence: candidate.confidence, box: observation.boundingBox)
-        }.sorted { lhs, rhs in
+    ) throws -> OCRResult {
+        var fragments: [Fragment] = []
+        fragments.reserveCapacity(min(observations.count, 512))
+        for (index, observation) in observations.enumerated() {
+            if index.isMultiple(of: 32) { try checkCancellation() }
+            guard let candidate = observation.topCandidates(1).first else { continue }
+            let text = Self.boundedUTF8(candidate.string, maximumByteCount: 512)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty, candidate.confidence >= 0.12 else { continue }
+            fragments.append(Fragment(
+                text: text,
+                confidence: candidate.confidence,
+                box: observation.boundingBox
+            ))
+        }
+        fragments.sort { lhs, rhs in
             if lhs.box.midY != rhs.box.midY { return lhs.box.midY > rhs.box.midY }
             return lhs.box.minX < rhs.box.minX
         }
+        if fragments.count > 512 {
+            fragments = Array(fragments.prefix(256))
+                + Array(fragments.suffix(256))
+        }
 
         var rows: [TextRow] = []
-        for fragment in fragments {
-            let matchingIndex = rows.indices
-                .filter { rows[$0].matches(fragment) }
-                .min { lhs, rhs in
-                    abs(rows[lhs].averageMidY - fragment.box.midY)
-                        < abs(rows[rhs].averageMidY - fragment.box.midY)
+        for (fragmentIndex, fragment) in fragments.enumerated() {
+            if fragmentIndex.isMultiple(of: 32) { try checkCancellation() }
+            var matchingIndex: Int?
+            var closestDistance = CGFloat.greatestFiniteMagnitude
+            for rowIndex in rows.indices where rows[rowIndex].matches(fragment) {
+                let distance = abs(rows[rowIndex].averageMidY - fragment.box.midY)
+                if distance < closestDistance {
+                    closestDistance = distance
+                    matchingIndex = rowIndex
                 }
+            }
             if let matchingIndex {
                 rows[matchingIndex].append(fragment)
             } else {
@@ -361,27 +396,52 @@ private final class ReceiptRecognitionOperation: @unchecked Sendable {
         }
         var lines: [String] = []
         var confidences: [Float] = []
-        for row in orderedRows {
+        var lineConfidences: [Float] = []
+        for (rowIndex, row) in orderedRows.enumerated() {
+            if rowIndex.isMultiple(of: 32) { try checkCancellation() }
             let orderedFragments = row.fragments.sorted { lhs, rhs in
                 if lhs.box.minX != rhs.box.minX { return lhs.box.minX < rhs.box.minX }
                 return lhs.text < rhs.text
             }
-            let line = orderedFragments
+            let joinedLine = orderedFragments
                 .map(\.text)
                 .joined(separator: " ")
                 .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
+            let line = Self.boundedUTF8(joinedLine, maximumByteCount: 512)
             guard !line.isEmpty else { continue }
             if lines.last != line {
                 lines.append(line)
                 confidences.append(contentsOf: orderedFragments.map(\.confidence))
+                // A row can contain a high-confidence label and a weak amount
+                // fragment. Use the weakest fragment so the amount cannot be
+                // promoted by unrelated text on the same visual row.
+                lineConfidences.append(
+                    orderedFragments.map(\.confidence).min() ?? 0
+                )
             }
         }
 
         let meanConfidence = confidences.isEmpty
             ? 0
             : confidences.reduce(0, +) / Float(confidences.count)
-        return OCRResult(lines: lines, meanConfidence: meanConfidence)
+        return OCRResult(
+            lines: lines,
+            meanConfidence: meanConfidence,
+            lineConfidences: lineConfidences
+        )
+    }
+
+    private static func boundedUTF8(
+        _ value: String,
+        maximumByteCount: Int
+    ) -> String {
+        var bytes = Array(value.utf8.prefix(maximumByteCount))
+        while !bytes.isEmpty,
+              String(bytes: bytes, encoding: .utf8) == nil {
+            bytes.removeLast()
+        }
+        return String(decoding: bytes, as: UTF8.self)
     }
 
     private static func isActionable(_ result: OCRResult) -> Bool {
@@ -389,8 +449,15 @@ private final class ReceiptRecognitionOperation: @unchecked Sendable {
         // Use the authoritative parser as the quality gate so fast OCR and the
         // final parse cannot disagree about decimal commas, grouping, or safe
         // OCR digit repair.
-        let parsed = ReceiptTextParser.analyze(fromLines: result.lines)
-        guard parsed.draft.amount != nil else { return false }
+        let parsed = ReceiptTextParser.analyze(
+            fromLines: result.lines,
+            ocrConfidence: result.meanConfidence,
+            ocrLineConfidences: result.lineConfidences
+        )
+        guard let amountConfidence = parsed.amountCandidateDetails.first?.confidence,
+              amountConfidence != .low else {
+            return false
+        }
 
         let strongLabels = [
             "grand total", "amount due", "amount payable", "amount paid", "you paid",

@@ -3675,6 +3675,108 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testReceiptAnalysisCarriesVisionConfidenceIntoReviewBands() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let model = fixture.model(receiptRecognizer: { _ in
+            ReceiptRecognitionResult(
+                lines: ["Cafe Nero", "TOTAL S$ 12.50"],
+                meanConfidence: 0.92,
+                lineConfidences: [0.94, 0.32]
+            )
+        })
+
+        let result = try await model.receiptAnalysis(
+            from: Data([0x01]),
+            prefersDayFirst: true
+        )
+
+        XCTAssertEqual(result?.ocrConfidence, 0.92)
+        XCTAssertEqual(result?.overallConfidence, .low)
+        XCTAssertEqual(result?.amountCandidateDetails.first?.confidence, .low)
+        XCTAssertEqual(result?.draft.amount, Decimal(string: "12.50"))
+    }
+
+    @MainActor
+    func testReceiptAnalysisBoundsPathologicalInputButKeepsFooterTotal() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let oversizedLine = String(repeating: "X", count: 20_000)
+        let scalarBoundaryLine = String(repeating: "A", count: 511) + "界"
+        let recognizedLines = [scalarBoundaryLine, oversizedLine]
+            + (2..<240).map { "Item line \($0)" }
+            + ["TOTAL S$ 12.50"]
+        let boundedLines = AppModel.boundedReceiptLines(recognizedLines)
+        var lineConfidences = [Float](
+            repeating: 0.91,
+            count: recognizedLines.count
+        )
+        lineConfidences[lineConfidences.index(before: lineConfidences.endIndex)] = 0.44
+        let capturedLineConfidences = lineConfidences
+        let boundedRecognition = AppModel.boundedReceiptRecognition(
+            ReceiptRecognitionResult(
+                lines: recognizedLines,
+                meanConfidence: 0.90,
+                lineConfidences: capturedLineConfidences
+            )
+        )
+        let model = fixture.model(receiptRecognizer: { _ in
+            ReceiptRecognitionResult(
+                lines: recognizedLines,
+                meanConfidence: 0.95,
+                lineConfidences: capturedLineConfidences
+            )
+        })
+
+        let result = try await model.receiptAnalysis(
+            from: Data([0x01]),
+            prefersDayFirst: true
+        )
+
+        XCTAssertEqual(result?.draft.amount, Decimal(string: "12.50"))
+        XCTAssertEqual(boundedLines.count, 160)
+        XCTAssertEqual(boundedRecognition.lines, boundedLines)
+        XCTAssertEqual(boundedRecognition.lineConfidences?.count, 160)
+        XCTAssertEqual(boundedRecognition.lineConfidences?.last, 0.44)
+        XCTAssertTrue(boundedLines.allSatisfy { $0.utf8.count <= 512 })
+        XCTAssertEqual(boundedLines.last, "TOTAL S$ 12.50")
+        XCTAssertTrue(
+            result?.amountCandidateDetails.first?.evidence.contains(
+                .payableAmountLabel
+            ) == true
+        )
+    }
+
+    @MainActor
+    func testAccountChangeDuringReceiptRecognitionSuppressesStaleSuggestions() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let gate = AsyncGate()
+        let model = fixture.model(receiptRecognizer: { _ in
+            await gate.suspend()
+            return ["Cafe Nero", "TOTAL S$ 12.50"]
+        })
+        let scanTask = Task { @MainActor in
+            try await model.receiptAnalysis(
+                from: Data([0x01]),
+                prefersDayFirst: true
+            )
+        }
+
+        await gate.waitUntilReached()
+        try await model.addAccount(
+            name: "Second wallet",
+            type: .cash,
+            currencyCode: fixture.sgd.value
+        )
+        await gate.release()
+
+        let result = try await scanTask.value
+        XCTAssertNil(result)
+        await fixture.store.close()
+    }
+
+    @MainActor
     func testEraseDuringPendingCommitWaitsThenRemovesTheCommittedDatabase() async throws {
         let fixture = try AppModelFixture()
         defer { fixture.removeFiles() }
@@ -5927,6 +6029,88 @@ final class AppModelTests: XCTestCase {
         )
         XCTAssertNotNil(retained)
         XCTAssertEqual(model.scheduledTransactions.first?.status, .paused)
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testPausedScheduleMutationRejectsDifferentScheduleMutationAndKeepsStateCoherent()
+        async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let first = try ScheduledTransaction(
+            kind: .expense,
+            name: "First bill",
+            amount: try Money(25, currency: fixture.sgd),
+            accountID: fixture.wallet.id,
+            categoryAccountID: fixture.food.id,
+            nextOccurrence: Date(timeIntervalSinceReferenceDate: 100),
+            frequency: .monthly
+        )
+        let second = try ScheduledTransaction(
+            kind: .expense,
+            name: "Second bill",
+            amount: try Money(50, currency: fixture.sgd),
+            accountID: fixture.wallet.id,
+            categoryAccountID: fixture.food.id,
+            nextOccurrence: Date(timeIntervalSinceReferenceDate: 200),
+            frequency: .monthly
+        )
+        try await fixture.store.write([
+            try RecordWrite(
+                first,
+                id: first.id.uuidString,
+                in: .scheduledTransactions
+            ),
+            try RecordWrite(
+                second,
+                id: second.id.uuidString,
+                in: .scheduledTransactions
+            )
+        ])
+        let gate = AsyncGate()
+        let model = fixture.model(
+            scheduledTransactions: [first, second],
+            lifecycleHooks: hooks(
+                pausing: .beforeScheduleMutationCommit,
+                at: gate
+            )
+        )
+        let pauseTask = Task { @MainActor in
+            try await model.pauseScheduledTransaction(id: second.id)
+        }
+        await gate.waitUntilReached()
+
+        do {
+            try await model.deleteScheduledTransaction(id: first.id)
+            XCTFail("Expected one schedule mutation to serialize every schedule ID")
+        } catch AppModelError.transactionInProgress {
+            // The first schedule and its durable row remain untouched.
+        }
+
+        await gate.release()
+        try await pauseTask.value
+
+        XCTAssertEqual(model.scheduledTransactions.map(\.id), [first.id, second.id])
+        XCTAssertEqual(
+            model.scheduledTransactions.first(where: { $0.id == first.id })?.status,
+            .active
+        )
+        XCTAssertEqual(
+            model.scheduledTransactions.first(where: { $0.id == second.id })?.status,
+            .paused
+        )
+        let persistedFirst = try await fixture.store.fetch(
+            ScheduledTransaction.self,
+            id: first.id.uuidString,
+            from: .scheduledTransactions
+        )
+        let persistedSecond = try await fixture.store.fetch(
+            ScheduledTransaction.self,
+            id: second.id.uuidString,
+            from: .scheduledTransactions
+        )
+        XCTAssertEqual(persistedFirst?.status, .active)
+        XCTAssertEqual(persistedSecond?.status, .paused)
         await fixture.store.close()
     }
 
@@ -11124,7 +11308,7 @@ private struct AppModelFixture {
             captures: []
         ),
         receiptRecognizer: @escaping ReceiptLineRecognizer = { data in
-            try await ReceiptScanner.recognizeLines(inImageData: data)
+            try await ReceiptScanner.recognize(inImageData: data)
         },
         lifecycleHooks: AppModelLifecycleHooks = .none,
         deleteDatabaseKey: @escaping @Sendable () throws -> Void = {},
