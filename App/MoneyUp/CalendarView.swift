@@ -158,36 +158,7 @@ struct CalendarView: View {
                             .foregroundStyle(.secondary)
                     } else {
                         ForEach(scheduledForDay) { item in
-                            Button {
-                                scheduleBeingEdited = item
-                            } label: {
-                                HStack {
-                                    Label(
-                                        item.name,
-                                        systemImage: item.isCurrentOccurrenceConfirmed
-                                            ? "checkmark.circle"
-                                            : "clock"
-                                    )
-                                    Spacer()
-                                    Text(formattedMoney(item.amount))
-                                        .font(.subheadline.monospacedDigit())
-                                }
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel(item.name)
-                            .accessibilityValue(
-                                "\(formattedMoney(item.amount)), \(item.isCurrentOccurrenceConfirmed ? String(localized: "schedule.confirmed") : String(localized: "schedule.pending"))"
-                            )
-                            .accessibilityHint("schedule.edit")
-                            .contextMenu { scheduleActions(for: item) }
-                            .swipeActions {
-                                Button(role: .destructive) {
-                                    schedulePendingDeletion = item
-                                } label: {
-                                    Label("action.delete", systemImage: "trash")
-                                }
-                            }
+                            scheduledRow(for: item)
                         }
                     }
                 }
@@ -265,6 +236,45 @@ struct CalendarView: View {
         }
         .environment(\.calendar, model.reportingCalendar)
         .environment(\.timeZone, model.reportingCalendar.timeZone)
+    }
+
+    private func scheduledRow(for item: ScheduledTransaction) -> some View {
+        Button {
+            scheduleBeingEdited = item
+        } label: {
+            HStack {
+                Label(item.name, systemImage: scheduleStatusIcon(for: item))
+                Spacer()
+                Text(formattedMoney(item.amount))
+                    .font(.subheadline.monospacedDigit())
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(item.name)
+        .accessibilityValue(scheduleAccessibilityValue(for: item))
+        .accessibilityHint("schedule.edit")
+        .contextMenu { scheduleActions(for: item) }
+        .swipeActions {
+            Button(role: .destructive) {
+                schedulePendingDeletion = item
+            } label: {
+                Label("action.delete", systemImage: "trash")
+            }
+        }
+    }
+
+    private func scheduleStatusIcon(for item: ScheduledTransaction) -> String {
+        item.isCurrentOccurrenceConfirmed ? "checkmark.circle" : "clock"
+    }
+
+    private func scheduleAccessibilityValue(
+        for item: ScheduledTransaction
+    ) -> String {
+        let status = item.isCurrentOccurrenceConfirmed
+            ? String(localized: "schedule.confirmed")
+            : String(localized: "schedule.pending")
+        return "\(formattedMoney(item.amount)), \(status)"
     }
 
     private func deletionBinding<Value>(for value: Binding<Value?>) -> Binding<Bool> {
