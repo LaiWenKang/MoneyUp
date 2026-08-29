@@ -169,8 +169,11 @@ following local checks pass on the current working tree:
 Strict review run 173 first passed all core/persistence tests but stopped at
 the Release app compile because a line-broken range operator in the new bounded
 confidence helper was not accepted by Swift 6. The next commit introduced an
-explicit `suffixStart` bound and repeated the entire workflow; run 173 is not
-cited as passing candidate evidence.
+explicit `suffixStart` bound. Run 176 then passed that Release app/widget build
+but the app-model test target compile rejected a concurrently captured mutable
+confidence fixture under Swift 6. The next commit freezes that fixture as an
+immutable value before the `@Sendable` recognizer closure and repeats the entire
+workflow; neither failed run is cited as passing candidate evidence.
 
 ```text
 git diff --check

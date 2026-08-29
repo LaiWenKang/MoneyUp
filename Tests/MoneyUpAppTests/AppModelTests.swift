@@ -3712,18 +3712,19 @@ final class AppModelTests: XCTestCase {
             count: recognizedLines.count
         )
         lineConfidences[lineConfidences.index(before: lineConfidences.endIndex)] = 0.44
+        let capturedLineConfidences = lineConfidences
         let boundedRecognition = AppModel.boundedReceiptRecognition(
             ReceiptRecognitionResult(
                 lines: recognizedLines,
                 meanConfidence: 0.90,
-                lineConfidences: lineConfidences
+                lineConfidences: capturedLineConfidences
             )
         )
         let model = fixture.model(receiptRecognizer: { _ in
             ReceiptRecognitionResult(
                 lines: recognizedLines,
                 meanConfidence: 0.95,
-                lineConfidences: lineConfidences
+                lineConfidences: capturedLineConfidences
             )
         })
 
