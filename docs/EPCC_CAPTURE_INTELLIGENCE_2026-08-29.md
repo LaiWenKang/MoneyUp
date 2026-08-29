@@ -166,6 +166,12 @@ app plus embedded widget build. The workflow also produced coverage and proved
 that both target-scoped privacy manifests reached their built bundles. The
 following local checks pass on the current working tree:
 
+Strict review run 173 first passed all core/persistence tests but stopped at
+the Release app compile because a line-broken range operator in the new bounded
+confidence helper was not accepted by Swift 6. The next commit introduced an
+explicit `suffixStart` bound and repeated the entire workflow; run 173 is not
+cited as passing candidate evidence.
+
 ```text
 git diff --check
 python3 -m py_compile Scripts/*.py

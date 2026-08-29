@@ -1031,11 +1031,9 @@ final class AppModel: ObservableObject {
         let selectedIndices: [Int]
         if recognition.lines.count > maximumLineCount {
             let edgeCount = maximumLineCount / 2
+            let suffixStart = recognition.lines.count - edgeCount
             selectedIndices = Array(0..<edgeCount)
-                + Array(
-                    (recognition.lines.count - edgeCount)
-                        ..<recognition.lines.count
-                )
+                + Array(suffixStart..<recognition.lines.count)
         } else {
             selectedIndices = Array(recognition.lines.indices)
         }
