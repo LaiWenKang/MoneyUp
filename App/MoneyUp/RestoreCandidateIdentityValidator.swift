@@ -3,11 +3,7 @@ import MoneyUpCore
 import MoneyUpPersistence
 
 extension RestoreCandidateValidator {
-    static func validateSnapshotIdentities(
-        _ snapshot: DatabaseSnapshot
-    ) throws {
-        try validateSnapshotWorkLimits(snapshot)
-        let decoder = JSONDecoder()
+    struct SnapshotIdentityState: Sendable {
         var logicalIDsByCollection: [String: Set<UUID>] = [:]
         var exchangeRatePairDays = Set<String>()
         var physicalRecordIDs = Set<String>()
@@ -19,264 +15,23 @@ extension RestoreCandidateValidator {
         var lifecycleEntryReferenceCount = 0
         var scheduleResolutionCount = 0
         var savingsGoalActivityCount = 0
+    }
+
+    static func validateSnapshotIdentities(
+        _ snapshot: DatabaseSnapshot
+    ) throws {
+        try validateSnapshotWorkLimits(snapshot)
+        let decoder = JSONDecoder()
+        var state = SnapshotIdentityState()
 
         do {
             for (index, record) in snapshot.records.enumerated() {
-                if index.isMultiple(of: 256) { try Task.checkCancellation() }
-                let recordIDByteCount = record.recordID.utf8.count
-                let (nextRecordIDByteCount, recordIDByteCountOverflow) =
-                    aggregateRecordIDByteCount.addingReportingOverflow(
-                        recordIDByteCount
-                    )
-                guard !record.recordID.isEmpty,
-                      record.collection.utf8.count <= maximumCollectionByteCount,
-                      recordIDByteCount <= maximumRecordIDByteCount,
-                      !recordIDByteCountOverflow,
-                      nextRecordIDByteCount
-                        <= maximumAggregateRecordIDByteCount,
-                      !record.payload.isEmpty,
-                      record.updatedAt.isFinite else {
-                    throw AppModelError.invalidBook
-                }
-                aggregateRecordIDByteCount = nextRecordIDByteCount
-                guard let collection = RecordCollection(
-                    rawValue: record.collection
-                ) else {
-                    throw AppModelError.invalidBook
-                }
-                let payloadLimit = collection == .receiptAttachments
-                    ? maximumReceiptPayloadByteCount
-                    : maximumPayloadByteCount
-                guard record.payload.count <= payloadLimit else {
-                    throw AppModelError.invalidBook
-                }
-                collectionCounts[collection.rawValue, default: 0] += 1
-                guard collectionCounts[collection.rawValue, default: 0]
-                    <= maximumRecordCount(for: collection) else {
-                    throw AppModelError.invalidBook
-                }
-                let physicalIdentity = collection.rawValue
-                    + "\u{1f}" + record.recordID.lowercased()
-                guard physicalRecordIDs.insert(physicalIdentity).inserted else {
-                    throw AppModelError.invalidBook
-                }
-
-                let logicalID: UUID?
-                switch collection {
-                case .profile:
-                    guard record.recordID == UserProfile.primaryRecordID else {
-                        throw AppModelError.invalidBook
-                    }
-                    _ = try decoder.decode(UserProfile.self, from: record.payload)
-                    logicalID = nil
-                case .accounts:
-                    logicalID = try decoder.decode(
-                        LedgerAccount.self,
-                        from: record.payload
-                    ).id
-                case .journalEntries:
-                    let shape = try decoder.decode(
-                        JournalWorkShape.self,
-                        from: record.payload
-                    )
-                    journalPostingCount = try boundedAggregateCount(
-                        current: journalPostingCount,
-                        adding: shape.postingCount,
-                        perRecordLimit: maximumJournalPostingsPerEntry,
-                        aggregateLimit: maximumJournalPostingCount
-                    )
-                    logicalID = try decoder.decode(
-                        JournalEntry.self,
-                        from: record.payload
-                    ).id
-                case .journalEntryRevisions:
-                    let shape = try decoder.decode(
-                        JournalWorkShape.self,
-                        from: record.payload
-                    )
-                    journalPostingCount = try boundedAggregateCount(
-                        current: journalPostingCount,
-                        adding: shape.postingCount,
-                        perRecordLimit: maximumJournalPostingsPerEntry,
-                        aggregateLimit: maximumJournalPostingCount
-                    )
-                    let entry = try decoder.decode(
-                        JournalEntry.self,
-                        from: record.payload
-                    )
-                    guard isValidJournalRevisionRecordID(
-                        record.recordID,
-                        entryID: entry.id
-                    ) else {
-                        throw AppModelError.invalidBook
-                    }
-                    logicalID = nil
-                case .budgetNodes:
-                    logicalID = try decoder.decode(
-                        BudgetNode.self,
-                        from: record.payload
-                    ).id
-                case .scheduledTransactions:
-                    let shape = try decoder.decode(
-                        ScheduledTransactionWorkShape.self,
-                        from: record.payload
-                    )
-                    scheduleResolutionCount = try boundedAggregateCount(
-                        current: scheduleResolutionCount,
-                        adding: shape.resolutionCount,
-                        perRecordLimit: maximumScheduleResolutionsPerSchedule,
-                        aggregateLimit: maximumScheduleResolutionCount
-                    )
-                    logicalID = try decoder.decode(
-                        ScheduledTransaction.self,
-                        from: record.payload
-                    ).id
-                case .investmentHoldings:
-                    let shape = try decoder.decode(
-                        InvestmentHoldingWorkShape.self,
-                        from: record.payload
-                    )
-                    guard shape.counts.allSatisfy({
-                        $0 <= maximumHoldingActivitiesPerCollection
-                    }) else {
-                        throw AppModelError.invalidBook
-                    }
-                    holdingActivityCount = try boundedAggregateCount(
-                        current: holdingActivityCount,
-                        adding: shape.totalCount,
-                        perRecordLimit: maximumHoldingActivitiesPerHolding,
-                        aggregateLimit: maximumHoldingActivityCount
-                    )
-                    logicalID = try decoder.decode(
-                        InvestmentHolding.self,
-                        from: record.payload
-                    ).id
-                case .netWorthSnapshots:
-                    logicalID = try decoder.decode(
-                        NetWorthSnapshot.self,
-                        from: record.payload
-                    ).id
-                case .quickLogDrafts:
-                    guard record.recordID == QuickLogDraft.primaryRecordID else {
-                        throw AppModelError.invalidBook
-                    }
-                    let shape = try decoder.decode(
-                        QuickLogDraftWorkShape.self,
-                        from: record.payload
-                    )
-                    guard shape.splitCount <= maximumQuickLogSplitCount else {
-                        throw AppModelError.invalidBook
-                    }
-                    _ = try decoder.decode(QuickLogDraft.self, from: record.payload)
-                    logicalID = nil
-                case .accountLifecycleAudit:
-                    let shape = try decoder.decode(
-                        LifecycleAuditWorkShape.self,
-                        from: record.payload
-                    )
-                    lifecycleEntryReferenceCount = try boundedAggregateCount(
-                        current: lifecycleEntryReferenceCount,
-                        adding: shape.referenceCount,
-                        perRecordLimit: maximumLifecycleReferencesPerAudit,
-                        aggregateLimit: maximumLifecycleEntryReferenceCount
-                    )
-                    logicalID = try decoder.decode(
-                        LedgerAccountLifecycleAudit.self,
-                        from: record.payload
-                    ).id
-                case .receiptAttachments:
-                    logicalID = try decoder.decode(
-                        ReceiptAttachment.self,
-                        from: record.payload
-                    ).id
-                case .exchangeRates:
-                    let rate = try decoder.decode(
-                        DatedExchangeRate.self,
-                        from: record.payload
-                    )
-                    let pair = [
-                        rate.baseCurrency.value,
-                        rate.quoteCurrency.value
-                    ].sorted()
-                    let pairDay = pair.joined(separator: "\u{1f}")
-                        + "\u{1f}\(rate.effectiveContext.dayKey)"
-                    guard exchangeRatePairDays.insert(pairDay).inserted else {
-                        throw AppModelError.invalidBook
-                    }
-                    logicalID = rate.id
-                case .savingsGoals:
-                    let shape = try decoder.decode(
-                        SavingsGoalWorkShape.self,
-                        from: record.payload
-                    )
-                    guard shape.movementCount <= maximumSavingsGoalMovements,
-                          shape.resetCount <= maximumSavingsGoalResets else {
-                        throw AppModelError.invalidBook
-                    }
-                    savingsGoalActivityCount = try boundedAggregateCount(
-                        current: savingsGoalActivityCount,
-                        adding: shape.totalCount,
-                        perRecordLimit: maximumSavingsGoalActivitiesPerGoal,
-                        aggregateLimit: maximumSavingsGoalActivityCount
-                    )
-                    logicalID = try decoder.decode(
-                        SavingsGoal.self,
-                        from: record.payload
-                    ).id
-                case .budgetConfigurationTimelines:
-                    guard record.recordID
-                        == BudgetConfigurationTimeline.primaryRecordID else {
-                        throw AppModelError.invalidBook
-                    }
-                    let shape = try decoder.decode(
-                        BudgetTimelineWorkShape.self,
-                        from: record.payload
-                    )
-                    guard shape.revisionCount
-                            <= maximumBudgetTimelineRevisionCount,
-                          shape.nodeCounts.allSatisfy({
-                              $0 <= maximumBudgetNodesPerRevision
-                          }),
-                          shape.totalNodeCount
-                            <= maximumBudgetTimelineNodeCount else {
-                        throw AppModelError.invalidBook
-                    }
-                    _ = try decoder.decode(
-                        BudgetConfigurationTimeline.self,
-                        from: record.payload
-                    )
-                    logicalID = nil
-                case .budgetEntryAttributions:
-                    let shape = try decoder.decode(
-                        BudgetAttributionWorkShape.self,
-                        from: record.payload
-                    )
-                    attributionPostingCount = try boundedAggregateCount(
-                        current: attributionPostingCount,
-                        adding: shape.postingCount,
-                        perRecordLimit: maximumJournalPostingsPerEntry,
-                        aggregateLimit: maximumJournalPostingCount
-                    )
-                    logicalID = try decoder.decode(
-                        BudgetEntryAttribution.self,
-                        from: record.payload
-                    ).id
-                }
-
-                guard let logicalID else { continue }
-                // Every normal mutation addresses UUID records by the exact,
-                // canonical `UUID.uuidString` key. Accepting a lowercase (or
-                // otherwise noncanonical) physical alias here would let a
-                // validly encrypted archive install a row that later edits or
-                // deletes cannot reach, so it could reappear after reload.
-                guard record.recordID == logicalID.uuidString else {
-                    throw AppModelError.invalidBook
-                }
-                let inserted = logicalIDsByCollection[
-                    collection.rawValue,
-                    default: []
-                ].insert(logicalID).inserted
-                guard inserted else { throw AppModelError.invalidBook }
+                try validateSnapshotIdentityRecord(
+                    record,
+                    index: index,
+                    decoder: decoder,
+                    state: &state
+                )
             }
         } catch is CancellationError {
             throw CancellationError()
@@ -289,6 +44,329 @@ extension RestoreCandidateValidator {
         }
     }
 
+    static func validateSnapshotIdentityRecord(
+        _ record: StoredRecordSnapshot,
+        index: Int,
+        decoder: JSONDecoder,
+        state: inout SnapshotIdentityState
+    ) throws {
+        if index.isMultiple(of: 256) { try Task.checkCancellation() }
+        let collection = try validateIdentityRecordEnvelope(
+            record,
+            state: &state
+        )
+        guard let logicalID = try decodeLogicalIdentity(
+            record,
+            collection: collection,
+            decoder: decoder,
+            state: &state
+        ) else { return }
+        // UUID records are always addressed by their exact canonical key.
+        guard record.recordID == logicalID.uuidString else {
+            throw AppModelError.invalidBook
+        }
+        let inserted = state.logicalIDsByCollection[
+            collection.rawValue,
+            default: []
+        ].insert(logicalID).inserted
+        guard inserted else { throw AppModelError.invalidBook }
+    }
+
+    static func validateIdentityRecordEnvelope(
+        _ record: StoredRecordSnapshot,
+        state: inout SnapshotIdentityState
+    ) throws -> RecordCollection {
+        let recordIDByteCount = record.recordID.utf8.count
+        let (nextIDByteCount, overflow) = state.aggregateRecordIDByteCount
+            .addingReportingOverflow(recordIDByteCount)
+        guard !record.recordID.isEmpty,
+              record.collection.utf8.count <= maximumCollectionByteCount,
+              recordIDByteCount <= maximumRecordIDByteCount,
+              !overflow,
+              nextIDByteCount <= maximumAggregateRecordIDByteCount,
+              !record.payload.isEmpty,
+              record.updatedAt.isFinite,
+              let collection = RecordCollection(rawValue: record.collection) else {
+            throw AppModelError.invalidBook
+        }
+        state.aggregateRecordIDByteCount = nextIDByteCount
+        let payloadLimit = collection == .receiptAttachments
+            ? maximumReceiptPayloadByteCount : maximumPayloadByteCount
+        guard record.payload.count <= payloadLimit else {
+            throw AppModelError.invalidBook
+        }
+        state.collectionCounts[collection.rawValue, default: 0] += 1
+        guard state.collectionCounts[collection.rawValue, default: 0]
+            <= maximumRecordCount(for: collection) else {
+            throw AppModelError.invalidBook
+        }
+        let physicalIdentity = collection.rawValue
+            + "\u{1f}" + record.recordID.lowercased()
+        guard state.physicalRecordIDs.insert(physicalIdentity).inserted else {
+            throw AppModelError.invalidBook
+        }
+        return collection
+    }
+
+    static func decodeLogicalIdentity(
+        _ record: StoredRecordSnapshot,
+        collection: RecordCollection,
+        decoder: JSONDecoder,
+        state: inout SnapshotIdentityState
+    ) throws -> UUID? {
+        switch collection {
+        case .profile:
+            try decodePrimaryRecord(
+                UserProfile.self,
+                record: record,
+                expectedID: UserProfile.primaryRecordID,
+                decoder: decoder
+            )
+            return nil
+        case .accounts:
+            return try decoder.decode(LedgerAccount.self, from: record.payload).id
+        case .journalEntries:
+            return try decodeJournalIdentity(
+                record,
+                isRevision: false,
+                decoder: decoder,
+                state: &state
+            )
+        case .journalEntryRevisions:
+            return try decodeJournalIdentity(
+                record,
+                isRevision: true,
+                decoder: decoder,
+                state: &state
+            )
+        case .budgetNodes:
+            return try decoder.decode(BudgetNode.self, from: record.payload).id
+        case .scheduledTransactions:
+            return try decodeScheduleIdentity(record, decoder: decoder, state: &state)
+        case .investmentHoldings:
+            return try decodeHoldingIdentity(record, decoder: decoder, state: &state)
+        case .netWorthSnapshots:
+            return try decoder.decode(NetWorthSnapshot.self, from: record.payload).id
+        case .quickLogDrafts:
+            try validateQuickLogDraft(record, decoder: decoder)
+            return nil
+        case .accountLifecycleAudit:
+            return try decodeLifecycleIdentity(record, decoder: decoder, state: &state)
+        case .receiptAttachments:
+            return try decoder.decode(ReceiptAttachment.self, from: record.payload).id
+        case .exchangeRates:
+            return try decodeExchangeRateIdentity(record, decoder: decoder, state: &state)
+        case .savingsGoals:
+            return try decodeSavingsGoalIdentity(record, decoder: decoder, state: &state)
+        case .budgetConfigurationTimelines:
+            try validateBudgetTimeline(record, decoder: decoder)
+            return nil
+        case .budgetEntryAttributions:
+            return try decodeAttributionIdentity(record, decoder: decoder, state: &state)
+        }
+    }
+
+    static func decodePrimaryRecord<Value: Decodable>(
+        _ type: Value.Type,
+        record: StoredRecordSnapshot,
+        expectedID: String,
+        decoder: JSONDecoder
+    ) throws {
+        guard record.recordID == expectedID else {
+            throw AppModelError.invalidBook
+        }
+        _ = try decoder.decode(type, from: record.payload)
+    }
+
+    static func decodeJournalIdentity(
+        _ record: StoredRecordSnapshot,
+        isRevision: Bool,
+        decoder: JSONDecoder,
+        state: inout SnapshotIdentityState
+    ) throws -> UUID? {
+        let shape = try decoder.decode(JournalWorkShape.self, from: record.payload)
+        state.journalPostingCount = try boundedAggregateCount(
+            current: state.journalPostingCount,
+            adding: shape.postingCount,
+            perRecordLimit: maximumJournalPostingsPerEntry,
+            aggregateLimit: maximumJournalPostingCount
+        )
+        let entry = try decoder.decode(JournalEntry.self, from: record.payload)
+        guard isRevision else { return entry.id }
+        guard isValidJournalRevisionRecordID(
+            record.recordID,
+            entryID: entry.id
+        ) else { throw AppModelError.invalidBook }
+        return nil
+    }
+
+    static func decodeScheduleIdentity(
+        _ record: StoredRecordSnapshot,
+        decoder: JSONDecoder,
+        state: inout SnapshotIdentityState
+    ) throws -> UUID {
+        let shape = try decoder.decode(
+            ScheduledTransactionWorkShape.self,
+            from: record.payload
+        )
+        state.scheduleResolutionCount = try boundedAggregateCount(
+            current: state.scheduleResolutionCount,
+            adding: shape.resolutionCount,
+            perRecordLimit: maximumScheduleResolutionsPerSchedule,
+            aggregateLimit: maximumScheduleResolutionCount
+        )
+        return try decoder.decode(
+            ScheduledTransaction.self,
+            from: record.payload
+        ).id
+    }
+
+    static func decodeHoldingIdentity(
+        _ record: StoredRecordSnapshot,
+        decoder: JSONDecoder,
+        state: inout SnapshotIdentityState
+    ) throws -> UUID {
+        let shape = try decoder.decode(
+            InvestmentHoldingWorkShape.self,
+            from: record.payload
+        )
+        guard shape.counts.allSatisfy({
+            $0 <= maximumHoldingActivitiesPerCollection
+        }) else { throw AppModelError.invalidBook }
+        state.holdingActivityCount = try boundedAggregateCount(
+            current: state.holdingActivityCount,
+            adding: shape.totalCount,
+            perRecordLimit: maximumHoldingActivitiesPerHolding,
+            aggregateLimit: maximumHoldingActivityCount
+        )
+        return try decoder.decode(InvestmentHolding.self, from: record.payload).id
+    }
+
+    static func validateQuickLogDraft(
+        _ record: StoredRecordSnapshot,
+        decoder: JSONDecoder
+    ) throws {
+        guard record.recordID == QuickLogDraft.primaryRecordID else {
+            throw AppModelError.invalidBook
+        }
+        let shape = try decoder.decode(
+            QuickLogDraftWorkShape.self,
+            from: record.payload
+        )
+        guard shape.splitCount <= maximumQuickLogSplitCount else {
+            throw AppModelError.invalidBook
+        }
+        _ = try decoder.decode(QuickLogDraft.self, from: record.payload)
+    }
+
+    static func decodeLifecycleIdentity(
+        _ record: StoredRecordSnapshot,
+        decoder: JSONDecoder,
+        state: inout SnapshotIdentityState
+    ) throws -> UUID {
+        let shape = try decoder.decode(
+            LifecycleAuditWorkShape.self,
+            from: record.payload
+        )
+        state.lifecycleEntryReferenceCount = try boundedAggregateCount(
+            current: state.lifecycleEntryReferenceCount,
+            adding: shape.referenceCount,
+            perRecordLimit: maximumLifecycleReferencesPerAudit,
+            aggregateLimit: maximumLifecycleEntryReferenceCount
+        )
+        return try decoder.decode(
+            LedgerAccountLifecycleAudit.self,
+            from: record.payload
+        ).id
+    }
+
+    static func decodeExchangeRateIdentity(
+        _ record: StoredRecordSnapshot,
+        decoder: JSONDecoder,
+        state: inout SnapshotIdentityState
+    ) throws -> UUID {
+        let rate = try decoder.decode(DatedExchangeRate.self, from: record.payload)
+        let pair = [
+            rate.baseCurrency.value,
+            rate.quoteCurrency.value
+        ].sorted()
+        let pairDay = pair.joined(separator: "\u{1f}")
+            + "\u{1f}\(rate.effectiveContext.dayKey)"
+        guard state.exchangeRatePairDays.insert(pairDay).inserted else {
+            throw AppModelError.invalidBook
+        }
+        return rate.id
+    }
+
+    static func decodeSavingsGoalIdentity(
+        _ record: StoredRecordSnapshot,
+        decoder: JSONDecoder,
+        state: inout SnapshotIdentityState
+    ) throws -> UUID {
+        let shape = try decoder.decode(
+            SavingsGoalWorkShape.self,
+            from: record.payload
+        )
+        guard shape.movementCount <= maximumSavingsGoalMovements,
+              shape.resetCount <= maximumSavingsGoalResets else {
+            throw AppModelError.invalidBook
+        }
+        state.savingsGoalActivityCount = try boundedAggregateCount(
+            current: state.savingsGoalActivityCount,
+            adding: shape.totalCount,
+            perRecordLimit: maximumSavingsGoalActivitiesPerGoal,
+            aggregateLimit: maximumSavingsGoalActivityCount
+        )
+        return try decoder.decode(SavingsGoal.self, from: record.payload).id
+    }
+
+    static func validateBudgetTimeline(
+        _ record: StoredRecordSnapshot,
+        decoder: JSONDecoder
+    ) throws {
+        guard record.recordID == BudgetConfigurationTimeline.primaryRecordID else {
+            throw AppModelError.invalidBook
+        }
+        let shape = try decoder.decode(
+            BudgetTimelineWorkShape.self,
+            from: record.payload
+        )
+        guard shape.revisionCount <= maximumBudgetTimelineRevisionCount,
+              shape.nodeCounts.allSatisfy({
+                  $0 <= maximumBudgetNodesPerRevision
+              }),
+              shape.totalNodeCount <= maximumBudgetTimelineNodeCount else {
+            throw AppModelError.invalidBook
+        }
+        _ = try decoder.decode(
+            BudgetConfigurationTimeline.self,
+            from: record.payload
+        )
+    }
+
+    static func decodeAttributionIdentity(
+        _ record: StoredRecordSnapshot,
+        decoder: JSONDecoder,
+        state: inout SnapshotIdentityState
+    ) throws -> UUID {
+        let shape = try decoder.decode(
+            BudgetAttributionWorkShape.self,
+            from: record.payload
+        )
+        state.attributionPostingCount = try boundedAggregateCount(
+            current: state.attributionPostingCount,
+            adding: shape.postingCount,
+            perRecordLimit: maximumJournalPostingsPerEntry,
+            aggregateLimit: maximumJournalPostingCount
+        )
+        return try decoder.decode(
+            BudgetEntryAttribution.self,
+            from: record.payload
+        ).id
+    }
+}
+
+extension RestoreCandidateValidator {
     static func isWithinCandidateRecordLimit(_ count: Int) -> Bool {
         count >= 0 && count <= maximumCandidateRecordCount
     }
