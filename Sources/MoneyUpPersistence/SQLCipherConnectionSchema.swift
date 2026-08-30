@@ -45,7 +45,7 @@ extension SQLCipherConnection {
     }
 
     func migrateIfNeeded() throws {
-        var currentVersion = try schemaVersion()
+        var currentVersion = try storedSchemaVersion()
         guard currentVersion <= supportedSchemaVersion else {
             throw PersistenceError.unsupportedSchema(
                 found: currentVersion,
@@ -76,7 +76,7 @@ extension SQLCipherConnection {
         try migrateToVersion6()
     }
 
-    private func schemaVersion() throws -> Int32 {
+    private func storedSchemaVersion() throws -> Int32 {
         try withStatement("PRAGMA user_version;") { statement in
             guard sqlite3_step(statement) == SQLITE_ROW else {
                 throw makeError()
