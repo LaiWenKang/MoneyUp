@@ -327,12 +327,15 @@ extension RestoreCandidateValidator {
                 }
             }
 
-            try validatePredecessorEdges(
+            try Self.validatePredecessorEdges(
                 predecessorByEntryID,
                 currentEntryIDs: currentEntryIDs,
                 knownEntryIDs: seenEntryIDs
             )
-            try validateAcyclic(predecessorByEntryID, entryIDs: seenEntryIDs)
+            try Self.validateAcyclic(
+                predecessorByEntryID,
+                entryIDs: seenEntryIDs
+            )
 
             self.predecessorByEntryID = predecessorByEntryID
             knownEntryIDs = seenEntryIDs
