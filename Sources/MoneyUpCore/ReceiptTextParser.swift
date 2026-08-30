@@ -288,7 +288,7 @@ public enum ReceiptTextParser {
         }
     }
 
-    static func rankedAmount(
+    private static func rankedAmount(
         for token: MoneyToken,
         context: AmountLineContext
     ) -> RankedAmount? {
