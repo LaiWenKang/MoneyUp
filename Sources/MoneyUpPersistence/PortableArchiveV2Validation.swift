@@ -396,14 +396,3 @@ extension PortableArchiveV2 {
         return result
     }
 }
-
-private extension Data {
-    mutating func appendBigEndian<T: FixedWidthInteger>(_ value: T) {
-        var bigEndian = value.bigEndian
-        Swift.withUnsafeBytes(of: &bigEndian) { bytes in
-            append(contentsOf: bytes)
-        }
-    }
-
-    func decodeUInt16(at offset: Int) throws -> UInt16
-}

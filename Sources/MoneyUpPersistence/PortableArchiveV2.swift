@@ -505,6 +505,15 @@ enum PortableArchiveV2 {
     }
 }
 
+extension Data {
+    mutating func appendBigEndian<T: FixedWidthInteger>(_ value: T) {
+        var bigEndian = value.bigEndian
+        Swift.withUnsafeBytes(of: &bigEndian) { bytes in
+            append(contentsOf: bytes)
+        }
+    }
+
+    func decodeUInt16(at offset: Int) throws -> UInt16 {
         try decodeFixedWidth(UInt16.self, at: offset)
     }
 
