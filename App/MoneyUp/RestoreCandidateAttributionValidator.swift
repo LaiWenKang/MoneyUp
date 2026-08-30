@@ -3,6 +3,8 @@ import MoneyUpCore
 import MoneyUpPersistence
 
 extension RestoreCandidateValidator {
+    typealias AccountRemapping = (source: UUID, target: UUID)
+
     static func validateBudgetAttributions(
         journalEntries: [JournalEntry],
         journalByID: [UUID: JournalEntry],
@@ -44,7 +46,55 @@ extension RestoreCandidateValidator {
             throw AppModelError.invalidBook
         }
 
-        var remappingsByEntryID: [UUID: [(source: UUID, target: UUID)]] = [:]
+        let remappingsByEntryID = try validatedAttributionRemappings(
+            attributions: attributions,
+            journalByID: journalByID
+        )
+        guard !remappingsByEntryID.isEmpty else { return }
+
+        let revisions = try await store.fetchAll(
+            JournalEntry.self,
+            from: .journalEntryRevisions
+        )
+        guard !enforcesRestoreWorkLimits
+                || revisions.count <= maximumJournalRevisionCount else {
+            throw AppModelError.invalidBook
+        }
+        let lifecycleMappingsByEntryID = try await lifecycleMappings(
+            in: store,
+            enforcesRestoreWorkLimits: enforcesRestoreWorkLimits
+        )
+        let lineageIndex = try JournalLineageIndex(
+            journalEntries: journalEntries,
+            revisions: revisions,
+            enforcesRestoreWorkLimits: enforcesRestoreWorkLimits
+        )
+
+        for (index, pair) in remappingsByEntryID.enumerated() {
+            if index.isMultiple(of: 256) { try Task.checkCancellation() }
+            let (entryID, accountRemappings) = pair
+            let lineage = try lineageIndex.lineage(for: entryID)
+            let lifecycleReachability = try validLifecycleReachability(
+                forAny: lineage,
+                mappingsByEntryID: lifecycleMappingsByEntryID,
+                accountByID: accountByID
+            )
+            guard accountRemappings.allSatisfy({ mapping in
+                lifecycleReachability.reaches(
+                    from: mapping.source,
+                    to: mapping.target
+                )
+            }) else {
+                throw AppModelError.invalidBook
+            }
+        }
+    }
+
+    static func validatedAttributionRemappings(
+        attributions: [BudgetEntryAttribution],
+        journalByID: [UUID: JournalEntry]
+    ) throws -> [UUID: [AccountRemapping]] {
+        var remappingsByEntryID: [UUID: [AccountRemapping]] = [:]
         for (index, attribution) in attributions.enumerated() {
             if index.isMultiple(of: 256) { try Task.checkCancellation() }
             guard let entry = journalByID[attribution.id],
@@ -52,22 +102,7 @@ extension RestoreCandidateValidator {
                   attribution.postings.count == entry.postings.count else {
                 throw AppModelError.invalidBook
             }
-            if !entry.originContext.wasInferred {
-                let rawDayKey = entry.originContext.dayKey
-                let originDayKey = String(
-                    format: "%04d-%02d-%02d",
-                    rawDayKey / 10_000,
-                    rawDayKey / 100 % 100,
-                    rawDayKey % 100
-                )
-                guard attribution.originDayKey == originDayKey,
-                      attribution.originTimeZoneIdentifier
-                        == entry.originContext.timeZoneIdentifier,
-                      attribution.originUTCOffsetSeconds
-                        == entry.originContext.utcOffsetSeconds else {
-                    throw AppModelError.invalidBook
-                }
-            }
+            try validateAttributionOrigin(attribution, entry: entry)
             let entryPostings = Dictionary(
                 uniqueKeysWithValues: entry.postings.map { ($0.id, $0) }
             )
@@ -86,16 +121,34 @@ extension RestoreCandidateValidator {
                 ))
             }
         }
-        guard !remappingsByEntryID.isEmpty else { return }
+        return remappingsByEntryID
+    }
 
-        let revisions = try await store.fetchAll(
-            JournalEntry.self,
-            from: .journalEntryRevisions
+    static func validateAttributionOrigin(
+        _ attribution: BudgetEntryAttribution,
+        entry: JournalEntry
+    ) throws {
+        guard !entry.originContext.wasInferred else { return }
+        let rawDayKey = entry.originContext.dayKey
+        let originDayKey = String(
+            format: "%04d-%02d-%02d",
+            rawDayKey / 10_000,
+            rawDayKey / 100 % 100,
+            rawDayKey % 100
         )
-        guard !enforcesRestoreWorkLimits
-                || revisions.count <= maximumJournalRevisionCount else {
+        guard attribution.originDayKey == originDayKey,
+              attribution.originTimeZoneIdentifier
+                == entry.originContext.timeZoneIdentifier,
+              attribution.originUTCOffsetSeconds
+                == entry.originContext.utcOffsetSeconds else {
             throw AppModelError.invalidBook
         }
+    }
+
+    static func lifecycleMappings(
+        in store: EncryptedRecordStore,
+        enforcesRestoreWorkLimits: Bool
+    ) async throws -> [UUID: [LifecycleAccountMapping]] {
         let lifecycleAudits = try await store.fetchAll(
             LedgerAccountLifecycleAudit.self,
             from: .accountLifecycleAudit
@@ -152,30 +205,7 @@ extension RestoreCandidateValidator {
                 lifecycleMappingsByEntryID[entryID, default: []].append(mapping)
             }
         }
-        let lineageIndex = try JournalLineageIndex(
-            journalEntries: journalEntries,
-            revisions: revisions,
-            enforcesRestoreWorkLimits: enforcesRestoreWorkLimits
-        )
-
-        for (index, pair) in remappingsByEntryID.enumerated() {
-            if index.isMultiple(of: 256) { try Task.checkCancellation() }
-            let (entryID, accountRemappings) = pair
-            let lineage = try lineageIndex.lineage(for: entryID)
-            let lifecycleReachability = try validLifecycleReachability(
-                forAny: lineage,
-                mappingsByEntryID: lifecycleMappingsByEntryID,
-                accountByID: accountByID
-            )
-            guard accountRemappings.allSatisfy({ mapping in
-                lifecycleReachability.reaches(
-                    from: mapping.source,
-                    to: mapping.target
-                )
-            }) else {
-                throw AppModelError.invalidBook
-            }
-        }
+        return lifecycleMappingsByEntryID
     }
 
     static func validLifecycleReachability(
@@ -297,11 +327,27 @@ extension RestoreCandidateValidator {
                 }
             }
 
+            try validatePredecessorEdges(
+                predecessorByEntryID,
+                currentEntryIDs: currentEntryIDs,
+                knownEntryIDs: seenEntryIDs
+            )
+            try validateAcyclic(predecessorByEntryID, entryIDs: seenEntryIDs)
+
+            self.predecessorByEntryID = predecessorByEntryID
+            knownEntryIDs = seenEntryIDs
+        }
+
+        static func validatePredecessorEdges(
+            _ predecessorByEntryID: [UUID: UUID],
+            currentEntryIDs: Set<UUID>,
+            knownEntryIDs: Set<UUID>
+        ) throws {
             var successorByEntryID: [UUID: UUID] = [:]
             for (index, edge) in predecessorByEntryID.enumerated() {
                 if index.isMultiple(of: 256) { try Task.checkCancellation() }
                 let (successor, predecessor) = edge
-                guard seenEntryIDs.contains(predecessor),
+                guard knownEntryIDs.contains(predecessor),
                       !currentEntryIDs.contains(predecessor) else {
                     throw AppModelError.invalidBook
                 }
@@ -311,10 +357,15 @@ extension RestoreCandidateValidator {
                 }
                 successorByEntryID[predecessor] = successor
             }
+        }
 
+        static func validateAcyclic(
+            _ predecessorByEntryID: [UUID: UUID],
+            entryIDs: Set<UUID>
+        ) throws {
             var visitState: [UUID: UInt8] = [:]
-            iteration = 0
-            for start in seenEntryIDs where visitState[start] != 2 {
+            var iteration = 0
+            for start in entryIDs where visitState[start] != 2 {
                 var path: [UUID] = []
                 var current: UUID? = start
                 while let candidate = current {
@@ -332,9 +383,6 @@ extension RestoreCandidateValidator {
                 }
                 for candidate in path { visitState[candidate] = 2 }
             }
-
-            self.predecessorByEntryID = predecessorByEntryID
-            knownEntryIDs = seenEntryIDs
         }
 
         func lineage(for entryID: UUID) throws -> Set<UUID> {
