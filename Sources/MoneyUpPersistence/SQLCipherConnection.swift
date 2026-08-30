@@ -1,0 +1,702 @@
+import Foundation
+import MoneyUpCore
+import SQLCipher
+
+final class SQLCipherConnection: @unchecked Sendable {
+    struct StoredPayload {
+        let id: String
+        let payload: Data
+    }
+
+    struct BalanceKey: Hashable {
+        let accountID: String
+        let currency: String
+    }
+
+    var database: OpaquePointer?
+    #if DEBUG
+    var shouldFailNextRestoreRollbackForTesting = false
+    var shouldFailNextWriteRollbackForTesting = false
+    #endif
+    let supportedSchemaVersion: Int32
+    var lastJournalWriteDiagnostics = JournalWriteDiagnostics(
+        priorPostingRowsRead: 0,
+        compactBalanceRowsRead: 0,
+        journalEntriesChanged: 0
+    )
+    var lastJournalLedgerReadDiagnostics = JournalLedgerReadDiagnostics(
+        invalidEntryIDsRead: 0,
+        quarantinedPostingRowsRead: 0,
+        referenceAggregateRowsRead: 0
+    )
+    var lastReceiptAttachmentReadDiagnostics =
+        ReceiptAttachmentReadDiagnostics(metadataRowsRead: 0, blobPayloadsDecoded: 0)
+
+    init(
+        databaseURL: URL,
+        key: Data,
+        supportedSchemaVersion: Int32
+    ) throws {
+        self.supportedSchemaVersion = supportedSchemaVersion
+
+        let flags = SQLITE_OPEN_CREATE | SQLITE_OPEN_READWRITE | SQLITE_OPEN_FULLMUTEX
+        let openResult = sqlite3_open_v2(databaseURL.path, &database, flags, nil)
+        guard openResult == SQLITE_OK else {
+            let error = makeError(code: openResult)
+            close()
+            throw error
+        }
+
+        sqlite3_extended_result_codes(database, 1)
+
+        let keyResult = key.withUnsafeBytes { buffer in
+            sqlite3_key(database, buffer.baseAddress, Int32(buffer.count))
+        }
+        guard keyResult == SQLITE_OK else {
+            let error = makeError(code: keyResult)
+            close()
+            throw error
+        }
+
+        do {
+            try verifyCipher()
+            try configure()
+            try migrateIfNeeded()
+        } catch {
+            close()
+            throw error
+        }
+    }
+
+    deinit {
+        close()
+    }
+
+    func close() {
+        guard let database else { return }
+        sqlite3_close_v2(database)
+        self.database = nil
+    }
+
+    func upsertRecord(
+        collection: String,
+        recordID: String,
+        payload: Data,
+        updatedAt: TimeInterval,
+        indexedAt: TimeInterval?
+    ) throws {
+        try withStatement(
+            """
+            INSERT INTO records (collection, record_id, payload, updated_at, indexed_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(collection, record_id) DO UPDATE SET
+                payload = excluded.payload,
+                updated_at = excluded.updated_at,
+                indexed_at = excluded.indexed_at;
+            """
+        ) { statement in
+            try bindText(collection, at: 1, to: statement)
+            try bindText(recordID, at: 2, to: statement)
+            try bindBlob(payload, at: 3, to: statement)
+            guard sqlite3_bind_double(statement, 4, updatedAt) == SQLITE_OK else {
+                throw makeError()
+            }
+            try bindOptionalDouble(indexedAt, at: 5, to: statement)
+            try stepExpectingDone(statement)
+        }
+    }
+
+    func write(
+        _ records: [RecordWrite],
+        removing deletions: [RecordDeletion],
+        relinkingReceiptAttachments relink: ReceiptAttachmentRelink? = nil
+    ) throws {
+        guard !records.isEmpty || !deletions.isEmpty || relink != nil else { return }
+        for record in records where record.collection == .journalEntries {
+            guard record.journalIndex != nil, record.indexedAt != nil else {
+                throw PersistenceError.invalidStoredRecord(
+                    collection: .journalEntries,
+                    recordID: record.id
+                )
+            }
+        }
+        for record in records where record.collection == .receiptAttachments {
+            guard record.receiptAttachmentIndex != nil else {
+                throw PersistenceError.invalidStoredRecord(
+                    collection: .receiptAttachments,
+                    recordID: record.id
+                )
+            }
+        }
+        for record in records where record.collection == .budgetEntryAttributions {
+            guard record.budgetAttributionIndex != nil else {
+                throw PersistenceError.invalidStoredRecord(
+                    collection: .budgetEntryAttributions,
+                    recordID: record.id
+                )
+            }
+        }
+        try execute("BEGIN IMMEDIATE;")
+        do {
+            let metricsBeforeWrite = try storageMetrics()
+            let updatedAt = Date().timeIntervalSince1970
+            var balanceDeltas: [BalanceKey: Decimal] = [:]
+            var priorPostingRowsRead = 0
+            var journalEntriesChanged = 0
+            for record in records {
+                if record.collection == .journalEntries {
+                    let prior = try postingTotals(forEntryID: record.id)
+                    priorPostingRowsRead += prior.rowCount
+                    for (key, amount) in prior.totals {
+                        balanceDeltas[key] = try CheckedDecimal.subtracting(
+                            balanceDeltas[key] ?? .zero,
+                            amount
+                        )
+                    }
+                    journalEntriesChanged += 1
+                }
+                try upsertRecord(
+                    collection: record.collection.rawValue,
+                    recordID: record.id,
+                    payload: record.payload,
+                    updatedAt: updatedAt,
+                    indexedAt: record.indexedAt
+                )
+                if record.collection == .journalEntries {
+                    try replaceJournalIndex(
+                        entryID: record.id,
+                        with: record.journalIndex
+                    )
+                    for (key, amount) in try postingTotals(
+                        for: record.journalIndex
+                    ) {
+                        balanceDeltas[key] = try CheckedDecimal.adding(
+                            balanceDeltas[key] ?? .zero,
+                            amount
+                        )
+                    }
+                }
+                if record.collection == .receiptAttachments,
+                   let attachmentIndex = record.receiptAttachmentIndex {
+                    try replaceReceiptAttachmentIndex(
+                        attachmentID: record.id,
+                        with: attachmentIndex
+                    )
+                }
+                if record.collection == .budgetEntryAttributions,
+                   let attributionIndex = record.budgetAttributionIndex {
+                    try replaceBudgetAttributionIndex(
+                        entryID: record.id,
+                        with: attributionIndex
+                    )
+                }
+            }
+            if let relink {
+                try relinkReceiptAttachments(
+                    from: relink.sourceEntryID,
+                    to: relink.destinationEntryID,
+                    updatedAt: updatedAt
+                )
+            }
+            for deletion in deletions {
+                if deletion.collection == .journalEntries {
+                    let prior = try postingTotals(forEntryID: deletion.id)
+                    priorPostingRowsRead += prior.rowCount
+                    for (key, amount) in prior.totals {
+                        balanceDeltas[key] = try CheckedDecimal.subtracting(
+                            balanceDeltas[key] ?? .zero,
+                            amount
+                        )
+                    }
+                    journalEntriesChanged += 1
+                    try deleteJournalIndex(entryID: deletion.id)
+                }
+                if deletion.collection == .receiptAttachments {
+                    try deleteReceiptAttachmentIndex(attachmentID: deletion.id)
+                }
+                if deletion.collection == .budgetEntryAttributions {
+                    try deleteBudgetAttributionIndex(entryID: deletion.id)
+                }
+                try remove(
+                    collection: deletion.collection.rawValue,
+                    recordID: deletion.id
+                )
+            }
+            let compactBalanceRowsRead = try applyBalanceDeltas(balanceDeltas)
+            try enforceLogicalStoreLimits(
+                before: metricsBeforeWrite,
+                after: storageMetrics()
+            )
+            try execute("COMMIT;")
+            lastJournalWriteDiagnostics = JournalWriteDiagnostics(
+                priorPostingRowsRead: priorPostingRowsRead,
+                compactBalanceRowsRead: compactBalanceRowsRead,
+                journalEntriesChanged: journalEntriesChanged
+            )
+        } catch let operationError {
+            do {
+                #if DEBUG
+                if shouldFailNextWriteRollbackForTesting {
+                    shouldFailNextWriteRollbackForTesting = false
+                    try execute(
+                        "ROLLBACK TO moneyup_missing_write_savepoint;"
+                    )
+                }
+                #endif
+                try execute("ROLLBACK;")
+            } catch {
+                close()
+                throw PersistenceError.transactionStateIndeterminate
+            }
+            throw operationError
+        }
+    }
+
+    func relinkReceiptAttachments(
+        from sourceEntryID: UUID,
+        to destinationEntryID: UUID,
+        updatedAt: TimeInterval
+    ) throws {
+        guard sourceEntryID != destinationEntryID else { return }
+        let attachmentRecordIDs = try receiptAttachmentRecordIDs(entryID: sourceEntryID)
+        for attachmentRecordID in attachmentRecordIDs {
+            guard let attachmentID = UUID(uuidString: attachmentRecordID) else {
+                throw PersistenceError.invalidStoredRecord(
+                    collection: .receiptAttachments,
+                    recordID: attachmentRecordID
+                )
+            }
+            guard let payload = try fetch(
+                collection: RecordCollection.receiptAttachments.rawValue,
+                recordID: attachmentRecordID
+            ) else {
+                throw PersistenceError.invalidStoredRecord(
+                    collection: .receiptAttachments,
+                    recordID: attachmentRecordID
+                )
+            }
+            let original: ReceiptAttachment
+            do {
+                original = try JSONDecoder().decode(ReceiptAttachment.self, from: payload)
+            } catch {
+                throw PersistenceError.invalidStoredRecord(
+                    collection: .receiptAttachments,
+                    recordID: attachmentRecordID
+                )
+            }
+            guard original.id == attachmentID,
+                  original.entryID == sourceEntryID else {
+                throw PersistenceError.invalidStoredRecord(
+                    collection: .receiptAttachments,
+                    recordID: attachmentRecordID
+                )
+            }
+            let relinked = try ReceiptAttachment(
+                id: original.id,
+                entryID: destinationEntryID,
+                mediaType: original.mediaType,
+                data: original.data,
+                createdAt: original.createdAt
+            )
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.sortedKeys]
+            let relinkedPayload = try encoder.encode(relinked)
+            let index = ReceiptAttachmentIndexWrite(
+                attachment: relinked,
+                recordID: attachmentRecordID
+            )
+            try upsertRecord(
+                collection: RecordCollection.receiptAttachments.rawValue,
+                recordID: attachmentRecordID,
+                payload: relinkedPayload,
+                updatedAt: updatedAt,
+                indexedAt: nil
+            )
+            try replaceReceiptAttachmentIndex(
+                attachmentID: attachmentRecordID,
+                with: index
+            )
+        }
+    }
+
+    func replaceReceiptAttachmentIndex(
+        attachmentID: String,
+        with index: ReceiptAttachmentIndexWrite
+    ) throws {
+        guard index.recordID == attachmentID,
+              index.byteCount > 0,
+              index.byteCount <= ReceiptAttachment.maximumByteCount,
+              index.createdAt.isFinite,
+              UUID(uuidString: index.entryID) != nil,
+              ReceiptAttachmentMediaType(rawValue: index.mediaType) != nil else {
+            throw PersistenceError.invalidStoredRecord(
+                collection: .receiptAttachments,
+                recordID: attachmentID
+            )
+        }
+        try upsertReceiptAttachmentIndex(
+            attachmentID: attachmentID,
+            index: index
+        )
+    }
+
+    func upsertReceiptAttachmentIndex(
+        attachmentID: String,
+        index: ReceiptAttachmentIndexWrite
+    ) throws {
+        try withStatement(
+            """
+            INSERT INTO receipt_attachment_index (
+                attachment_id, entry_id, media_type, byte_count, created_at
+            ) VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(attachment_id) DO UPDATE SET
+                entry_id = excluded.entry_id,
+                media_type = excluded.media_type,
+                byte_count = excluded.byte_count,
+                created_at = excluded.created_at;
+            """
+        ) { statement in
+            try bindText(attachmentID, at: 1, to: statement)
+            try bindText(index.entryID, at: 2, to: statement)
+            try bindText(index.mediaType, at: 3, to: statement)
+            guard sqlite3_bind_int64(statement, 4, sqlite3_int64(index.byteCount)) == SQLITE_OK,
+                  sqlite3_bind_double(statement, 5, index.createdAt) == SQLITE_OK else {
+                throw makeError()
+            }
+            try stepExpectingDone(statement)
+        }
+    }
+
+    func deleteReceiptAttachmentIndex(attachmentID: String) throws {
+        try withStatement(
+            "DELETE FROM receipt_attachment_index WHERE attachment_id = ?;"
+        ) { statement in
+            try bindText(attachmentID, at: 1, to: statement)
+            try stepExpectingDone(statement)
+        }
+    }
+
+    func replaceBudgetAttributionIndex(
+        entryID: String,
+        with index: BudgetAttributionIndexWrite?
+    ) throws {
+        try deleteBudgetAttributionIndex(entryID: entryID)
+        guard let index,
+              index.recordID == entryID,
+              index.occurredAt.isFinite,
+              index.originDayKey > 0 else { return }
+        try withStatement(
+            """
+            INSERT INTO budget_attribution_entry_index (
+                entry_id, occurred_at, origin_day_key, integrity_fingerprint
+            ) VALUES (?, ?, ?, ?);
+            """
+        ) { statement in
+            try bindText(entryID, at: 1, to: statement)
+            try bindDouble(index.occurredAt, at: 2, to: statement)
+            guard sqlite3_bind_int64(
+                statement,
+                3,
+                Int64(index.originDayKey)
+            ) == SQLITE_OK else { throw makeError() }
+            try bindBlob(index.integrityFingerprint, at: 4, to: statement)
+            try stepExpectingDone(statement)
+        }
+        for (postingIndex, posting) in index.postings.enumerated() {
+            if postingIndex.isMultiple(of: 128) { try Task.checkCancellation() }
+            try withStatement(
+                """
+                INSERT INTO budget_attribution_posting_index (
+                    entry_id, posting_id, account_id, currency, amount_text
+                ) VALUES (?, ?, ?, ?, ?);
+                """
+            ) { statement in
+                try bindText(entryID, at: 1, to: statement)
+                try bindText(posting.postingID, at: 2, to: statement)
+                try bindText(posting.accountID, at: 3, to: statement)
+                try bindText(posting.currency, at: 4, to: statement)
+                try bindText(posting.amount, at: 5, to: statement)
+                try stepExpectingDone(statement)
+            }
+        }
+    }
+
+    func deleteBudgetAttributionIndex(entryID: String) throws {
+        try withStatement(
+            "DELETE FROM budget_attribution_entry_index WHERE entry_id = ?;"
+        ) { statement in
+            try bindText(entryID, at: 1, to: statement)
+            try stepExpectingDone(statement)
+        }
+    }
+
+    func replaceJournalIndex(
+        entryID: String,
+        with index: JournalIndexWrite?,
+        observesCancellation: Bool = true
+    ) throws {
+        try deleteJournalIndex(entryID: entryID)
+        guard let index else { return }
+        try withStatement(
+            """
+            INSERT INTO journal_entry_index (
+                entry_id, occurred_at, origin_day_key, source_fingerprint,
+                budget_integrity_fingerprint
+            ) VALUES (?, ?, ?, ?, ?);
+            """
+        ) { statement in
+            try bindText(entryID, at: 1, to: statement)
+            try bindDouble(index.occurredAt, at: 2, to: statement)
+            guard sqlite3_bind_int64(
+                statement,
+                3,
+                Int64(index.originDayKey)
+            ) == SQLITE_OK else { throw makeError() }
+            try bindOptionalText(index.sourceFingerprint, at: 4, to: statement)
+            try bindBlob(
+                index.budgetIntegrityFingerprint,
+                at: 5,
+                to: statement
+            )
+            try stepExpectingDone(statement)
+        }
+        for (postingIndex, posting) in index.postings.enumerated() {
+            if observesCancellation && postingIndex.isMultiple(of: 128) {
+                try Task.checkCancellation()
+            }
+            try withStatement(
+                """
+                INSERT INTO journal_posting_index (
+                    entry_id, posting_id, occurred_at, account_id,
+                    currency, amount_text
+                ) VALUES (?, ?, ?, ?, ?, ?);
+                """
+            ) { statement in
+                try bindText(entryID, at: 1, to: statement)
+                try bindText(posting.postingID, at: 2, to: statement)
+                try bindDouble(index.occurredAt, at: 3, to: statement)
+                try bindText(posting.accountID, at: 4, to: statement)
+                try bindText(posting.currency, at: 5, to: statement)
+                try bindText(posting.amount, at: 6, to: statement)
+                try stepExpectingDone(statement)
+            }
+        }
+    }
+
+    func deleteJournalIndex(entryID: String) throws {
+        try withStatement(
+            "DELETE FROM journal_entry_index WHERE entry_id = ?;"
+        ) { statement in
+            try bindText(entryID, at: 1, to: statement)
+            try stepExpectingDone(statement)
+        }
+    }
+
+    func postingTotals(
+        forEntryID entryID: String
+    ) throws -> (totals: [BalanceKey: Decimal], rowCount: Int) {
+        try withStatement(
+            """
+            SELECT account_id, currency, amount_text
+            FROM journal_posting_index
+            WHERE entry_id = ?;
+            """
+        ) { statement in
+            try bindText(entryID, at: 1, to: statement)
+            var result: [BalanceKey: Decimal] = [:]
+            var rowCount = 0
+            let locale = Locale(identifier: "en_US_POSIX")
+            while true {
+                let step = sqlite3_step(statement)
+                if step == SQLITE_DONE { break }
+                guard step == SQLITE_ROW,
+                      let rawAccountID = sqlite3_column_text(statement, 0),
+                      let rawCurrency = sqlite3_column_text(statement, 1),
+                      let rawAmount = sqlite3_column_text(statement, 2),
+                      let amount = Decimal(
+                        string: String(cString: rawAmount),
+                        locale: locale
+                      ) else {
+                    throw makeError(code: step == SQLITE_ROW ? SQLITE_CORRUPT : step)
+                }
+                let key = BalanceKey(
+                    accountID: String(cString: rawAccountID),
+                    currency: String(cString: rawCurrency)
+                )
+                result[key] = try CheckedDecimal.adding(
+                    result[key] ?? .zero,
+                    amount
+                )
+                rowCount += 1
+            }
+            return (result, rowCount)
+        }
+    }
+
+    func postingTotals(
+        for index: JournalIndexWrite?
+    ) throws -> [BalanceKey: Decimal] {
+        guard let index else { return [:] }
+        let locale = Locale(identifier: "en_US_POSIX")
+        var result: [BalanceKey: Decimal] = [:]
+        for posting in index.postings {
+            guard let amount = Decimal(string: posting.amount, locale: locale) else {
+                throw makeError(code: SQLITE_CORRUPT)
+            }
+            let key = BalanceKey(
+                accountID: posting.accountID,
+                currency: posting.currency
+            )
+            result[key] = try CheckedDecimal.adding(
+                result[key] ?? .zero,
+                amount
+            )
+        }
+        return result
+    }
+
+    /// Applies exact posting deltas by reading one compact row per affected
+    /// account/currency. This is O(changed postings), never O(journal size).
+    func applyBalanceDeltas(
+        _ deltas: [BalanceKey: Decimal]
+    ) throws -> Int {
+        let locale = Locale(identifier: "en_US_POSIX")
+        var rowsRead = 0
+        for (key, delta) in deltas where delta != .zero {
+            let existing: Decimal? = try withStatement(
+                """
+                SELECT amount_text FROM journal_balance
+                WHERE account_id = ? AND currency = ?;
+                """
+            ) { statement in
+                try bindText(key.accountID, at: 1, to: statement)
+                try bindText(key.currency, at: 2, to: statement)
+                let step = sqlite3_step(statement)
+                if step == SQLITE_DONE { return nil }
+                guard step == SQLITE_ROW,
+                      let rawAmount = sqlite3_column_text(statement, 0),
+                      let value = Decimal(
+                        string: String(cString: rawAmount),
+                        locale: locale
+                      ) else {
+                    throw makeError(code: step == SQLITE_ROW ? SQLITE_CORRUPT : step)
+                }
+                rowsRead += 1
+                return value
+            }
+            let updated = try CheckedDecimal.adding(existing ?? .zero, delta)
+            if updated == .zero {
+                try withStatement(
+                    """
+                    DELETE FROM journal_balance
+                    WHERE account_id = ? AND currency = ?;
+                    """
+                ) { statement in
+                    try bindText(key.accountID, at: 1, to: statement)
+                    try bindText(key.currency, at: 2, to: statement)
+                    try stepExpectingDone(statement)
+                }
+            } else {
+                try withStatement(
+                    """
+                    INSERT INTO journal_balance (account_id, currency, amount_text)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(account_id, currency) DO UPDATE SET
+                        amount_text = excluded.amount_text;
+                    """
+                ) { statement in
+                    try bindText(key.accountID, at: 1, to: statement)
+                    try bindText(key.currency, at: 2, to: statement)
+                    try bindText(
+                        NSDecimalNumber(decimal: updated).stringValue,
+                        at: 3,
+                        to: statement
+                    )
+                    try stepExpectingDone(statement)
+                }
+            }
+        }
+        return rowsRead
+    }
+
+    func rebuildBalances(
+        for keys: Set<BalanceKey>,
+        observesCancellation: Bool = true
+    ) throws {
+        guard !keys.isEmpty else { return }
+        let locale = Locale(identifier: "en_US_POSIX")
+        var totals: [BalanceKey: Decimal] = [:]
+        var rowIndex = 0
+        try withStatement(
+            """
+            SELECT account_id, currency, amount_text
+            FROM journal_posting_index;
+            """
+        ) { statement in
+            while true {
+                let step = sqlite3_step(statement)
+                if step == SQLITE_DONE { break }
+                guard step == SQLITE_ROW,
+                      let rawAccountID = sqlite3_column_text(statement, 0),
+                      let rawCurrency = sqlite3_column_text(statement, 1),
+                      let rawAmount = sqlite3_column_text(statement, 2) else {
+                    throw makeError(
+                        code: step == SQLITE_ROW ? SQLITE_CORRUPT : step
+                    )
+                }
+                if observesCancellation && rowIndex.isMultiple(of: 256) {
+                    try Task.checkCancellation()
+                }
+                rowIndex += 1
+                let key = BalanceKey(
+                    accountID: String(cString: rawAccountID),
+                    currency: String(cString: rawCurrency)
+                )
+                guard keys.contains(key) else { continue }
+                guard let amount = Decimal(
+                    string: String(cString: rawAmount),
+                    locale: locale
+                ) else {
+                    throw makeError(code: SQLITE_CORRUPT)
+                }
+                totals[key] = try CheckedDecimal.adding(
+                    totals[key] ?? .zero,
+                    amount
+                )
+            }
+        }
+
+        for (keyIndex, key) in keys.enumerated() {
+            if observesCancellation && keyIndex.isMultiple(of: 128) {
+                try Task.checkCancellation()
+            }
+            if let total = totals[key] {
+                try withStatement(
+                    """
+                    INSERT INTO journal_balance (account_id, currency, amount_text)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(account_id, currency) DO UPDATE SET
+                        amount_text = excluded.amount_text;
+                    """
+                ) { statement in
+                    try bindText(key.accountID, at: 1, to: statement)
+                    try bindText(key.currency, at: 2, to: statement)
+                    try bindText(
+                        NSDecimalNumber(decimal: total).stringValue,
+                        at: 3,
+                        to: statement
+                    )
+                    try stepExpectingDone(statement)
+                }
+            } else {
+                try withStatement(
+                    "DELETE FROM journal_balance WHERE account_id = ? AND currency = ?;"
+                ) { statement in
+                    try bindText(key.accountID, at: 1, to: statement)
+                    try bindText(key.currency, at: 2, to: statement)
+                    try stepExpectingDone(statement)
+                }
+            }
+        }
+    }
+}
