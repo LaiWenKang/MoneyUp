@@ -308,6 +308,32 @@ extension AppModel {
             beforeBudget: beforeBudget,
             afterBudget: afterBudget
         )
+        let writes = try categoryMetadataWrites(
+            updatedAccount: updatedAccount,
+            originalAccount: originalAccount,
+            afterBudget: afterBudget,
+            beforeBudget: beforeBudget,
+            candidateTimeline: candidateTimeline,
+            audit: audit
+        )
+
+        let generation = storeGeneration
+        let lifecycleStore = try requireStore()
+        try await lifecycleStore.write(writes)
+        guard isCurrentStoreGeneration(generation) else { return }
+        accounts[accountIndex] = updatedAccount
+        if let candidateTimeline { budgetConfigurationTimeline = candidateTimeline }
+        budgetNodes = candidateBudgets
+    }
+
+    private func categoryMetadataWrites(
+        updatedAccount: LedgerAccount,
+        originalAccount: LedgerAccount,
+        afterBudget: BudgetNode?,
+        beforeBudget: BudgetNode?,
+        candidateTimeline: BudgetConfigurationTimeline?,
+        audit: LedgerAccountLifecycleAudit
+    ) throws -> [RecordWrite] {
         var writes: [RecordWrite] = []
         if updatedAccount != originalAccount {
             writes.append(
@@ -331,14 +357,7 @@ extension AppModel {
             writes.append(try budgetConfigurationTimelineWrite(candidateTimeline))
         }
         writes.append(try lifecycleAuditWrite(audit))
-
-        let generation = storeGeneration
-        let lifecycleStore = try requireStore()
-        try await lifecycleStore.write(writes)
-        guard isCurrentStoreGeneration(generation) else { return }
-        accounts[accountIndex] = updatedAccount
-        if let candidateTimeline { budgetConfigurationTimeline = candidateTimeline }
-        budgetNodes = candidateBudgets
+        return writes
     }
 
     func setLedgerItemArchived(id: UUID, isArchived: Bool) async throws {

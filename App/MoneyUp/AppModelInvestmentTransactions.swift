@@ -137,12 +137,7 @@ extension AppModel {
                 entryID: entryID
             )
         }
-        guard breakdown.proceeds.amount > .zero else {
-            throw AppModelError.invalidInvestmentTrade
-        }
-        try requireValidNewWriteAmount(breakdown.proceeds.amount, currency: currency)
-        try requireValidNewWriteAmount(breakdown.costBasis.amount, currency: currency)
-        try requireValidNewWriteAmount(breakdown.realizedGainLoss.amount, currency: currency)
+        try validateInvestmentSaleBreakdown(breakdown, currency: currency)
         try performInvestmentDomainOperation {
             try holding.recordPrice(price, asOf: occurredAt, entryID: entryID)
         }
@@ -184,6 +179,27 @@ extension AppModel {
         investmentLinkedEntriesByID[entry.id] = entry
         await refreshJournalAfterMutation()
         return breakdown
+    }
+
+    private func validateInvestmentSaleBreakdown(
+        _ breakdown: InvestmentSaleBreakdown,
+        currency: CurrencyCode
+    ) throws {
+        guard breakdown.proceeds.amount > .zero else {
+            throw AppModelError.invalidInvestmentTrade
+        }
+        try requireValidNewWriteAmount(
+            breakdown.proceeds.amount,
+            currency: currency
+        )
+        try requireValidNewWriteAmount(
+            breakdown.costBasis.amount,
+            currency: currency
+        )
+        try requireValidNewWriteAmount(
+            breakdown.realizedGainLoss.amount,
+            currency: currency
+        )
     }
 
     func captureNetWorthSnapshot(at date: Date = Date()) async throws {

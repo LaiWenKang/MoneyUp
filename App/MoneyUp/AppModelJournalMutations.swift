@@ -187,29 +187,14 @@ extension AppModel {
     }
 
     func deleteEntry(id: UUID) async throws {
-        let linkedScheduleIDs = Set(scheduledTransactions.compactMap { schedule in
-            schedule.resolutions.contains { $0.linkedEntryID == id }
-                ? schedule.id
-                : nil
-        })
+        let linkedScheduleIDs = linkedScheduleIDs(forDeletedEntryID: id)
         try beginJournalAndScheduleMutation(scheduleIDs: linkedScheduleIDs)
         defer {
             endJournalAndScheduleMutation(scheduleIDs: linkedScheduleIDs)
         }
         let generation = storeGeneration
         let entryStore = try requireStore()
-        let entry: JournalEntry
-        if let cached = entries.first(where: { $0.id == id }) {
-            entry = cached
-        } else if let stored = try await entryStore.fetch(
-            JournalEntry.self,
-            id: id.uuidString,
-            from: .journalEntries
-        ) {
-            entry = stored
-        } else {
-            throw AppModelError.missingRecord
-        }
+        let entry = try await entryForDeletion(id: id, in: entryStore)
         guard !isProtectedJournalEntry(entry) else {
             throw AppModelError.investmentEntryMutationForbidden
         }
@@ -244,13 +229,10 @@ extension AppModel {
             candidateTimeline = nil
         }
         let attachmentIDs = try await entryStore.receiptAttachmentIDs(entryID: id)
-        var updatedSchedules: [ScheduledTransaction] = []
-        let deletedAt = currentDate()
-        for schedule in scheduledTransactions where linkedScheduleIDs.contains(schedule.id) {
-            var updated = schedule
-            try updated.markLinkedEntryDeleted(id, at: deletedAt)
-            updatedSchedules.append(updated)
-        }
+        let updatedSchedules = try schedulesAfterDeletingLinkedEntry(
+            id: id,
+            linkedScheduleIDs: linkedScheduleIDs
+        )
         var writes = try updatedSchedules.map {
             try RecordWrite($0, id: $0.id.uuidString, in: .scheduledTransactions)
         }
@@ -276,6 +258,62 @@ extension AppModel {
             removing: deletions
         )
         guard isCurrentStoreGeneration(generation) else { return }
+        applyDeletedEntry(
+            id: id,
+            candidateTimeline: candidateTimeline,
+            candidateAttributions: candidateAttributions,
+            candidateEntries: candidateEntries,
+            updatedSchedules: updatedSchedules
+        )
+        await refreshJournalAfterMutation()
+    }
+
+    private func linkedScheduleIDs(forDeletedEntryID id: UUID) -> Set<UUID> {
+        Set(scheduledTransactions.compactMap { schedule in
+            schedule.resolutions.contains { $0.linkedEntryID == id }
+                ? schedule.id
+                : nil
+        })
+    }
+
+    private func entryForDeletion(
+        id: UUID,
+        in entryStore: EncryptedRecordStore
+    ) async throws -> JournalEntry {
+        if let cached = entries.first(where: { $0.id == id }) {
+            return cached
+        }
+        if let stored = try await entryStore.fetch(
+            JournalEntry.self,
+            id: id.uuidString,
+            from: .journalEntries
+        ) {
+            return stored
+        }
+        throw AppModelError.missingRecord
+    }
+
+    private func schedulesAfterDeletingLinkedEntry(
+        id: UUID,
+        linkedScheduleIDs: Set<UUID>
+    ) throws -> [ScheduledTransaction] {
+        var updatedSchedules: [ScheduledTransaction] = []
+        let deletedAt = currentDate()
+        for schedule in scheduledTransactions where linkedScheduleIDs.contains(schedule.id) {
+            var updated = schedule
+            try updated.markLinkedEntryDeleted(id, at: deletedAt)
+            updatedSchedules.append(updated)
+        }
+        return updatedSchedules
+    }
+
+    private func applyDeletedEntry(
+        id: UUID,
+        candidateTimeline: BudgetConfigurationTimeline?,
+        candidateAttributions: [UUID: BudgetEntryAttribution],
+        candidateEntries: [JournalEntry]?,
+        updatedSchedules: [ScheduledTransaction]
+    ) {
         if let candidateTimeline { budgetConfigurationTimeline = candidateTimeline }
         budgetEntryAttributions = candidateAttributions
         if retainsCompleteJournal, let candidateEntries { entries = candidateEntries }
@@ -287,7 +325,6 @@ extension AppModel {
             schedulesByID[$0.id] ?? $0
         }
         existingScheduledLinkedEntryIDs.remove(id)
-        await refreshJournalAfterMutation()
     }
 
     /// Loads exactly one user-selected encrypted receipt. No attachment bytes
