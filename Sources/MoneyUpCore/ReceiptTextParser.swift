@@ -51,7 +51,7 @@ public struct ReceiptParseResult: Equatable, Sendable {
 /// cash, balances, identifiers, dates, times, percentages, and card tails are
 /// explicitly demoted or rejected.
 public enum ReceiptTextParser {
-    private struct RankedAmount {
+    struct RankedAmount {
         let value: Decimal
         let lineIndex: Int
         let rangeLocation: Int
@@ -59,26 +59,26 @@ public enum ReceiptTextParser {
         let isLabelled: Bool
     }
 
-    private struct RankedText {
+    struct RankedText {
         let value: String
         let lineIndex: Int
         let score: Int
     }
 
-    private struct RankedDate {
+    struct RankedDate {
         let value: Date
         let lineIndex: Int
         let score: Int
     }
 
-    private struct MoneyToken {
+    struct MoneyToken {
         let value: Decimal
         let range: NSRange
         let hasFraction: Bool
         let digitCount: Int
     }
 
-    private static let payableLabels: [(String, Int)] = [
+    static let payableLabels: [(String, Int)] = [
         ("grand total", 190), ("amount payable", 185), ("amount due", 185),
         ("total payable", 180), ("total due", 180), ("balance due", 180),
         ("amount paid", 175), ("total paid", 175), ("you paid", 170),
@@ -95,7 +95,7 @@ public enum ReceiptTextParser {
 
     /// These labels identify values that are commonly larger than, or close to,
     /// the payable amount but must never win merely because of their magnitude.
-    private static let nonPayableLabels: [(String, Int)] = [
+    static let nonPayableLabels: [(String, Int)] = [
         ("subtotal", -240), ("sub total", -240), ("sub-total", -240),
         ("subjumlah", -240), ("jumlah kecil", -240), ("小计", -240), ("小計", -240),
         ("change", -230), ("找零", -230), ("balance change", -230),
@@ -118,7 +118,7 @@ public enum ReceiptTextParser {
         ("total quantity", -260)
     ]
 
-    private static let identifierLabels = [
+    static let identifierLabels = [
         "phone", "tel", "mobile", "fax", "order no", "order #", "invoice no",
         "invoice #", "receipt no", "receipt #", "transaction id", "txn id",
         "reference", "ref no", "auth", "approval", "terminal", "merchant id",
@@ -126,18 +126,18 @@ public enum ReceiptTextParser {
         "acct", "account no", "电话", "電話", "订单", "訂單", "单号", "單號"
     ]
 
-    private static let currencyMarkers = [
+    static let currencyMarkers = [
         "s$", "sgd", "rm", "myr", "usd", "us$", "aud", "eur", "gbp",
         "cny", "rmb", "hkd", "$", "€", "£", "¥"
     ]
 
-    private static let dateExclusionLabels = [
+    static let dateExclusionLabels = [
         "best before", "use by", "expiry", "expires", "expiration", "valid thru",
         "valid through", "member since", "card expiry", "manufactured",
         "有效期", "保质期", "保質期", "到期", "生产日期", "生產日期"
     ]
 
-    private static let genericMerchantLines = [
+    static let genericMerchantLines = [
         "tax invoice", "official receipt", "sales receipt", "payment successful",
         "transaction successful", "transaction detail", "payment details", "payment complete",
         "thank you", "welcome",
@@ -214,7 +214,7 @@ public enum ReceiptTextParser {
 
     // MARK: - Amounts
 
-    private static func rankedAmounts(
+    static func rankedAmounts(
         in lines: [String],
         locale: Locale
     ) -> [RankedAmount] {
@@ -310,7 +310,7 @@ public enum ReceiptTextParser {
             }
     }
 
-    private static func payableScore(in normalized: String) -> Int {
+    static func payableScore(in normalized: String) -> Int {
         payableLabels.reduce(0) { score, entry in
             normalized.contains(entry.0) ? max(score, entry.1) : score
         }
@@ -319,7 +319,7 @@ public enum ReceiptTextParser {
     /// Once a labelled total exists, low-score line-item prices are not honest
     /// alternatives. Unlabelled screenshots keep a narrow score band because
     /// two prominent currency amounts can genuinely be ambiguous.
-    private static func credibleAmountValues(_ amounts: [RankedAmount]) -> [Decimal] {
+    static func credibleAmountValues(_ amounts: [RankedAmount]) -> [Decimal] {
         guard let best = amounts.first else { return [] }
         let credible: [RankedAmount]
         if best.isLabelled {
@@ -330,13 +330,13 @@ public enum ReceiptTextParser {
         return unique(credible.map(\.value))
     }
 
-    private static func nonPayableScore(in normalized: String) -> Int {
+    static func nonPayableScore(in normalized: String) -> Int {
         nonPayableLabels.reduce(0) { score, entry in
             normalized.contains(entry.0) ? min(score, entry.1) : score
         }
     }
 
-    private static func isInclusivePayableLine(_ normalized: String) -> Bool {
+    static func isInclusivePayableLine(_ normalized: String) -> Bool {
         let explicitlyInclusive = containsAny(
             ["incl.", "incl ", "including", "inclusive", "含税", "含稅", "已含"],
             in: normalized
@@ -351,7 +351,7 @@ public enum ReceiptTextParser {
 
     /// Extracts currency-shaped numbers and repairs only the two OCR confusions
     /// that are safe inside an otherwise numeric token (`O` -> `0`, `I/l` -> `1`).
-    private static func moneyTokens(in line: String, locale: Locale) -> [MoneyToken] {
+    static func moneyTokens(in line: String, locale: Locale) -> [MoneyToken] {
         let pattern = #"(?<![0-9.,:])[-−]?(?:[0-9OoIl]{1,3}(?:[ '’][0-9OoIl]{3})+(?:[.,][0-9OoIl]{1,2})?|[0-9OoIl]+(?:[.,][0-9OoIl]+)*)(?![0-9.,:])"#
         guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
         let range = NSRange(line.startIndex..<line.endIndex, in: line)
@@ -375,7 +375,7 @@ public enum ReceiptTextParser {
         }
     }
 
-    private static func parseMoneyToken(
+    static func parseMoneyToken(
         _ raw: String,
         locale: Locale
     ) -> (value: Decimal, hasFraction: Bool)? {
@@ -423,13 +423,13 @@ public enum ReceiptTextParser {
         return (value, decimalOffset != nil)
     }
 
-    private static func isPercentage(_ range: NSRange, in line: String) -> Bool {
+    static func isPercentage(_ range: NSRange, in line: String) -> Bool {
         guard let swiftRange = Range(range, in: line) else { return false }
         let tail = line[swiftRange.upperBound...].drop(while: \.isWhitespace)
         return tail.first == "%"
     }
 
-    private static func isMostlyAmount(_ line: String) -> Bool {
+    static func isMostlyAmount(_ line: String) -> Bool {
         let residue = line.unicodeScalars.filter { scalar in
             !CharacterSet.decimalDigits.contains(scalar)
                 && !CharacterSet.whitespacesAndNewlines.contains(scalar)
@@ -441,7 +441,7 @@ public enum ReceiptTextParser {
 
     // MARK: - Merchant
 
-    private static func rankedMerchants(in lines: [String]) -> [RankedText] {
+    static func rankedMerchants(in lines: [String]) -> [RankedText] {
         var candidates: [RankedText] = []
 
         for (index, rawLine) in lines.enumerated() {
@@ -496,7 +496,7 @@ public enum ReceiptTextParser {
         }
     }
 
-    private static func explicitMerchant(from line: String) -> String? {
+    static func explicitMerchant(from line: String) -> String? {
         let patterns = [
             #"(?i)^\s*(?:paid\s+to|payment\s+to|merchant|payee|store)\s*[:\-]?\s+(.+)$"#,
             #"^\s*(?:商户|商戶|收款方|商家)\s*[:：\-]?\s*(.+)$"#
@@ -512,12 +512,12 @@ public enum ReceiptTextParser {
         return nil
     }
 
-    private static func cleanMerchant(_ value: String) -> String {
+    static func cleanMerchant(_ value: String) -> String {
         cleanLine(value)
             .trimmingCharacters(in: CharacterSet(charactersIn: "*-=_~|•·#.:, \t"))
     }
 
-    private static func looksLikeAddress(_ normalized: String) -> Bool {
+    static func looksLikeAddress(_ normalized: String) -> Bool {
         containsAny(
             [" road", " rd", " street", " st ", " avenue", " ave", " boulevard",
              " lane", " drive", "jalan ", "jln ", "lorong ", "taman ", "singapore ",
@@ -527,356 +527,4 @@ public enum ReceiptTextParser {
     }
 
     // MARK: - Dates
-
-    private static func rankedDates(
-        in lines: [String],
-        now: Date,
-        calendar: Calendar,
-        prefersDayFirst: Bool
-    ) -> [RankedDate] {
-        guard let earliest = calendar.date(byAdding: .year, value: -3, to: now),
-              let latest = calendar.date(byAdding: .day, value: 1, to: now) else {
-            return []
-        }
-
-        var candidates: [RankedDate] = []
-        for (index, line) in lines.enumerated() {
-            let normalized = normalizedLine(line)
-            guard !containsAny(dateExclusionLabels, in: normalized) else { continue }
-            guard let value = parsedDate(
-                in: line,
-                calendar: calendar,
-                prefersDayFirst: prefersDayFirst
-            ), value >= earliest, value <= latest else { continue }
-
-            var score = 30
-            if containsAny(["transaction date", "payment date", "purchase date", "paid on",
-                            "date/time", "datetime", "交易日期", "付款日期", "消费日期"],
-                           in: normalized) {
-                score += 70
-            } else if containsAny(["date", "日期"], in: normalized) {
-                score += 25
-            }
-            if timeComponents(in: line) != nil { score += 10 }
-            score += max(0, 10 - index)
-            candidates.append(RankedDate(value: value, lineIndex: index, score: score))
-        }
-
-        return candidates.sorted { lhs, rhs in
-            if lhs.score != rhs.score { return lhs.score > rhs.score }
-            if lhs.lineIndex != rhs.lineIndex { return lhs.lineIndex < rhs.lineIndex }
-            return lhs.value > rhs.value
-        }
-    }
-
-    private static func parsedDate(
-        in line: String,
-        calendar: Calendar,
-        prefersDayFirst: Bool
-    ) -> Date? {
-        var components = TextScanner.date(
-            in: line,
-            calendar: calendar,
-            prefersDayFirst: prefersDayFirst
-        )
-
-        if components == nil {
-            components = shortNumericDate(
-                in: line,
-                calendar: calendar,
-                prefersDayFirst: prefersDayFirst
-            )
-        }
-        if components == nil {
-            components = namedMonthDate(in: line, calendar: calendar)
-        }
-        guard var components else { return nil }
-
-        if let time = timeComponents(in: line) {
-            components.hour = time.hour
-            components.minute = time.minute
-            components.second = time.second
-        }
-        components.calendar = calendar
-        guard let date = calendar.date(from: components) else { return nil }
-        let resolved = calendar.dateComponents([.year, .month, .day], from: date)
-        guard resolved.year == components.year,
-              resolved.month == components.month,
-              resolved.day == components.day else { return nil }
-        return date
-    }
-
-    private static func shortNumericDate(
-        in line: String,
-        calendar: Calendar,
-        prefersDayFirst: Bool
-    ) -> DateComponents? {
-        let pattern = #"(?<![0-9])([0-9]{1,2})[-/.]([0-9]{1,2})[-/.]([0-9]{2})(?![0-9])"#
-        guard let parts = captures(pattern: pattern, in: line), parts.count == 3,
-              let first = Int(parts[0]), let second = Int(parts[1]),
-              let shortYear = Int(parts[2]) else { return nil }
-
-        let day: Int
-        let month: Int
-        if first > 12 {
-            day = first
-            month = second
-        } else if second > 12 {
-            day = second
-            month = first
-        } else {
-            day = prefersDayFirst ? first : second
-            month = prefersDayFirst ? second : first
-        }
-        guard (1...31).contains(day), (1...12).contains(month) else { return nil }
-        return DateComponents(calendar: calendar, year: 2000 + shortYear, month: month, day: day)
-    }
-
-    private static func namedMonthDate(in line: String, calendar: Calendar) -> DateComponents? {
-        let monthPattern = "jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|" +
-            "jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|" +
-            "nov(?:ember)?|dec(?:ember)?"
-        let dayFirst = "(?i)(?<![a-z0-9])([0-9]{1,2})(?:st|nd|rd|th)?[\\s-]+" +
-            "(\(monthPattern))[\\s,/-]+([0-9]{2,4})(?![0-9])"
-        let monthFirst = "(?i)(?<![a-z0-9])(\(monthPattern))[\\s-]+" +
-            "([0-9]{1,2})(?:st|nd|rd|th)?[\\s,/-]+([0-9]{2,4})(?![0-9])"
-
-        if let parts = captures(pattern: dayFirst, in: line), parts.count == 3,
-           let day = Int(parts[0]), let month = monthNumber(parts[1]),
-           let year = normalizedYear(parts[2]) {
-            return validDateComponents(day: day, month: month, year: year, calendar: calendar)
-        }
-        if let parts = captures(pattern: monthFirst, in: line), parts.count == 3,
-           let month = monthNumber(parts[0]), let day = Int(parts[1]),
-           let year = normalizedYear(parts[2]) {
-            return validDateComponents(day: day, month: month, year: year, calendar: calendar)
-        }
-        return nil
-    }
-
-    private static func validDateComponents(
-        day: Int,
-        month: Int,
-        year: Int,
-        calendar: Calendar
-    ) -> DateComponents? {
-        guard (1...31).contains(day), (1...12).contains(month), (1900...2200).contains(year) else {
-            return nil
-        }
-        return DateComponents(calendar: calendar, year: year, month: month, day: day)
-    }
-
-    private static func normalizedYear(_ text: String) -> Int? {
-        guard let value = Int(text) else { return nil }
-        return text.count == 2 ? 2000 + value : value
-    }
-
-    private static func monthNumber(_ text: String) -> Int? {
-        let prefix = String(text.lowercased().prefix(3))
-        return [
-            "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
-            "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12
-        ][prefix]
-    }
-
-    private static func timeComponents(in line: String) -> DateComponents? {
-        let pattern = #"(?i)(?<![0-9])([0-9]{1,2}):([0-9]{2})(?::([0-9]{2}))?\s*(am|pm)?(?![a-z0-9])"#
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
-        let full = NSRange(line.startIndex..<line.endIndex, in: line)
-        guard let match = regex.firstMatch(in: line, range: full),
-              let hourText = capture(match, at: 1, in: line),
-              let minuteText = capture(match, at: 2, in: line),
-              var hour = Int(hourText), let minute = Int(minuteText),
-              (0...59).contains(minute) else { return nil }
-        let second = capture(match, at: 3, in: line).flatMap(Int.init) ?? 0
-        let meridiem = capture(match, at: 4, in: line)?.lowercased()
-
-        if let meridiem {
-            guard (1...12).contains(hour) else { return nil }
-            if meridiem == "pm", hour != 12 { hour += 12 }
-            if meridiem == "am", hour == 12 { hour = 0 }
-        } else {
-            guard (0...23).contains(hour) else { return nil }
-        }
-        guard (0...59).contains(second) else { return nil }
-        return DateComponents(hour: hour, minute: minute, second: second)
-    }
-
-    private static func dateAndTimeRanges(in line: String) -> [NSRange] {
-        let patterns = [
-            #"(?<![0-9])(?:19|20)[0-9]{2}[-/.年][0-9]{1,2}[-/.月][0-9]{1,2}日?(?![0-9])"#,
-            #"(?<![0-9])[0-9]{1,2}[-/.][0-9]{1,2}[-/.](?:[0-9]{2}|[0-9]{4})(?![0-9])"#,
-            #"(?i)(?<![0-9])[0-9]{1,2}:[0-9]{2}(?::[0-9]{2})?\s*(?:am|pm)?(?![a-z0-9])"#
-        ]
-        let full = NSRange(line.startIndex..<line.endIndex, in: line)
-        return patterns.flatMap { pattern -> [NSRange] in
-            guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
-            return regex.matches(in: line, range: full).map(\.range)
-        }
-    }
-
-    // MARK: - Category and note
-
-    private static func categoryHint(
-        in lines: [String],
-        merchant: String?
-    ) -> ReceiptCategoryHint? {
-        let text = normalizedLine(([merchant].compactMap { $0 } + lines).joined(separator: " "))
-        let rules: [(ReceiptCategoryHint, [String])] = [
-            (.groceries, ["fairprice", "ntuc", "cold storage", "sheng siong", "giant",
-                           "jaya grocer", "village grocer", "lotus's", "lotus ", "supermarket",
-                           "grocery", "groceries", "hypermarket", "杂货", "雜貨", "超市"]),
-            (.transport, ["trip fare", "ride fare", "taxi", "comfortdelgro", "gojek",
-                          "rapidkl", "mrt", " lrt", " bus", "parking", "car park", "toll",
-                          "petrol", "diesel", "fuel", "shell", "caltex", "esso", "交通",
-                          "车费", "車費", "停车", "停車"]),
-            (.food, ["grabfood", "foodpanda", "restaurant", "cafe", "café", "coffee",
-                     "kopitiam", "hawker", "bakery", "bistro", "kitchen", "pizza", "burger",
-                     "sushi", "ramen", "noodle", "chicken rice", "meal", "dining", "餐厅",
-                     "餐廳", "火锅", "火鍋", "咖啡", "茶餐", "饭店", "飯店"]),
-            (.healthcare, ["clinic", "hospital", "medical", "dental", "dentist", "pharmacy",
-                           "watsons", "guardian health", "polyclinic", "药房", "藥房", "诊所",
-                           "診所", "医院", "醫院"]),
-            (.utilities, ["sp services", "singapore power", "electricity", "water bill",
-                          "utilities", "singtel", "starhub", "m1 limited", "maxis", "celcom",
-                          "digi", "unifi", "time internet", "tnb", "电费", "電費", "水费",
-                          "水費", "电话费", "電話費"]),
-            (.entertainment, ["cinema", "cineplex", "golden village", "tgv", "gsc",
-                              "netflix", "spotify", "karaoke", "movie", "theme park", "游戏",
-                              "遊戲", "电影", "電影", "娱乐", "娛樂"]),
-            (.housing, ["rent", "rental", "property management", "maintenance fee",
-                        "conservancy", "房租", "租金", "物业", "物業"]),
-            (.shopping, ["shopee", "lazada", "uniqlo", "department store", "retail",
-                         "shopping", "mall", "fashion", "apparel", "electronics", "百货",
-                         "百貨", "购物", "購物", "商场", "商場"])
-        ]
-
-        let ranked = rules.enumerated().compactMap { priority, rule -> (ReceiptCategoryHint, Int, Int)? in
-            let hits = rule.1.filter { text.contains($0) }.count
-            guard hits > 0 else { return nil }
-            return (rule.0, hits, priority)
-        }.sorted { lhs, rhs in
-            if lhs.1 != rhs.1 { return lhs.1 > rhs.1 }
-            return lhs.2 < rhs.2
-        }
-        return ranked.first?.0
-    }
-
-    private static func categoryID(
-        for hint: ReceiptCategoryHint,
-        in accounts: [LedgerAccount]
-    ) -> UUID? {
-        let aliases: [ReceiptCategoryHint: [String]] = [
-            .food: ["food", "dining", "meal", "餐饮", "餐飲", "饮食", "飲食"],
-            .groceries: ["grocer", "supermarket", "日用品", "杂货", "雜貨", "food"],
-            .transport: ["transport", "travel", "commute", "交通", "出行"],
-            .shopping: ["shopping", "retail", "购物", "購物"],
-            .entertainment: ["entertainment", "leisure", "娱乐", "娛樂"],
-            .utilities: ["utilities", "bills", "utility", "水电", "水電"],
-            .healthcare: ["health", "medical", "healthcare", "医疗", "醫療"],
-            .housing: ["housing", "rent", "home", "房租", "住房"]
-        ]
-        let terms = aliases[hint] ?? []
-        return accounts
-            .filter { $0.kind == .expense && !$0.isArchived }
-            .map { account in
-                let name = normalizedLine(account.name)
-                let score = terms.enumerated().reduce(0) { result, entry in
-                    guard name.contains(entry.element) else { return result }
-                    return max(result, 100 - entry.offset)
-                }
-                return (account, score)
-            }
-            .filter { $0.1 > 0 }
-            .sorted { lhs, rhs in
-                if lhs.1 != rhs.1 { return lhs.1 > rhs.1 }
-                if lhs.0.name != rhs.0.name { return lhs.0.name < rhs.0.name }
-                return lhs.0.id.uuidString < rhs.0.id.uuidString
-            }
-            .first?.0.id
-    }
-
-    private static func noteCandidate(in lines: [String]) -> String? {
-        let explicitLabels = [
-            "receipt no", "receipt #", "order no", "order #", "invoice no", "invoice #",
-            "transaction id", "txn id", "reference", "ref no", "订单号", "訂單號", "单号",
-            "單號", "交易号", "交易號"
-        ]
-        if let reference = lines.first(where: { line in
-            let normalized = normalizedLine(line)
-            return containsAny(explicitLabels, in: normalized)
-                && !containsAny(["phone", "tel", "mobile", "电话", "電話"], in: normalized)
-        }) {
-            return limited(reference, to: 96)
-        }
-
-        let paymentMarkers = ["visa", "mastercard", "amex", "nets", "paynow", "duitnow",
-                              "touch 'n go", "tng ewallet", "alipay", "wechat pay"]
-        if let payment = lines.first(where: { line in
-            let normalized = normalizedLine(line)
-            return containsAny(paymentMarkers, in: normalized)
-                && !containsAny(["change", "tendered", "balance"], in: normalized)
-        }) {
-            return limited(payment, to: 96)
-        }
-        return nil
-    }
-
-    // MARK: - Shared helpers
-
-    private static func cleanLine(_ value: String) -> String {
-        value
-            .replacingOccurrences(of: "\u{00a0}", with: " ")
-            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private static func normalizedLine(_ value: String) -> String {
-        TextScanner.normalized(cleanLine(value)).lowercased()
-    }
-
-    private static func containsAny(_ needles: [String], in haystack: String) -> Bool {
-        needles.contains(where: { haystack.contains($0) })
-    }
-
-    private static func hasCurrencyMarker(in text: String) -> Bool {
-        if containsAny(["s$", "us$", "$", "€", "£", "¥"], in: text) { return true }
-        let codes = currencyMarkers.filter { !$0.contains("$") && !["$", "€", "£", "¥"].contains($0) }
-        return codes.contains { code in
-            let escaped = NSRegularExpression.escapedPattern(for: code)
-            let pattern = "(?i)(?<![a-z])" + escaped + "(?=\\s*[0-9])"
-            guard let regex = try? NSRegularExpression(pattern: pattern) else { return false }
-            let full = NSRange(text.startIndex..<text.endIndex, in: text)
-            return regex.firstMatch(in: text, range: full) != nil
-        }
-    }
-
-    private static func captures(pattern: String, in text: String) -> [String]? {
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
-        let full = NSRange(text.startIndex..<text.endIndex, in: text)
-        guard let match = regex.firstMatch(in: text, range: full) else { return nil }
-        return (1..<match.numberOfRanges).compactMap { capture(match, at: $0, in: text) }
-    }
-
-    private static func capture(
-        _ match: NSTextCheckingResult,
-        at index: Int,
-        in text: String
-    ) -> String? {
-        guard index < match.numberOfRanges,
-              match.range(at: index).location != NSNotFound,
-              let range = Range(match.range(at: index), in: text) else { return nil }
-        return String(text[range])
-    }
-
-    private static func limited(_ value: String, to maximum: Int) -> String {
-        guard value.count > maximum else { return value }
-        return String(value.prefix(maximum)).trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private static func unique<T: Equatable>(_ values: [T]) -> [T] {
-        values.reduce(into: []) { result, value in
-            if !result.contains(value) { result.append(value) }
-        }
-    }
 }
