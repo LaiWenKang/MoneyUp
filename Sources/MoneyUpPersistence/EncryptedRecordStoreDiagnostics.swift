@@ -14,25 +14,10 @@ extension EncryptedRecordStore {
             }
         )
         let missingIndexIDs = try connection.fetchUnindexedJournalRecordIDs()
-        var invalidEntryStrings = try connection.fetchInvalidJournalEntryIDs(
+        let invalidEntryStrings = try invalidJournalEntryStrings(
             validAccountIDs: validIDs,
-            expectedAccountCurrencies: expectedCurrencies
-        )
-        invalidEntryStrings.formUnion(
-            try connection.fetchNoncanonicalJournalEntryIDs()
-        )
-        // A current exact rebuild deliberately leaves a lowercase alias
-        // unindexed. If its canonical physical twin is indexed, quarantine
-        // that twin too; otherwise balances/history would expose one version
-        // of an ambiguous logical transaction while reporting the other as a
-        // damaged row.
-        let canonicalTwins = missingIndexIDs.compactMap { recordID -> String? in
-            guard let id = UUID(uuidString: recordID),
-                  id.uuidString != recordID else { return nil }
-            return id.uuidString
-        }
-        invalidEntryStrings.formUnion(
-            try connection.fetchExistingJournalEntryIDs(canonicalTwins)
+            expectedAccountCurrencies: expectedCurrencies,
+            missingIndexIDs: missingIndexIDs
         )
         // Exact Decimal subtraction is needed only for quarantined entries.
         // Healthy books therefore materialize zero historical posting rows.
@@ -42,72 +27,17 @@ extension EncryptedRecordStore {
         let referenceRows = try connection.fetchJournalReferenceCounts(
             validAccountIDs: validIDs
         )
-
-        var decimalBalances: [String: [String: Decimal]] = [:]
-        for row in try connection.fetchJournalBalances() {
-            guard let amount = Decimal(
-                string: row.amount,
-                locale: Locale(identifier: "en_US_POSIX")
-            ) else {
-                throw PersistenceError.invalidStoredRecord(
-                    collection: .journalEntries,
-                    recordID: "balance-index"
-                )
-            }
-            decimalBalances[row.accountID.lowercased(), default: [:]][row.currency] = amount
-        }
-
-        // A relationship error quarantines the complete entry, including its
-        // otherwise valid side of the balanced posting set.
-        for row in quarantinedPostingRows {
-            guard let amount = Decimal(
-                string: row.amount,
-                locale: Locale(identifier: "en_US_POSIX")
-            ) else {
-                throw PersistenceError.invalidStoredRecord(
-                    collection: .journalEntries,
-                    recordID: row.entryID
-                )
-            }
-            let accountID = row.accountID.lowercased()
-            var accountBalances = decimalBalances[accountID] ?? [:]
-            accountBalances[row.currency] = try CheckedDecimal.subtracting(
-                accountBalances[row.currency] ?? .zero,
-                amount
-            )
-            decimalBalances[accountID] = accountBalances
-        }
-
-        var balances: [UUID: [CurrencyCode: Money]] = [:]
-        for (rawAccountID, currencyAmounts) in decimalBalances {
-            guard let accountID = UUID(uuidString: rawAccountID),
-                  validAccountIDs.contains(accountID) else { continue }
-            for (rawCurrency, amount) in currencyAmounts where amount != .zero {
-                let currency = try CurrencyCode(rawCurrency)
-                balances[accountID, default: [:]][currency] = try Money(
-                    amount,
-                    currency: currency
-                )
-            }
-        }
-
-        var invalidReferences: [String: Set<String>] = [:]
-        for row in quarantinedPostingRows {
-            invalidReferences[row.accountID.lowercased(), default: []]
-                // Physical journal identities are binary keys. Preserve
-                // their exact spelling so a canonical row and legacy
-                // lowercase alias each remove one distinct SQL reference.
-                .insert(row.entryID)
-        }
-        var referenceCounts: [UUID: Int] = [:]
-        for row in referenceRows {
-            guard let accountID = UUID(uuidString: row.accountID) else { continue }
-            referenceCounts[accountID] = max(
-                0,
-                row.count - invalidReferences[row.accountID.lowercased(), default: []].count
-            )
-        }
-
+        let decimalBalances = try journalDecimalBalances(
+            quarantinedPostingRows: quarantinedPostingRows
+        )
+        let balances = try journalMoneyBalances(
+            decimalBalances,
+            validAccountIDs: validAccountIDs
+        )
+        let referenceCounts = journalReferenceCounts(
+            referenceRows,
+            quarantinedPostingRows: quarantinedPostingRows
+        )
         let invalidRelationshipIDs = Set(
             invalidEntryStrings.compactMap { UUID(uuidString: $0) }
         )
@@ -130,6 +60,105 @@ extension EncryptedRecordStore {
             issues: issues,
             invalidRelationshipEntryIDs: invalidRelationshipIDs
         )
+    }
+
+    private func invalidJournalEntryStrings(
+        validAccountIDs: Set<String>,
+        expectedAccountCurrencies: [String: String],
+        missingIndexIDs: [String]
+    ) throws -> Set<String> {
+        var invalid = try connection.fetchInvalidJournalEntryIDs(
+            validAccountIDs: validAccountIDs,
+            expectedAccountCurrencies: expectedAccountCurrencies
+        )
+        invalid.formUnion(try connection.fetchNoncanonicalJournalEntryIDs())
+        // A lowercase alias is deliberately unindexed. Quarantine its indexed
+        // canonical physical twin too, so no ambiguous transaction is exposed.
+        let canonicalTwins = missingIndexIDs.compactMap { recordID -> String? in
+            guard let id = UUID(uuidString: recordID), id.uuidString != recordID else {
+                return nil
+            }
+            return id.uuidString
+        }
+        invalid.formUnion(try connection.fetchExistingJournalEntryIDs(canonicalTwins))
+        return invalid
+    }
+
+    private func journalDecimalBalances(
+        quarantinedPostingRows: [IndexedPostingRow]
+    ) throws -> [String: [String: Decimal]] {
+        var balances: [String: [String: Decimal]] = [:]
+        for row in try connection.fetchJournalBalances() {
+            guard let amount = Decimal(
+                string: row.amount,
+                locale: Locale(identifier: "en_US_POSIX")
+            ) else {
+                throw PersistenceError.invalidStoredRecord(
+                    collection: .journalEntries,
+                    recordID: "balance-index"
+                )
+            }
+            balances[row.accountID.lowercased(), default: [:]][row.currency] = amount
+        }
+        // A relationship error quarantines the complete balanced entry.
+        for row in quarantinedPostingRows {
+            guard let amount = Decimal(
+                string: row.amount,
+                locale: Locale(identifier: "en_US_POSIX")
+            ) else {
+                throw PersistenceError.invalidStoredRecord(
+                    collection: .journalEntries,
+                    recordID: row.entryID
+                )
+            }
+            let accountID = row.accountID.lowercased()
+            var accountBalances = balances[accountID] ?? [:]
+            accountBalances[row.currency] = try CheckedDecimal.subtracting(
+                accountBalances[row.currency] ?? .zero,
+                amount
+            )
+            balances[accountID] = accountBalances
+        }
+        return balances
+    }
+
+    private func journalMoneyBalances(
+        _ decimalBalances: [String: [String: Decimal]],
+        validAccountIDs: Set<UUID>
+    ) throws -> [UUID: [CurrencyCode: Money]] {
+        var balances: [UUID: [CurrencyCode: Money]] = [:]
+        for (rawAccountID, currencyAmounts) in decimalBalances {
+            guard let accountID = UUID(uuidString: rawAccountID),
+                  validAccountIDs.contains(accountID) else { continue }
+            for (rawCurrency, amount) in currencyAmounts where amount != .zero {
+                let currency = try CurrencyCode(rawCurrency)
+                balances[accountID, default: [:]][currency] = try Money(
+                    amount,
+                    currency: currency
+                )
+            }
+        }
+        return balances
+    }
+
+    private func journalReferenceCounts(
+        _ referenceRows: [IndexedReferenceCountRow],
+        quarantinedPostingRows: [IndexedPostingRow]
+    ) -> [UUID: Int] {
+        var invalidReferences: [String: Set<String>] = [:]
+        for row in quarantinedPostingRows {
+            // Physical journal identities are binary keys. Preserve spelling.
+            invalidReferences[row.accountID.lowercased(), default: []].insert(row.entryID)
+        }
+        var counts: [UUID: Int] = [:]
+        for row in referenceRows {
+            guard let accountID = UUID(uuidString: row.accountID) else { continue }
+            counts[accountID] = max(
+                0,
+                row.count - invalidReferences[row.accountID.lowercased(), default: []].count
+            )
+        }
+        return counts
     }
 
     public func containsJournalEntry(sourceFingerprint: String) throws -> Bool {
