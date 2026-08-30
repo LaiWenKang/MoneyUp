@@ -13,6 +13,12 @@ final class SQLCipherConnection: @unchecked Sendable {
         let currency: String
     }
 
+    private struct WriteTransactionState {
+        var balanceDeltas: [BalanceKey: Decimal] = [:]
+        var priorPostingRowsRead = 0
+        var journalEntriesChanged = 0
+    }
+
     var database: OpaquePointer?
     #if DEBUG
     var shouldFailNextRestoreRollbackForTesting = false
@@ -112,6 +118,23 @@ final class SQLCipherConnection: @unchecked Sendable {
         relinkingReceiptAttachments relink: ReceiptAttachmentRelink? = nil
     ) throws {
         guard !records.isEmpty || !deletions.isEmpty || relink != nil else { return }
+        try validateWriteIndexes(records)
+        try execute("BEGIN IMMEDIATE;")
+        do {
+            let diagnostics = try performWriteTransaction(
+                records,
+                removing: deletions,
+                relinkingReceiptAttachments: relink
+            )
+            try execute("COMMIT;")
+            lastJournalWriteDiagnostics = diagnostics
+        } catch let operationError {
+            try rollbackFailedWrite()
+            throw operationError
+        }
+    }
+
+    private func validateWriteIndexes(_ records: [RecordWrite]) throws {
         for record in records where record.collection == .journalEntries {
             guard record.journalIndex != nil, record.indexedAt != nil else {
                 throw PersistenceError.invalidStoredRecord(
@@ -136,119 +159,141 @@ final class SQLCipherConnection: @unchecked Sendable {
                 )
             }
         }
-        try execute("BEGIN IMMEDIATE;")
+    }
+
+    private func performWriteTransaction(
+        _ records: [RecordWrite],
+        removing deletions: [RecordDeletion],
+        relinkingReceiptAttachments relink: ReceiptAttachmentRelink?
+    ) throws -> JournalWriteDiagnostics {
+        let metricsBeforeWrite = try storageMetrics()
+        let updatedAt = Date().timeIntervalSince1970
+        var state = WriteTransactionState()
+        for record in records {
+            try apply(record, updatedAt: updatedAt, state: &state)
+        }
+        if let relink {
+            try relinkReceiptAttachments(
+                from: relink.sourceEntryID,
+                to: relink.destinationEntryID,
+                updatedAt: updatedAt
+            )
+        }
+        for deletion in deletions {
+            try apply(deletion, state: &state)
+        }
+        let compactBalanceRowsRead = try applyBalanceDeltas(state.balanceDeltas)
+        try enforceLogicalStoreLimits(
+            before: metricsBeforeWrite,
+            after: storageMetrics()
+        )
+        return JournalWriteDiagnostics(
+            priorPostingRowsRead: state.priorPostingRowsRead,
+            compactBalanceRowsRead: compactBalanceRowsRead,
+            journalEntriesChanged: state.journalEntriesChanged
+        )
+    }
+
+    private func apply(
+        _ record: RecordWrite,
+        updatedAt: TimeInterval,
+        state: inout WriteTransactionState
+    ) throws {
+        if record.collection == .journalEntries {
+            let prior = try postingTotals(forEntryID: record.id)
+            state.priorPostingRowsRead += prior.rowCount
+            try merge(prior.totals, subtractingFrom: &state.balanceDeltas)
+            state.journalEntriesChanged += 1
+        }
+        try upsertRecord(
+            collection: record.collection.rawValue,
+            recordID: record.id,
+            payload: record.payload,
+            updatedAt: updatedAt,
+            indexedAt: record.indexedAt
+        )
+        if record.collection == .journalEntries {
+            try replaceJournalIndex(entryID: record.id, with: record.journalIndex)
+            try merge(
+                postingTotals(for: record.journalIndex),
+                addingTo: &state.balanceDeltas
+            )
+        }
+        if record.collection == .receiptAttachments,
+           let attachmentIndex = record.receiptAttachmentIndex {
+            try replaceReceiptAttachmentIndex(
+                attachmentID: record.id,
+                with: attachmentIndex
+            )
+        }
+        if record.collection == .budgetEntryAttributions,
+           let attributionIndex = record.budgetAttributionIndex {
+            try replaceBudgetAttributionIndex(
+                entryID: record.id,
+                with: attributionIndex
+            )
+        }
+    }
+
+    private func apply(
+        _ deletion: RecordDeletion,
+        state: inout WriteTransactionState
+    ) throws {
+        if deletion.collection == .journalEntries {
+            let prior = try postingTotals(forEntryID: deletion.id)
+            state.priorPostingRowsRead += prior.rowCount
+            try merge(prior.totals, subtractingFrom: &state.balanceDeltas)
+            state.journalEntriesChanged += 1
+            try deleteJournalIndex(entryID: deletion.id)
+        }
+        if deletion.collection == .receiptAttachments {
+            try deleteReceiptAttachmentIndex(attachmentID: deletion.id)
+        }
+        if deletion.collection == .budgetEntryAttributions {
+            try deleteBudgetAttributionIndex(entryID: deletion.id)
+        }
+        try remove(
+            collection: deletion.collection.rawValue,
+            recordID: deletion.id
+        )
+    }
+
+    private func merge(
+        _ totals: [BalanceKey: Decimal],
+        addingTo balanceDeltas: inout [BalanceKey: Decimal]
+    ) throws {
+        for (key, amount) in totals {
+            balanceDeltas[key] = try CheckedDecimal.adding(
+                balanceDeltas[key] ?? .zero,
+                amount
+            )
+        }
+    }
+
+    private func merge(
+        _ totals: [BalanceKey: Decimal],
+        subtractingFrom balanceDeltas: inout [BalanceKey: Decimal]
+    ) throws {
+        for (key, amount) in totals {
+            balanceDeltas[key] = try CheckedDecimal.subtracting(
+                balanceDeltas[key] ?? .zero,
+                amount
+            )
+        }
+    }
+
+    private func rollbackFailedWrite() throws {
         do {
-            let metricsBeforeWrite = try storageMetrics()
-            let updatedAt = Date().timeIntervalSince1970
-            var balanceDeltas: [BalanceKey: Decimal] = [:]
-            var priorPostingRowsRead = 0
-            var journalEntriesChanged = 0
-            for record in records {
-                if record.collection == .journalEntries {
-                    let prior = try postingTotals(forEntryID: record.id)
-                    priorPostingRowsRead += prior.rowCount
-                    for (key, amount) in prior.totals {
-                        balanceDeltas[key] = try CheckedDecimal.subtracting(
-                            balanceDeltas[key] ?? .zero,
-                            amount
-                        )
-                    }
-                    journalEntriesChanged += 1
-                }
-                try upsertRecord(
-                    collection: record.collection.rawValue,
-                    recordID: record.id,
-                    payload: record.payload,
-                    updatedAt: updatedAt,
-                    indexedAt: record.indexedAt
-                )
-                if record.collection == .journalEntries {
-                    try replaceJournalIndex(
-                        entryID: record.id,
-                        with: record.journalIndex
-                    )
-                    for (key, amount) in try postingTotals(
-                        for: record.journalIndex
-                    ) {
-                        balanceDeltas[key] = try CheckedDecimal.adding(
-                            balanceDeltas[key] ?? .zero,
-                            amount
-                        )
-                    }
-                }
-                if record.collection == .receiptAttachments,
-                   let attachmentIndex = record.receiptAttachmentIndex {
-                    try replaceReceiptAttachmentIndex(
-                        attachmentID: record.id,
-                        with: attachmentIndex
-                    )
-                }
-                if record.collection == .budgetEntryAttributions,
-                   let attributionIndex = record.budgetAttributionIndex {
-                    try replaceBudgetAttributionIndex(
-                        entryID: record.id,
-                        with: attributionIndex
-                    )
-                }
+            #if DEBUG
+            if shouldFailNextWriteRollbackForTesting {
+                shouldFailNextWriteRollbackForTesting = false
+                try execute("ROLLBACK TO moneyup_missing_write_savepoint;")
             }
-            if let relink {
-                try relinkReceiptAttachments(
-                    from: relink.sourceEntryID,
-                    to: relink.destinationEntryID,
-                    updatedAt: updatedAt
-                )
-            }
-            for deletion in deletions {
-                if deletion.collection == .journalEntries {
-                    let prior = try postingTotals(forEntryID: deletion.id)
-                    priorPostingRowsRead += prior.rowCount
-                    for (key, amount) in prior.totals {
-                        balanceDeltas[key] = try CheckedDecimal.subtracting(
-                            balanceDeltas[key] ?? .zero,
-                            amount
-                        )
-                    }
-                    journalEntriesChanged += 1
-                    try deleteJournalIndex(entryID: deletion.id)
-                }
-                if deletion.collection == .receiptAttachments {
-                    try deleteReceiptAttachmentIndex(attachmentID: deletion.id)
-                }
-                if deletion.collection == .budgetEntryAttributions {
-                    try deleteBudgetAttributionIndex(entryID: deletion.id)
-                }
-                try remove(
-                    collection: deletion.collection.rawValue,
-                    recordID: deletion.id
-                )
-            }
-            let compactBalanceRowsRead = try applyBalanceDeltas(balanceDeltas)
-            try enforceLogicalStoreLimits(
-                before: metricsBeforeWrite,
-                after: storageMetrics()
-            )
-            try execute("COMMIT;")
-            lastJournalWriteDiagnostics = JournalWriteDiagnostics(
-                priorPostingRowsRead: priorPostingRowsRead,
-                compactBalanceRowsRead: compactBalanceRowsRead,
-                journalEntriesChanged: journalEntriesChanged
-            )
-        } catch let operationError {
-            do {
-                #if DEBUG
-                if shouldFailNextWriteRollbackForTesting {
-                    shouldFailNextWriteRollbackForTesting = false
-                    try execute(
-                        "ROLLBACK TO moneyup_missing_write_savepoint;"
-                    )
-                }
-                #endif
-                try execute("ROLLBACK;")
-            } catch {
-                close()
-                throw PersistenceError.transactionStateIndeterminate
-            }
-            throw operationError
+            #endif
+            try execute("ROLLBACK;")
+        } catch {
+            close()
+            throw PersistenceError.transactionStateIndeterminate
         }
     }
 
