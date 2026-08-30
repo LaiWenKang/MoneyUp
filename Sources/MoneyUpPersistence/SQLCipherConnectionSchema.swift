@@ -45,189 +45,135 @@ extension SQLCipherConnection {
     }
 
     func migrateIfNeeded() throws {
-        var currentVersion: Int32 = try withStatement("PRAGMA user_version;") { statement in
-            guard sqlite3_step(statement) == SQLITE_ROW else {
-                throw makeError()
-            }
-            return sqlite3_column_int(statement, 0)
-        }
-
+        var currentVersion = try schemaVersion()
         guard currentVersion <= supportedSchemaVersion else {
             throw PersistenceError.unsupportedSchema(
                 found: currentVersion,
                 supported: supportedSchemaVersion
             )
         }
-
         if currentVersion == 0 {
-            try execute("BEGIN IMMEDIATE;")
-            do {
-                try execute(
-                    """
-                    CREATE TABLE records (
-                        collection TEXT NOT NULL,
-                        record_id TEXT NOT NULL,
-                        payload BLOB NOT NULL CHECK(length(payload) > 0),
-                        updated_at REAL NOT NULL,
-                        indexed_at REAL,
-                        PRIMARY KEY (collection, record_id)
-                    ) WITHOUT ROWID;
-                    """
-                )
-                try execute(
-                    "CREATE INDEX records_updated_at ON records(collection, updated_at);"
-                )
-                try execute(
-                    """
-                    CREATE INDEX records_chronological
-                    ON records(collection, indexed_at DESC, record_id DESC);
-                    """
-                )
-                try execute("PRAGMA user_version = 2;")
-                try execute("COMMIT;")
-                currentVersion = 2
-            } catch {
-                try? execute("ROLLBACK;")
-                throw error
-            }
+            try migrateFreshStoreToVersion2()
+            currentVersion = 2
         }
-
         if currentVersion < 2 {
-            try execute("BEGIN IMMEDIATE;")
-            do {
-                try execute("ALTER TABLE records ADD COLUMN indexed_at REAL;")
-                try execute(
-                    """
-                    CREATE INDEX records_chronological
-                    ON records(collection, indexed_at DESC, record_id DESC);
-                    """
-                )
-                for record in try fetchAll(
-                    collection: RecordCollection.journalEntries.rawValue
-                ) {
-                    guard let indexedAt = try journalIndexedAt(
-                        collection: RecordCollection.journalEntries.rawValue,
-                        payload: record.payload
-                    ) else { continue }
-                    try withStatement(
-                        """
-                        UPDATE records
-                        SET indexed_at = ?
-                        WHERE collection = ? AND record_id = ?;
-                        """
-                    ) { statement in
-                        try bindDouble(indexedAt, at: 1, to: statement)
-                        try bindText(
-                            RecordCollection.journalEntries.rawValue,
-                            at: 2,
-                            to: statement
-                        )
-                        try bindText(record.id, at: 3, to: statement)
-                        try stepExpectingDone(statement)
-                    }
-                }
-                try execute("PRAGMA user_version = 2;")
-                try execute("COMMIT;")
-                currentVersion = 2
-            } catch {
-                try? execute("ROLLBACK;")
-                throw error
-            }
+            try migrateLegacyStoreToVersion2()
+            currentVersion = 2
         }
-
         if currentVersion < 3 {
-            try execute("BEGIN IMMEDIATE;")
-            do {
-                try createJournalIndexTables()
-                var affectedBalances = Set<BalanceKey>()
-                for record in try fetchAll(
-                    collection: RecordCollection.journalEntries.rawValue
-                ) {
-                    guard let index = try journalIndexWrite(
-                        collection: RecordCollection.journalEntries.rawValue,
-                        recordID: record.id,
-                        payload: record.payload
-                    ) else {
-                        try clearJournalChronologicalIndex(recordID: record.id)
-                        continue
-                    }
-                    try replaceJournalIndex(entryID: record.id, with: index)
-                    affectedBalances.formUnion(
-                        index.postings.map {
-                            BalanceKey(accountID: $0.accountID, currency: $0.currency)
-                        }
-                    )
-                }
-                try rebuildBalances(for: affectedBalances)
-                try execute("PRAGMA user_version = 3;")
-                try execute("COMMIT;")
-                currentVersion = 3
-            } catch {
-                try? execute("ROLLBACK;")
-                throw error
-            }
+            try migrateToVersion3()
+            currentVersion = 3
         }
-
         if currentVersion < 4 {
-            try execute("BEGIN IMMEDIATE;")
-            do {
-                try createReceiptAttachmentIndexTable()
-                let attachmentRecordIDs = try recordIDs(
-                    collection: RecordCollection.receiptAttachments.rawValue
-                )
-                for recordID in attachmentRecordIDs {
-                    guard let payload = try fetch(
-                        collection: RecordCollection.receiptAttachments.rawValue,
-                        recordID: recordID
-                    ) else { continue }
-                    guard let index = receiptAttachmentIndexWrite(
-                        collection: RecordCollection.receiptAttachments.rawValue,
-                        recordID: recordID,
-                        payload: payload
-                    ) else { continue }
-                    try replaceReceiptAttachmentIndex(
-                        attachmentID: recordID,
-                        with: index
-                    )
-                }
-                try execute("PRAGMA user_version = 4;")
-                try execute("COMMIT;")
-                currentVersion = 4
-            } catch {
-                try? execute("ROLLBACK;")
-                throw error
-            }
+            try migrateToVersion4()
+            currentVersion = 4
         }
-
         if currentVersion < 5 {
-            try execute("BEGIN IMMEDIATE;")
-            do {
-                try createStoreMetricsTable()
-                try execute("PRAGMA user_version = 5;")
-                try execute("COMMIT;")
-                currentVersion = 5
-            } catch {
-                try? execute("ROLLBACK;")
-                throw error
-            }
+            try migrateToVersion5()
+            currentVersion = 5
         }
-
         guard currentVersion < 6 else { return }
+        try migrateToVersion6()
+    }
+
+    private func schemaVersion() throws -> Int32 {
+        try withStatement("PRAGMA user_version;") { statement in
+            guard sqlite3_step(statement) == SQLITE_ROW else {
+                throw makeError()
+            }
+            return sqlite3_column_int(statement, 0)
+        }
+    }
+
+    private func performMigration(_ migration: () throws -> Void) throws {
         try execute("BEGIN IMMEDIATE;")
         do {
-            if try !journalEntryIndexHasBudgetIntegrityFingerprint() {
-                try execute(
-                    """
-                    ALTER TABLE journal_entry_index
-                    ADD COLUMN budget_integrity_fingerprint BLOB
-                    CHECK(
-                        budget_integrity_fingerprint IS NULL
-                        OR length(budget_integrity_fingerprint) = 32
-                    );
-                    """
+            try migration()
+            try execute("COMMIT;")
+        } catch {
+            try? execute("ROLLBACK;")
+            throw error
+        }
+    }
+
+    private func migrateFreshStoreToVersion2() throws {
+        try performMigration {
+            try execute(
+                """
+                CREATE TABLE records (
+                    collection TEXT NOT NULL,
+                    record_id TEXT NOT NULL,
+                    payload BLOB NOT NULL CHECK(length(payload) > 0),
+                    updated_at REAL NOT NULL,
+                    indexed_at REAL,
+                    PRIMARY KEY (collection, record_id)
+                ) WITHOUT ROWID;
+                """
+            )
+            try execute(
+                "CREATE INDEX records_updated_at ON records(collection, updated_at);"
+            )
+            try execute(
+                """
+                CREATE INDEX records_chronological
+                ON records(collection, indexed_at DESC, record_id DESC);
+                """
+            )
+            try execute("PRAGMA user_version = 2;")
+        }
+    }
+
+    private func migrateLegacyStoreToVersion2() throws {
+        try performMigration {
+            try execute("ALTER TABLE records ADD COLUMN indexed_at REAL;")
+            try execute(
+                """
+                CREATE INDEX records_chronological
+                ON records(collection, indexed_at DESC, record_id DESC);
+                """
+            )
+            for record in try fetchAll(
+                collection: RecordCollection.journalEntries.rawValue
+            ) {
+                guard let indexedAt = try journalIndexedAt(
+                    collection: RecordCollection.journalEntries.rawValue,
+                    payload: record.payload
+                ) else { continue }
+                try updateChronologicalIndex(
+                    recordID: record.id,
+                    indexedAt: indexedAt
                 )
             }
-            try createBudgetAttributionIndexTables()
+            try execute("PRAGMA user_version = 2;")
+        }
+    }
+
+    private func updateChronologicalIndex(
+        recordID: String,
+        indexedAt: TimeInterval
+    ) throws {
+        try withStatement(
+            """
+            UPDATE records
+            SET indexed_at = ?
+            WHERE collection = ? AND record_id = ?;
+            """
+        ) { statement in
+            try bindDouble(indexedAt, at: 1, to: statement)
+            try bindText(
+                RecordCollection.journalEntries.rawValue,
+                at: 2,
+                to: statement
+            )
+            try bindText(recordID, at: 3, to: statement)
+            try stepExpectingDone(statement)
+        }
+    }
+
+    private func migrateToVersion3() throws {
+        try performMigration {
+            try createJournalIndexTables()
+            var affectedBalances = Set<BalanceKey>()
             for record in try fetchAll(
                 collection: RecordCollection.journalEntries.rawValue
             ) {
@@ -235,30 +181,104 @@ extension SQLCipherConnection {
                     collection: RecordCollection.journalEntries.rawValue,
                     recordID: record.id,
                     payload: record.payload
-                ) else { continue }
-                try updateJournalBudgetIntegrityFingerprint(
-                    entryID: record.id,
-                    fingerprint: index.budgetIntegrityFingerprint
+                ) else {
+                    try clearJournalChronologicalIndex(recordID: record.id)
+                    continue
+                }
+                try replaceJournalIndex(entryID: record.id, with: index)
+                affectedBalances.formUnion(
+                    index.postings.map {
+                        BalanceKey(accountID: $0.accountID, currency: $0.currency)
+                    }
                 )
             }
-            for record in try fetchAll(
-                collection: RecordCollection.budgetEntryAttributions.rawValue
-            ) {
-                let index = budgetAttributionIndexWrite(
-                    collection: RecordCollection.budgetEntryAttributions.rawValue,
-                    recordID: record.id,
-                    payload: record.payload
-                )
-                try replaceBudgetAttributionIndex(
-                    entryID: record.id,
+            try rebuildBalances(for: affectedBalances)
+            try execute("PRAGMA user_version = 3;")
+        }
+    }
+
+    private func migrateToVersion4() throws {
+        try performMigration {
+            try createReceiptAttachmentIndexTable()
+            let attachmentRecordIDs = try recordIDs(
+                collection: RecordCollection.receiptAttachments.rawValue
+            )
+            for recordID in attachmentRecordIDs {
+                guard let payload = try fetch(
+                    collection: RecordCollection.receiptAttachments.rawValue,
+                    recordID: recordID
+                ) else { continue }
+                guard let index = receiptAttachmentIndexWrite(
+                    collection: RecordCollection.receiptAttachments.rawValue,
+                    recordID: recordID,
+                    payload: payload
+                ) else { continue }
+                try replaceReceiptAttachmentIndex(
+                    attachmentID: recordID,
                     with: index
                 )
             }
+            try execute("PRAGMA user_version = 4;")
+        }
+    }
+
+    private func migrateToVersion5() throws {
+        try performMigration {
+            try createStoreMetricsTable()
+            try execute("PRAGMA user_version = 5;")
+        }
+    }
+
+    private func migrateToVersion6() throws {
+        try performMigration {
+            try addBudgetIntegrityFingerprintIfNeeded()
+            try createBudgetAttributionIndexTables()
+            try populateBudgetIntegrityFingerprints()
+            try populateBudgetAttributionIndexes()
             try execute("PRAGMA user_version = 6;")
-            try execute("COMMIT;")
-        } catch {
-            try? execute("ROLLBACK;")
-            throw error
+        }
+    }
+
+    private func addBudgetIntegrityFingerprintIfNeeded() throws {
+        guard try !journalEntryIndexHasBudgetIntegrityFingerprint() else { return }
+        try execute(
+            """
+            ALTER TABLE journal_entry_index
+            ADD COLUMN budget_integrity_fingerprint BLOB
+            CHECK(
+                budget_integrity_fingerprint IS NULL
+                OR length(budget_integrity_fingerprint) = 32
+            );
+            """
+        )
+    }
+
+    private func populateBudgetIntegrityFingerprints() throws {
+        for record in try fetchAll(
+            collection: RecordCollection.journalEntries.rawValue
+        ) {
+            guard let index = try journalIndexWrite(
+                collection: RecordCollection.journalEntries.rawValue,
+                recordID: record.id,
+                payload: record.payload
+            ) else { continue }
+            try updateJournalBudgetIntegrityFingerprint(
+                entryID: record.id,
+                fingerprint: index.budgetIntegrityFingerprint
+            )
+        }
+    }
+
+    private func populateBudgetAttributionIndexes() throws {
+        for record in try fetchAll(
+            collection: RecordCollection.budgetEntryAttributions.rawValue
+        ) {
+            let index = budgetAttributionIndexWrite(
+                collection: RecordCollection.budgetEntryAttributions.rawValue,
+                recordID: record.id,
+                payload: record.payload
+            )
+            try replaceBudgetAttributionIndex(entryID: record.id, with: index)
         }
     }
 
