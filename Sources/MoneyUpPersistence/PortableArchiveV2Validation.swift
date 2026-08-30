@@ -3,6 +3,17 @@ import Foundation
 import MoneyUpCore
 
 extension PortableArchiveV2 {
+    private struct ParsedHeaderFields {
+        let chunkCount: Int
+        let recordCount: Int
+        let payloadByteCount: Int
+        let plaintextByteCount: Int
+        let schemaBits: UInt32
+        let createdAtBits: UInt64
+        let salt: Data
+        let noncePrefix: Data
+    }
+
     static func metrics(
         for records: [StoredRecordSnapshot]
     ) throws -> DatabaseStorageMetrics {
@@ -141,6 +152,22 @@ extension PortableArchiveV2 {
         _ encoded: Data,
         fileByteCount: Int
     ) throws -> Header {
+        var cursor = try validatedHeaderPrefix(encoded)
+        let fields = try parsedHeaderFields(encoded, cursor: &cursor)
+        guard cursor == headerByteCount else {
+            throw PortableArchiveError.invalidArchive
+        }
+        let metadata = try validatedHeaderMetadata(fields)
+        try validateArchiveByteCount(metadata, fileByteCount: fileByteCount)
+        return Header(
+            metadata: metadata,
+            salt: fields.salt,
+            noncePrefix: fields.noncePrefix,
+            encoded: encoded
+        )
+    }
+
+    private static func validatedHeaderPrefix(_ encoded: Data) throws -> Int {
         guard encoded.count == headerByteCount,
               encoded.prefix(PortableArchive.magic.count)
                 == PortableArchive.magic else {
@@ -169,6 +196,13 @@ extension PortableArchiveV2 {
             throw PortableArchiveError.invalidArchive
         }
         cursor += 4
+        return cursor
+    }
+
+    private static func parsedHeaderFields(
+        _ encoded: Data,
+        cursor: inout Int
+    ) throws -> ParsedHeaderFields {
         let chunkCount = Int(try encoded.decodeUInt32(at: cursor))
         cursor += 4
         let recordCount = Int(try encoded.decodeUInt32(at: cursor))
@@ -189,25 +223,37 @@ extension PortableArchiveV2 {
         cursor += 16
         let noncePrefix = Data(encoded[cursor..<cursor + 8])
         cursor += 8
-        guard cursor == headerByteCount else {
-            throw PortableArchiveError.invalidArchive
-        }
-        let metrics = DatabaseStorageMetrics(
+        return ParsedHeaderFields(
+            chunkCount: chunkCount,
             recordCount: recordCount,
             payloadByteCount: Int(payloadByteCount64),
+            plaintextByteCount: Int(plaintextByteCount64),
+            schemaBits: schemaBits,
+            createdAtBits: createdAtBits,
+            salt: salt,
+            noncePrefix: noncePrefix
+        )
+    }
+
+    private static func validatedHeaderMetadata(
+        _ fields: ParsedHeaderFields
+    ) throws -> Metadata {
+        let metrics = DatabaseStorageMetrics(
+            recordCount: fields.recordCount,
+            payloadByteCount: fields.payloadByteCount,
             recordIDByteCount: 0,
             collectionByteCount: 0
         )
         let createdAt = Date(
-            timeIntervalSinceReferenceDate: Double(bitPattern: createdAtBits)
+            timeIntervalSinceReferenceDate: Double(bitPattern: fields.createdAtBits)
         )
         let metadata = Metadata(
-            schemaVersion: Int32(bitPattern: schemaBits),
+            schemaVersion: Int32(bitPattern: fields.schemaBits),
             createdAt: createdAt,
             recordCount: metrics.recordCount,
             payloadByteCount: metrics.payloadByteCount,
-            plaintextByteCount: Int(plaintextByteCount64),
-            chunkCount: chunkCount
+            plaintextByteCount: fields.plaintextByteCount,
+            chunkCount: fields.chunkCount
         )
         let expectedChunkCount = max(
             1,
@@ -229,6 +275,13 @@ extension PortableArchiveV2 {
               metadata.chunkCount == expectedChunkCount else {
             throw PortableArchiveError.invalidArchive
         }
+        return metadata
+    }
+
+    private static func validateArchiveByteCount(
+        _ metadata: Metadata,
+        fileByteCount: Int
+    ) throws {
         let expectedArchiveByteCount = try checkedAdd(
             headerByteCount,
             try checkedAdd(
@@ -243,12 +296,6 @@ extension PortableArchiveV2 {
               PortableArchive.isWithinArchiveByteLimit(fileByteCount) else {
             throw PortableArchiveError.invalidArchive
         }
-        return Header(
-            metadata: metadata,
-            salt: salt,
-            noncePrefix: noncePrefix,
-            encoded: encoded
-        )
     }
 
     static func validate(
