@@ -6,6 +6,45 @@ import SwiftUI
 import UIKit
 import WidgetKit
 
+struct AppModelLedgerReassignmentHierarchy: Sendable {
+    let accounts: [LedgerAccount]
+    let budgets: [BudgetNode]
+    let timeline: BudgetConfigurationTimeline?
+}
+
+struct AppModelLedgerReassignmentJournal: Sendable {
+    let entries: [JournalEntry]
+    let originalsByID: [UUID: JournalEntry]
+}
+
+struct AppModelLedgerReassignmentAttributions: Sendable {
+    let values: [UUID: BudgetEntryAttribution]
+    let additions: [BudgetEntryAttribution]
+}
+
+struct AppModelLedgerReassignmentSchedules: Sendable {
+    let values: [ScheduledTransaction]
+    let changedIDs: Set<UUID>
+}
+
+struct AppModelLedgerReassignmentHoldings: Sendable {
+    let values: [InvestmentHolding]
+    let changedIDs: Set<UUID>
+}
+
+struct AppModelLedgerReassignmentPlan: Sendable {
+    let store: EncryptedRecordStore
+    let source: LedgerAccount
+    let hierarchy: AppModelLedgerReassignmentHierarchy
+    let journal: AppModelLedgerReassignmentJournal
+    let attributions: AppModelLedgerReassignmentAttributions
+    let schedules: AppModelLedgerReassignmentSchedules
+    let holdings: AppModelLedgerReassignmentHoldings
+    let profile: UserProfile?
+    let draft: QuickLogDraft?
+    let audit: LedgerAccountLifecycleAudit
+}
+
 extension AppModel {
     func quarantiningDuplicateLogicalIDs<Value: Identifiable>(
         _ values: [Value],
@@ -453,13 +492,43 @@ extension AppModel {
         action: LedgerAccountLifecycleAction
     ) async throws {
         await finishPendingQuickLogDraftWrite()
+        let (source, target) = try validatedLedgerReassignmentEndpoints(
+            sourceID: sourceID,
+            targetID: targetID
+        )
+        let plan = try await prepareLedgerItemReassignment(
+            source: source,
+            target: target,
+            action: action
+        )
+        let writes = try ledgerReassignmentWrites(for: plan)
+        let deletions = ledgerReassignmentDeletions(for: plan)
+        let generation = storeGeneration
+        invalidateCommittedJournalProjection()
+        await lifecycleHooks.checkpoint(
+            .afterJournalProjectionInvalidationBeforeCommit
+        )
+        try await plan.store.write(writes, removing: deletions)
+        guard isCurrentStoreGeneration(generation) else { return }
+        applyLedgerReassignmentPlan(plan)
+        await refreshJournalAfterMutation()
+    }
+}
+
+extension AppModel {
+    func validatedLedgerReassignmentEndpoints(
+        sourceID: UUID,
+        targetID: UUID
+    ) throws -> (source: LedgerAccount, target: LedgerAccount) {
         guard let source = accounts.first(where: { $0.id == sourceID }),
               let target = accounts.first(where: { $0.id == targetID }) else {
             throw AppModelError.missingRecord
         }
         try requireLifecycleEligible(source)
         try requireLifecycleEligible(target)
-        guard sourceID != targetID else { throw AppModelError.incompatibleLedgerItems }
+        guard sourceID != targetID else {
+            throw AppModelError.incompatibleLedgerItems
+        }
         guard !target.isArchived,
               source.kind == target.kind,
               source.currency == target.currency else {
@@ -471,7 +540,85 @@ extension AppModel {
            !isInvestmentFundingAccountShape(target) {
             throw AppModelError.incompatibleLedgerItems
         }
+        return (source, target)
+    }
 
+    func prepareLedgerItemReassignment(
+        source: LedgerAccount,
+        target: LedgerAccount,
+        action: LedgerAccountLifecycleAction
+    ) async throws -> AppModelLedgerReassignmentPlan {
+        let hierarchy = try ledgerReassignmentHierarchy(
+            source: source,
+            target: target
+        )
+        let journal = try await ledgerReassignmentJournal(
+            sourceID: source.id,
+            targetID: target.id
+        )
+        let lifecycleStore = try requireStore()
+        if source.kind == .expense {
+            try await loadCompleteBudgetAttributionCacheIfNeeded(
+                from: lifecycleStore
+            )
+        }
+        let attributions = try ledgerReassignmentAttributions(
+            source: source,
+            originalsByID: journal.originalsByID
+        )
+        let schedules = ledgerReassignmentSchedules(
+            sourceID: source.id,
+            targetID: target.id
+        )
+        let holdings = ledgerReassignmentHoldings(
+            sourceID: source.id,
+            targetID: target.id
+        )
+        try validateLifecycleRelationshipCandidates(
+            accounts: hierarchy.accounts,
+            entries: journal.entries,
+            schedules: schedules.values,
+            holdings: holdings.values
+        )
+        var candidateProfile = profile
+        var candidateDraft = quickLogDraft
+        repointReferences(
+            from: source.id,
+            to: target.id,
+            in: &candidateProfile
+        )
+        repointReferences(
+            from: source.id,
+            to: target.id,
+            in: &candidateDraft
+        )
+        let audit = try ledgerReassignmentAudit(
+            action: action,
+            source: source,
+            targetID: target.id,
+            hierarchy: hierarchy,
+            journal: journal,
+            schedules: schedules,
+            holdings: holdings
+        )
+        return AppModelLedgerReassignmentPlan(
+            store: lifecycleStore,
+            source: source,
+            hierarchy: hierarchy,
+            journal: journal,
+            attributions: attributions,
+            schedules: schedules,
+            holdings: holdings,
+            profile: candidateProfile,
+            draft: candidateDraft,
+            audit: audit
+        )
+    }
+
+    func ledgerReassignmentHierarchy(
+        source: LedgerAccount,
+        target: LedgerAccount
+    ) throws -> AppModelLedgerReassignmentHierarchy {
         let candidateAccounts = try accountsAfterReassigningCategoryHierarchy(
             source: source,
             target: target
@@ -486,14 +633,24 @@ extension AppModel {
             candidateTimeline = try budgetConfigurationTimelineRecording(
                 nodes: candidateBudgets,
                 carryMappings: [BudgetCarryMapping(
-                    sourceID: sourceID,
-                    targetID: targetID
+                    sourceID: source.id,
+                    targetID: target.id
                 )]
             )
         } else {
             candidateTimeline = nil
         }
+        return AppModelLedgerReassignmentHierarchy(
+            accounts: candidateAccounts,
+            budgets: candidateBudgets,
+            timeline: candidateTimeline
+        )
+    }
 
+    func ledgerReassignmentJournal(
+        sourceID: UUID,
+        targetID: UUID
+    ) async throws -> AppModelLedgerReassignmentJournal {
         let sourceEntries: [JournalEntry]
         if retainsCompleteJournal {
             sourceEntries = entries
@@ -505,124 +662,190 @@ extension AppModel {
                 includeInvalidRelationships: true
             )
         }
-        var originalEntriesByID: [UUID: JournalEntry] = [:]
-        let candidateEntries = try sourceEntries.map { entry in
-            guard entry.postings.contains(where: { $0.accountID == sourceID }) else {
-                return entry
-            }
-            originalEntriesByID[entry.id] = entry
+        var originalsByID: [UUID: JournalEntry] = [:]
+        let candidates = try sourceEntries.map { entry in
+            guard entry.postings.contains(where: {
+                $0.accountID == sourceID
+            }) else { return entry }
+            originalsByID[entry.id] = entry
             return try repoint(entry: entry, from: sourceID, to: targetID)
         }
-        let lifecycleStore = try requireStore()
+        return AppModelLedgerReassignmentJournal(
+            entries: candidates,
+            originalsByID: originalsByID
+        )
+    }
+}
+
+extension AppModel {
+    func ledgerReassignmentAttributions(
+        source: LedgerAccount,
+        originalsByID: [UUID: JournalEntry]
+    ) throws -> AppModelLedgerReassignmentAttributions {
+        var candidates = budgetEntryAttributions
+        var additions: [BudgetEntryAttribution] = []
         if source.kind == .expense {
-            try await loadCompleteBudgetAttributionCacheIfNeeded(
-                from: lifecycleStore
-            )
-        }
-        var candidateBudgetAttributions = budgetEntryAttributions
-        var newBudgetAttributions: [BudgetEntryAttribution] = []
-        if source.kind == .expense {
-            for original in originalEntriesByID.values
-            where candidateBudgetAttributions[original.id] == nil {
+            for original in originalsByID.values
+            where candidates[original.id] == nil {
                 let attribution = try BudgetEntryAttribution(
                     entry: original,
-                    originTimeZoneIdentifier: profile?.reportingTimeZoneIdentifier
+                    originTimeZoneIdentifier:
+                        profile?.reportingTimeZoneIdentifier
                         ?? reportingCalendar.timeZone.identifier
                 )
-                candidateBudgetAttributions[original.id] = attribution
-                newBudgetAttributions.append(attribution)
+                candidates[original.id] = attribution
+                additions.append(attribution)
             }
         }
+        return AppModelLedgerReassignmentAttributions(
+            values: candidates,
+            additions: additions
+        )
+    }
 
-        var changedScheduleIDs = Set<UUID>()
-        let candidateSchedules = scheduledTransactions.map { schedule -> ScheduledTransaction in
+    func ledgerReassignmentSchedules(
+        sourceID: UUID,
+        targetID: UUID
+    ) -> AppModelLedgerReassignmentSchedules {
+        var changedIDs = Set<UUID>()
+        let candidates = scheduledTransactions.map { schedule in
             var updated = schedule
             if updated.accountID == sourceID {
                 updated.accountID = targetID
-                changedScheduleIDs.insert(updated.id)
+                changedIDs.insert(updated.id)
             }
             if updated.categoryAccountID == sourceID {
                 updated.categoryAccountID = targetID
-                changedScheduleIDs.insert(updated.id)
+                changedIDs.insert(updated.id)
             }
             return updated
         }
+        return AppModelLedgerReassignmentSchedules(
+            values: candidates,
+            changedIDs: changedIDs
+        )
+    }
 
-        var changedHoldingIDs = Set<UUID>()
-        let candidateHoldings = investmentHoldings.map { holding -> InvestmentHolding in
+    func ledgerReassignmentHoldings(
+        sourceID: UUID,
+        targetID: UUID
+    ) -> AppModelLedgerReassignmentHoldings {
+        var changedIDs = Set<UUID>()
+        let candidates = investmentHoldings.map { holding in
             var updated = holding
             if updated.accountID == sourceID {
                 updated.accountID = targetID
-                changedHoldingIDs.insert(updated.id)
+                changedIDs.insert(updated.id)
             }
             return updated
         }
-
-        try validateLifecycleRelationshipCandidates(
-            accounts: candidateAccounts,
-            entries: candidateEntries,
-            schedules: candidateSchedules,
-            holdings: candidateHoldings
+        return AppModelLedgerReassignmentHoldings(
+            values: candidates,
+            changedIDs: changedIDs
         )
+    }
 
-        var candidateProfile = profile
-        var candidateDraft = quickLogDraft
-        repointReferences(from: sourceID, to: targetID, in: &candidateProfile)
-        repointReferences(from: sourceID, to: targetID, in: &candidateDraft)
-
-        guard let resultingTarget = candidateAccounts.first(where: { $0.id == targetID }) else {
-            throw AppModelError.invalidBook
-        }
-        let audit = LedgerAccountLifecycleAudit(
+    func ledgerReassignmentAudit(
+        action: LedgerAccountLifecycleAction,
+        source: LedgerAccount,
+        targetID: UUID,
+        hierarchy: AppModelLedgerReassignmentHierarchy,
+        journal: AppModelLedgerReassignmentJournal,
+        schedules: AppModelLedgerReassignmentSchedules,
+        holdings: AppModelLedgerReassignmentHoldings
+    ) throws -> LedgerAccountLifecycleAudit {
+        guard let resultingTarget = hierarchy.accounts.first(where: {
+            $0.id == targetID
+        }) else { throw AppModelError.invalidBook }
+        return LedgerAccountLifecycleAudit(
             action: action,
             before: source,
             after: resultingTarget,
             targetID: targetID,
-            beforeBudget: budgetNodes.first { $0.id == sourceID },
-            afterBudget: candidateBudgets.first { $0.id == targetID },
-            affectedJournalEntryIDs: Array(originalEntriesByID.keys),
-            affectedScheduleIDs: Array(changedScheduleIDs),
-            affectedHoldingIDs: Array(changedHoldingIDs)
+            beforeBudget: budgetNodes.first { $0.id == source.id },
+            afterBudget: hierarchy.budgets.first { $0.id == targetID },
+            affectedJournalEntryIDs: Array(journal.originalsByID.keys),
+            affectedScheduleIDs: Array(schedules.changedIDs),
+            affectedHoldingIDs: Array(holdings.changedIDs)
         )
+    }
+}
 
+extension AppModel {
+    func ledgerReassignmentWrites(
+        for plan: AppModelLedgerReassignmentPlan
+    ) throws -> [RecordWrite] {
+        var writes = try ledgerReassignmentAccountAndJournalWrites(for: plan)
+        writes += try ledgerReassignmentRelationshipWrites(for: plan)
+        writes += try ledgerReassignmentReferenceWrites(for: plan)
+        return writes
+    }
+
+    func ledgerReassignmentAccountAndJournalWrites(
+        for plan: AppModelLedgerReassignmentPlan
+    ) throws -> [RecordWrite] {
         var writes: [RecordWrite] = []
-        let originalAccountsByID = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0) })
-        for account in candidateAccounts
+        let originalAccountsByID = Dictionary(
+            uniqueKeysWithValues: accounts.map { ($0.id, $0) }
+        )
+        for account in plan.hierarchy.accounts
         where originalAccountsByID[account.id] != account {
             writes.append(
-                try RecordWrite(account, id: account.id.uuidString, in: .accounts)
+                try RecordWrite(
+                    account,
+                    id: account.id.uuidString,
+                    in: .accounts
+                )
             )
         }
-
-        for entry in candidateEntries where originalEntriesByID[entry.id] != nil {
-            guard let original = originalEntriesByID[entry.id] else { continue }
+        for entry in plan.journal.entries
+        where plan.journal.originalsByID[entry.id] != nil {
+            guard let original = plan.journal.originalsByID[entry.id] else {
+                continue
+            }
             writes.append(
                 try RecordWrite(
                     original,
-                    id: "\(original.id.uuidString)-lifecycle-\(audit.id.uuidString)",
+                    id: "\(original.id.uuidString)-lifecycle-\(plan.audit.id.uuidString)",
                     in: .journalEntryRevisions
                 )
             )
             writes.append(
-                try RecordWrite(entry, id: entry.id.uuidString, in: .journalEntries)
+                try RecordWrite(
+                    entry,
+                    id: entry.id.uuidString,
+                    in: .journalEntries
+                )
             )
         }
-        writes += try newBudgetAttributions.map {
+        writes += try plan.attributions.additions.map {
             try RecordWrite(
                 $0,
                 id: $0.id.uuidString,
                 in: .budgetEntryAttributions
             )
         }
+        return writes
+    }
 
-        let originalBudgetsByID = Dictionary(uniqueKeysWithValues: budgetNodes.map { ($0.id, $0) })
-        for node in candidateBudgets where originalBudgetsByID[node.id] != node {
-            writes.append(try RecordWrite(node, id: node.id.uuidString, in: .budgetNodes))
+    func ledgerReassignmentRelationshipWrites(
+        for plan: AppModelLedgerReassignmentPlan
+    ) throws -> [RecordWrite] {
+        var writes: [RecordWrite] = []
+        let originalBudgetsByID = Dictionary(
+            uniqueKeysWithValues: budgetNodes.map { ($0.id, $0) }
+        )
+        for node in plan.hierarchy.budgets
+        where originalBudgetsByID[node.id] != node {
+            writes.append(
+                try RecordWrite(node, id: node.id.uuidString, in: .budgetNodes)
+            )
         }
-        if let candidateTimeline {
-            writes.append(try budgetConfigurationTimelineWrite(candidateTimeline))
+        if let timeline = plan.hierarchy.timeline {
+            writes.append(try budgetConfigurationTimelineWrite(timeline))
         }
-        for schedule in candidateSchedules where changedScheduleIDs.contains(schedule.id) {
+        for schedule in plan.schedules.values
+        where plan.schedules.changedIDs.contains(schedule.id) {
             writes.append(
                 try RecordWrite(
                     schedule,
@@ -631,7 +854,8 @@ extension AppModel {
                 )
             )
         }
-        for holding in candidateHoldings where changedHoldingIDs.contains(holding.id) {
+        for holding in plan.holdings.values
+        where plan.holdings.changedIDs.contains(holding.id) {
             writes.append(
                 try RecordWrite(
                     holding,
@@ -640,7 +864,14 @@ extension AppModel {
                 )
             )
         }
-        if candidateProfile != profile, let candidateProfile {
+        return writes
+    }
+
+    func ledgerReassignmentReferenceWrites(
+        for plan: AppModelLedgerReassignmentPlan
+    ) throws -> [RecordWrite] {
+        var writes: [RecordWrite] = []
+        if plan.profile != profile, let candidateProfile = plan.profile {
             writes.append(
                 try RecordWrite(
                     candidateProfile,
@@ -649,7 +880,7 @@ extension AppModel {
                 )
             )
         }
-        if candidateDraft != quickLogDraft, let candidateDraft {
+        if plan.draft != quickLogDraft, let candidateDraft = plan.draft {
             writes.append(
                 try RecordWrite(
                     candidateDraft,
@@ -658,35 +889,44 @@ extension AppModel {
                 )
             )
         }
-        writes.append(try lifecycleAuditWrite(audit))
+        writes.append(try lifecycleAuditWrite(plan.audit))
+        return writes
+    }
 
-        var deletions = [RecordDeletion(id: sourceID.uuidString, from: .accounts)]
-        if source.kind == .expense,
-           budgetNodes.contains(where: { $0.id == sourceID }) {
+    func ledgerReassignmentDeletions(
+        for plan: AppModelLedgerReassignmentPlan
+    ) -> [RecordDeletion] {
+        var deletions = [RecordDeletion(
+            id: plan.source.id.uuidString,
+            from: .accounts
+        )]
+        if plan.source.kind == .expense,
+           budgetNodes.contains(where: { $0.id == plan.source.id }) {
             deletions.append(
-                RecordDeletion(id: sourceID.uuidString, from: .budgetNodes)
+                RecordDeletion(
+                    id: plan.source.id.uuidString,
+                    from: .budgetNodes
+                )
             )
         }
+        return deletions
+    }
 
-        let generation = storeGeneration
-        invalidateCommittedJournalProjection()
-        await lifecycleHooks.checkpoint(
-            .afterJournalProjectionInvalidationBeforeCommit
-        )
-        try await lifecycleStore.write(writes, removing: deletions)
-        guard isCurrentStoreGeneration(generation) else { return }
-
-        accounts = candidateAccounts
-        if retainsCompleteJournal { entries = candidateEntries }
-        budgetEntryAttributions = candidateBudgetAttributions
-        if let candidateTimeline { budgetConfigurationTimeline = candidateTimeline }
-        budgetNodes = candidateBudgets
-        scheduledTransactions = candidateSchedules.sorted {
+    func applyLedgerReassignmentPlan(
+        _ plan: AppModelLedgerReassignmentPlan
+    ) {
+        accounts = plan.hierarchy.accounts
+        if retainsCompleteJournal { entries = plan.journal.entries }
+        budgetEntryAttributions = plan.attributions.values
+        if let timeline = plan.hierarchy.timeline {
+            budgetConfigurationTimeline = timeline
+        }
+        budgetNodes = plan.hierarchy.budgets
+        scheduledTransactions = plan.schedules.values.sorted {
             $0.nextOccurrence < $1.nextOccurrence
         }
-        investmentHoldings = candidateHoldings
-        profile = candidateProfile
-        quickLogDraft = candidateDraft
-        await refreshJournalAfterMutation()
+        investmentHoldings = plan.holdings.values
+        profile = plan.profile
+        quickLogDraft = plan.draft
     }
 }
