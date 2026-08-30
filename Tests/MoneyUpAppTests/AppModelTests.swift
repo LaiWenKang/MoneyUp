@@ -2,6 +2,7 @@ import Foundation
 @testable import MoneyUp
 import MoneyUpCore
 import MoneyUpPersistence
+import Observation
 import XCTest
 
 final class AppModelTests: XCTestCase {
@@ -9723,6 +9724,56 @@ extension AppModelTests {
     }
 
     @MainActor
+    func testObservationInvalidatesOnlyTrackedAppModelProperties() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let model = fixture.model()
+        let profileChanges = ObservationCounter()
+        let ledgerChanges = ObservationCounter()
+        let captureChanges = ObservationCounter()
+
+        withObservationTracking {
+            _ = model.profile
+        } onChange: {
+            profileChanges.increment()
+        }
+        withObservationTracking {
+            _ = model.entries
+        } onChange: {
+            ledgerChanges.increment()
+        }
+        withObservationTracking {
+            _ = model.quickLogDraft
+        } onChange: {
+            captureChanges.increment()
+        }
+
+        model.updateQuickLogDraft(QuickLogDraft(
+            kind: .expense,
+            amountText: "12",
+            destinationAmountText: "",
+            accountID: fixture.wallet.id,
+            destinationAccountID: nil,
+            categoryID: fixture.food.id,
+            occurredAt: Date(timeIntervalSinceReferenceDate: 100),
+            dateWasEdited: false,
+            payee: "Cafe",
+            note: "",
+            smartText: ""
+        ))
+
+        XCTAssertEqual(captureChanges.value, 1)
+        XCTAssertEqual(profileChanges.value, 0)
+        XCTAssertEqual(ledgerChanges.value, 0)
+
+        try await model.updateAutoLockDelay(300)
+        XCTAssertEqual(profileChanges.value, 1)
+        XCTAssertEqual(ledgerChanges.value, 0)
+        await model.waitForPendingQuickLogDraftFlush()
+        await fixture.store.close()
+    }
+
+    @MainActor
     func testAugustBudgetEditPersistsProspectiveTimelineAndKeepsClosedCarry() async throws {
         let fixture = try AppModelFixture()
         defer { fixture.removeFiles() }
@@ -11308,6 +11359,19 @@ private actor FirstRefreshGate {
         let waiters = releaseWaiters
         releaseWaiters.removeAll()
         waiters.forEach { $0.resume() }
+    }
+}
+
+private final class ObservationCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+
+    var value: Int {
+        lock.withLock { count }
+    }
+
+    func increment() {
+        lock.withLock { count += 1 }
     }
 }
 
