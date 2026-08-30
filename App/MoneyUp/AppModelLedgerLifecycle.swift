@@ -535,6 +535,4 @@ extension AppModel {
         if retainsCompleteJournal { entries.insert(entry, at: 0) }
         await refreshJournalAfterMutation()
     }
-
-    @discardableResult
 }

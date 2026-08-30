@@ -7,6 +7,7 @@ import UIKit
 import WidgetKit
 
 extension AppModel {
+    @discardableResult
     func logExpense(
         amount: Decimal,
         accountID: UUID,
