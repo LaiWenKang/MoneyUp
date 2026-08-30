@@ -7,6 +7,17 @@ import UIKit
 import WidgetKit
 
 extension AppModel {
+    private struct RestorePreparation {
+        let store: EncryptedRecordStore
+        let generation: Int
+        let stateBeforeRestore: State
+    }
+
+    private struct RestoreRollbackArchive {
+        let url: URL
+        let password: String
+    }
+
     func encryptedBackup(password: String) async throws -> Data {
         let temporaryURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(
@@ -81,64 +92,21 @@ extension AppModel {
         from archiveURL: URL,
         password: String
     ) async throws {
-        guard !isWorking,
-              !isLifecycleMutationInProgress,
-              !goalMutationBarrierClosed,
-              !isJournalMutationInProgress else {
-            throw AppModelError.transactionInProgress
-        }
-        isWorking = true
-        goalMutationBarrierClosed = true
-        await waitForGoalMutationDrain()
-        isLifecycleMutationInProgress = true
-        invalidateInFlightJournalProjection()
+        try await beginRestoreMutation()
         defer { finishExclusiveDataLifecycleMutation() }
 
-        // A cancelled debounce can already be inside its store operation.
-        // Drain it before taking the rollback snapshot so no pre-restore draft
-        // can wake and overwrite the restored logical book afterward.
-        await finishPendingQuickLogDraftWrite()
-        let restoreStore = try requireStore()
-        // A wrong password, malformed archive, or failed candidate validation
-        // leaves the old book authoritative. Persist the newest in-memory form
-        // before parsing untrusted input so cancelling its debounce cannot turn
-        // a harmless failed restore into later power-loss data loss.
-        try await flushQuickLogDraftForBackup(to: restoreStore)
-
-        // The redacted inbox is outside the portable archive and has no book
-        // identity. Keeping it across replacement could apply old-book input
-        // to the restored book; dropping it would lose user input.
-        try await requireEmptyLockedCaptureInbox()
-        do {
-            try Self.removeRestoreValidationDirectory(
-                restoreValidationDirectoryURL
-            )
-            try Self.removeLegacyRestoreValidationDirectories()
-        } catch {
-            throw AppModelError.invalidBook
-        }
-        try Task.checkCancellation()
-
-        let generation = storeGeneration
-        let stateBeforeRestore = state
-        try await validateRestoreCandidateInIsolation(
+        let preparation = try await prepareRestore(
             from: archiveURL,
             password: password
         )
-        try Task.checkCancellation()
+        let restoreStore = preparation.store
+        let generation = preparation.generation
 
-        let rollbackURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent(
-                "MoneyUp-Rollback-\(UUID().uuidString).moneyup",
-                isDirectory: false
-            )
-        let rollbackPassword = UUID().uuidString + UUID().uuidString
-        defer { try? FileManager.default.removeItem(at: rollbackURL) }
-        try await restoreStore.exportPortableArchive(
-            to: rollbackURL,
-            password: rollbackPassword
+        let rollback = try await makeRestoreRollbackArchive(
+            from: restoreStore,
+            generation: generation
         )
-        guard ownsStoreGeneration(generation) else { throw AppModelError.locked }
+        defer { try? FileManager.default.removeItem(at: rollback.url) }
 
         await lifecycleHooks.checkpoint(.beforeRestoreCommit)
         try Task.checkCancellation()
@@ -162,34 +130,10 @@ extension AppModel {
             await lifecycleHooks.checkpoint(
                 .afterRestoreCommitBeforeCandidateLoad
             )
-            try Task.checkCancellation()
-            guard ownsStoreGeneration(generation) else {
-                throw AppModelError.locked
-            }
-            try await load(from: restoreStore, mode: .restoreValidation)
-            try Task.checkCancellation()
-            guard ownsStoreGeneration(generation) else {
-                throw AppModelError.locked
-            }
-            guard profile != nil else { throw AppModelError.invalidBook }
-            try validateLoadedBook()
-            try await RestoreCandidateValidator.validateRelationships(
-                profile: profile,
-                accounts: accounts,
-                budgetNodes: budgetNodes,
-                scheduledTransactions: scheduledTransactions,
-                investmentHoldings: investmentHoldings,
-                netWorthSnapshots: netWorthSnapshots,
-                quickLogDraft: quickLogDraft,
-                in: restoreStore
+            try await validateAndPublishRestoredBook(
+                from: restoreStore,
+                generation: generation
             )
-            if let profile {
-                UserDefaults.standard.set(
-                    profile.allowLockedQuickCapture,
-                    forKey: Self.lockedQuickCapturePreferenceKey
-                )
-            }
-            state = .ready
         } catch {
             if case PersistenceError.restoreTransactionStateIndeterminate = error {
                 // A failed SQLite rollback means neither the old nor candidate
@@ -208,40 +152,13 @@ extension AppModel {
                 throw error
             }
             do {
-                // `Task.init` creates a fresh unstructured task, so cancellation
-                // of the failed restore is not inherited. Recovery must remain
-                // uncancelled through both index rebuilding and domain decode:
-                // those paths deliberately observe their current task's state.
-                let rollbackRecoveryTask = Task { @MainActor [self] in
-                    guard ownsStoreGeneration(generation) else {
-                        throw AppModelError.locked
-                    }
-                    // Candidate loading may have partially assigned decoded
-                    // state. Keep every projection unavailable across the
-                    // rollback transaction; `load` republishes only a coherent
-                    // book.
-                    invalidateCommittedJournalProjection(
-                        invalidateRecentEntries: true
-                    )
-                    try await restoreStore.restorePortableArchive(
-                        from: rollbackURL,
-                        password: rollbackPassword,
-                        observesCancellation: false
-                    )
-                    guard ownsStoreGeneration(generation) else {
-                        throw AppModelError.locked
-                    }
-                    try await load(from: restoreStore, mode: .rollbackRecovery)
-                    guard ownsStoreGeneration(generation) else {
-                        throw AppModelError.locked
-                    }
-                    if profile != nil { try validateLoadedBook() }
-                }
-                try await rollbackRecoveryTask.value
-                guard ownsStoreGeneration(generation) else {
-                    throw AppModelError.locked
-                }
-                state = stateBeforeRestore
+                try await recoverRestoreRollback(
+                    store: restoreStore,
+                    archiveURL: rollback.url,
+                    password: rollback.password,
+                    generation: generation,
+                    stateBeforeRestore: preparation.stateBeforeRestore
+                )
             } catch {
                 clearDecodedState()
                 state = .failed(
@@ -251,6 +168,149 @@ extension AppModel {
             }
             throw error
         }
+    }
+
+    private func beginRestoreMutation() async throws {
+        guard !isWorking,
+              !isLifecycleMutationInProgress,
+              !goalMutationBarrierClosed,
+              !isJournalMutationInProgress else {
+            throw AppModelError.transactionInProgress
+        }
+        isWorking = true
+        goalMutationBarrierClosed = true
+        await waitForGoalMutationDrain()
+        isLifecycleMutationInProgress = true
+        invalidateInFlightJournalProjection()
+    }
+
+    private func makeRestoreRollbackArchive(
+        from store: EncryptedRecordStore,
+        generation: Int
+    ) async throws -> RestoreRollbackArchive {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "MoneyUp-Rollback-\(UUID().uuidString).moneyup",
+                isDirectory: false
+            )
+        let password = UUID().uuidString + UUID().uuidString
+        do {
+            try await store.exportPortableArchive(to: url, password: password)
+            guard ownsStoreGeneration(generation) else {
+                throw AppModelError.locked
+            }
+            return RestoreRollbackArchive(url: url, password: password)
+        } catch {
+            try? FileManager.default.removeItem(at: url)
+            throw error
+        }
+    }
+
+    private func prepareRestore(
+        from archiveURL: URL,
+        password: String
+    ) async throws -> RestorePreparation {
+        // A cancelled debounce can already be inside its store operation.
+        // Drain it before taking the rollback snapshot so no pre-restore draft
+        // can wake and overwrite the restored logical book afterward.
+        await finishPendingQuickLogDraftWrite()
+        let restoreStore = try requireStore()
+        // Persist the newest in-memory draft before parsing untrusted input.
+        try await flushQuickLogDraftForBackup(to: restoreStore)
+        // The redacted inbox cannot safely cross book replacement.
+        try await requireEmptyLockedCaptureInbox()
+        do {
+            try Self.removeRestoreValidationDirectory(
+                restoreValidationDirectoryURL
+            )
+            try Self.removeLegacyRestoreValidationDirectories()
+        } catch {
+            throw AppModelError.invalidBook
+        }
+        try Task.checkCancellation()
+
+        let preparation = RestorePreparation(
+            store: restoreStore,
+            generation: storeGeneration,
+            stateBeforeRestore: state
+        )
+        try await validateRestoreCandidateInIsolation(
+            from: archiveURL,
+            password: password
+        )
+        try Task.checkCancellation()
+        return preparation
+    }
+
+    private func validateAndPublishRestoredBook(
+        from store: EncryptedRecordStore,
+        generation: Int
+    ) async throws {
+        try Task.checkCancellation()
+        guard ownsStoreGeneration(generation) else {
+            throw AppModelError.locked
+        }
+        try await load(from: store, mode: .restoreValidation)
+        try Task.checkCancellation()
+        guard ownsStoreGeneration(generation) else {
+            throw AppModelError.locked
+        }
+        guard profile != nil else { throw AppModelError.invalidBook }
+        try validateLoadedBook()
+        try await RestoreCandidateValidator.validateRelationships(
+            profile: profile,
+            accounts: accounts,
+            budgetNodes: budgetNodes,
+            scheduledTransactions: scheduledTransactions,
+            investmentHoldings: investmentHoldings,
+            netWorthSnapshots: netWorthSnapshots,
+            quickLogDraft: quickLogDraft,
+            in: store
+        )
+        if let profile {
+            UserDefaults.standard.set(
+                profile.allowLockedQuickCapture,
+                forKey: Self.lockedQuickCapturePreferenceKey
+            )
+        }
+        state = .ready
+    }
+
+    private func recoverRestoreRollback(
+        store: EncryptedRecordStore,
+        archiveURL: URL,
+        password: String,
+        generation: Int,
+        stateBeforeRestore: State
+    ) async throws {
+        // A fresh unstructured task does not inherit cancellation from the
+        // failed restore, so recovery can finish its index rebuild and decode.
+        let recoveryTask = Task { @MainActor [self] in
+            guard ownsStoreGeneration(generation) else {
+                throw AppModelError.locked
+            }
+            invalidateCommittedJournalProjection(
+                invalidateRecentEntries: true
+            )
+            try await store.restorePortableArchive(
+                from: archiveURL,
+                password: password,
+                observesCancellation: false
+            )
+            guard ownsStoreGeneration(generation) else {
+                throw AppModelError.locked
+            }
+            try await load(from: store, mode: .rollbackRecovery)
+            guard ownsStoreGeneration(generation) else {
+                throw AppModelError.locked
+            }
+            if profile != nil { try validateLoadedBook() }
+        }
+        try await recoveryTask.value
+        guard ownsStoreGeneration(generation) else {
+            throw AppModelError.locked
+        }
+        state = stateBeforeRestore
     }
 
     /// A restore candidate is never trial-applied to the live database. The
@@ -266,85 +326,23 @@ extension AppModel {
             "candidate.sqlite3",
             isDirectory: false
         )
-        do {
-            // Reuse one exact owned directory. A crash can leave it behind,
-            // but the next validation removes it before any untrusted row is
-            // copied, preventing unbounded UUID-directory accumulation.
-            try Self.removeRestoreValidationDirectory(directoryURL)
-            try FileManager.default.createDirectory(
-                at: directoryURL,
-                withIntermediateDirectories: true
-            )
-        } catch {
-            throw AppModelError.invalidBook
-        }
+        try prepareRestoreValidationDirectory(directoryURL)
         var validationKey = Self.temporaryRestoreValidationKey()
         defer { validationKey.resetBytes(in: 0..<validationKey.count) }
-
-        let validationStore: EncryptedRecordStore
-        do {
-            validationStore = try EncryptedRecordStore(
-                databaseURL: databaseURL,
-                key: validationKey
-            )
-        } catch {
-            let creationFailure = error
-            do {
-                try Self.removeRestoreValidationDirectory(directoryURL)
-            } catch {
-                throw AppModelError.invalidBook
-            }
-            throw creationFailure
-        }
+        let validationStore = try openRestoreValidationStore(
+            databaseURL: databaseURL,
+            directoryURL: directoryURL,
+            key: validationKey
+        )
         validationKey.resetBytes(in: 0..<validationKey.count)
 
         var validationFailure: (any Error)?
         do {
-            try await validationStore.restorePortableArchive(
-                from: archiveURL,
+            try await validateRestoreCandidate(
+                in: validationStore,
+                archiveURL: archiveURL,
                 password: password
             )
-            try Task.checkCancellation()
-
-            let metrics = try await validationStore.storageMetrics()
-            guard metrics.recordCount
-                    <= RestoreCandidateValidator.maximumCandidateRecordCount,
-                  metrics.payloadByteCount
-                    <= RestoreCandidateValidator
-                        .maximumBackupStoredPayloadByteCount,
-                  metrics.recordIDByteCount
-                    <= RestoreCandidateValidator
-                        .maximumAggregateRecordIDByteCount,
-                  metrics.collectionByteCount
-                    <= RestoreCandidateValidator
-                        .maximumAggregateCollectionByteCount else {
-                throw AppModelError.invalidBook
-            }
-
-            let validationModel = AppModel(
-                restoreValidationStore: validationStore,
-                lockedCaptureStore: lockedCaptureStore,
-                receiptRecognizer: receiptRecognizer
-            )
-            try await validationModel.load(
-                from: validationStore,
-                mode: .restoreValidation
-            )
-            guard validationModel.profile != nil else {
-                throw AppModelError.invalidBook
-            }
-            try validationModel.validateLoadedBook()
-            try await RestoreCandidateValidator.validateRelationships(
-                profile: validationModel.profile,
-                accounts: validationModel.accounts,
-                budgetNodes: validationModel.budgetNodes,
-                scheduledTransactions: validationModel.scheduledTransactions,
-                investmentHoldings: validationModel.investmentHoldings,
-                netWorthSnapshots: validationModel.netWorthSnapshots,
-                quickLogDraft: validationModel.quickLogDraft,
-                in: validationStore
-            )
-            try Task.checkCancellation()
         } catch {
             validationFailure = error
         }
@@ -359,6 +357,83 @@ extension AppModel {
             validationFailure = AppModelError.invalidBook
         }
         if let validationFailure { throw validationFailure }
+    }
+
+    private func prepareRestoreValidationDirectory(_ directoryURL: URL) throws {
+        do {
+            // Reuse one exact owned directory so crash leftovers cannot
+            // accumulate as unbounded UUID-named validation directories.
+            try Self.removeRestoreValidationDirectory(directoryURL)
+            try FileManager.default.createDirectory(
+                at: directoryURL,
+                withIntermediateDirectories: true
+            )
+        } catch {
+            throw AppModelError.invalidBook
+        }
+    }
+
+    private func openRestoreValidationStore(
+        databaseURL: URL,
+        directoryURL: URL,
+        key: Data
+    ) throws -> EncryptedRecordStore {
+        do {
+            return try EncryptedRecordStore(databaseURL: databaseURL, key: key)
+        } catch {
+            let creationFailure = error
+            do {
+                try Self.removeRestoreValidationDirectory(directoryURL)
+            } catch {
+                throw AppModelError.invalidBook
+            }
+            throw creationFailure
+        }
+    }
+
+    private func validateRestoreCandidate(
+        in store: EncryptedRecordStore,
+        archiveURL: URL,
+        password: String
+    ) async throws {
+        try await store.restorePortableArchive(
+            from: archiveURL,
+            password: password
+        )
+        try Task.checkCancellation()
+        let metrics = try await store.storageMetrics()
+        guard metrics.recordCount
+                <= RestoreCandidateValidator.maximumCandidateRecordCount,
+              metrics.payloadByteCount
+                <= RestoreCandidateValidator.maximumBackupStoredPayloadByteCount,
+              metrics.recordIDByteCount
+                <= RestoreCandidateValidator.maximumAggregateRecordIDByteCount,
+              metrics.collectionByteCount
+                <= RestoreCandidateValidator.maximumAggregateCollectionByteCount else {
+            throw AppModelError.invalidBook
+        }
+
+        let validationModel = AppModel(
+            restoreValidationStore: store,
+            lockedCaptureStore: lockedCaptureStore,
+            receiptRecognizer: receiptRecognizer
+        )
+        try await validationModel.load(from: store, mode: .restoreValidation)
+        guard validationModel.profile != nil else {
+            throw AppModelError.invalidBook
+        }
+        try validationModel.validateLoadedBook()
+        try await RestoreCandidateValidator.validateRelationships(
+            profile: validationModel.profile,
+            accounts: validationModel.accounts,
+            budgetNodes: validationModel.budgetNodes,
+            scheduledTransactions: validationModel.scheduledTransactions,
+            investmentHoldings: validationModel.investmentHoldings,
+            netWorthSnapshots: validationModel.netWorthSnapshots,
+            quickLogDraft: validationModel.quickLogDraft,
+            in: store
+        )
+        try Task.checkCancellation()
     }
 
     static func temporaryRestoreValidationKey() -> Data {
