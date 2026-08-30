@@ -219,84 +219,14 @@ public enum ReceiptTextParser {
         locale: Locale
     ) -> [RankedAmount] {
         guard !lines.isEmpty else { return [] }
-        var candidates: [RankedAmount] = []
-
-        for (lineIndex, line) in lines.enumerated() {
-            let normalized = normalizedLine(line)
-            let labelScore = payableScore(in: normalized)
-            var previousLabelScore = 0
-            if lineIndex > 0 {
-                let previous = normalizedLine(lines[lineIndex - 1])
-                if nonPayableScore(in: previous) == 0 {
-                    previousLabelScore = payableScore(in: previous)
-                }
-            }
-            let exclusionScore = nonPayableScore(in: normalized)
-            let isInclusiveTotal = isInclusivePayableLine(normalized)
-            let hasCurrency = hasCurrencyMarker(in: normalized)
-            let identifierContext = containsAny(identifierLabels, in: normalized)
-            let protectedRanges = dateAndTimeRanges(in: line)
-
-            for token in moneyTokens(in: line, locale: locale) {
-                guard token.value > .zero else { continue }
-                // A tax, discount, subtotal, tendered cash, change, points, or
-                // balance line is not the transaction amount. When a receipt
-                // explicitly says the payable total includes tax/service, the
-                // same line is safe and is handled by the restoration below.
-                guard exclusionScore == 0 || isInclusiveTotal else { continue }
-                guard !protectedRanges.contains(where: { NSIntersectionRange($0, token.range).length > 0 }) else {
-                    continue
-                }
-                guard !isPercentage(token.range, in: line) else { continue }
-
-                var score = 0
-                var isLabelled = false
-                if labelScore > 0 {
-                    score += labelScore
-                    isLabelled = true
-                } else if previousLabelScore > 0, isMostlyAmount(line) {
-                    score += previousLabelScore - 10
-                    isLabelled = true
-                }
-
-                score += exclusionScore
-                if hasCurrency { score += 24 }
-                if token.hasFraction { score += 20 }
-                score += Int((Double(lineIndex) / Double(max(lines.count - 1, 1))) * 18)
-
-                if identifierContext { score -= token.hasFraction ? 140 : 280 }
-                if containsAny(["card", "visa", "mastercard", "amex", "nets"], in: normalized),
-                   labelScore == 0 {
-                    score -= token.hasFraction ? 35 : 220
-                }
-                if containsAny(["qty", "quantity", "unit price", "x @", " x "], in: normalized),
-                   labelScore == 0 {
-                    score -= 55
-                }
-                if !token.hasFraction, !hasCurrency, !isLabelled { score -= 90 }
-                if token.digitCount >= 7 { score -= 320 }
-                if token.value > Decimal(10_000_000) { score -= 300 }
-
-                // Restore an exclusion only for an explicitly inclusive total,
-                // such as "TOTAL (incl. GST)". A payable-looking substring in
-                // TOTAL SAVINGS, TOTAL DISCOUNT, TOTAL POINTS, or a balance must
-                // never cancel the exclusion for that non-payable value.
-                if labelScore > 0, exclusionScore < 0, isInclusiveTotal {
-                    score -= exclusionScore * 3 / 4
-                }
-
-                candidates.append(
-                    RankedAmount(
-                        value: token.value,
-                        lineIndex: lineIndex,
-                        rangeLocation: token.range.location,
-                        score: score,
-                        isLabelled: isLabelled
-                    )
-                )
-            }
+        let candidates = lines.enumerated().flatMap { lineIndex, line in
+            rankedAmountsForLine(
+                line,
+                lineIndex: lineIndex,
+                allLines: lines,
+                locale: locale
+            )
         }
-
         return candidates
             .filter { $0.score >= 20 }
             .sorted { lhs, rhs in
@@ -308,6 +238,108 @@ public enum ReceiptTextParser {
                 }
                 return lhs.value > rhs.value
             }
+    }
+
+    private struct AmountLineContext {
+        let line: String
+        let normalized: String
+        let lineIndex: Int
+        let lineCount: Int
+        let labelScore: Int
+        let previousLabelScore: Int
+        let exclusionScore: Int
+        let isInclusiveTotal: Bool
+        let hasCurrency: Bool
+        let identifierContext: Bool
+        let protectedRanges: [NSRange]
+    }
+
+    static func rankedAmountsForLine(
+        _ line: String,
+        lineIndex: Int,
+        allLines: [String],
+        locale: Locale
+    ) -> [RankedAmount] {
+        let normalized = normalizedLine(line)
+        let previousLabelScore: Int
+        if lineIndex > 0 {
+            let previous = normalizedLine(allLines[lineIndex - 1])
+            previousLabelScore = nonPayableScore(in: previous) == 0
+                ? payableScore(in: previous)
+                : 0
+        } else {
+            previousLabelScore = 0
+        }
+        let context = AmountLineContext(
+            line: line,
+            normalized: normalized,
+            lineIndex: lineIndex,
+            lineCount: allLines.count,
+            labelScore: payableScore(in: normalized),
+            previousLabelScore: previousLabelScore,
+            exclusionScore: nonPayableScore(in: normalized),
+            isInclusiveTotal: isInclusivePayableLine(normalized),
+            hasCurrency: hasCurrencyMarker(in: normalized),
+            identifierContext: containsAny(identifierLabels, in: normalized),
+            protectedRanges: dateAndTimeRanges(in: line)
+        )
+        return moneyTokens(in: line, locale: locale).compactMap {
+            rankedAmount(for: $0, context: context)
+        }
+    }
+
+    static func rankedAmount(
+        for token: MoneyToken,
+        context: AmountLineContext
+    ) -> RankedAmount? {
+        guard token.value > .zero,
+              context.exclusionScore == 0 || context.isInclusiveTotal,
+              !context.protectedRanges.contains(where: {
+                  NSIntersectionRange($0, token.range).length > 0
+              }),
+              !isPercentage(token.range, in: context.line) else { return nil }
+        var score = context.labelScore
+        var isLabelled = context.labelScore > 0
+        if !isLabelled,
+           context.previousLabelScore > 0,
+           isMostlyAmount(context.line) {
+            score += context.previousLabelScore - 10
+            isLabelled = true
+        }
+        score += context.exclusionScore
+        if context.hasCurrency { score += 24 }
+        if token.hasFraction { score += 20 }
+        score += Int(
+            (Double(context.lineIndex) / Double(max(context.lineCount - 1, 1))) * 18
+        )
+        if context.identifierContext { score -= token.hasFraction ? 140 : 280 }
+        if containsAny(
+            ["card", "visa", "mastercard", "amex", "nets"],
+            in: context.normalized
+        ), context.labelScore == 0 {
+            score -= token.hasFraction ? 35 : 220
+        }
+        if containsAny(
+            ["qty", "quantity", "unit price", "x @", " x "],
+            in: context.normalized
+        ), context.labelScore == 0 {
+            score -= 55
+        }
+        if !token.hasFraction, !context.hasCurrency, !isLabelled { score -= 90 }
+        if token.digitCount >= 7 { score -= 320 }
+        if token.value > Decimal(10_000_000) { score -= 300 }
+        if context.labelScore > 0,
+           context.exclusionScore < 0,
+           context.isInclusiveTotal {
+            score -= context.exclusionScore * 3 / 4
+        }
+        return RankedAmount(
+            value: token.value,
+            lineIndex: context.lineIndex,
+            rangeLocation: token.range.location,
+            score: score,
+            isLabelled: isLabelled
+        )
     }
 
     static func payableScore(in normalized: String) -> Int {

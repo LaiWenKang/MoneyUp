@@ -410,7 +410,25 @@ public struct ScheduledTransaction: Codable, Equatable, Identifiable, Sendable {
                 throw ScheduledTransactionError.invalidLifecycle
             }
         }
+        let currentSeriesResolutions = try validatedResolutionHistory()
+        if let confirmation = currentConfirmation {
+            guard status != .ended,
+                  confirmation.occurrenceID == currentOccurrenceID,
+                  confirmation.scheduledFor == nextOccurrence else {
+                throw ScheduledTransactionError.invalidLifecycle
+            }
+        }
+        if let recurrenceCalendar = recurrenceCalendar(suppliedCalendar) {
+            try validateAnchoredOccurrences(
+                currentSeriesResolutions,
+                calendar: recurrenceCalendar
+            )
+        }
+        try Task.checkCancellation()
+    }
 
+    private func validatedResolutionHistory() throws
+        -> [ScheduledOccurrenceResolution] {
         var resolutionIDs = Set<ScheduledOccurrenceID>()
         var linkedEntryIDs = Set<UUID>()
         var currentSeriesResolutions: [ScheduledOccurrenceResolution] = []
@@ -453,15 +471,11 @@ public struct ScheduledTransaction: Codable, Equatable, Identifiable, Sendable {
                 throw ScheduledTransactionError.invalidLifecycle
             }
         }
-        if let confirmation = currentConfirmation {
-            guard status != .ended,
-                  confirmation.occurrenceID == currentOccurrenceID,
-                  confirmation.scheduledFor == nextOccurrence else {
-                throw ScheduledTransactionError.invalidLifecycle
-            }
-        }
+        return currentSeriesResolutions
+    }
 
-        var recurrenceCalendar = suppliedCalendar
+    private func recurrenceCalendar(_ supplied: Calendar?) -> Calendar? {
+        var recurrenceCalendar = supplied
         if recurrenceCalendar == nil,
            let identifier = recurrenceTimeZoneIdentifier,
            let timeZone = TimeZone(identifier: identifier) {
@@ -469,24 +483,28 @@ public struct ScheduledTransaction: Codable, Equatable, Identifiable, Sendable {
             decodedCalendar.timeZone = timeZone
             recurrenceCalendar = decodedCalendar
         }
-        if let recurrenceCalendar {
+        return recurrenceCalendar
+    }
+
+    private func validateAnchoredOccurrences(
+        _ currentSeriesResolutions: [ScheduledOccurrenceResolution],
+        calendar: Calendar
+    ) throws {
+        guard anchoredOccurrence(
+            index: currentOccurrenceIndex,
+            calendar: calendar
+        ) == nextOccurrence else {
+            throw ScheduledTransactionError.invalidLifecycle
+        }
+        for (index, resolution) in currentSeriesResolutions.enumerated() {
+            if index.isMultiple(of: 128) { try Task.checkCancellation() }
             guard anchoredOccurrence(
-                index: currentOccurrenceIndex,
-                calendar: recurrenceCalendar
-            ) == nextOccurrence else {
+                index: resolution.occurrenceID.index,
+                calendar: calendar
+            ) == resolution.scheduledFor else {
                 throw ScheduledTransactionError.invalidLifecycle
             }
-            for (index, resolution) in currentSeriesResolutions.enumerated() {
-                if index.isMultiple(of: 128) { try Task.checkCancellation() }
-                guard anchoredOccurrence(
-                    index: resolution.occurrenceID.index,
-                    calendar: recurrenceCalendar
-                ) == resolution.scheduledFor else {
-                    throw ScheduledTransactionError.invalidLifecycle
-                }
-            }
         }
-        try Task.checkCancellation()
     }
 
     /// Returns a series edit while retaining the audit trail. Any change to the
