@@ -207,13 +207,30 @@ and
 | QA-06 | Critical | No wider test/App Review while required physical/accessibility/recovery/migration/performance box is open. | `LAUNCH_PLAN.md`, `ROADMAP.md`; MANUAL `QA-06-PROMOTION-CHECK` signed by release owner. Current decision is blocked. | BLOCKED-P1 |
 | QA-07 | Critical | Store metadata, screenshots, notes, privacy, language, version/build, archive, widget, and binary capabilities match exact candidate. | `APP_STORE_SUBMISSION.md`, TestFlight workflow, release validator; STATIC `QA-07-SOURCE-CHECK`; MANUAL `QA-07-EXACT-ARCHIVE`. | STATIC-PASS; MANUAL-OPEN |
 
+## Proposed amendment PA-2026-08-29-r1
+
+These rows retain the explainable-capture behavior merged to `main` through PR
+#28. They do not change the controlling count of 97 Golden requirements or
+close any physical-device or exact-binary release gate. Automated source
+coverage is present, but the unified W1 merge candidate still needs its exact
+macOS CI run.
+
+| ID | Risk | Acceptance summary | Source / test cases | State |
+|---|---|---|---|---|
+| PA-CAP-01 | High | Account/category suggestions are deterministic, carry count/date evidence, respect kind/currency/archive/system roles, and only high-confidence payee-specific results may prefill an untouched smart-default field. Fixed defaults and parser/user choices win; ambiguous multi-category splits never collapse into one category. | `CaptureSuggestionEngine`, `QuickLogSuggestionPolicy`, Quick Log; `CaptureSuggestionEngineTests.testSuggestsAccountAndCategoryWithInspectableHighConfidenceEvidence`, `.testStableTieUsesLowerUUIDRegardlessOfInputOrder`, `.testKindCurrencyArchiveAndSystemRoleFiltersFailClosed`, `.testAmbiguousMultiCategorySplitsNeverCreateASingleCategorySuggestion`; `TransactionPresentationTests.testSuggestionPolicyRequiresReviewForLowConfidenceOrEditedFields`; MANUAL `PA-CAP-01-E2E-A11Y`. | AUTO-PENDING; MANUAL-OPEN |
+| PA-CAP-02 | Critical | Pre-save duplicate matching requires exact amount/currency/account direction and applicable transfer legs; category/payee/time/source evidence controls an advisory band. It never converts, deletes, merges, or blocks Save anyway, and Review routes to the matching attributed reporting day in History. | `CaptureDuplicateDetector`, `CaptureDuplicateQuery`, `QuickLogDuplicateReviewPolicy`, Quick Log, `RootView`; `CaptureDuplicateDetectorTests.testExactExpenseProducesExplainableHighConfidenceAdvisory`, `.testExpenseIncomeAndRefundDirectionsNeverCrossMatch`, `.testDifferentCurrencyAmountOrAccountNeverMatches`, `.testSameCurrencyTransferRequiresBothDirectedLegs`, `.testForeignTransferRequiresAllFourExactCurrencyLegs`; `TransactionPresentationTests.testDuplicateReviewUsesFrozenOriginDayForHistory`; MANUAL `PA-CAP-02-SAVE-REVIEW-UNDO`. | AUTO-PENDING; MANUAL-OPEN |
+| PA-CAP-03 | High | Receipt candidates retain field-relative scores, semantic evidence, per-line Vision quality, and aggregate document quality; OCR quality can only lower confidence, impossible local times are rejected, incompatible categories are not offered, and low-confidence fields remain explicit review actions. | `ReceiptScanner`, `ReceiptTextParser`, `QuickLogSuggestionPolicy`, Quick Log; `ReceiptTextParserTests.testCandidateDetailsPreserveScoresConfidenceAndRuleEvidence`, `.testOCRConfidenceConservativelyCapsParserConfidenceWithoutChangingValues`, `.testLowConfidenceAmountLineCannotHideBehindStrongDocumentMean`, `.testNonexistentDSTGapTimeFailsClosed`; `AppModelTests.testReceiptAnalysisCarriesVisionConfidenceIntoReviewBands`; MANUAL `PA-CAP-03-REAL-OCR`. | AUTO-PENDING; MANUAL-OPEN |
+| PA-CAP-04 | High | Regex parsing is bounded to receipt header/footer lines, runs outside MainActor, and suppresses publication after lock or account/book projection changes. Manual entry remains available on timeout, cancellation, or no result. | `AppModel.receiptAnalysis`, `ReceiptRecognitionResult`, `QuickLogReceiptPipeline`; `AppModelTests.testReceiptAnalysisBoundsPathologicalInputButKeepsFooterTotal`, `.testAccountChangeDuringReceiptRecognitionSuppressesStaleSuggestions`, `.testLockDuringReceiptScanDiscardsTheStaleResult`; MANUAL `PA-CAP-04-LATENCY-BACKGROUND-LOCK`. | AUTO-PENDING; MANUAL-OPEN |
+| PA-CAP-05 | High | Latin kind/date/weekday tokens require Unicode letter/number boundaries; CJK tokens retain intentional substring matching; impossible or conflicting explicit civil dates fail closed without becoming amounts; locale amount behavior remains unchanged. | `NaturalLanguageEntryParser`; `NaturalLanguageEntryParserTests.testLatinKindKeywordsDoNotMatchInsidePayeeWords`, `.testLatinDateTokenDoesNotMatchOrStripTomorrowlandPayee`, `.testCJKTokensKeepSubstringMatchingWithoutSpaces`, `.testImpossibleCivilDateFailsClosedWithoutInventingAnAmount`, `.testLeapDayIsAcceptedOnlyInALeapYear`. | AUTO-PENDING |
+| PA-PRIV-01 | Critical | Target-scoped privacy manifests declare app-only standard defaults and same-App-Group defaults for the app, and only same-App-Group defaults for the widget, exactly once and matching actual use. Source and built-bundle validators require both resources. | App/widget `PrivacyInfo.xcprivacy`, `validate_release_assets.py`, `validate_built_bundle.py`; STATIC `PA-PRIV-01-REQUIRED-REASONS`; exact-binary privacy review remains `SEC-09`. | STATIC-PASS; MANUAL-OPEN |
+
 ## Coverage accounting
 
 - Requirements traced: **97 / 97**.
 - Requirements with at least one named automated or manual case: **97 / 97**.
-- Declared automated tests in source after this review: **541** (252 core, 49
-  persistence, and 240 app-target declarations; XCTest methods plus Swift
-  Testing `@Test` declarations). Of those declarations, **491** are XCTest
+- Declared automated tests in source after this review: **591** (296 core, 49
+  persistence, and 246 app-target declarations; XCTest methods plus Swift
+  Testing `@Test` declarations). Of those declarations, **541** are XCTest
   functions named `test...`; the remaining 50 are Swift Testing `@Test`
   declarations in MoneyUpCore.
 - Tests executed against this exact candidate in this environment: **0**;

@@ -7,6 +7,13 @@ candidate (source build 8) plus the behavior-neutral 0.7.0 W1 architecture
 slice. It prevents "implemented in source" from being misreported as
 "released" or "accepted."
 
+The approved 0.6.0 baseline was
+`ff272da89de9f4e3cb9c44d4abd27deae7d2b338`. Current `main`
+`ae5a9cb06dae0428921df5d6d0da916eea80b87a` additionally contains the
+reviewed explainable-capture amendment from PR #28. W1 is integrating that
+amendment without changing its accounting, persistence, navigation, or privacy
+semantics. The unified W1 merge SHA and its CI evidence remain open.
+
 The exact 97-row requirement-to-test mapping is in
 [REQUIREMENTS_TEST_MATRIX.md](REQUIREMENTS_TEST_MATRIX.md). The complete source,
 dependency, defect, test-design, and release-blocker review is in
@@ -31,7 +38,7 @@ exact-candidate run.
 
 | ID | Implementation and evidence anchor | Current evidence state |
 |---|---|---|
-| W1-OBS | `@Observable AppModel`, `@Environment(AppModel.self)`, the five observable service state owners, and `AppModelTests.testObservationInvalidatesOnlyTrackedAppModelProperties` replace global `ObservableObject` broadcasts with tracked reads. Async persisted settings intentionally retain explicit bindings instead of direct synchronous mutation. | Implemented — verification pending; final PR and merged-SHA CI remain release blockers. |
+| W1-OBS | `@Observable AppModel`, `@Environment(AppModel.self)`, the five observable service state owners, and `AppModelTests.testObservationInvalidatesOnlyTrackedAppModelProperties` replace global `ObservableObject` broadcasts with tracked reads. Async persisted settings intentionally retain explicit bindings instead of direct synchronous mutation. | Implemented — verification pending; unified PR-head and merged-SHA CI remain release blockers. |
 | W1-SVC | `AppModelServices`, protocol seams, and bounded `AppModel*` extensions separate Ledger, Planning, Assets, Portability, Capture, and future Intelligence ownership while the coordinator retains lock, generation, cancellation, and cross-service sequencing. | Implemented — verification pending; no physical performance claim. |
 | W1-C12 | `ProfileMutationSerializer`, `testProfileMutationsSerializeAndPreserveLatestUnrelatedChoices`, and `testFailedProfileMutationDoesNotRollBackUnrelatedSetting` enforce FIFO latest-choice convergence and scoped failure isolation without a profile representation change. | Implemented — verification pending. |
 | W1-TXN | The operation-specific AppModel tests mapped under DAT-09 cover save, edit, delete, split/attachment, import, reconciliation, schedule posting, lifecycle, and goal movement; store rollback tests retain the durable boundary. | Implemented — verification pending; physical interruption remains deferred. |
@@ -178,6 +185,28 @@ exact-candidate run.
 | QA-05 | `DataSafetyView` exports a privacy-safe inventory from one payload-free store count snapshot, the fixture generator creates 10,000 deterministic fictional imports, and `FIRST_TEST.md` binds both to in-place upgrade and clean-device v2/compatible-v1 restore reconciliation. | Source tooling implemented; exact-candidate and physical gates open. |
 | QA-06 | Roadmap/launch plan prohibit wider testing or App Review while mandatory evidence is open. | Gate enforced in documentation; wider-test/review approval remains open. |
 | QA-07 | Workflow and store checklist bind metadata, screenshots, review notes, privacy, languages, version/build, archive, widget, App Group, and binary capabilities. | Exact-binary/App Store gate open. |
+
+## Proposed amendment PA-2026-08-29-r1 — Explainable capture guardrails
+
+This task-authorized amendment is not text from the Golden PRD. It was merged
+to `main` through PR #28 and is retained by W1 rather than redefined by it. It
+extends `LOG-04`, `LOG-07`, `LOG-08`, `DAT-09`, and `SEC-06` without changing
+navigation, accounting semantics, persistence schema, archive shape, bundle
+identity, or network capability.
+
+| Proposed ID | Behavior and acceptance | Data/privacy/rollback |
+|---|---|---|
+| PA-CAP-01 | Smart Entry and receipt-assisted Quick Log rank account and category suggestions from the current valid recent-entry cache. Every result carries a deterministic confidence band and count/date evidence; only high-confidence untouched fields may prefill, parser/user choices win, and ambiguous split history never collapses to one category. | Derive on demand inside the unlocked book; persist no profile, score, OCR text, or evidence. Removing the scorer restores prior UI behavior without touching user data. |
+| PA-CAP-02 | Before an interactive Save, exact amount/currency/kind/account semantics plus bounded time/payee/source evidence may produce an advisory recent-duplicate warning. The user can review History, cancel, or save anyway; the warning never deletes, merges, or blocks a legitimate repeat. | Inspect only valid in-memory recent entries, never raw/quarantined rows. A versioned draft fingerprint authorizes one unchanged Save attempt only. No database or archive migration. |
+| PA-CAP-03 | Receipt amount, merchant, date, and category candidates retain rule evidence and field-relative confidence. Per-line and aggregate Vision confidence may only lower a band; impossible civil/DST times fail closed; low-confidence candidates remain explicit review actions and never silently replace an edited field or offer an incompatible category. | Vision remains on device. Images and OCR text remain transient unless the existing explicit encrypted-attachment control is enabled; semantic evidence contains no receipt text. |
+| PA-CAP-04 | Receipt parsing is bounded to 160 header/footer lines, computed outside the main actor, and checked against store generation plus journal/account projection revision before publication. | Cancellation, lock, or restore suppresses stale publication. The bounded fallback always leaves manual entry available. |
+| PA-CAP-05 | Latin kind/date tokens use Unicode letter/number boundaries while CJK tokens retain intentional substring matching. Impossible explicit civil dates fail closed instead of becoming a normalized day or invented amount. | Pure parsing change with no stored state; identical input, locale, clock, and book state remain deterministic. |
+
+Explicit non-goals are persistent learning state, remote inference, recurring
+pattern discovery, unusual-spend prediction, investment advice, automatic
+schedule creation, receipt line-item splitting, and a new setting. Physical
+latency, accuracy, accessibility, and real-OCR targets remain open for the exact
+release candidate.
 
 ## Non-functional promotion gates
 

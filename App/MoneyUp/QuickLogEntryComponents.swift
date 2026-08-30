@@ -56,6 +56,13 @@ extension QuickLogEntryView {
                 receiptSuggestions(receiptResult)
             }
 
+            if let captureSuggestionResult,
+               captureSuggestionResult.accountSuggestion != nil
+                || (splitLines.isEmpty
+                    && captureSuggestionResult.categorySuggestion != nil) {
+                captureSuggestions(captureSuggestionResult)
+            }
+
             if receiptAttachmentData != nil {
                 Toggle("quick_log.keep_receipt", isOn: $retainReceiptAttachment)
                     .accessibilityHint("quick_log.keep_receipt_hint")

@@ -145,6 +145,53 @@ final class ReceiptTextParserTests: XCTestCase {
         XCTAssertEqual(draft.occurredAt, try date(2026, 3, 19, hour: 0))
     }
 
+    func testNonexistentDSTGapTimeFailsClosed() throws {
+        var losAngeles = Calendar(identifier: .gregorian)
+        losAngeles.timeZone = try XCTUnwrap(
+            TimeZone(identifier: "America/Los_Angeles")
+        )
+        let now = try XCTUnwrap(losAngeles.date(from: DateComponents(
+            year: 2026,
+            month: 3,
+            day: 9,
+            hour: 12
+        )))
+
+        let result = ReceiptTextParser.analyze(
+            fromLines: [
+                "Shop",
+                "Transaction date 08/03/2026 02:30",
+                "TOTAL 5.00"
+            ],
+            now: now,
+            calendar: losAngeles,
+            prefersDayFirst: true
+        )
+        let validResult = ReceiptTextParser.analyze(
+            fromLines: [
+                "Shop",
+                "Transaction date 08/03/2026 03:30",
+                "TOTAL 5.00"
+            ],
+            now: now,
+            calendar: losAngeles,
+            prefersDayFirst: true
+        )
+        let expectedValidDate = try XCTUnwrap(losAngeles.date(from: DateComponents(
+            year: 2026,
+            month: 3,
+            day: 8,
+            hour: 3,
+            minute: 30
+        )))
+
+        XCTAssertNil(result.draft.occurredAt)
+        XCTAssertTrue(result.dateCandidateDetails.isEmpty)
+        XCTAssertEqual(result.draft.amount, Decimal(5))
+        XCTAssertEqual(validResult.draft.occurredAt, expectedValidDate)
+        XCTAssertEqual(validResult.dateCandidateDetails.first?.confidence, .high)
+    }
+
     func testThousandsSeparatorsAreRead() throws {
         let draft = ReceiptTextParser.draft(
             fromLines: ["Furniture Co", "TOTAL 1,299.00"],
@@ -403,5 +450,199 @@ final class ReceiptTextParserTests: XCTestCase {
         XCTAssertEqual(first, second)
         XCTAssertEqual(first.amountCandidates.first, Decimal(string: "8.18"))
         XCTAssertEqual(first.merchantCandidates.first, "Cafe Nero")
+    }
+
+    func testCandidateDetailsPreserveScoresConfidenceAndRuleEvidence() throws {
+        let result = ReceiptTextParser.analyze(
+            fromLines: [
+                "Payment successful",
+                "Paid to Green Garden Restaurant",
+                "Coffee meal",
+                "Amount paid S$ 18.20",
+                "Transaction date 26 Aug 2026, 8:42 PM"
+            ],
+            now: try date(2026, 8, 26, hour: 23),
+            calendar: calendar,
+            locale: Locale(identifier: "en_SG")
+        )
+
+        let amount = try XCTUnwrap(result.amountCandidateDetails.first)
+        XCTAssertEqual(amount.value, Decimal(string: "18.20"))
+        XCTAssertGreaterThan(amount.score, 0)
+        XCTAssertEqual(amount.confidence, CaptureConfidence.high)
+        XCTAssertTrue(amount.evidence.contains(.payableAmountLabel))
+        XCTAssertTrue(amount.evidence.contains(.currencyMarker))
+        XCTAssertTrue(amount.evidence.contains(.fractionalAmount))
+
+        let merchant = try XCTUnwrap(result.merchantCandidateDetails.first)
+        XCTAssertEqual(merchant.value, "Green Garden Restaurant")
+        XCTAssertEqual(merchant.confidence, .high)
+        XCTAssertTrue(merchant.evidence.contains(.explicitMerchantLabel))
+        XCTAssertTrue(merchant.evidence.contains(.businessNameMarker))
+
+        let parsedDate = try XCTUnwrap(result.dateCandidateDetails.first)
+        XCTAssertEqual(parsedDate.confidence, .high)
+        XCTAssertTrue(parsedDate.evidence.contains(.transactionDateLabel))
+        XCTAssertTrue(parsedDate.evidence.contains(.timeComponent))
+
+        let category = try XCTUnwrap(result.categoryCandidateDetails.first)
+        XCTAssertEqual(category.value, .food)
+        XCTAssertEqual(category.score, 3)
+        XCTAssertEqual(category.confidence, .high)
+        XCTAssertTrue(category.evidence.contains(.categoryKeywordMatch))
+        XCTAssertTrue(category.evidence.contains(.multipleCategoryKeywordMatches))
+        XCTAssertEqual(result.overallConfidence, .high)
+
+        XCTAssertEqual(result.amountCandidateDetails.map(\.value), result.amountCandidates)
+        XCTAssertEqual(result.merchantCandidateDetails.map(\.value), result.merchantCandidates)
+        XCTAssertEqual(result.dateCandidateDetails.map(\.value), result.dateCandidates)
+    }
+
+    func testWeakParserSignalsRemainExplicitlyLowConfidence() throws {
+        let result = ReceiptTextParser.analyze(
+            fromLines: [
+                "Corner Store",
+                "Taxi",
+                "26/08/2026",
+                "12.50"
+            ],
+            now: try date(2026, 8, 26, hour: 23),
+            calendar: calendar,
+            locale: Locale(identifier: "en_SG")
+        )
+
+        let amount = try XCTUnwrap(result.amountCandidateDetails.first)
+        XCTAssertEqual(amount.confidence, .low)
+        XCTAssertTrue(amount.evidence.contains(.unlabelledAmount))
+
+        let merchant = try XCTUnwrap(result.merchantCandidateDetails.first)
+        XCTAssertEqual(merchant.value, "Corner Store")
+        XCTAssertEqual(merchant.confidence, .low)
+
+        let parsedDate = try XCTUnwrap(result.dateCandidateDetails.first)
+        XCTAssertEqual(parsedDate.confidence, .low)
+        XCTAssertEqual(parsedDate.evidence, [.plausibleDate])
+
+        let category = try XCTUnwrap(result.categoryCandidateDetails.first)
+        XCTAssertEqual(category.value, .transport)
+        XCTAssertEqual(category.score, 1)
+        XCTAssertEqual(category.confidence, .low)
+        XCTAssertEqual(result.overallConfidence, .low)
+    }
+
+    func testOCRConfidenceConservativelyCapsParserConfidenceWithoutChangingValues() throws {
+        let lines = [
+            "Payment successful",
+            "Paid to Green Garden Restaurant",
+            "Coffee meal",
+            "Amount paid S$ 18.20",
+            "Transaction date 26 Aug 2026, 8:42 PM"
+        ]
+        let baseline = ReceiptTextParser.analyze(
+            fromLines: lines,
+            now: try date(2026, 8, 26, hour: 23),
+            calendar: calendar,
+            locale: Locale(identifier: "en_SG")
+        )
+        let lowOCR = ReceiptTextParser.analyze(
+            fromLines: lines,
+            now: try date(2026, 8, 26, hour: 23),
+            calendar: calendar,
+            locale: Locale(identifier: "en_SG"),
+            ocrConfidence: 0.42
+        )
+        let moderateOCR = ReceiptTextParser.analyze(
+            fromLines: lines,
+            now: try date(2026, 8, 26, hour: 23),
+            calendar: calendar,
+            locale: Locale(identifier: "en_SG"),
+            ocrConfidence: 0.65
+        )
+        let strongOCR = ReceiptTextParser.analyze(
+            fromLines: lines,
+            now: try date(2026, 8, 26, hour: 23),
+            calendar: calendar,
+            locale: Locale(identifier: "en_SG"),
+            ocrConfidence: 0.90
+        )
+
+        XCTAssertEqual(lowOCR.ocrConfidence, 0.42)
+        XCTAssertEqual(lowOCR.amountCandidates, baseline.amountCandidates)
+        XCTAssertEqual(lowOCR.merchantCandidates, baseline.merchantCandidates)
+        XCTAssertEqual(lowOCR.dateCandidates, baseline.dateCandidates)
+        XCTAssertEqual(
+            lowOCR.categoryCandidateDetails.map(\.value),
+            baseline.categoryCandidateDetails.map(\.value)
+        )
+        XCTAssertEqual(
+            lowOCR.amountCandidateDetails.map(\.score),
+            baseline.amountCandidateDetails.map(\.score)
+        )
+        XCTAssertEqual(lowOCR.amountCandidateDetails.first?.confidence, .low)
+        XCTAssertEqual(lowOCR.merchantCandidateDetails.first?.confidence, .low)
+        XCTAssertEqual(lowOCR.dateCandidateDetails.first?.confidence, .low)
+        XCTAssertEqual(lowOCR.categoryCandidateDetails.first?.confidence, .low)
+        XCTAssertEqual(lowOCR.overallConfidence, .low)
+        XCTAssertTrue(
+            try XCTUnwrap(lowOCR.amountCandidateDetails.first)
+                .evidence.contains(.lowOCRConfidence)
+        )
+
+        XCTAssertEqual(moderateOCR.amountCandidateDetails.first?.confidence, .medium)
+        XCTAssertEqual(moderateOCR.overallConfidence, .medium)
+        XCTAssertTrue(
+            try XCTUnwrap(moderateOCR.amountCandidateDetails.first)
+                .evidence.contains(.moderateOCRConfidence)
+        )
+
+        XCTAssertEqual(strongOCR.amountCandidateDetails.first?.confidence, .high)
+        XCTAssertEqual(strongOCR.overallConfidence, .high)
+        XCTAssertTrue(
+            try XCTUnwrap(strongOCR.amountCandidateDetails.first)
+                .evidence.contains(.strongOCRConfidence)
+        )
+    }
+
+    func testLowConfidenceAmountLineCannotHideBehindStrongDocumentMean() throws {
+        let result = ReceiptTextParser.analyze(
+            fromLines: ["CAFE NERO", "TOTAL S$ 12.50"],
+            ocrConfidence: 0.94,
+            ocrLineConfidences: [0.96, 0.31]
+        )
+
+        XCTAssertEqual(result.draft.amount, Decimal(string: "12.50"))
+        XCTAssertEqual(result.ocrConfidence, 0.94)
+        XCTAssertEqual(result.amountCandidateDetails.first?.confidence, .low)
+        XCTAssertEqual(result.overallConfidence, .low)
+        XCTAssertTrue(
+            result.amountCandidateDetails.first?.evidence.contains(
+                .lowOCRConfidence
+            ) == true
+        )
+    }
+
+    func testLegacyResultInitializerBuildsReviewableCompatibilityDetails() throws {
+        let amount = Decimal(string: "9.80")!
+        let parsedDate = try date(2026, 8, 26, hour: 0)
+        let result = ReceiptParseResult(
+            draft: TransactionDraft(amount: amount, source: .receipt),
+            amountCandidates: [amount],
+            merchantCandidates: ["Example Merchant"],
+            dateCandidates: [parsedDate],
+            categoryHint: .shopping,
+            noteCandidate: nil
+        )
+
+        XCTAssertEqual(result.amountCandidateDetails.first?.value, amount)
+        XCTAssertEqual(result.merchantCandidateDetails.first?.value, "Example Merchant")
+        XCTAssertEqual(result.dateCandidateDetails.first?.value, parsedDate)
+        XCTAssertEqual(result.categoryCandidateDetails.first?.value, .shopping)
+        XCTAssertEqual(result.amountCandidateDetails.first?.confidence, .low)
+        XCTAssertEqual(
+            result.amountCandidateDetails.first?.evidence,
+            [.unscoredCompatibilityValue]
+        )
+        XCTAssertNil(result.ocrConfidence)
+        XCTAssertNil(result.overallConfidence)
     }
 }

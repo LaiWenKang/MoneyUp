@@ -23,16 +23,32 @@ extension ReceiptTextParser {
             ), value >= earliest, value <= latest else { continue }
 
             var score = 30
-            if containsAny(["transaction date", "payment date", "purchase date", "paid on",
-                            "date/time", "datetime", "交易日期", "付款日期", "消费日期"],
-                           in: normalized) {
+            var evidence: [ReceiptCandidateEvidence] = [.plausibleDate]
+            let hasTransactionDateLabel = containsAny(
+                ["transaction date", "payment date", "purchase date", "paid on",
+                 "date/time", "datetime", "交易日期", "付款日期", "消费日期"],
+                in: normalized
+            )
+            if hasTransactionDateLabel {
                 score += 70
+                evidence.append(.transactionDateLabel)
             } else if containsAny(["date", "日期"], in: normalized) {
                 score += 25
+                evidence.append(.genericDateLabel)
             }
-            if timeComponents(in: line) != nil { score += 10 }
+            if timeComponents(in: line) != nil {
+                score += 10
+                evidence.append(.timeComponent)
+            }
             score += max(0, 10 - index)
-            candidates.append(RankedDate(value: value, lineIndex: index, score: score))
+            candidates.append(
+                RankedDate(
+                    value: value,
+                    lineIndex: index,
+                    score: score,
+                    evidence: evidence
+                )
+            )
         }
 
         return candidates.sorted { lhs, rhs in
@@ -65,7 +81,8 @@ extension ReceiptTextParser {
         }
         guard var components else { return nil }
 
-        if let time = timeComponents(in: line) {
+        let parsedTime = timeComponents(in: line)
+        if let time = parsedTime {
             components.hour = time.hour
             components.minute = time.minute
             components.second = time.second
@@ -76,6 +93,17 @@ extension ReceiptTextParser {
         guard resolved.year == components.year,
               resolved.month == components.month,
               resolved.day == components.day else { return nil }
+        if let parsedTime {
+            let resolvedTime = calendar.dateComponents(
+                [.hour, .minute, .second],
+                from: date
+            )
+            guard resolvedTime.hour == parsedTime.hour,
+                  resolvedTime.minute == parsedTime.minute,
+                  resolvedTime.second == parsedTime.second else {
+                return nil
+            }
+        }
         return date
     }
 
@@ -190,10 +218,10 @@ extension ReceiptTextParser {
 
     // MARK: - Category and note
 
-    static func categoryHint(
+    static func rankedCategories(
         in lines: [String],
         merchant: String?
-    ) -> ReceiptCategoryHint? {
+    ) -> [RankedCategory] {
         let text = normalizedLine(([merchant].compactMap { $0 } + lines).joined(separator: " "))
         let rules: [(ReceiptCategoryHint, [String])] = [
             (.groceries, ["fairprice", "ntuc", "cold storage", "sheng siong", "giant",
@@ -224,15 +252,23 @@ extension ReceiptTextParser {
                          "百貨", "购物", "購物", "商场", "商場"])
         ]
 
-        let ranked = rules.enumerated().compactMap { priority, rule -> (ReceiptCategoryHint, Int, Int)? in
+        return rules.enumerated().compactMap { priority, rule -> RankedCategory? in
             let hits = rule.1.filter { text.contains($0) }.count
             guard hits > 0 else { return nil }
-            return (rule.0, hits, priority)
+            var evidence: [ReceiptCandidateEvidence] = [.categoryKeywordMatch]
+            if hits > 1 {
+                evidence.append(.multipleCategoryKeywordMatches)
+            }
+            return RankedCategory(
+                value: rule.0,
+                score: hits,
+                priority: priority,
+                evidence: evidence
+            )
         }.sorted { lhs, rhs in
-            if lhs.1 != rhs.1 { return lhs.1 > rhs.1 }
-            return lhs.2 < rhs.2
+            if lhs.score != rhs.score { return lhs.score > rhs.score }
+            return lhs.priority < rhs.priority
         }
-        return ranked.first?.0
     }
 
     static func categoryID(

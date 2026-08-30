@@ -27,7 +27,7 @@ enum QuickLogKind: String, CaseIterable, Codable, Identifiable, Sendable {
 /// route keeps all four sibling tabs reachable without abandoning the draft.
 enum QuickLogNavigationDestination: Hashable, Sendable {
     case today
-    case history
+    case history(Date?)
     case plan
     case assets
 }
@@ -128,6 +128,62 @@ enum QuickLogOccurrencePolicy {
     }
 }
 
+enum QuickLogSuggestionPolicy {
+    static func shouldPrefillReceiptCandidate(
+        confidence: CaptureConfidence?,
+        fieldIsUnchanged: Bool
+    ) -> Bool {
+        fieldIsUnchanged && confidence != nil && confidence != .low
+    }
+
+    static func shouldPrefillHistorySuggestion(
+        confidence: CaptureConfidence,
+        fieldWasEdited: Bool,
+        parserSuppliedValue: Bool,
+        hasFixedDefault: Bool = false,
+        usedPayeeHistory: Bool = true
+    ) -> Bool {
+        confidence == .high
+            && !fieldWasEdited
+            && !parserSuppliedValue
+            && !hasFixedDefault
+            && usedPayeeHistory
+    }
+
+    static func receiptContextIsCurrent(
+        scannedKind: QuickLogKind,
+        currentKind: QuickLogKind
+    ) -> Bool {
+        scannedKind == currentKind
+    }
+
+    static func receiptCategoryIsCompatible(
+        _ category: LedgerAccount,
+        with kind: QuickLogKind
+    ) -> Bool {
+        guard !category.isArchived, category.systemRole == nil else {
+            return false
+        }
+        switch kind {
+        case .expense, .refund:
+            return category.kind == .expense
+        case .income:
+            return category.kind == .income
+        case .transfer:
+            return false
+        }
+    }
+}
+
+enum QuickLogDuplicateReviewPolicy {
+    static func historyDate(
+        for entry: JournalEntry,
+        calendar: Calendar
+    ) -> Date {
+        entry.originContext.attributedDate(in: calendar) ?? entry.occurredAt
+    }
+}
+
 enum QuickLogFieldFocus: Hashable {
     case amount
     case destinationAmount
@@ -154,6 +210,7 @@ struct QuickLogEntryView: View {
     )
 
     struct ReceiptScanBaseline: Equatable {
+        let kind: QuickLogKind
         let amountText: String
         let occurredAt: Date
         let dateWasEdited: Bool
@@ -161,6 +218,12 @@ struct QuickLogEntryView: View {
         let note: String
         let accountID: UUID?
         let categoryID: UUID?
+    }
+
+    struct PendingDuplicateReview {
+        let queryFingerprint: String
+        let match: CaptureDuplicateMatch
+        let historyDate: Date?
     }
 
     @Environment(\.dismiss) var dismiss
@@ -183,6 +246,8 @@ struct QuickLogEntryView: View {
     @State var accountID: UUID?
     @State var destinationAccountID: UUID?
     @State var categoryID: UUID?
+    @State var accountWasEdited = false
+    @State var categoryWasEdited = false
     @State var occurredAt = Date()
     @State var dateWasEdited = false
     @State var payee = ""
@@ -207,6 +272,11 @@ struct QuickLogEntryView: View {
     @State var receiptScanGeneration = 0
     @State var receiptScanBaseline: ReceiptScanBaseline?
     @State var receiptResult: ReceiptParseResult?
+    @State var captureSuggestionResult: CaptureSuggestionResult?
+    @State var pendingDuplicateReview: PendingDuplicateReview?
+    @State var preservesCaptureSuggestionsAcrossNextKindChange = false
+    @State var autoAppliedAccountSuggestionID: UUID?
+    @State var autoAppliedCategorySuggestionID: UUID?
     @State var splitLines: [QuickLogSplitDraftLine] = []
     /// Provenance for a draft promoted from the lock-safe capture inbox. This
     /// must survive every edit so AppModel can complete the cross-store

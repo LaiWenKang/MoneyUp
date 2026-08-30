@@ -232,36 +232,67 @@ def validate_offline_runtime_boundary() -> None:
 
 
 def validate_privacy_manifest() -> None:
-    manifest_path = ROOT / "App" / "MoneyUp" / "PrivacyInfo.xcprivacy"
-    try:
-        with manifest_path.open("rb") as file:
-            manifest = plistlib.load(file)
-    except (OSError, plistlib.InvalidFileException) as error:
-        fail(f"cannot parse privacy manifest: {error}")
+    manifests = {
+        ROOT / "App" / "MoneyUp" / "PrivacyInfo.xcprivacy": {
+            "CA92.1",
+            "1C8F.1",
+        },
+        ROOT / "App" / "MoneyUpWidget" / "PrivacyInfo.xcprivacy": {
+            "1C8F.1",
+        },
+    }
+    for manifest_path, expected_reasons in manifests.items():
+        try:
+            with manifest_path.open("rb") as file:
+                manifest = plistlib.load(file)
+        except (OSError, plistlib.InvalidFileException) as error:
+            fail(
+                f"cannot parse {manifest_path.relative_to(ROOT)} privacy "
+                f"manifest: {error}"
+            )
 
-    if manifest.get("NSPrivacyTracking") is not False:
-        fail("privacy manifest must declare tracking disabled")
-    if manifest.get("NSPrivacyCollectedDataTypes") != []:
-        fail("privacy manifest must match MoneyUp's no-data-collection architecture")
-    if manifest.get("NSPrivacyTrackingDomains") != []:
-        fail("privacy manifest must not declare tracking domains")
+        owner = manifest_path.parent.name
+        if manifest.get("NSPrivacyTracking") is not False:
+            fail(f"{owner} privacy manifest must declare tracking disabled")
+        if manifest.get("NSPrivacyCollectedDataTypes") != []:
+            fail(
+                f"{owner} privacy manifest must match MoneyUp's "
+                "no-data-collection architecture"
+            )
+        if manifest.get("NSPrivacyTrackingDomains") != []:
+            fail(f"{owner} privacy manifest must not declare tracking domains")
 
-    accessed = manifest.get("NSPrivacyAccessedAPITypes", [])
-    user_defaults = next(
-        (
-            item
-            for item in accessed
-            if item.get("NSPrivacyAccessedAPIType")
-            == "NSPrivacyAccessedAPICategoryUserDefaults"
-        ),
-        None,
-    )
-    if user_defaults is None or "CA92.1" not in user_defaults.get(
-        "NSPrivacyAccessedAPITypeReasons", []
-    ):
-        fail("privacy manifest must declare UserDefaults reason CA92.1")
+        accessed = manifest.get("NSPrivacyAccessedAPITypes")
+        if not isinstance(accessed, list) or len(accessed) != 1:
+            fail(
+                f"{owner} privacy manifest must declare exactly the reviewed "
+                "UserDefaults API"
+            )
 
-    print("Validated PrivacyInfo.xcprivacy")
+        user_defaults = accessed[0]
+        if (
+            not isinstance(user_defaults, dict)
+            or user_defaults.get("NSPrivacyAccessedAPIType")
+            != "NSPrivacyAccessedAPICategoryUserDefaults"
+        ):
+            fail(
+                f"{owner} privacy manifest must declare exactly the reviewed "
+                "UserDefaults API"
+            )
+
+        reasons = user_defaults.get("NSPrivacyAccessedAPITypeReasons")
+        if (
+            not isinstance(reasons, list)
+            or not all(isinstance(reason, str) for reason in reasons)
+            or len(reasons) != len(expected_reasons)
+            or set(reasons) != expected_reasons
+        ):
+            fail(
+                f"{owner} privacy manifest must declare exactly UserDefaults "
+                f"reasons {', '.join(sorted(expected_reasons))}"
+            )
+
+    print("Validated app and widget PrivacyInfo.xcprivacy files")
 
 
 def validate_info_plist_localizations() -> None:

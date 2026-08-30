@@ -50,7 +50,15 @@ extension QuickLogEntryView {
 
                     Picker(
                         kind == .transfer ? "transaction.from_account" : "transaction.account",
-                        selection: trackedBinding($accountID, \.accountID)
+                        selection: trackedBinding(
+                            $accountID,
+                            \.accountID,
+                            onUserEdit: {
+                                accountWasEdited = true
+                                autoAppliedAccountSuggestionID = nil
+                                invalidateCaptureSuggestions(preservingAccount: true)
+                            }
+                        )
                     ) {
                         ForEach(model.userAccounts) { account in
                             Text(account.name).tag(Optional(account.id))
@@ -157,7 +165,14 @@ extension QuickLogEntryView {
                         if splitLines.isEmpty {
                             Picker(
                                 "transaction.category",
-                                selection: trackedBinding($categoryID, \.categoryID)
+                                selection: trackedBinding(
+                                    $categoryID,
+                                    \.categoryID,
+                                    onUserEdit: {
+                                        categoryWasEdited = true
+                                        autoAppliedCategorySuggestionID = nil
+                                    }
+                                )
                             ) {
                                 ForEach(categories) { category in
                                     Text(category.name).tag(Optional(category.id))
@@ -185,6 +200,7 @@ extension QuickLogEntryView {
                                 set: { newDate in
                                     occurredAt = newDate
                                     dateWasEdited = true
+                                    invalidateCaptureSuggestions()
                                     persistUserDraftChange { snapshot in
                                         snapshot.occurredAt = newDate
                                         snapshot.dateWasEdited = true
@@ -200,7 +216,10 @@ extension QuickLogEntryView {
                                 text: trackedBinding(
                                     $payee,
                                     \.payee,
-                                    refreshesOccurrenceDate: true
+                                    refreshesOccurrenceDate: true,
+                                    onUserEdit: {
+                                        invalidateCaptureSuggestions()
+                                    }
                                 )
                             )
                             .focused($focusedField, equals: .payee)
@@ -253,7 +272,7 @@ extension QuickLogEntryView {
                                 Label("tab.today", systemImage: "house.fill")
                             }
                             Button {
-                                navigate(to: .history)
+                                navigate(to: .history(nil))
                             } label: {
                                 Label("tab.history", systemImage: "clock.arrow.circlepath")
                             }
@@ -273,7 +292,7 @@ extension QuickLogEntryView {
                     }
 
                     Button {
-                        Task { await save() }
+                        Task { await attemptSave() }
                     } label: {
                         Label("action.save", systemImage: "checkmark.circle.fill")
                     }
@@ -304,11 +323,10 @@ extension QuickLogEntryView {
             .onChange(of: isActive) { _, newValue in
                 if !newValue {
                     cancelReceiptProcessing()
-                    receiptResult = nil
+                    pendingDuplicateReview = nil
                     receiptAttachmentData = nil
                     retainReceiptAttachment = false
                     receiptRetentionMessage = nil
-                    smartMessage = nil
                     isPresentingReceiptPicker = false
                     dismissKeyboard()
                     isHandlingFocusedLaunch = false
@@ -318,12 +336,18 @@ extension QuickLogEntryView {
                 }
             }
             .onChange(of: kind) { _, newKind in
+                if preservesCaptureSuggestionsAcrossNextKindChange {
+                    preservesCaptureSuggestionsAcrossNextKindChange = false
+                } else {
+                    invalidateCaptureSuggestions(restoresDefaults: false)
+                }
+                pendingDuplicateReview = nil
+                cancelReceiptProcessing()
+                receiptResult = nil
+                receiptAttachmentData = nil
+                retainReceiptAttachment = false
+                receiptRetentionMessage = nil
                 if newKind == .transfer {
-                    cancelReceiptProcessing()
-                    receiptResult = nil
-                    receiptAttachmentData = nil
-                    retainReceiptAttachment = false
-                    receiptRetentionMessage = nil
                     clearSplitFocus()
                     splitLines = []
                 }
@@ -355,17 +379,16 @@ extension QuickLogEntryView {
                     receiptScanBaseline = nil
                     if !isActive {
                         photoItem = nil
-                        receiptResult = nil
                         receiptAttachmentData = nil
                         retainReceiptAttachment = false
                         receiptRetentionMessage = nil
-                        smartMessage = nil
                         isScanning = false
                     }
                     return
                 }
                 refreshUntouchedOccurrenceDate()
                 receiptScanBaseline = ReceiptScanBaseline(
+                    kind: kind,
                     amountText: amountText,
                     occurredAt: occurredAt,
                     dateWasEdited: dateWasEdited,
@@ -377,6 +400,8 @@ extension QuickLogEntryView {
                 isScanning = true
                 smartMessage = nil
                 receiptResult = nil
+                invalidateCaptureSuggestions()
+                pendingDuplicateReview = nil
                 receiptAttachmentData = nil
                 retainReceiptAttachment = false
                 receiptRetentionMessage = nil
@@ -397,11 +422,10 @@ extension QuickLogEntryView {
                 cancelReceiptProcessing()
                 receiptScanTask = nil
                 photoItem = nil
-                receiptResult = nil
+                pendingDuplicateReview = nil
                 receiptAttachmentData = nil
                 retainReceiptAttachment = false
                 receiptRetentionMessage = nil
-                smartMessage = nil
                 isPresentingReceiptPicker = false
             }
             .scrollDismissesKeyboard(.interactively)
@@ -441,7 +465,7 @@ extension QuickLogEntryView {
                 )
             } else {
                 Button {
-                    Task { await save() }
+                    Task { await attemptSave() }
                 } label: {
                     Label("action.save", systemImage: "checkmark.circle.fill")
                         .frame(maxWidth: .infinity)
@@ -493,6 +517,34 @@ extension QuickLogEntryView {
             // so the same external request cannot remain stuck indefinitely.
             pendingLaunchMode = nil
             onRequestHandled(mode)
+        }
+        .confirmationDialog(
+            "quick_log.duplicate_title",
+            isPresented: Binding(
+                get: { pendingDuplicateReview != nil },
+                set: { if !$0 { pendingDuplicateReview = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("quick_log.duplicate_save_anyway") {
+                guard let pending = pendingDuplicateReview else { return }
+                pendingDuplicateReview = nil
+                Task { await confirmDuplicateSave(pending) }
+            }
+            Button("quick_log.duplicate_review") {
+                let matchDate = pendingDuplicateReview?.historyDate
+                pendingDuplicateReview = nil
+                if dismissAfterSave {
+                    dismiss()
+                } else {
+                    navigate(to: .history(matchDate))
+                }
+            }
+            Button("action.cancel", role: .cancel) {
+                pendingDuplicateReview = nil
+            }
+        } message: {
+            Text(duplicateReviewMessage)
         }
         .alert("error.could_not_save", isPresented: Binding(
             get: { errorMessage != nil },

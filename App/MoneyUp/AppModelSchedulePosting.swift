@@ -35,11 +35,11 @@ extension AppModel {
         defer {
             endJournalAndScheduleMutation(scheduleIDs: mutationScheduleIDs)
         }
-        guard let index = scheduledTransactions.firstIndex(where: { $0.id == scheduleID }) else {
+        guard let schedule = scheduledTransactions.first(where: {
+            $0.id == scheduleID
+        }) else {
             throw AppModelError.missingRecord
         }
-
-        let schedule = scheduledTransactions[index]
         guard schedule.currentOccurrenceID == occurrenceID else {
             throw ScheduledTransactionError.staleOccurrence
         }
@@ -90,8 +90,7 @@ extension AppModel {
         )
         try await scheduleStore.write(writes)
         guard isCurrentStoreGeneration(generation) else { return nil }
-        scheduledTransactions[index] = updated
-        scheduledTransactions.sort { $0.nextOccurrence < $1.nextOccurrence }
+        try publishUpdatedSchedule(updated)
         if let timeline = budgetCandidate.timeline {
             budgetConfigurationTimeline = timeline
         }
@@ -267,12 +266,12 @@ extension AppModel {
         }) else {
             throw AppModelError.scheduleEntryAlreadyMatched
         }
-        guard let index = scheduledTransactions.firstIndex(where: {
+        guard let schedule = scheduledTransactions.first(where: {
             $0.id == scheduleID
         }) else {
             throw AppModelError.missingRecord
         }
-        var updated = scheduledTransactions[index]
+        var updated = schedule
         guard updated.matches(entry) else {
             throw AppModelError.scheduleEntryMismatch
         }
@@ -291,8 +290,7 @@ extension AppModel {
             in: .scheduledTransactions
         )
         guard isCurrentStoreGeneration(generation) else { return }
-        scheduledTransactions[index] = updated
-        scheduledTransactions.sort { $0.nextOccurrence < $1.nextOccurrence }
+        try publishUpdatedSchedule(updated)
         existingScheduledLinkedEntryIDs.insert(entryID)
     }
 
@@ -312,10 +310,12 @@ extension AppModel {
     ) async throws {
         try beginScheduleMutation(id: id)
         defer { endScheduleMutation(id: id) }
-        guard let index = scheduledTransactions.firstIndex(where: { $0.id == id }) else {
+        guard let schedule = scheduledTransactions.first(where: {
+            $0.id == id
+        }) else {
             throw AppModelError.missingRecord
         }
-        var updated = scheduledTransactions[index]
+        var updated = schedule
         try mutation(&updated)
 
         let generation = storeGeneration
@@ -328,7 +328,18 @@ extension AppModel {
             in: .scheduledTransactions
         )
         guard isCurrentStoreGeneration(generation) else { return }
-        scheduledTransactions[index] = updated
+        try publishUpdatedSchedule(updated)
+    }
+
+    private func publishUpdatedSchedule(
+        _ updated: ScheduledTransaction
+    ) throws {
+        guard let publicationIndex = scheduledTransactions.firstIndex(where: {
+            $0.id == updated.id
+        }) else {
+            throw AppModelError.missingRecord
+        }
+        scheduledTransactions[publicationIndex] = updated
         scheduledTransactions.sort { $0.nextOccurrence < $1.nextOccurrence }
     }
 

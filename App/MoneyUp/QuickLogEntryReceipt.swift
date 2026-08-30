@@ -174,38 +174,31 @@ extension QuickLogEntryView {
             receiptResult = nil
             return false
         }
+        guard QuickLogSuggestionPolicy.receiptContextIsCurrent(
+            scannedKind: baseline.kind,
+            currentKind: kind
+        ) else {
+            receiptResult = nil
+            smartMessage = String(localized: "quick_log.scan_context_changed")
+            return false
+        }
         guard !result.draft.isEmpty else {
             receiptResult = nil
             smartMessage = String(localized: "quick_log.smart_nothing_found")
             return false
         }
 
-        var reviewDraft = result.draft
-        // Suggestions may arrive after the user has corrected a field. Apply
-        // only values whose field still matches the scan-start snapshot, and
-        // never reinterpret the explicitly selected transaction kind.
-        if amountText != baseline.amountText { reviewDraft.amount = nil }
-        if occurredAt != baseline.occurredAt
-            || dateWasEdited != baseline.dateWasEdited {
-            reviewDraft.occurredAt = nil
-        }
-        if payee != baseline.payee { reviewDraft.payee = nil }
-        if accountID != baseline.accountID { reviewDraft.accountID = nil }
-        if categoryID != baseline.categoryID {
-            reviewDraft.categoryID = nil
-        } else if let parsedCategoryID = reviewDraft.categoryID,
-                  let category = model.accountsByID[parsedCategoryID],
-                  category.kind != (kind == .income ? .income : .expense) {
-            reviewDraft.categoryID = nil
-        }
+        let reviewDraft = receiptReviewDraft(result, baseline: baseline)
         _ = apply(
             reviewDraft,
             preservesKind: true,
-            suggestsLearnedCategory: false
+            suggestsLearnedCategory: true
         )
 
         if note == baseline.note,
            note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           let overallConfidence = result.overallConfidence,
+           overallConfidence != .low,
            let noteCandidate = result.noteCandidate {
             note = noteCandidate
         }
@@ -223,45 +216,48 @@ extension QuickLogEntryView {
         return true
     }
 
-    @ViewBuilder
-    func receiptSuggestions(_ result: ReceiptParseResult) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label("quick_log.scan_ready", systemImage: "checkmark.circle.fill")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.tint)
-            Text("quick_log.scan_review")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-
-            if result.amountCandidates.count > 1 {
-                Text("quick_log.scan_alternative_amounts")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(
-                            Array(result.amountCandidates.prefix(4).enumerated()),
-                            id: \.offset
-                        ) { _, candidate in
-                            Button {
-                                amountText = editableAmount(candidate)
-                                persistUserDraftChange { snapshot in
-                                    snapshot.amountText = amountText
-                                }
-                            } label: {
-                                if let currency = selectedAccountCurrency {
-                                    Text("\(editableAmount(candidate)) \(currency.value)")
-                                } else {
-                                    Text(editableAmount(candidate))
-                                }
-                            }
-                            .buttonStyle(.bordered)
-                        }
-                    }
-                }
-            }
+    private func receiptReviewDraft(
+        _ result: ReceiptParseResult,
+        baseline: ReceiptScanBaseline
+    ) -> TransactionDraft {
+        var reviewDraft = result.draft
+        if !QuickLogSuggestionPolicy.shouldPrefillReceiptCandidate(
+            confidence: result.amountCandidateDetails.first?.confidence,
+            fieldIsUnchanged: amountText == baseline.amountText
+                && accountID == baseline.accountID
+        ) {
+            reviewDraft.amount = nil
         }
-        .accessibilityElement(children: .contain)
+        if !QuickLogSuggestionPolicy.shouldPrefillReceiptCandidate(
+            confidence: result.merchantCandidateDetails.first?.confidence,
+            fieldIsUnchanged: payee == baseline.payee
+        ) {
+            reviewDraft.payee = nil
+        }
+        if !QuickLogSuggestionPolicy.shouldPrefillReceiptCandidate(
+            confidence: result.dateCandidateDetails.first?.confidence,
+            fieldIsUnchanged: occurredAt == baseline.occurredAt
+                && dateWasEdited == baseline.dateWasEdited
+        ) {
+            reviewDraft.occurredAt = nil
+        }
+        if !QuickLogSuggestionPolicy.shouldPrefillReceiptCandidate(
+            confidence: result.categoryCandidateDetails.first?.confidence,
+            fieldIsUnchanged: splitLines.isEmpty
+                && categoryID == baseline.categoryID
+        ) {
+            reviewDraft.categoryID = nil
+        }
+        if accountID != baseline.accountID { reviewDraft.accountID = nil }
+        if let parsedCategoryID = reviewDraft.categoryID,
+           let category = model.accountsByID[parsedCategoryID],
+           !QuickLogSuggestionPolicy.receiptCategoryIsCompatible(
+               category,
+               with: kind
+           ) {
+            reviewDraft.categoryID = nil
+        }
+        return reviewDraft
     }
 
     /// Applies whatever the reader was sure about and leaves the rest alone.
@@ -278,11 +274,18 @@ extension QuickLogEntryView {
             return false
         }
 
+        invalidateCaptureSuggestions()
+
         if !preservesKind {
+            let parsedKind: QuickLogKind
             switch draft.kind {
-            case .expense: kind = .expense
-            case .income: kind = .income
-            case .refund: kind = .refund
+            case .expense: parsedKind = .expense
+            case .income: parsedKind = .income
+            case .refund: parsedKind = .refund
+            }
+            if parsedKind != kind {
+                preservesCaptureSuggestionsAcrossNextKindChange = true
+                kind = parsedKind
             }
         }
         if let amount = draft.amount {
@@ -293,22 +296,25 @@ extension QuickLogEntryView {
             dateWasEdited = true
         }
         if let parsedPayee = draft.payee { payee = parsedPayee }
-        if let parsedAccount = draft.accountID { accountID = parsedAccount }
+        if let parsedAccount = draft.accountID {
+            accountID = parsedAccount
+            accountWasEdited = true
+        }
 
         if let parsedCategory = draft.categoryID {
             categoryID = parsedCategory
-        } else if suggestsLearnedCategory,
-                  let parsedPayee = draft.payee,
-                  let learned = CategorySuggester.suggestedCategory(
-                      forPayee: parsedPayee,
-                      kind: draft.kind == .income ? .income : .expense,
-                      entries: model.entries,
-                      accounts: model.accounts
-                  ) {
-            categoryID = learned
+            categoryWasEdited = true
         }
 
-        smartMessage = nil
+        if suggestsLearnedCategory {
+            refreshCaptureSuggestions(for: draft)
+        }
+
+        if draft.source == .naturalLanguage {
+            smartMessage = String(localized: "quick_log.smart_review")
+        } else {
+            smartMessage = nil
+        }
         dismissKeyboard()
         if !dismissAfterSave { model.updateQuickLogDraft(draftSnapshot) }
         return true
@@ -318,6 +324,7 @@ extension QuickLogEntryView {
     /// parsed draft already chose, because it also runs when the kind changes.
     func selectDefaults() {
         if !model.userAccounts.contains(where: { $0.id == accountID }) {
+            accountWasEdited = false
             accountID = validPreferred(
                 model.profile?.preferredAccountID,
                 in: model.userAccounts
@@ -326,6 +333,7 @@ extension QuickLogEntryView {
         switch kind {
         case .expense:
             if !model.expenseCategories.contains(where: { $0.id == categoryID }) {
+                categoryWasEdited = false
                 categoryID = validPreferred(
                     model.profile?.preferredExpenseCategoryID,
                     in: model.expenseCategories
@@ -335,6 +343,7 @@ extension QuickLogEntryView {
             }
         case .income:
             if !model.incomeCategories.contains(where: { $0.id == categoryID }) {
+                categoryWasEdited = false
                 categoryID = validPreferred(
                     model.profile?.preferredIncomeCategoryID,
                     in: model.incomeCategories
@@ -343,6 +352,7 @@ extension QuickLogEntryView {
             }
         case .refund:
             if !model.expenseCategories.contains(where: { $0.id == categoryID }) {
+                categoryWasEdited = false
                 categoryID = validPreferred(
                     model.profile?.preferredExpenseCategoryID,
                     in: model.expenseCategories

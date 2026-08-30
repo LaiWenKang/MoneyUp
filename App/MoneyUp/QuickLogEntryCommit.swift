@@ -11,7 +11,7 @@ private enum QuickLogSaveOutcome {
 }
 
 extension QuickLogEntryView {
-    func save() async {
+    func commitSave() async {
         guard !isSaving, canSave else { return }
         guard let amount, let accountID else { return }
         isSaving = true
@@ -147,9 +147,12 @@ extension QuickLogEntryView {
         if let nextCapture = model.quickLogDraft,
            nextCapture.sourceCaptureID != nil,
            !dismissAfterSave {
+            clearPerTransactionReviewState()
             applyDraft(nextCapture)
             selectDefaults()
         } else {
+            accountWasEdited = false
+            categoryWasEdited = false
             amountText = ""
             destinationAmountText = ""
             occurredAt = model.currentDateForUserAction()
@@ -159,6 +162,10 @@ extension QuickLogEntryView {
             smartText = ""
             smartMessage = nil
             receiptResult = nil
+            captureSuggestionResult = nil
+            autoAppliedAccountSuggestionID = nil
+            autoAppliedCategorySuggestionID = nil
+            pendingDuplicateReview = nil
             splitLines = []
             sourceCaptureID = nil
             receiptAttachmentData = nil

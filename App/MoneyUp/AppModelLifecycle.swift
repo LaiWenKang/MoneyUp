@@ -485,16 +485,91 @@ extension AppModel {
     ) async throws -> ReceiptParseResult? {
         guard state == .ready else { return nil }
         let generation = storeGeneration
+        let projectionRevision = journalProjectionRevision
+        let accountsSnapshot = accounts
+        let now = currentDate()
+        let calendar = reportingCalendar
         try Task.checkCancellation()
-        let lines = try await receiptRecognizer(imageData)
+        let recognition = try await receiptRecognizer(imageData)
         try Task.checkCancellation()
-        guard isCurrentStoreGeneration(generation) else { return nil }
-        return ReceiptTextParser.analyze(
-            fromLines: lines,
-            now: currentDate(),
-            calendar: reportingCalendar,
-            prefersDayFirst: prefersDayFirst,
-            accounts: accounts
+        guard isCurrentStoreGeneration(generation),
+              projectionRevision == journalProjectionRevision else { return nil }
+
+        let boundedRecognition = Self.boundedReceiptRecognition(recognition)
+        let parsingTask = Task.detached(priority: .userInitiated) {
+            ReceiptTextParser.analyze(
+                fromLines: boundedRecognition.lines,
+                now: now,
+                calendar: calendar,
+                prefersDayFirst: prefersDayFirst,
+                accounts: accountsSnapshot,
+                ocrConfidence: boundedRecognition.meanConfidence,
+                ocrLineConfidences: boundedRecognition.lineConfidences
+            )
+        }
+        let result = await withTaskCancellationHandler {
+            await parsingTask.value
+        } onCancel: {
+            parsingTask.cancel()
+        }
+        try Task.checkCancellation()
+        guard isCurrentStoreGeneration(generation),
+              projectionRevision == journalProjectionRevision else { return nil }
+        return result
+    }
+
+    static func boundedReceiptLines(_ lines: [String]) -> [String] {
+        boundedReceiptRecognition(
+            ReceiptRecognitionResult(lines: lines)
+        ).lines
+    }
+
+    static func boundedReceiptRecognition(
+        _ recognition: ReceiptRecognitionResult
+    ) -> ReceiptRecognitionResult {
+        let maximumLineCount = 160
+        let maximumLineUTF8Count = 512
+        let selectedIndices: [Int]
+        if recognition.lines.count > maximumLineCount {
+            let edgeCount = maximumLineCount / 2
+            let suffixStart = recognition.lines.count - edgeCount
+            selectedIndices = Array(0..<edgeCount)
+                + Array(suffixStart..<recognition.lines.count)
+        } else {
+            selectedIndices = Array(recognition.lines.indices)
+        }
+
+        let alignedLineConfidences = recognition.lineConfidences.flatMap {
+            $0.count == recognition.lines.count ? $0 : nil
+        }
+        var boundedLines: [String] = []
+        var boundedLineConfidences: [Float] = []
+        boundedLines.reserveCapacity(selectedIndices.count)
+        if alignedLineConfidences != nil {
+            boundedLineConfidences.reserveCapacity(selectedIndices.count)
+        }
+
+        for index in selectedIndices {
+            let line = recognition.lines[index]
+            var bytes = Array(line.utf8.prefix(maximumLineUTF8Count))
+            while !bytes.isEmpty,
+                  String(bytes: bytes, encoding: .utf8) == nil {
+                bytes.removeLast()
+            }
+            let bounded = String(decoding: bytes, as: UTF8.self)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !bounded.isEmpty else { continue }
+            boundedLines.append(bounded)
+            if let alignedLineConfidences {
+                boundedLineConfidences.append(alignedLineConfidences[index])
+            }
+        }
+
+        return ReceiptRecognitionResult(
+            lines: boundedLines,
+            meanConfidence: recognition.meanConfidence,
+            lineConfidences: alignedLineConfidences == nil
+                ? nil : boundedLineConfidences
         )
     }
 

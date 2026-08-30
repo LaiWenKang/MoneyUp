@@ -54,21 +54,25 @@ public enum NaturalLanguageEntryParser {
         var remainder = text
         let haystack = TextScanner.normalized(text).lowercased()
         let kind: DraftKind
-        if refundKeywords.contains(where: { haystack.contains($0) }) {
+        if refundKeywords.contains(where: { containsToken($0, in: haystack) }) {
             kind = .refund
-        } else if incomeKeywords.contains(where: { haystack.contains($0) }) {
+        } else if incomeKeywords.contains(where: { containsToken($0, in: haystack) }) {
             kind = .income
         } else {
             kind = .expense
         }
 
-        let occurredAt = consumeDate(
+        let dateResult = consumeDate(
             from: &remainder,
             now: now,
             calendar: calendar,
             prefersDayFirst: prefersDayFirst
         )
-        let amount = consumeAmount(from: &remainder, locale: locale)
+        // When a phrase contains an impossible explicit civil date, do not
+        // reinterpret one of its date components as money. Leave amount empty
+        // so the normal editable review path asks the user to correct it.
+        let amount = dateResult.invalidExplicitDate
+            ? nil : consumeAmount(from: &remainder, locale: locale)
         let account = consumeName(
             from: &remainder,
             in: accounts.filter { ($0.kind == .asset || $0.kind == .liability) && !$0.isArchived }
@@ -82,7 +86,7 @@ public enum NaturalLanguageEntryParser {
         return TransactionDraft(
             kind: kind,
             amount: amount,
-            occurredAt: occurredAt,
+            occurredAt: dateResult.date,
             payee: payee(from: remainder),
             accountID: account,
             categoryID: category,
@@ -104,27 +108,59 @@ public enum NaturalLanguageEntryParser {
         now: Date,
         calendar: Calendar,
         prefersDayFirst: Bool
-    ) -> Date? {
-        if let components = TextScanner.date(
+    ) -> (date: Date?, invalidExplicitDate: Bool) {
+        let explicitDateShapeCount = TextScanner.explicitDateShapeCount(in: text)
+        guard explicitDateShapeCount <= 1 else {
+            // Multiple explicit dates are ambiguous. Do not choose one by
+            // pattern priority or let any remaining date become the amount.
+            return (nil, true)
+        }
+        if let match = TextScanner.dateMatch(
             in: text,
             calendar: calendar,
             prefersDayFirst: prefersDayFirst
-        ), let parsed = calendar.date(from: components) {
-            removeDateText(from: &text)
-            return atSameTimeOfDay(as: now, on: parsed, calendar: calendar)
+        ) {
+            let components = match.components
+            guard let parsed = calendar.date(from: components) else {
+                return (nil, true)
+            }
+            let resolved = calendar.dateComponents(
+                [.year, .month, .day],
+                from: parsed
+            )
+            guard resolved.year == components.year,
+                  resolved.month == components.month,
+                  resolved.day == components.day else {
+                return (nil, true)
+            }
+            remove(match.text, from: &text)
+            return (
+                atSameTimeOfDay(as: now, on: parsed, calendar: calendar),
+                false
+            )
+        }
+        if explicitDateShapeCount > 0 {
+            return (nil, true)
         }
 
-        let haystack = text.lowercased()
         // Longest tokens first so "day before yesterday" beats "yesterday".
-        for entry in relativeDayOffsets where haystack.contains(entry.token) {
-            remove(entry.token, from: &text)
-            return calendar.date(byAdding: .day, value: entry.offset, to: now)
+        for entry in relativeDayOffsets where consumeToken(entry.token, from: &text) {
+            return (
+                calendar.date(byAdding: .day, value: entry.offset, to: now),
+                false
+            )
         }
-        for entry in weekdayTokens where haystack.contains(entry.token) {
-            remove(entry.token, from: &text)
-            return mostRecent(weekday: entry.weekday, onOrBefore: now, calendar: calendar)
+        for entry in weekdayTokens where consumeToken(entry.token, from: &text) {
+            return (
+                mostRecent(
+                    weekday: entry.weekday,
+                    onOrBefore: now,
+                    calendar: calendar
+                ),
+                false
+            )
         }
-        return nil
+        return (nil, false)
     }
 
     /// The user typed a day, not an instant. Keeping the current time of day
@@ -196,21 +232,66 @@ public enum NaturalLanguageEntryParser {
         return regex.firstMatch(in: haystack, range: range) != nil
     }
 
+    /// Latin tokens must be complete words. `Character.isLetter` and
+    /// `isNumber` make the boundary check Unicode-aware, so an ASCII keyword
+    /// cannot match inside an accented or non-Latin payee. Chinese tokens keep
+    /// their existing substring behavior because users commonly type them
+    /// without spaces, for example "昨天午餐".
+    private static func containsToken(_ token: String, in text: String) -> Bool {
+        firstTokenRange(of: token, in: text) != nil
+    }
+
+    @discardableResult
+    private static func consumeToken(_ token: String, from text: inout String) -> Bool {
+        guard let range = firstTokenRange(of: token, in: text) else { return false }
+        text.replaceSubrange(range, with: " ")
+        return true
+    }
+
+    private static func firstTokenRange(
+        of token: String,
+        in text: String
+    ) -> Range<String.Index>? {
+        guard !token.isEmpty else { return nil }
+
+        let containsCJK = token.unicodeScalars.contains { scalar in
+            (0x3400...0x4DBF).contains(scalar.value)
+                || (0x4E00...0x9FFF).contains(scalar.value)
+                || (0xF900...0xFAFF).contains(scalar.value)
+        }
+        let options: String.CompareOptions = [.caseInsensitive, .diacriticInsensitive]
+        if containsCJK {
+            return text.range(of: token, options: options)
+        }
+
+        var searchStart = text.startIndex
+        while searchStart < text.endIndex,
+              let range = text.range(
+                  of: token,
+                  options: options,
+                  range: searchStart..<text.endIndex
+              ) {
+            let touchesLetterOrNumberBefore = range.lowerBound > text.startIndex
+                && isLetterOrNumber(text[text.index(before: range.lowerBound)])
+            let touchesLetterOrNumberAfter = range.upperBound < text.endIndex
+                && isLetterOrNumber(text[range.upperBound])
+            if !touchesLetterOrNumberBefore && !touchesLetterOrNumberAfter {
+                return range
+            }
+            searchStart = range.upperBound
+        }
+        return nil
+    }
+
+    private static func isLetterOrNumber(_ character: Character) -> Bool {
+        character.isLetter || character.isNumber
+    }
+
     private static func remove(_ fragment: String, from text: inout String) {
         guard let range = text.range(
             of: fragment,
             options: [.caseInsensitive, .diacriticInsensitive]
         ) else { return }
-        text.replaceSubrange(range, with: " ")
-    }
-
-    private static func removeDateText(from text: inout String) {
-        guard let regex = try? NSRegularExpression(
-            pattern: "[0-9]{1,4}[-/.年][0-9]{1,2}[-/.月][0-9]{1,4}日?"
-        ) else { return }
-        let full = NSRange(text.startIndex..<text.endIndex, in: text)
-        guard let match = regex.firstMatch(in: text, range: full),
-              let range = Range(match.range, in: text) else { return }
         text.replaceSubrange(range, with: " ")
     }
 

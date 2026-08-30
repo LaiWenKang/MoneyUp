@@ -13,6 +13,54 @@ public enum ReceiptCategoryHint: String, Equatable, Hashable, Sendable {
     case housing
 }
 
+/// An inspectable parser signal that contributed to a receipt candidate.
+///
+/// Evidence is intentionally semantic rather than a copy of OCR text so a
+/// caller can explain the suggestion without retaining receipt contents.
+public enum ReceiptCandidateEvidence: String, Equatable, Hashable, Sendable {
+    case payableAmountLabel
+    case precedingPayableAmountLabel
+    case currencyMarker
+    case fractionalAmount
+    case unlabelledAmount
+    case explicitMerchantLabel
+    case businessNameMarker
+    case receiptHeaderPosition
+    case uppercaseMerchantText
+    case transactionDateLabel
+    case genericDateLabel
+    case timeComponent
+    case plausibleDate
+    case categoryKeywordMatch
+    case multipleCategoryKeywordMatches
+    case unscoredCompatibilityValue
+    case lowOCRConfidence
+    case moderateOCRConfidence
+    case strongOCRConfidence
+}
+
+/// A best-first receipt suggestion together with the deterministic signals
+/// that produced it. Scores are relative only to candidates for the same
+/// field and are not percentages or probabilities.
+public struct ReceiptCandidate<Value: Equatable & Sendable>: Equatable, Sendable {
+    public let value: Value
+    public let score: Int
+    public let confidence: CaptureConfidence
+    public let evidence: [ReceiptCandidateEvidence]
+
+    public init(
+        value: Value,
+        score: Int,
+        confidence: CaptureConfidence,
+        evidence: [ReceiptCandidateEvidence]
+    ) {
+        self.value = value
+        self.score = score
+        self.confidence = confidence
+        self.evidence = evidence
+    }
+}
+
 /// The complete, reviewable output of an on-device receipt parse.
 ///
 /// `draft` remains the compatibility path used by transaction entry. The other
@@ -26,6 +74,12 @@ public struct ReceiptParseResult: Equatable, Sendable {
     public let dateCandidates: [Date]
     public let categoryHint: ReceiptCategoryHint?
     public let noteCandidate: String?
+    public let ocrConfidence: Float?
+    public let overallConfidence: CaptureConfidence?
+    public let amountCandidateDetails: [ReceiptCandidate<Decimal>]
+    public let merchantCandidateDetails: [ReceiptCandidate<String>]
+    public let dateCandidateDetails: [ReceiptCandidate<Date>]
+    public let categoryCandidateDetails: [ReceiptCandidate<ReceiptCategoryHint>]
 
     public init(
         draft: TransactionDraft,
@@ -33,7 +87,13 @@ public struct ReceiptParseResult: Equatable, Sendable {
         merchantCandidates: [String],
         dateCandidates: [Date],
         categoryHint: ReceiptCategoryHint?,
-        noteCandidate: String?
+        noteCandidate: String?,
+        ocrConfidence: Float? = nil,
+        overallConfidence: CaptureConfidence? = nil,
+        amountCandidateDetails: [ReceiptCandidate<Decimal>]? = nil,
+        merchantCandidateDetails: [ReceiptCandidate<String>]? = nil,
+        dateCandidateDetails: [ReceiptCandidate<Date>]? = nil,
+        categoryCandidateDetails: [ReceiptCandidate<ReceiptCategoryHint>]? = nil
     ) {
         self.draft = draft
         self.amountCandidates = amountCandidates
@@ -41,6 +101,35 @@ public struct ReceiptParseResult: Equatable, Sendable {
         self.dateCandidates = dateCandidates
         self.categoryHint = categoryHint
         self.noteCandidate = noteCandidate
+        self.ocrConfidence = ocrConfidence
+        self.overallConfidence = overallConfidence
+        self.amountCandidateDetails = amountCandidateDetails ?? amountCandidates.map {
+            Self.compatibilityCandidate($0)
+        }
+        self.merchantCandidateDetails = merchantCandidateDetails ?? merchantCandidates.map {
+            Self.compatibilityCandidate($0)
+        }
+        self.dateCandidateDetails = dateCandidateDetails ?? dateCandidates.map {
+            Self.compatibilityCandidate($0)
+        }
+        if let categoryCandidateDetails {
+            self.categoryCandidateDetails = categoryCandidateDetails
+        } else if let categoryHint {
+            self.categoryCandidateDetails = [Self.compatibilityCandidate(categoryHint)]
+        } else {
+            self.categoryCandidateDetails = []
+        }
+    }
+
+    private static func compatibilityCandidate<Value: Equatable & Sendable>(
+        _ value: Value
+    ) -> ReceiptCandidate<Value> {
+        ReceiptCandidate(
+            value: value,
+            score: 0,
+            confidence: .low,
+            evidence: [.unscoredCompatibilityValue]
+        )
     }
 }
 
@@ -57,18 +146,34 @@ public enum ReceiptTextParser {
         let rangeLocation: Int
         let score: Int
         let isLabelled: Bool
+        let evidence: [ReceiptCandidateEvidence]
     }
 
     struct RankedText {
         let value: String
         let lineIndex: Int
         let score: Int
+        let evidence: [ReceiptCandidateEvidence]
     }
 
     struct RankedDate {
         let value: Date
         let lineIndex: Int
         let score: Int
+        let evidence: [ReceiptCandidateEvidence]
+    }
+
+    struct RankedCategory {
+        let value: ReceiptCategoryHint
+        let score: Int
+        let priority: Int
+        let evidence: [ReceiptCandidateEvidence]
+    }
+
+    struct CleanedReceiptInput {
+        let lines: [String]
+        let ocrConfidence: Float?
+        let lineConfidences: [Float]?
     }
 
     struct MoneyToken {
@@ -151,7 +256,9 @@ public enum ReceiptTextParser {
         calendar: Calendar = .current,
         prefersDayFirst: Bool = true,
         locale: Locale = .current,
-        accounts: [LedgerAccount] = []
+        accounts: [LedgerAccount] = [],
+        ocrConfidence: Float? = nil,
+        ocrLineConfidences: [Float]? = nil
     ) -> TransactionDraft {
         analyze(
             fromLines: lines,
@@ -159,7 +266,9 @@ public enum ReceiptTextParser {
             calendar: calendar,
             prefersDayFirst: prefersDayFirst,
             locale: locale,
-            accounts: accounts
+            accounts: accounts,
+            ocrConfidence: ocrConfidence,
+            ocrLineConfidences: ocrLineConfidences
         ).draft
     }
 
@@ -171,28 +280,38 @@ public enum ReceiptTextParser {
         calendar: Calendar = .current,
         prefersDayFirst: Bool = true,
         locale: Locale = .current,
-        accounts: [LedgerAccount] = []
+        accounts: [LedgerAccount] = [],
+        ocrConfidence: Float? = nil,
+        ocrLineConfidences: [Float]? = nil
     ) -> ReceiptParseResult {
-        let cleaned = lines
-            .map(cleanLine)
-            .filter { !$0.isEmpty }
-
-        let amounts = rankedAmounts(in: cleaned, locale: locale)
-        let merchants = rankedMerchants(in: cleaned)
+        let input = cleanedInput(
+            lines: lines,
+            ocrConfidence: ocrConfidence,
+            lineConfidences: ocrLineConfidences
+        )
+        let amounts = rankedAmounts(in: input.lines, locale: locale)
+        let merchants = rankedMerchants(in: input.lines)
         let dates = rankedDates(
-            in: cleaned,
+            in: input.lines,
             now: now,
             calendar: calendar,
             prefersDayFirst: prefersDayFirst
         )
-        let inferredCategory = Self.categoryHint(
-            in: cleaned,
+        let categories = rankedCategories(
+            in: input.lines,
             merchant: merchants.first?.value
         )
+        let inferredCategory = categories.first?.value
         let categoryID = inferredCategory.flatMap {
             Self.categoryID(for: $0, in: accounts)
         }
-
+        let details = candidateDetails(
+            amounts: amounts,
+            merchants: merchants,
+            dates: dates,
+            categories: categories,
+            input: input
+        )
         let draft = TransactionDraft(
             kind: .expense,
             amount: amounts.first?.value,
@@ -204,11 +323,23 @@ public enum ReceiptTextParser {
 
         return ReceiptParseResult(
             draft: draft,
-            amountCandidates: credibleAmountValues(amounts),
-            merchantCandidates: unique(merchants.map(\.value)),
-            dateCandidates: unique(dates.map(\.value)),
+            amountCandidates: details.amounts.map(\.value),
+            merchantCandidates: details.merchants.map(\.value),
+            dateCandidates: details.dates.map(\.value),
             categoryHint: inferredCategory,
-            noteCandidate: noteCandidate(in: cleaned)
+            noteCandidate: noteCandidate(in: input.lines),
+            ocrConfidence: input.ocrConfidence,
+            overallConfidence: overallConfidence(
+                confidenceBand(for: input.lineConfidences?.min() ?? input.ocrConfidence),
+                details.amounts.first?.confidence,
+                details.merchants.first?.confidence,
+                details.dates.first?.confidence,
+                details.categories.first?.confidence
+            ),
+            amountCandidateDetails: details.amounts,
+            merchantCandidateDetails: details.merchants,
+            dateCandidateDetails: details.dates,
+            categoryCandidateDetails: details.categories
         )
     }
 
@@ -300,15 +431,29 @@ public enum ReceiptTextParser {
               !isPercentage(token.range, in: context.line) else { return nil }
         var score = context.labelScore
         var isLabelled = context.labelScore > 0
+        var evidence: [ReceiptCandidateEvidence] = []
+        if isLabelled {
+            evidence.append(.payableAmountLabel)
+        }
         if !isLabelled,
            context.previousLabelScore > 0,
            isMostlyAmount(context.line) {
             score += context.previousLabelScore - 10
             isLabelled = true
+            evidence.append(.precedingPayableAmountLabel)
         }
         score += context.exclusionScore
-        if context.hasCurrency { score += 24 }
-        if token.hasFraction { score += 20 }
+        if context.hasCurrency {
+            score += 24
+            evidence.append(.currencyMarker)
+        }
+        if token.hasFraction {
+            score += 20
+            evidence.append(.fractionalAmount)
+        }
+        if !isLabelled {
+            evidence.append(.unlabelledAmount)
+        }
         score += Int(
             (Double(context.lineIndex) / Double(max(context.lineCount - 1, 1))) * 18
         )
@@ -338,7 +483,8 @@ public enum ReceiptTextParser {
             lineIndex: context.lineIndex,
             rangeLocation: token.range.location,
             score: score,
-            isLabelled: isLabelled
+            isLabelled: isLabelled,
+            evidence: evidence
         )
     }
 
@@ -351,7 +497,7 @@ public enum ReceiptTextParser {
     /// Once a labelled total exists, low-score line-item prices are not honest
     /// alternatives. Unlabelled screenshots keep a narrow score band because
     /// two prominent currency amounts can genuinely be ambiguous.
-    static func credibleAmountValues(_ amounts: [RankedAmount]) -> [Decimal] {
+    static func credibleAmounts(_ amounts: [RankedAmount]) -> [RankedAmount] {
         guard let best = amounts.first else { return [] }
         let credible: [RankedAmount]
         if best.isLabelled {
@@ -359,7 +505,7 @@ public enum ReceiptTextParser {
         } else {
             credible = amounts.filter { $0.score >= max(20, best.score - 20) }
         }
-        return unique(credible.map(\.value))
+        return credible
     }
 
     static func nonPayableScore(in normalized: String) -> Int {
@@ -484,13 +630,27 @@ public enum ReceiptTextParser {
             guard line.filter(\.isLetter).count >= 3 else { continue }
 
             var score = max(0, 45 - index * 4)
-            if extracted != nil { score += 110 }
-            if containsAny(["pte ltd", "private limited", "sdn bhd", "berhad", "co-op",
-                            "company", "enterprise", "restaurant", "cafe", "café"],
-                           in: normalized) {
-                score += 35
+            var evidence: [ReceiptCandidateEvidence] = []
+            if score > 0 {
+                evidence.append(.receiptHeaderPosition)
             }
-            if line == line.uppercased(), line != line.lowercased() { score += 9 }
+            if extracted != nil {
+                score += 110
+                evidence.append(.explicitMerchantLabel)
+            }
+            let hasBusinessMarker = containsAny(
+                ["pte ltd", "private limited", "sdn bhd", "berhad", "co-op",
+                 "company", "enterprise", "restaurant", "cafe", "café"],
+                in: normalized
+            )
+            if hasBusinessMarker {
+                score += 35
+                evidence.append(.businessNameMarker)
+            }
+            if line == line.uppercased(), line != line.lowercased() {
+                score += 9
+                evidence.append(.uppercaseMerchantText)
+            }
             if (3...40).contains(line.count) { score += 8 }
 
             if containsAny(genericMerchantLines, in: normalized) { score -= 150 }
@@ -517,7 +677,14 @@ public enum ReceiptTextParser {
             if letterCount * 2 < line.count { score -= 80 }
 
             if score >= 20 {
-                candidates.append(RankedText(value: line, lineIndex: index, score: score))
+                candidates.append(
+                    RankedText(
+                        value: line,
+                        lineIndex: index,
+                        score: score,
+                        evidence: evidence
+                    )
+                )
             }
         }
 

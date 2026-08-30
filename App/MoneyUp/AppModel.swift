@@ -390,7 +390,7 @@ final class AppModel {
         services = AppModelServices()
         lockedCaptureStore = LockedCaptureStore()
         receiptRecognizer = { data in
-            try await ReceiptScanner.recognizeLines(inImageData: data)
+            try await ReceiptScanner.recognize(inImageData: data)
         }
         lifecycleHooks = .none
         databaseURLForErase = nil
@@ -423,7 +423,7 @@ final class AppModel {
         quickLogDraft: QuickLogDraft? = nil,
         lockedCaptureStore: any LockedCaptureStoring = LockedCaptureStore(),
         receiptRecognizer: @escaping ReceiptLineRecognizer = { data in
-            try await ReceiptScanner.recognizeLines(inImageData: data)
+            try await ReceiptScanner.recognize(inImageData: data)
         },
         lifecycleHooks: AppModelLifecycleHooks = .none,
         databaseURLForErase: URL? = nil,

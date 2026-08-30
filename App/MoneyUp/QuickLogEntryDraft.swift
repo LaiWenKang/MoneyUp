@@ -30,7 +30,8 @@ extension QuickLogEntryView {
     func trackedBinding<Value>(
         _ binding: Binding<Value>,
         _ keyPath: WritableKeyPath<QuickLogDraft, Value>,
-        refreshesOccurrenceDate: Bool = false
+        refreshesOccurrenceDate: Bool = false,
+        onUserEdit: @escaping () -> Void = {}
     ) -> Binding<Value> {
         Binding(
             get: { binding.wrappedValue },
@@ -39,6 +40,7 @@ extension QuickLogEntryView {
                     refreshUntouchedOccurrenceDate(persist: false)
                 }
                 binding.wrappedValue = newValue
+                onUserEdit()
                 persistUserDraftChange { snapshot in
                     snapshot[keyPath: keyPath] = newValue
                 }
@@ -71,6 +73,10 @@ extension QuickLogEntryView {
 
     func restoreDraftIfAvailable() {
         guard !dismissAfterSave, let draft = model.quickLogDraft else { return }
+        if hasRestoredDraft, draft == draftSnapshot { return }
+        if hasRestoredDraft {
+            clearPerTransactionReviewState()
+        }
         // Restore first. A conflicting widget request is resolved explicitly
         // below instead of silently reinterpreting or discarding this content.
         applyDraft(draft)
@@ -83,6 +89,8 @@ extension QuickLogEntryView {
         accountID = draft.accountID
         destinationAccountID = draft.destinationAccountID
         categoryID = draft.categoryID
+        accountWasEdited = draft.accountID != nil
+        categoryWasEdited = draft.categoryID != nil
         occurredAt = draft.hasTransactionContent
             ? draft.occurredAt : model.currentDateForUserAction()
         dateWasEdited = draft.dateWasEdited
@@ -125,6 +133,8 @@ extension QuickLogEntryView {
 
     func discardDraftAndLaunch(_ launchMode: QuickLogLaunchMode) {
         cancelReceiptProcessing()
+        accountWasEdited = false
+        categoryWasEdited = false
         amountText = ""
         destinationAmountText = ""
         occurredAt = model.currentDateForUserAction()
@@ -134,6 +144,10 @@ extension QuickLogEntryView {
         smartText = ""
         smartMessage = nil
         receiptResult = nil
+        captureSuggestionResult = nil
+        autoAppliedAccountSuggestionID = nil
+        autoAppliedCategorySuggestionID = nil
+        pendingDuplicateReview = nil
         splitLines = []
         sourceCaptureID = nil
         receiptAttachmentData = nil
@@ -182,6 +196,8 @@ extension QuickLogEntryView {
 
     func applyTypedPhrase() {
         receiptResult = nil
+        invalidateCaptureSuggestions()
+        pendingDuplicateReview = nil
         let draft = NaturalLanguageEntryParser.draft(
             from: smartText,
             accounts: model.accounts,

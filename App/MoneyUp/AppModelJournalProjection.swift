@@ -191,7 +191,7 @@ extension AppModel {
         let authoredEntry = try appAuthoredEntry(
             entry,
             sourceSystemOverride: completedLockedCaptureID == nil
-                ? nil : "MoneyUp Locked Capture",
+                ? nil : Self.lockedCaptureSourceSystem,
             sourceFingerprintOverride: completedLockedCaptureID.map(
                 Self.lockedCaptureFingerprint
             )

@@ -36,6 +36,8 @@ extension AppModel {
         applyDeferredLockIfPossible()
     }
 
+    static let lockedCaptureSourceSystem = "MoneyUp Locked Capture"
+
     static func lockedCaptureFingerprint(_ id: UUID) -> String {
         "locked-capture:\(id.uuidString.lowercased())"
     }
