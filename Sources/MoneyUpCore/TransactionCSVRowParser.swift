@@ -2,6 +2,32 @@ import CryptoKit
 import Foundation
 
 extension TransactionCSVImporter {
+    private struct RowValues {
+        let columns: [String]
+        let indexes: [Field: Int]
+
+        func value(_ field: Field) -> String? {
+            guard let index = indexes[field], columns.indices.contains(index) else {
+                return nil
+            }
+            let cleaned = normalizedValue(columns[index])
+            return cleaned.isEmpty ? nil : cleaned
+        }
+    }
+
+    private struct ParsedRowAmounts {
+        let kind: ImportedTransactionKind
+        let amount: Decimal
+        let destinationAmount: Decimal?
+        let currencyCode: String?
+    }
+
+    private struct RowIdentity {
+        let value: String
+        let hasExternalID: Bool
+        let legacyCandidates: Set<String>
+    }
+
     static func parseRow(
         _ columns: [String],
         line: Int,
@@ -9,156 +35,172 @@ extension TransactionCSVImporter {
         locale: Locale,
         timeZone: TimeZone
     ) throws -> ImportedTransaction {
-        func value(_ field: Field) -> String? {
-            guard let index = indexes[field], columns.indices.contains(index) else { return nil }
-            let cleaned = normalizedValue(columns[index])
-            return cleaned.isEmpty ? nil : cleaned
-        }
-
-        guard let dateText = value(.date),
+        let row = RowValues(columns: columns, indexes: indexes)
+        guard let dateText = row.value(.date),
               let occurredAt = parsedDate(dateText, locale: locale, timeZone: timeZone) else {
             throw RowError.invalidDate
         }
-
-        let kindText = value(.kind)
-        let explicitKind = kindText.flatMap(importKind)
-        if kindText != nil, explicitKind == nil {
-            throw RowError.unsupportedType
-        }
-        let currencyCode = value(.currency)?.uppercased()
-        let declaredCurrency = currencyCode.flatMap { try? CurrencyCode($0) }
-
-        func amount(_ field: Field) throws -> Decimal? {
-            guard let text = value(field) else { return nil }
-            guard let parsed = parsedAmount(text, locale: locale),
-                  !parsed.isNaN,
-                  abs(parsed) <= MonetaryInputPolicy.maximumAbsoluteNewWrite,
-                  declaredCurrency.map({
-                      MonetaryInputPolicy.accepts(parsed, currency: $0)
-                  }) ?? true else {
-                throw RowError.invalidAmount
-            }
-            return parsed
-        }
-
-        let explicitAmount = try amount(.amount)
-        let outflow = try amount(.outflow)
-        let inflow = try amount(.inflow)
-        let nonzeroOutflow = outflow.map { abs($0) }
-            .flatMap { $0 == .zero ? nil : $0 }
-        let nonzeroInflow = inflow.map { abs($0) }
-            .flatMap { $0 == .zero ? nil : $0 }
-        guard nonzeroOutflow == nil || nonzeroInflow == nil else {
-            // A row cannot honestly be inferred as both money-in and
-            // money-out. Make the user fix its mapping instead of silently
-            // preferring one column.
-            throw RowError.invalidAmount
-        }
-
-        let kind: ImportedTransactionKind
-        let amount: Decimal
-        if let explicitKind {
-            kind = explicitKind
-            let matchingFlow: Decimal?
-            switch explicitKind {
-            case .expense:
-                guard nonzeroInflow == nil else { throw RowError.invalidAmount }
-                matchingFlow = nonzeroOutflow
-            case .income, .refund:
-                guard nonzeroOutflow == nil else { throw RowError.invalidAmount }
-                matchingFlow = nonzeroInflow
-            case .transfer:
-                matchingFlow = nonzeroOutflow ?? nonzeroInflow
-            }
-            let normalizedExplicit = explicitAmount.map { abs($0) }
-            if let normalizedExplicit, let matchingFlow,
-               normalizedExplicit != matchingFlow {
-                throw RowError.invalidAmount
-            }
-            guard let parsed = normalizedExplicit ?? matchingFlow,
-                  parsed != .zero else { throw RowError.invalidAmount }
-            amount = parsed
-        } else if let nonzeroOutflow {
-            kind = .expense
-            amount = nonzeroOutflow
-        } else if let nonzeroInflow {
-            kind = .income
-            amount = nonzeroInflow
-        } else {
-            throw RowError.invalidAmount
-        }
-
-        let destinationAmount: Decimal?
-        if let destinationText = value(.destinationAmount) {
-            guard let parsed = parsedAmount(destinationText, locale: locale),
-                  !parsed.isNaN,
-                  abs(parsed) > .zero,
-                  abs(parsed) <= MonetaryInputPolicy.maximumAbsoluteNewWrite else {
-                throw RowError.invalidDestinationAmount
-            }
-            destinationAmount = abs(parsed)
-        } else {
-            destinationAmount = nil
-        }
-        let sourceID = value(.id)
-        let accountName = value(.account)
-        let destinationAccountName = value(.destinationAccount)
-        let categoryName = value(.category)
-        let payee = value(.payee)
-        let note = value(.note)
+        let parsed = try parsedRowAmounts(row, locale: locale)
+        let identity = rowIdentity(
+            row,
+            kind: parsed.kind,
+            occurredAt: occurredAt,
+            amount: parsed.amount,
+            destinationAmount: parsed.destinationAmount,
+            currencyCode: parsed.currencyCode
+        )
         let semanticComponents = [
-            sourceID ?? "", // External IDs are deliberately case-sensitive.
-            kind.rawValue,
-            ISO8601DateFormatter().string(from: occurredAt),
-            NSDecimalNumber(decimal: amount).stringValue,
-            destinationAmount.map { NSDecimalNumber(decimal: $0).stringValue } ?? "",
-            currencyCode ?? "",
-            humanFingerprintValue(accountName),
-            humanFingerprintValue(destinationAccountName),
-            humanFingerprintValue(categoryName),
-            humanFingerprintValue(payee),
-            humanFingerprintValue(note)
+            row.value(.account), row.value(.destinationAccount), row.value(.category),
+            row.value(.payee), row.value(.note)
         ]
-        let legacySemanticFingerprint = fingerprintV2(semanticComponents)
-        let identity = sourceID.map(externalIdentityFingerprint)
-            ?? legacySemanticFingerprint
-        var legacyFingerprintCandidates: Set<String> = [
-            legacySemanticFingerprint,
-            legacyFNV1A64Fingerprint([
-                sourceID ?? "",
-                kind.rawValue,
-                ISO8601DateFormatter().string(from: occurredAt),
-                NSDecimalNumber(decimal: amount).stringValue,
-                value(.currency) ?? "",
-                accountName ?? "",
-                destinationAccountName ?? "",
-                categoryName ?? "",
-                payee ?? "",
-                note ?? ""
-            ])
-        ]
-        legacyFingerprintCandidates.remove(identity)
-
         return ImportedTransaction(
-            id: identity,
-            hasExternalID: sourceID != nil,
-            legacyFingerprintCandidates: legacyFingerprintCandidates,
+            id: identity.value,
+            hasExternalID: identity.hasExternalID,
+            legacyFingerprintCandidates: identity.legacyCandidates,
             sourceLine: line,
-            kind: kind,
+            kind: parsed.kind,
             occurredAt: occurredAt,
             originContext: .capture(
                 for: occurredAt,
                 calendar: Calendar(identifier: .gregorian),
                 timeZone: originTimeZone(from: dateText) ?? timeZone
             ),
-            amount: amount,
-            destinationAmount: destinationAmount,
-            currencyCode: currencyCode,
-            accountName: accountName,
-            destinationAccountName: destinationAccountName,
-            categoryName: categoryName,
-            payee: payee,
-            note: note
+            amount: parsed.amount,
+            destinationAmount: parsed.destinationAmount,
+            currencyCode: parsed.currencyCode,
+            accountName: semanticComponents[0],
+            destinationAccountName: semanticComponents[1],
+            categoryName: semanticComponents[2],
+            payee: semanticComponents[3],
+            note: semanticComponents[4]
+        )
+    }
+
+    private static func parsedRowAmounts(
+        _ row: RowValues,
+        locale: Locale
+    ) throws -> ParsedRowAmounts {
+        let kindText = row.value(.kind)
+        let explicitKind = kindText.flatMap(importKind)
+        if kindText != nil, explicitKind == nil { throw RowError.unsupportedType }
+        let currencyCode = row.value(.currency)?.uppercased()
+        let currency = currencyCode.flatMap { try? CurrencyCode($0) }
+        let explicit = try validatedAmount(.amount, row: row, locale: locale, currency: currency)
+        let outflow = try validatedAmount(.outflow, row: row, locale: locale, currency: currency)
+        let inflow = try validatedAmount(.inflow, row: row, locale: locale, currency: currency)
+        let nonzeroOutflow = outflow.map { abs($0) }.flatMap { $0 == .zero ? nil : $0 }
+        let nonzeroInflow = inflow.map { abs($0) }.flatMap { $0 == .zero ? nil : $0 }
+        guard nonzeroOutflow == nil || nonzeroInflow == nil else {
+            throw RowError.invalidAmount
+        }
+        let direction = try resolvedKindAndAmount(
+            explicitKind: explicitKind,
+            explicitAmount: explicit,
+            outflow: nonzeroOutflow,
+            inflow: nonzeroInflow
+        )
+        return ParsedRowAmounts(
+            kind: direction.0,
+            amount: direction.1,
+            destinationAmount: try destinationAmount(row, locale: locale),
+            currencyCode: currencyCode
+        )
+    }
+
+    private static func validatedAmount(
+        _ field: Field,
+        row: RowValues,
+        locale: Locale,
+        currency: CurrencyCode?
+    ) throws -> Decimal? {
+        guard let text = row.value(field) else { return nil }
+        guard let parsed = parsedAmount(text, locale: locale),
+              !parsed.isNaN,
+              abs(parsed) <= MonetaryInputPolicy.maximumAbsoluteNewWrite,
+              currency.map({ MonetaryInputPolicy.accepts(parsed, currency: $0) }) ?? true else {
+            throw RowError.invalidAmount
+        }
+        return parsed
+    }
+
+    private static func resolvedKindAndAmount(
+        explicitKind: ImportedTransactionKind?,
+        explicitAmount: Decimal?,
+        outflow: Decimal?,
+        inflow: Decimal?
+    ) throws -> (ImportedTransactionKind, Decimal) {
+        guard let explicitKind else {
+            if let outflow { return (.expense, outflow) }
+            if let inflow { return (.income, inflow) }
+            throw RowError.invalidAmount
+        }
+        let matchingFlow: Decimal?
+        switch explicitKind {
+        case .expense:
+            guard inflow == nil else { throw RowError.invalidAmount }
+            matchingFlow = outflow
+        case .income, .refund:
+            guard outflow == nil else { throw RowError.invalidAmount }
+            matchingFlow = inflow
+        case .transfer:
+            matchingFlow = outflow ?? inflow
+        }
+        let normalizedExplicit = explicitAmount.map { abs($0) }
+        if let normalizedExplicit, let matchingFlow, normalizedExplicit != matchingFlow {
+            throw RowError.invalidAmount
+        }
+        guard let amount = normalizedExplicit ?? matchingFlow, amount != .zero else {
+            throw RowError.invalidAmount
+        }
+        return (explicitKind, amount)
+    }
+
+    private static func destinationAmount(
+        _ row: RowValues,
+        locale: Locale
+    ) throws -> Decimal? {
+        guard let text = row.value(.destinationAmount) else { return nil }
+        guard let parsed = parsedAmount(text, locale: locale),
+              !parsed.isNaN,
+              abs(parsed) > .zero,
+              abs(parsed) <= MonetaryInputPolicy.maximumAbsoluteNewWrite else {
+            throw RowError.invalidDestinationAmount
+        }
+        return abs(parsed)
+    }
+
+    private static func rowIdentity(
+        _ row: RowValues,
+        kind: ImportedTransactionKind,
+        occurredAt: Date,
+        amount: Decimal,
+        destinationAmount: Decimal?,
+        currencyCode: String?
+    ) -> RowIdentity {
+        let sourceID = row.value(.id)
+        let common = [
+            sourceID ?? "", kind.rawValue, ISO8601DateFormatter().string(from: occurredAt),
+            NSDecimalNumber(decimal: amount).stringValue
+        ]
+        let semantic = common + [
+            destinationAmount.map { NSDecimalNumber(decimal: $0).stringValue } ?? "",
+            currencyCode ?? "", humanFingerprintValue(row.value(.account)),
+            humanFingerprintValue(row.value(.destinationAccount)),
+            humanFingerprintValue(row.value(.category)), humanFingerprintValue(row.value(.payee)),
+            humanFingerprintValue(row.value(.note))
+        ]
+        let legacySemantic = fingerprintV2(semantic)
+        let identity = sourceID.map(externalIdentityFingerprint) ?? legacySemantic
+        var legacyCandidates: Set<String> = [legacySemantic, legacyFNV1A64Fingerprint(
+            common + [row.value(.currency) ?? "", row.value(.account) ?? "",
+                      row.value(.destinationAccount) ?? "", row.value(.category) ?? "",
+                      row.value(.payee) ?? "", row.value(.note) ?? ""]
+        )]
+        legacyCandidates.remove(identity)
+        return RowIdentity(
+            value: identity,
+            hasExternalID: sourceID != nil,
+            legacyCandidates: legacyCandidates
         )
     }
 
