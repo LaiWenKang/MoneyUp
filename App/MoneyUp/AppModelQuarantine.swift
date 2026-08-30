@@ -256,14 +256,16 @@ extension AppModel {
         _ holding: InvestmentHolding
     ) -> Set<CurrencyCode> {
         Set(
-            [holding.price?.currency]
-                + holding.priceHistory.map { Optional($0.price.currency) }
-                + holding.lots.map { Optional($0.unitCost.currency) }
-                + holding.disposals.flatMap {
-                    [Optional($0.costBasis.currency), Optional($0.proceeds.currency),
-                     Optional($0.realizedGainLoss.currency)]
-                }
-        ).compactMap { $0 }
+            Set(
+                [holding.price?.currency]
+                    + holding.priceHistory.map { Optional($0.price.currency) }
+                    + holding.lots.map { Optional($0.unitCost.currency) }
+                    + holding.disposals.flatMap {
+                        [Optional($0.costBasis.currency), Optional($0.proceeds.currency),
+                         Optional($0.realizedGainLoss.currency)]
+                    }
+            ).compactMap { $0 }
+        )
     }
 
     func invalidRecoveryInvestmentPosition(
