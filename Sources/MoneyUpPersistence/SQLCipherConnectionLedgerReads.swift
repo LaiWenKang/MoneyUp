@@ -5,7 +5,25 @@ import SQLCipher
 extension SQLCipherConnection {
     func budgetAttributionIndexSnapshot() throws
         -> BudgetAttributionIndexSnapshot {
-        let counts: (Int, Int, Int) = try withStatement(
+        let counts = try budgetAttributionIndexCounts()
+        let requiresDetailedValidation = try requiresDetailedBudgetAttributionValidation()
+        let issueIDs = try budgetAttributionIssueIDs()
+        return BudgetAttributionIndexSnapshot(
+            recordCount: counts.0,
+            indexedEntryCount: counts.1,
+            indexedPostingCount: counts.2,
+            requiresDetailedValidation: requiresDetailedValidation,
+            issues: issueIDs.map {
+                RecordDecodeIssue(
+                    collection: .budgetEntryAttributions,
+                    recordID: $0
+                )
+            }
+        )
+    }
+
+    private func budgetAttributionIndexCounts() throws -> (Int, Int, Int) {
+        try withStatement(
             """
             SELECT
                 (SELECT COUNT(*) FROM records WHERE collection = ?),
@@ -26,10 +44,13 @@ extension SQLCipherConnection {
                 Int(sqlite3_column_int64(statement, 2))
             )
         }
+    }
+
+    private func requiresDetailedBudgetAttributionValidation() throws -> Bool {
         // A mismatch can be a valid audited lifecycle remap or a legacy
         // inferred-day attribution, but either case requires the slower exact
         // domain validator. Healthy histories avoid decoding attribution JSON.
-        let requiresDetailedValidation: Bool = try withStatement(
+        return try withStatement(
             """
             SELECT EXISTS (
                 SELECT 1
@@ -73,7 +94,10 @@ extension SQLCipherConnection {
             guard result == SQLITE_ROW else { throw makeError(code: result) }
             return sqlite3_column_int(statement, 0) != 0
         }
-        let issueIDs: [String] = try withStatement(
+    }
+
+    private func budgetAttributionIssueIDs() throws -> [String] {
+        try withStatement(
             """
             SELECT records.record_id
             FROM records
@@ -114,18 +138,6 @@ extension SQLCipherConnection {
             }
             return ids
         }
-        return BudgetAttributionIndexSnapshot(
-            recordCount: counts.0,
-            indexedEntryCount: counts.1,
-            indexedPostingCount: counts.2,
-            requiresDetailedValidation: requiresDetailedValidation,
-            issues: issueIDs.map {
-                RecordDecodeIssue(
-                    collection: .budgetEntryAttributions,
-                    recordID: $0
-                )
-            }
-        )
     }
 
     func fetchInvalidJournalEntryIDs(

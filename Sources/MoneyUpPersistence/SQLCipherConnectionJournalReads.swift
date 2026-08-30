@@ -104,10 +104,45 @@ extension SQLCipherConnection {
         limit: Int
     ) throws -> IndexedPayloadPage {
         try Task.checkCancellation()
-        var predicates = [
-            "records.collection = ?",
-            "records.indexed_at IS NOT NULL"
-        ]
+        let predicates = journalPagePredicates(
+            startDate: startDate,
+            endDateExclusive: endDateExclusive,
+            startDayKey: startDayKey,
+            endDayKeyExclusive: endDayKeyExclusive,
+            cursor: cursor
+        )
+        let sql = """
+        SELECT records.record_id, records.payload, records.indexed_at
+        FROM records
+        JOIN journal_entry_index
+            ON journal_entry_index.entry_id = records.record_id
+        WHERE \(predicates.joined(separator: " AND "))
+        ORDER BY records.indexed_at DESC, records.record_id DESC
+        LIMIT ?;
+        """
+
+        return try withStatement(sql) { statement in
+            try bindJournalPageParameters(
+                startDate: startDate,
+                endDateExclusive: endDateExclusive,
+                startDayKey: startDayKey,
+                endDayKeyExclusive: endDayKeyExclusive,
+                cursor: cursor,
+                limit: limit,
+                to: statement
+            )
+            return try readJournalPage(from: statement, limit: limit)
+        }
+    }
+
+    private func journalPagePredicates(
+        startDate: Date?,
+        endDateExclusive: Date?,
+        startDayKey: Int?,
+        endDayKeyExclusive: Int?,
+        cursor: JournalEntryPageCursor?
+    ) -> [String] {
+        var predicates = ["records.collection = ?", "records.indexed_at IS NOT NULL"]
         if startDate != nil { predicates.append("records.indexed_at >= ?") }
         if endDateExclusive != nil { predicates.append("records.indexed_at < ?") }
         if startDayKey != nil {
@@ -122,107 +157,86 @@ extension SQLCipherConnection {
                     + "(records.indexed_at = ? AND records.record_id < ?))"
             )
         }
-        let sql = """
-        SELECT records.record_id, records.payload, records.indexed_at
-        FROM records
-        JOIN journal_entry_index
-            ON journal_entry_index.entry_id = records.record_id
-        WHERE \(predicates.joined(separator: " AND "))
-        ORDER BY records.indexed_at DESC, records.record_id DESC
-        LIMIT ?;
-        """
+        return predicates
+    }
 
-        return try withStatement(sql) { statement in
-            var binding: Int32 = 1
-            try bindText(
-                RecordCollection.journalEntries.rawValue,
-                at: binding,
-                to: statement
-            )
+    private func bindJournalPageParameters(
+        startDate: Date?,
+        endDateExclusive: Date?,
+        startDayKey: Int?,
+        endDayKeyExclusive: Int?,
+        cursor: JournalEntryPageCursor?,
+        limit: Int,
+        to statement: OpaquePointer
+    ) throws {
+        var binding: Int32 = 1
+        try bindText(RecordCollection.journalEntries.rawValue, at: binding, to: statement)
+        binding += 1
+        if let startDate {
+            try bindDouble(startDate.timeIntervalSince1970, at: binding, to: statement)
             binding += 1
-            if let startDate {
-                try bindDouble(
-                    startDate.timeIntervalSince1970,
-                    at: binding,
-                    to: statement
-                )
-                binding += 1
+        }
+        if let endDateExclusive {
+            try bindDouble(endDateExclusive.timeIntervalSince1970, at: binding, to: statement)
+            binding += 1
+        }
+        if let startDayKey {
+            guard sqlite3_bind_int64(statement, binding, Int64(startDayKey)) == SQLITE_OK else {
+                throw makeError()
             }
-            if let endDateExclusive {
-                try bindDouble(
-                    endDateExclusive.timeIntervalSince1970,
-                    at: binding,
-                    to: statement
-                )
-                binding += 1
-            }
-            if let startDayKey {
-                guard sqlite3_bind_int64(
-                    statement,
-                    binding,
-                    Int64(startDayKey)
-                ) == SQLITE_OK else { throw makeError() }
-                binding += 1
-            }
-            if let endDayKeyExclusive {
-                guard sqlite3_bind_int64(
-                    statement,
-                    binding,
-                    Int64(endDayKeyExclusive)
-                ) == SQLITE_OK else { throw makeError() }
-                binding += 1
-            }
-            if let cursor {
-                let timestamp = cursor.occurredAt.timeIntervalSince1970
-                try bindDouble(timestamp, at: binding, to: statement)
-                binding += 1
-                try bindDouble(timestamp, at: binding, to: statement)
-                binding += 1
-                try bindText(cursor.recordID, at: binding, to: statement)
-                binding += 1
-            }
+            binding += 1
+        }
+        if let endDayKeyExclusive {
             guard sqlite3_bind_int64(
                 statement,
                 binding,
-                Int64(limit + 1)
-            ) == SQLITE_OK else {
-                throw makeError()
-            }
-
-            var rows: [IndexedPayloadRecord] = []
-            while true {
-                if rows.count.isMultiple(of: 128) {
-                    try Task.checkCancellation()
-                }
-                let result = sqlite3_step(statement)
-                if result == SQLITE_DONE { break }
-                guard result == SQLITE_ROW,
-                      let rawID = sqlite3_column_text(statement, 0) else {
-                    throw makeError(code: result == SQLITE_ROW ? SQLITE_CORRUPT : result)
-                }
-                rows.append(
-                    IndexedPayloadRecord(
-                        id: String(cString: rawID),
-                        payload: data(from: statement, column: 1),
-                        indexedAt: sqlite3_column_double(statement, 2)
-                    )
-                )
-            }
-            try Task.checkCancellation()
-
-            let hasMore = rows.count > limit
-            let visibleRows = hasMore ? Array(rows.prefix(limit)) : rows
-            let nextCursor = hasMore ? visibleRows.last.map {
-                JournalEntryPageCursor(
-                    occurredAt: Date(timeIntervalSince1970: $0.indexedAt),
-                    recordID: $0.id
-                )
-            } : nil
-            return IndexedPayloadPage(
-                records: visibleRows,
-                nextCursor: nextCursor
-            )
+                Int64(endDayKeyExclusive)
+            ) == SQLITE_OK else { throw makeError() }
+            binding += 1
         }
+        if let cursor {
+            let timestamp = cursor.occurredAt.timeIntervalSince1970
+            try bindDouble(timestamp, at: binding, to: statement)
+            binding += 1
+            try bindDouble(timestamp, at: binding, to: statement)
+            binding += 1
+            try bindText(cursor.recordID, at: binding, to: statement)
+            binding += 1
+        }
+        guard sqlite3_bind_int64(statement, binding, Int64(limit + 1)) == SQLITE_OK else {
+            throw makeError()
+        }
+    }
+
+    private func readJournalPage(
+        from statement: OpaquePointer,
+        limit: Int
+    ) throws -> IndexedPayloadPage {
+        var rows: [IndexedPayloadRecord] = []
+        while true {
+            if rows.count.isMultiple(of: 128) { try Task.checkCancellation() }
+            let result = sqlite3_step(statement)
+            if result == SQLITE_DONE { break }
+            guard result == SQLITE_ROW,
+                  let rawID = sqlite3_column_text(statement, 0) else {
+                throw makeError(code: result == SQLITE_ROW ? SQLITE_CORRUPT : result)
+            }
+            rows.append(IndexedPayloadRecord(
+                id: String(cString: rawID),
+                payload: data(from: statement, column: 1),
+                indexedAt: sqlite3_column_double(statement, 2)
+            ))
+        }
+        try Task.checkCancellation()
+        let hasMore = rows.count > limit
+        let visibleRows = hasMore ? Array(rows.prefix(limit)) : rows
+        let nextCursor = hasMore ? visibleRows.last.map {
+            JournalEntryPageCursor(
+                occurredAt: Date(timeIntervalSince1970: $0.indexedAt),
+                recordID: $0.id
+            )
+        } : nil
+        return IndexedPayloadPage(records: visibleRows, nextCursor: nextCursor)
     }
 
     func fetchJournalPostings(
