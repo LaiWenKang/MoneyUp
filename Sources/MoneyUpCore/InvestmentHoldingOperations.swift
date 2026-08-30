@@ -109,20 +109,13 @@ extension InvestmentHolding {
             activitySequence: sequence
         )
 
-        var updatedHistory = priceHistory
-        if let previousPoint, let restorationID {
-            let next = sequence.addingReportingOverflow(1)
-            guard !next.overflow else {
-                throw InvestmentHoldingError.arithmeticOverflow
-            }
-            updatedHistory.append(try HoldingPricePoint(
-                id: restorationID,
-                price: previousPoint.price,
-                asOf: occurredAt,
-                priceEntryID: correctionEntryID,
-                activitySequence: next.partialValue
-            ))
-        }
+        let updatedHistory = try correctionPriceHistory(
+            previousPoint: previousPoint,
+            restorationID: restorationID,
+            sequence: sequence,
+            correctionEntryID: correctionEntryID,
+            occurredAt: occurredAt
+        )
         var updatedLots = lots
         let projectedRemaining = try Self.projectedLotRemaining(
             lots: updatedLots,
@@ -162,6 +155,29 @@ extension InvestmentHolding {
             targetEntryID: target.linkedEntryID,
             correctionEntryID: correctionEntryID
         )
+    }
+
+    private func correctionPriceHistory(
+        previousPoint: HoldingPricePoint?,
+        restorationID: UUID?,
+        sequence: Int64,
+        correctionEntryID: UUID?,
+        occurredAt: Date
+    ) throws -> [HoldingPricePoint] {
+        var history = priceHistory
+        guard let previousPoint, let restorationID else { return history }
+        let next = sequence.addingReportingOverflow(1)
+        guard !next.overflow else {
+            throw InvestmentHoldingError.arithmeticOverflow
+        }
+        history.append(try HoldingPricePoint(
+            id: restorationID,
+            price: previousPoint.price,
+            asOf: occurredAt,
+            priceEntryID: correctionEntryID,
+            activitySequence: next.partialValue
+        ))
+        return history
     }
 
     public func isPriceStale(
@@ -276,48 +292,13 @@ extension InvestmentHolding {
             throw InvestmentHoldingError.valuationCurrencyMismatch
         }
         let saleSequence = try nextActivitySequence()
-
-        var eligibleQuantity = Decimal.zero
-        for lot in lots where lot.acquiredAt < occurredAt
-            || (lot.acquiredAt == occurredAt && lot.activitySequence < saleSequence) {
-            eligibleQuantity = try checkedInvestmentSum(
-                eligibleQuantity,
-                lot.remainingQuantity
-            )
-        }
-        guard soldQuantity <= eligibleQuantity else {
-            throw InvestmentHoldingError.activityOutOfOrder
-        }
-
-        var remainingToConsume = soldQuantity
-        var basis = Decimal.zero
-        var updatedLots = lots
-        for index in updatedLots.indices where remainingToConsume > .zero {
-            let lotPrecedesSale = updatedLots[index].acquiredAt < occurredAt
-                || (updatedLots[index].acquiredAt == occurredAt
-                    && updatedLots[index].activitySequence < saleSequence)
-            if !lotPrecedesSale { continue }
-            let consumed = min(updatedLots[index].remainingQuantity, remainingToConsume)
-            updatedLots[index].remainingQuantity = try checkedInvestmentDifference(
-                updatedLots[index].remainingQuantity,
-                consumed
-            )
-            remainingToConsume = try checkedInvestmentDifference(
-                remainingToConsume,
-                consumed
-            )
-            let consumedCost = try checkedInvestmentProduct(
-                consumed,
-                updatedLots[index].unitCost.amount
-            )
-            basis = try checkedInvestmentSum(basis, consumedCost)
-        }
-        // Legacy holdings can have no lots. Refuse to invent a cost basis.
-        guard remainingToConsume == .zero else {
-            throw InvestmentHoldingError.insufficientQuantity
-        }
+        let projection = try saleProjection(
+            quantity: soldQuantity,
+            occurredAt: occurredAt,
+            sequence: saleSequence
+        )
         let updatedQuantity = try checkedInvestmentDifference(quantity, soldQuantity)
-        let roundedBasis = unitPrice.currency.rounded(basis)
+        let roundedBasis = unitPrice.currency.rounded(projection.basis)
         let proceedsMoney = try Self.positionValue(
             quantity: soldQuantity,
             unitPrice: unitPrice
@@ -350,9 +331,50 @@ extension InvestmentHolding {
             }
             return $0.occurredAt < $1.occurredAt
         }
-        lots = updatedLots
+        lots = projection.lots
         quantity = updatedQuantity
         disposals = updatedDisposals
         return breakdown
+    }
+
+    private func saleProjection(
+        quantity soldQuantity: Decimal,
+        occurredAt: Date,
+        sequence: Int64
+    ) throws -> (lots: [InvestmentLot], basis: Decimal) {
+        var eligibleQuantity = Decimal.zero
+        for lot in lots where lot.acquiredAt < occurredAt
+            || (lot.acquiredAt == occurredAt && lot.activitySequence < sequence) {
+            eligibleQuantity = try checkedInvestmentSum(
+                eligibleQuantity,
+                lot.remainingQuantity
+            )
+        }
+        guard soldQuantity <= eligibleQuantity else {
+            throw InvestmentHoldingError.activityOutOfOrder
+        }
+        var remainingToConsume = soldQuantity
+        var basis = Decimal.zero
+        var updatedLots = lots
+        for index in updatedLots.indices where remainingToConsume > .zero {
+            let precedes = updatedLots[index].acquiredAt < occurredAt
+                || (updatedLots[index].acquiredAt == occurredAt
+                    && updatedLots[index].activitySequence < sequence)
+            guard precedes else { continue }
+            let consumed = min(updatedLots[index].remainingQuantity, remainingToConsume)
+            updatedLots[index].remainingQuantity = try checkedInvestmentDifference(
+                updatedLots[index].remainingQuantity,
+                consumed
+            )
+            remainingToConsume = try checkedInvestmentDifference(remainingToConsume, consumed)
+            basis = try checkedInvestmentSum(
+                basis,
+                checkedInvestmentProduct(consumed, updatedLots[index].unitCost.amount)
+            )
+        }
+        guard remainingToConsume == .zero else {
+            throw InvestmentHoldingError.insufficientQuantity
+        }
+        return (updatedLots, basis)
     }
 }
