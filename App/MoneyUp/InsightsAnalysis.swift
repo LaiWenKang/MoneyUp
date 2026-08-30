@@ -20,72 +20,7 @@ extension InsightsView {
                 .foregroundStyle(.secondary)
 
                 if hasActivity {
-                    Chart {
-                        RuleMark(
-                            x: .value(
-                                String(localized: "chart.dimension.selected_period_start"),
-                                report.interval.start
-                            )
-                        )
-                        .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
-                        .foregroundStyle(Color.primary.opacity(0.45))
-
-                        RuleMark(
-                            x: .value(
-                                String(localized: "chart.dimension.selected_period_end"),
-                                report.interval.end.addingTimeInterval(-1)
-                            )
-                        )
-                        .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
-                        .foregroundStyle(Color.primary.opacity(0.45))
-
-                        ForEach(points) { point in
-                            BarMark(
-                                x: .value(
-                                    String(localized: "chart.dimension.month"),
-                                    point.month,
-                                    unit: .month
-                                ),
-                                y: .value(
-                                    String(localized: "chart.dimension.amount"),
-                                    point.amount
-                                )
-                            )
-                            .foregroundStyle(
-                                by: .value(
-                                    String(localized: "chart.dimension.flow"),
-                                    point.series
-                                )
-                            )
-                            .position(
-                                by: .value(
-                                    String(localized: "chart.dimension.flow"),
-                                    point.series
-                                )
-                            )
-                            .cornerRadius(point.kind == .income ? 5 : 0)
-                            .opacity(
-                                selectedFlowMonth == nil
-                                    || model.reportingCalendar.isDate(
-                                        point.month,
-                                        equalTo: selectedFlowMonth ?? point.month,
-                                        toGranularity: .month
-                                    ) ? 1 : 0.34
-                            )
-                            .accessibilityLabel(flowAccessibilityLabel(point))
-                            .accessibilityValue(formattedMoney(point.money))
-                        }
-                    }
-                    .frame(height: 240)
-                    .chartForegroundStyleScale([
-                        String(localized: "transaction.income"): Color.green,
-                        String(localized: "transaction.expense"): Color.accentColor
-                    ])
-                    .chartLegend(.hidden)
-                    .chartXSelection(value: $selectedFlowMonth)
-                    .accessibilityLabel(Text("insights.flow_chart"))
-                    .accessibilityValue(Text(flowChartSummary(report)))
-                    .accessibilityHint(Text("insights.chart_accessibility_hint"))
+                    cashFlowChart(report, points: points)
 
                     ViewThatFits(in: .horizontal) {
                         HStack(spacing: 16) {
@@ -118,6 +53,78 @@ extension InsightsView {
                 }
             }
         }
+    }
+
+    private func cashFlowChart(
+        _ report: PeriodReport,
+        points: [FlowPoint]
+    ) -> some View {
+        Chart {
+            RuleMark(
+                x: .value(
+                    String(localized: "chart.dimension.selected_period_start"),
+                    report.interval.start
+                )
+            )
+            .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
+            .foregroundStyle(Color.primary.opacity(0.45))
+
+            RuleMark(
+                x: .value(
+                    String(localized: "chart.dimension.selected_period_end"),
+                    report.interval.end.addingTimeInterval(-1)
+                )
+            )
+            .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
+            .foregroundStyle(Color.primary.opacity(0.45))
+
+            ForEach(points) { point in
+                BarMark(
+                    x: .value(
+                        String(localized: "chart.dimension.month"),
+                        point.month,
+                        unit: .month
+                    ),
+                    y: .value(
+                        String(localized: "chart.dimension.amount"),
+                        point.amount
+                    )
+                )
+                .foregroundStyle(
+                    by: .value(
+                        String(localized: "chart.dimension.flow"),
+                        point.series
+                    )
+                )
+                .position(
+                    by: .value(
+                        String(localized: "chart.dimension.flow"),
+                        point.series
+                    )
+                )
+                .cornerRadius(point.kind == .income ? 5 : 0)
+                .opacity(
+                    selectedFlowMonth == nil
+                        || model.reportingCalendar.isDate(
+                            point.month,
+                            equalTo: selectedFlowMonth ?? point.month,
+                            toGranularity: .month
+                        ) ? 1 : 0.34
+                )
+                .accessibilityLabel(flowAccessibilityLabel(point))
+                .accessibilityValue(formattedMoney(point.money))
+            }
+        }
+        .frame(height: 240)
+        .chartForegroundStyleScale([
+            String(localized: "transaction.income"): Color.green,
+            String(localized: "transaction.expense"): Color.accentColor
+        ])
+        .chartLegend(.hidden)
+        .chartXSelection(value: $selectedFlowMonth)
+        .accessibilityLabel(Text("insights.flow_chart"))
+        .accessibilityValue(Text(flowChartSummary(report)))
+        .accessibilityHint(Text("insights.chart_accessibility_hint"))
     }
 
     func flowAccessibilityLabel(_ point: FlowPoint) -> String {
@@ -343,34 +350,7 @@ extension InsightsView {
             lines.append(String(localized: "insights.no_expense_yet"))
         }
 
-        do {
-            if let rate = try report.savingsRate() {
-                if rate >= .zero {
-                    lines.append(
-                        String(
-                            format: String(localized: "insights.savings_rate_format"),
-                            formattedPercent(rate)
-                        )
-                    )
-                } else {
-                    let gap = try report.baseFlow.expense
-                        .subtracting(report.baseFlow.income)
-                    lines.append(
-                        String(
-                            format: String(localized: "insights.overspend_format"),
-                            formattedMoney(gap)
-                        )
-                    )
-                }
-            }
-        } catch {
-            DerivedValueDiagnostics.record(
-                .amountCalculationFailed,
-                operation: "insights-savings-reading",
-                error: error
-            )
-            issue = .amountCalculationFailed
-        }
+        appendSavingsReading(report, to: &lines, issue: &issue)
 
         do {
             if let largest = try report.largestCategory() {
@@ -415,6 +395,41 @@ extension InsightsView {
             lines.isEmpty ? [String(localized: "insights.no_data")] : lines,
             issue
         )
+    }
+
+    private func appendSavingsReading(
+        _ report: PeriodReport,
+        to lines: inout [String],
+        issue: inout DerivedValueIssue?
+    ) {
+        do {
+            if let rate = try report.savingsRate() {
+                if rate >= .zero {
+                    lines.append(
+                        String(
+                            format: String(localized: "insights.savings_rate_format"),
+                            formattedPercent(rate)
+                        )
+                    )
+                } else {
+                    let gap = try report.baseFlow.expense
+                        .subtracting(report.baseFlow.income)
+                    lines.append(
+                        String(
+                            format: String(localized: "insights.overspend_format"),
+                            formattedMoney(gap)
+                        )
+                    )
+                }
+            }
+        } catch {
+            DerivedValueDiagnostics.record(
+                .amountCalculationFailed,
+                operation: "insights-savings-reading",
+                error: error
+            )
+            issue = .amountCalculationFailed
+        }
     }
 
     func monthToDateComparisonLine(

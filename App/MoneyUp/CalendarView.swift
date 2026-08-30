@@ -311,83 +311,7 @@ struct CalendarView: View {
 
         switch item.status {
         case .active:
-            Button {
-                perform {
-                    try await model.confirmScheduledOccurrence(
-                        scheduleID: item.id,
-                        occurrenceID: item.currentOccurrenceID
-                    )
-                }
-            } label: {
-                Label(
-                    item.isCurrentOccurrenceConfirmed
-                        ? String(localized: "schedule.confirmed")
-                        : String(localized: "schedule.confirm"),
-                    systemImage: "checkmark.circle"
-                )
-            }
-            .disabled(item.isCurrentOccurrenceConfirmed)
-
-            Button {
-                perform {
-                    _ = try await model.postScheduledOccurrence(
-                        scheduleID: item.id,
-                        occurrenceID: item.currentOccurrenceID,
-                        calendar: model.reportingCalendar
-                    )
-                }
-            } label: {
-                Label("schedule.post", systemImage: "arrow.down.doc")
-            }
-
-            Menu {
-                if scheduleMatchesLoading.contains(item.id) {
-                    ProgressView()
-                } else if let matches = scheduleMatchCandidates[item.id] {
-                    if matches.isEmpty {
-                        Text("schedule.match_none")
-                    } else {
-                        ForEach(matches.prefix(8)) { entry in
-                            Button(entry.payee ?? entry.occurredAt.formattedForReporting(
-                                Date.FormatStyle(date: .abbreviated, time: .omitted),
-                                calendar: model.reportingCalendar
-                            )) {
-                                perform {
-                                    try await model.matchScheduledOccurrence(
-                                        scheduleID: item.id,
-                                        occurrenceID: item.currentOccurrenceID,
-                                        entryID: entry.id,
-                                        calendar: model.reportingCalendar
-                                    )
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    Button("schedule.find_matches") {
-                        Task { await loadMatches(for: item) }
-                    }
-                }
-            } label: {
-                Label("schedule.match", systemImage: "link")
-            }
-
-            Button {
-                perform {
-                    try await model.skipScheduledOccurrence(
-                        scheduleID: item.id,
-                        occurrenceID: item.currentOccurrenceID,
-                        calendar: model.reportingCalendar
-                    )
-                }
-            } label: {
-                Label("schedule.skip", systemImage: "forward.end")
-            }
-            Button {
-                perform { try await model.pauseScheduledTransaction(id: item.id) }
-            } label: {
-                Label("schedule.pause", systemImage: "pause")
-            }
+            activeScheduleActions(for: item)
         case .paused:
             Button {
                 perform { try await model.resumeScheduledTransaction(id: item.id) }
@@ -404,6 +328,91 @@ struct CalendarView: View {
             } label: {
                 Label("schedule.end", systemImage: "stop.circle")
             }
+        }
+    }
+
+    @ViewBuilder
+    private func activeScheduleActions(for item: ScheduledTransaction) -> some View {
+        Button {
+            perform {
+                try await model.confirmScheduledOccurrence(
+                    scheduleID: item.id,
+                    occurrenceID: item.currentOccurrenceID
+                )
+            }
+        } label: {
+            Label(
+                item.isCurrentOccurrenceConfirmed
+                    ? String(localized: "schedule.confirmed")
+                    : String(localized: "schedule.confirm"),
+                systemImage: "checkmark.circle"
+            )
+        }
+        .disabled(item.isCurrentOccurrenceConfirmed)
+
+        Button {
+            perform {
+                _ = try await model.postScheduledOccurrence(
+                    scheduleID: item.id,
+                    occurrenceID: item.currentOccurrenceID,
+                    calendar: model.reportingCalendar
+                )
+            }
+        } label: {
+            Label("schedule.post", systemImage: "arrow.down.doc")
+        }
+
+        scheduleMatchMenu(for: item)
+
+        Button {
+            perform {
+                try await model.skipScheduledOccurrence(
+                    scheduleID: item.id,
+                    occurrenceID: item.currentOccurrenceID,
+                    calendar: model.reportingCalendar
+                )
+            }
+        } label: {
+            Label("schedule.skip", systemImage: "forward.end")
+        }
+        Button {
+            perform { try await model.pauseScheduledTransaction(id: item.id) }
+        } label: {
+            Label("schedule.pause", systemImage: "pause")
+        }
+    }
+
+    private func scheduleMatchMenu(for item: ScheduledTransaction) -> some View {
+        Menu {
+            if scheduleMatchesLoading.contains(item.id) {
+                ProgressView()
+            } else if let matches = scheduleMatchCandidates[item.id] {
+                if matches.isEmpty {
+                    Text("schedule.match_none")
+                } else {
+                    ForEach(matches.prefix(8)) { entry in
+                        Button(entry.payee ?? entry.occurredAt.formattedForReporting(
+                            Date.FormatStyle(date: .abbreviated, time: .omitted),
+                            calendar: model.reportingCalendar
+                        )) {
+                            perform {
+                                try await model.matchScheduledOccurrence(
+                                    scheduleID: item.id,
+                                    occurrenceID: item.currentOccurrenceID,
+                                    entryID: entry.id,
+                                    calendar: model.reportingCalendar
+                                )
+                            }
+                        }
+                    }
+                }
+            } else {
+                Button("schedule.find_matches") {
+                    Task { await loadMatches(for: item) }
+                }
+            }
+        } label: {
+            Label("schedule.match", systemImage: "link")
         }
     }
 
