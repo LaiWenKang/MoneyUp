@@ -5,6 +5,11 @@ import PhotosUI
 import SwiftUI
 import UIKit
 
+private enum QuickLogSaveOutcome {
+    case skipped
+    case saved(UUID?)
+}
+
 extension QuickLogEntryView {
     func save() async {
         guard !isSaving, canSave else { return }
@@ -13,80 +18,13 @@ extension QuickLogEntryView {
         errorMessage = nil
         defer { isSaving = false }
         do {
-            let savedEntryID: UUID?
             let retainedReceipt = retainReceiptAttachment ? receiptAttachmentData : nil
-            switch kind {
-            case .expense:
-                if splitLines.isEmpty {
-                    guard let categoryID else { return }
-                    savedEntryID = try await model.logExpense(
-                        amount: amount,
-                        accountID: accountID,
-                        categoryID: categoryID,
-                        occurredAt: occurredAt,
-                        payee: payee,
-                        note: note,
-                        receiptData: retainedReceipt
-                    )
-                } else {
-                    savedEntryID = try await saveSplit(
-                        kind: .expense,
-                        amount: amount,
-                        accountID: accountID,
-                        receiptData: retainedReceipt
-                    )
-                }
-            case .income:
-                if splitLines.isEmpty {
-                    guard let categoryID else { return }
-                    savedEntryID = try await model.logIncome(
-                        amount: amount,
-                        accountID: accountID,
-                        categoryID: categoryID,
-                        occurredAt: occurredAt,
-                        payee: payee,
-                        note: note,
-                        receiptData: retainedReceipt
-                    )
-                } else {
-                    savedEntryID = try await saveSplit(
-                        kind: .income,
-                        amount: amount,
-                        accountID: accountID,
-                        receiptData: retainedReceipt
-                    )
-                }
-            case .refund:
-                if splitLines.isEmpty {
-                    guard let categoryID else { return }
-                    savedEntryID = try await model.logRefund(
-                        amount: amount,
-                        accountID: accountID,
-                        categoryID: categoryID,
-                        occurredAt: occurredAt,
-                        payee: payee,
-                        note: note,
-                        receiptData: retainedReceipt
-                    )
-                } else {
-                    savedEntryID = try await saveSplit(
-                        kind: .refund,
-                        amount: amount,
-                        accountID: accountID,
-                        receiptData: retainedReceipt
-                    )
-                }
-            case .transfer:
-                guard let destinationAccountID else { return }
-                savedEntryID = try await model.logTransfer(
-                    amount: amount,
-                    destinationAmount: isForeignCurrencyTransfer ? destinationAmount : nil,
-                    sourceAccountID: accountID,
-                    destinationAccountID: destinationAccountID,
-                    occurredAt: occurredAt,
-                    note: note
-                )
-            }
+            let outcome = try await saveEntry(
+                amount: amount,
+                accountID: accountID,
+                receiptData: retainedReceipt
+            )
+            guard case let .saved(savedEntryID) = outcome else { return }
 
             completeSuccessfulSave(entryID: savedEntryID)
             if dismissAfterSave {
@@ -94,6 +32,69 @@ extension QuickLogEntryView {
             }
         } catch {
             errorMessage = safeUserMessage(for: error, context: .save)
+        }
+    }
+
+    private func saveEntry(
+        amount: Decimal,
+        accountID: UUID,
+        receiptData: Data?
+    ) async throws -> QuickLogSaveOutcome {
+        if !splitLines.isEmpty, kind != .transfer {
+            return .saved(try await saveSplit(
+                kind: kind,
+                amount: amount,
+                accountID: accountID,
+                receiptData: receiptData
+            ))
+        }
+
+        switch kind {
+        case .expense:
+            guard let categoryID else { return .skipped }
+            return .saved(try await model.logExpense(
+                amount: amount,
+                accountID: accountID,
+                categoryID: categoryID,
+                occurredAt: occurredAt,
+                payee: payee,
+                note: note,
+                receiptData: receiptData
+            ))
+        case .income:
+            guard let categoryID else { return .skipped }
+            return .saved(try await model.logIncome(
+                amount: amount,
+                accountID: accountID,
+                categoryID: categoryID,
+                occurredAt: occurredAt,
+                payee: payee,
+                note: note,
+                receiptData: receiptData
+            ))
+        case .refund:
+            guard let categoryID else { return .skipped }
+            return .saved(try await model.logRefund(
+                amount: amount,
+                accountID: accountID,
+                categoryID: categoryID,
+                occurredAt: occurredAt,
+                payee: payee,
+                note: note,
+                receiptData: receiptData
+            ))
+        case .transfer:
+            guard let destinationAccountID else { return .skipped }
+            return .saved(try await model.logTransfer(
+                amount: amount,
+                destinationAmount: isForeignCurrencyTransfer
+                    ? destinationAmount
+                    : nil,
+                sourceAccountID: accountID,
+                destinationAccountID: destinationAccountID,
+                occurredAt: occurredAt,
+                note: note
+            ))
         }
     }
 

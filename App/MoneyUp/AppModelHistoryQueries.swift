@@ -16,18 +16,7 @@ extension AppModel {
         let historyStore = try requireStore()
         let accountSnapshot = accounts
         let calendarSnapshot = reportingCalendar
-        let startDayKey = query.startDate.flatMap {
-            FinancialPeriodBoundary.lowerDayKey(
-                forStartDate: $0,
-                calendar: calendarSnapshot
-            )
-        }
-        let endDayKeyExclusive = query.endDateExclusive.flatMap {
-            FinancialPeriodBoundary.upperDayKeyExclusive(
-                forEndDateExclusive: $0,
-                calendar: calendarSnapshot
-            )
-        }
+        let dayKeys = historyDayKeys(for: query, calendar: calendarSnapshot)
         let validAccountIDs = Set(accountSnapshot.map(\.id))
         let quarantinedEntryIDs = invalidJournalEntryIDs
         let boundedLimit = min(max(limit, 1), 200)
@@ -38,8 +27,8 @@ extension AppModel {
         while matches.count < boundedLimit {
             try Task.checkCancellation()
             let rawPage = try await historyStore.fetchJournalEntryPage(
-                startDayKey: startDayKey,
-                endDayKeyExclusive: endDayKeyExclusive,
+                startDayKey: dayKeys.start,
+                endDayKeyExclusive: dayKeys.endExclusive,
                 after: scanCursor,
                 limit: scanLimit
             )
@@ -101,6 +90,25 @@ extension AppModel {
                 )
             }
         )
+    }
+
+    private func historyDayKeys(
+        for query: HistoryQuery,
+        calendar: Calendar
+    ) -> (start: Int?, endExclusive: Int?) {
+        let start = query.startDate.flatMap {
+            FinancialPeriodBoundary.lowerDayKey(
+                forStartDate: $0,
+                calendar: calendar
+            )
+        }
+        let endExclusive = query.endDateExclusive.flatMap {
+            FinancialPeriodBoundary.upperDayKeyExclusive(
+                forEndDateExclusive: $0,
+                calendar: calendar
+            )
+        }
+        return (start, endExclusive)
     }
 
     /// Calculates the complete running total from bounded indexed pages. No

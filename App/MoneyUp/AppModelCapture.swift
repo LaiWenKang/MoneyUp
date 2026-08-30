@@ -6,6 +6,15 @@ import SwiftUI
 import UIKit
 import WidgetKit
 
+private struct OnboardingBook {
+    let profile: UserProfile
+    let accounts: [LedgerAccount]
+    let budgetTimeline: BudgetConfigurationTimeline
+    let budgetNodes: [BudgetNode]
+    let writes: [RecordWrite]
+    let openingEntry: JournalEntry?
+}
+
 extension AppModel {
     func updateQuickLogDraft(_ draft: QuickLogDraft) {
         guard state == .ready else { return }
@@ -39,6 +48,50 @@ extension AppModel {
 
         let generation = storeGeneration
         let store = try requireStore()
+        let book = try makeOnboardingBook(
+            baseCurrencyCode: baseCurrencyCode,
+            accountName: accountName,
+            accountType: accountType,
+            startingBalance: startingBalance
+        )
+
+        invalidateCommittedJournalProjection()
+        await lifecycleHooks.checkpoint(
+            .afterJournalProjectionInvalidationBeforeCommit
+        )
+        try await store.write(book.writes)
+        guard isCurrentStoreGeneration(generation) else { return }
+
+        profile = book.profile
+        accounts = book.accounts
+        budgetConfigurationTimeline = book.budgetTimeline
+        budgetNodes = book.budgetNodes
+        if retainsCompleteJournal {
+            entries = book.openingEntry.map { [$0] } ?? []
+        }
+        await refreshJournalAfterMutation()
+        state = .ready
+        do {
+            try await promoteLockedCaptureIfPossible(
+                to: store,
+                generation: generation
+            )
+        } catch let error as LockedCaptureStoreError {
+            recordLockedCaptureStoreIssue(error)
+        } catch {
+            // Onboarding is already durable. Keep the new book usable and
+            // expose a redacted recovery signal instead of stranding setup on
+            // an inbox handoff failure.
+            recordRecoveryIssue("locked_captures/promotion-unavailable")
+        }
+    }
+
+    private func makeOnboardingBook(
+        baseCurrencyCode: String,
+        accountName: String,
+        accountType: FinancialAccountType,
+        startingBalance: Decimal
+    ) throws -> OnboardingBook {
         let currency = try CurrencyCode(baseCurrencyCode)
         if accountType.isLiabilityAccount, startingBalance < .zero {
             throw AppModelError.negativeAmount
@@ -86,54 +139,54 @@ extension AppModel {
         )
         writes.append(try budgetConfigurationTimelineWrite(onboardingTimeline))
 
-        var openingEntry: JournalEntry?
-        if startingBalance != .zero,
-           let equity = defaults.accounts.first(where: { $0.systemRole == .openingBalances }) {
-            let candidate = try TransactionFactory.balanceAdjustment(
-                displayBalanceDelta: try Money(startingBalance, currency: currency),
-                accountID: mainAccount.id,
-                equityAccountID: equity.id,
-                accountIsLiability: mainAccount.kind == .liability,
-                note: String(localized: "account.opening_balance_note")
-            )
-            let entry = try appAuthoredEntry(
-                candidate,
-                reportingTimeZoneIdentifier: newProfile.reportingTimeZoneIdentifier
-            )
-            writes.append(
-                try RecordWrite(entry, id: entry.id.uuidString, in: .journalEntries)
-            )
-            openingEntry = entry
-        }
-
-        invalidateCommittedJournalProjection()
-        await lifecycleHooks.checkpoint(
-            .afterJournalProjectionInvalidationBeforeCommit
+        let openingEntry = try makeOpeningBalanceEntry(
+            startingBalance: startingBalance,
+            currency: currency,
+            mainAccount: mainAccount,
+            accounts: defaults.accounts,
+            profile: newProfile
         )
-        try await store.write(writes)
-        guard isCurrentStoreGeneration(generation) else { return }
-
-        profile = newProfile
-        accounts = defaults.accounts
-        budgetConfigurationTimeline = onboardingTimeline
-        budgetNodes = defaults.budgetNodes
-        if retainsCompleteJournal {
-            entries = openingEntry.map { [$0] } ?? []
-        }
-        await refreshJournalAfterMutation()
-        state = .ready
-        do {
-            try await promoteLockedCaptureIfPossible(
-                to: store,
-                generation: generation
+        if let openingEntry {
+            writes.append(
+                try RecordWrite(
+                    openingEntry,
+                    id: openingEntry.id.uuidString,
+                    in: .journalEntries
+                )
             )
-        } catch let error as LockedCaptureStoreError {
-            recordLockedCaptureStoreIssue(error)
-        } catch {
-            // Onboarding is already durable. Keep the new book usable and
-            // expose a redacted recovery signal instead of stranding setup on
-            // an inbox handoff failure.
-            recordRecoveryIssue("locked_captures/promotion-unavailable")
         }
+
+        return OnboardingBook(
+            profile: newProfile,
+            accounts: defaults.accounts,
+            budgetTimeline: onboardingTimeline,
+            budgetNodes: defaults.budgetNodes,
+            writes: writes,
+            openingEntry: openingEntry
+        )
+    }
+
+    private func makeOpeningBalanceEntry(
+        startingBalance: Decimal,
+        currency: CurrencyCode,
+        mainAccount: LedgerAccount,
+        accounts: [LedgerAccount],
+        profile: UserProfile
+    ) throws -> JournalEntry? {
+        guard startingBalance != .zero,
+              let equity = accounts.first(where: {
+                  $0.systemRole == .openingBalances
+              }) else { return nil }
+        let candidate = try TransactionFactory.balanceAdjustment(
+            displayBalanceDelta: try Money(startingBalance, currency: currency),
+            accountID: mainAccount.id,
+            equityAccountID: equity.id,
+            accountIsLiability: mainAccount.kind == .liability,
+            note: String(localized: "account.opening_balance_note")
+        )
+        return try appAuthoredEntry(
+            candidate,
+            reportingTimeZoneIdentifier: profile.reportingTimeZoneIdentifier
+        )
     }
 }

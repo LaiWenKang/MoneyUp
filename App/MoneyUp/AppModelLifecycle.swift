@@ -36,15 +36,7 @@ extension AppModel {
             isStarting = false
         }
 
-        if let pendingClose = storeCloseTask {
-            await pendingClose.value
-            storeCloseTask = nil
-        }
-        if let existingStore = store {
-            await existingStore.close()
-            store = nil
-            storeGeneration &+= 1
-        }
+        await closeStoreBeforeStartup()
         state = .launching
 
         var pendingDataEraseIsIncomplete = false
@@ -84,29 +76,7 @@ extension AppModel {
             storeGeneration &+= 1
             store = openedStore
             try await load(from: openedStore)
-
-            if profile == nil {
-                // A profile is the root of a valid book. Treat onboarding as a
-                // genuinely empty-store state only; otherwise an unlisted or
-                // newly added collection could be silently overlaid by setup.
-                let hasBookData = try await Self.hasPersistedBookData(
-                    in: openedStore
-                )
-                guard !hasBookData else { throw AppModelError.invalidBook }
-                disableBudgetWidgetSnapshot()
-                state = .onboarding
-            } else {
-                try validateLoadedBook()
-                do {
-                    try await promoteLockedCaptureIfPossible(
-                        to: openedStore,
-                        generation: storeGeneration
-                    )
-                } catch let error as LockedCaptureStoreError {
-                    recordLockedCaptureStoreIssue(error)
-                }
-                state = .ready
-            }
+            try await finishLoadedStartup(in: openedStore)
             if lockAfterStart {
                 lockAfterStart = false
                 isWorking = false
@@ -129,6 +99,46 @@ extension AppModel {
                 message: safeUserMessage(for: error, context: .unlock)
             )
         }
+    }
+
+    private func closeStoreBeforeStartup() async {
+        if let pendingClose = storeCloseTask {
+            await pendingClose.value
+            storeCloseTask = nil
+        }
+        if let existingStore = store {
+            await existingStore.close()
+            store = nil
+            storeGeneration &+= 1
+        }
+    }
+
+    private func finishLoadedStartup(
+        in openedStore: EncryptedRecordStore
+    ) async throws {
+        guard profile != nil else {
+            // A profile is the root of a valid book. Treat onboarding as a
+            // genuinely empty-store state only; otherwise an unlisted or newly
+            // added collection could be silently overlaid by setup.
+            let hasBookData = try await Self.hasPersistedBookData(
+                in: openedStore
+            )
+            guard !hasBookData else { throw AppModelError.invalidBook }
+            disableBudgetWidgetSnapshot()
+            state = .onboarding
+            return
+        }
+
+        try validateLoadedBook()
+        do {
+            try await promoteLockedCaptureIfPossible(
+                to: openedStore,
+                generation: storeGeneration
+            )
+        } catch let error as LockedCaptureStoreError {
+            recordLockedCaptureStoreIssue(error)
+        }
+        state = .ready
     }
 
     /// Authentication cancellation is a normal locked-state transition, not
