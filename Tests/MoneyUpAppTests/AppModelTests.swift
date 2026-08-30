@@ -9774,6 +9774,53 @@ extension AppModelTests {
     }
 
     @MainActor
+    func testProfileMutationsSerializeAndPreserveLatestUnrelatedChoices() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let profile = UserProfile(baseCurrency: fixture.sgd)
+        try await fixture.seed(
+            profile: profile,
+            accounts: [fixture.wallet, fixture.usAccount, fixture.food]
+        )
+        let firstWriteGate = FirstRefreshGate()
+        let model = fixture.model(
+            profile: profile,
+            lifecycleHooks: hooks(
+                pausingFirst: .beforeProfileWrite,
+                at: firstWriteGate
+            )
+        )
+
+        let firstDelay = Task { @MainActor in
+            try await model.updateAutoLockDelay(300)
+        }
+        await firstWriteGate.waitUntilReached()
+        let preferredAccount = Task { @MainActor in
+            try await model.updatePreferredAccount(fixture.wallet.id)
+        }
+        let latestDelay = Task { @MainActor in
+            try await model.updateAutoLockDelay(900)
+        }
+        for _ in 0..<10 { await Task.yield() }
+
+        await firstWriteGate.release()
+        try await firstDelay.value
+        try await preferredAccount.value
+        try await latestDelay.value
+
+        let persisted = try await fixture.store.fetch(
+            UserProfile.self,
+            id: UserProfile.primaryRecordID,
+            from: .profile
+        )
+        XCTAssertEqual(model.profile?.autoLockDelay, 900)
+        XCTAssertEqual(model.profile?.preferredAccountID, fixture.wallet.id)
+        XCTAssertEqual(persisted?.autoLockDelay, 900)
+        XCTAssertEqual(persisted?.preferredAccountID, fixture.wallet.id)
+        await fixture.store.close()
+    }
+
+    @MainActor
     func testAugustBudgetEditPersistsProspectiveTimelineAndKeepsClosedCarry() async throws {
         let fixture = try AppModelFixture()
         defer { fixture.removeFiles() }

@@ -264,6 +264,7 @@ final class AppModel {
     private let budgetWidgetSnapshotStore: BudgetWidgetSnapshotStore
     private let currentDate: @Sendable () -> Date
     private let savingsGoalMutationSerializer = SavingsGoalMutationSerializer()
+    private let profileMutationSerializer = ProfileMutationSerializer()
     private var quickLogDraftWriteTask: Task<Void, Never>?
     private var quickLogCommit: PendingQuickLogCommit?
     private var standaloneJournalMutationsInProgress = 0
@@ -4184,43 +4185,46 @@ final class AppModel {
         guard UserProfile.allowedAutoLockDelays.contains(seconds) else {
             throw AppModelError.invalidBook
         }
-        guard var updated = profile else { throw AppModelError.missingRecord }
-        updated.autoLockDelay = seconds
-        try await persist(updatedProfile: updated)
+        try await mutateProfile { $0.autoLockDelay = seconds }
     }
 
     func updateLockedQuickCapture(_ enabled: Bool) async throws {
-        guard var updated = profile else { throw AppModelError.missingRecord }
-        updated.allowLockedQuickCapture = enabled
-        try await persist(updatedProfile: updated)
+        try await mutateProfile { $0.allowLockedQuickCapture = enabled }
         UserDefaults.standard.set(enabled, forKey: Self.lockedQuickCapturePreferenceKey)
     }
 
     func updateBudgetStatusWidget(_ enabled: Bool) async throws {
-        guard var updated = profile else { throw AppModelError.missingRecord }
-        updated.showsBudgetStatusWidget = enabled
-        try await persist(updatedProfile: updated)
+        try await mutateProfile { $0.showsBudgetStatusWidget = enabled }
         // `profile`'s observer publishes the redacted snapshot. Reloading is
         // explicit here as well so disabling takes effect immediately.
         WidgetCenter.shared.reloadTimelines(ofKind: "MoneyUpQuickLog")
     }
 
     func updatePreferredAccount(_ id: UUID?) async throws {
-        guard var updated = profile else { throw AppModelError.missingRecord }
-        updated.preferredAccountID = id
-        try await persist(updatedProfile: updated)
+        try await mutateProfile { $0.preferredAccountID = id }
     }
 
     func updatePreferredExpenseCategory(_ id: UUID?) async throws {
-        guard var updated = profile else { throw AppModelError.missingRecord }
-        updated.preferredExpenseCategoryID = id
-        try await persist(updatedProfile: updated)
+        try await mutateProfile { $0.preferredExpenseCategoryID = id }
     }
 
     func updatePreferredIncomeCategory(_ id: UUID?) async throws {
-        guard var updated = profile else { throw AppModelError.missingRecord }
-        updated.preferredIncomeCategoryID = id
-        try await persist(updatedProfile: updated)
+        try await mutateProfile { $0.preferredIncomeCategoryID = id }
+    }
+
+    private func mutateProfile(
+        _ mutation: (inout UserProfile) throws -> Void
+    ) async throws {
+        await profileMutationSerializer.acquire()
+        do {
+            guard var updated = profile else { throw AppModelError.missingRecord }
+            try mutation(&updated)
+            try await persist(updatedProfile: updated)
+            await profileMutationSerializer.release()
+        } catch {
+            await profileMutationSerializer.release()
+            throw error
+        }
     }
 
     private func persist(updatedProfile: UserProfile) async throws {
