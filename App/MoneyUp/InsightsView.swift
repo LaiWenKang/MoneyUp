@@ -293,7 +293,15 @@ struct InsightsView: View {
     }
 }
 
-            .font(.caption)
+private struct MetricCard: View {
+    let title: LocalizedStringKey
+    let value: String
+    let color: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(title)
+                .font(.caption)
                 .foregroundStyle(.secondary)
             Text(value)
                 .font(.subheadline.monospacedDigit().weight(.semibold))

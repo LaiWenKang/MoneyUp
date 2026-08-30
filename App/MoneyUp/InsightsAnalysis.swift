@@ -446,13 +446,3 @@ extension InsightsView {
         return [String(localized: "insights.spending_flat")]
     }
 }
-
-private struct MetricCard: View {
-    let title: LocalizedStringKey
-    let value: String
-    let color: Color
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text(title
-}

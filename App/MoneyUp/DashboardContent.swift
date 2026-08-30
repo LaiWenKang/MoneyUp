@@ -545,14 +545,3 @@ extension DashboardView {
         .tint(.accentColor)
     }
 }
-
-private struct PositionMetric: View {
-    let title: LocalizedStringKey
-    let value: String
-    let systemImage: String
-    let color: Color
-
-    var body: some View {
-        HStack(spacing: 10) {
-            MoneyUpSymb
-}

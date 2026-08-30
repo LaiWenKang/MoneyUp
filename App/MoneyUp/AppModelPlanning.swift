@@ -389,9 +389,4 @@ extension AppModel {
             )
         }
     }
-
-    /// Creates the actual journal entry and advances its forecast in one
-    /// SQLCipher transaction. The occurrence token prevents a stale UI or a
-    /// retry from posting the same due item a second time.
-    @discardableResult
 }

@@ -197,7 +197,15 @@ struct DashboardView: View {
     }
 }
 
-lBadge(systemImage: systemImage, color: color)
+private struct PositionMetric: View {
+    let title: LocalizedStringKey
+    let value: String
+    let systemImage: String
+    let color: Color
+
+    var body: some View {
+        HStack(spacing: 10) {
+            MoneyUpSymbolBadge(systemImage: systemImage, color: color)
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
                     .font(.caption)
