@@ -163,12 +163,12 @@ struct QuickLogEntryView: View {
         let categoryID: UUID?
     }
 
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
-    @Environment(\.accessibilityVoiceOverEnabled) private var isVoiceOverEnabled
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @Environment(AppModel.self) private var model
-    @FocusState private var focusedField: QuickLogFieldFocus?
+    @Environment(\.dismiss) var dismiss
+    @Environment(\.accessibilityReduceMotion) var accessibilityReduceMotion
+    @Environment(\.accessibilityVoiceOverEnabled) var isVoiceOverEnabled
+    @Environment(\.dynamicTypeSize) var dynamicTypeSize
+    @Environment(AppModel.self) var model
+    @FocusState var focusedField: QuickLogFieldFocus?
 
     @Binding var kind: QuickLogKind
     let dismissAfterSave: Bool
@@ -178,45 +178,45 @@ struct QuickLogEntryView: View {
     let onRequestHandled: @MainActor (QuickLogLaunchMode) -> Void
     let onNavigate: @MainActor (QuickLogNavigationDestination) -> Void
 
-    @State private var amountText = ""
-    @State private var destinationAmountText = ""
-    @State private var accountID: UUID?
-    @State private var destinationAccountID: UUID?
-    @State private var categoryID: UUID?
-    @State private var occurredAt = Date()
-    @State private var dateWasEdited = false
-    @State private var payee = ""
-    @State private var note = ""
-    @State private var isSaving = false
-    @State private var errorMessage: String?
-    @State private var smartText = ""
-    @State private var photoItem: PhotosPickerItem?
-    @State private var isScanning = false
-    @State private var smartMessage: String?
-    @State private var lastSavedEntryID: UUID?
-    @State private var isUndoing = false
-    @State private var successFeedback = 0
-    @State private var hasRestoredDraft = false
-    @State private var handledRequestSequence = 0
-    @State private var isPresentingReceiptPicker = false
-    @State private var isHandlingFocusedLaunch = false
-    @State private var isConfirmingDraftSwitch = false
-    @State private var pendingLaunchMode: QuickLogLaunchMode?
-    @State private var isShowingOptionalDetails = false
-    @State private var receiptScanTask: Task<Void, Never>?
-    @State private var receiptScanGeneration = 0
-    @State private var receiptScanBaseline: ReceiptScanBaseline?
-    @State private var receiptResult: ReceiptParseResult?
-    @State private var splitLines: [QuickLogSplitDraftLine] = []
+    @State var amountText = ""
+    @State var destinationAmountText = ""
+    @State var accountID: UUID?
+    @State var destinationAccountID: UUID?
+    @State var categoryID: UUID?
+    @State var occurredAt = Date()
+    @State var dateWasEdited = false
+    @State var payee = ""
+    @State var note = ""
+    @State var isSaving = false
+    @State var errorMessage: String?
+    @State var smartText = ""
+    @State var photoItem: PhotosPickerItem?
+    @State var isScanning = false
+    @State var smartMessage: String?
+    @State var lastSavedEntryID: UUID?
+    @State var isUndoing = false
+    @State var successFeedback = 0
+    @State var hasRestoredDraft = false
+    @State var handledRequestSequence = 0
+    @State var isPresentingReceiptPicker = false
+    @State var isHandlingFocusedLaunch = false
+    @State var isConfirmingDraftSwitch = false
+    @State var pendingLaunchMode: QuickLogLaunchMode?
+    @State var isShowingOptionalDetails = false
+    @State var receiptScanTask: Task<Void, Never>?
+    @State var receiptScanGeneration = 0
+    @State var receiptScanBaseline: ReceiptScanBaseline?
+    @State var receiptResult: ReceiptParseResult?
+    @State var splitLines: [QuickLogSplitDraftLine] = []
     /// Provenance for a draft promoted from the lock-safe capture inbox. This
     /// must survive every edit so AppModel can complete the cross-store
     /// exact-once handoff instead of treating the edited draft as unrelated.
-    @State private var sourceCaptureID: UUID?
+    @State var sourceCaptureID: UUID?
     /// Transient image bytes. They are intentionally absent from QuickLogDraft
     /// and reach persistence only when the user turns on receipt retention.
-    @State private var receiptAttachmentData: Data?
-    @State private var retainReceiptAttachment = false
-    @State private var receiptRetentionMessage: String?
+    @State var receiptAttachmentData: Data?
+    @State var retainReceiptAttachment = false
+    @State var receiptRetentionMessage: String?
 
     var amount: Decimal? {
         guard let value = decimalAmount(from: amountText), value > .zero else { return nil }

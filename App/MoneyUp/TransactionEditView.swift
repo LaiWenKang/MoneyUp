@@ -93,30 +93,30 @@ struct EditableEntryValues {
 }
 
 struct TransactionEditView: View {
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) var dismiss
+    @Environment(\.dynamicTypeSize) var dynamicTypeSize
+    @Environment(AppModel.self) var model
 
     let entry: JournalEntry
-    @State private var kind: QuickLogKind
-    @State private var amountText: String
-    @State private var destinationAmountText: String
-    @State private var accountID: UUID?
-    @State private var destinationAccountID: UUID?
-    @State private var categoryID: UUID?
-    @State private var splitLines: [QuickLogSplitDraftLine]
-    @State private var isSplitTransaction: Bool
-    @State private var occurredAt: Date
-    @State private var payee: String
-    @State private var note: String
-    @State private var isSaving = false
-    @State private var errorMessage: String?
-    @State private var isConfirmingDelete = false
-    @State private var pendingAttachmentDeletionID: UUID?
-    @State private var isConfirmingAttachmentDelete = false
-    @State private var attachmentImages: [UUID: UIImage] = [:]
-    @State private var attachmentLoadFailures = Set<UUID>()
-    @State private var attachmentLoadTokens: [UUID: UUID] = [:]
+    @State var kind: QuickLogKind
+    @State var amountText: String
+    @State var destinationAmountText: String
+    @State var accountID: UUID?
+    @State var destinationAccountID: UUID?
+    @State var categoryID: UUID?
+    @State var splitLines: [QuickLogSplitDraftLine]
+    @State var isSplitTransaction: Bool
+    @State var occurredAt: Date
+    @State var payee: String
+    @State var note: String
+    @State var isSaving = false
+    @State var errorMessage: String?
+    @State var isConfirmingDelete = false
+    @State var pendingAttachmentDeletionID: UUID?
+    @State var isConfirmingAttachmentDelete = false
+    @State var attachmentImages: [UUID: UIImage] = [:]
+    @State var attachmentLoadFailures = Set<UUID>()
+    @State var attachmentLoadTokens: [UUID: UUID] = [:]
 
     let isEditable: Bool
 
