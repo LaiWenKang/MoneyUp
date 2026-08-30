@@ -167,7 +167,7 @@ private struct QuickLogEntryView: View {
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @Environment(\.accessibilityVoiceOverEnabled) private var isVoiceOverEnabled
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @FocusState private var focusedField: QuickLogFieldFocus?
 
     @Binding var kind: QuickLogKind

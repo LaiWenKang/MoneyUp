@@ -41,7 +41,7 @@ struct DashboardView: View {
         let netCash: Money
     }
 
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var isShowingFlexibleTodayBreakdown = false
@@ -768,7 +768,7 @@ private struct PositionMetric: View {
 }
 
 private struct FlexibleTodayBreakdownSheet: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     let breakdown: FlexibleTodayBreakdown
 

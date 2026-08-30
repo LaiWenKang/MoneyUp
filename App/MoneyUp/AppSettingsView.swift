@@ -21,7 +21,7 @@ private enum AutoLockChoice: TimeInterval, CaseIterable, Identifiable {
 }
 
 struct AppSettingsView: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @State private var errorMessage: String?
 
     private var selectedAutoLockDelay: TimeInterval {

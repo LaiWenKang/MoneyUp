@@ -2,7 +2,7 @@ import MoneyUpCore
 import SwiftUI
 
 struct TransactionRow: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let entry: JournalEntry
 

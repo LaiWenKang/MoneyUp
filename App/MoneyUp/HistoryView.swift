@@ -161,7 +161,7 @@ struct HistoryView: View {
         case cancelled
     }
 
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @State private var searchText = ""
     @State private var appliedSearchText = ""
     @State private var filters: HistoryFilterDraft
@@ -903,7 +903,7 @@ private struct EditableEntryValues {
 private struct TransactionEditView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
 
     let entry: JournalEntry
     @State private var kind: QuickLogKind

@@ -7,7 +7,7 @@ private struct CalendarLoadRequest: Hashable {
 }
 
 struct CalendarView: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @State private var selectedDate = Date()
     @State private var isAddingSchedule = false
     @State private var errorMessage: String?
@@ -464,7 +464,7 @@ struct CalendarView: View {
 
 private struct AddScheduleSheet: View {
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
 
     let schedule: ScheduledTransaction?
 

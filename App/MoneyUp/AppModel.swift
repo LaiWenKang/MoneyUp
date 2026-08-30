@@ -1,6 +1,7 @@
 import Foundation
 import MoneyUpCore
 import MoneyUpPersistence
+import Observation
 import SwiftUI
 import UIKit
 import WidgetKit
@@ -24,7 +25,8 @@ private struct ClosedMonthBudgetProjection: Sendable {
 }
 
 @MainActor
-final class AppModel: ObservableObject {
+@Observable
+final class AppModel {
     static let lockedQuickCapturePreferenceKey = "moneyup.allowLockedQuickCapture"
     enum State: Equatable {
         case launching
@@ -177,12 +179,12 @@ final class AppModel: ObservableObject {
         let result: Result<BudgetTree, Error>
     }
 
-    @Published private(set) var state: State = .launching
+    private(set) var state: State = .launching
     /// Keeps decoded financial UI opaque while an auto-lock request waits for
     /// an atomic mutation to reach its durable boundary. Once the mutation
     /// drains, `lock()` clears decoded state before removing this cover.
-    @Published private(set) var requiresAuthenticationPrivacyCover = false
-    @Published private(set) var profile: UserProfile? {
+    private(set) var requiresAuthenticationPrivacyCover = false
+    private(set) var profile: UserProfile? {
         didSet {
             journalProjectionRevision &+= 1
             if oldValue?.baseCurrency != profile?.baseCurrency
@@ -195,7 +197,7 @@ final class AppModel: ObservableObject {
             refreshBudgetWidgetSnapshot()
         }
     }
-    @Published private(set) var accounts: [LedgerAccount] = [] {
+    private(set) var accounts: [LedgerAccount] = [] {
         didSet {
             journalProjectionRevision &+= 1
             let oldShape = oldValue.map {
@@ -218,37 +220,37 @@ final class AppModel: ObservableObject {
     /// A deliberately bounded recent-activity cache. Production startup never
     /// fills this with the complete journal; History and Calendar query the
     /// encrypted chronological index directly.
-    @Published private(set) var entries: [JournalEntry] = [] {
+    private(set) var entries: [JournalEntry] = [] {
         didSet {
             if retainsCompleteJournal { invalidateDerivedData() }
             refreshBudgetWidgetSnapshot()
         }
     }
-    @Published private(set) var journalEntryCount = 0
+    private(set) var journalEntryCount = 0
     /// Qualifies both the bounded `entries` cache and `journalEntryCount`.
     /// False means callers must present an unavailable/loading state rather
     /// than interpreting an empty cache as an empty durable journal.
-    @Published private(set) var journalRecentEntriesAreCurrent = false
-    @Published private(set) var budgetNodes: [BudgetNode] = [] {
+    private(set) var journalRecentEntriesAreCurrent = false
+    private(set) var budgetNodes: [BudgetNode] = [] {
         didSet {
             budgetNodesRevision &+= 1
             budgetTreeCache = nil
             refreshBudgetWidgetSnapshot()
         }
     }
-    @Published private(set) var scheduledTransactions: [ScheduledTransaction] = []
-    @Published private(set) var investmentHoldings: [InvestmentHolding] = []
-    @Published private(set) var savingsGoals: [SavingsGoal] = []
+    private(set) var scheduledTransactions: [ScheduledTransaction] = []
+    private(set) var investmentHoldings: [InvestmentHolding] = []
+    private(set) var savingsGoals: [SavingsGoal] = []
     /// Blob-free attachment inventory. Image bytes are never retained by the
     /// application model and are fetched only for a selected History row.
-    @Published private(set) var receiptAttachmentMetadata: [ReceiptAttachmentMetadata] = []
-    @Published private(set) var exchangeRates: [DatedExchangeRate] = []
-    @Published private(set) var netWorthSnapshots: [NetWorthSnapshot] = []
-    @Published private(set) var isWorking = false
-    @Published private(set) var requestedQuickLogMode: QuickLogLaunchMode?
-    @Published private(set) var quickLogDraft: QuickLogDraft?
-    @Published private(set) var recoveryIssues: [String] = []
-    @Published private(set) var pendingLockedCaptureCount = 0
+    private(set) var receiptAttachmentMetadata: [ReceiptAttachmentMetadata] = []
+    private(set) var exchangeRates: [DatedExchangeRate] = []
+    private(set) var netWorthSnapshots: [NetWorthSnapshot] = []
+    private(set) var isWorking = false
+    private(set) var requestedQuickLogMode: QuickLogLaunchMode?
+    private(set) var quickLogDraft: QuickLogDraft?
+    private(set) var recoveryIssues: [String] = []
+    private(set) var pendingLockedCaptureCount = 0
 
     private var store: EncryptedRecordStore?
     private let lockedCaptureStore: any LockedCaptureStoring

@@ -97,7 +97,7 @@ struct InsightsView: View {
 
     private static let visibleCategoryCount = 8
 
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var period: ReportPeriod = .thisMonth
     @State private var selectedCategoryKey: String?

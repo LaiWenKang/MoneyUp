@@ -3,7 +3,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct AssetsView: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @State private var isAddingAccount = false
     @State private var isAddingHolding = false
     @State private var editingAccount: LedgerAccount?
@@ -578,7 +578,7 @@ struct AssetsView: View {
 
 private struct AddAccountSheet: View {
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @State private var name = ""
     @State private var type: FinancialAccountType = .bank
     @State private var currencyCode = SupportedCurrencies.regionalDefault
@@ -693,7 +693,7 @@ private struct AccountManagementSheet: View {
     }
 
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     let account: LedgerAccount
 
     @State private var name: String
@@ -959,7 +959,7 @@ private struct AccountManagementSheet: View {
 
 private struct AddHoldingSheet: View {
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     let accounts: [LedgerAccount]
 
     @State private var accountID: UUID?
@@ -1121,7 +1121,7 @@ private struct HoldingManagementSheet: View {
     }
 
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     let holdingID: UUID
     @State private var action: Action = .reprice
     @State private var quantityText = ""

@@ -10,7 +10,7 @@ struct PlanView: View {
     }
 
     @State private var selection: Section = .budget
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
 
     var body: some View {
         Group {
@@ -46,7 +46,7 @@ private struct BudgetPlanView: View {
         var id: UUID { node.id }
     }
 
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @State private var editingNode: BudgetNode?
     @State private var isAddingCategory = false
     @State private var categoryKindToAdd: LedgerAccountKind = .expense
@@ -452,7 +452,7 @@ private struct BudgetSimulatorView: View {
         }
     }
 
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @State private var additionalSpendingText = ""
     @State private var additionalIncomeText = ""
 
@@ -778,7 +778,7 @@ private struct BudgetSimulatorView: View {
 
 private struct BudgetEditorSheet: View {
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     let node: BudgetNode
 
     @State private var amountText: String
@@ -897,7 +897,7 @@ extension BudgetRolloverRule {
 
 private struct AddCategorySheet: View {
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @State private var name = ""
     @State private var parentID: UUID?
     @State private var isSaving = false
