@@ -6,6 +6,17 @@ import SwiftUI
 import UIKit
 import WidgetKit
 
+private struct PreparedScheduledOccurrence {
+    let entry: JournalEntry
+    let fingerprint: String
+}
+
+private struct ScheduledOccurrenceBudgetCandidate {
+    let attributions: [UUID: BudgetEntryAttribution]
+    let entries: [JournalEntry]?
+    let timeline: BudgetConfigurationTimeline?
+}
+
 extension AppModel {
     /// Creates the actual journal entry and advances its forecast in one
     /// SQLCipher transaction. The occurrence token prevents a stale UI or a
@@ -32,6 +43,73 @@ extension AppModel {
         guard schedule.currentOccurrenceID == occurrenceID else {
             throw ScheduledTransactionError.staleOccurrence
         }
+        let prepared = try prepareScheduledOccurrence(
+            schedule: schedule,
+            occurrenceID: occurrenceID,
+            occurredAt: occurredAt,
+            calendar: recurrenceCalendar
+        )
+        let entry = prepared.entry
+        let fingerprint = prepared.fingerprint
+        let generation = storeGeneration
+        let scheduleStore = try requireStore()
+        let occurrenceAlreadyExists = try await scheduleStore.containsJournalEntry(
+            sourceFingerprint: fingerprint
+        )
+        guard !occurrenceAlreadyExists else {
+            throw ScheduledTransactionError.occurrenceAlreadyResolved
+        }
+        var updated = schedule
+        try updated.resolveCurrent(
+            occurrenceID: occurrenceID,
+            as: .posted,
+            linkedEntryID: entry.id,
+            at: resolvedAt,
+            calendar: recurrenceCalendar
+        )
+
+        let attribution = try BudgetEntryAttribution(
+            entry: entry,
+            originTimeZoneIdentifier: profile?.reportingTimeZoneIdentifier
+                ?? reportingCalendar.timeZone.identifier
+        )
+        let budgetCandidate = try await scheduledOccurrenceBudgetCandidate(
+            entry: entry,
+            attribution: attribution,
+            store: scheduleStore
+        )
+        let writes = try scheduledOccurrenceWrites(
+            entry: entry,
+            attribution: attribution,
+            schedule: updated,
+            timeline: budgetCandidate.timeline
+        )
+        invalidateCommittedJournalProjection()
+        await lifecycleHooks.checkpoint(
+            .afterJournalProjectionInvalidationBeforeCommit
+        )
+        try await scheduleStore.write(writes)
+        guard isCurrentStoreGeneration(generation) else { return nil }
+        scheduledTransactions[index] = updated
+        scheduledTransactions.sort { $0.nextOccurrence < $1.nextOccurrence }
+        if let timeline = budgetCandidate.timeline {
+            budgetConfigurationTimeline = timeline
+        }
+        budgetEntryAttributions = budgetCandidate.attributions
+        if retainsCompleteJournal, let entries = budgetCandidate.entries {
+            self.entries = entries
+        }
+        existingScheduledLinkedEntryIDs.insert(entry.id)
+        await refreshJournalAfterMutation()
+        return entry.id
+    }
+
+    private func prepareScheduledOccurrence(
+        schedule: ScheduledTransaction,
+        occurrenceID: ScheduledOccurrenceID,
+        occurredAt: Date?,
+        calendar: Calendar
+    ) throws -> PreparedScheduledOccurrence {
         try validateScheduleReferences(schedule)
         try requireValidNewWriteAmount(
             schedule.amount.amount,
@@ -59,14 +137,6 @@ extension AppModel {
             throw ScheduledTransactionError.unsupportedKind
         }
         let fingerprint = Self.scheduleFingerprint(for: occurrenceID)
-        let generation = storeGeneration
-        let scheduleStore = try requireStore()
-        let occurrenceAlreadyExists = try await scheduleStore.containsJournalEntry(
-            sourceFingerprint: fingerprint
-        )
-        guard !occurrenceAlreadyExists else {
-            throw ScheduledTransactionError.occurrenceAlreadyResolved
-        }
         let entry = try JournalEntry(
             id: candidate.id,
             kind: candidate.kind,
@@ -79,31 +149,28 @@ extension AppModel {
             sourceFingerprint: fingerprint,
             originContext: .capture(
                 for: candidate.occurredAt,
-                calendar: recurrenceCalendar,
-                timeZone: recurrenceCalendar.timeZone
+                calendar: calendar,
+                timeZone: calendar.timeZone
             )
         )
-        var updated = schedule
-        try updated.resolveCurrent(
-            occurrenceID: occurrenceID,
-            as: .posted,
-            linkedEntryID: entry.id,
-            at: resolvedAt,
-            calendar: recurrenceCalendar
-        )
-
-        let attribution = try BudgetEntryAttribution(
+        return PreparedScheduledOccurrence(
             entry: entry,
-            originTimeZoneIdentifier: profile?.reportingTimeZoneIdentifier
-                ?? reportingCalendar.timeZone.identifier
+            fingerprint: fingerprint
         )
+    }
+
+    private func scheduledOccurrenceBudgetCandidate(
+        entry: JournalEntry,
+        attribution: BudgetEntryAttribution,
+        store: EncryptedRecordStore
+    ) async throws -> ScheduledOccurrenceBudgetCandidate {
         var candidateAttributions = budgetEntryAttributions
         candidateAttributions[entry.id] = attribution
         let affectedMonths = [
             try budgetAffectedMonth(for: entry, attribution: attribution)
         ].compactMap { $0 }
         var candidateEntries = try await journalEntriesForBudgetMutation(
-            from: scheduleStore,
+            from: store,
             affectedReportingMonths: affectedMonths
         )
         if candidateEntries != nil {
@@ -127,7 +194,19 @@ extension AppModel {
         } else {
             candidateTimeline = nil
         }
+        return ScheduledOccurrenceBudgetCandidate(
+            attributions: candidateAttributions,
+            entries: candidateEntries,
+            timeline: candidateTimeline
+        )
+    }
 
+    private func scheduledOccurrenceWrites(
+        entry: JournalEntry,
+        attribution: BudgetEntryAttribution,
+        schedule: ScheduledTransaction,
+        timeline: BudgetConfigurationTimeline?
+    ) throws -> [RecordWrite] {
         var writes = [
             try RecordWrite(entry, id: entry.id.uuidString, in: .journalEntries),
             try RecordWrite(
@@ -135,25 +214,16 @@ extension AppModel {
                 id: attribution.id.uuidString,
                 in: .budgetEntryAttributions
             ),
-            try RecordWrite(updated, id: updated.id.uuidString, in: .scheduledTransactions)
+            try RecordWrite(
+                schedule,
+                id: schedule.id.uuidString,
+                in: .scheduledTransactions
+            )
         ]
-        if let candidateTimeline {
-            writes.append(try budgetConfigurationTimelineWrite(candidateTimeline))
+        if let timeline {
+            writes.append(try budgetConfigurationTimelineWrite(timeline))
         }
-        invalidateCommittedJournalProjection()
-        await lifecycleHooks.checkpoint(
-            .afterJournalProjectionInvalidationBeforeCommit
-        )
-        try await scheduleStore.write(writes)
-        guard isCurrentStoreGeneration(generation) else { return nil }
-        scheduledTransactions[index] = updated
-        scheduledTransactions.sort { $0.nextOccurrence < $1.nextOccurrence }
-        if let candidateTimeline { budgetConfigurationTimeline = candidateTimeline }
-        budgetEntryAttributions = candidateAttributions
-        if retainsCompleteJournal, let candidateEntries { entries = candidateEntries }
-        existingScheduledLinkedEntryIDs.insert(entry.id)
-        await refreshJournalAfterMutation()
-        return entry.id
+        return writes
     }
 
     /// Links an existing actual entry and advances the forecast atomically.
