@@ -179,6 +179,8 @@ final class AppModel {
         let result: Result<BudgetTree, Error>
     }
 
+    private let services: AppModelServices
+
     private(set) var state: State = .launching
     /// Keeps decoded financial UI opaque while an auto-lock request waits for
     /// an atomic mutation to reach its durable boundary. Once the mutation
@@ -197,18 +199,16 @@ final class AppModel {
             refreshBudgetWidgetSnapshot()
         }
     }
-    private(set) var accounts: [LedgerAccount] = [] {
-        didSet {
+    var accounts: [LedgerAccount] {
+        get { services.ledger.accounts }
+        set {
+            let oldShape = services.ledger.accounts.map(Self.ledgerShape).sorted()
+            services.ledger.accounts = newValue
             journalProjectionRevision &+= 1
-            let oldShape = oldValue.map {
-                "\($0.id.uuidString)|\($0.currency?.value ?? "-")"
-            }.sorted()
-            let newShape = accounts.map {
-                "\($0.id.uuidString)|\($0.currency?.value ?? "-")"
-            }.sorted()
+            let newShape = newValue.map(Self.ledgerShape).sorted()
             if oldShape != newShape { closedMonthBudgetProjection = nil }
-            accountsByID = Dictionary(
-                accounts.map { ($0.id, $0) },
+            services.ledger.accountsByID = Dictionary(
+                newValue.map { ($0.id, $0) },
                 uniquingKeysWith: { first, _ in first }
             )
             invalidateDerivedData()
@@ -216,41 +216,95 @@ final class AppModel {
     }
     /// Maintained once per account mutation so transaction rows and other hot
     /// view paths never rebuild an O(accounts) lookup table per rendered row.
-    private(set) var accountsByID: [UUID: LedgerAccount] = [:]
+    var accountsByID: [UUID: LedgerAccount] {
+        get { services.ledger.accountsByID }
+        set { services.ledger.accountsByID = newValue }
+    }
     /// A deliberately bounded recent-activity cache. Production startup never
     /// fills this with the complete journal; History and Calendar query the
     /// encrypted chronological index directly.
-    private(set) var entries: [JournalEntry] = [] {
-        didSet {
+    var entries: [JournalEntry] {
+        get { services.ledger.entries }
+        set {
+            services.ledger.entries = newValue
             if retainsCompleteJournal { invalidateDerivedData() }
             refreshBudgetWidgetSnapshot()
         }
     }
-    private(set) var journalEntryCount = 0
+    var journalEntryCount: Int {
+        get { services.ledger.journalEntryCount }
+        set { services.ledger.journalEntryCount = newValue }
+    }
     /// Qualifies both the bounded `entries` cache and `journalEntryCount`.
     /// False means callers must present an unavailable/loading state rather
     /// than interpreting an empty cache as an empty durable journal.
-    private(set) var journalRecentEntriesAreCurrent = false
-    private(set) var budgetNodes: [BudgetNode] = [] {
-        didSet {
+    var journalRecentEntriesAreCurrent: Bool {
+        get { services.ledger.journalRecentEntriesAreCurrent }
+        set { services.ledger.journalRecentEntriesAreCurrent = newValue }
+    }
+    var budgetNodes: [BudgetNode] {
+        get { services.planning.budgetNodes }
+        set {
+            services.planning.budgetNodes = newValue
             budgetNodesRevision &+= 1
             budgetTreeCache = nil
             refreshBudgetWidgetSnapshot()
         }
     }
-    private(set) var scheduledTransactions: [ScheduledTransaction] = []
-    private(set) var investmentHoldings: [InvestmentHolding] = []
-    private(set) var savingsGoals: [SavingsGoal] = []
+    var scheduledTransactions: [ScheduledTransaction] {
+        get { services.planning.scheduledTransactions }
+        set { services.planning.scheduledTransactions = newValue }
+    }
+    var investmentHoldings: [InvestmentHolding] {
+        get { services.assets.investmentHoldings }
+        set { services.assets.investmentHoldings = newValue }
+    }
+    var savingsGoals: [SavingsGoal] {
+        get { services.planning.savingsGoals }
+        set { services.planning.savingsGoals = newValue }
+    }
     /// Blob-free attachment inventory. Image bytes are never retained by the
     /// application model and are fetched only for a selected History row.
-    private(set) var receiptAttachmentMetadata: [ReceiptAttachmentMetadata] = []
-    private(set) var exchangeRates: [DatedExchangeRate] = []
-    private(set) var netWorthSnapshots: [NetWorthSnapshot] = []
+    var receiptAttachmentMetadata: [ReceiptAttachmentMetadata] {
+        get { services.capture.receiptAttachmentMetadata }
+        set { services.capture.receiptAttachmentMetadata = newValue }
+    }
+    var exchangeRates: [DatedExchangeRate] {
+        get { services.assets.exchangeRates }
+        set { services.assets.exchangeRates = newValue }
+    }
+    var netWorthSnapshots: [NetWorthSnapshot] {
+        get { services.assets.netWorthSnapshots }
+        set { services.assets.netWorthSnapshots = newValue }
+    }
     private(set) var isWorking = false
-    private(set) var requestedQuickLogMode: QuickLogLaunchMode?
-    private(set) var quickLogDraft: QuickLogDraft?
-    private(set) var recoveryIssues: [String] = []
-    private(set) var pendingLockedCaptureCount = 0
+    var requestedQuickLogMode: QuickLogLaunchMode? {
+        get { services.capture.requestedQuickLogMode }
+        set { services.capture.requestedQuickLogMode = newValue }
+    }
+    var quickLogDraft: QuickLogDraft? {
+        get { services.capture.quickLogDraft }
+        set { services.capture.quickLogDraft = newValue }
+    }
+    var recoveryIssues: [String] {
+        get { services.portability.recoveryIssues }
+        set { services.portability.recoveryIssues = newValue }
+    }
+    var pendingLockedCaptureCount: Int {
+        get { services.capture.pendingLockedCaptureCount }
+        set { services.capture.pendingLockedCaptureCount = newValue }
+    }
+
+    var ledgerService: any LedgerServicing { services.ledger }
+    var planningService: any PlanningServicing { services.planning }
+    var assetsService: any AssetsServicing { services.assets }
+    var portabilityService: any PortabilityServicing { services.portability }
+    var captureService: any CaptureServicing { services.capture }
+    var intelligenceService: any IntelligenceServicing { services.intelligence }
+
+    private static func ledgerShape(_ account: LedgerAccount) -> String {
+        "\(account.id.uuidString)|\(account.currency?.value ?? "-")"
+    }
 
     private var store: EncryptedRecordStore?
     private let lockedCaptureStore: any LockedCaptureStoring
@@ -333,6 +387,7 @@ final class AppModel {
     }
 
     init(dataEraseIntent: DataEraseIntentAccess = .production) {
+        services = AppModelServices()
         lockedCaptureStore = LockedCaptureStore()
         receiptRecognizer = { data in
             try await ReceiptScanner.recognizeLines(inImageData: data)
@@ -381,8 +436,10 @@ final class AppModel {
         budgetWidgetSnapshotStore: BudgetWidgetSnapshotStore = BudgetWidgetSnapshotStore(),
         budgetConfigurationTimeline: BudgetConfigurationTimeline? = nil,
         budgetEntryAttributions: [UUID: BudgetEntryAttribution] = [:],
-        currentDate: @escaping @Sendable () -> Date = Date.init
+        currentDate: @escaping @Sendable () -> Date = Date.init,
+        services: AppModelServices? = nil
     ) {
+        self.services = services ?? AppModelServices()
         self.lockedCaptureStore = lockedCaptureStore
         self.receiptRecognizer = receiptRecognizer
         self.lifecycleHooks = lifecycleHooks
@@ -442,6 +499,7 @@ final class AppModel {
         lockedCaptureStore: any LockedCaptureStoring,
         receiptRecognizer: @escaping ReceiptLineRecognizer
     ) {
+        services = AppModelServices()
         self.lockedCaptureStore = lockedCaptureStore
         self.receiptRecognizer = receiptRecognizer
         lifecycleHooks = .none

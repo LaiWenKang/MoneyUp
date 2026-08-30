@@ -9727,49 +9727,61 @@ extension AppModelTests {
     func testObservationInvalidatesOnlyTrackedAppModelProperties() async throws {
         let fixture = try AppModelFixture()
         defer { fixture.removeFiles() }
-        let model = fixture.model()
-        let profileChanges = ObservationCounter()
+        let services = AppModelServices()
+        let model = fixture.model(services: services)
         let ledgerChanges = ObservationCounter()
+        let planningChanges = ObservationCounter()
+        let assetsChanges = ObservationCounter()
         let captureChanges = ObservationCounter()
+        let portabilityChanges = ObservationCounter()
 
         withObservationTracking {
-            _ = model.profile
-        } onChange: {
-            profileChanges.increment()
-        }
-        withObservationTracking {
-            _ = model.entries
+            _ = model.ledgerService.journalEntryCount
         } onChange: {
             ledgerChanges.increment()
         }
         withObservationTracking {
-            _ = model.quickLogDraft
+            _ = model.planningService.savingsGoals
+        } onChange: {
+            planningChanges.increment()
+        }
+        withObservationTracking {
+            _ = model.assetsService.netWorthSnapshots
+        } onChange: {
+            assetsChanges.increment()
+        }
+        withObservationTracking {
+            _ = model.captureService.pendingLockedCaptureCount
         } onChange: {
             captureChanges.increment()
         }
+        withObservationTracking {
+            _ = model.portabilityService.recoveryIssues
+        } onChange: {
+            portabilityChanges.increment()
+        }
 
-        model.updateQuickLogDraft(QuickLogDraft(
-            kind: .expense,
-            amountText: "12",
-            destinationAmountText: "",
-            accountID: fixture.wallet.id,
-            destinationAccountID: nil,
-            categoryID: fixture.food.id,
-            occurredAt: Date(timeIntervalSinceReferenceDate: 100),
-            dateWasEdited: false,
-            payee: "Cafe",
-            note: "",
-            smartText: ""
-        ))
-
+        services.capture.pendingLockedCaptureCount += 1
         XCTAssertEqual(captureChanges.value, 1)
-        XCTAssertEqual(profileChanges.value, 0)
+        XCTAssertEqual(ledgerChanges.value, 0)
+        XCTAssertEqual(planningChanges.value, 0)
+        XCTAssertEqual(assetsChanges.value, 0)
+        XCTAssertEqual(portabilityChanges.value, 0)
+
+        services.planning.savingsGoals = []
+        XCTAssertEqual(planningChanges.value, 1)
         XCTAssertEqual(ledgerChanges.value, 0)
 
-        try await model.updateAutoLockDelay(300)
-        XCTAssertEqual(profileChanges.value, 1)
+        services.assets.netWorthSnapshots = []
+        XCTAssertEqual(assetsChanges.value, 1)
         XCTAssertEqual(ledgerChanges.value, 0)
-        await model.waitForPendingQuickLogDraftFlush()
+
+        services.portability.recoveryIssues = ["test/recovery"]
+        XCTAssertEqual(portabilityChanges.value, 1)
+        XCTAssertEqual(ledgerChanges.value, 0)
+
+        services.ledger.journalEntryCount += 1
+        XCTAssertEqual(ledgerChanges.value, 1)
         await fixture.store.close()
     }
 
@@ -11233,7 +11245,8 @@ private struct AppModelFixture {
         budgetWidgetSnapshotStore: BudgetWidgetSnapshotStore = BudgetWidgetSnapshotStore(),
         budgetConfigurationTimeline: BudgetConfigurationTimeline? = nil,
         budgetEntryAttributions: [UUID: BudgetEntryAttribution] = [:],
-        currentDate: @escaping @Sendable () -> Date = Date.init
+        currentDate: @escaping @Sendable () -> Date = Date.init,
+        services: AppModelServices? = nil
     ) -> AppModel {
         AppModel(
             store: store ?? self.store,
@@ -11259,7 +11272,8 @@ private struct AppModelFixture {
             budgetWidgetSnapshotStore: budgetWidgetSnapshotStore,
             budgetConfigurationTimeline: budgetConfigurationTimeline,
             budgetEntryAttributions: budgetEntryAttributions,
-            currentDate: currentDate
+            currentDate: currentDate,
+            services: services
         )
     }
 
