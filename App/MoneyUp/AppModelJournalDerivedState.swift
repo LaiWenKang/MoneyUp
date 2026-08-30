@@ -6,6 +6,13 @@ import SwiftUI
 import UIKit
 import WidgetKit
 
+private struct JournalReportIntervals: Sendable {
+    let trend: DateInterval
+    let periods: [ReportPeriod: DateInterval]
+    let comparison: MonthToDateComparisonIntervals?
+    let eventDayKeys: Range<Int>
+}
+
 extension AppModel {
     func refreshJournalDerivedState(
         from journalStore: EncryptedRecordStore? = nil,
@@ -45,204 +52,286 @@ extension AppModel {
         )
         let diagnostics = try await currentStore.journalIndexDiagnostics()
         guard ownsStoreGeneration(generation) else { throw AppModelError.locked }
-
-        var recentEntries = entries
-        if loadRecentEntries {
-            recentEntries = []
-            var cursor: JournalEntryPageCursor?
-            var scannedPageCount = 0
-            repeat {
-                if observesCancellation { try Task.checkCancellation() }
-                let page = try await currentStore.fetchJournalEntryPage(
-                    after: cursor,
-                    limit: 160
-                )
-                scannedPageCount += 1
-                guard ownsStoreGeneration(generation) else {
-                    throw AppModelError.locked
-                }
-                recordHistoryDecodeIssues(page.issues)
-                for entry in page.entries where recentEntries.count < 80 {
-                    if !quarantinedJournalEntryIDs.contains(entry.id),
-                       entry.postings.allSatisfy({
-                           validAccountIDs.contains($0.accountID)
-                       }) {
-                        recentEntries.append(entry)
-                    }
-                }
-                cursor = recentEntries.count >= 80 || scannedPageCount >= 4
-                    ? nil : page.nextCursor
-            } while cursor != nil
-        }
-
-        var preparedReports: PreparedJournalReports?
-        if let baseCurrency = profile?.baseCurrency,
-           let trendInterval = ReportPeriod.twelveMonths.interval(
-            containing: now,
-            calendar: reportCalendar
-           ) {
-            let periods = Dictionary(
-                uniqueKeysWithValues: ReportPeriod.allCases.compactMap { period in
-                    period.interval(containing: now, calendar: reportCalendar).map {
-                        (period, $0)
-                    }
-                }
-            )
-            var start = trendInterval.start
-            var end = trendInterval.end
-            for interval in periods.values {
-                start = min(start, interval.start)
-                end = max(end, interval.end)
-            }
-            let comparisonIntervals = MonthToDateComparisonIntervals(
-                containing: now,
-                calendar: reportCalendar
-            )
-            if let comparisonIntervals {
-                start = min(start, comparisonIntervals.previous.start)
-                end = max(end, comparisonIntervals.current.end)
-            }
-            guard let eventDayKeys = FinancialPeriodBoundary.dayKeyRange(
-                for: DateInterval(start: start, end: end),
-                calendar: reportCalendar
-            ) else { throw AppModelError.invalidBook }
-            let events = try await currentStore.fetchJournalPostingEvents(
-                originDayKeyRange: eventDayKeys,
-                excludingEntryIDs: quarantinedJournalEntryIDs
-            )
-            guard ownsStoreGeneration(generation) else {
-                throw AppModelError.locked
-            }
-            preparedReports = try await Task.detached(priority: .userInitiated) {
-                var reports: [ReportPeriod: PeriodReport] = [:]
-                for (period, interval) in periods {
-                    reports[period] = try FinanceCalculator.report(
-                        interval: interval,
-                        trendInterval: trendInterval,
-                        accounts: accountSnapshot,
-                        postingEvents: events,
-                        baseCurrency: baseCurrency,
-                        calendar: reportCalendar
-                    )
-                }
-                let comparison = try comparisonIntervals.map { intervals in
-                    let current = try FinanceCalculator.report(
-                        interval: intervals.current,
-                        accounts: accountSnapshot,
-                        postingEvents: events,
-                        baseCurrency: baseCurrency,
-                        calendar: reportCalendar
-                    )
-                    let previous = try FinanceCalculator.report(
-                        interval: intervals.previous,
-                        accounts: accountSnapshot,
-                        postingEvents: events,
-                        baseCurrency: baseCurrency,
-                        calendar: reportCalendar
-                    )
-                    return (
-                        previous.baseFlow.expense,
-                        current.baseFlow.expense,
-                        current.holdsUnconvertedActivity
-                            || previous.holdsUnconvertedActivity
-                    )
-                }
-                return PreparedJournalReports(
-                    reports: reports,
-                    previousMonthToDateExpense: comparison?.0,
-                    currentMonthToDateExpense: comparison?.1,
-                    monthToDateHasUnconvertedActivity: comparison?.2 ?? false
-                )
-            }.value
-        }
-
-        var preparedBudgetProjection: ClosedMonthBudgetProjection?
-        if profile != nil, !budgetConfigurationTimelineInvalid {
-            let budgetCalendar = reportingCalendar
-            let timeline = try validatedBudgetConfigurationTimeline(asOf: now)
-            guard let currentMonth = budgetCalendar.dateInterval(
-                of: .month,
-                for: now
-            )?.start else { throw AppModelError.invalidBook }
-            let replayStart = budgetRolloverReplayStart(
-                timeline: timeline,
-                currentMonthStart: currentMonth,
-                calendar: budgetCalendar
-            ) ?? currentMonth
-            let events: [LedgerPostingEvent]
-            if replayStart < currentMonth {
-                guard let dayKeys = FinancialPeriodBoundary.dayKeyRange(
-                    for: DateInterval(start: replayStart, end: currentMonth),
-                    calendar: budgetCalendar
-                ) else { throw AppModelError.invalidBook }
-                events = try await currentStore.fetchBudgetPostingEvents(
-                    originDayKeyRange: dayKeys,
-                    excludingEntryIDs: quarantinedJournalEntryIDs
-                )
-            } else {
-                events = []
-            }
-            guard ownsStoreGeneration(generation) else {
-                throw AppModelError.locked
-            }
-            preparedBudgetProjection = ClosedMonthBudgetProjection(
-                reportingTimeZoneIdentifier: budgetCalendar.timeZone.identifier,
-                currentMonthStart: currentMonth,
-                coverageStart: replayStart,
-                currency: timeline.currency,
-                monthlySpending: try closedMonthBudgetSpending(
-                    events: events,
-                    attributions: [:],
-                    currency: timeline.currency,
-                    replayStart: replayStart,
-                    currentMonthStart: currentMonth,
-                    calendar: budgetCalendar,
-                    excludingEntryIDs: quarantinedJournalEntryIDs
-                )
-            )
-        }
+        let recentEntries = try await recentJournalEntries(
+            from: currentStore,
+            loadRecentEntries: loadRecentEntries,
+            observesCancellation: observesCancellation,
+            generation: generation,
+            quarantinedEntryIDs: quarantinedJournalEntryIDs,
+            validAccountIDs: validAccountIDs
+        )
+        let preparedReports = try await preparedJournalReports(
+            from: currentStore,
+            accountSnapshot: accountSnapshot,
+            baseCurrency: profile?.baseCurrency,
+            now: now,
+            calendar: reportCalendar,
+            quarantinedEntryIDs: quarantinedJournalEntryIDs,
+            generation: generation
+        )
+        let preparedBudgetProjection = try await makePreparedBudgetProjection(
+            from: currentStore,
+            now: now,
+            quarantinedEntryIDs: quarantinedJournalEntryIDs,
+            generation: generation
+        )
 
         await lifecycleHooks.checkpoint(.afterJournalProjectionReadBeforePublish)
         guard ownsStoreGeneration(generation) else { throw AppModelError.locked }
         guard projectionRevision == journalProjectionRevision else {
             throw CancellationError()
         }
+        publishJournalDerivedState(
+            ledgerIndex: ledgerIndex,
+            diagnostics: diagnostics,
+            quarantinedEntryIDs: quarantinedJournalEntryIDs,
+            recentEntries: recentEntries,
+            loadRecentEntries: loadRecentEntries,
+            budgetProjection: preparedBudgetProjection,
+            reports: preparedReports,
+            now: now,
+            calendar: reportCalendar
+        )
+    }
+
+    private func recentJournalEntries(
+        from store: EncryptedRecordStore,
+        loadRecentEntries: Bool,
+        observesCancellation: Bool,
+        generation: Int,
+        quarantinedEntryIDs: Set<UUID>,
+        validAccountIDs: Set<UUID>
+    ) async throws -> [JournalEntry] {
+        guard loadRecentEntries else { return entries }
+        var recentEntries: [JournalEntry] = []
+        var cursor: JournalEntryPageCursor?
+        var scannedPageCount = 0
+        repeat {
+            if observesCancellation { try Task.checkCancellation() }
+            let page = try await store.fetchJournalEntryPage(
+                after: cursor,
+                limit: 160
+            )
+            scannedPageCount += 1
+            guard ownsStoreGeneration(generation) else {
+                throw AppModelError.locked
+            }
+            recordHistoryDecodeIssues(page.issues)
+            for entry in page.entries where recentEntries.count < 80 {
+                if !quarantinedEntryIDs.contains(entry.id),
+                   entry.postings.allSatisfy({
+                       validAccountIDs.contains($0.accountID)
+                   }) {
+                    recentEntries.append(entry)
+                }
+            }
+            cursor = recentEntries.count >= 80 || scannedPageCount >= 4
+                ? nil : page.nextCursor
+        } while cursor != nil
+        return recentEntries
+    }
+
+    private func journalReportIntervals(
+        now: Date,
+        calendar: Calendar
+    ) throws -> JournalReportIntervals? {
+        guard let trend = ReportPeriod.twelveMonths.interval(
+            containing: now,
+            calendar: calendar
+        ) else { return nil }
+        let periods = Dictionary(
+            uniqueKeysWithValues: ReportPeriod.allCases.compactMap { period in
+                period.interval(containing: now, calendar: calendar).map {
+                    (period, $0)
+                }
+            }
+        )
+        var start = trend.start
+        var end = trend.end
+        for interval in periods.values {
+            start = min(start, interval.start)
+            end = max(end, interval.end)
+        }
+        let comparison = MonthToDateComparisonIntervals(
+            containing: now,
+            calendar: calendar
+        )
+        if let comparison {
+            start = min(start, comparison.previous.start)
+            end = max(end, comparison.current.end)
+        }
+        guard let eventDayKeys = FinancialPeriodBoundary.dayKeyRange(
+            for: DateInterval(start: start, end: end),
+            calendar: calendar
+        ) else { throw AppModelError.invalidBook }
+        return JournalReportIntervals(
+            trend: trend,
+            periods: periods,
+            comparison: comparison,
+            eventDayKeys: eventDayKeys
+        )
+    }
+
+    private func preparedJournalReports(
+        from store: EncryptedRecordStore,
+        accountSnapshot: [LedgerAccount],
+        baseCurrency: CurrencyCode?,
+        now: Date,
+        calendar: Calendar,
+        quarantinedEntryIDs: Set<UUID>,
+        generation: Int
+    ) async throws -> PreparedJournalReports? {
+        guard let baseCurrency,
+              let intervals = try journalReportIntervals(
+                  now: now,
+                  calendar: calendar
+              ) else { return nil }
+        let events = try await store.fetchJournalPostingEvents(
+            originDayKeyRange: intervals.eventDayKeys,
+            excludingEntryIDs: quarantinedEntryIDs
+        )
+        guard ownsStoreGeneration(generation) else {
+            throw AppModelError.locked
+        }
+        return try await Task.detached(priority: .userInitiated) {
+            var reports: [ReportPeriod: PeriodReport] = [:]
+            for (period, interval) in intervals.periods {
+                reports[period] = try FinanceCalculator.report(
+                    interval: interval,
+                    trendInterval: intervals.trend,
+                    accounts: accountSnapshot,
+                    postingEvents: events,
+                    baseCurrency: baseCurrency,
+                    calendar: calendar
+                )
+            }
+            let comparison = try intervals.comparison.map { comparison in
+                let current = try FinanceCalculator.report(
+                    interval: comparison.current,
+                    accounts: accountSnapshot,
+                    postingEvents: events,
+                    baseCurrency: baseCurrency,
+                    calendar: calendar
+                )
+                let previous = try FinanceCalculator.report(
+                    interval: comparison.previous,
+                    accounts: accountSnapshot,
+                    postingEvents: events,
+                    baseCurrency: baseCurrency,
+                    calendar: calendar
+                )
+                return (
+                    previous.baseFlow.expense,
+                    current.baseFlow.expense,
+                    current.holdsUnconvertedActivity
+                        || previous.holdsUnconvertedActivity
+                )
+            }
+            return PreparedJournalReports(
+                reports: reports,
+                previousMonthToDateExpense: comparison?.0,
+                currentMonthToDateExpense: comparison?.1,
+                monthToDateHasUnconvertedActivity: comparison?.2 ?? false
+            )
+        }.value
+    }
+
+    private func makePreparedBudgetProjection(
+        from store: EncryptedRecordStore,
+        now: Date,
+        quarantinedEntryIDs: Set<UUID>,
+        generation: Int
+    ) async throws -> ClosedMonthBudgetProjection? {
+        guard profile != nil,
+              !budgetConfigurationTimelineInvalid else { return nil }
+        let calendar = reportingCalendar
+        let timeline = try validatedBudgetConfigurationTimeline(asOf: now)
+        guard let currentMonth = calendar.dateInterval(
+            of: .month,
+            for: now
+        )?.start else { throw AppModelError.invalidBook }
+        let replayStart = budgetRolloverReplayStart(
+            timeline: timeline,
+            currentMonthStart: currentMonth,
+            calendar: calendar
+        ) ?? currentMonth
+        let events: [LedgerPostingEvent]
+        if replayStart < currentMonth {
+            guard let dayKeys = FinancialPeriodBoundary.dayKeyRange(
+                for: DateInterval(start: replayStart, end: currentMonth),
+                calendar: calendar
+            ) else { throw AppModelError.invalidBook }
+            events = try await store.fetchBudgetPostingEvents(
+                originDayKeyRange: dayKeys,
+                excludingEntryIDs: quarantinedEntryIDs
+            )
+        } else {
+            events = []
+        }
+        guard ownsStoreGeneration(generation) else {
+            throw AppModelError.locked
+        }
+        return ClosedMonthBudgetProjection(
+            reportingTimeZoneIdentifier: calendar.timeZone.identifier,
+            currentMonthStart: currentMonth,
+            coverageStart: replayStart,
+            currency: timeline.currency,
+            monthlySpending: try closedMonthBudgetSpending(
+                events: events,
+                attributions: [:],
+                currency: timeline.currency,
+                replayStart: replayStart,
+                currentMonthStart: currentMonth,
+                calendar: calendar,
+                excludingEntryIDs: quarantinedEntryIDs
+            )
+        )
+    }
+
+    private func publishJournalDerivedState(
+        ledgerIndex: JournalLedgerIndexSnapshot,
+        diagnostics: JournalIndexDiagnostics,
+        quarantinedEntryIDs: Set<UUID>,
+        recentEntries: [JournalEntry],
+        loadRecentEntries: Bool,
+        budgetProjection: ClosedMonthBudgetProjection?,
+        reports: PreparedJournalReports?,
+        now: Date,
+        calendar: Calendar
+    ) {
         journalEntryCount = max(0, ledgerIndex.entryCount)
         journalStoredEntryCount = diagnostics.journalRecordCount
         journalReferenceCounts = ledgerIndex.referenceCounts
         journalReferenceCountsAreCurrent = true
-        invalidJournalEntryIDs = quarantinedJournalEntryIDs
+        invalidJournalEntryIDs = quarantinedEntryIDs
         recordHistoryDecodeIssues(ledgerIndex.issues)
         if loadRecentEntries { entries = recentEntries }
-        closedMonthBudgetProjection = preparedBudgetProjection
+        closedMonthBudgetProjection = budgetProjection
         balanceCache = .available(ledgerIndex.balances)
-        reportCache = preparedReports?.reports.mapValues { .available($0) } ?? [:]
-        reportCacheDay = reportCalendar.startOfDay(for: now)
-        if let previous = preparedReports?.previousMonthToDateExpense,
-           let current = preparedReports?.currentMonthToDateExpense {
+        reportCache = reports?.reports.mapValues { .available($0) } ?? [:]
+        reportCacheDay = calendar.startOfDay(for: now)
+        if let previous = reports?.previousMonthToDateExpense,
+           let current = reports?.currentMonthToDateExpense {
             monthToDateComparisonCache = .available(
                 MonthToDateExpenseComparison(
                     previous: previous,
                     current: current,
-                    holdsUnconvertedActivity: preparedReports?
+                    holdsUnconvertedActivity: reports?
                         .monthToDateHasUnconvertedActivity ?? false
                 )
             )
         } else {
             monthToDateComparisonCache = nil
         }
-        monthToDateComparisonCacheDay = reportCalendar.startOfDay(for: now)
+        monthToDateComparisonCacheDay = calendar.startOfDay(for: now)
         if loadRecentEntries { journalRecentEntriesAreCurrent = true }
         // Clear the recovery marker in the same actor turn as the guarded
-        // publish. Clearing it in a caller after this async method returns
-        // creates a reentrancy window where a newer mutation can set the
-        // marker and then have this older continuation erase it.
+        // publish so a newer mutation cannot have an older continuation erase it.
         journalDerivedRefreshWasDeferred = false
         recoveryIssues.removeAll {
             $0 == "journal_entries/derived-refresh-unavailable"
         }
-        // `entries` publishes before the complete closed-month projection, so
-        // make one final redacted widget publication from the coherent state.
+        // Publish the redacted widget only after the complete state is coherent.
         refreshBudgetWidgetSnapshot()
     }
 
