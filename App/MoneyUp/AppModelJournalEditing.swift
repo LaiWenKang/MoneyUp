@@ -6,6 +6,42 @@ import SwiftUI
 import UIKit
 import WidgetKit
 
+private struct JournalEntryReplacementRequest: Sendable {
+    let kind: QuickLogKind
+    let amount: Decimal
+    let destinationAmount: Decimal?
+    let accountID: UUID
+    let destinationAccountID: UUID?
+    let categoryID: UUID?
+    let splitLines: [TransactionSplitLine]?
+    let occurredAt: Date
+    let payee: String?
+    let note: String?
+}
+
+private struct JournalEntryReplacementCandidate: Sendable {
+    let entry: JournalEntry
+    let addedAccounts: [LedgerAccount]
+}
+
+private struct JournalEntryReplacementAttributions: Sendable {
+    let original: BudgetEntryAttribution?
+    let replacement: BudgetEntryAttribution
+}
+
+private struct JournalEntryReplacementBudgetPlan: Sendable {
+    let attribution: BudgetEntryAttribution
+    let attributions: [UUID: BudgetEntryAttribution]
+    let entries: [JournalEntry]?
+    let timeline: BudgetConfigurationTimeline?
+}
+
+private struct JournalEntryReplacementWritePlan: Sendable {
+    let writes: [RecordWrite]
+    let attachmentMetadata: [ReceiptAttachmentMetadata]
+    let schedules: [ScheduledTransaction]
+}
+
 extension AppModel {
     func receiptAttachment(id: UUID) async throws -> ReceiptAttachment {
         guard let expectedMetadata = receiptAttachmentMetadata.first(
@@ -58,6 +94,18 @@ extension AppModel {
         payee: String?,
         note: String?
     ) async throws {
+        let request = JournalEntryReplacementRequest(
+            kind: kind,
+            amount: amount,
+            destinationAmount: destinationAmount,
+            accountID: accountID,
+            destinationAccountID: destinationAccountID,
+            categoryID: categoryID,
+            splitLines: splitLines,
+            occurredAt: occurredAt,
+            payee: payee,
+            note: note
+        )
         let linkedScheduleIDs = Set(scheduledTransactions.compactMap { schedule in
             schedule.resolutions.contains { $0.linkedEntryID == id }
                 ? schedule.id
@@ -68,301 +116,27 @@ extension AppModel {
             endJournalAndScheduleMutation(scheduleIDs: linkedScheduleIDs)
         }
         let lookupStore = try requireStore()
-        let original: JournalEntry
-        if let cached = entries.first(where: { $0.id == id }) {
-            original = cached
-        } else if let stored = try await lookupStore.fetch(
-            JournalEntry.self,
-            id: id.uuidString,
-            from: .journalEntries
-        ) {
-            original = stored
-        } else {
-            throw AppModelError.missingRecord
-        }
+        let original = try await replacementOriginalEntry(id: id, in: lookupStore)
         guard !isProtectedJournalEntry(original) else {
             throw AppModelError.investmentEntryMutationForbidden
         }
-
-        let originalMoney = try editableMoneySnapshot(for: original)
-        let accountCurrency = try replacementCurrency(
-            for: accountID,
-            preservingFrom: original
+        let candidate = try makeReplacementCandidate(request, original: original)
+        let replacement = try makeReplacementEntry(
+            from: candidate.entry,
+            original: original
         )
-        if let originalMoney, originalMoney.source.currency != accountCurrency {
-            throw AppModelError.crossCurrencyEditRequiresConversion
-        }
-        try requireValidNewWriteAmount(
-            amount,
-            currency: accountCurrency,
-            preserving: originalMoney?.source.amount
+        let budgetPlan = try await replacementBudgetPlan(
+            original: original,
+            replacement: replacement,
+            store: lookupStore
         )
-        if let splitLines {
-            guard kind != .transfer else { throw AppModelError.invalidCategoryKind }
-            let expectedKind: LedgerAccountKind = kind == .income ? .income : .expense
-            for line in splitLines {
-                try requireReplacementCategory(
-                    line.categoryAccountID,
-                    kind: expectedKind,
-                    preservingFrom: original
-                )
-                let originalLineAmount = original.postings.first {
-                    $0.id == line.id && $0.money.currency == accountCurrency
-                }.map { abs($0.money.amount) }
-                try requireValidNewWriteAmount(
-                    line.amount.amount,
-                    currency: accountCurrency,
-                    preserving: originalLineAmount
-                )
-            }
-        }
-        let candidate: JournalEntry
-        var addedAccounts: [LedgerAccount] = []
-
-        switch kind {
-        case .expense:
-            if let splitLines {
-                candidate = try TransactionFactory.splitExpense(
-                    amount: try Money(amount, currency: accountCurrency),
-                    paidFrom: accountID,
-                    splits: splitLines,
-                    occurredAt: occurredAt,
-                    payee: payee,
-                    note: note
-                )
-            } else {
-                guard let categoryID else { throw AppModelError.missingRecord }
-                try requireReplacementCategory(
-                    categoryID,
-                    kind: .expense,
-                    preservingFrom: original
-                )
-                candidate = try TransactionFactory.expense(
-                    amount: try Money(amount, currency: accountCurrency),
-                    paidFrom: accountID,
-                    category: categoryID,
-                    occurredAt: occurredAt,
-                    payee: payee,
-                    note: note
-                )
-            }
-        case .income:
-            if let splitLines {
-                candidate = try TransactionFactory.splitIncome(
-                    amount: try Money(amount, currency: accountCurrency),
-                    depositedInto: accountID,
-                    splits: splitLines,
-                    occurredAt: occurredAt,
-                    payee: payee,
-                    note: note
-                )
-            } else {
-                guard let categoryID else { throw AppModelError.missingRecord }
-                try requireReplacementCategory(
-                    categoryID,
-                    kind: .income,
-                    preservingFrom: original
-                )
-                candidate = try TransactionFactory.income(
-                    amount: try Money(amount, currency: accountCurrency),
-                    depositedInto: accountID,
-                    category: categoryID,
-                    occurredAt: occurredAt,
-                    payee: payee,
-                    note: note
-                )
-            }
-        case .refund:
-            if let splitLines {
-                candidate = try TransactionFactory.splitRefund(
-                    amount: try Money(amount, currency: accountCurrency),
-                    returnedTo: accountID,
-                    splits: splitLines,
-                    occurredAt: occurredAt,
-                    payee: payee,
-                    note: note
-                )
-            } else {
-                guard let categoryID else { throw AppModelError.missingRecord }
-                try requireReplacementCategory(
-                    categoryID,
-                    kind: .expense,
-                    preservingFrom: original
-                )
-                candidate = try TransactionFactory.refund(
-                    amount: try Money(amount, currency: accountCurrency),
-                    returnedTo: accountID,
-                    category: categoryID,
-                    occurredAt: occurredAt,
-                    payee: payee,
-                    note: note
-                )
-            }
-        case .transfer:
-            guard let destinationAccountID else { throw AppModelError.missingRecord }
-            let destinationCurrency = try replacementCurrency(
-                for: destinationAccountID,
-                preservingFrom: original
-            )
-            if let originalDestination = originalMoney?.destination,
-               originalDestination.currency != destinationCurrency {
-                throw AppModelError.crossCurrencyEditRequiresConversion
-            }
-            if destinationCurrency == accountCurrency {
-                candidate = try TransactionFactory.transfer(
-                    amount: try Money(amount, currency: accountCurrency),
-                    from: accountID,
-                    to: destinationAccountID,
-                    occurredAt: occurredAt,
-                    note: note
-                )
-            } else {
-                guard let destinationAmount, destinationAmount > .zero else {
-                    throw AppModelError.foreignCurrencyTransferRequiresExchangeRate
-                }
-                try requireValidNewWriteAmount(
-                    destinationAmount,
-                    currency: destinationCurrency,
-                    preserving: originalMoney?.destination?.amount
-                )
-                let sourceTrading = foreignExchangeAccount(for: accountCurrency)
-                let destinationTrading = foreignExchangeAccount(for: destinationCurrency)
-                addedAccounts = [sourceTrading, destinationTrading].filter { candidate in
-                    !accounts.contains(where: { $0.id == candidate.id })
-                }
-                candidate = try TransactionFactory.foreignCurrencyTransfer(
-                    sourceAmount: try Money(amount, currency: accountCurrency),
-                    destinationAmount: try Money(
-                        destinationAmount,
-                        currency: destinationCurrency
-                    ),
-                    from: accountID,
-                    to: destinationAccountID,
-                    sourceTradingAccountID: sourceTrading.id,
-                    destinationTradingAccountID: destinationTrading.id,
-                    occurredAt: occurredAt,
-                    note: note
-                )
-            }
-        }
-
-        let replacement = try JournalEntry(
-            kind: candidate.kind,
-            occurredAt: candidate.occurredAt,
-            createdAt: original.createdAt,
-            payee: candidate.payee,
-            note: candidate.note,
-            postings: candidate.postings,
-            supersedesID: original.id,
-            revisedAt: currentDate(),
-            sourceSystem: original.sourceSystem,
-            sourceFingerprint: original.sourceFingerprint,
-            originContext: candidate.occurredAt == original.occurredAt
-                ? original.originContext
-                : reportingOriginContext(for: candidate.occurredAt)
+        let writePlan = try replacementWritePlan(
+            original: original,
+            replacement: replacement,
+            addedAccounts: candidate.addedAccounts,
+            budgetPlan: budgetPlan,
+            linkedScheduleIDs: linkedScheduleIDs
         )
-        let originalAttribution = try await budgetEntryAttribution(
-            for: original.id,
-            in: lookupStore
-        )
-        let reportingZone = profile?.reportingTimeZoneIdentifier
-            ?? reportingCalendar.timeZone.identifier
-        let replacementAttribution: BudgetEntryAttribution
-        if let originalAttribution {
-            let attributedReplacement = try replacementPreservingImplicitBudgetAttribution(
-                replacement,
-                original: original,
-                priorAttribution: originalAttribution
-            )
-            replacementAttribution = try BudgetEntryAttribution(
-                replacing: attributedReplacement,
-                prior: originalAttribution,
-                reportingTimeZoneIdentifier: reportingZone
-            )
-        } else {
-            replacementAttribution = try BudgetEntryAttribution(
-                entry: replacement,
-                originTimeZoneIdentifier: reportingZone
-            )
-        }
-        var candidateAttributions = budgetEntryAttributions
-        candidateAttributions.removeValue(forKey: original.id)
-        candidateAttributions[replacement.id] = replacementAttribution
-        let originalAffectedMonth = try budgetAffectedMonth(
-            for: original,
-            attribution: originalAttribution
-        )
-        let replacementAffectedMonth = try budgetAffectedMonth(
-            for: replacement,
-            attribution: replacementAttribution
-        )
-        let affectedMonths = [
-            originalAffectedMonth,
-            replacementAffectedMonth
-        ].compactMap { $0 }
-        var candidateEntries = try await journalEntriesForBudgetMutation(
-            from: lookupStore,
-            affectedReportingMonths: affectedMonths
-        )
-        if candidateEntries != nil {
-            candidateAttributions = budgetEntryAttributions
-            candidateAttributions.removeValue(forKey: original.id)
-            candidateAttributions[replacement.id] = replacementAttribution
-            candidateEntries?.removeAll { $0.id == original.id }
-            candidateEntries?.append(replacement)
-            candidateEntries?.sort {
-                if $0.occurredAt == $1.occurredAt {
-                    return $0.createdAt > $1.createdAt
-                }
-                return $0.occurredAt > $1.occurredAt
-            }
-        }
-        let candidateTimeline: BudgetConfigurationTimeline?
-        if let candidateEntries {
-            candidateTimeline = try budgetTimelineAfterJournalMutation(
-                journalEntries: candidateEntries,
-                attributions: candidateAttributions,
-                affectedReportingMonths: affectedMonths
-            )
-        } else {
-            candidateTimeline = nil
-        }
-        var writes = try addedAccounts.map {
-            try RecordWrite($0, id: $0.id.uuidString, in: .accounts)
-        }
-        writes.append(
-            try RecordWrite(
-                original,
-                id: "\(original.id.uuidString)-\(UUID().uuidString)",
-                in: .journalEntryRevisions
-            )
-        )
-        writes.append(
-            try RecordWrite(replacement, id: replacement.id.uuidString, in: .journalEntries)
-        )
-        let relinkedAttachmentMetadata = try receiptAttachmentMetadata
-            .filter { $0.entryID == original.id }
-            .map { try $0.relinked(to: replacement.id) }
-        var relinkedSchedules: [ScheduledTransaction] = []
-        for schedule in scheduledTransactions where linkedScheduleIDs.contains(schedule.id) {
-            var updated = schedule
-            try updated.relinkEntry(from: original.id, to: replacement.id)
-            relinkedSchedules.append(updated)
-        }
-        writes += try relinkedSchedules.map {
-            try RecordWrite($0, id: $0.id.uuidString, in: .scheduledTransactions)
-        }
-        writes.append(
-            try RecordWrite(
-                replacementAttribution,
-                id: replacementAttribution.id.uuidString,
-                in: .budgetEntryAttributions
-            )
-        )
-        if let candidateTimeline {
-            writes.append(try budgetConfigurationTimelineWrite(candidateTimeline))
-        }
-
         let generation = storeGeneration
         let transactionStore = try requireStore()
         invalidateCommittedJournalProjection()
@@ -370,7 +144,7 @@ extension AppModel {
             .afterJournalProjectionInvalidationBeforeCommit
         )
         try await transactionStore.write(
-            writes,
+            writePlan.writes,
             removing: [
                 RecordDeletion(
                     id: original.id.uuidString,
@@ -387,25 +161,461 @@ extension AppModel {
             )
         )
         guard isCurrentStoreGeneration(generation) else { return }
+        publishReplacement(
+            original: original,
+            replacement: replacement,
+            addedAccounts: candidate.addedAccounts,
+            budgetPlan: budgetPlan,
+            writePlan: writePlan
+        )
+        await refreshJournalAfterMutation()
+    }
+}
+
+extension AppModel {
+    private func replacementOriginalEntry(
+        id: UUID,
+        in store: EncryptedRecordStore
+    ) async throws -> JournalEntry {
+        if let cached = entries.first(where: { $0.id == id }) {
+            return cached
+        }
+        guard let stored = try await store.fetch(
+            JournalEntry.self,
+            id: id.uuidString,
+            from: .journalEntries
+        ) else { throw AppModelError.missingRecord }
+        return stored
+    }
+
+    private func makeReplacementEntry(
+        from candidate: JournalEntry,
+        original: JournalEntry
+    ) throws -> JournalEntry {
+        try JournalEntry(
+            kind: candidate.kind,
+            occurredAt: candidate.occurredAt,
+            createdAt: original.createdAt,
+            payee: candidate.payee,
+            note: candidate.note,
+            postings: candidate.postings,
+            supersedesID: original.id,
+            revisedAt: currentDate(),
+            sourceSystem: original.sourceSystem,
+            sourceFingerprint: original.sourceFingerprint,
+            originContext: candidate.occurredAt == original.occurredAt
+                ? original.originContext
+                : reportingOriginContext(for: candidate.occurredAt)
+        )
+    }
+
+    private func replacementMoneyContext(
+        for request: JournalEntryReplacementRequest,
+        original: JournalEntry
+    ) throws -> (EditableMoneySnapshot?, CurrencyCode) {
+        let originalMoney = try editableMoneySnapshot(for: original)
+        let accountCurrency = try replacementCurrency(
+            for: request.accountID,
+            preservingFrom: original
+        )
+        if let originalMoney,
+           originalMoney.source.currency != accountCurrency {
+            throw AppModelError.crossCurrencyEditRequiresConversion
+        }
+        try requireValidNewWriteAmount(
+            request.amount,
+            currency: accountCurrency,
+            preserving: originalMoney?.source.amount
+        )
+        if let splitLines = request.splitLines {
+            guard request.kind != .transfer else {
+                throw AppModelError.invalidCategoryKind
+            }
+            let kind: LedgerAccountKind = request.kind == .income
+                ? .income : .expense
+            for line in splitLines {
+                try requireReplacementCategory(
+                    line.categoryAccountID,
+                    kind: kind,
+                    preservingFrom: original
+                )
+                let priorAmount = original.postings.first {
+                    $0.id == line.id && $0.money.currency == accountCurrency
+                }.map { abs($0.money.amount) }
+                try requireValidNewWriteAmount(
+                    line.amount.amount,
+                    currency: accountCurrency,
+                    preserving: priorAmount
+                )
+            }
+        }
+        return (originalMoney, accountCurrency)
+    }
+
+    private func makeReplacementCandidate(
+        _ request: JournalEntryReplacementRequest,
+        original: JournalEntry
+    ) throws -> JournalEntryReplacementCandidate {
+        let (originalMoney, currency) = try replacementMoneyContext(
+            for: request,
+            original: original
+        )
+        switch request.kind {
+        case .expense:
+            return try expenseReplacementCandidate(
+                request,
+                currency: currency,
+                original: original
+            )
+        case .income:
+            return try incomeReplacementCandidate(
+                request,
+                currency: currency,
+                original: original
+            )
+        case .refund:
+            return try refundReplacementCandidate(
+                request,
+                currency: currency,
+                original: original
+            )
+        case .transfer:
+            return try transferReplacementCandidate(
+                request,
+                sourceCurrency: currency,
+                originalMoney: originalMoney,
+                original: original
+            )
+        }
+    }
+
+    private func expenseReplacementCandidate(
+        _ request: JournalEntryReplacementRequest,
+        currency: CurrencyCode,
+        original: JournalEntry
+    ) throws -> JournalEntryReplacementCandidate {
+        let entry: JournalEntry
+        if let splitLines = request.splitLines {
+            entry = try TransactionFactory.splitExpense(
+                amount: try Money(request.amount, currency: currency),
+                paidFrom: request.accountID,
+                splits: splitLines,
+                occurredAt: request.occurredAt,
+                payee: request.payee,
+                note: request.note
+            )
+        } else {
+            guard let categoryID = request.categoryID else {
+                throw AppModelError.missingRecord
+            }
+            try requireReplacementCategory(
+                categoryID,
+                kind: .expense,
+                preservingFrom: original
+            )
+            entry = try TransactionFactory.expense(
+                amount: try Money(request.amount, currency: currency),
+                paidFrom: request.accountID,
+                category: categoryID,
+                occurredAt: request.occurredAt,
+                payee: request.payee,
+                note: request.note
+            )
+        }
+        return JournalEntryReplacementCandidate(entry: entry, addedAccounts: [])
+    }
+
+    private func incomeReplacementCandidate(
+        _ request: JournalEntryReplacementRequest,
+        currency: CurrencyCode,
+        original: JournalEntry
+    ) throws -> JournalEntryReplacementCandidate {
+        let entry: JournalEntry
+        if let splitLines = request.splitLines {
+            entry = try TransactionFactory.splitIncome(
+                amount: try Money(request.amount, currency: currency),
+                depositedInto: request.accountID,
+                splits: splitLines,
+                occurredAt: request.occurredAt,
+                payee: request.payee,
+                note: request.note
+            )
+        } else {
+            guard let categoryID = request.categoryID else {
+                throw AppModelError.missingRecord
+            }
+            try requireReplacementCategory(
+                categoryID,
+                kind: .income,
+                preservingFrom: original
+            )
+            entry = try TransactionFactory.income(
+                amount: try Money(request.amount, currency: currency),
+                depositedInto: request.accountID,
+                category: categoryID,
+                occurredAt: request.occurredAt,
+                payee: request.payee,
+                note: request.note
+            )
+        }
+        return JournalEntryReplacementCandidate(entry: entry, addedAccounts: [])
+    }
+
+    private func refundReplacementCandidate(
+        _ request: JournalEntryReplacementRequest,
+        currency: CurrencyCode,
+        original: JournalEntry
+    ) throws -> JournalEntryReplacementCandidate {
+        let entry: JournalEntry
+        if let splitLines = request.splitLines {
+            entry = try TransactionFactory.splitRefund(
+                amount: try Money(request.amount, currency: currency),
+                returnedTo: request.accountID,
+                splits: splitLines,
+                occurredAt: request.occurredAt,
+                payee: request.payee,
+                note: request.note
+            )
+        } else {
+            guard let categoryID = request.categoryID else {
+                throw AppModelError.missingRecord
+            }
+            try requireReplacementCategory(
+                categoryID,
+                kind: .expense,
+                preservingFrom: original
+            )
+            entry = try TransactionFactory.refund(
+                amount: try Money(request.amount, currency: currency),
+                returnedTo: request.accountID,
+                category: categoryID,
+                occurredAt: request.occurredAt,
+                payee: request.payee,
+                note: request.note
+            )
+        }
+        return JournalEntryReplacementCandidate(entry: entry, addedAccounts: [])
+    }
+
+    private func transferReplacementCandidate(
+        _ request: JournalEntryReplacementRequest,
+        sourceCurrency: CurrencyCode,
+        originalMoney: EditableMoneySnapshot?,
+        original: JournalEntry
+    ) throws -> JournalEntryReplacementCandidate {
+        guard let destinationID = request.destinationAccountID else {
+            throw AppModelError.missingRecord
+        }
+        let destinationCurrency = try replacementCurrency(
+            for: destinationID,
+            preservingFrom: original
+        )
+        if let priorDestination = originalMoney?.destination,
+           priorDestination.currency != destinationCurrency {
+            throw AppModelError.crossCurrencyEditRequiresConversion
+        }
+        guard destinationCurrency != sourceCurrency else {
+            let entry = try TransactionFactory.transfer(
+                amount: try Money(request.amount, currency: sourceCurrency),
+                from: request.accountID,
+                to: destinationID,
+                occurredAt: request.occurredAt,
+                note: request.note
+            )
+            return JournalEntryReplacementCandidate(entry: entry, addedAccounts: [])
+        }
+        guard let destinationAmount = request.destinationAmount,
+              destinationAmount > .zero else {
+            throw AppModelError.foreignCurrencyTransferRequiresExchangeRate
+        }
+        try requireValidNewWriteAmount(
+            destinationAmount,
+            currency: destinationCurrency,
+            preserving: originalMoney?.destination?.amount
+        )
+        let sourceTrading = foreignExchangeAccount(for: sourceCurrency)
+        let destinationTrading = foreignExchangeAccount(for: destinationCurrency)
+        let addedAccounts = [sourceTrading, destinationTrading].filter { candidate in
+            !accounts.contains(where: { $0.id == candidate.id })
+        }
+        let entry = try TransactionFactory.foreignCurrencyTransfer(
+            sourceAmount: try Money(request.amount, currency: sourceCurrency),
+            destinationAmount: try Money(destinationAmount, currency: destinationCurrency),
+            from: request.accountID,
+            to: destinationID,
+            sourceTradingAccountID: sourceTrading.id,
+            destinationTradingAccountID: destinationTrading.id,
+            occurredAt: request.occurredAt,
+            note: request.note
+        )
+        return JournalEntryReplacementCandidate(
+            entry: entry,
+            addedAccounts: addedAccounts
+        )
+    }
+
+    private func replacementAttributions(
+        original: JournalEntry,
+        replacement: JournalEntry,
+        store: EncryptedRecordStore
+    ) async throws -> JournalEntryReplacementAttributions {
+        let originalAttribution = try await budgetEntryAttribution(
+            for: original.id,
+            in: store
+        )
+        let reportingZone = profile?.reportingTimeZoneIdentifier
+            ?? reportingCalendar.timeZone.identifier
+        let replacementAttribution: BudgetEntryAttribution
+        if let originalAttribution {
+            let attributedEntry = try replacementPreservingImplicitBudgetAttribution(
+                replacement,
+                original: original,
+                priorAttribution: originalAttribution
+            )
+            replacementAttribution = try BudgetEntryAttribution(
+                replacing: attributedEntry,
+                prior: originalAttribution,
+                reportingTimeZoneIdentifier: reportingZone
+            )
+        } else {
+            replacementAttribution = try BudgetEntryAttribution(
+                entry: replacement,
+                originTimeZoneIdentifier: reportingZone
+            )
+        }
+        return JournalEntryReplacementAttributions(
+            original: originalAttribution,
+            replacement: replacementAttribution
+        )
+    }
+
+    private func replacementBudgetPlan(
+        original: JournalEntry,
+        replacement: JournalEntry,
+        store: EncryptedRecordStore
+    ) async throws -> JournalEntryReplacementBudgetPlan {
+        let pair = try await replacementAttributions(
+            original: original,
+            replacement: replacement,
+            store: store
+        )
+        var attributions = budgetEntryAttributions
+        attributions.removeValue(forKey: original.id)
+        attributions[replacement.id] = pair.replacement
+        let affectedMonths = try [
+            budgetAffectedMonth(for: original, attribution: pair.original),
+            budgetAffectedMonth(for: replacement, attribution: pair.replacement)
+        ].compactMap { $0 }
+        var candidateEntries = try await journalEntriesForBudgetMutation(
+            from: store,
+            affectedReportingMonths: affectedMonths
+        )
+        if candidateEntries != nil {
+            attributions = budgetEntryAttributions
+            attributions.removeValue(forKey: original.id)
+            attributions[replacement.id] = pair.replacement
+            candidateEntries?.removeAll { $0.id == original.id }
+            candidateEntries?.append(replacement)
+            candidateEntries?.sort {
+                if $0.occurredAt == $1.occurredAt {
+                    return $0.createdAt > $1.createdAt
+                }
+                return $0.occurredAt > $1.occurredAt
+            }
+        }
+        let timeline = try candidateEntries.map {
+            try budgetTimelineAfterJournalMutation(
+                journalEntries: $0,
+                attributions: attributions,
+                affectedReportingMonths: affectedMonths
+            )
+        }
+        return JournalEntryReplacementBudgetPlan(
+            attribution: pair.replacement,
+            attributions: attributions,
+            entries: candidateEntries,
+            timeline: timeline
+        )
+    }
+
+    private func replacementWritePlan(
+        original: JournalEntry,
+        replacement: JournalEntry,
+        addedAccounts: [LedgerAccount],
+        budgetPlan: JournalEntryReplacementBudgetPlan,
+        linkedScheduleIDs: Set<UUID>
+    ) throws -> JournalEntryReplacementWritePlan {
+        var writes = try addedAccounts.map {
+            try RecordWrite($0, id: $0.id.uuidString, in: .accounts)
+        }
+        writes.append(try RecordWrite(
+            original,
+            id: "\(original.id.uuidString)-\(UUID().uuidString)",
+            in: .journalEntryRevisions
+        ))
+        writes.append(try RecordWrite(
+            replacement,
+            id: replacement.id.uuidString,
+            in: .journalEntries
+        ))
+        let attachmentMetadata = try receiptAttachmentMetadata
+            .filter { $0.entryID == original.id }
+            .map { try $0.relinked(to: replacement.id) }
+        var schedules: [ScheduledTransaction] = []
+        for schedule in scheduledTransactions where linkedScheduleIDs.contains(schedule.id) {
+            var updated = schedule
+            try updated.relinkEntry(from: original.id, to: replacement.id)
+            schedules.append(updated)
+        }
+        writes += try schedules.map {
+            try RecordWrite($0, id: $0.id.uuidString, in: .scheduledTransactions)
+        }
+        writes.append(try RecordWrite(
+            budgetPlan.attribution,
+            id: budgetPlan.attribution.id.uuidString,
+            in: .budgetEntryAttributions
+        ))
+        if let timeline = budgetPlan.timeline {
+            writes.append(try budgetConfigurationTimelineWrite(timeline))
+        }
+        return JournalEntryReplacementWritePlan(
+            writes: writes,
+            attachmentMetadata: attachmentMetadata,
+            schedules: schedules
+        )
+    }
+
+    private func publishReplacement(
+        original: JournalEntry,
+        replacement: JournalEntry,
+        addedAccounts: [LedgerAccount],
+        budgetPlan: JournalEntryReplacementBudgetPlan,
+        writePlan: JournalEntryReplacementWritePlan
+    ) {
         accounts.append(contentsOf: addedAccounts)
-        if let candidateTimeline { budgetConfigurationTimeline = candidateTimeline }
-        budgetEntryAttributions = candidateAttributions
-        if retainsCompleteJournal, let candidateEntries { entries = candidateEntries }
-        if !relinkedAttachmentMetadata.isEmpty {
+        if let timeline = budgetPlan.timeline {
+            budgetConfigurationTimeline = timeline
+        }
+        budgetEntryAttributions = budgetPlan.attributions
+        if retainsCompleteJournal, let entries = budgetPlan.entries {
+            self.entries = entries
+        }
+        if !writePlan.attachmentMetadata.isEmpty {
             receiptAttachmentMetadata.removeAll { $0.entryID == original.id }
-            receiptAttachmentMetadata.append(contentsOf: relinkedAttachmentMetadata)
+            receiptAttachmentMetadata.append(
+                contentsOf: writePlan.attachmentMetadata
+            )
         }
         let schedulesByID = Dictionary(
-            uniqueKeysWithValues: relinkedSchedules.map { ($0.id, $0) }
+            uniqueKeysWithValues: writePlan.schedules.map { ($0.id, $0) }
         )
         scheduledTransactions = scheduledTransactions.map {
             schedulesByID[$0.id] ?? $0
         }
-        if !relinkedSchedules.isEmpty {
+        if !writePlan.schedules.isEmpty {
             existingScheduledLinkedEntryIDs.remove(original.id)
             existingScheduledLinkedEntryIDs.insert(replacement.id)
         }
-        await refreshJournalAfterMutation()
     }
 
     /// A lifecycle merge changes the live category ID without changing the
