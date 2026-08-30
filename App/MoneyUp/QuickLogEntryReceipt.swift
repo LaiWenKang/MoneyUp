@@ -5,6 +5,10 @@ import PhotosUI
 import SwiftUI
 import UIKit
 
+private final class ReceiptSuggestionSignpostState {
+    var ended = false
+}
+
 extension QuickLogEntryView {
     func scanReceipt(
         _ item: PhotosPickerItem?,
@@ -16,9 +20,9 @@ extension QuickLogEntryView {
             "Receipt selection to suggestions",
             id: suggestionsSignpostID
         )
-        var suggestionsIntervalEnded = false
+        let signpostState = ReceiptSuggestionSignpostState()
         defer {
-            if !suggestionsIntervalEnded {
+            if !signpostState.ended {
                 Self.receiptSignposter.endInterval(
                     "Receipt selection to suggestions",
                     suggestionsInterval,
@@ -51,92 +55,113 @@ extension QuickLogEntryView {
             try await ReceiptImageSanitizer.waitForPendingPreparation()
             try Task.checkCancellation()
             guard generation == receiptScanGeneration else { return }
-            try await QuickLogReceiptPipeline.run {
-                try await model.receiptAnalysis(
-                    from: data,
-                    prefersDayFirst: Self.localePrefersDayFirst
-                )
-            } handleSuggestions: { result in
-                guard generation == receiptScanGeneration else { return false }
-                let didApplySuggestions = applyReceipt(result)
-
-                // Saving and editing can resume as soon as the OCR result is
-                // handled. The optional attachment remains
-                // unavailable until its private copy is ready.
-                isScanning = false
-                if didApplySuggestions {
-                    Self.receiptSignposter.endInterval(
-                        "Receipt selection to suggestions",
-                        suggestionsInterval,
-                        "outcome=ready"
-                    )
-                } else {
-                    Self.receiptSignposter.endInterval(
-                        "Receipt selection to suggestions",
-                        suggestionsInterval,
-                        "outcome=empty"
-                    )
-                }
-                suggestionsIntervalEnded = true
-                return true
-            } handleNoSuggestions: {
-                guard generation == receiptScanGeneration,
-                      model.state == .ready else { return false }
-                isScanning = false
-                Self.receiptSignposter.endInterval(
-                    "Receipt selection to suggestions",
-                    suggestionsInterval,
-                    "outcome=empty"
-                )
-                suggestionsIntervalEnded = true
-                return true
-            } handleRecognitionFailure: { error in
-                guard generation == receiptScanGeneration else { return false }
-                smartMessage = safeUserMessage(for: error, context: .scan)
-                isScanning = false
-                Self.receiptSignposter.endInterval(
-                    "Receipt selection to suggestions",
-                    suggestionsInterval,
-                    "outcome=failed"
-                )
-                suggestionsIntervalEnded = true
-                return true
-            } prepareRetention: {
-                let sanitizationSignpostID = Self.receiptSignposter.makeSignpostID()
-                let sanitizationInterval = Self.receiptSignposter.beginInterval(
-                    "Receipt sanitization",
-                    id: sanitizationSignpostID
-                )
-                defer {
-                    Self.receiptSignposter.endInterval(
-                        "Receipt sanitization",
-                        sanitizationInterval
-                    )
-                }
-
-                do {
-                    let sanitized = try await ReceiptImageSanitizer
-                        .prepareForEncryptedStorage(data)
-                    try Task.checkCancellation()
-                    guard generation == receiptScanGeneration else { return }
-                    receiptAttachmentData = sanitized
-                    receiptRetentionMessage = nil
-                } catch is CancellationError {
-                    throw CancellationError()
-                } catch {
-                    guard generation == receiptScanGeneration else { return }
-                    receiptAttachmentData = nil
-                    receiptRetentionMessage = safeUserMessage(
-                        for: error,
-                        context: .scan
-                    )
-                }
-            }
+            try await runReceiptPipeline(
+                data: data,
+                generation: generation,
+                suggestionsInterval: suggestionsInterval,
+                signpostState: signpostState
+            )
         } catch is CancellationError {
             return
         } catch {
             guard generation == receiptScanGeneration else { return }
             smartMessage = safeUserMessage(for: error, context: .scan)
+        }
+    }
+
+    private func runReceiptPipeline(
+        data: Data,
+        generation: Int,
+        suggestionsInterval: OSSignpostIntervalState,
+        signpostState: ReceiptSuggestionSignpostState
+    ) async throws {
+        try await QuickLogReceiptPipeline.run {
+            try await model.receiptAnalysis(
+                from: data,
+                prefersDayFirst: Self.localePrefersDayFirst
+            )
+        } handleSuggestions: { result in
+            guard generation == receiptScanGeneration else { return false }
+            let didApplySuggestions = applyReceipt(result)
+
+            // Saving and editing can resume as soon as the OCR result is
+            // handled. The optional attachment remains unavailable until its
+            // private copy is ready.
+            isScanning = false
+            if didApplySuggestions {
+                Self.receiptSignposter.endInterval(
+                    "Receipt selection to suggestions",
+                    suggestionsInterval,
+                    "outcome=ready"
+                )
+            } else {
+                Self.receiptSignposter.endInterval(
+                    "Receipt selection to suggestions",
+                    suggestionsInterval,
+                    "outcome=empty"
+                )
+            }
+            signpostState.ended = true
+            return true
+        } handleNoSuggestions: {
+            guard generation == receiptScanGeneration,
+                  model.state == .ready else { return false }
+            isScanning = false
+            Self.receiptSignposter.endInterval(
+                "Receipt selection to suggestions",
+                suggestionsInterval,
+                "outcome=empty"
+            )
+            signpostState.ended = true
+            return true
+        } handleRecognitionFailure: { error in
+            guard generation == receiptScanGeneration else { return false }
+            smartMessage = safeUserMessage(for: error, context: .scan)
+            isScanning = false
+            Self.receiptSignposter.endInterval(
+                "Receipt selection to suggestions",
+                suggestionsInterval,
+                "outcome=failed"
+            )
+            signpostState.ended = true
+            return true
+        } prepareRetention: {
+            try await prepareReceiptRetention(data, generation: generation)
+        }
+    }
+
+    private func prepareReceiptRetention(
+        _ data: Data,
+        generation: Int
+    ) async throws {
+        let signpostID = Self.receiptSignposter.makeSignpostID()
+        let interval = Self.receiptSignposter.beginInterval(
+            "Receipt sanitization",
+            id: signpostID
+        )
+        defer {
+            Self.receiptSignposter.endInterval(
+                "Receipt sanitization",
+                interval
+            )
+        }
+
+        do {
+            let sanitized = try await ReceiptImageSanitizer
+                .prepareForEncryptedStorage(data)
+            try Task.checkCancellation()
+            guard generation == receiptScanGeneration else { return }
+            receiptAttachmentData = sanitized
+            receiptRetentionMessage = nil
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            guard generation == receiptScanGeneration else { return }
+            receiptAttachmentData = nil
+            receiptRetentionMessage = safeUserMessage(
+                for: error,
+                context: .scan
+            )
         }
     }
 
