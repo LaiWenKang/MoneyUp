@@ -841,6 +841,21 @@ def validate_project_configuration() -> None:
     print("Validated matching app/widget versions and automatic signing")
 
 
+def validate_swift_structure() -> None:
+    validator = ROOT / "Scripts" / "validate_swift_structure.py"
+    result = subprocess.run(
+        [sys.executable, str(validator)],
+        cwd=ROOT,
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip()
+        fail(f"Swift structure validation failed:\n{detail}")
+    print(result.stdout.strip())
+
+
 def workflow_step(workflow: str, name: str) -> str:
     match = re.search(
         rf"(?ms)^      - name: {re.escape(name)}\n"
@@ -888,6 +903,8 @@ def validate_ci_workflow() -> None:
             f'"{CI_IPHONESIMULATOR_SDK_VERSION}"'
         ),
         "runs-on: macos-15",
+        "Enforce Swift structure limits",
+        "python3 Scripts/validate_swift_structure.py",
         "DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer",
         "Verify the exact CI Xcode toolchain",
         "Verify the exact CI Xcode and simulator SDK",
@@ -1396,6 +1413,7 @@ def main() -> None:
     validate_public_documents()
     validate_release_fixture_generator()
     validate_project_configuration()
+    validate_swift_structure()
     validate_ci_workflow()
     validate_testflight_workflow()
     validate_testflight_owner_command_workflow()

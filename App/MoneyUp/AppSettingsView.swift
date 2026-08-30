@@ -53,6 +53,7 @@ struct AppSettingsView: View {
     }
 
     var body: some View {
+        @Bindable var bindableModel = model
         Form {
             Section {
                 Picker(
@@ -60,7 +61,11 @@ struct AppSettingsView: View {
                     selection: Binding(
                         get: { selectedAutoLockDelay },
                         set: { seconds in
-                            Task { await update { try await model.updateAutoLockDelay(seconds) } }
+                            Task {
+                                await update {
+                                    try await bindableModel.updateAutoLockDelay(seconds)
+                                }
+                            }
                         }
                     )
                 ) {
@@ -76,15 +81,21 @@ struct AppSettingsView: View {
                 Toggle(
                     "settings.locked_capture",
                     isOn: Binding(
-                        get: { model.profile?.allowLockedQuickCapture ?? true },
+                        get: {
+                            bindableModel.profile?.allowLockedQuickCapture ?? true
+                        },
                         set: { enabled in
-                            Task { await update { try await model.updateLockedQuickCapture(enabled) } }
+                            Task {
+                                await update {
+                                    try await bindableModel.updateLockedQuickCapture(enabled)
+                                }
+                            }
                         }
                     )
                 )
 
                 Button {
-                    model.lock()
+                    bindableModel.lock()
                 } label: {
                     Label("lock.lock_now", systemImage: "lock.fill")
                 }
@@ -98,18 +109,18 @@ struct AppSettingsView: View {
                 Picker(
                     "settings.default_account",
                     selection: Binding(
-                        get: { model.profile?.preferredAccountID },
+                        get: { bindableModel.profile?.preferredAccountID },
                         set: { value in
                             Task {
                                 await update {
-                                    try await model.updatePreferredAccount(value)
+                                    try await bindableModel.updatePreferredAccount(value)
                                 }
                             }
                         }
                     )
                 ) {
                     Text("settings.smart_default").tag(Optional<UUID>.none)
-                    ForEach(model.userAccounts) { account in
+                    ForEach(bindableModel.userAccounts) { account in
                         Text(account.name).tag(Optional(account.id))
                     }
                 }
@@ -117,18 +128,21 @@ struct AppSettingsView: View {
                 Picker(
                     "settings.default_expense_category",
                     selection: Binding(
-                        get: { model.profile?.preferredExpenseCategoryID },
+                        get: {
+                            bindableModel.profile?.preferredExpenseCategoryID
+                        },
                         set: { value in
                             Task {
                                 await update {
-                                    try await model.updatePreferredExpenseCategory(value)
+                                    try await bindableModel
+                                        .updatePreferredExpenseCategory(value)
                                 }
                             }
                         }
                     )
                 ) {
                     Text("settings.smart_default").tag(Optional<UUID>.none)
-                    ForEach(model.expenseCategories) { category in
+                    ForEach(bindableModel.expenseCategories) { category in
                         Text(category.name).tag(Optional(category.id))
                     }
                 }
@@ -136,18 +150,21 @@ struct AppSettingsView: View {
                 Picker(
                     "settings.default_income_category",
                     selection: Binding(
-                        get: { model.profile?.preferredIncomeCategoryID },
+                        get: {
+                            bindableModel.profile?.preferredIncomeCategoryID
+                        },
                         set: { value in
                             Task {
                                 await update {
-                                    try await model.updatePreferredIncomeCategory(value)
+                                    try await bindableModel
+                                        .updatePreferredIncomeCategory(value)
                                 }
                             }
                         }
                     )
                 ) {
                     Text("settings.smart_default").tag(Optional<UUID>.none)
-                    ForEach(model.incomeCategories) { category in
+                    ForEach(bindableModel.incomeCategories) { category in
                         Text(category.name).tag(Optional(category.id))
                     }
                 }
@@ -161,11 +178,14 @@ struct AppSettingsView: View {
                 Toggle(
                     "settings.widget.budget_status",
                     isOn: Binding(
-                        get: { model.profile?.showsBudgetStatusWidget ?? false },
+                        get: {
+                            bindableModel.profile?.showsBudgetStatusWidget ?? false
+                        },
                         set: { enabled in
                             Task {
                                 await update {
-                                    try await model.updateBudgetStatusWidget(enabled)
+                                    try await bindableModel
+                                        .updateBudgetStatusWidget(enabled)
                                 }
                             }
                         }
@@ -175,7 +195,7 @@ struct AppSettingsView: View {
 
                 LabeledContent(
                     "settings.reporting_time_zone",
-                    value: model.profile?.reportingTimeZoneIdentifier ?? "—"
+                    value: bindableModel.profile?.reportingTimeZoneIdentifier ?? "—"
                 )
             } header: {
                 Text("settings.widgets_and_reports")
@@ -184,16 +204,16 @@ struct AppSettingsView: View {
             }
 
             Section {
-                if model.pendingLockedCaptureCount > 0 {
+                if bindableModel.pendingLockedCaptureCount > 0 {
                     LabeledContent(
                         "settings.pending_captures",
-                        value: "\(model.pendingLockedCaptureCount)"
+                        value: "\(bindableModel.pendingLockedCaptureCount)"
                     )
                 }
-                if model.recoveryIssueCount > 0 {
+                if bindableModel.recoveryIssueCount > 0 {
                     LabeledContent(
                         "settings.quarantined_records",
-                        value: "\(model.recoveryIssueCount)"
+                        value: "\(bindableModel.recoveryIssueCount)"
                     )
                 }
 

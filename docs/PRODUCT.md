@@ -24,7 +24,7 @@ end-to-end encryption and authorization design is approved.
 
 ## Core capabilities
 
-| Capability | Unified Founders Beta 0.6.0 source behavior |
+| Capability | Current source behavior |
 |---|---|
 | Privacy and security | No account or backend; encrypted local database; timed local authentication; redacted locked capture |
 | First-run guidance | Four explicit steps: purpose/privacy, base currency, first financial account, and review; Today then offers visible Log and Plan actions |
@@ -41,11 +41,20 @@ end-to-end encryption and authorization design is approved.
 | Easy logging | Amount-first center Log, encrypted drafts, smart defaults, refund, exact splits, date-indexed History/edit, and Undo; keyboard Done, Save, and tab navigation remain reachable |
 | Smart entry | Responsive fast-first on-device receipt and screenshot reading with immediate progress and visible populated suggestions, typed-phrase parsing, and category suggestions learned from the user's own history |
 | Scale architecture | SQLCipher schema-6 journal/posting/receipt/budget indexes, trigger-maintained store metrics, compact balances, monthly rollover checkpoints, bounded recent activity, and on-demand History/Calendar/export loading |
+| State architecture | Per-property Observation tracking with injected Ledger, Planning, Assets, Portability, and Capture state services; `AppModel` retains lock and cross-service transaction coordination |
 | Languages | English and Simplified Chinese with locale-correct dates and amounts |
 
 These rows describe source implementation in the unified candidate. They do
 not close the exact-candidate Mac CI, physical iPhone, TestFlight, closed-beta,
 or App Store gates. See [Golden PRD traceability](GOLDEN_TRACEABILITY.md).
+
+The 0.7.0 W1 state migration is deliberately behavior-neutral. It changes no
+tab, workflow, accounting classification, persistence representation, privacy
+boundary, string, or visual asset. Its product effect is narrower invalidation:
+receipt/capture progress, planning edits, asset changes, and recovery state no
+longer broadcast one global `ObservableObject` change to unrelated screens.
+Settings writes are serialized so rapid choices converge on the latest value
+and one failed candidate cannot restore stale unrelated fields.
 
 ## Product rules
 

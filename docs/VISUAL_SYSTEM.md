@@ -18,6 +18,16 @@ mascot.
 - Large Dynamic Type switches dense horizontal groups to vertical layouts.
 - No decorative asset is required to understand or operate a screen.
 
+## 0.7.0 W1 presentation boundary
+
+The Observation and service decomposition is retained as visually neutral.
+It changes no palette value, typography, layout, animation, tab identity,
+artwork, chart encoding, widget payload, or user-visible string. Views obtain
+the same `AppModel` through the Observation environment, but only properties
+read by a view participate in its invalidation graph. This state-delivery
+change is not evidence for any unperformed screenshot, accessibility, motion,
+or physical-device matrix; those presentation gates remain open.
+
 ## Assets
 
 | Asset | Purpose | Source sizes |

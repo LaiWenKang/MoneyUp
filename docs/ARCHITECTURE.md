@@ -27,9 +27,9 @@ runtime backend is required.
 
 ## Module boundaries
 
-| Module | Responsibility | 0.6.0 source state |
+| Module | Responsibility | Source state |
 |---|---|---|
-| MoneyUp app | State machine, locking, bilingual SwiftUI, local guidance and workflows | Implemented in source; exact-candidate app tests open |
+| MoneyUp app | Observation-tracked state coordinator, locking, bilingual SwiftUI, local guidance and workflows | Implemented — verification pending |
 | MoneyUpCore | Exact money, ledger, hierarchy, recurrence, goals, investments, reports, export rules | Implemented in source; exact-candidate core tests open |
 | MoneyUpPersistence | SQLCipher schema/migrations, normalized encrypted indexes, atomic writes, snapshots | Implemented in source; Mac test gate open |
 | Widget | Redacted actions plus opt-in percentage/state status | Implemented in source; App Group registration/signing and device matrix open |
@@ -40,6 +40,46 @@ exact plan arithmetic. `InvestmentHolding`, `TransactionFactory`, and
 `NetWorthSnapshot` keep purchases, sales, repricing, FIFO metadata, and
 currency-separated observations tied to the ledger. SwiftUI can render those
 results, but dimensional artwork never carries a financial quantity.
+
+## Observation and service ownership
+
+`AppModel` is an `@MainActor @Observable` coordinator. SwiftUI receives it
+through `@Environment(AppModel.self)`, so Observation tracks the properties a
+view actually reads instead of broadcasting every mutation to every screen.
+Async settings bindings remain explicit `Binding` closures: persistence must
+complete through the serialized profile boundary before the observed profile
+changes, so a direct `@Bindable` write would bypass that safety contract.
+
+Mutable screen state is owned by injected, independently observable services:
+
+| Service | Owned state |
+|---|---|
+| `LedgerService` | Accounts, journal count/currentness, and the bounded recent journal |
+| `PlanningService` | Budget nodes, schedules, and savings goals |
+| `AssetsService` | Holdings, dated rates, and net-worth snapshots |
+| `PortabilityService` | Recovery and quarantine presentation state |
+| `CaptureService` | Draft, receipt metadata, locked-capture count, and Log routing |
+| `IntelligenceService` | Cancellation seam reserved for the separately reviewed intelligence workstream |
+
+The services do not own SQLCipher connections and cannot open an independent
+transaction. `AppModel` still coordinates locking, generation checks,
+cancellation, cross-service transitions, and exactly one store transaction for
+each operation that was atomic before the split. The deterministic clock,
+quarantine preservation, and rollback ordering remain at their prior seams.
+
+Whole-profile settings writes use a FIFO serializer. Each queued mutation
+re-reads the latest committed profile after it acquires the lane, persists only
+its local candidate, and publishes only after the write succeeds. Rapid input
+therefore converges on the last choice, while a failed mutation cannot replace
+or roll back an unrelated committed setting.
+
+Repository structure is a CI invariant. `Scripts/validate_swift_structure.py`
+checks every Swift file under `App/` and `Sources/`: files are limited to 1,200
+lines, type and extension bodies to 600 lines, and function bodies to 80 lines.
+The body-line convention excludes a declaration's signature and outer braces
+but includes blank and comment lines inside the body. The release validator
+also requires the explicit CI step, so removing or bypassing the gate fails
+release readiness.
 
 ## State and lock lifecycle
 
@@ -147,8 +187,8 @@ bytes, user-authored identifiers, names, amounts, currencies, notes, or balances
 
 ## Evidence boundary
 
-This architecture describes the source-integrated 0.6.0 candidate. It is not a
-claim that Swift/XCTest compiled on the exact merge, that the 10,000-entry
+This architecture includes the source-integrated 0.7.0 W1 candidate. It is not
+a claim that Swift/XCTest compiled on the final W1 SHA, that the 10,000-entry
 physical budgets passed, that upgrade/restore succeeded on iPhones, or that
 TestFlight/App Review accepted a binary. Those gates remain tracked in
 [Golden PRD traceability](GOLDEN_TRACEABILITY.md).

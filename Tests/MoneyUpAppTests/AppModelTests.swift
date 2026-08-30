@@ -9833,6 +9833,40 @@ extension AppModelTests {
     }
 
     @MainActor
+    func testFailedProfileMutationDoesNotRollBackUnrelatedSetting() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let profile = UserProfile(baseCurrency: fixture.sgd)
+        try await fixture.seed(
+            profile: profile,
+            accounts: [fixture.wallet, fixture.usAccount, fixture.food]
+        )
+        let model = fixture.model(profile: profile)
+
+        try await model.updatePreferredAccount(fixture.wallet.id)
+        do {
+            try await model.mutateProfile { candidate in
+                candidate.preferredExpenseCategoryID = fixture.food.id
+                throw AppModelError.invalidBook
+            }
+            XCTFail("Expected the scoped profile mutation to fail")
+        } catch AppModelError.invalidBook {
+            // The failed local candidate must never replace committed state.
+        }
+
+        let persisted = try await fixture.store.fetch(
+            UserProfile.self,
+            id: UserProfile.primaryRecordID,
+            from: .profile
+        )
+        XCTAssertEqual(model.profile?.preferredAccountID, fixture.wallet.id)
+        XCTAssertNil(model.profile?.preferredExpenseCategoryID)
+        XCTAssertEqual(persisted?.preferredAccountID, fixture.wallet.id)
+        XCTAssertNil(persisted?.preferredExpenseCategoryID)
+        await fixture.store.close()
+    }
+
+    @MainActor
     func testAugustBudgetEditPersistsProspectiveTimelineAndKeepsClosedCarry() async throws {
         let fixture = try AppModelFixture()
         defer { fixture.removeFiles() }

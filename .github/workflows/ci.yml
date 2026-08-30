@@ -28,6 +28,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Enforce Swift structure limits
+        run: python3 Scripts/validate_swift_structure.py
       - name: Validate privacy, localization, icons, and launch docs
         run: python3 Scripts/validate_release_assets.py
 

@@ -1,6 +1,6 @@
-# MoneyUp 0.6.0 Requirement Traceability Matrix
+# MoneyUp 0.6.0 / 0.7.0 W1 Requirement Traceability Matrix
 
-Reviewed: 28 August 2026
+Reviewed: 30 August 2026
 
 This matrix traces all 97 requirements in the controlling Golden PRD to source
 and at least one automated or manual acceptance case. The uploaded Word file is
@@ -19,6 +19,21 @@ the earlier `MoneyUp-PRD-v1.1.pdf` is contextual where it does not conflict.
 
 Test names are exact function names unless prefixed `STATIC` or `MANUAL`.
 Automated source presence is not reported as an execution pass.
+
+## 0.7.0 W1 acceptance overlay
+
+These architecture rows supplement rather than renumber the controlling 97
+Golden PRD requirements. Their disposition uses the release vocabulary defined
+for 0.7.0: **Implemented — verification pending**, **Retained**, **Deferred**,
+and **Release blocker**.
+
+| ID | Current problem | Acceptance summary | Source / test cases | Disposition |
+|---|---|---|---|---|
+| W1-OBS | One global `ObservableObject` broadcast invalidated unrelated screens. | App state uses per-property Observation tracking, and a mutation in each service invalidates only a reader of that service. | `AppModel`, `AppModelServices`, Observation environment call sites; `AppModelTests.testObservationInvalidatesOnlyTrackedAppModelProperties`. | Implemented — verification pending. |
+| W1-SVC | A 9,731-line state authority made ownership and safe concurrent review impractical. | Ledger, Planning, Assets, Portability, Capture, and Intelligence protocol seams are injected; the coordinator retains lock, generation, cancellation, quarantine, and cross-service sequencing. All Swift files/types/functions remain within 1,200/600/80 body-line limits. | `AppModelServices`, `AppModelDependencies`, bounded `AppModel*` extensions; `Scripts/validate_swift_structure.py`; release-validator and CI workflow checks. | Implemented — verification pending; final PR/merge CI is a release blocker. |
+| W1-TXN | Extracting service and plan helpers could accidentally split an existing durable transaction. | Save, edit, delete, split, import, reconciliation, schedule post, lifecycle, attachment retain, and goal movement retain one store transaction and rollback semantics. | DAT-09 operation-specific tests and persistence rollback tests below. | Implemented — verification pending. |
+| W1-C12 | Independent async profile writes could finish out of order or restore stale unrelated fields. | FIFO serialization re-reads the latest committed profile; rapid choices converge on the last value and a failed candidate cannot roll back another setting. | `ProfileMutationSerializer`; `AppModelTests.testProfileMutationsSerializeAndPreserveLatestUnrelatedChoices`, `.testFailedProfileMutationDoesNotRollBackUnrelatedSetting`. | Implemented — verification pending. |
+| W1-UX | Architecture work could drift navigation, strings, accounting, storage, privacy, or brand behavior. | Five tabs, bilingual catalogs, schema 6, transaction construction, offline boundary, palette, widget/App Group payload, and lock/security behavior are unchanged. | Release validator; `RootView`; `DATA_MODEL.md`; `VISUAL_SYSTEM.md`. | Retained. |
 
 ## Log and transaction capture
 
@@ -145,6 +160,26 @@ Automated source presence is not reported as an execution pass.
 | DAT-09 | Critical | Multi-record setup/edit/merge/import/restore/draft/reconciliation operations are atomic; journal payload/index derivation cannot be split; cancellation cannot turn a recovering/page read into truncated success; queued/older reads cannot publish across a writer; published projections fail closed through commit and recover coherently after failure. Any SQLite rollback failure closes/poisons the connection and surfaces indeterminate state rather than permitting another operation on an unknown transaction. | `EncryptedRecordStore.write/restore`, `RecordWrite`, `AppModel` barriers/revision gate; `EncryptedRecordStoreTests.testBatchWriteRollsBackEveryRecordWhenOneRecordFails`, `.testLifecycleBatchRollsBackRepointedEntryAuditAndSourceDeletionTogether`, `.testCancelledJournalRecordWriteCannotLoseItsNormalizedIndex`, `.testCancelledRecoveringJournalFetchCannotReturnATruncatedSuccess`, `.testCancelledJournalPageCannotReturnATruncatedSuccess`, `.testNormalWriteRejectsAnUnindexedJournalPayloadBeforeCommit`, `.testSnapshotRestoreCancellationRollsBackUnlessRecoveryIsUninterruptible`, `.testWriteRollbackFailureClosesConnectionAndReopenRecoversOldSnapshot`, `.testRestoreRollbackFailureClosesConnectionAndReopenRecoversOldSnapshot`; `AppModelTests.testCategoryMergeAtomicallyRepointsAllReferencesAndPreservesRevisionAudit`, `.testCancellationAtRestoreCommitBoundaryLeavesLiveSnapshotUnchanged`, `.testCancellationAfterRestoreCommitRecoversJournalIndexesAndBalance`, `.testRetainedRestoreFailureRepublishesTheUnchangedJournal`, `.testLockAfterCaptureHandoffCommitsExactlyOnceAndLeavesNoQueueCopy`, `.testQueuedProjectionCannotAdoptAWriterRevisionBeforeItsTaskStarts`, `.testProjectionReadCannotPublishBetweenJournalCommitAndRefresh`, `.testPublishedProjectionFailsClosedBeforeJournalCommitAndRecovers`, `.testRetainedJournalWriteFailureRepublishesCoherentPrecommitWidget`, `.testLockDeferredDuringCSVImportAppliesAfterExactCommit`. | AUTO-PENDING |
 | DAT-10 | Critical | One malformed/aliased row is quarantined/counted/retained without locking out the readable book, while malformed or noncanonical normal writes fail before commit; canonical non-journal rows remain authoritative, journal twins are excluded from every live read path, and alias mutation/cascade fails closed. Cancellation cannot become truncated success; deep/cyclic/orphan hierarchies are classified linearly; forged attribution disables only budget projection; strict restore caps top-level count, aggregate record-ID bytes, per-record identity/payload bytes, and all nested domain shapes before decode/SQL work. | recovering decoders, relationship quarantine, startup attribution validator, `RestoreCandidateValidator`; `EncryptedRecordStoreTests.testRecoveringFetchQuarantinesOnlyMalformedRows`, `.testUUIDIdentifiedWritesAndRecoveryRejectPhysicalAliases`, `.testLegacyLowercaseJournalAndReceiptAliasesAreQuarantined`, `.testCancelledRecoveringJournalFetchCannotReturnATruncatedSuccess`, `.testCancelledJournalPageCannotReturnATruncatedSuccess`, `.testNormalizedLedgerIndexQuarantinesTheWholeOrphanEntry`, `.testTargetedJournalRecoveryBatchesIDsAndChecksPayloadIdentity`, `.testNormalWriteRejectsAnUnindexedJournalPayloadBeforeCommit`; `AppModelTests.testFreshBookDetectionChecksEveryPersistedCollection`, `.testRecoveringStartupQuarantinesAliasedAccountIdentityWithoutResurrection`, `.testRecoveringStartupExcludesCanonicalJournalTwinFromEveryReadPath`, `.testAccountHierarchyScreeningHandlesDeepChainsAndInvalidDescendants`, `.testRecoveringStartupFailsBudgetProjectionClosedForInvalidAttribution`, `.testRestoreRejectsSharedLineageAmplificationBeforePerEntryTraversal`, `.testRestoreIdentityValidationObservesCancellation`, `.testRestoreWorkLimitsRejectOversizedNestedRowsBeforeDomainDecode`, `.testRecoveryPresentationAggregatesAreasWithoutRawIdentifiers`; `LedgerAccountLifecycleTests.testLifecycleAuditRejectsCombinedAffectedRecordOverflowOnEncodeAndDecode`. | AUTO-PENDING |
 
+W1 retains the DAT-09 boundary through these operation-specific assertions:
+
+| Operation | Exact test anchor |
+|---|---|
+| Save | `AppModelTests.testLockDuringSaveCommitsExactlyOnceWithoutRepopulatingLockedState` |
+| Edit | `AppModelTests.testReplacingEntryRetainsEncryptedRevisionAndInvalidatesBalanceCache` |
+| Delete | `AppModelTests.testLazyJournalEditsAndDeletesEntryOlderThanRecentCacheExactly` |
+| Split | `AppModelTests.testSplitAndExplicitReceiptCommitThenDeleteAtomically` |
+| Import | `AppModelTests.testLockDeferredDuringCSVImportAppliesAfterExactCommit` |
+| Reconcile | `AppModelTests.testAdjustmentCannotBeDeletedAndCompensatingCorrectionIsExact` |
+| Schedule post | `AppModelTests.testPostingSchedulePersistsEntryAndAdvancementAtomicallyExactlyOnce` |
+| Lifecycle change | `AppModelTests.testCategoryMergeAtomicallyRepointsAllReferencesAndPreservesRevisionAudit` |
+| Attachment retain | `AppModelTests.testSplitAndExplicitReceiptCommitThenDeleteAtomically` |
+| Goal movement | `AppModelTests.testContributionWithdrawalResetArchiveAndDeleteUseOneFIFOGoalLane` |
+
+The cross-operation rollback authority remains
+`EncryptedRecordStoreTests.testBatchWriteRollsBackEveryRecordWhenOneRecordFails`
+and
+`EncryptedRecordStoreTests.testLifecycleBatchRollsBackRepointedEntryAuditAndSourceDeletionTogether`.
+
 ## Privacy and security
 
 | ID | Risk | Acceptance summary | Source / test cases | State |
@@ -164,7 +199,7 @@ Automated source presence is not reported as an execution pass.
 
 | ID | Risk | Acceptance summary | Source / test cases | State |
 |---|---|---|---|---|
-| QA-01 | Critical | Core/persistence run warnings-as-errors and app/widget build on every PR/main update. | `.github/workflows/ci.yml`; STATIC `QA-01-WORKFLOW` verifies immutable action pins, checksummed XcodeGen, exact Xcode 16.4 build 16F6/iOS Simulator SDK 18.5 checks, warning flags, logs/result bundles, and both coverage artifacts; exact-candidate execution remains pending. | BLOCKED-P1 |
+| QA-01 | Critical | Swift structure limits run before the full release validator; core/persistence run warnings-as-errors and app/widget build on every PR/main update. | `.github/workflows/ci.yml`, `Scripts/validate_swift_structure.py`, and `Scripts/validate_release_assets.py`; STATIC `QA-01-WORKFLOW` verifies the 1,200/600/80 limits, immutable action pins, checksummed XcodeGen, exact Xcode 16.4 build 16F6/iOS Simulator SDK 18.5 checks, warning flags, logs/result bundles, and both coverage artifacts; exact-candidate execution remains pending. | BLOCKED-P1 |
 | QA-02 | Critical | App target covers lock/save/scan/deep-link/erase/stale generation, capture/lifecycle, startup/authentication privacy, backup/restore/draft, projection/commit, published-state recovery, import/lock races, interrupted validation cleanup, and durable erase resumption. | `MoneyUpAppTests`; `testLockDuringSaveCommitsExactlyOnceWithoutRepopulatingLockedState`, `testLaunchingStateTracksExpiredInactivityAndKeepsAuthenticationCover`, `testCancelledStartupAuthenticationClearsCoverInBothCallbackOrders`, `testFailedStartupCompletesDeferredLockBeforeRemovingCover`, `testExpiredAutoLockKeepsPrivacyCoverWhileRestoreDrains`, `testLockDuringReceiptScanDiscardsTheStaleResult`, `testErasePersistsIntentBeforeDeletingMainKeyAndClearsItLast`, `testStartupCompletesPendingEraseBeforeOpeningReplacementStore`, `testPendingEraseIntentDeniesAndForgetsLockedCaptureRoute`, `testEraseIntentReadFailureFailsClosedForLockedCapture`, `testAcceptedLockedCaptureWriteBlocksEraseUntilAppendFinishes`, `testStaleGenerationWriteDoesNotRepopulateMemoryAfterLock`, `testLockedCaptureRejectsMismatchedAndProtectedRoutes`, `testLockedCaptureDuplicateRetryRemainsIdempotentAtCapacity`, `testLockedCaptureRecoveryNeverDeletesAfterTransientOrStaleFailure`, `testLockWaitsForCapturePromotionAndKeepsOneDurableDraft`, `testRestoreCannotCrossCapturePromotionHandoff`, `testImmediateBackupFlushesLatestQuickLogDraftIntoLiveStoreAndArchive`, `testWrongPasswordRestorePersistsLatestDraftAcrossCloseAndReopen`, `testRestoreScavengesPowerLossValidationArtifacts`, `testCancellationAfterRestoreCommitRecoversJournalIndexesAndBalance`, `testRetainedRestoreFailureRepublishesTheUnchangedJournal`, `testQueuedProjectionCannotAdoptAWriterRevisionBeforeItsTaskStarts`, `testProjectionReadCannotPublishBetweenJournalCommitAndRefresh`, `testPublishedProjectionFailsClosedBeforeJournalCommitAndRecovers`, `testRetainedJournalWriteFailureRepublishesCoherentPrecommitWidget`, `testLockDeferredDuringCSVImportAppliesAfterExactCommit`, `testImportRejectsMaliciousSystemAccountAndCategoryMappings`. | AUTO-PENDING |
 | QA-03 | Critical | Regression suite covers audit D-01..D-23, minor units, locale, FX edits, revisions, caches, BOM, rollback/rollback failure, deep hierarchies, strict nested restore bounds, portable-archive KDF/cancellation/legacy compatibility, import identities, and async/lifecycle/erase-resume races. | Named tests throughout this matrix; STATIC `QA-03-D01-D23-MAP`; exact candidate declaration count is reconciled in Coverage accounting. | AUTO-PENDING |
 | QA-04 | Critical | Required iPhone/language/appearance/Dynamic Type/VoiceOver/Reduce Motion/widget matrix and Golden p95 budgets pass. | `FIRST_TEST.md`; MANUAL `QA-04-PHYSICAL-MATRIX`, 10,000-entry/20-schedule cold-start/monthly-checkpoint/rollover measurement, and v2/v1 archive peak-memory observation. Source scaling remediations are present; measurements remain release-blocking evidence. | BLOCKED-P1; MANUAL-OPEN |
@@ -176,9 +211,11 @@ Automated source presence is not reported as an execution pass.
 
 - Requirements traced: **97 / 97**.
 - Requirements with at least one named automated or manual case: **97 / 97**.
-- Declared automated tests in source after this review: **514** (252 core, 49
-  persistence, and 213 app-target declarations; XCTest methods plus Swift
-  Testing `@Test` declarations).
+- Declared automated tests in source after this review: **541** (252 core, 49
+  persistence, and 240 app-target declarations; XCTest methods plus Swift
+  Testing `@Test` declarations). Of those declarations, **491** are XCTest
+  functions named `test...`; the remaining 50 are Swift Testing `@Test`
+  declarations in MoneyUpCore.
 - Tests executed against this exact candidate in this environment: **0**;
   Swift and Xcode are unavailable here, and the macOS CI run is pending.
 - Local static validation is reported separately in

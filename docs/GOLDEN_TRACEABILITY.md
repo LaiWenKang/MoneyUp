@@ -1,10 +1,11 @@
-# Golden PRD Traceability - MoneyUp 0.6.0 Candidate
+# Golden PRD Traceability - MoneyUp 0.6.0 / 0.7.0 W1 Candidate
 
-Reconciled: 28 August 2026
+Reconciled: 30 August 2026
 
 This is the requirement-to-evidence map for the source-integrated MoneyUp 0.6.0
-candidate (source build 8). It prevents "implemented in source" from being
-misreported as "released" or "accepted."
+candidate (source build 8) plus the behavior-neutral 0.7.0 W1 architecture
+slice. It prevents "implemented in source" from being misreported as
+"released" or "accepted."
 
 The exact 97-row requirement-to-test mapping is in
 [REQUIREMENTS_TEST_MATRIX.md](REQUIREMENTS_TEST_MATRIX.md). The complete source,
@@ -25,6 +26,16 @@ Local static checks alone may catch localization, JSON, privacy-asset, and
 repository-shape errors. They are not substitutes for Mac compilation or
 exact-candidate tests. Similarly, a configured CI workflow is not a green
 exact-candidate run.
+
+## 0.7.0 W1 architecture traceability
+
+| ID | Implementation and evidence anchor | Current evidence state |
+|---|---|---|
+| W1-OBS | `@Observable AppModel`, `@Environment(AppModel.self)`, the five observable service state owners, and `AppModelTests.testObservationInvalidatesOnlyTrackedAppModelProperties` replace global `ObservableObject` broadcasts with tracked reads. Async persisted settings intentionally retain explicit bindings instead of direct synchronous mutation. | Implemented — verification pending; final PR and merged-SHA CI remain release blockers. |
+| W1-SVC | `AppModelServices`, protocol seams, and bounded `AppModel*` extensions separate Ledger, Planning, Assets, Portability, Capture, and future Intelligence ownership while the coordinator retains lock, generation, cancellation, and cross-service sequencing. | Implemented — verification pending; no physical performance claim. |
+| W1-C12 | `ProfileMutationSerializer`, `testProfileMutationsSerializeAndPreserveLatestUnrelatedChoices`, and `testFailedProfileMutationDoesNotRollBackUnrelatedSetting` enforce FIFO latest-choice convergence and scoped failure isolation without a profile representation change. | Implemented — verification pending. |
+| W1-TXN | The operation-specific AppModel tests mapped under DAT-09 cover save, edit, delete, split/attachment, import, reconciliation, schedule posting, lifecycle, and goal movement; store rollback tests retain the durable boundary. | Implemented — verification pending; physical interruption remains deferred. |
+| W1-STRUCT | `Scripts/validate_swift_structure.py`, its release-validator invocation, and the explicit CI step enforce 1,200-line files, 600-line type/extension bodies, and 80-line function bodies under `App/` and `Sources/`. | Release blocker: the new gate must pass on the final PR and merged SHA. |
 
 ## Capture and transactions
 
