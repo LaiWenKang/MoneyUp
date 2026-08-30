@@ -18,7 +18,7 @@ public enum InvestmentHoldingError: Error, Equatable, Sendable {
     case correctionUnavailable
 }
 
-private func checkedInvestmentProduct(
+func checkedInvestmentProduct(
     _ left: Decimal,
     _ right: Decimal
 ) throws -> Decimal {
@@ -31,7 +31,7 @@ private func checkedInvestmentProduct(
     }
 }
 
-private func checkedInvestmentSum(
+func checkedInvestmentSum(
     _ left: Decimal,
     _ right: Decimal
 ) throws -> Decimal {
@@ -44,7 +44,7 @@ private func checkedInvestmentSum(
     }
 }
 
-private func checkedInvestmentDifference(
+func checkedInvestmentDifference(
     _ left: Decimal,
     _ right: Decimal
 ) throws -> Decimal {
@@ -349,7 +349,7 @@ public struct InvestmentHolding: Codable, Equatable, Identifiable, Sendable {
     public var lots: [InvestmentLot]
     public var disposals: [InvestmentDisposal]
     public private(set) var corrections: [InvestmentActivityCorrection]
-    public private(set) var isArchived: Bool
+    public internal(set) var isArchived: Bool
 
     public init(
         id: UUID = UUID(),
