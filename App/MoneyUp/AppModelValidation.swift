@@ -6,6 +6,11 @@ import SwiftUI
 import UIKit
 import WidgetKit
 
+private struct LoadedInvestmentValidationContext {
+    let linkedEntriesByID: [UUID: JournalEntry]
+    let balances: [UUID: [CurrencyCode: Money]]
+}
+
 extension AppModel {
     func clearDecodedState() {
         journalProjectionRevision &+= 1
@@ -44,6 +49,24 @@ extension AppModel {
 
     func validateLoadedBook() throws {
         guard let profile else { return }
+        let accountIDs = try validateLoadedAccountsAndJournal(profile: profile)
+        try validateLoadedSchedules(accountIDs: accountIDs)
+        let investmentContext = try loadedInvestmentValidationContext()
+        for holding in investmentHoldings {
+            try validateLoadedHolding(
+                holding,
+                context: investmentContext
+            )
+        }
+        try validateLoadedInvestmentPositions(
+            balances: investmentContext.balances
+        )
+        try validateLoadedAttachmentsAndGoals()
+    }
+
+    private func validateLoadedAccountsAndJournal(
+        profile: UserProfile
+    ) throws -> Set<UUID> {
         let accountIDs = Set(accounts.map(\.id))
         guard accountIDs.count == accounts.count else { throw AppModelError.invalidBook }
 
@@ -63,6 +86,12 @@ extension AppModel {
         }) else {
             throw AppModelError.invalidBook
         }
+        return accountIDs
+    }
+
+    private func validateLoadedSchedules(
+        accountIDs: Set<UUID>
+    ) throws {
         for item in scheduledTransactions {
             guard accountIDs.contains(item.accountID),
                   accountIDs.contains(item.categoryAccountID) else {
@@ -86,6 +115,10 @@ extension AppModel {
               Set(scheduledLinkedEntryIDs).isSubset(of: knownScheduledEntryIDs) else {
             throw AppModelError.invalidBook
         }
+    }
+
+    private func loadedInvestmentValidationContext()
+    throws -> LoadedInvestmentValidationContext {
         guard Set(investmentHoldings.map(\.id)).count == investmentHoldings.count else {
             throw AppModelError.invalidBook
         }
@@ -109,73 +142,86 @@ extension AppModel {
         case .unavailable:
             throw AppModelError.invalidBook
         }
-        for holding in investmentHoldings {
-            guard let funding = accountsByID[holding.accountID],
-                  isInvestmentFundingAccountShape(funding),
-                  holding.isArchived || !funding.isArchived else {
-                throw AppModelError.invalidBook
-            }
-            let holdingCurrencies = Set(
-                [holding.price?.currency]
-                    + holding.priceHistory.map { Optional($0.price.currency) }
-                    + holding.lots.map { Optional($0.unitCost.currency) }
-                    + holding.disposals.flatMap {
-                        [Optional($0.costBasis.currency), Optional($0.proceeds.currency),
-                         Optional($0.realizedGainLoss.currency)]
-                    }
-            ).compactMap { $0 }
-            guard holdingCurrencies.allSatisfy({ $0 == funding.currency }) else {
-                throw AppModelError.invalidBook
-            }
-            guard let positionID = holding.positionAccountID else {
-                guard !holding.isArchived,
-                      holding.linkedEntryIDs.isEmpty,
-                      holding.quantity == .zero || holding.needsLedgerConnection else {
-                    throw AppModelError.invalidBook
-                }
-                continue
-            }
-            guard positionID != funding.id,
-                  let currency = funding.currency,
-                  let position = accountsByID[positionID],
-                  position.kind == .asset,
-                  position.systemRole == .investmentPosition,
-                  position.currency == currency,
-                  position.isArchived == holding.isArchived else {
-                throw AppModelError.invalidBook
-            }
-            do {
-                try InvestmentLedgerIntegrity.validate(
-                    holding: holding,
-                    accountsByID: accountsByID,
-                    entriesByID: knownLinkedEntries
-                )
-            } catch is CancellationError {
-                throw CancellationError()
-            } catch {
-                throw AppModelError.invalidBook
-            }
-            let expectedValue: Money
-            do {
-                expectedValue = try holding.marketValue()
-                    ?? Money.zero(currency: currency)
-            } catch is CancellationError {
-                throw CancellationError()
-            } catch {
-                throw AppModelError.invalidBook
-            }
-            let positionBalances = balances[positionID] ?? [:]
-            guard positionBalances.allSatisfy({ pair in
-                pair.key == funding.currency || pair.value.isZero
-            }) else {
-                throw AppModelError.invalidBook
-            }
-            let actualValue = positionBalances[currency]
-                ?? Money.zero(currency: currency)
-            guard actualValue == expectedValue else {
-                throw AppModelError.invalidBook
-            }
+        return LoadedInvestmentValidationContext(
+            linkedEntriesByID: knownLinkedEntries,
+            balances: balances
+        )
+    }
+
+    private func validateLoadedHolding(
+        _ holding: InvestmentHolding,
+        context: LoadedInvestmentValidationContext
+    ) throws {
+        guard let funding = accountsByID[holding.accountID],
+              isInvestmentFundingAccountShape(funding),
+              holding.isArchived || !funding.isArchived else {
+            throw AppModelError.invalidBook
         }
+        let holdingCurrencies = Set(
+            [holding.price?.currency]
+                + holding.priceHistory.map { Optional($0.price.currency) }
+                + holding.lots.map { Optional($0.unitCost.currency) }
+                + holding.disposals.flatMap {
+                    [Optional($0.costBasis.currency), Optional($0.proceeds.currency),
+                     Optional($0.realizedGainLoss.currency)]
+                }
+        ).compactMap { $0 }
+        guard holdingCurrencies.allSatisfy({ $0 == funding.currency }) else {
+            throw AppModelError.invalidBook
+        }
+        guard let positionID = holding.positionAccountID else {
+            guard !holding.isArchived,
+                  holding.linkedEntryIDs.isEmpty,
+                  holding.quantity == .zero || holding.needsLedgerConnection else {
+                throw AppModelError.invalidBook
+            }
+            return
+        }
+        guard positionID != funding.id,
+              let currency = funding.currency,
+              let position = accountsByID[positionID],
+              position.kind == .asset,
+              position.systemRole == .investmentPosition,
+              position.currency == currency,
+              position.isArchived == holding.isArchived else {
+            throw AppModelError.invalidBook
+        }
+        do {
+            try InvestmentLedgerIntegrity.validate(
+                holding: holding,
+                accountsByID: accountsByID,
+                entriesByID: context.linkedEntriesByID
+            )
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            throw AppModelError.invalidBook
+        }
+        let expectedValue: Money
+        do {
+            expectedValue = try holding.marketValue()
+                ?? Money.zero(currency: currency)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            throw AppModelError.invalidBook
+        }
+        let positionBalances = context.balances[positionID] ?? [:]
+        guard positionBalances.allSatisfy({ pair in
+            pair.key == funding.currency || pair.value.isZero
+        }) else {
+            throw AppModelError.invalidBook
+        }
+        let actualValue = positionBalances[currency]
+            ?? Money.zero(currency: currency)
+        guard actualValue == expectedValue else {
+            throw AppModelError.invalidBook
+        }
+    }
+
+    private func validateLoadedInvestmentPositions(
+        balances: [UUID: [CurrencyCode: Money]]
+    ) throws {
         let linkedPositionArchiveState = Dictionary(
             uniqueKeysWithValues: investmentHoldings.compactMap { holding in
                 holding.positionAccountID.map { ($0, holding.isArchived) }
@@ -193,6 +239,9 @@ extension AppModel {
         }) else {
             throw AppModelError.invalidBook
         }
+    }
+
+    private func validateLoadedAttachmentsAndGoals() throws {
         if retainsCompleteJournal {
             let entryIDs = Set(entries.map(\.id))
             let attachmentIDs = Set(receiptAttachmentMetadata.map(\.id))
