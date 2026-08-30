@@ -46,6 +46,37 @@ extension AppModel {
         investmentEntriesByID: [UUID: JournalEntry] = [:],
         observesCancellation: Bool
     ) throws {
+        try quarantineInvalidAccountHierarchy(
+            observesCancellation: observesCancellation
+        )
+        var accountIDs = Set(accounts.map(\.id))
+        let retainedAccountByID = Dictionary(
+            uniqueKeysWithValues: accounts.map { ($0.id, $0) }
+        )
+        quarantineInvalidBudgetRelationships()
+        quarantineInvalidJournalRelationships(accountIDs: accountIDs)
+        quarantineInvalidBudgetAttributions(
+            existingEntryIDs: existingBudgetAttributionEntryIDs
+        )
+        try quarantineInvalidScheduleRelationships(
+            accountIDs: accountIDs,
+            existingEntryIDs: existingScheduledEntryIDs
+        )
+        try quarantineInvalidInvestmentRelationships(
+            retainedAccountByID: retainedAccountByID,
+            investmentEntriesByID: investmentEntriesByID
+        )
+        quarantineOrphanInvestmentPositions(accountIDs: &accountIDs)
+        retainLinkedInvestmentEntries()
+        quarantineInvalidReceiptRelationships(
+            existingEntryIDs: existingAttachmentEntryIDs
+        )
+        quarantineDuplicateSavingsGoals()
+    }
+
+    func quarantineInvalidAccountHierarchy(
+        observesCancellation: Bool
+    ) throws {
         let invalidHierarchyIDs = try Self.invalidAccountHierarchyIDs(
             in: accounts,
             observesCancellation: observesCancellation
@@ -56,18 +87,18 @@ extension AppModel {
             })
             accounts.removeAll { invalidHierarchyIDs.contains($0.id) }
         }
-        var accountIDs = Set(accounts.map(\.id))
-        let retainedAccountByID = Dictionary(
-            uniqueKeysWithValues: accounts.map { ($0.id, $0) }
-        )
+    }
 
+    func quarantineInvalidBudgetRelationships() {
         let expenseIDs = Set(accounts.filter { $0.kind == .expense }.map(\.id))
         let invalidBudgetIDs = Set(budgetNodes.filter {
             !expenseIDs.contains($0.id)
                 || ($0.parentID.map { !expenseIDs.contains($0) } ?? false)
         }.map(\.id))
         if !invalidBudgetIDs.isEmpty {
-            recoveryIssues.append(contentsOf: invalidBudgetIDs.map { "budgets/orphan-\($0)" })
+            recoveryIssues.append(contentsOf: invalidBudgetIDs.map {
+                "budgets/orphan-\($0)"
+            })
             budgetNodes.removeAll { invalidBudgetIDs.contains($0.id) }
         }
         if let currency = profile?.baseCurrency,
@@ -76,12 +107,40 @@ extension AppModel {
             recoveryIssues.append("budgets/invalid-tree")
             budgetNodes = []
         }
+    }
 
+    func quarantineInvalidJournalRelationships(accountIDs: Set<UUID>) {
         entries.removeAll { entry in
-            let invalid = entry.postings.contains { !accountIDs.contains($0.accountID) }
-            if invalid { recoveryIssues.append("journal_entries/orphan-\(entry.id)") }
+            let invalid = entry.postings.contains {
+                !accountIDs.contains($0.accountID)
+            }
+            if invalid {
+                recoveryIssues.append("journal_entries/orphan-\(entry.id)")
+            }
             return invalid
         }
+    }
+
+    func quarantineInvalidBudgetAttributions(
+        existingEntryIDs: Set<UUID>?
+    ) {
+        let entryIDs = Set(entries.map(\.id))
+        budgetEntryAttributions = budgetEntryAttributions.filter { item in
+            let valid = existingEntryIDs?.contains(item.key)
+                ?? entryIDs.contains(item.key)
+            if !valid {
+                recoveryIssues.append(
+                    "budget_entry_attributions/orphan-\(item.key)"
+                )
+            }
+            return valid
+        }
+    }
+
+    func quarantineInvalidScheduleRelationships(
+        accountIDs: Set<UUID>,
+        existingEntryIDs: Set<UUID>?
+    ) throws {
         var scheduleLinkOwners: [UUID: Set<UUID>] = [:]
         for schedule in scheduledTransactions {
             for entryID in schedule.resolutions.compactMap(\.linkedEntryID) {
@@ -91,17 +150,6 @@ extension AppModel {
         let reusedScheduleEntryIDs = Set(
             scheduleLinkOwners.filter { $0.value.count > 1 }.keys
         )
-        let entryIDs = Set(entries.map(\.id))
-        budgetEntryAttributions = budgetEntryAttributions.filter { item in
-            let valid = existingBudgetAttributionEntryIDs?.contains(item.key)
-                ?? entryIDs.contains(item.key)
-            if !valid {
-                recoveryIssues.append(
-                    "budget_entry_attributions/orphan-\(item.key)"
-                )
-            }
-            return valid
-        }
         try scheduledTransactions.removeAll { item in
             let linkedEntryIDs = Set(item.resolutions.compactMap(\.linkedEntryID))
             let invalidLifecycle: Bool
@@ -117,12 +165,20 @@ extension AppModel {
                 || !accountIDs.contains(item.categoryAccountID)
                 || invalidLifecycle
                 || !linkedEntryIDs.isDisjoint(with: reusedScheduleEntryIDs)
-                || existingScheduledEntryIDs.map {
+                || existingEntryIDs.map {
                     !linkedEntryIDs.isSubset(of: $0)
                 } == true
-            if invalid { recoveryIssues.append("scheduled_transactions/orphan-\(item.id)") }
+            if invalid {
+                recoveryIssues.append("scheduled_transactions/orphan-\(item.id)")
+            }
             return invalid
         }
+    }
+
+    func quarantineInvalidInvestmentRelationships(
+        retainedAccountByID: [UUID: LedgerAccount],
+        investmentEntriesByID: [UUID: JournalEntry]
+    ) throws {
         let duplicateHoldingIDs = Set(
             Dictionary(grouping: investmentHoldings, by: \.id)
                 .filter { $0.value.count > 1 }
@@ -144,95 +200,155 @@ extension AppModel {
         }
         let reusedEntryIDs = Set(entryOwners.filter { $0.value.count > 1 }.keys)
         try investmentHoldings.removeAll { holding in
-            let funding = retainedAccountByID[holding.accountID]
-            let position = holding.positionAccountID.flatMap { id in
-                retainedAccountByID[id]
+            let invalid = try isInvalidRecoveryInvestmentHolding(
+                holding,
+                duplicateHoldingIDs: duplicateHoldingIDs,
+                duplicatePositionIDs: duplicatePositionIDs,
+                reusedEntryIDs: reusedEntryIDs,
+                retainedAccountByID: retainedAccountByID,
+                investmentEntriesByID: investmentEntriesByID
+            )
+            if invalid {
+                recoveryIssues.append("investment_holdings/orphan-\(holding.id)")
             }
-            let holdingCurrencies = Set(
-                [holding.price?.currency]
-                    + holding.priceHistory.map { Optional($0.price.currency) }
-                    + holding.lots.map { Optional($0.unitCost.currency) }
-                    + holding.disposals.flatMap {
-                        [Optional($0.costBasis.currency), Optional($0.proceeds.currency),
-                         Optional($0.realizedGainLoss.currency)]
-                    }
-            ).compactMap { $0 }
-            let invalidFunding = funding.map {
-                !isInvestmentFundingAccountShape($0)
-                    || (!holding.isArchived && $0.isArchived)
-            } ?? true
-            let invalidPosition: Bool
-            if let positionID = holding.positionAccountID {
-                invalidPosition = positionID == holding.accountID
-                    || position?.systemRole != .investmentPosition
-                    || position?.kind != .asset
-                    || position?.currency != funding?.currency
-                    || position?.isArchived != holding.isArchived
-            } else {
-                invalidPosition = holding.isArchived
-                    || !holding.linkedEntryIDs.isEmpty
-                    || !(holding.quantity == .zero || holding.needsLedgerConnection)
-            }
-            let invalidLinks: Bool
-            if holding.positionAccountID != nil {
-                do {
-                    try InvestmentLedgerIntegrity.validate(
-                        holding: holding,
-                        accountsByID: retainedAccountByID,
-                        entriesByID: investmentEntriesByID
-                    )
-                    invalidLinks = false
-                } catch is CancellationError {
-                    throw CancellationError()
-                } catch {
-                    invalidLinks = true
-                }
-            } else {
-                invalidLinks = !holding.linkedEntryIDs.isEmpty
-            }
-            let invalid = duplicateHoldingIDs.contains(holding.id)
-                || holding.positionAccountID.map(duplicatePositionIDs.contains) == true
-                || !holding.linkedEntryIDs.isDisjoint(with: reusedEntryIDs)
-                || invalidFunding
-                || holdingCurrencies.contains { $0 != funding?.currency }
-                || invalidPosition
-                || invalidLinks
-            if invalid { recoveryIssues.append("investment_holdings/orphan-\(holding.id)") }
             return invalid
         }
-        let retainedPositionIDs = Set(investmentHoldings.compactMap(\.positionAccountID))
+    }
+
+    func isInvalidRecoveryInvestmentHolding(
+        _ holding: InvestmentHolding,
+        duplicateHoldingIDs: Set<UUID>,
+        duplicatePositionIDs: Set<UUID>,
+        reusedEntryIDs: Set<UUID>,
+        retainedAccountByID: [UUID: LedgerAccount],
+        investmentEntriesByID: [UUID: JournalEntry]
+    ) throws -> Bool {
+        let funding = retainedAccountByID[holding.accountID]
+        let position = holding.positionAccountID.flatMap {
+            retainedAccountByID[$0]
+        }
+        let invalidFunding = funding.map {
+            !isInvestmentFundingAccountShape($0)
+                || (!holding.isArchived && $0.isArchived)
+        } ?? true
+        let invalidPosition = invalidRecoveryInvestmentPosition(
+            holding,
+            position: position,
+            funding: funding
+        )
+        let invalidLinks = try hasInvalidRecoveryInvestmentLinks(
+            holding,
+            accountsByID: retainedAccountByID,
+            entriesByID: investmentEntriesByID
+        )
+        return duplicateHoldingIDs.contains(holding.id)
+            || holding.positionAccountID.map(duplicatePositionIDs.contains) == true
+            || !holding.linkedEntryIDs.isDisjoint(with: reusedEntryIDs)
+            || invalidFunding
+            || recoveryHoldingCurrencies(holding).contains {
+                $0 != funding?.currency
+            }
+            || invalidPosition
+            || invalidLinks
+    }
+
+    func recoveryHoldingCurrencies(
+        _ holding: InvestmentHolding
+    ) -> Set<CurrencyCode> {
+        Set(
+            [holding.price?.currency]
+                + holding.priceHistory.map { Optional($0.price.currency) }
+                + holding.lots.map { Optional($0.unitCost.currency) }
+                + holding.disposals.flatMap {
+                    [Optional($0.costBasis.currency), Optional($0.proceeds.currency),
+                     Optional($0.realizedGainLoss.currency)]
+                }
+        ).compactMap { $0 }
+    }
+
+    func invalidRecoveryInvestmentPosition(
+        _ holding: InvestmentHolding,
+        position: LedgerAccount?,
+        funding: LedgerAccount?
+    ) -> Bool {
+        if let positionID = holding.positionAccountID {
+            return positionID == holding.accountID
+                || position?.systemRole != .investmentPosition
+                || position?.kind != .asset
+                || position?.currency != funding?.currency
+                || position?.isArchived != holding.isArchived
+        }
+        return holding.isArchived
+            || !holding.linkedEntryIDs.isEmpty
+            || !(holding.quantity == .zero || holding.needsLedgerConnection)
+    }
+
+    func hasInvalidRecoveryInvestmentLinks(
+        _ holding: InvestmentHolding,
+        accountsByID: [UUID: LedgerAccount],
+        entriesByID: [UUID: JournalEntry]
+    ) throws -> Bool {
+        guard holding.positionAccountID != nil else {
+            return !holding.linkedEntryIDs.isEmpty
+        }
+        do {
+            try InvestmentLedgerIntegrity.validate(
+                holding: holding,
+                accountsByID: accountsByID,
+                entriesByID: entriesByID
+            )
+            return false
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            return true
+        }
+    }
+
+    func quarantineOrphanInvestmentPositions(
+        accountIDs: inout Set<UUID>
+    ) {
+        let retainedPositionIDs = Set(
+            investmentHoldings.compactMap(\.positionAccountID)
+        )
         let activeOrphanPositionIDs = Set(accounts.compactMap { account -> UUID? in
             guard account.systemRole == .investmentPosition,
                   !account.isArchived,
                   !retainedPositionIDs.contains(account.id) else { return nil }
             return account.id
         })
-        if !activeOrphanPositionIDs.isEmpty {
-            recoveryIssues.append(contentsOf: activeOrphanPositionIDs.map {
-                "accounts/orphan-investment-position-\($0)"
-            })
-            accounts.removeAll { activeOrphanPositionIDs.contains($0.id) }
-            accountIDs.subtract(activeOrphanPositionIDs)
-            entries.removeAll { entry in
-                entry.postings.contains {
-                    activeOrphanPositionIDs.contains($0.accountID)
-                }
-            }
-            scheduledTransactions.removeAll { schedule in
-                activeOrphanPositionIDs.contains(schedule.accountID)
-                    || activeOrphanPositionIDs.contains(
-                        schedule.categoryAccountID
-                    )
+        guard !activeOrphanPositionIDs.isEmpty else { return }
+        recoveryIssues.append(contentsOf: activeOrphanPositionIDs.map {
+            "accounts/orphan-investment-position-\($0)"
+        })
+        accounts.removeAll { activeOrphanPositionIDs.contains($0.id) }
+        accountIDs.subtract(activeOrphanPositionIDs)
+        entries.removeAll { entry in
+            entry.postings.contains {
+                activeOrphanPositionIDs.contains($0.accountID)
             }
         }
+        scheduledTransactions.removeAll { schedule in
+            activeOrphanPositionIDs.contains(schedule.accountID)
+                || activeOrphanPositionIDs.contains(
+                    schedule.categoryAccountID
+                )
+        }
+    }
+
+    func retainLinkedInvestmentEntries() {
         let retainedInvestmentEntryIDs = Set(
             investmentHoldings.flatMap { Array($0.linkedEntryIDs) }
         )
         investmentLinkedEntriesByID = investmentLinkedEntriesByID.filter {
             retainedInvestmentEntryIDs.contains($0.key)
         }
-        let attachmentEntryIDs = existingAttachmentEntryIDs
-            ?? Set(entries.map(\.id))
+    }
+
+    func quarantineInvalidReceiptRelationships(
+        existingEntryIDs: Set<UUID>?
+    ) {
+        let attachmentEntryIDs = existingEntryIDs ?? Set(entries.map(\.id))
         var seenAttachmentIDs = Set<UUID>()
         receiptAttachmentMetadata.removeAll { attachment in
             let duplicate = !seenAttachmentIDs.insert(attachment.id).inserted
@@ -245,14 +361,21 @@ extension AppModel {
             }
             return invalid
         }
+    }
+
+    func quarantineDuplicateSavingsGoals() {
         var seenGoalIDs = Set<UUID>()
         savingsGoals = savingsGoals.filter { goal in
             let unique = seenGoalIDs.insert(goal.id).inserted
-            if !unique { recoveryIssues.append("savings_goals/duplicate-\(goal.id)") }
+            if !unique {
+                recoveryIssues.append("savings_goals/duplicate-\(goal.id)")
+            }
             return unique
         }
     }
+}
 
+extension AppModel {
     /// Normal unlock keeps the rest of a readable book available when a
     /// holding's reconstructed market value disagrees with its ledger account.
     /// Restore validation deliberately skips this repair and rejects instead.
