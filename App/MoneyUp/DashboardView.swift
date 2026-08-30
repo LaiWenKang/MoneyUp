@@ -197,7 +197,7 @@ struct DashboardView: View {
     }
 }
 
-private struct PositionMetric: View {
+struct PositionMetric: View {
     let title: LocalizedStringKey
     let value: String
     let systemImage: String
@@ -224,7 +224,7 @@ private struct PositionMetric: View {
     }
 }
 
-private struct FlexibleTodayBreakdownSheet: View {
+struct FlexibleTodayBreakdownSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     let breakdown: FlexibleTodayBreakdown
