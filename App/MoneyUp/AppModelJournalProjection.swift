@@ -6,6 +6,26 @@ import SwiftUI
 import UIKit
 import WidgetKit
 
+private struct JournalSaveContext {
+    let entry: JournalEntry
+    let completedLockedCaptureID: UUID?
+    let generation: Int
+    let currentDraft: QuickLogDraft?
+    let store: EncryptedRecordStore
+    let pendingDraftWrite: Task<Void, Never>?
+}
+
+private struct JournalSaveBudgetCandidate {
+    let attributions: [UUID: BudgetEntryAttribution]
+    let entries: [JournalEntry]?
+    let timeline: BudgetConfigurationTimeline?
+}
+
+private struct JournalSaveWriteCandidate {
+    let writes: [RecordWrite]
+    let receiptAttachment: ReceiptAttachment?
+}
+
 extension AppModel {
     func invalidateDerivedData() {
         reportCache.removeAll()
@@ -107,8 +127,68 @@ extension AppModel {
     ) async throws -> UUID? {
         try beginJournalMutation()
         defer { endJournalMutation() }
+        let context = try prepareJournalSave(entry)
+        let attribution = try BudgetEntryAttribution(
+            entry: context.entry,
+            originTimeZoneIdentifier: profile?.reportingTimeZoneIdentifier
+                ?? reportingCalendar.timeZone.identifier
+        )
+        let budgetCandidate = try await journalSaveBudgetCandidate(
+            entry: context.entry,
+            attribution: attribution,
+            store: context.store
+        )
+        let writeCandidate = try journalSaveWriteCandidate(
+            entry: context.entry,
+            attribution: attribution,
+            additionalWrites: additionalWrites,
+            receiptData: receiptData,
+            timeline: budgetCandidate.timeline
+        )
+        if let completedLockedCaptureID = context.completedLockedCaptureID {
+            try await completeLockedCaptureBeforeJournalCommit(
+                id: completedLockedCaptureID,
+                currentDraft: context.currentDraft,
+                pendingDraftWrite: context.pendingDraftWrite,
+                store: context.store,
+                generation: context.generation
+            )
+        }
+        let commitTask = journalCommitTask(
+            pendingDraftWrite: context.pendingDraftWrite,
+            store: context.store,
+            writes: writeCandidate.writes
+        )
+        let commitID = UUID()
+        quickLogCommit = PendingQuickLogCommit(
+            id: commitID,
+            generation: context.generation,
+            task: commitTask
+        )
+        defer {
+            if quickLogCommit?.id == commitID {
+                quickLogCommit = nil
+            }
+        }
+        try await commitTask.value
+        await lifecycleHooks.checkpoint(
+            .afterJournalCommitBeforeProjectionRefresh
+        )
+        guard isCurrentStoreGeneration(context.generation) else { return nil }
+        await publishSavedJournalEntry(
+            context: context,
+            budgetCandidate: budgetCandidate,
+            receiptAttachment: writeCandidate.receiptAttachment,
+            additionalAccounts: additionalAccounts
+        )
+        return context.entry.id
+    }
+
+    private func prepareJournalSave(
+        _ entry: JournalEntry
+    ) throws -> JournalSaveContext {
         let completedLockedCaptureID = quickLogDraft?.sourceCaptureID
-        let entry = try appAuthoredEntry(
+        let authoredEntry = try appAuthoredEntry(
             entry,
             sourceSystemOverride: completedLockedCaptureID == nil
                 ? nil : "MoneyUp Locked Capture",
@@ -128,18 +208,28 @@ extension AppModel {
         let pendingDraftWrite = quickLogDraftWriteTask
         pendingDraftWrite?.cancel()
         quickLogDraftWriteTask = nil
-        let attribution = try BudgetEntryAttribution(
-            entry: entry,
-            originTimeZoneIdentifier: profile?.reportingTimeZoneIdentifier
-                ?? reportingCalendar.timeZone.identifier
+        return JournalSaveContext(
+            entry: authoredEntry,
+            completedLockedCaptureID: completedLockedCaptureID,
+            generation: generation,
+            currentDraft: currentDraft,
+            store: transactionStore,
+            pendingDraftWrite: pendingDraftWrite
         )
+    }
+
+    private func journalSaveBudgetCandidate(
+        entry: JournalEntry,
+        attribution: BudgetEntryAttribution,
+        store: EncryptedRecordStore
+    ) async throws -> JournalSaveBudgetCandidate {
         var candidateAttributions = budgetEntryAttributions
         candidateAttributions[entry.id] = attribution
         let affectedMonths = [
             try budgetAffectedMonth(for: entry, attribution: attribution)
         ].compactMap { $0 }
         var candidateEntries = try await journalEntriesForBudgetMutation(
-            from: transactionStore,
+            from: store,
             affectedReportingMonths: affectedMonths
         )
         if candidateEntries != nil {
@@ -163,6 +253,20 @@ extension AppModel {
         } else {
             candidateTimeline = nil
         }
+        return JournalSaveBudgetCandidate(
+            attributions: candidateAttributions,
+            entries: candidateEntries,
+            timeline: candidateTimeline
+        )
+    }
+
+    private func journalSaveWriteCandidate(
+        entry: JournalEntry,
+        attribution: BudgetEntryAttribution,
+        additionalWrites: [RecordWrite],
+        receiptData: Data?,
+        timeline: BudgetConfigurationTimeline?
+    ) throws -> JournalSaveWriteCandidate {
         var pendingWrites = additionalWrites
         let receiptAttachment: ReceiptAttachment?
         if let receiptData {
@@ -192,46 +296,53 @@ extension AppModel {
                 in: .budgetEntryAttributions
             )
         )
-        if let candidateTimeline {
-            pendingWrites.append(
-                try budgetConfigurationTimelineWrite(candidateTimeline)
-            )
+        if let timeline {
+            pendingWrites.append(try budgetConfigurationTimelineWrite(timeline))
         }
-        // A capture is represented durably by the SQLCipher draft before it is
-        // removed from the redacted inbox. Remove any surviving inbox copy
-        // before committing the journal entry: if this fails, the encrypted
-        // draft remains retryable; if the process stops afterward, either the
-        // draft or the committed journal entry remains, never a promotable
-        // duplicate of an already committed transaction.
-        if let completedLockedCaptureID {
-            guard let currentDraft,
-                  currentDraft.sourceCaptureID == completedLockedCaptureID else {
-                throw AppModelError.invalidBook
-            }
-            await pendingDraftWrite?.value
-            try await transactionStore.upsert(
-                currentDraft,
-                id: QuickLogDraft.primaryRecordID,
-                in: .quickLogDrafts
-            )
-            let remainingCaptureCount = try await lockedCaptureStore.remove(
-                id: completedLockedCaptureID
-            )
-            guard ownsStoreGeneration(generation) else {
-                throw AppModelError.locked
-            }
-            pendingLockedCaptureCount = remainingCaptureCount
-            recoveryIssues.removeAll { $0.hasPrefix("locked_captures/") }
+        return JournalSaveWriteCandidate(
+            writes: pendingWrites,
+            receiptAttachment: receiptAttachment
+        )
+    }
+
+    private func completeLockedCaptureBeforeJournalCommit(
+        id: UUID,
+        currentDraft: QuickLogDraft?,
+        pendingDraftWrite: Task<Void, Never>?,
+        store: EncryptedRecordStore,
+        generation: Int
+    ) async throws {
+        guard let currentDraft,
+              currentDraft.sourceCaptureID == id else {
+            throw AppModelError.invalidBook
         }
-        let writes = pendingWrites
-        let commitTask = Task {
+        await pendingDraftWrite?.value
+        try await store.upsert(
+            currentDraft,
+            id: QuickLogDraft.primaryRecordID,
+            in: .quickLogDrafts
+        )
+        let remainingCaptureCount = try await lockedCaptureStore.remove(id: id)
+        guard ownsStoreGeneration(generation) else {
+            throw AppModelError.locked
+        }
+        pendingLockedCaptureCount = remainingCaptureCount
+        recoveryIssues.removeAll { $0.hasPrefix("locked_captures/") }
+    }
+
+    private func journalCommitTask(
+        pendingDraftWrite: Task<Void, Never>?,
+        store: EncryptedRecordStore,
+        writes: [RecordWrite]
+    ) -> Task<Void, Error> {
+        Task {
             await pendingDraftWrite?.value
             await lifecycleHooks.checkpoint(.beforeJournalCommit)
             invalidateCommittedJournalProjection()
             await lifecycleHooks.checkpoint(
                 .afterJournalProjectionInvalidationBeforeCommit
             )
-            try await transactionStore.write(
+            try await store.write(
                 writes,
                 removing: [
                     RecordDeletion(
@@ -241,49 +352,45 @@ extension AppModel {
                 ]
             )
         }
-        let commitID = UUID()
-        quickLogCommit = PendingQuickLogCommit(
-            id: commitID,
-            generation: generation,
-            task: commitTask
-        )
-        defer {
-            if quickLogCommit?.id == commitID {
-                quickLogCommit = nil
-            }
-        }
-        try await commitTask.value
-        await lifecycleHooks.checkpoint(
-            .afterJournalCommitBeforeProjectionRefresh
-        )
-        guard isCurrentStoreGeneration(generation) else { return nil }
+    }
+
+    private func publishSavedJournalEntry(
+        context: JournalSaveContext,
+        budgetCandidate: JournalSaveBudgetCandidate,
+        receiptAttachment: ReceiptAttachment?,
+        additionalAccounts: [LedgerAccount]
+    ) async {
         quickLogDraft = nil
         if !additionalAccounts.isEmpty {
             accounts.append(contentsOf: additionalAccounts)
         }
         if let receiptAttachment {
-            receiptAttachmentMetadata.append(ReceiptAttachmentMetadata(receiptAttachment))
+            receiptAttachmentMetadata.append(
+                ReceiptAttachmentMetadata(receiptAttachment)
+            )
         }
-        if let candidateTimeline { budgetConfigurationTimeline = candidateTimeline }
-        budgetEntryAttributions = candidateAttributions
-        if retainsCompleteJournal, let candidateEntries { entries = candidateEntries }
+        if let timeline = budgetCandidate.timeline {
+            budgetConfigurationTimeline = timeline
+        }
+        budgetEntryAttributions = budgetCandidate.attributions
+        if retainsCompleteJournal, let entries = budgetCandidate.entries {
+            self.entries = entries
+        }
         await refreshJournalAfterMutation()
-        if completedLockedCaptureID != nil {
-            do {
-                try await promoteLockedCaptureIfPossible(
-                    to: transactionStore,
-                    generation: generation,
-                    requestLogRoute: false
-                )
-            } catch let error as LockedCaptureStoreError {
-                recordLockedCaptureStoreIssue(error)
-            } catch {
-                // The journal entry is already durable. Surface a safe
-                // recovery signal instead of reporting Save as failed.
-                recordRecoveryIssue("locked_captures/promotion-unavailable")
-            }
+        guard context.completedLockedCaptureID != nil else { return }
+        do {
+            try await promoteLockedCaptureIfPossible(
+                to: context.store,
+                generation: context.generation,
+                requestLogRoute: false
+            )
+        } catch let error as LockedCaptureStoreError {
+            recordLockedCaptureStoreIssue(error)
+        } catch {
+            // The journal entry is already durable. Surface a safe recovery
+            // signal instead of reporting Save as failed.
+            recordRecoveryIssue("locked_captures/promotion-unavailable")
         }
-        return entry.id
     }
 
     func scheduleQuickLogDraftWrite(_ draft: QuickLogDraft?) {
