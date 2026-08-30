@@ -7,6 +7,21 @@ import UIKit
 import WidgetKit
 
 extension AppModel {
+    private struct InvestmentHoldingAddition {
+        let candidate: InvestmentHolding
+        let writes: [RecordWrite]
+        let addedAccounts: [LedgerAccount]
+        let openingEntry: JournalEntry?
+    }
+
+    private struct LegacyInvestmentConnection {
+        let index: Int
+        let holding: InvestmentHolding
+        let writes: [RecordWrite]
+        let addedAccounts: [LedgerAccount]
+        let entry: JournalEntry
+    }
+
     func addInvestmentHolding(
         _ holding: InvestmentHolding,
         treatment: InvestmentOpeningTreatment
@@ -15,6 +30,30 @@ extension AppModel {
         defer { endJournalMutation() }
         try beginInvestmentMutation(id: holding.id)
         defer { investmentMutationsInProgress.remove(holding.id) }
+        let (currency, activityDate) = try validateInvestmentHoldingAddition(holding)
+        let addition = try prepareInvestmentHoldingAddition(
+            holding,
+            treatment: treatment,
+            currency: currency,
+            activityDate: activityDate
+        )
+        let generation = storeGeneration
+        let holdingStore = try requireStore()
+        if addition.openingEntry != nil {
+            invalidateCommittedJournalProjection()
+            await lifecycleHooks.checkpoint(
+                .afterJournalProjectionInvalidationBeforeCommit
+            )
+        }
+        try await holdingStore.write(addition.writes)
+        guard isCurrentStoreGeneration(generation) else { return }
+        applyInvestmentHoldingAddition(addition)
+        if addition.openingEntry != nil { await refreshJournalAfterMutation() }
+    }
+
+    private func validateInvestmentHoldingAddition(
+        _ holding: InvestmentHolding
+    ) throws -> (currency: CurrencyCode, activityDate: Date) {
         guard !investmentHoldings.contains(where: { $0.id == holding.id }) else {
             throw AppModelError.transactionInProgress
         }
@@ -41,7 +80,15 @@ extension AppModel {
         }
         let activityDate = holding.priceAsOf ?? Date()
         try validateInvestmentActivityDate(activityDate, after: nil)
+        return (currency, activityDate)
+    }
 
+    private func prepareInvestmentHoldingAddition(
+        _ holding: InvestmentHolding,
+        treatment: InvestmentOpeningTreatment,
+        currency: CurrencyCode,
+        activityDate: Date
+    ) throws -> InvestmentHoldingAddition {
         let positionAccount = LedgerAccount(
             name: "\(holding.symbol.isEmpty ? holding.name : holding.symbol) · \(String(localized: "holding.position_value"))",
             kind: .asset,
@@ -60,91 +107,115 @@ extension AppModel {
             try RecordWrite(positionAccount, id: positionAccount.id.uuidString, in: .accounts)
         ]
         var addedAccounts = [positionAccount]
-        var openingEntry: JournalEntry?
+        let openingEntry: JournalEntry?
         if holding.quantity > .zero, let price = holding.price {
-            let entryID = UUID()
-            try performInvestmentDomainOperation {
-                try candidate.recordPurchase(
-                    quantity: holding.quantity,
-                    unitCost: price,
-                    occurredAt: activityDate,
-                    entryID: entryID
-                )
-                try candidate.recordPrice(
-                    price,
-                    asOf: activityDate,
-                    entryID: entryID
-                )
-            }
-            guard let total = try validatedInvestmentMarketValue(candidate) else {
-                throw AppModelError.missingInvestmentPrice
-            }
-            guard total.amount > .zero else {
-                throw AppModelError.invalidInvestmentTrade
-            }
-            let entry: JournalEntry
-            switch treatment {
-            case .deductFromCash:
-                entry = try TransactionFactory.investmentPurchase(
-                    cashCost: total,
-                    resultingPositionValue: total,
-                    previousPositionValue: .zero(currency: currency),
-                    cashAccountID: holding.accountID,
-                    positionAccountID: positionAccount.id,
-                    gainLossAccountID: UUID(),
-                    occurredAt: activityDate,
-                    payee: holding.name,
-                    note: String(localized: "holding.purchase_note"),
-                    id: entryID,
-                    originContext: investmentOriginContext(for: activityDate)
-                )
-            case .cashAlreadyExcludesPosition:
-                let equity = openingBalancesAccount()
-                if !accounts.contains(where: { $0.id == equity.id }) {
-                    writes.append(try RecordWrite(
-                        equity,
-                        id: equity.id.uuidString,
-                        in: .accounts
-                    ))
-                    addedAccounts.append(equity)
-                }
-                entry = try TransactionFactory.investmentOpening(
-                    positionValue: total,
-                    positionAccountID: positionAccount.id,
-                    equityAccountID: equity.id,
-                    occurredAt: activityDate,
-                    note: String(localized: "holding.opening_position_note"),
-                    id: entryID,
-                    originContext: investmentOriginContext(for: activityDate)
-                )
-            }
+            let opening = try prepareInvestmentHoldingOpening(
+                candidate: &candidate,
+                holding: holding,
+                positionAccountID: positionAccount.id,
+                price: price,
+                treatment: treatment,
+                currency: currency,
+                activityDate: activityDate
+            )
+            writes.append(contentsOf: opening.accountWrites)
+            addedAccounts.append(contentsOf: opening.addedAccounts)
+            let entry = opening.entry
             writes.append(try RecordWrite(entry, id: entry.id.uuidString, in: .journalEntries))
             openingEntry = entry
+        } else {
+            openingEntry = nil
         }
         writes.append(try RecordWrite(
             candidate,
             id: candidate.id.uuidString,
             in: .investmentHoldings
         ))
-        let generation = storeGeneration
-        let holdingStore = try requireStore()
-        if openingEntry != nil {
-            invalidateCommittedJournalProjection()
-            await lifecycleHooks.checkpoint(
-                .afterJournalProjectionInvalidationBeforeCommit
+        return InvestmentHoldingAddition(
+            candidate: candidate,
+            writes: writes,
+            addedAccounts: addedAccounts,
+            openingEntry: openingEntry
+        )
+    }
+
+    private func prepareInvestmentHoldingOpening(
+        candidate: inout InvestmentHolding,
+        holding: InvestmentHolding,
+        positionAccountID: UUID,
+        price: Money,
+        treatment: InvestmentOpeningTreatment,
+        currency: CurrencyCode,
+        activityDate: Date
+    ) throws -> (entry: JournalEntry, accountWrites: [RecordWrite], addedAccounts: [LedgerAccount]) {
+        let entryID = UUID()
+        try performInvestmentDomainOperation {
+            try candidate.recordPurchase(
+                quantity: holding.quantity,
+                unitCost: price,
+                occurredAt: activityDate,
+                entryID: entryID
             )
+            try candidate.recordPrice(price, asOf: activityDate, entryID: entryID)
         }
-        try await holdingStore.write(writes)
-        guard isCurrentStoreGeneration(generation) else { return }
-        accounts.append(contentsOf: addedAccounts)
-        investmentHoldings.append(candidate)
-        if retainsCompleteJournal, let openingEntry {
+        guard let total = try validatedInvestmentMarketValue(candidate) else {
+            throw AppModelError.missingInvestmentPrice
+        }
+        guard total.amount > .zero else { throw AppModelError.invalidInvestmentTrade }
+        switch treatment {
+        case .deductFromCash:
+            let entry = try TransactionFactory.investmentPurchase(
+                cashCost: total,
+                resultingPositionValue: total,
+                previousPositionValue: .zero(currency: currency),
+                cashAccountID: holding.accountID,
+                positionAccountID: positionAccountID,
+                gainLossAccountID: UUID(),
+                occurredAt: activityDate,
+                payee: holding.name,
+                note: String(localized: "holding.purchase_note"),
+                id: entryID,
+                originContext: investmentOriginContext(for: activityDate)
+            )
+            return (entry, [], [])
+        case .cashAlreadyExcludesPosition:
+            let equity = openingBalancesAccount()
+            let isNew = !accounts.contains(where: { $0.id == equity.id })
+            let accountWrites: [RecordWrite]
+            let addedAccounts: [LedgerAccount]
+            if isNew {
+                accountWrites = [
+                    try RecordWrite(equity, id: equity.id.uuidString, in: .accounts)
+                ]
+                addedAccounts = [equity]
+            } else {
+                accountWrites = []
+                addedAccounts = []
+            }
+            let entry = try TransactionFactory.investmentOpening(
+                positionValue: total,
+                positionAccountID: positionAccountID,
+                equityAccountID: equity.id,
+                occurredAt: activityDate,
+                note: String(localized: "holding.opening_position_note"),
+                id: entryID,
+                originContext: investmentOriginContext(for: activityDate)
+            )
+            return (entry, accountWrites, addedAccounts)
+        }
+    }
+
+    private func applyInvestmentHoldingAddition(
+        _ addition: InvestmentHoldingAddition
+    ) {
+        accounts.append(contentsOf: addition.addedAccounts)
+        investmentHoldings.append(addition.candidate)
+        if retainsCompleteJournal, let openingEntry = addition.openingEntry {
             entries.insert(openingEntry, at: 0)
         }
-        if let openingEntry {
+        if let openingEntry = addition.openingEntry {
             investmentLinkedEntriesByID[openingEntry.id] = openingEntry
         }
-        if openingEntry != nil { await refreshJournalAfterMutation() }
     }
 
     func repriceInvestmentHolding(
@@ -246,6 +317,30 @@ extension AppModel {
         defer { endJournalMutation() }
         try beginInvestmentMutation(id: id)
         defer { investmentMutationsInProgress.remove(id) }
+        let connection = try prepareLegacyInvestmentConnection(
+            id: id,
+            fundingAccountID: fundingAccountID,
+            deductFromCash: deductFromCash,
+            occurredAt: occurredAt
+        )
+        let generation = storeGeneration
+        let store = try requireStore()
+        invalidateCommittedJournalProjection()
+        await lifecycleHooks.checkpoint(
+            .afterJournalProjectionInvalidationBeforeCommit
+        )
+        try await store.write(connection.writes)
+        guard isCurrentStoreGeneration(generation) else { return }
+        applyLegacyInvestmentConnection(connection)
+        await refreshJournalAfterMutation()
+    }
+
+    private func prepareLegacyInvestmentConnection(
+        id: UUID,
+        fundingAccountID: UUID?,
+        deductFromCash: Bool,
+        occurredAt: Date
+    ) throws -> LegacyInvestmentConnection {
         guard let index = investmentHoldings.firstIndex(where: { $0.id == id }) else {
             throw AppModelError.missingRecord
         }
@@ -292,14 +387,48 @@ extension AppModel {
         guard value.amount > .zero else {
             throw AppModelError.invalidInvestmentTrade
         }
-        let entry: JournalEntry
-        var addedAccounts = [position]
+        let entryAndAccounts = try legacyInvestmentEntry(
+            holding: holding,
+            funding: funding,
+            position: position,
+            value: value,
+            deductFromCash: deductFromCash,
+            occurredAt: occurredAt,
+            entryID: entryID
+        )
+        let entry = entryAndAccounts.entry
+        let addedAccounts = entryAndAccounts.addedAccounts
+        var writes = try addedAccounts.map {
+            try RecordWrite($0, id: $0.id.uuidString, in: .accounts)
+        }
+        writes += [
+            try RecordWrite(holding, id: holding.id.uuidString, in: .investmentHoldings),
+            try RecordWrite(entry, id: entry.id.uuidString, in: .journalEntries)
+        ]
+        return LegacyInvestmentConnection(
+            index: index,
+            holding: holding,
+            writes: writes,
+            addedAccounts: addedAccounts,
+            entry: entry
+        )
+    }
+
+    private func legacyInvestmentEntry(
+        holding: InvestmentHolding,
+        funding: LedgerAccount,
+        position: LedgerAccount,
+        value: Money,
+        deductFromCash: Bool,
+        occurredAt: Date,
+        entryID: UUID
+    ) throws -> (entry: JournalEntry, addedAccounts: [LedgerAccount]) {
         if deductFromCash {
-            let gain = investmentGainLossAccount(for: currency)
-            entry = try TransactionFactory.investmentPurchase(
+            let gain = investmentGainLossAccount(for: value.currency)
+            let entry = try TransactionFactory.investmentPurchase(
                 cashCost: value,
                 resultingPositionValue: value,
-                previousPositionValue: .zero(currency: currency),
+                previousPositionValue: .zero(currency: value.currency),
                 cashAccountID: funding.id,
                 positionAccountID: position.id,
                 gainLossAccountID: gain.id,
@@ -309,9 +438,10 @@ extension AppModel {
                 id: entryID,
                 originContext: investmentOriginContext(for: occurredAt)
             )
+            return (entry, [position])
         } else {
             let equity = openingBalancesAccount()
-            entry = try TransactionFactory.investmentOpening(
+            let entry = try TransactionFactory.investmentOpening(
                 positionValue: value,
                 positionAccountID: position.id,
                 equityAccountID: equity.id,
@@ -320,29 +450,21 @@ extension AppModel {
                 id: entryID,
                 originContext: investmentOriginContext(for: occurredAt)
             )
-            if !accounts.contains(where: { $0.id == equity.id }) { addedAccounts.append(equity) }
+            guard !accounts.contains(where: { $0.id == equity.id }) else {
+                return (entry, [position])
+            }
+            return (entry, [position, equity])
         }
-        var writes = try addedAccounts.map {
-            try RecordWrite($0, id: $0.id.uuidString, in: .accounts)
-        }
-        writes += [
-            try RecordWrite(holding, id: holding.id.uuidString, in: .investmentHoldings),
-            try RecordWrite(entry, id: entry.id.uuidString, in: .journalEntries)
-        ]
-        let generation = storeGeneration
-        let store = try requireStore()
-        invalidateCommittedJournalProjection()
-        await lifecycleHooks.checkpoint(
-            .afterJournalProjectionInvalidationBeforeCommit
-        )
-        try await store.write(writes)
-        guard isCurrentStoreGeneration(generation) else { return }
-        accounts.append(contentsOf: addedAccounts.filter { account in
+    }
+
+    private func applyLegacyInvestmentConnection(
+        _ connection: LegacyInvestmentConnection
+    ) {
+        accounts.append(contentsOf: connection.addedAccounts.filter { account in
             !accounts.contains(where: { $0.id == account.id })
         })
-        investmentHoldings[index] = holding
-        if retainsCompleteJournal { entries.insert(entry, at: 0) }
-        investmentLinkedEntriesByID[entry.id] = entry
-        await refreshJournalAfterMutation()
+        investmentHoldings[connection.index] = connection.holding
+        if retainsCompleteJournal { entries.insert(connection.entry, at: 0) }
+        investmentLinkedEntriesByID[connection.entry.id] = connection.entry
     }
 }
