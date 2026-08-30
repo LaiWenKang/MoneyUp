@@ -523,12 +523,15 @@ extension AppModel {
                 return $0.occurredAt > $1.occurredAt
             }
         }
-        let timeline = try candidateEntries.map {
-            try budgetTimelineAfterJournalMutation(
-                journalEntries: $0,
+        let timeline: BudgetConfigurationTimeline?
+        if let candidateEntries {
+            timeline = try budgetTimelineAfterJournalMutation(
+                journalEntries: candidateEntries,
                 attributions: attributions,
                 affectedReportingMonths: affectedMonths
             )
+        } else {
+            timeline = nil
         }
         return JournalEntryReplacementBudgetPlan(
             attribution: pair.replacement,
