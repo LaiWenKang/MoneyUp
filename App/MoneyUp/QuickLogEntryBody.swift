@@ -6,6 +6,7 @@ import SwiftUI
 import UIKit
 
 extension QuickLogEntryView {
+    @ViewBuilder
     var body: some View {
         let historicalFXConversionResult = historicalFXConversion
         NavigationStack {
