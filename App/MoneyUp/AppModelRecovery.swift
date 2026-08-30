@@ -6,6 +6,28 @@ import SwiftUI
 import UIKit
 import WidgetKit
 
+struct AppModelRecoveredBookRecords: Sendable {
+    let accounts: RecoveredRecords<LedgerAccount>
+    let budgets: RecoveredRecords<BudgetNode>
+    let schedules: RecoveredRecords<ScheduledTransaction>
+    let holdings: RecoveredRecords<InvestmentHolding>
+    let attachments: ReceiptAttachmentIndexSnapshot
+    let rates: RecoveredRecords<DatedExchangeRate>
+    let snapshots: RecoveredRecords<NetWorthSnapshot>
+    let goals: RecoveredRecords<SavingsGoal>
+    let attributionIndex: BudgetAttributionIndexSnapshot
+    let budgetAttributions: RecoveredRecords<BudgetEntryAttribution>?
+    let loadsCompleteBudgetAttributions: Bool
+}
+
+struct AppModelRecoveryRelationships: Sendable {
+    let attachmentEntryIDs: Set<UUID>
+    let scheduledEntryIDs: Set<UUID>
+    let budgetAttributionEntryIDs: Set<UUID>?
+    let investmentEntriesByID: [UUID: JournalEntry]
+    let loadsCompleteBudgetAttributions: Bool
+}
+
 extension AppModel {
     func reloadPersistedBookForTesting() async throws {
         try await load(from: requireStore())
@@ -51,6 +73,36 @@ extension AppModel {
         from store: EncryptedRecordStore,
         mode: BookLoadMode = .recovering
     ) async throws {
+        prepareBookLoadState()
+        try await loadRecoveryProfile(from: store, mode: mode)
+        let recovered = try await fetchRecoveredBookRecords(
+            from: store,
+            mode: mode
+        )
+        await loadBudgetConfigurationTimeline(from: store)
+        try applyRecoveredBookRecords(recovered, mode: mode)
+        let relationships = try await loadRecoveryRelationships(
+            from: store,
+            loadsCompleteBudgetAttributions:
+                recovered.loadsCompleteBudgetAttributions,
+            observesCancellation: mode.observesCancellationWhileLoading
+        )
+        try await reconcileRecoveredRelationships(
+            relationships,
+            in: store,
+            mode: mode
+        )
+        try await loadQuickLogDraft(from: store, mode: mode)
+        try await persistCurrentMonthBudgetCheckpointIfNeeded(
+            in: store,
+            persistsCheckpoint: mode.persistsBudgetTimelineMigration
+        )
+        if mode.rejectsRecoveryIssues, !recoveryIssues.isEmpty {
+            throw AppModelError.invalidBook
+        }
+    }
+
+    func prepareBookLoadState() {
         journalProjectionRevision &+= 1
         retainsCompleteJournal = false
         invalidateCommittedJournalProjection()
@@ -58,6 +110,12 @@ extension AppModel {
         closedMonthBudgetProjection = nil
         budgetConfigurationTimeline = nil
         budgetConfigurationTimelineInvalid = false
+    }
+
+    func loadRecoveryProfile(
+        from store: EncryptedRecordStore,
+        mode: BookLoadMode
+    ) async throws {
         profile = try await store.fetch(
             UserProfile.self,
             id: UserProfile.primaryRecordID,
@@ -76,32 +134,38 @@ extension AppModel {
                 in: .profile
             )
         }
-        let recoveredAccounts = try await store.fetchAllIdentifiedRecovering(
+    }
+
+    func fetchRecoveredBookRecords(
+        from store: EncryptedRecordStore,
+        mode: BookLoadMode
+    ) async throws -> AppModelRecoveredBookRecords {
+        let accounts = try await store.fetchAllIdentifiedRecovering(
             LedgerAccount.self,
             from: .accounts
         )
-        let recoveredBudgets = try await store.fetchAllIdentifiedRecovering(
+        let budgets = try await store.fetchAllIdentifiedRecovering(
             BudgetNode.self,
             from: .budgetNodes
         )
-        let recoveredSchedules = try await store.fetchAllIdentifiedRecovering(
+        let schedules = try await store.fetchAllIdentifiedRecovering(
             ScheduledTransaction.self,
             from: .scheduledTransactions
         )
-        let recoveredHoldings = try await store.fetchAllIdentifiedRecovering(
+        let holdings = try await store.fetchAllIdentifiedRecovering(
             InvestmentHolding.self,
             from: .investmentHoldings
         )
-        let recoveredAttachments = try await store.receiptAttachmentIndexSnapshot()
-        let recoveredRates = try await store.fetchAllIdentifiedRecovering(
+        let attachments = try await store.receiptAttachmentIndexSnapshot()
+        let rates = try await store.fetchAllIdentifiedRecovering(
             DatedExchangeRate.self,
             from: .exchangeRates
         )
-        let recoveredSnapshots = try await store.fetchAllIdentifiedRecovering(
+        let snapshots = try await store.fetchAllIdentifiedRecovering(
             NetWorthSnapshot.self,
             from: .netWorthSnapshots
         )
-        let recoveredGoals = try await store.fetchAllIdentifiedRecovering(
+        let goals = try await store.fetchAllIdentifiedRecovering(
             SavingsGoal.self,
             from: .savingsGoals
         )
@@ -109,16 +173,34 @@ extension AppModel {
         let loadsCompleteBudgetAttributions =
             mode.loadsCompleteBudgetAttributions
             || attributionIndex.requiresDetailedValidation
-        let recoveredBudgetAttributions: RecoveredRecords<BudgetEntryAttribution>?
+        let budgetAttributions: RecoveredRecords<BudgetEntryAttribution>?
         if loadsCompleteBudgetAttributions {
-            recoveredBudgetAttributions = try await store
+            budgetAttributions = try await store
                 .fetchAllIdentifiedRecovering(
                     BudgetEntryAttribution.self,
                     from: .budgetEntryAttributions
                 )
         } else {
-            recoveredBudgetAttributions = nil
+            budgetAttributions = nil
         }
+        return AppModelRecoveredBookRecords(
+            accounts: accounts,
+            budgets: budgets,
+            schedules: schedules,
+            holdings: holdings,
+            attachments: attachments,
+            rates: rates,
+            snapshots: snapshots,
+            goals: goals,
+            attributionIndex: attributionIndex,
+            budgetAttributions: budgetAttributions,
+            loadsCompleteBudgetAttributions: loadsCompleteBudgetAttributions
+        )
+    }
+
+    func loadBudgetConfigurationTimeline(
+        from store: EncryptedRecordStore
+    ) async {
         do {
             budgetConfigurationTimeline = try await store.fetch(
                 BudgetConfigurationTimeline.self,
@@ -131,36 +213,58 @@ extension AppModel {
                 "budget_configuration_timelines/\(BudgetConfigurationTimeline.primaryRecordID)"
             )
         }
+    }
+
+    func applyRecoveredBookRecords(
+        _ recovered: AppModelRecoveredBookRecords,
+        mode: BookLoadMode
+    ) throws {
+        try applyRecoveredLedgerRecords(recovered, mode: mode)
+        try applyRecoveredSupportingRecords(recovered, mode: mode)
+        try applyRecoveredBudgetAttributions(recovered, mode: mode)
+        appendRecoveryDecodeIssues(from: recovered)
+    }
+
+    func applyRecoveredLedgerRecords(
+        _ recovered: AppModelRecoveredBookRecords,
+        mode: BookLoadMode
+    ) throws {
         accounts = try quarantiningDuplicateLogicalIDs(
-            recoveredAccounts.values,
+            recovered.accounts.values,
             in: .accounts,
             observesCancellation: mode.observesCancellationWhileLoading
         )
         entries = []
         budgetNodes = try quarantiningDuplicateLogicalIDs(
-            recoveredBudgets.values,
+            recovered.budgets.values,
             in: .budgetNodes,
             observesCancellation: mode.observesCancellationWhileLoading
         )
         scheduledTransactions = try quarantiningDuplicateLogicalIDs(
-            recoveredSchedules.values,
+            recovered.schedules.values,
             in: .scheduledTransactions,
             observesCancellation: mode.observesCancellationWhileLoading
         ).sorted {
             $0.nextOccurrence < $1.nextOccurrence
         }
         investmentHoldings = try quarantiningDuplicateLogicalIDs(
-            recoveredHoldings.values,
+            recovered.holdings.values,
             in: .investmentHoldings,
             observesCancellation: mode.observesCancellationWhileLoading
         )
+    }
+
+    func applyRecoveredSupportingRecords(
+        _ recovered: AppModelRecoveredBookRecords,
+        mode: BookLoadMode
+    ) throws {
         receiptAttachmentMetadata = try quarantiningDuplicateLogicalIDs(
-            recoveredAttachments.metadata,
+            recovered.attachments.metadata,
             in: .receiptAttachments,
             observesCancellation: mode.observesCancellationWhileLoading
         )
         exchangeRates = try quarantiningDuplicateLogicalIDs(
-            recoveredRates.values,
+            recovered.rates.values,
             in: .exchangeRates,
             observesCancellation: mode.observesCancellationWhileLoading
         ).sorted {
@@ -170,18 +274,25 @@ extension AppModel {
             return $0.effectiveContext.dayKey > $1.effectiveContext.dayKey
         }
         netWorthSnapshots = try quarantiningDuplicateLogicalIDs(
-            recoveredSnapshots.values,
+            recovered.snapshots.values,
             in: .netWorthSnapshots,
             observesCancellation: mode.observesCancellationWhileLoading
         ).sorted { $0.capturedAt > $1.capturedAt }
         savingsGoals = try quarantiningDuplicateLogicalIDs(
-            recoveredGoals.values,
+            recovered.goals.values,
             in: .savingsGoals,
             observesCancellation: mode.observesCancellationWhileLoading
         ).sorted { $0.targetDate < $1.targetDate }
+    }
+
+    func applyRecoveredBudgetAttributions(
+        _ recovered: AppModelRecoveredBookRecords,
+        mode: BookLoadMode
+    ) throws {
         budgetEntryAttributions = [:]
-        budgetAttributionCacheIsComplete = loadsCompleteBudgetAttributions
-        if let recoveredBudgetAttributions {
+        budgetAttributionCacheIsComplete =
+            recovered.loadsCompleteBudgetAttributions
+        if let recoveredBudgetAttributions = recovered.budgetAttributions {
             let recoveredAttributions = try quarantiningDuplicateLogicalIDs(
                 recoveredBudgetAttributions.values,
                 in: .budgetEntryAttributions,
@@ -203,32 +314,45 @@ extension AppModel {
                 }
             }
         }
-        if attributionIndex.recordCount
+        if recovered.attributionIndex.recordCount
                 > RestoreCandidateValidator.maximumBudgetAttributionCount
-            || attributionIndex.indexedEntryCount != attributionIndex.recordCount
-            || attributionIndex.indexedPostingCount
+            || recovered.attributionIndex.indexedEntryCount
+                != recovered.attributionIndex.recordCount
+            || recovered.attributionIndex.indexedPostingCount
                 > RestoreCandidateValidator.maximumJournalPostingCount
-            || !attributionIndex.issues.isEmpty
-            || !(recoveredBudgetAttributions?.issues.isEmpty ?? true) {
+            || !recovered.attributionIndex.issues.isEmpty
+            || !(recovered.budgetAttributions?.issues.isEmpty ?? true) {
             budgetConfigurationTimelineInvalid = true
             recoveryIssues.append(
                 "budget_entry_attributions/inconsistent-index"
             )
         }
+    }
+
+    func appendRecoveryDecodeIssues(
+        from recovered: AppModelRecoveredBookRecords
+    ) {
         var decodeIssues: [RecordDecodeIssue] = []
-        decodeIssues.append(contentsOf: recoveredAccounts.issues)
-        decodeIssues.append(contentsOf: recoveredBudgets.issues)
-        decodeIssues.append(contentsOf: recoveredSchedules.issues)
-        decodeIssues.append(contentsOf: recoveredHoldings.issues)
-        decodeIssues.append(contentsOf: recoveredAttachments.issues)
-        decodeIssues.append(contentsOf: recoveredRates.issues)
-        decodeIssues.append(contentsOf: recoveredSnapshots.issues)
-        decodeIssues.append(contentsOf: recoveredGoals.issues)
-        decodeIssues.append(contentsOf: attributionIndex.issues)
-        decodeIssues.append(contentsOf: recoveredBudgetAttributions?.issues ?? [])
+        decodeIssues.append(contentsOf: recovered.accounts.issues)
+        decodeIssues.append(contentsOf: recovered.budgets.issues)
+        decodeIssues.append(contentsOf: recovered.schedules.issues)
+        decodeIssues.append(contentsOf: recovered.holdings.issues)
+        decodeIssues.append(contentsOf: recovered.attachments.issues)
+        decodeIssues.append(contentsOf: recovered.rates.issues)
+        decodeIssues.append(contentsOf: recovered.snapshots.issues)
+        decodeIssues.append(contentsOf: recovered.goals.issues)
+        decodeIssues.append(contentsOf: recovered.attributionIndex.issues)
+        decodeIssues.append(contentsOf: recovered.budgetAttributions?.issues ?? [])
         recoveryIssues.append(contentsOf: decodeIssues.map {
             "\($0.collection.rawValue)/\($0.recordID)"
         })
+    }
+
+    func loadRecoveryRelationships(
+        from store: EncryptedRecordStore,
+        loadsCompleteBudgetAttributions: Bool,
+        observesCancellation: Bool
+    ) async throws -> AppModelRecoveryRelationships {
         let existingAttachmentEntryIDs = try await store.existingJournalEntryIDs(
             in: Set(receiptAttachmentMetadata.map(\.entryID))
         )
@@ -248,6 +372,24 @@ extension AppModel {
             existingBudgetAttributionEntryIDs = nil
         }
         existingScheduledLinkedEntryIDs = existingScheduledEntryIDs
+        let investmentEntriesByID = try await loadRecoveryInvestmentEntries(
+            from: store,
+            observesCancellation: observesCancellation
+        )
+        investmentLinkedEntriesByID = investmentEntriesByID
+        return AppModelRecoveryRelationships(
+            attachmentEntryIDs: existingAttachmentEntryIDs,
+            scheduledEntryIDs: existingScheduledEntryIDs,
+            budgetAttributionEntryIDs: existingBudgetAttributionEntryIDs,
+            investmentEntriesByID: investmentEntriesByID,
+            loadsCompleteBudgetAttributions: loadsCompleteBudgetAttributions
+        )
+    }
+
+    func loadRecoveryInvestmentEntries(
+        from store: EncryptedRecordStore,
+        observesCancellation: Bool
+    ) async throws -> [UUID: JournalEntry] {
         let requestedInvestmentEntryIDs = Set(
             investmentHoldings.flatMap { Array($0.linkedEntryIDs) }
         )
@@ -255,7 +397,7 @@ extension AppModel {
         for entryID in requestedInvestmentEntryIDs.sorted(by: {
             $0.uuidString < $1.uuidString
         }) {
-            if mode.observesCancellationWhileLoading {
+            if observesCancellation {
                 try Task.checkCancellation()
             }
             do {
@@ -274,15 +416,23 @@ extension AppModel {
                 recoveryIssues.append("journal_entries/unreadable-investment-link")
             }
         }
-        investmentLinkedEntriesByID = investmentEntriesByID
+        return investmentEntriesByID
+    }
+
+    func reconcileRecoveredRelationships(
+        _ relationships: AppModelRecoveryRelationships,
+        in store: EncryptedRecordStore,
+        mode: BookLoadMode
+    ) async throws {
         try quarantineInvalidRelationships(
-            existingAttachmentEntryIDs: existingAttachmentEntryIDs,
-            existingScheduledEntryIDs: existingScheduledEntryIDs,
-            existingBudgetAttributionEntryIDs: existingBudgetAttributionEntryIDs,
-            investmentEntriesByID: investmentEntriesByID,
+            existingAttachmentEntryIDs: relationships.attachmentEntryIDs,
+            existingScheduledEntryIDs: relationships.scheduledEntryIDs,
+            existingBudgetAttributionEntryIDs:
+                relationships.budgetAttributionEntryIDs,
+            investmentEntriesByID: relationships.investmentEntriesByID,
             observesCancellation: mode.observesCancellationWhileLoading
         )
-        if loadsCompleteBudgetAttributions {
+        if relationships.loadsCompleteBudgetAttributions {
             try await validateBudgetEntryAttributionsAfterLoad(in: store)
         }
         // Rollover's complete closed-month projection depends on the persisted
@@ -316,6 +466,12 @@ extension AppModel {
             }
             return invalid
         }
+    }
+
+    func loadQuickLogDraft(
+        from store: EncryptedRecordStore,
+        mode: BookLoadMode
+    ) async throws {
         do {
             quickLogDraft = try await store.fetch(
                 QuickLogDraft.self,
@@ -335,13 +491,6 @@ extension AppModel {
                     from: .quickLogDrafts
                 )
             }
-        }
-        try await persistCurrentMonthBudgetCheckpointIfNeeded(
-            in: store,
-            persistsCheckpoint: mode.persistsBudgetTimelineMigration
-        )
-        if mode.rejectsRecoveryIssues, !recoveryIssues.isEmpty {
-            throw AppModelError.invalidBook
         }
     }
 }
