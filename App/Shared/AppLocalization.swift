@@ -1,6 +1,8 @@
 import Foundation
 import SwiftUI
 
+private final class AppLocalizationBundleToken {}
+
 /// A non-sensitive UI preference shared by the app and widget. Financial
 /// parsing and persisted reporting zones remain owned by domain settings.
 enum AppLanguagePreference: String, CaseIterable, Identifiable, Sendable {
@@ -48,6 +50,10 @@ enum AppLanguagePreference: String, CaseIterable, Identifiable, Sendable {
 /// accessibility messages switch with the visible interface.
 enum AppLocalization {
     static func string(_ key: String.LocalizationValue) -> String {
-        String(localized: key, locale: AppLanguagePreference.current.locale)
+        String(
+            localized: key,
+            bundle: Bundle(for: AppLocalizationBundleToken.self),
+            locale: AppLanguagePreference.current.locale
+        )
     }
 }

@@ -613,9 +613,9 @@ extension AppModel {
             destinationID: destination?.id,
             destinationAmount: destinationAmount,
             destinationCurrency: destination?.currency,
-            // Transfer factories do not persist a payee. Build the key from
-            // the shape that can be reconstructed after reopening.
-            payee: row.kind == .transfer ? nil : row.payee
+            // Every entry kind now persists its optional title/payee, so the
+            // in-batch key must match the key reconstructed after reopening.
+            payee: row.payee
         )
         let insertedDuplicateKey = state.duplicateKeys.insert(duplicateKey)
             .inserted
