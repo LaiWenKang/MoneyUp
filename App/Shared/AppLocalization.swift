@@ -49,11 +49,36 @@ enum AppLanguagePreference: String, CaseIterable, Identifiable, Sendable {
 /// those lookups through the same persisted preference so formatted labels and
 /// accessibility messages switch with the visible interface.
 enum AppLocalization {
-    static func string(_ key: String.LocalizationValue) -> String {
-        String(
-            localized: key,
-            bundle: Bundle(for: AppLocalizationBundleToken.self),
-            locale: AppLanguagePreference.current.locale
+    static func string(_ key: String) -> String {
+        let owner = Bundle(for: AppLocalizationBundleToken.self)
+        guard AppLanguagePreference.current != .system,
+              let localizedBundle = localizedBundle(
+                  for: AppLanguagePreference.current,
+                  owner: owner
+              ) else {
+            return owner.localizedString(forKey: key, value: key, table: nil)
+        }
+        return localizedBundle.localizedString(
+            forKey: key,
+            value: key,
+            table: nil
         )
+    }
+
+    private static func localizedBundle(
+        for language: AppLanguagePreference,
+        owner: Bundle
+    ) -> Bundle? {
+        let candidates = [owner, Bundle.main]
+            + Bundle.allBundles
+            + Bundle.allFrameworks
+        for candidate in candidates {
+            guard let url = candidate.url(
+                forResource: language.rawValue,
+                withExtension: "lproj"
+            ), let bundle = Bundle(url: url) else { continue }
+            return bundle
+        }
+        return nil
     }
 }
