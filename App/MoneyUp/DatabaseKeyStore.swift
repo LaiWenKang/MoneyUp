@@ -86,13 +86,13 @@ extension DatabaseKeyStoreError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .authenticationCancelled:
-            return String(localized: "error.authentication_cancelled")
+            return AppLocalization.string("error.authentication_cancelled")
         case .devicePasscodeRequired:
-            return String(localized: "error.device_passcode_required")
+            return AppLocalization.string("error.device_passcode_required")
         case .unexpectedStatus:
-            return String(localized: "error.keychain_unavailable")
+            return AppLocalization.string("error.keychain_unavailable")
         case .invalidStoredKey:
-            return String(localized: "error.invalid_database_key")
+            return AppLocalization.string("error.invalid_database_key")
         }
     }
 }
@@ -144,7 +144,7 @@ enum DatabaseKeyStore {
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
         let context = LAContext()
-        context.localizedReason = String(localized: "lock.authentication_reason")
+        context.localizedReason = AppLocalization.string("lock.authentication_reason")
         query[kSecUseAuthenticationContext as String] = context
 
         var result: CFTypeRef?

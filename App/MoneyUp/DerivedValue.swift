@@ -28,21 +28,21 @@ enum DerivedValueIssue: String, Equatable, Error, Identifiable, Sendable {
     var errorDescription: String? {
         switch self {
         case .appNotReady:
-            String(localized: "derived.reason.app_not_ready")
+            AppLocalization.string("derived.reason.app_not_ready")
         case .invalidPeriod:
-            String(localized: "derived.reason.invalid_period")
+            AppLocalization.string("derived.reason.invalid_period")
         case .ledgerCalculationFailed:
-            String(localized: "derived.reason.ledger")
+            AppLocalization.string("derived.reason.ledger")
         case .budgetCalculationFailed:
-            String(localized: "derived.reason.budget")
+            AppLocalization.string("derived.reason.budget")
         case .amountCalculationFailed:
-            String(localized: "derived.reason.amount")
+            AppLocalization.string("derived.reason.amount")
         case .holdingValuationFailed:
-            String(localized: "derived.reason.holding")
+            AppLocalization.string("derived.reason.holding")
         case .missingCurrency:
-            String(localized: "derived.reason.currency")
+            AppLocalization.string("derived.reason.currency")
         case .goalCalculationFailed:
-            String(localized: "derived.reason.goal")
+            AppLocalization.string("derived.reason.goal")
         }
     }
 }
@@ -117,7 +117,7 @@ struct DerivedValueUnavailableView: View {
         } message: {
             Text(
                 String(
-                    format: String(localized: "derived.diagnostic_format"),
+                    format: AppLocalization.string("derived.diagnostic_format"),
                     issue.rawValue
                 )
             )

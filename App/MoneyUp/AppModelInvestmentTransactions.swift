@@ -68,7 +68,7 @@ extension AppModel {
             gainLossAccountID: gain.id,
             occurredAt: occurredAt,
             payee: holding.name,
-            note: String(localized: "holding.purchase_note"),
+            note: AppLocalization.string("holding.purchase_note"),
             id: entryID,
             originContext: investmentOriginContext(for: occurredAt)
         )
@@ -154,7 +154,7 @@ extension AppModel {
             gainLossAccountID: gain.id,
             occurredAt: occurredAt,
             payee: holding.name,
-            note: String(localized: "holding.sale_note"),
+            note: AppLocalization.string("holding.sale_note"),
             id: entryID,
             originContext: investmentOriginContext(for: occurredAt)
         )

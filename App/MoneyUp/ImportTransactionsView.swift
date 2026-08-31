@@ -86,8 +86,8 @@ struct ImportTransactionsView: View {
                             ForEach(preview.issues.prefix(20)) { issue in
                                 Text(
                                     String(
-                                        format: String(
-                                            localized: "import.issue_line_format"
+                                        format: AppLocalization.string(
+                                            "import.issue_line_format"
                                         ),
                                         issue.line,
                                         localizedIssue(issue.reason)
@@ -369,7 +369,7 @@ struct ImportTransactionsView: View {
                 incomeCategoryMappings: incomeCategoryMappings
             )
             message = String(
-                format: String(localized: "import.complete_format"),
+                format: AppLocalization.string("import.complete_format"),
                 result.imported,
                 result.duplicates,
                 result.skipped + preview.issues.count
@@ -450,39 +450,39 @@ struct ImportTransactionsView: View {
 
     private func localizedField(_ field: CSVImportMappedField) -> String {
         switch field {
-        case .id: String(localized: "import.field.id")
-        case .date: String(localized: "import.field.date")
-        case .kind: String(localized: "import.field.kind")
-        case .amount: String(localized: "import.field.amount")
-        case .destinationAmount: String(localized: "import.field.destinationAmount")
-        case .currency: String(localized: "import.field.currency")
-        case .account: String(localized: "import.field.account")
-        case .destinationAccount: String(localized: "import.field.destinationAccount")
-        case .category: String(localized: "import.field.category")
-        case .payee: String(localized: "import.field.payee")
-        case .note: String(localized: "import.field.note")
-        case .outflow: String(localized: "import.field.outflow")
-        case .inflow: String(localized: "import.field.inflow")
+        case .id: AppLocalization.string("import.field.id")
+        case .date: AppLocalization.string("import.field.date")
+        case .kind: AppLocalization.string("import.field.kind")
+        case .amount: AppLocalization.string("import.field.amount")
+        case .destinationAmount: AppLocalization.string("import.field.destinationAmount")
+        case .currency: AppLocalization.string("import.field.currency")
+        case .account: AppLocalization.string("import.field.account")
+        case .destinationAccount: AppLocalization.string("import.field.destinationAccount")
+        case .category: AppLocalization.string("import.field.category")
+        case .payee: AppLocalization.string("import.field.payee")
+        case .note: AppLocalization.string("import.field.note")
+        case .outflow: AppLocalization.string("import.field.outflow")
+        case .inflow: AppLocalization.string("import.field.inflow")
         }
     }
 
     private func localizedIssue(_ reason: String) -> String {
         switch reason {
-        case "invalid_date": String(localized: "import.issue.invalid_date")
-        case "invalid_amount": String(localized: "import.issue.invalid_amount")
+        case "invalid_date": AppLocalization.string("import.issue.invalid_date")
+        case "invalid_amount": AppLocalization.string("import.issue.invalid_amount")
         case "invalid_destination_amount":
-            String(localized: "import.issue.invalid_destination_amount")
-        case "unsupported_type": String(localized: "import.issue.unsupported_type")
-        default: String(localized: "import.issue.invalid_row")
+            AppLocalization.string("import.issue.invalid_destination_amount")
+        case "unsupported_type": AppLocalization.string("import.issue.unsupported_type")
+        default: AppLocalization.string("import.issue.invalid_row")
         }
     }
 
     private func localizedKind(_ kind: ImportedTransactionKind) -> String {
         switch kind {
-        case .expense: String(localized: "transaction.expense")
-        case .income: String(localized: "transaction.income")
-        case .transfer: String(localized: "transaction.transfer")
-        case .refund: String(localized: "transaction.refund")
+        case .expense: AppLocalization.string("transaction.expense")
+        case .income: AppLocalization.string("transaction.income")
+        case .transfer: AppLocalization.string("transaction.transfer")
+        case .refund: AppLocalization.string("transaction.refund")
         }
     }
 }
@@ -491,20 +491,20 @@ enum CSVImportViewError: LocalizedError {
     case unsupportedEncoding
 
     var errorDescription: String? {
-        String(localized: "import.error.encoding")
+        AppLocalization.string("import.error.encoding")
     }
 }
 
 extension TransactionCSVImportError: @retroactive LocalizedError {
     public var errorDescription: String? {
         switch self {
-        case .emptyFile: String(localized: "import.error.empty")
-        case .missingRequiredColumns: String(localized: "import.error.columns")
-        case .malformedCSV: String(localized: "import.error.malformed")
-        case .inputTooLarge: String(localized: "import.error.too_large")
-        case .tooManyRows: String(localized: "import.error.too_many_rows")
+        case .emptyFile: AppLocalization.string("import.error.empty")
+        case .missingRequiredColumns: AppLocalization.string("import.error.columns")
+        case .malformedCSV: AppLocalization.string("import.error.malformed")
+        case .inputTooLarge: AppLocalization.string("import.error.too_large")
+        case .tooManyRows: AppLocalization.string("import.error.too_many_rows")
         case .postingLevelExportRequiresArchive:
-            String(localized: "import.error.moneyup_export")
+            AppLocalization.string("import.error.moneyup_export")
         }
     }
 }

@@ -16,23 +16,23 @@ enum SafeUserMessageContext: Sendable {
     var fallbackMessage: String {
         switch self {
         case .general:
-            String(localized: "error.generic_safe")
+            AppLocalization.string("error.generic_safe")
         case .read:
-            String(localized: "error.read_failed_safe")
+            AppLocalization.string("error.read_failed_safe")
         case .write:
-            String(localized: "error.write_failed_safe")
+            AppLocalization.string("error.write_failed_safe")
         case .save:
-            String(localized: "error.save_failed_safe")
+            AppLocalization.string("error.save_failed_safe")
         case .importData:
-            String(localized: "error.import_failed_safe")
+            AppLocalization.string("error.import_failed_safe")
         case .exportData:
-            String(localized: "error.export_failed_safe")
+            AppLocalization.string("error.export_failed_safe")
         case .restoreData:
-            String(localized: "error.restore_failed_safe")
+            AppLocalization.string("error.restore_failed_safe")
         case .scan:
-            String(localized: "error.scan_failed_safe")
+            AppLocalization.string("error.scan_failed_safe")
         case .unlock:
-            String(localized: "error.unlock_failed_safe")
+            AppLocalization.string("error.unlock_failed_safe")
         }
     }
 }
@@ -88,19 +88,19 @@ private enum RecoveryIssueArea: CaseIterable, Hashable {
         let format: String
         switch self {
         case .accounts:
-            format = String(localized: "recovery.area.accounts")
+            format = AppLocalization.string("recovery.area.accounts")
         case .budgets:
-            format = String(localized: "recovery.area.budgets")
+            format = AppLocalization.string("recovery.area.budgets")
         case .journal:
-            format = String(localized: "recovery.area.journal")
+            format = AppLocalization.string("recovery.area.journal")
         case .schedules:
-            format = String(localized: "recovery.area.schedules")
+            format = AppLocalization.string("recovery.area.schedules")
         case .holdings:
-            format = String(localized: "recovery.area.holdings")
+            format = AppLocalization.string("recovery.area.holdings")
         case .receipts:
-            format = String(localized: "recovery.area.receipts")
+            format = AppLocalization.string("recovery.area.receipts")
         case .other:
-            format = String(localized: "recovery.area.other")
+            format = AppLocalization.string("recovery.area.other")
         }
         return String(format: format, count)
     }
@@ -143,15 +143,15 @@ extension PersistenceError: @retroactive LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .unsupportedSchema:
-            String(localized: "error.persistence_update_required")
+            AppLocalization.string("error.persistence_update_required")
         case .invalidStoredRecord, .invalidSnapshot, .duplicateSnapshotRecord:
-            String(localized: "error.persistence_data_invalid")
+            AppLocalization.string("error.persistence_data_invalid")
         case .logicalStoreLimitExceeded:
-            String(localized: "backup.error.too_large")
+            AppLocalization.string("backup.error.too_large")
         case .invalidKeyLength, .invalidQuery, .databaseClosed, .databaseFailure,
              .cipherUnavailable, .transactionStateIndeterminate,
              .restoreTransactionStateIndeterminate:
-            String(localized: "error.persistence_unavailable")
+            AppLocalization.string("error.persistence_unavailable")
         }
     }
 }
@@ -159,25 +159,25 @@ extension PersistenceError: @retroactive LocalizedError {
 extension ScheduledTransactionError: @retroactive LocalizedError {
     public var errorDescription: String? {
         switch self {
-        case .unsupportedKind: String(localized: "schedule.error.unsupported_kind")
-        case .amountMustBePositive: String(localized: "schedule.error.positive_amount")
-        case .nameCannotBeEmpty: String(localized: "schedule.error.empty_name")
-        case .inactive: String(localized: "schedule.error.inactive")
-        case .ended: String(localized: "schedule.error.ended")
-        case .staleOccurrence: String(localized: "schedule.error.stale_occurrence")
+        case .unsupportedKind: AppLocalization.string("schedule.error.unsupported_kind")
+        case .amountMustBePositive: AppLocalization.string("schedule.error.positive_amount")
+        case .nameCannotBeEmpty: AppLocalization.string("schedule.error.empty_name")
+        case .inactive: AppLocalization.string("schedule.error.inactive")
+        case .ended: AppLocalization.string("schedule.error.ended")
+        case .staleOccurrence: AppLocalization.string("schedule.error.stale_occurrence")
         case .occurrenceAlreadyResolved:
-            String(localized: "schedule.error.already_resolved")
+            AppLocalization.string("schedule.error.already_resolved")
         case .linkedEntryRequired:
-            String(localized: "schedule.error.linked_entry_required")
+            AppLocalization.string("schedule.error.linked_entry_required")
         case .unexpectedLinkedEntry:
-            String(localized: "schedule.error.unexpected_linked_entry")
-        case .cannotAdvance: String(localized: "schedule.error.cannot_advance")
+            AppLocalization.string("schedule.error.unexpected_linked_entry")
+        case .cannotAdvance: AppLocalization.string("schedule.error.cannot_advance")
         case .linkedEntryNotFound:
-            String(localized: "schedule.error.linked_entry_not_found")
+            AppLocalization.string("schedule.error.linked_entry_not_found")
         case .invalidResolutionState:
-            String(localized: "schedule.error.invalid_resolution")
+            AppLocalization.string("schedule.error.invalid_resolution")
         case .invalidLifecycle:
-            String(localized: "schedule.error.invalid_lifecycle")
+            AppLocalization.string("schedule.error.invalid_lifecycle")
         }
     }
 }
@@ -186,13 +186,13 @@ extension TransactionFactoryError: @retroactive LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .amountMustBePositive:
-            String(localized: "error.amount_must_be_positive")
+            AppLocalization.string("error.amount_must_be_positive")
         case .amountMustBeNonZero:
-            String(localized: "error.amount_must_be_nonzero")
+            AppLocalization.string("error.amount_must_be_nonzero")
         case .accountsMustDiffer:
-            String(localized: "error.accounts_must_differ")
+            AppLocalization.string("error.accounts_must_differ")
         case .arithmeticOverflow:
-            String(localized: "error.amount_too_large")
+            AppLocalization.string("error.amount_too_large")
         }
     }
 }
@@ -201,23 +201,23 @@ extension InvestmentHoldingError: @retroactive LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .quantityCannotBeNegative, .lotQuantityMustBePositive:
-            String(localized: "holding.error.negative_quantity")
+            AppLocalization.string("holding.error.negative_quantity")
         case .priceCannotBeNegative:
-            String(localized: "holding.error.negative_price")
+            AppLocalization.string("holding.error.negative_price")
         case .insufficientQuantity:
-            String(localized: "holding.error.insufficient_quantity")
+            AppLocalization.string("holding.error.insufficient_quantity")
         case .activityOutOfOrder:
-            String(localized: "holding.error.date_out_of_order")
+            AppLocalization.string("holding.error.date_out_of_order")
         case .arithmeticOverflow:
-            String(localized: "error.amount_too_large")
+            AppLocalization.string("error.amount_too_large")
         case .lotCurrencyMismatch, .valuationCurrencyMismatch:
-            String(localized: "holding.error.currency_mismatch")
+            AppLocalization.string("holding.error.currency_mismatch")
         case .lotRemainingQuantityInvalid, .lotQuantityMismatch,
              .duplicateIdentifier, .duplicateLinkedEntry, .invalidDisposal,
              .historyMismatch:
-            String(localized: "error.invalid_book")
+            AppLocalization.string("error.invalid_book")
         case .correctionUnavailable:
-            String(localized: "holding.error.invalid_trade")
+            AppLocalization.string("holding.error.invalid_trade")
         }
     }
 }
@@ -226,50 +226,50 @@ extension SavingsGoalError: @retroactive LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .emptyName:
-            String(localized: "error.empty_name")
+            AppLocalization.string("error.empty_name")
         case .nonPositiveTarget, .nonPositiveMovement:
-            String(localized: "error.amount_must_be_positive")
+            AppLocalization.string("error.amount_must_be_positive")
         case .currencyMismatch:
-            String(localized: "error.balance_currency_mismatch")
+            AppLocalization.string("error.balance_currency_mismatch")
         case .withdrawalExceedsBalance:
-            String(localized: "goal.error.withdrawal_exceeds_balance")
+            AppLocalization.string("goal.error.withdrawal_exceeds_balance")
         case let .unsupportedPrecision(currency):
             String(
-                format: String(localized: "error.currency_precision"),
+                format: AppLocalization.string("error.currency_precision"),
                 currency.value,
                 currency.minorUnits
             )
         case .calculationFailed:
-            String(localized: "error.calculation_unavailable")
+            AppLocalization.string("error.calculation_unavailable")
         case .targetBeforeCreation, .movementBeforeCreation,
              .resetBeforeCreation, .duplicateMovementID, .duplicateResetID,
              .invalidOriginContext, .invalidDate:
-            String(localized: "goal.error.invalid")
+            AppLocalization.string("goal.error.invalid")
         }
     }
 }
 
 extension JournalEntryValidationError: @retroactive LocalizedError {
     public var errorDescription: String? {
-        String(localized: "error.balance_invalid")
+        AppLocalization.string("error.balance_invalid")
     }
 }
 
 extension BudgetTreeError: @retroactive LocalizedError {
     public var errorDescription: String? {
-        String(localized: "error.budget_invalid")
+        AppLocalization.string("error.budget_invalid")
     }
 }
 
 extension DecimalCalculationError: @retroactive LocalizedError {
     public var errorDescription: String? {
-        String(localized: "error.balance_invalid")
+        AppLocalization.string("error.balance_invalid")
     }
 }
 
 extension CurrencyCodeError: @retroactive LocalizedError {
     public var errorDescription: String? {
-        String(localized: "error.currency_invalid")
+        AppLocalization.string("error.currency_invalid")
     }
 }
 
@@ -277,17 +277,17 @@ extension MoneyError: @retroactive LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .notANumber:
-            String(localized: "error.invalid_amount")
+            AppLocalization.string("error.invalid_amount")
         case .currencyMismatch:
-            String(localized: "error.balance_currency_mismatch")
+            AppLocalization.string("error.balance_currency_mismatch")
         case let .unsupportedPrecision(currency):
             String(
-                format: String(localized: "error.currency_precision"),
+                format: AppLocalization.string("error.currency_precision"),
                 currency.value,
                 currency.minorUnits
             )
         case .exceedsNewWriteMaximum:
-            String(localized: "error.amount_too_large")
+            AppLocalization.string("error.amount_too_large")
         }
     }
 }

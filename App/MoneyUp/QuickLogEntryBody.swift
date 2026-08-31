@@ -116,7 +116,7 @@ extension QuickLogEntryView {
                                 } label: {
                                     Label(
                                         String(
-                                            format: String(localized: "fx.use_estimate_format"),
+                                            format: AppLocalization.string("fx.use_estimate_format"),
                                             conversion.converted.currency.value,
                                             NSDecimalNumber(
                                                 decimal: conversion.converted.amount
@@ -181,6 +181,12 @@ extension QuickLogEntryView {
                         } else {
                             splitEditor
                         }
+
+                        Button {
+                            isAddingCategory = true
+                        } label: {
+                            Label("category.add", systemImage: "plus.circle")
+                        }
                     }
                 }
 
@@ -189,8 +195,39 @@ extension QuickLogEntryView {
                 }
 
                 Section {
+                    TextField(
+                        "transaction.title_or_merchant",
+                        text: trackedBinding(
+                            $payee,
+                            \.payee,
+                            refreshesOccurrenceDate: true,
+                            onUserEdit: {
+                                invalidateCaptureSuggestions()
+                            }
+                        )
+                    )
+                    .focused($focusedField, equals: .payee)
+
+                    TextField(
+                        "transaction.description_or_notes",
+                        text: trackedBinding(
+                            $note,
+                            \.note,
+                            refreshesOccurrenceDate: true
+                        ),
+                        axis: .vertical
+                    )
+                    .lineLimit(2...4)
+                    .focused($focusedField, equals: .note)
+                } header: {
+                    Text("transaction.details")
+                } footer: {
+                    Text("transaction.details_help")
+                }
+
+                Section {
                     DisclosureGroup(
-                        "quick_log.optional_details",
+                        "quick_log.date_and_time",
                         isExpanded: $isShowingOptionalDetails
                     ) {
                         DatePicker(
@@ -209,32 +246,6 @@ extension QuickLogEntryView {
                             ),
                             displayedComponents: [.date, .hourAndMinute]
                         )
-
-                        if kind != .transfer {
-                            TextField(
-                                "transaction.payee",
-                                text: trackedBinding(
-                                    $payee,
-                                    \.payee,
-                                    refreshesOccurrenceDate: true,
-                                    onUserEdit: {
-                                        invalidateCaptureSuggestions()
-                                    }
-                                )
-                            )
-                            .focused($focusedField, equals: .payee)
-                        }
-                        TextField(
-                            "quick_log.note",
-                            text: trackedBinding(
-                                $note,
-                                \.note,
-                                refreshesOccurrenceDate: true
-                            ),
-                            axis: .vertical
-                        )
-                            .lineLimit(2...4)
-                            .focused($focusedField, equals: .note)
                     }
                 }
 
@@ -429,6 +440,16 @@ extension QuickLogEntryView {
                 isPresentingReceiptPicker = false
             }
             .scrollDismissesKeyboard(.interactively)
+            .sheet(isPresented: $isAddingCategory) {
+                AddCategorySheet(kind: categoryKind) { categoryID in
+                    self.categoryID = categoryID
+                    categoryWasEdited = true
+                    autoAppliedCategorySuggestionID = nil
+                    persistUserDraftChange { snapshot in
+                        snapshot.categoryID = categoryID
+                    }
+                }
+            }
         }
         .safeAreaInset(edge: .bottom) {
             if let lastSavedEntryID {

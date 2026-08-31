@@ -102,7 +102,6 @@ extension QuickLogEntryView {
     private func applyReceiptMerchantCandidate(_ candidate: String) {
         invalidateCaptureSuggestions()
         payee = candidate
-        isShowingOptionalDetails = true
         persistUserDraftChange { $0.payee = candidate }
         refreshCaptureSuggestions(
             for: TransactionDraft(
@@ -194,30 +193,30 @@ extension QuickLogEntryView {
 
     private func receiptEvidenceText(_ evidence: [ReceiptCandidateEvidence]) -> String {
         if evidence.contains(.lowOCRConfidence) {
-            return String(localized: "quick_log.scan_reason_low_ocr")
+            return AppLocalization.string("quick_log.scan_reason_low_ocr")
         }
         if evidence.contains(.payableAmountLabel)
             || evidence.contains(.precedingPayableAmountLabel) {
-            return String(localized: "quick_log.scan_reason_total_label")
+            return AppLocalization.string("quick_log.scan_reason_total_label")
         }
         if evidence.contains(.explicitMerchantLabel)
             || evidence.contains(.businessNameMarker)
             || evidence.contains(.receiptHeaderPosition) {
-            return String(localized: "quick_log.scan_reason_merchant")
+            return AppLocalization.string("quick_log.scan_reason_merchant")
         }
         if evidence.contains(.transactionDateLabel)
             || evidence.contains(.genericDateLabel)
             || evidence.contains(.timeComponent) {
-            return String(localized: "quick_log.scan_reason_date")
+            return AppLocalization.string("quick_log.scan_reason_date")
         }
         if evidence.contains(.categoryKeywordMatch)
             || evidence.contains(.multipleCategoryKeywordMatches) {
-            return String(localized: "quick_log.scan_reason_category")
+            return AppLocalization.string("quick_log.scan_reason_category")
         }
         if evidence.contains(.currencyMarker)
             || evidence.contains(.fractionalAmount) {
-            return String(localized: "quick_log.scan_reason_amount_shape")
+            return AppLocalization.string("quick_log.scan_reason_amount_shape")
         }
-        return String(localized: "quick_log.scan_reason_pattern")
+        return AppLocalization.string("quick_log.scan_reason_pattern")
     }
 }

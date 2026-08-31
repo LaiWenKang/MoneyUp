@@ -80,8 +80,8 @@ struct TransactionRow: View {
 
     private var localizedKind: String {
         isRefund
-            ? String(localized: "transaction.refund")
-            : String(localized: entry.kind.localizedKey)
+            ? AppLocalization.string("transaction.refund")
+            : AppLocalization.string(entry.kind.localizedKey)
     }
 
     private var reportingDateDescription: String {

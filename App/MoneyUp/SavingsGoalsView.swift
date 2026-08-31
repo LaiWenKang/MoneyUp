@@ -112,7 +112,7 @@ private struct GoalProgressRow: View {
                 HStack {
                     Text(
                         String(
-                            format: String(localized: "goal.progress_amount"),
+                            format: AppLocalization.string("goal.progress_amount"),
                             formattedMoney(summary.balance),
                             formattedMoney(summary.target)
                         )
@@ -394,7 +394,7 @@ private struct GoalManagementSheet: View {
             }
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
-            .navigationTitle(goal?.name ?? String(localized: "plan.goals"))
+            .navigationTitle(goal?.name ?? AppLocalization.string("plan.goals"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

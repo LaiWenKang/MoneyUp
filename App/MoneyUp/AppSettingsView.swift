@@ -22,7 +22,18 @@ private enum AutoLockChoice: TimeInterval, CaseIterable, Identifiable {
 
 struct AppSettingsView: View {
     @Environment(AppModel.self) private var model
+    @AppStorage(
+        AppLanguagePreference.storageKey,
+        store: AppLanguagePreference.defaults
+    )
+    private var appLanguageRawValue = AppLanguagePreference.system.rawValue
     @State private var errorMessage: String?
+    @State private var isManagingCategories = false
+
+    private var selectedAppLanguageRawValue: String {
+        AppLanguagePreference(rawValue: appLanguageRawValue)?.rawValue
+            ?? AppLanguagePreference.system.rawValue
+    }
 
     private var selectedAutoLockDelay: TimeInterval {
         model.profile?.autoLockDelay ?? AutoLockChoice.oneMinute.rawValue
@@ -47,7 +58,7 @@ struct AppSettingsView: View {
             .number.precision(.fractionLength(0))
         )
         return String(
-            format: String(localized: "settings.lock.legacy_minutes_format"),
+            format: AppLocalization.string("settings.lock.legacy_minutes_format"),
             minutes
         )
     }
@@ -55,6 +66,33 @@ struct AppSettingsView: View {
     var body: some View {
         @Bindable var bindableModel = model
         Form {
+            Section {
+                Picker(
+                    "settings.language",
+                    selection: Binding(
+                        get: { selectedAppLanguageRawValue },
+                        set: { appLanguageRawValue = $0 }
+                    )
+                ) {
+                    ForEach(AppLanguagePreference.allCases) { language in
+                        Text(language.titleKey).tag(language.rawValue)
+                    }
+                }
+
+                Button {
+                    isManagingCategories = true
+                } label: {
+                    Label(
+                        "lifecycle.manage_categories",
+                        systemImage: "square.grid.2x2"
+                    )
+                }
+            } header: {
+                Text("settings.customization")
+            } footer: {
+                Text("settings.customization_detail")
+            }
+
             Section {
                 Picker(
                     "settings.auto_lock",
@@ -252,6 +290,9 @@ struct AppSettingsView: View {
         .background(Color.moneyUpBackground)
         .navigationTitle("settings.title")
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $isManagingCategories) {
+            CategoryManagementList()
+        }
     }
 
     private func update(_ operation: () async throws -> Void) async {

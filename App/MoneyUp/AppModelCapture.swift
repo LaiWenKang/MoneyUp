@@ -182,7 +182,7 @@ extension AppModel {
             accountID: mainAccount.id,
             equityAccountID: equity.id,
             accountIsLiability: mainAccount.kind == .liability,
-            note: String(localized: "account.opening_balance_note")
+            note: AppLocalization.string("account.opening_balance_note")
         )
         return try appAuthoredEntry(
             candidate,

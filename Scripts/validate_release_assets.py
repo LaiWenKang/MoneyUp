@@ -34,7 +34,7 @@ PRINTF_PLACEHOLDER = re.compile(
     r"(?:hh|h|ll|l|L|z|j|t|q)?([@diouxXfFeEgGaAcCsSp])"
 )
 LOCALIZED_STRING_REFERENCE = re.compile(
-    r'String\(localized:\s*"([^"]+)"'
+    r'(?:String\(localized:|AppLocalization\.string\()\s*"([^"]+)"'
 )
 SWIFTUI_LOCALIZED_REFERENCE = re.compile(
     r'(?:Text|Button|Label|Picker|Toggle|SecureField|TextField|Section|'
@@ -200,7 +200,7 @@ def validate_localizations() -> None:
             if HARD_CODED_CHART_DIMENSION.search(text):
                 fail(
                     f"{source.relative_to(ROOT)} contains a hard-coded chart "
-                    "dimension; use String(localized:)"
+                    "dimension; use AppLocalization.string(_:)"
                 )
     print("Validated literal Swift localization references")
 

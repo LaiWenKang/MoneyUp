@@ -144,7 +144,7 @@ extension QuickLogEntryView {
             if let suggestion = result.accountSuggestion,
                let account = model.accountsByID[suggestion.ledgerAccountID] {
                 captureSuggestionRow(
-                    title: String(localized: "quick_log.suggested_account"),
+                    title: AppLocalization.string("quick_log.suggested_account"),
                     account: account,
                     suggestion: suggestion,
                     isApplied: accountID == account.id
@@ -159,7 +159,7 @@ extension QuickLogEntryView {
                let suggestion = result.categorySuggestion,
                let category = model.accountsByID[suggestion.ledgerAccountID] {
                 captureSuggestionRow(
-                    title: String(localized: "quick_log.suggested_category"),
+                    title: AppLocalization.string("quick_log.suggested_category"),
                     account: category,
                     suggestion: suggestion,
                     isApplied: categoryID == category.id
@@ -212,16 +212,16 @@ extension QuickLogEntryView {
 
     func captureConfidenceText(_ confidence: CaptureConfidence) -> String {
         switch confidence {
-        case .low: String(localized: "quick_log.confidence_low")
-        case .medium: String(localized: "quick_log.confidence_medium")
-        case .high: String(localized: "quick_log.confidence_high")
+        case .low: AppLocalization.string("quick_log.confidence_low")
+        case .medium: AppLocalization.string("quick_log.confidence_medium")
+        case .high: AppLocalization.string("quick_log.confidence_high")
         }
     }
 
     private func captureEvidenceText(_ evidence: CaptureSuggestionEvidence) -> String {
         let format = evidence.usedPayeeHistory
-            ? String(localized: "quick_log.suggestion_payee_evidence_format")
-            : String(localized: "quick_log.suggestion_kind_evidence_format")
+            ? AppLocalization.string("quick_log.suggestion_payee_evidence_format")
+            : AppLocalization.string("quick_log.suggestion_kind_evidence_format")
         let count = String(
             format: format,
             evidence.supportingEntryCount,
@@ -232,7 +232,7 @@ extension QuickLogEntryView {
             calendar: model.reportingCalendar
         )
         return String(
-            format: String(localized: "quick_log.suggestion_last_used_format"),
+            format: AppLocalization.string("quick_log.suggestion_last_used_format"),
             count,
             date
         )

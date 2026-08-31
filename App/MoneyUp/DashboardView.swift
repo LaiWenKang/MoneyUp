@@ -351,8 +351,8 @@ struct FlexibleTodayBreakdownSheet: View {
                             if breakdown.schedulesNeedingReview > 0 {
                                 Label(
                                     String(
-                                        format: String(
-                                            localized: "dashboard.safe_to_spend.review_schedules"
+                                        format: AppLocalization.string(
+                                            "dashboard.safe_to_spend.review_schedules"
                                         ),
                                         breakdown.schedulesNeedingReview
                                     ),

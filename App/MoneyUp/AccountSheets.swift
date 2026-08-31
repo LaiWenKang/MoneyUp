@@ -83,13 +83,13 @@ struct AddAccountSheet: View {
 
     private func save() async {
         guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            errorMessage = String(localized: "account.name_error")
+            errorMessage = AppLocalization.string("account.name_error")
             return
         }
         guard let startingBalance else {
             errorMessage = type.isLiabilityAccount
-                ? String(localized: "account.amount_owed_error")
-                : String(localized: "account.current_balance_error")
+                ? AppLocalization.string("account.amount_owed_error")
+                : AppLocalization.string("account.current_balance_error")
             return
         }
         isSaving = true
@@ -291,8 +291,8 @@ struct AccountManagementSheet: View {
     private func save() async {
         guard let balance = editedBalance else {
             errorMessage = currentAccount.kind == .liability
-                ? String(localized: "account.amount_owed_error")
-                : String(localized: "account.current_balance_error")
+                ? AppLocalization.string("account.amount_owed_error")
+                : AppLocalization.string("account.current_balance_error")
             return
         }
         isSaving = true
@@ -334,15 +334,15 @@ struct AccountManagementSheet: View {
         let base = impactSummary(impact)
         switch pendingLifecycleAction {
         case .archive:
-            return String(localized: "lifecycle.confirm_archive") + " " + base
+            return AppLocalization.string("lifecycle.confirm_archive") + " " + base
         case .restore:
-            return String(localized: "lifecycle.confirm_restore")
+            return AppLocalization.string("lifecycle.confirm_restore")
         case .merge:
-            return String(localized: "lifecycle.confirm_merge") + " " + base
+            return AppLocalization.string("lifecycle.confirm_merge") + " " + base
         case .deleteWithReassignment:
-            return String(localized: "lifecycle.confirm_reassign") + " " + base
+            return AppLocalization.string("lifecycle.confirm_reassign") + " " + base
         case .deleteUnused:
-            return String(localized: "lifecycle.confirm_delete")
+            return AppLocalization.string("lifecycle.confirm_delete")
         case nil:
             return ""
         }

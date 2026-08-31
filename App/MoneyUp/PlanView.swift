@@ -127,7 +127,7 @@ private struct BudgetPlanView: View {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(
                                     String(
-                                        format: String(localized: "plan.purpose_review_title"),
+                                        format: AppLocalization.string("plan.purpose_review_title"),
                                         needsPurposeCount
                                     )
                                 )
@@ -365,7 +365,7 @@ private struct BudgetRow: View {
                 MoneyUpPaceBar(ratio: ratio, elapsed: elapsed)
                 Text(
                     String(
-                        format: String(localized: "plan.spent_of_limit"),
+                        format: AppLocalization.string("plan.spent_of_limit"),
                         formattedMoney(spent),
                         formattedMoney(limit)
                     )
@@ -424,7 +424,7 @@ private struct BudgetSummaryCard: View {
 
             Text(
                 String(
-                    format: String(localized: "plan.spent_of_limit"),
+                    format: AppLocalization.string("plan.spent_of_limit"),
                     formattedMoney(spent),
                     formattedMoney(limit)
                 )
@@ -625,12 +625,12 @@ private struct BudgetSimulatorView: View {
         let points = [
             ChartPoint(
                 id: "current",
-                label: String(localized: "simulator.current"),
+                label: AppLocalization.string("simulator.current"),
                 money: forecast.currentSpent
             ),
             ChartPoint(
                 id: "projected",
-                label: String(localized: "simulator.projected"),
+                label: AppLocalization.string("simulator.projected"),
                 money: forecast.projectedSpent
             )
         ]
@@ -664,11 +664,11 @@ private struct BudgetSimulatorView: View {
                     ForEach(points) { point in
                         BarMark(
                             x: .value(
-                                String(localized: "chart.dimension.scenario"),
+                                AppLocalization.string("chart.dimension.scenario"),
                                 point.label
                             ),
                             y: .value(
-                                String(localized: "chart.dimension.amount"),
+                                AppLocalization.string("chart.dimension.amount"),
                                 point.amount
                             )
                         )
@@ -687,7 +687,7 @@ private struct BudgetSimulatorView: View {
 
                     RuleMark(
                         y: .value(
-                            String(localized: "chart.dimension.budget"),
+                            AppLocalization.string("chart.dimension.budget"),
                             limit
                         )
                     )
@@ -917,7 +917,7 @@ extension BudgetRolloverRule {
     }
 }
 
-private struct AddCategorySheet: View {
+struct AddCategorySheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AppModel.self) private var model
     @State private var name = ""
@@ -925,6 +925,15 @@ private struct AddCategorySheet: View {
     @State private var isSaving = false
     @State private var errorMessage: String?
     let kind: LedgerAccountKind
+    let onAdded: @MainActor (UUID) -> Void
+
+    init(
+        kind: LedgerAccountKind,
+        onAdded: @escaping @MainActor (UUID) -> Void = { _ in }
+    ) {
+        self.kind = kind
+        self.onAdded = onAdded
+    }
 
     private var titleKey: LocalizedStringKey {
         kind == .income
@@ -969,11 +978,12 @@ private struct AddCategorySheet: View {
         errorMessage = nil
         defer { isSaving = false }
         do {
-            try await model.addCategory(
+            let categoryID = try await model.addCategory(
                 name: name,
                 kind: kind,
                 parentID: kind == .expense ? parentID : nil
             )
+            onAdded(categoryID)
             dismiss()
         } catch {
             errorMessage = safeUserMessage(for: error, context: .save)

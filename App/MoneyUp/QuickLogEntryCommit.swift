@@ -93,6 +93,7 @@ extension QuickLogEntryView {
                 sourceAccountID: accountID,
                 destinationAccountID: destinationAccountID,
                 occurredAt: occurredAt,
+                payee: payee,
                 note: note
             ))
         }
@@ -184,7 +185,7 @@ extension QuickLogEntryView {
         if isVoiceOverEnabled {
             UIAccessibility.post(
                 notification: .announcement,
-                argument: "\(String(localized: "quick_log.saved")). \(String(localized: "action.undo"))"
+                argument: "\(AppLocalization.string("quick_log.saved")). \(AppLocalization.string("action.undo"))"
             )
         }
 

@@ -11,9 +11,9 @@ enum ReceiptScannerError: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .unreadableImage:
-            return String(localized: "scan.error_unreadable")
+            return AppLocalization.string("scan.error_unreadable")
         case .noTextFound:
-            return String(localized: "scan.error_no_text")
+            return AppLocalization.string("scan.error_no_text")
         }
     }
 }

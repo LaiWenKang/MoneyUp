@@ -48,7 +48,7 @@ struct OnboardingView: View {
         guard let startingBalance,
               let currency = try? CurrencyCode(currencyCode),
               let money = try? Money(startingBalance, currency: currency) else {
-            return String(localized: "onboarding.not_set")
+            return AppLocalization.string("onboarding.not_set")
         }
         return formattedMoney(money)
     }
@@ -104,7 +104,7 @@ struct OnboardingView: View {
                 .accessibilityLabel("onboarding.progress_accessibility")
                 .accessibilityValue(
                     String(
-                        format: String(localized: "onboarding.step_progress"),
+                        format: AppLocalization.string("onboarding.step_progress"),
                         step.number,
                         Step.allCases.count
                     )
@@ -289,7 +289,7 @@ struct OnboardingView: View {
                     Divider().padding(.vertical, 12)
                     reviewRow(
                         "onboarding.review_account_type",
-                        value: String(localized: accountType.localizedResource)
+                        value: AppLocalization.string(accountType.localizedResource)
                     )
                     Divider().padding(.vertical, 12)
                     reviewRow(
@@ -362,7 +362,7 @@ struct OnboardingView: View {
     private var progressText: some View {
         Text(
             String(
-                format: String(localized: "onboarding.step_progress"),
+                format: AppLocalization.string("onboarding.step_progress"),
                 step.number,
                 Step.allCases.count
             )

@@ -428,7 +428,7 @@ extension AppModel {
         state.candidateAccounts.first {
             $0.systemRole == .foreignExchange && $0.currency == currency
         } ?? LedgerAccount(
-            name: "\(String(localized: "account.fx_clearing")) \(currency.value)",
+            name: "\(AppLocalization.string("account.fx_clearing")) \(currency.value)",
             kind: .trading,
             currency: currency,
             systemRole: .foreignExchange
@@ -768,6 +768,7 @@ extension AppModel {
                 from: semantics.source.id,
                 to: destination.id,
                 occurredAt: row.occurredAt,
+                payee: row.payee,
                 note: row.note
             )
         }
@@ -801,6 +802,7 @@ extension AppModel {
             sourceTradingAccountID: sourceTrading.id,
             destinationTradingAccountID: destinationTrading.id,
             occurredAt: row.occurredAt,
+            payee: row.payee,
             note: row.note
         )
     }

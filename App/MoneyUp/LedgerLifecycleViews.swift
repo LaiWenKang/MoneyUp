@@ -4,7 +4,7 @@ import SwiftUI
 
 func impactSummary(_ impact: AppModel.LedgerItemLifecycleImpact) -> String {
     String(
-        format: String(localized: "lifecycle.impact_summary"),
+        format: AppLocalization.string("lifecycle.impact_summary"),
         impact.transactionCount,
         impact.scheduleCount,
         impact.holdingCount,
@@ -19,6 +19,8 @@ struct CategoryManagementList: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AppModel.self) private var model
     @State private var selectedCategoryID: UUID?
+    @State private var categoryKindToAdd: LedgerAccountKind = .expense
+    @State private var isAddingCategory = false
 
     private var expenseCategories: [LedgerAccount] {
         model.manageableLedgerItems
@@ -49,6 +51,30 @@ struct CategoryManagementList: View {
             .navigationTitle("lifecycle.manage_categories")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Menu {
+                        Button {
+                            categoryKindToAdd = .expense
+                            isAddingCategory = true
+                        } label: {
+                            Label(
+                                "lifecycle.add_expense_category",
+                                systemImage: "minus.circle"
+                            )
+                        }
+                        Button {
+                            categoryKindToAdd = .income
+                            isAddingCategory = true
+                        } label: {
+                            Label(
+                                "lifecycle.add_income_category",
+                                systemImage: "plus.circle"
+                            )
+                        }
+                    } label: {
+                        Label("category.add", systemImage: "plus")
+                    }
+                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("action.done") { dismiss() }
                 }
@@ -62,6 +88,9 @@ struct CategoryManagementList: View {
                 if let selectedCategoryID {
                     CategoryManagementSheet(categoryID: selectedCategoryID)
                 }
+            }
+            .sheet(isPresented: $isAddingCategory) {
+                AddCategorySheet(kind: categoryKindToAdd)
             }
         }
     }
@@ -235,7 +264,7 @@ struct CategoryManagementSheet: View {
             }
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
-            .navigationTitle(category?.name ?? String(localized: "lifecycle.manage"))
+            .navigationTitle(category?.name ?? AppLocalization.string("lifecycle.manage"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -326,15 +355,15 @@ struct CategoryManagementSheet: View {
         let base = impactSummary(impact)
         switch pendingLifecycleAction {
         case .archive:
-            return String(localized: "lifecycle.confirm_archive") + " " + base
+            return AppLocalization.string("lifecycle.confirm_archive") + " " + base
         case .restore:
-            return String(localized: "lifecycle.confirm_restore")
+            return AppLocalization.string("lifecycle.confirm_restore")
         case .merge:
-            return String(localized: "lifecycle.confirm_merge") + " " + base
+            return AppLocalization.string("lifecycle.confirm_merge") + " " + base
         case .deleteWithReassignment:
-            return String(localized: "lifecycle.confirm_reassign") + " " + base
+            return AppLocalization.string("lifecycle.confirm_reassign") + " " + base
         case .deleteUnused:
-            return String(localized: "lifecycle.confirm_delete")
+            return AppLocalization.string("lifecycle.confirm_delete")
         case nil:
             return ""
         }

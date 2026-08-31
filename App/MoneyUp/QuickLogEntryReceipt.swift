@@ -179,12 +179,12 @@ extension QuickLogEntryView {
             currentKind: kind
         ) else {
             receiptResult = nil
-            smartMessage = String(localized: "quick_log.scan_context_changed")
+            smartMessage = AppLocalization.string("quick_log.scan_context_changed")
             return false
         }
         guard !result.draft.isEmpty else {
             receiptResult = nil
-            smartMessage = String(localized: "quick_log.smart_nothing_found")
+            smartMessage = AppLocalization.string("quick_log.smart_nothing_found")
             return false
         }
 
@@ -202,9 +202,7 @@ extension QuickLogEntryView {
            let noteCandidate = result.noteCandidate {
             note = noteCandidate
         }
-        if result.draft.occurredAt != nil
-            || result.draft.payee != nil
-            || !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        if result.draft.occurredAt != nil {
             isShowingOptionalDetails = true
         }
 
@@ -270,7 +268,7 @@ extension QuickLogEntryView {
         suggestsLearnedCategory: Bool = true
     ) -> Bool {
         guard !draft.isEmpty else {
-            smartMessage = String(localized: "quick_log.smart_nothing_found")
+            smartMessage = AppLocalization.string("quick_log.smart_nothing_found")
             return false
         }
 
@@ -311,7 +309,7 @@ extension QuickLogEntryView {
         }
 
         if draft.source == .naturalLanguage {
-            smartMessage = String(localized: "quick_log.smart_review")
+            smartMessage = AppLocalization.string("quick_log.smart_review")
         } else {
             smartMessage = nil
         }

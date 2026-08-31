@@ -220,7 +220,7 @@ extension AppModel {
     func openingBalancesAccount() -> LedgerAccount {
         accounts.first(where: { $0.systemRole == .openingBalances })
             ?? LedgerAccount(
-                name: String(localized: "account.opening_balances"),
+                name: AppLocalization.string("account.opening_balances"),
                 kind: .equity,
                 systemRole: .openingBalances
             )
@@ -250,7 +250,7 @@ extension AppModel {
         accounts.first {
             $0.systemRole == .foreignExchange && $0.currency == currency
         } ?? LedgerAccount(
-            name: "\(String(localized: "account.fx_clearing")) \(currency.value)",
+            name: "\(AppLocalization.string("account.fx_clearing")) \(currency.value)",
             kind: .trading,
             currency: currency,
             systemRole: .foreignExchange
@@ -261,7 +261,7 @@ extension AppModel {
         accounts.first {
             $0.systemRole == .investmentGainLoss && $0.currency == currency
         } ?? LedgerAccount(
-            name: "\(String(localized: "holding.gain_loss")) \(currency.value)",
+            name: "\(AppLocalization.string("holding.gain_loss")) \(currency.value)",
             kind: .trading,
             currency: currency,
             systemRole: .investmentGainLoss

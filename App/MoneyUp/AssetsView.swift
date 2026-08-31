@@ -406,7 +406,7 @@ struct AssetsView: View {
                                             VStack(alignment: .leading, spacing: 2) {
                                                 Text(
                                                     String(
-                                                        format: String(localized: "fx.snapshot_evidence_format"),
+                                                        format: AppLocalization.string("fx.snapshot_evidence_format"),
                                                         formattedMoney(evidence.source),
                                                         NSDecimalNumber(decimal: evidence.appliedRate).stringValue,
                                                         formattedMoney(evidence.converted)
@@ -415,11 +415,11 @@ struct AssetsView: View {
                                                 .font(.caption.monospacedDigit())
                                                 Text(
                                                     String(
-                                                        format: String(localized: "fx.snapshot_rate_day_format"),
+                                                        format: AppLocalization.string("fx.snapshot_rate_day_format"),
                                                         evidence.effectiveDayKey,
                                                         evidence.usedInverseRate
-                                                            ? String(localized: "fx.snapshot_inverse")
-                                                            : String(localized: "fx.snapshot_direct")
+                                                            ? AppLocalization.string("fx.snapshot_inverse")
+                                                            : AppLocalization.string("fx.snapshot_direct")
                                                     )
                                                 )
                                                 .font(.caption2)

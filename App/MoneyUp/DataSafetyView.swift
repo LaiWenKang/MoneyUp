@@ -54,7 +54,7 @@ struct DataSafetyView: View {
                 Section {
                     Label(
                         String(
-                            format: String(localized: "recovery.quarantined_count"),
+                            format: AppLocalization.string("recovery.quarantined_count"),
                             model.recoveryIssueCount
                         ),
                         systemImage: "exclamationmark.shield"
@@ -135,8 +135,8 @@ struct DataSafetyView: View {
                         LabeledContent(
                             "inventory.widget_budget_status",
                             value: inventory.budgetStatusWidgetEnabled
-                                ? String(localized: "inventory.enabled")
-                                : String(localized: "inventory.disabled")
+                                ? AppLocalization.string("inventory.enabled")
+                                : AppLocalization.string("inventory.disabled")
                         )
                         LabeledContent(
                             "inventory.quarantined",
@@ -166,8 +166,8 @@ struct DataSafetyView: View {
                 } label: {
                     Label(
                         inventory == nil
-                            ? String(localized: "inventory.generate")
-                            : String(localized: "inventory.refresh"),
+                            ? AppLocalization.string("inventory.generate")
+                            : AppLocalization.string("inventory.refresh"),
                         systemImage: "list.number"
                     )
                 }
@@ -341,7 +341,7 @@ struct DataSafetyView: View {
             backupPassword = ""
             backupConfirmation = ""
             isExporting = true
-            message = String(localized: "backup.ready")
+            message = AppLocalization.string("backup.ready")
         } catch {
             removeTemporaryFile(createdArchiveURL)
             errorMessage = safeUserMessage(for: error, context: .exportData)
@@ -359,7 +359,7 @@ struct DataSafetyView: View {
             inventoryDocument = PrivacySafeDataInventoryDocument(
                 inventory: refreshed
             )
-            message = String(localized: "inventory.ready")
+            message = AppLocalization.string("inventory.ready")
         } catch {
             errorMessage = safeUserMessage(for: error, context: .exportData)
         }
@@ -381,7 +381,7 @@ struct DataSafetyView: View {
                 from: pendingRestoreURL,
                 password: restorePassword
             )
-            message = String(localized: "restore.complete")
+            message = AppLocalization.string("restore.complete")
         } catch {
             errorMessage = safeUserMessage(for: error, context: .restoreData)
         }
@@ -455,7 +455,7 @@ struct DataSafetyView: View {
         defer { isWorking = false }
         do {
             try await model.discardUnavailableLockedCaptures()
-            message = String(localized: "capture.unavailable.discarded")
+            message = AppLocalization.string("capture.unavailable.discarded")
         } catch {
             errorMessage = safeUserMessage(for: error, context: .save)
         }

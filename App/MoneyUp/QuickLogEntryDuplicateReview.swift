@@ -42,14 +42,14 @@ extension QuickLogEntryView {
 
     var duplicateReviewMessage: String {
         guard let pending = pendingDuplicateReview else {
-            return String(localized: "quick_log.duplicate_message_fallback")
+            return AppLocalization.string("quick_log.duplicate_message_fallback")
         }
         let date = pending.historyDate?.formattedForReporting(
             .dateTime.year().month(.abbreviated).day(),
             calendar: model.reportingCalendar
-        ) ?? String(localized: "quick_log.duplicate_recent_time")
+        ) ?? AppLocalization.string("quick_log.duplicate_recent_time")
         return String(
-            format: String(localized: "quick_log.duplicate_message_format"),
+            format: AppLocalization.string("quick_log.duplicate_message_format"),
             date,
             duplicateReason(pending.match.evidence),
             captureConfidenceText(pending.match.confidence)
@@ -58,18 +58,18 @@ extension QuickLogEntryView {
 
     private func duplicateReason(_ evidence: CaptureDuplicateEvidence) -> String {
         if evidence.sourceMatched {
-            return String(localized: "quick_log.duplicate_reason_source")
+            return AppLocalization.string("quick_log.duplicate_reason_source")
         }
         if evidence.categoryMatched && evidence.descriptorMatched {
-            return String(localized: "quick_log.duplicate_reason_category_payee")
+            return AppLocalization.string("quick_log.duplicate_reason_category_payee")
         }
         if evidence.descriptorMatched {
-            return String(localized: "quick_log.duplicate_reason_payee")
+            return AppLocalization.string("quick_log.duplicate_reason_payee")
         }
         if evidence.categoryMatched {
-            return String(localized: "quick_log.duplicate_reason_category")
+            return AppLocalization.string("quick_log.duplicate_reason_category")
         }
-        return String(localized: "quick_log.duplicate_reason_time")
+        return AppLocalization.string("quick_log.duplicate_reason_time")
     }
 
     private func duplicateQuery() -> CaptureDuplicateQuery? {

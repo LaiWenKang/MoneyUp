@@ -226,6 +226,7 @@ private struct MoneyUpWidgetView: View {
                 }
             }
         }
+        .environment(\.locale, AppLanguagePreference.current.locale)
         .containerBackground(Color.moneyUpWidgetBackground, for: .widget)
         .tint(.moneyUpSoftGreen)
         .widgetURL(
@@ -360,10 +361,10 @@ private struct BudgetStatusWidgetView: View {
 
     private func percentAccessibility(_ percent: Int, isOver: Bool) -> String {
         let status = isOver
-            ? String(localized: "widget.budget_over")
-            : String(localized: "widget.budget_on_plan")
+            ? AppLocalization.string("widget.budget_over")
+            : AppLocalization.string("widget.budget_on_plan")
         return String(
-            format: String(localized: "widget.budget_accessibility"),
+            format: AppLocalization.string("widget.budget_accessibility"),
             percent,
             status
         )
@@ -371,7 +372,7 @@ private struct BudgetStatusWidgetView: View {
 
     private func visiblePercentUsed(_ percent: Int) -> String {
         String(
-            format: String(localized: "widget.budget_used_format"),
+            format: AppLocalization.string("widget.budget_used_format"),
             percent
         )
     }

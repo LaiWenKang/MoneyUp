@@ -100,8 +100,6 @@ extension QuickLogEntryView {
         splitLines = draft.splitLines
         sourceCaptureID = draft.sourceCaptureID
         isShowingOptionalDetails = draft.dateWasEdited
-            || !draft.payee.isEmpty
-            || !draft.note.isEmpty
     }
 
     func handleRequestedLaunch() {
