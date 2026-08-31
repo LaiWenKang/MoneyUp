@@ -2,7 +2,7 @@ import MoneyUpCore
 import SwiftUI
 
 struct RootView: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
 
     var body: some View {
         switch model.state {
@@ -40,7 +40,7 @@ private struct LaunchingView: View {
 }
 
 private struct LockedView: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     private let method = UnlockMethod.current
 
     var body: some View {
@@ -88,7 +88,7 @@ private struct LockedView: View {
 }
 
 private struct RecoveryView: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     let message: String
     @State private var isConfirmingReset = false
     @State private var isShowingDataSafety = false
@@ -156,7 +156,7 @@ private struct RecoveryView: View {
                         }
                     }
             }
-            .environmentObject(model)
+            .environment(model)
         }
     }
 }
@@ -170,7 +170,7 @@ private enum MoneyUpSection: Hashable {
 }
 
 private struct MainTabView: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @State private var selectedSection: MoneyUpSection = .today
     @State private var quickLogKind: QuickLogKind = .expense
     @State private var quickLogLaunchMode: QuickLogLaunchMode?

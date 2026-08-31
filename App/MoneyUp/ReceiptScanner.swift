@@ -347,6 +347,14 @@ private final class ReceiptRecognitionOperation: @unchecked Sendable {
     private func readingOrderText(
         from observations: [VNRecognizedTextObservation]
     ) throws -> OCRResult {
+        let fragments = try recognizedFragments(from: observations)
+        let rows = try groupedRows(from: fragments)
+        return try recognizedText(from: rows)
+    }
+
+    private func recognizedFragments(
+        from observations: [VNRecognizedTextObservation]
+    ) throws -> [Fragment] {
         var fragments: [Fragment] = []
         fragments.reserveCapacity(min(observations.count, 512))
         for (index, observation) in observations.enumerated() {
@@ -369,7 +377,10 @@ private final class ReceiptRecognitionOperation: @unchecked Sendable {
             fragments = Array(fragments.prefix(256))
                 + Array(fragments.suffix(256))
         }
+        return fragments
+    }
 
+    private func groupedRows(from fragments: [Fragment]) throws -> [TextRow] {
         var rows: [TextRow] = []
         for (fragmentIndex, fragment) in fragments.enumerated() {
             if fragmentIndex.isMultiple(of: 32) { try checkCancellation() }
@@ -388,12 +399,14 @@ private final class ReceiptRecognitionOperation: @unchecked Sendable {
                 rows.append(TextRow(fragment))
             }
         }
-
-        let orderedRows = rows.sorted { lhs, rhs in
+        return rows.sorted { lhs, rhs in
             if lhs.averageMidY != rhs.averageMidY { return lhs.averageMidY > rhs.averageMidY }
             return (lhs.fragments.map { $0.box.minX }.min() ?? 0)
                 < (rhs.fragments.map { $0.box.minX }.min() ?? 0)
         }
+    }
+
+    private func recognizedText(from orderedRows: [TextRow]) throws -> OCRResult {
         var lines: [String] = []
         var confidences: [Float] = []
         var lineConfidences: [Float] = []

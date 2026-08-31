@@ -133,6 +133,25 @@ the exact attribution/audit validator. Routine mutations update indexes,
 metrics, and balance deltas in the same transaction. Full rebuild is limited to
 migration, restore, or repair.
 
+### 0.7.0 W1 representation compatibility
+
+The Observation migration and service split change only in-memory ownership.
+They add no collection, column, payload field, identifier, timestamp, or schema
+migration; SQLCipher `user_version` remains 6. The services receive decoded
+state from the `AppModel` coordinator and do not own a store connection.
+
+Save, edit, delete, split, import, reconciliation, schedule posting, lifecycle,
+attachment-retention, and goal-movement paths still construct their complete
+write/removal sets before making one store transaction call. Live service
+state changes only after that call succeeds and the captured store generation
+is still current. Cancellation, rollback, and quarantine therefore retain the
+same durable boundary and ordering as before decomposition.
+
+Settings continue to use the single primary `UserProfile` record. A FIFO
+mutation lane re-reads the latest committed profile for each queued change; it
+does not introduce an event log or new representation. A failed candidate is
+discarded without publishing or rewriting unrelated committed fields.
+
 Malformed or orphaned rows are quarantined from calculations but their raw
 encrypted records remain in snapshots and archives. Schema-1/2 migration builds
 the ledger indexes without changing valid legacy payloads, identifiers,

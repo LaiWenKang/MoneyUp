@@ -606,23 +606,10 @@ public enum BudgetRolloverEngine {
         guard let currentMonth = calendar.dateInterval(of: .month, for: asOf) else {
             throw BudgetRolloverError.invalidMonth
         }
-
-        var spendingByMonth: [Date: [UUID: Money]] = [:]
-        for period in monthlySpending {
-            guard let normalized = calendar.dateInterval(
-                of: .month,
-                for: period.monthStart
-            )?.start else {
-                throw BudgetRolloverError.invalidMonth
-            }
-            guard spendingByMonth.updateValue(
-                period.directSpending,
-                forKey: normalized
-            ) == nil else {
-                throw BudgetRolloverError.duplicateMonth(normalized)
-            }
-        }
-
+        let spendingByMonth = try spendingByMonth(
+            monthlySpending,
+            calendar: calendar
+        )
         let currentTree = try BudgetTree(
             currency: currency,
             nodes: revisionForMonth(currentMonth.start).nodes
@@ -637,31 +624,22 @@ public enum BudgetRolloverEngine {
                   let startedAt = node.rolloverStartedAt else { return nil }
             return calendar.dateInterval(of: .month, for: startedAt)?.start
         }
-        let checkpoint = latestCheckpoint(currentMonth.start)
-        var monthStart: Date
-        var carry: [UUID: Money]
-        if let checkpoint,
-           let openingCarry = checkpoint.openingCarryByID {
-            monthStart = checkpoint.effectiveMonth
-            carry = openingCarry
-        } else {
-            guard let activation = activationMonths.min(),
-                  activation <= currentMonth.start else {
-                return BudgetRolloverSnapshot(
-                    month: currentMonth,
-                    effectiveLimits: currentConfiguredLimits,
-                    carryIn: [:]
-                )
-            }
-            monthStart = activation
-            carry = [:]
+        guard var start = rolloverStart(
+            currentMonth: currentMonth.start,
+            activationMonths: activationMonths,
+            checkpoint: latestCheckpoint(currentMonth.start)
+        ) else {
+            return BudgetRolloverSnapshot(
+                month: currentMonth,
+                effectiveLimits: currentConfiguredLimits,
+                carryIn: [:]
+            )
         }
-
-        while monthStart <= currentMonth.start {
-            let revision = try revisionForMonth(monthStart)
-            if revision.effectiveMonth == monthStart {
-                carry = try remapCarry(
-                    carry,
+        while start.month <= currentMonth.start {
+            let revision = try revisionForMonth(start.month)
+            if revision.effectiveMonth == start.month {
+                start.carry = try remapCarry(
+                    start.carry,
                     using: revision.carryMappings,
                     currency: currency
                 )
@@ -670,66 +648,139 @@ public enum BudgetRolloverEngine {
             guard tree.currency == currency else {
                 throw BudgetRolloverError.configurationCurrencyMismatch
             }
-            var effective = configuredLimits(in: tree)
-            for node in tree.nodes {
-                guard let base = node.limit,
-                      node.rolloverRule != .none,
-                      let startedAt = node.rolloverStartedAt,
-                      let activation = calendar.dateInterval(
-                          of: .month,
-                          for: startedAt
-                      )?.start,
-                      activation <= monthStart else { continue }
-                effective[node.id] = try base.adding(
-                    carry[node.id] ?? Money.zero(currency: tree.currency)
-                )
-            }
-
-            if monthStart == currentMonth.start {
+            let effective = try effectiveLimits(
+                tree: tree,
+                carry: start.carry,
+                month: start.month,
+                calendar: calendar
+            )
+            if start.month == currentMonth.start {
                 return BudgetRolloverSnapshot(
                     month: currentMonth,
                     effectiveLimits: effective,
-                    carryIn: carry.filter { !$0.value.isZero }
+                    carryIn: start.carry.filter { !$0.value.isZero }
                 )
             }
-
             let rolled = try tree.rolledUpSpending(
-                directSpending: spendingByMonth[monthStart] ?? [:]
+                directSpending: spendingByMonth[start.month] ?? [:]
             )
-            var nextCarry: [UUID: Money] = [:]
-            for node in tree.nodes {
-                guard let limit = effective[node.id],
-                      node.rolloverRule != .none,
-                      let startedAt = node.rolloverStartedAt,
-                      let activation = calendar.dateInterval(
-                          of: .month,
-                          for: startedAt
-                      )?.start,
-                      activation <= monthStart else { continue }
-                let spent = rolled[node.id] ?? Money.zero(currency: tree.currency)
-                let balance = try limit.subtracting(spent)
-                switch node.rolloverRule {
-                case .none:
-                    break
-                case .positiveOnly:
-                    if balance.amount > .zero { nextCarry[node.id] = balance }
-                case .fullBalance:
-                    if !balance.isZero { nextCarry[node.id] = balance }
-                }
-            }
-            carry = nextCarry
-
+            start.carry = try nextCarry(
+                tree: tree,
+                effectiveLimits: effective,
+                rolledSpending: rolled,
+                month: start.month,
+                calendar: calendar
+            )
             guard let next = calendar.date(
                 byAdding: .month,
                 value: 1,
-                to: monthStart
+                to: start.month
             ) else {
                 throw BudgetRolloverError.invalidMonth
             }
-            monthStart = next
+            start.month = next
         }
-
         throw BudgetRolloverError.invalidMonth
+    }
+
+    private struct RolloverStart {
+        var month: Date
+        var carry: [UUID: Money]
+    }
+
+    private static func spendingByMonth(
+        _ monthlySpending: [MonthlyBudgetSpending],
+        calendar: Calendar
+    ) throws -> [Date: [UUID: Money]] {
+        var result: [Date: [UUID: Money]] = [:]
+        for period in monthlySpending {
+            guard let month = calendar.dateInterval(
+                of: .month,
+                for: period.monthStart
+            )?.start else { throw BudgetRolloverError.invalidMonth }
+            guard result.updateValue(period.directSpending, forKey: month) == nil else {
+                throw BudgetRolloverError.duplicateMonth(month)
+            }
+        }
+        return result
+    }
+
+    private static func rolloverStart(
+        currentMonth: Date,
+        activationMonths: [Date],
+        checkpoint: BudgetConfigurationRevision?
+    ) -> RolloverStart? {
+        if let checkpoint,
+           let openingCarry = checkpoint.openingCarryByID {
+            return RolloverStart(
+                month: checkpoint.effectiveMonth,
+                carry: openingCarry
+            )
+        }
+        guard let activation = activationMonths.min(),
+              activation <= currentMonth else { return nil }
+        return RolloverStart(month: activation, carry: [:])
+    }
+
+    private static func effectiveLimits(
+        tree: BudgetTree,
+        carry: [UUID: Money],
+        month: Date,
+        calendar: Calendar
+    ) throws -> [UUID: Money] {
+        var result = configuredLimits(in: tree)
+        for node in tree.nodes where isRolloverActive(
+            node,
+            in: month,
+            calendar: calendar
+        ) {
+            guard let base = node.limit else { continue }
+            result[node.id] = try base.adding(
+                carry[node.id] ?? Money.zero(currency: tree.currency)
+            )
+        }
+        return result
+    }
+
+    private static func nextCarry(
+        tree: BudgetTree,
+        effectiveLimits: [UUID: Money],
+        rolledSpending: [UUID: Money],
+        month: Date,
+        calendar: Calendar
+    ) throws -> [UUID: Money] {
+        var result: [UUID: Money] = [:]
+        for node in tree.nodes where isRolloverActive(
+            node,
+            in: month,
+            calendar: calendar
+        ) {
+            guard let limit = effectiveLimits[node.id] else { continue }
+            let spent = rolledSpending[node.id] ?? Money.zero(currency: tree.currency)
+            let balance = try limit.subtracting(spent)
+            switch node.rolloverRule {
+            case .none: break
+            case .positiveOnly:
+                if balance.amount > .zero { result[node.id] = balance }
+            case .fullBalance:
+                if !balance.isZero { result[node.id] = balance }
+            }
+        }
+        return result
+    }
+
+    private static func isRolloverActive(
+        _ node: BudgetNode,
+        in month: Date,
+        calendar: Calendar
+    ) -> Bool {
+        guard node.rolloverRule != .none,
+              let startedAt = node.rolloverStartedAt,
+              let activation = calendar.dateInterval(
+                  of: .month,
+                  for: startedAt
+              )?.start else { return false }
+        return activation <= month
     }
 
     private static func configuredLimits(in tree: BudgetTree) -> [UUID: Money] {

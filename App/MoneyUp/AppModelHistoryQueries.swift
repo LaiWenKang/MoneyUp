@@ -1,0 +1,358 @@
+import Foundation
+import MoneyUpCore
+import MoneyUpPersistence
+import Observation
+import SwiftUI
+import UIKit
+import WidgetKit
+
+extension AppModel {
+    func historyPage(
+        query: HistoryQuery,
+        after cursor: JournalEntryPageCursor? = nil,
+        limit: Int = 80
+    ) async throws -> HistoryPageResult {
+        let generation = storeGeneration
+        let historyStore = try requireStore()
+        let accountSnapshot = accounts
+        let calendarSnapshot = reportingCalendar
+        let dayKeys = historyDayKeys(for: query, calendar: calendarSnapshot)
+        let validAccountIDs = Set(accountSnapshot.map(\.id))
+        let quarantinedEntryIDs = invalidJournalEntryIDs
+        let boundedLimit = min(max(limit, 1), 200)
+        let scanLimit = min(max(boundedLimit * 2, 160), 500)
+        var scanCursor = cursor
+        var matches: [JournalEntry] = []
+
+        while matches.count < boundedLimit {
+            try Task.checkCancellation()
+            let rawPage = try await historyStore.fetchJournalEntryPage(
+                startDayKey: dayKeys.start,
+                endDayKeyExclusive: dayKeys.endExclusive,
+                after: scanCursor,
+                limit: scanLimit
+            )
+            guard isCurrentStoreGeneration(generation) else {
+                throw AppModelError.locked
+            }
+            recordHistoryDecodeIssues(rawPage.issues)
+            let relationshipIssues = rawPage.entries.filter { entry in
+                entry.postings.contains { !validAccountIDs.contains($0.accountID) }
+            }.map {
+                RecordDecodeIssue(
+                    collection: .journalEntries,
+                    recordID: $0.id.uuidString
+                )
+            }
+            recordHistoryDecodeIssues(relationshipIssues)
+            let filtered = await Task.detached(priority: .userInitiated) {
+                query.filteredEntries(
+                    rawPage.entries.filter { entry in
+                        !quarantinedEntryIDs.contains(entry.id)
+                            && entry.postings.allSatisfy {
+                            validAccountIDs.contains($0.accountID)
+                        }
+                    },
+                    accounts: accountSnapshot,
+                    calendar: calendarSnapshot
+                )
+            }.value
+            let remaining = boundedLimit - matches.count
+            matches.append(contentsOf: filtered.prefix(remaining))
+
+            if filtered.count >= remaining {
+                let moreResultsMayExist = filtered.count > remaining
+                    || rawPage.nextCursor != nil
+                return HistoryPageResult(
+                    entries: matches,
+                    nextCursor: moreResultsMayExist
+                        ? matches.last.map {
+                            JournalEntryPageCursor(
+                                occurredAt: $0.occurredAt,
+                                recordID: $0.id.uuidString
+                            )
+                        }
+                        : nil
+                )
+            }
+            guard let nextCursor = rawPage.nextCursor else {
+                return HistoryPageResult(entries: matches, nextCursor: nil)
+            }
+            scanCursor = nextCursor
+        }
+
+        return HistoryPageResult(
+            entries: matches,
+            nextCursor: matches.last.map {
+                JournalEntryPageCursor(
+                    occurredAt: $0.occurredAt,
+                    recordID: $0.id.uuidString
+                )
+            }
+        )
+    }
+
+    private func historyDayKeys(
+        for query: HistoryQuery,
+        calendar: Calendar
+    ) -> (start: Int?, endExclusive: Int?) {
+        let start = query.startDate.flatMap {
+            FinancialPeriodBoundary.lowerDayKey(
+                forStartDate: $0,
+                calendar: calendar
+            )
+        }
+        let endExclusive = query.endDateExclusive.flatMap {
+            FinancialPeriodBoundary.upperDayKeyExclusive(
+                forEndDateExclusive: $0,
+                calendar: calendar
+            )
+        }
+        return (start, endExclusive)
+    }
+
+    /// Calculates the complete running total from bounded indexed pages. No
+    /// full-journal filter runs on the main thread and no decoded result set is
+    /// retained after the summary is returned.
+    func historySummary(query: HistoryQuery) async throws -> HistorySummary {
+        let generation = storeGeneration
+        let historyStore = try requireStore()
+        let accountSnapshot = accounts
+        let calendarSnapshot = reportingCalendar
+        let startDayKey = query.startDate.flatMap {
+            FinancialPeriodBoundary.lowerDayKey(
+                forStartDate: $0,
+                calendar: calendarSnapshot
+            )
+        }
+        let endDayKeyExclusive = query.endDateExclusive.flatMap {
+            FinancialPeriodBoundary.upperDayKeyExclusive(
+                forEndDateExclusive: $0,
+                calendar: calendarSnapshot
+            )
+        }
+        let validAccountIDs = Set(accountSnapshot.map(\.id))
+        let quarantinedEntryIDs = invalidJournalEntryIDs
+        var cursor: JournalEntryPageCursor?
+        var transactionCount = 0
+        var amountsByCurrency: [CurrencyCode: Decimal] = [:]
+
+        repeat {
+            try Task.checkCancellation()
+            let rawPage = try await historyStore.fetchJournalEntryPage(
+                startDayKey: startDayKey,
+                endDayKeyExclusive: endDayKeyExclusive,
+                after: cursor,
+                limit: 500
+            )
+            guard isCurrentStoreGeneration(generation) else {
+                throw AppModelError.locked
+            }
+            recordHistoryDecodeIssues(rawPage.issues)
+            let relationshipIssues = rawPage.entries.filter { entry in
+                entry.postings.contains { !validAccountIDs.contains($0.accountID) }
+            }.map {
+                RecordDecodeIssue(
+                    collection: .journalEntries,
+                    recordID: $0.id.uuidString
+                )
+            }
+            recordHistoryDecodeIssues(relationshipIssues)
+            let pageSummary = try await Task.detached(priority: .userInitiated) {
+                let filtered = query.filteredEntries(
+                    rawPage.entries.filter { entry in
+                        !quarantinedEntryIDs.contains(entry.id)
+                            && entry.postings.allSatisfy {
+                            validAccountIDs.contains($0.accountID)
+                        }
+                    },
+                    accounts: accountSnapshot,
+                    calendar: calendarSnapshot
+                )
+                return try HistoryQuery().summary(
+                    for: filtered,
+                    accounts: accountSnapshot
+                )
+            }.value
+            transactionCount += pageSummary.transactionCount
+            for (currency, amount) in pageSummary.amountsByCurrency {
+                amountsByCurrency[currency] = try CheckedDecimal.adding(
+                    amountsByCurrency[currency] ?? .zero,
+                    amount
+                )
+            }
+            cursor = rawPage.nextCursor
+        } while cursor != nil
+
+        return HistorySummary(
+            transactionCount: transactionCount,
+            amountsByCurrency: amountsByCurrency
+        )
+    }
+
+    /// Loads actuals for one visible Calendar range from the chronological
+    /// SQLCipher index. The result is never merged into the recent cache and a
+    /// date change can cancel the caller's task without leaving partial state.
+    func calendarEntries(in interval: DateInterval) async throws -> [JournalEntry] {
+        guard let dayKeys = FinancialPeriodBoundary.dayKeyRange(
+            for: interval,
+            calendar: reportingCalendar
+        ) else { throw AppModelError.invalidBook }
+        return try await journalEntries(
+            startDayKey: dayKeys.lowerBound,
+            endDayKeyExclusive: dayKeys.upperBound
+        )
+    }
+
+    /// Complete normalized posting events for a bounded derived-data horizon.
+    /// Budget rollover/snapshot preparation must use this hook (extending the
+    /// interval to its earliest active rollover) rather than the 80-entry
+    /// recent-activity cache.
+    func journalPostingEvents(
+        in interval: DateInterval
+    ) async throws -> [LedgerPostingEvent] {
+        let generation = storeGeneration
+        let eventStore = try requireStore()
+        guard let dayKeys = FinancialPeriodBoundary.dayKeyRange(
+            for: interval,
+            calendar: reportingCalendar
+        ) else { throw AppModelError.invalidBook }
+        let events = try await eventStore.fetchJournalPostingEvents(
+            originDayKeyRange: dayKeys,
+            excludingEntryIDs: invalidJournalEntryIDs
+        )
+        guard ownsStoreGeneration(generation) else { throw AppModelError.locked }
+        return events
+    }
+
+    /// Schedule matching remains exact while bounding the candidate read to a
+    /// useful window around the occurrence instead of scanning the journal.
+    func matchingEntries(
+        for schedule: ScheduledTransaction,
+        calendar: Calendar? = nil
+    ) async throws -> [JournalEntry] {
+        let matchCalendar = calendar ?? reportingCalendar
+        guard let start = matchCalendar.date(
+            byAdding: .day,
+            value: -31,
+            to: schedule.nextOccurrence
+        ), let end = matchCalendar.date(
+            byAdding: .day,
+            value: 32,
+            to: schedule.nextOccurrence
+        ) else { throw AppModelError.invalidBook }
+        let linkedIDs = Set(
+            scheduledTransactions.flatMap(\.resolutions).compactMap(\.linkedEntryID)
+        )
+        let candidateInterval = DateInterval(start: start, end: end)
+        guard let dayKeys = FinancialPeriodBoundary.dayKeyRange(
+            for: candidateInterval,
+            calendar: matchCalendar
+        ) else { throw AppModelError.invalidBook }
+        let candidates = try await journalEntries(
+            startDayKey: dayKeys.lowerBound,
+            endDayKeyExclusive: dayKeys.upperBound
+        )
+        return candidates.filter {
+            !linkedIDs.contains($0.id) && schedule.matches($0)
+        }
+    }
+
+    func journalEntries(
+        startDate: Date? = nil,
+        endDateExclusive: Date? = nil,
+        startDayKey: Int? = nil,
+        endDayKeyExclusive: Int? = nil,
+        includeInvalidRelationships: Bool = false
+    ) async throws -> [JournalEntry] {
+        let generation = storeGeneration
+        let journalStore = try requireStore()
+        let validAccountIDs = Set(accounts.map(\.id))
+        let quarantinedEntryIDs = invalidJournalEntryIDs
+        var cursor: JournalEntryPageCursor?
+        var result: [JournalEntry] = []
+        repeat {
+            try Task.checkCancellation()
+            let page = try await journalStore.fetchJournalEntryPage(
+                startDate: startDate,
+                endDateExclusive: endDateExclusive,
+                startDayKey: startDayKey,
+                endDayKeyExclusive: endDayKeyExclusive,
+                after: cursor,
+                limit: 500
+            )
+            guard ownsStoreGeneration(generation) else {
+                throw AppModelError.locked
+            }
+            recordHistoryDecodeIssues(page.issues)
+            for entry in page.entries {
+                guard !quarantinedEntryIDs.contains(entry.id) else { continue }
+                let relationshipsAreValid = entry.postings.allSatisfy {
+                    validAccountIDs.contains($0.accountID)
+                }
+                if relationshipsAreValid || includeInvalidRelationships {
+                    result.append(entry)
+                }
+                if !relationshipsAreValid {
+                    recordHistoryDecodeIssues([
+                        RecordDecodeIssue(
+                            collection: .journalEntries,
+                            recordID: entry.id.uuidString
+                        )
+                    ])
+                }
+            }
+            cursor = page.nextCursor
+        } while cursor != nil
+        return result
+    }
+
+    /// Explicit export/import/lifecycle operations need one coherent journal
+    /// snapshot. SQLCipher returns it from a single actor-isolated SELECT; the
+    /// temporary decoded array is released when the operation completes and is
+    /// never assigned to the production recent cache.
+    func journalSnapshot(
+        includeInvalidRelationships: Bool
+    ) async throws -> [JournalEntry] {
+        let generation = storeGeneration
+        let snapshotStore = try requireStore()
+        let recovered = try await snapshotStore.fetchAllIdentifiedRecovering(
+            JournalEntry.self,
+            from: .journalEntries
+        )
+        guard ownsStoreGeneration(generation) else { throw AppModelError.locked }
+        recordHistoryDecodeIssues(recovered.issues)
+        let validAccountIDs = Set(accounts.map(\.id))
+        let quarantinedEntryIDs = invalidJournalEntryIDs.union(
+            recovered.issues.compactMap { UUID(uuidString: $0.recordID) }
+        )
+        return recovered.values.filter { entry in
+            guard !quarantinedEntryIDs.contains(entry.id) else { return false }
+            let valid = entry.postings.allSatisfy {
+                validAccountIDs.contains($0.accountID)
+            }
+            if !valid {
+                recordHistoryDecodeIssues([
+                    RecordDecodeIssue(
+                        collection: .journalEntries,
+                        recordID: entry.id.uuidString
+                    )
+                ])
+            }
+            return valid || includeInvalidRelationships
+        }
+    }
+
+    func recordHistoryDecodeIssues(_ issues: [RecordDecodeIssue]) {
+        guard !issues.isEmpty else { return }
+        var known = Set(recoveryIssues)
+        recoveryIssues.append(contentsOf: issues.compactMap { issue in
+            let identifier = "\(issue.collection.rawValue)/\(issue.recordID)"
+            return known.insert(identifier).inserted ? identifier : nil
+        })
+    }
+
+    /// Keeps the latest form state in memory immediately, then serializes a
+    /// debounced copy into SQLCipher. Background locking cancels the debounce
+    /// and flushes this latest snapshot before closing the store.
+}

@@ -154,3 +154,29 @@ actor SavingsGoalMutationSerializer {
         next.resume()
     }
 }
+
+/// FIFO serialization for whole-profile writes. Every mutation re-reads the
+/// latest committed profile after acquiring the serializer, so a delayed
+/// setting write cannot restore an older value for an unrelated field.
+actor ProfileMutationSerializer {
+    private var isHeld = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func acquire() async {
+        guard isHeld else {
+            isHeld = true
+            return
+        }
+        await withCheckedContinuation { continuation in
+            waiters.append(continuation)
+        }
+    }
+
+    func release() {
+        guard !waiters.isEmpty else {
+            isHeld = false
+            return
+        }
+        waiters.removeFirst().resume()
+    }
+}

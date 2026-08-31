@@ -632,60 +632,17 @@ public struct SavingsGoal: Codable, Equatable, Identifiable, Sendable {
             ) ?? createdAt
         )
 
-        let attributedDate = SavingsGoalOriginDay.date(
-            for: attributedDayKey,
+        if let automatic = automaticPeriodBoundary(
+            asOf: asOf,
+            attributedDayKey: attributedDayKey,
             calendar: calendar
-        ) ?? asOf
-        switch resetRule {
-        case .never:
-            break
-        case .monthly:
-            if let automatic = calendar.dateInterval(
-                of: .month,
-                for: attributedDate
-            )?.start {
-                let key = SavingsGoalOriginDay.key(
-                    for: automatic,
-                    timeZoneIdentifier: calendar.timeZone.identifier
-                )
-                if key > boundary.dayKey {
-                    boundary = ActivePeriodBoundary(
-                        dayKey: key,
-                        cutoffWithinDay: nil,
-                        displayStart: automatic
-                    )
-                }
-            }
-        case .yearly:
-            if let automatic = calendar.dateInterval(
-                of: .year,
-                for: attributedDate
-            )?.start {
-                let key = SavingsGoalOriginDay.key(
-                    for: automatic,
-                    timeZoneIdentifier: calendar.timeZone.identifier
-                )
-                if key > boundary.dayKey {
-                    boundary = ActivePeriodBoundary(
-                        dayKey: key,
-                        cutoffWithinDay: nil,
-                        displayStart: automatic
-                    )
-                }
-            }
+        ), automatic.dayKey > boundary.dayKey {
+            boundary = automatic
         }
-
-        let manualReset = resets
-            .filter {
-                $0.occurredAt <= asOf && $0.originDayKey <= attributedDayKey
-            }
-            .max {
-                if $0.originDayKey == $1.originDayKey {
-                    return $0.occurredAt < $1.occurredAt
-                }
-                return $0.originDayKey < $1.originDayKey
-            }
-        if let manualReset {
+        if let manualReset = latestManualReset(
+            asOf: asOf,
+            attributedDayKey: attributedDayKey
+        ) {
             let isLater = manualReset.originDayKey > boundary.dayKey
                 || (manualReset.originDayKey == boundary.dayKey
                     && manualReset.occurredAt
@@ -702,6 +659,51 @@ public struct SavingsGoal: Codable, Equatable, Identifiable, Sendable {
             }
         }
         return boundary
+    }
+
+    private func automaticPeriodBoundary(
+        asOf: Date,
+        attributedDayKey: String,
+        calendar: Calendar
+    ) -> ActivePeriodBoundary? {
+        let attributedDate = SavingsGoalOriginDay.date(
+            for: attributedDayKey,
+            calendar: calendar
+        ) ?? asOf
+        let component: Calendar.Component
+        switch resetRule {
+        case .never: return nil
+        case .monthly: component = .month
+        case .yearly: component = .year
+        }
+        guard let start = calendar.dateInterval(
+            of: component,
+            for: attributedDate
+        )?.start else { return nil }
+        return ActivePeriodBoundary(
+            dayKey: SavingsGoalOriginDay.key(
+                for: start,
+                timeZoneIdentifier: calendar.timeZone.identifier
+            ),
+            cutoffWithinDay: nil,
+            displayStart: start
+        )
+    }
+
+    private func latestManualReset(
+        asOf: Date,
+        attributedDayKey: String
+    ) -> SavingsGoalReset? {
+        resets
+            .filter {
+                $0.occurredAt <= asOf && $0.originDayKey <= attributedDayKey
+            }
+            .max {
+                if $0.originDayKey == $1.originDayKey {
+                    return $0.occurredAt < $1.occurredAt
+                }
+                return $0.originDayKey < $1.originDayKey
+            }
     }
 
     private func isInActivePeriod(

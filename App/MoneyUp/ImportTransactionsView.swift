@@ -3,7 +3,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct ImportTransactionsView: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @State private var isChoosingFile = false
     @State private var preview: CSVImportPreview?
     @State private var sourceText = ""

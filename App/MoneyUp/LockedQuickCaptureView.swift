@@ -7,7 +7,7 @@ struct LockedQuickCaptureView: View {
         case note
     }
 
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     let mode: QuickLogLaunchMode
 
     private let unlockMethod = UnlockMethod.current

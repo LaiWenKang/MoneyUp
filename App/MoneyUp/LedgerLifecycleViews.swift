@@ -17,7 +17,7 @@ func impactSummary(_ impact: AppModel.LedgerItemLifecycleImpact) -> String {
 
 struct CategoryManagementList: View {
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @State private var selectedCategoryID: UUID?
 
     private var expenseCategories: [LedgerAccount] {
@@ -112,7 +112,7 @@ struct CategoryManagementSheet: View {
     }
 
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @FocusState private var amountFocused: Bool
     let categoryID: UUID
 

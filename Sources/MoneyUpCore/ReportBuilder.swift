@@ -68,108 +68,22 @@ public extension FinanceCalculator {
         let trend = trendInterval ?? interval
         var kinds: [UUID: LedgerAccountKind] = [:]
         var names: [UUID: String] = [:]
-        kinds.reserveCapacity(accounts.count)
-        names.reserveCapacity(accounts.count)
-
         for account in accounts {
             kinds[account.id] = account.kind
             names[account.id] = account.name
         }
-
-        var income: [CurrencyCode: Decimal] = [:]
-        var expense: [CurrencyCode: Decimal] = [:]
-        var categoryTotals: [UUID: Decimal] = [:]
-        var monthlyIncome: [Date: Decimal] = [:]
-        var monthlyExpense: [Date: Decimal] = [:]
-
+        var accumulator = ReportAccumulator()
         for event in postingEvents {
-            let attributedDate = event.attributedDate(in: calendar)
-                ?? event.occurredAt
-            let inPeriod = FinancialPeriodBoundary.contains(
-                attributedDate,
-                in: interval
-            )
-            let inTrend = FinancialPeriodBoundary.contains(
-                attributedDate,
-                in: trend
-            )
-            guard inPeriod || inTrend else { continue }
-
-            let month: Date? = inTrend
-                ? calendar.dateInterval(of: .month, for: attributedDate)?.start
-                : nil
-
-            let posting = event.posting
-            guard let kind = kinds[posting.accountID],
-                  kind == .income || kind == .expense else { continue }
-
-            let currency = posting.money.currency
-            // Income accounts are credited, so their postings are negative.
-            let amount = kind == .income
-                ? -posting.money.amount
-                : posting.money.amount
-
-            if inPeriod {
-                if kind == .income {
-                    income[currency] = try CheckedDecimal.adding(
-                        income[currency] ?? .zero,
-                        amount
-                    )
-                } else {
-                    expense[currency] = try CheckedDecimal.adding(
-                        expense[currency] ?? .zero,
-                        amount
-                    )
-                    if currency == baseCurrency {
-                        categoryTotals[posting.accountID] = try CheckedDecimal.adding(
-                            categoryTotals[posting.accountID] ?? .zero,
-                            amount
-                        )
-                    }
-                }
-            }
-
-            if let month, currency == baseCurrency {
-                if kind == .income {
-                    monthlyIncome[month] = try CheckedDecimal.adding(
-                        monthlyIncome[month] ?? .zero,
-                        amount
-                    )
-                } else {
-                    monthlyExpense[month] = try CheckedDecimal.adding(
-                        monthlyExpense[month] ?? .zero,
-                        amount
-                    )
-                }
-            }
-        }
-
-        var currencies = Set(income.keys)
-        currencies.formUnion(expense.keys)
-        currencies.insert(baseCurrency)
-
-        var flows: [CurrencyFlow] = []
-        flows.reserveCapacity(currencies.count)
-
-        for currency in currencies {
-            let incomeAmount = income[currency] ?? .zero
-            let expenseAmount = expense[currency] ?? .zero
-            let incomeMoney = try Money(incomeAmount, currency: currency)
-            let expenseMoney = try Money(expenseAmount, currency: currency)
-            let netMoney = try Money(
-                CheckedDecimal.subtracting(incomeAmount, expenseAmount),
-                currency: currency
-            )
-            flows.append(
-                CurrencyFlow(
-                    currency: currency,
-                    income: incomeMoney,
-                    expense: expenseMoney,
-                    net: netMoney
-                )
+            try accumulator.record(
+                event,
+                accountKinds: kinds,
+                interval: interval,
+                trend: trend,
+                baseCurrency: baseCurrency,
+                calendar: calendar
             )
         }
-
+        let flows = try accumulator.currencyFlows(baseCurrency: baseCurrency)
         let baseFlow = flows.first { $0.currency == baseCurrency }
             ?? CurrencyFlow(
                 currency: baseCurrency,
@@ -180,60 +94,162 @@ public extension FinanceCalculator {
         let foreignFlows = flows
             .filter { $0.currency != baseCurrency && !$0.isEmpty }
             .sorted { $0.currency < $1.currency }
-
-        var categorySpending: [CategorySpending] = []
-        categorySpending.reserveCapacity(categoryTotals.count)
-
-        for (accountID, amount) in categoryTotals {
-            categorySpending.append(
-                CategorySpending(
-                    accountID: accountID,
-                    name: names[accountID] ?? "",
-                    amount: try Money(amount, currency: baseCurrency)
-                )
-            )
-        }
-        categorySpending.sort { first, second in
-            if first.amount.amount == second.amount.amount {
-                if first.name == second.name {
-                    // Dictionary iteration is intentionally unordered. Use
-                    // ledger identity as the final tie-breaker so duplicate
-                    // category names cannot drift across the visible/Other
-                    // chart boundary between otherwise identical reports.
-                    return first.accountID.uuidString < second.accountID.uuidString
-                }
-                return first.name < second.name
-            }
-            return first.amount.amount > second.amount.amount
-        }
-
-        var monthlyFlows: [MonthlyFlow] = []
-
-        for month in Self.monthStarts(in: trend, calendar: calendar) {
-            let incomeAmount = monthlyIncome[month] ?? .zero
-            let expenseAmount = monthlyExpense[month] ?? .zero
-            monthlyFlows.append(
-                MonthlyFlow(
-                    month: month,
-                    income: try Money(incomeAmount, currency: baseCurrency),
-                    expense: try Money(expenseAmount, currency: baseCurrency),
-                    net: try Money(
-                        CheckedDecimal.subtracting(incomeAmount, expenseAmount),
-                        currency: baseCurrency
-                    )
-                )
-            )
-        }
-
         return PeriodReport(
             interval: interval,
             trendInterval: trend,
             baseCurrency: baseCurrency,
             baseFlow: baseFlow,
             foreignFlows: foreignFlows,
-            categorySpending: categorySpending,
-            monthlyFlows: monthlyFlows
+            categorySpending: try accumulator.categorySpending(
+                names: names,
+                baseCurrency: baseCurrency
+            ),
+            monthlyFlows: try accumulator.monthlyFlows(
+                trend: trend,
+                baseCurrency: baseCurrency,
+                calendar: calendar
+            )
         )
+    }
+
+    private struct ReportAccumulator {
+        var income: [CurrencyCode: Decimal] = [:]
+        var expense: [CurrencyCode: Decimal] = [:]
+        var categoryTotals: [UUID: Decimal] = [:]
+        var monthlyIncome: [Date: Decimal] = [:]
+        var monthlyExpense: [Date: Decimal] = [:]
+
+        mutating func record(
+            _ event: LedgerPostingEvent,
+            accountKinds: [UUID: LedgerAccountKind],
+            interval: DateInterval,
+            trend: DateInterval,
+            baseCurrency: CurrencyCode,
+            calendar: Calendar
+        ) throws {
+            let date = event.attributedDate(in: calendar) ?? event.occurredAt
+            let inPeriod = FinancialPeriodBoundary.contains(date, in: interval)
+            let inTrend = FinancialPeriodBoundary.contains(date, in: trend)
+            guard inPeriod || inTrend else { return }
+            let posting = event.posting
+            guard let kind = accountKinds[posting.accountID],
+                  kind == .income || kind == .expense else { return }
+            let currency = posting.money.currency
+            let amount = kind == .income ? -posting.money.amount : posting.money.amount
+            if inPeriod {
+                try recordPeriod(
+                    kind: kind,
+                    posting: posting,
+                    amount: amount,
+                    baseCurrency: baseCurrency
+                )
+            }
+            guard inTrend,
+                  currency == baseCurrency,
+                  let month = calendar.dateInterval(of: .month, for: date)?.start else {
+                return
+            }
+            if kind == .income {
+                monthlyIncome[month] = try CheckedDecimal.adding(
+                    monthlyIncome[month] ?? .zero,
+                    amount
+                )
+            } else {
+                monthlyExpense[month] = try CheckedDecimal.adding(
+                    monthlyExpense[month] ?? .zero,
+                    amount
+                )
+            }
+        }
+
+        mutating func recordPeriod(
+            kind: LedgerAccountKind,
+            posting: Posting,
+            amount: Decimal,
+            baseCurrency: CurrencyCode
+        ) throws {
+            let currency = posting.money.currency
+            if kind == .income {
+                income[currency] = try CheckedDecimal.adding(
+                    income[currency] ?? .zero,
+                    amount
+                )
+                return
+            }
+            expense[currency] = try CheckedDecimal.adding(
+                expense[currency] ?? .zero,
+                amount
+            )
+            if currency == baseCurrency {
+                categoryTotals[posting.accountID] = try CheckedDecimal.adding(
+                    categoryTotals[posting.accountID] ?? .zero,
+                    amount
+                )
+            }
+        }
+
+        func currencyFlows(baseCurrency: CurrencyCode) throws -> [CurrencyFlow] {
+            var currencies = Set(income.keys)
+            currencies.formUnion(expense.keys)
+            currencies.insert(baseCurrency)
+            return try currencies.map { currency in
+                let earned = income[currency] ?? .zero
+                let spent = expense[currency] ?? .zero
+                return CurrencyFlow(
+                    currency: currency,
+                    income: try Money(earned, currency: currency),
+                    expense: try Money(spent, currency: currency),
+                    net: try Money(
+                        CheckedDecimal.subtracting(earned, spent),
+                        currency: currency
+                    )
+                )
+            }
+        }
+
+        func categorySpending(
+            names: [UUID: String],
+            baseCurrency: CurrencyCode
+        ) throws -> [CategorySpending] {
+            try categoryTotals.map { accountID, amount in
+                CategorySpending(
+                    accountID: accountID,
+                    name: names[accountID] ?? "",
+                    amount: try Money(amount, currency: baseCurrency)
+                )
+            }.sorted(by: Self.categoryOrder)
+        }
+
+        static func categoryOrder(
+            _ first: CategorySpending,
+            _ second: CategorySpending
+        ) -> Bool {
+            if first.amount.amount != second.amount.amount {
+                return first.amount.amount > second.amount.amount
+            }
+            if first.name != second.name { return first.name < second.name }
+            return first.accountID.uuidString < second.accountID.uuidString
+        }
+
+        func monthlyFlows(
+            trend: DateInterval,
+            baseCurrency: CurrencyCode,
+            calendar: Calendar
+        ) throws -> [MonthlyFlow] {
+            try FinanceCalculator.monthStarts(in: trend, calendar: calendar).map { month in
+                let earned = monthlyIncome[month] ?? .zero
+                let spent = monthlyExpense[month] ?? .zero
+                return MonthlyFlow(
+                    month: month,
+                    income: try Money(earned, currency: baseCurrency),
+                    expense: try Money(spent, currency: baseCurrency),
+                    net: try Money(
+                        CheckedDecimal.subtracting(earned, spent),
+                        currency: baseCurrency
+                    )
+                )
+            }
+        }
     }
 
     /// Every account balance, per currency, in one pass.

@@ -2,7 +2,7 @@ import MoneyUpCore
 import SwiftUI
 
 struct ExchangeRatesView: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @State private var baseCode = "SGD"
     @State private var quoteCode = "MYR"
     @State private var rateText = ""

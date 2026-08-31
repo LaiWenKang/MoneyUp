@@ -1,0 +1,430 @@
+import Foundation
+import MoneyUpCore
+import OSLog
+import PhotosUI
+import SwiftUI
+import UIKit
+
+private final class ReceiptSuggestionSignpostState {
+    var ended = false
+}
+
+extension QuickLogEntryView {
+    func scanReceipt(
+        _ item: PhotosPickerItem?,
+        generation: Int
+    ) async {
+        guard let item else { return }
+        let suggestionsSignpostID = Self.receiptSignposter.makeSignpostID()
+        let suggestionsInterval = Self.receiptSignposter.beginInterval(
+            "Receipt selection to suggestions",
+            id: suggestionsSignpostID
+        )
+        let signpostState = ReceiptSuggestionSignpostState()
+        defer {
+            if !signpostState.ended {
+                Self.receiptSignposter.endInterval(
+                    "Receipt selection to suggestions",
+                    suggestionsInterval,
+                    "outcome=incomplete"
+                )
+            }
+            if generation == receiptScanGeneration {
+                isScanning = false
+                receiptScanTask = nil
+                receiptScanBaseline = nil
+                photoItem = nil
+            }
+        }
+        guard !Task.isCancelled,
+              generation == receiptScanGeneration else { return }
+        isScanning = true
+        smartMessage = nil
+        receiptResult = nil
+        receiptAttachmentData = nil
+        retainReceiptAttachment = false
+        receiptRetentionMessage = nil
+
+        do {
+            try Task.checkCancellation()
+            guard let data = try await item.loadTransferable(type: Data.self) else {
+                throw ReceiptScannerError.unreadableImage
+            }
+            try Task.checkCancellation()
+            guard generation == receiptScanGeneration else { return }
+            try await ReceiptImageSanitizer.waitForPendingPreparation()
+            try Task.checkCancellation()
+            guard generation == receiptScanGeneration else { return }
+            try await runReceiptPipeline(
+                data: data,
+                generation: generation,
+                suggestionsInterval: suggestionsInterval,
+                signpostState: signpostState
+            )
+        } catch is CancellationError {
+            return
+        } catch {
+            guard generation == receiptScanGeneration else { return }
+            smartMessage = safeUserMessage(for: error, context: .scan)
+        }
+    }
+
+    private func runReceiptPipeline(
+        data: Data,
+        generation: Int,
+        suggestionsInterval: OSSignpostIntervalState,
+        signpostState: ReceiptSuggestionSignpostState
+    ) async throws {
+        try await QuickLogReceiptPipeline.run {
+            try await model.receiptAnalysis(
+                from: data,
+                prefersDayFirst: Self.localePrefersDayFirst
+            )
+        } handleSuggestions: { result in
+            guard generation == receiptScanGeneration else { return false }
+            let didApplySuggestions = applyReceipt(result)
+
+            // Saving and editing can resume as soon as the OCR result is
+            // handled. The optional attachment remains unavailable until its
+            // private copy is ready.
+            isScanning = false
+            if didApplySuggestions {
+                Self.receiptSignposter.endInterval(
+                    "Receipt selection to suggestions",
+                    suggestionsInterval,
+                    "outcome=ready"
+                )
+            } else {
+                Self.receiptSignposter.endInterval(
+                    "Receipt selection to suggestions",
+                    suggestionsInterval,
+                    "outcome=empty"
+                )
+            }
+            signpostState.ended = true
+            return true
+        } handleNoSuggestions: {
+            guard generation == receiptScanGeneration,
+                  model.state == .ready else { return false }
+            isScanning = false
+            Self.receiptSignposter.endInterval(
+                "Receipt selection to suggestions",
+                suggestionsInterval,
+                "outcome=empty"
+            )
+            signpostState.ended = true
+            return true
+        } handleRecognitionFailure: { error in
+            guard generation == receiptScanGeneration else { return false }
+            smartMessage = safeUserMessage(for: error, context: .scan)
+            isScanning = false
+            Self.receiptSignposter.endInterval(
+                "Receipt selection to suggestions",
+                suggestionsInterval,
+                "outcome=failed"
+            )
+            signpostState.ended = true
+            return true
+        } prepareRetention: {
+            try await prepareReceiptRetention(data, generation: generation)
+        }
+    }
+
+    private func prepareReceiptRetention(
+        _ data: Data,
+        generation: Int
+    ) async throws {
+        let signpostID = Self.receiptSignposter.makeSignpostID()
+        let interval = Self.receiptSignposter.beginInterval(
+            "Receipt sanitization",
+            id: signpostID
+        )
+        defer {
+            Self.receiptSignposter.endInterval(
+                "Receipt sanitization",
+                interval
+            )
+        }
+
+        do {
+            let sanitized = try await ReceiptImageSanitizer
+                .prepareForEncryptedStorage(data)
+            try Task.checkCancellation()
+            guard generation == receiptScanGeneration else { return }
+            receiptAttachmentData = sanitized
+            receiptRetentionMessage = nil
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            guard generation == receiptScanGeneration else { return }
+            receiptAttachmentData = nil
+            receiptRetentionMessage = safeUserMessage(
+                for: error,
+                context: .scan
+            )
+        }
+    }
+
+    /// Receipt fields are suggestions, not an automatic commit. Populate the
+    /// best candidates, reveal any filled optional details, and keep the full
+    /// ranked result in transient view state so alternatives remain reviewable.
+    @discardableResult
+    func applyReceipt(_ result: ReceiptParseResult) -> Bool {
+        guard let baseline = receiptScanBaseline else {
+            receiptResult = nil
+            return false
+        }
+        guard QuickLogSuggestionPolicy.receiptContextIsCurrent(
+            scannedKind: baseline.kind,
+            currentKind: kind
+        ) else {
+            receiptResult = nil
+            smartMessage = String(localized: "quick_log.scan_context_changed")
+            return false
+        }
+        guard !result.draft.isEmpty else {
+            receiptResult = nil
+            smartMessage = String(localized: "quick_log.smart_nothing_found")
+            return false
+        }
+
+        let reviewDraft = receiptReviewDraft(result, baseline: baseline)
+        _ = apply(
+            reviewDraft,
+            preservesKind: true,
+            suggestsLearnedCategory: true
+        )
+
+        if note == baseline.note,
+           note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           let overallConfidence = result.overallConfidence,
+           overallConfidence != .low,
+           let noteCandidate = result.noteCandidate {
+            note = noteCandidate
+        }
+        if result.draft.occurredAt != nil
+            || result.draft.payee != nil
+            || !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            isShowingOptionalDetails = true
+        }
+
+        receiptResult = result
+        smartMessage = nil
+        if !dismissAfterSave {
+            model.updateQuickLogDraft(draftSnapshot)
+        }
+        return true
+    }
+
+    private func receiptReviewDraft(
+        _ result: ReceiptParseResult,
+        baseline: ReceiptScanBaseline
+    ) -> TransactionDraft {
+        var reviewDraft = result.draft
+        if !QuickLogSuggestionPolicy.shouldPrefillReceiptCandidate(
+            confidence: result.amountCandidateDetails.first?.confidence,
+            fieldIsUnchanged: amountText == baseline.amountText
+                && accountID == baseline.accountID
+        ) {
+            reviewDraft.amount = nil
+        }
+        if !QuickLogSuggestionPolicy.shouldPrefillReceiptCandidate(
+            confidence: result.merchantCandidateDetails.first?.confidence,
+            fieldIsUnchanged: payee == baseline.payee
+        ) {
+            reviewDraft.payee = nil
+        }
+        if !QuickLogSuggestionPolicy.shouldPrefillReceiptCandidate(
+            confidence: result.dateCandidateDetails.first?.confidence,
+            fieldIsUnchanged: occurredAt == baseline.occurredAt
+                && dateWasEdited == baseline.dateWasEdited
+        ) {
+            reviewDraft.occurredAt = nil
+        }
+        if !QuickLogSuggestionPolicy.shouldPrefillReceiptCandidate(
+            confidence: result.categoryCandidateDetails.first?.confidence,
+            fieldIsUnchanged: splitLines.isEmpty
+                && categoryID == baseline.categoryID
+        ) {
+            reviewDraft.categoryID = nil
+        }
+        if accountID != baseline.accountID { reviewDraft.accountID = nil }
+        if let parsedCategoryID = reviewDraft.categoryID,
+           let category = model.accountsByID[parsedCategoryID],
+           !QuickLogSuggestionPolicy.receiptCategoryIsCompatible(
+               category,
+               with: kind
+           ) {
+            reviewDraft.categoryID = nil
+        }
+        return reviewDraft
+    }
+
+    /// Applies whatever the reader was sure about and leaves the rest alone.
+    /// Returns false when nothing was recognized, so the caller can keep the
+    /// user's input instead of clearing it.
+    @discardableResult
+    func apply(
+        _ draft: TransactionDraft,
+        preservesKind: Bool = false,
+        suggestsLearnedCategory: Bool = true
+    ) -> Bool {
+        guard !draft.isEmpty else {
+            smartMessage = String(localized: "quick_log.smart_nothing_found")
+            return false
+        }
+
+        invalidateCaptureSuggestions()
+
+        if !preservesKind {
+            let parsedKind: QuickLogKind
+            switch draft.kind {
+            case .expense: parsedKind = .expense
+            case .income: parsedKind = .income
+            case .refund: parsedKind = .refund
+            }
+            if parsedKind != kind {
+                preservesCaptureSuggestionsAcrossNextKindChange = true
+                kind = parsedKind
+            }
+        }
+        if let amount = draft.amount {
+            amountText = editableAmount(amount)
+        }
+        if let parsedDate = draft.occurredAt {
+            occurredAt = parsedDate
+            dateWasEdited = true
+        }
+        if let parsedPayee = draft.payee { payee = parsedPayee }
+        if let parsedAccount = draft.accountID {
+            accountID = parsedAccount
+            accountWasEdited = true
+        }
+
+        if let parsedCategory = draft.categoryID {
+            categoryID = parsedCategory
+            categoryWasEdited = true
+        }
+
+        if suggestsLearnedCategory {
+            refreshCaptureSuggestions(for: draft)
+        }
+
+        if draft.source == .naturalLanguage {
+            smartMessage = String(localized: "quick_log.smart_review")
+        } else {
+            smartMessage = nil
+        }
+        dismissKeyboard()
+        if !dismissAfterSave { model.updateQuickLogDraft(draftSnapshot) }
+        return true
+    }
+
+    /// Fills what is still unset. It must not overwrite a value the user or a
+    /// parsed draft already chose, because it also runs when the kind changes.
+    func selectDefaults() {
+        if !model.userAccounts.contains(where: { $0.id == accountID }) {
+            accountWasEdited = false
+            accountID = validPreferred(
+                model.profile?.preferredAccountID,
+                in: model.userAccounts
+            ) ?? recentAccountID() ?? model.userAccounts.first?.id
+        }
+        switch kind {
+        case .expense:
+            if !model.expenseCategories.contains(where: { $0.id == categoryID }) {
+                categoryWasEdited = false
+                categoryID = validPreferred(
+                    model.profile?.preferredExpenseCategoryID,
+                    in: model.expenseCategories
+                ) ?? recentCategoryID(kind: .expense)
+                    ?? model.expenseCategories.first { $0.parentID != nil }?.id
+                    ?? model.expenseCategories.first?.id
+            }
+        case .income:
+            if !model.incomeCategories.contains(where: { $0.id == categoryID }) {
+                categoryWasEdited = false
+                categoryID = validPreferred(
+                    model.profile?.preferredIncomeCategoryID,
+                    in: model.incomeCategories
+                ) ?? recentCategoryID(kind: .income)
+                    ?? model.incomeCategories.first?.id
+            }
+        case .refund:
+            if !model.expenseCategories.contains(where: { $0.id == categoryID }) {
+                categoryWasEdited = false
+                categoryID = validPreferred(
+                    model.profile?.preferredExpenseCategoryID,
+                    in: model.expenseCategories
+                ) ?? recentCategoryID(kind: .expense)
+                    ?? model.expenseCategories.first { $0.parentID != nil }?.id
+                    ?? model.expenseCategories.first?.id
+            }
+        case .transfer:
+            if !model.userAccounts.contains(where: {
+                $0.id == destinationAccountID && $0.id != accountID
+            }) {
+                destinationAccountID = model.userAccounts.first { $0.id != accountID }?.id
+            }
+        }
+        if hasRestoredDraft, !dismissAfterSave {
+            model.updateQuickLogDraft(draftSnapshot)
+        }
+    }
+
+    func validPreferred(
+        _ id: UUID?,
+        in choices: [LedgerAccount]
+    ) -> UUID? {
+        guard let id, choices.contains(where: { $0.id == id }) else { return nil }
+        return id
+    }
+
+    func recentAccountID() -> UUID? {
+        // AppModel intentionally retains only the 80 newest valid entries.
+        // Defaults favor recent behavior and never trigger a historical scan.
+        let validIDs = Set(model.userAccounts.map(\.id))
+        return model.entries.lazy
+            .filter { entry in
+                switch kind {
+                case .expense: entry.kind == .expense
+                case .income: entry.kind == .income
+                case .transfer: entry.kind == .transfer
+                case .refund: entry.kind == .expense
+                }
+            }
+            .flatMap(\.postings)
+            .first { validIDs.contains($0.accountID) }?
+            .accountID
+    }
+
+    func recentCategoryID(kind: LedgerAccountKind) -> UUID? {
+        let choices = kind == .income ? model.incomeCategories : model.expenseCategories
+        let validIDs = Set(choices.map(\.id))
+        let cutoff = model.reportingCalendar.date(
+            byAdding: .day,
+            value: -30,
+            to: Date()
+        ) ?? .distantPast
+        var counts: [UUID: Int] = [:]
+        var firstSeenOrder: [UUID: Int] = [:]
+
+        for (index, entry) in model.entries.enumerated() where entry.occurredAt >= cutoff {
+            guard accountID == nil || entry.postings.contains(where: { $0.accountID == accountID })
+            else { continue }
+            for posting in entry.postings where validIDs.contains(posting.accountID) {
+                counts[posting.accountID, default: 0] += 1
+                firstSeenOrder[posting.accountID] = firstSeenOrder[posting.accountID] ?? index
+            }
+        }
+        return counts.keys.max { first, second in
+            let firstCount = counts[first, default: 0]
+            let secondCount = counts[second, default: 0]
+            if firstCount == secondCount {
+                return firstSeenOrder[first, default: .max]
+                    > firstSeenOrder[second, default: .max]
+            }
+            return firstCount < secondCount
+        }
+    }
+}

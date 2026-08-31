@@ -2,7 +2,7 @@ import MoneyUpCore
 import SwiftUI
 
 struct SavingsGoalsView: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @State private var isAddingGoal = false
     @State private var selectedGoalID: UUID?
 
@@ -82,7 +82,7 @@ struct SavingsGoalsView: View {
 }
 
 private struct GoalProgressRow: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     let goal: SavingsGoal
 
     private var summary: DerivedValue<SavingsGoalSummary> {
@@ -152,7 +152,7 @@ private struct GoalProgressRow: View {
 
 private struct GoalEditorSheet: View {
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @FocusState private var amountFocused: Bool
 
     @State private var name = ""
@@ -277,7 +277,7 @@ private struct GoalManagementSheet: View {
     private enum PendingAction: Equatable { case reset, delete }
 
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @FocusState private var amountFocused: Bool
     let goalID: UUID
 
@@ -503,7 +503,7 @@ private struct GoalManagementSheet: View {
 
 private struct GoalMovementSheet: View {
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @FocusState private var amountFocused: Bool
     let goalID: UUID
     let kind: SavingsGoalMovementKind

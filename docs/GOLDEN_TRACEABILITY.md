@@ -1,20 +1,18 @@
-# Golden PRD Traceability - MoneyUp 0.6.0 Candidate
+# Golden PRD Traceability - MoneyUp 0.6.0 / 0.7.0 W1 Candidate
 
-Reconciled: 29 August 2026
+Reconciled: 30 August 2026
 
 This is the requirement-to-evidence map for the source-integrated MoneyUp 0.6.0
-candidate (source build 8). It prevents "implemented in source" from being
-misreported as "released" or "accepted."
+candidate (source build 8) plus the behavior-neutral 0.7.0 W1 architecture
+slice. It prevents "implemented in source" from being misreported as
+"released" or "accepted."
 
-The latest approved `main` baseline is
-`ff272da89de9f4e3cb9c44d4abd27deae7d2b338`. Main CI
-[run 163](https://github.com/LaiWenKang/MoneyUp/actions/runs/33237514942)
-passed 301 core/persistence and 237 app tests plus an app/widget Release
-Simulator build. TestFlight
-[run 20](https://github.com/LaiWenKang/MoneyUp/actions/runs/33243930699)
-validated and uploaded 0.6.0 (1020.1) from that exact SHA. Those results do not
-validate later source changes, prove Apple processing, or close any physical
-gate below.
+The approved 0.6.0 baseline was
+`ff272da89de9f4e3cb9c44d4abd27deae7d2b338`. Current `main`
+`ae5a9cb06dae0428921df5d6d0da916eea80b87a` additionally contains the
+reviewed explainable-capture amendment from PR #28. W1 is integrating that
+amendment without changing its accounting, persistence, navigation, or privacy
+semantics. The unified W1 merge SHA and its CI evidence remain open.
 
 The exact 97-row requirement-to-test mapping is in
 [REQUIREMENTS_TEST_MATRIX.md](REQUIREMENTS_TEST_MATRIX.md). The complete source,
@@ -35,6 +33,16 @@ Local static checks alone may catch localization, JSON, privacy-asset, and
 repository-shape errors. They are not substitutes for Mac compilation or
 exact-candidate tests. Similarly, a configured CI workflow is not a green
 exact-candidate run.
+
+## 0.7.0 W1 architecture traceability
+
+| ID | Implementation and evidence anchor | Current evidence state |
+|---|---|---|
+| W1-OBS | `@Observable AppModel`, `@Environment(AppModel.self)`, the five observable service state owners, and `AppModelTests.testObservationInvalidatesOnlyTrackedAppModelProperties` replace global `ObservableObject` broadcasts with tracked reads. Async persisted settings intentionally retain explicit bindings instead of direct synchronous mutation. | Implemented — verification pending; unified PR-head and merged-SHA CI remain release blockers. |
+| W1-SVC | `AppModelServices`, protocol seams, and bounded `AppModel*` extensions separate Ledger, Planning, Assets, Portability, Capture, and future Intelligence ownership while the coordinator retains lock, generation, cancellation, and cross-service sequencing. | Implemented — verification pending; no physical performance claim. |
+| W1-C12 | `ProfileMutationSerializer`, `testProfileMutationsSerializeAndPreserveLatestUnrelatedChoices`, and `testFailedProfileMutationDoesNotRollBackUnrelatedSetting` enforce FIFO latest-choice convergence and scoped failure isolation without a profile representation change. | Implemented — verification pending. |
+| W1-TXN | The operation-specific AppModel tests mapped under DAT-09 cover save, edit, delete, split/attachment, import, reconciliation, schedule posting, lifecycle, and goal movement; store rollback tests retain the durable boundary. | Implemented — verification pending; physical interruption remains deferred. |
+| W1-STRUCT | `Scripts/validate_swift_structure.py`, its release-validator invocation, and the explicit CI step enforce 1,200-line files, 600-line type/extension bodies, and 80-line function bodies under `App/` and `Sources/`. | Release blocker: the new gate must pass on the final PR and merged SHA. |
 
 ## Capture and transactions
 
@@ -180,8 +188,8 @@ exact-candidate run.
 
 ## Proposed amendment PA-2026-08-29-r1 — Explainable capture guardrails
 
-This task-authorized amendment is not text from the Golden PRD. It is approved
-by review and merge of PR #28, but is not a release promotion. It
+This task-authorized amendment is not text from the Golden PRD. It was merged
+to `main` through PR #28 and is retained by W1 rather than redefined by it. It
 extends `LOG-04`, `LOG-07`, `LOG-08`, `DAT-09`, and `SEC-06` without changing
 navigation, accounting semantics, persistence schema, archive shape, bundle
 identity, or network capability.
@@ -190,30 +198,15 @@ identity, or network capability.
 |---|---|---|
 | PA-CAP-01 | Smart Entry and receipt-assisted Quick Log rank account and category suggestions from the current valid recent-entry cache. Every result carries a deterministic confidence band and count/date evidence; only high-confidence untouched fields may prefill, parser/user choices win, and ambiguous split history never collapses to one category. | Derive on demand inside the unlocked book; persist no profile, score, OCR text, or evidence. Removing the scorer restores prior UI behavior without touching user data. |
 | PA-CAP-02 | Before an interactive Save, exact amount/currency/kind/account semantics plus bounded time/payee/source evidence may produce an advisory recent-duplicate warning. The user can review History, cancel, or save anyway; the warning never deletes, merges, or blocks a legitimate repeat. | Inspect only valid in-memory recent entries, never raw/quarantined rows. A versioned draft fingerprint authorizes one unchanged Save attempt only. No database or archive migration. |
-| PA-CAP-03 | Receipt amount, merchant, date, and category candidates retain rule evidence and field-relative confidence. Per-line and aggregate Vision confidence may only lower a band; a weak amount row cannot hide behind a strong document mean. Impossible civil/DST times fail closed; low-confidence candidates remain explicit review actions and never silently replace an edited field, cross an account change, or offer a category incompatible with the selected kind. Published review evidence survives ordinary tab navigation with the unfinished draft. | Vision remains on device. Images and OCR text remain transient unless the existing explicit encrypted-attachment control is enabled; semantic evidence contains no receipt text. Unsaved image bytes are discarded when Log becomes inactive. |
-| PA-CAP-04 | Receipt parsing is bounded to 160 header/footer lines, computed outside the main actor, and checked against store generation plus journal/account projection revision before publication. | Cancellation/lock/restore suppress stale publication. The bounded fallback always leaves manual entry available. |
+| PA-CAP-03 | Receipt amount, merchant, date, and category candidates retain rule evidence and field-relative confidence. Per-line and aggregate Vision confidence may only lower a band; impossible civil/DST times fail closed; low-confidence candidates remain explicit review actions and never silently replace an edited field or offer an incompatible category. | Vision remains on device. Images and OCR text remain transient unless the existing explicit encrypted-attachment control is enabled; semantic evidence contains no receipt text. |
+| PA-CAP-04 | Receipt parsing is bounded to 160 header/footer lines, computed outside the main actor, and checked against store generation plus journal/account projection revision before publication. | Cancellation, lock, or restore suppresses stale publication. The bounded fallback always leaves manual entry available. |
 | PA-CAP-05 | Latin kind/date tokens use Unicode letter/number boundaries while CJK tokens retain intentional substring matching. Impossible explicit civil dates fail closed instead of becoming a normalized day or invented amount. | Pure parsing change with no stored state; identical input, locale, clock, and book state remain deterministic. |
 
-Explicit non-goals for this amendment are persistent learning state, Core ML,
-remote inference, recurring-pattern discovery, unusual-spend prediction,
-investment advice, automatic schedule creation, receipt line-item splitting,
-and a new setting. Those require a later versioned decision, false-positive
-budget, migration/reset design where applicable, and dedicated physical
-evidence.
-
-Candidate acceptance targets are intentionally stricter than “a value was
-returned”: exact movement/currency mismatches have zero tolerated duplicate
-advisories in the automated matrix; high-confidence history prefill requires at
-least three supporting entries and at least 75% of eligible evidence; low OCR
-confidence never prefills; and no suggestion may commit without the existing
-Save path. On the oldest supported physical iPhone, recent-history suggestion
-and duplicate computation target p95 below 50 ms, bounded post-Vision parsing
-targets p95 below 100 ms, and clear-image Vision-to-review targets p95 below
-4 seconds. A 20-item bilingual receipt/screenshot drill targets at least 90%
-top-candidate accuracy for payable amount and zero low-confidence prefills.
-Timeout, cancellation, ambiguity, stale generation, or missing context must
-leave every field manually editable and publish no stale result. These physical
-latency/accuracy targets remain open until the exact candidate is measured.
+Explicit non-goals are persistent learning state, remote inference, recurring
+pattern discovery, unusual-spend prediction, investment advice, automatic
+schedule creation, receipt line-item splitting, and a new setting. Physical
+latency, accuracy, accessibility, and real-OCR targets remain open for the exact
+release candidate.
 
 ## Non-functional promotion gates
 

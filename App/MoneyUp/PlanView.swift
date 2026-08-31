@@ -10,7 +10,7 @@ struct PlanView: View {
     }
 
     @State private var selection: Section = .budget
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
 
     var body: some View {
         Group {
@@ -46,7 +46,7 @@ private struct BudgetPlanView: View {
         var id: UUID { node.id }
     }
 
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @State private var editingNode: BudgetNode?
     @State private var isAddingCategory = false
     @State private var categoryKindToAdd: LedgerAccountKind = .expense
@@ -452,7 +452,7 @@ private struct BudgetSimulatorView: View {
         }
     }
 
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @State private var additionalSpendingText = ""
     @State private var additionalIncomeText = ""
 
@@ -638,6 +638,23 @@ private struct BudgetSimulatorView: View {
         let isOver = forecast.projectedRemaining.amount < .zero
         let budgetUsage = budgetUsageResult(forecast)
 
+        forecastSpendingCard(
+            forecast,
+            points: points,
+            limit: limit,
+            isOver: isOver,
+            budgetUsage: budgetUsage
+        )
+        forecastSummaryCard(forecast, isOver: isOver)
+    }
+
+    private func forecastSpendingCard(
+        _ forecast: BudgetScenarioForecast,
+        points: [ChartPoint],
+        limit: Double,
+        isOver: Bool,
+        budgetUsage: DerivedValue<Decimal?>
+    ) -> some View {
         MoneyUpCard {
             VStack(alignment: .leading, spacing: 14) {
                 Label("simulator.spending_chart", systemImage: "chart.bar.xaxis")
@@ -697,7 +714,12 @@ private struct BudgetSimulatorView: View {
                 }
             }
         }
+    }
 
+    private func forecastSummaryCard(
+        _ forecast: BudgetScenarioForecast,
+        isOver: Bool
+    ) -> some View {
         MoneyUpCard {
             VStack(alignment: .leading, spacing: 14) {
                 Label {
@@ -778,7 +800,7 @@ private struct BudgetSimulatorView: View {
 
 private struct BudgetEditorSheet: View {
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     let node: BudgetNode
 
     @State private var amountText: String
@@ -897,7 +919,7 @@ extension BudgetRolloverRule {
 
 private struct AddCategorySheet: View {
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @State private var name = ""
     @State private var parentID: UUID?
     @State private var isSaving = false

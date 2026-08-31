@@ -15,6 +15,27 @@ device, TestFlight, closed-beta, or App Store gates. See [Golden PRD
 traceability](GOLDEN_TRACEABILITY.md) for every requirement ID and its evidence
 status.
 
+## 0.7.0 W1 - observation and service boundaries
+
+- [x] Replace app-target `ObservableObject`/`@Published` state delivery with
+  `@Observable`, `@Environment(AppModel.self)`, and per-property tracking
+- [x] Inject separate Ledger, Planning, Assets, Portability, Capture, and
+  Intelligence service seams while keeping lock and cross-service transaction
+  coordination in `AppModel`
+- [x] Retain the single SQLCipher transaction and rollback boundary for save,
+  edit, delete, split, import, reconciliation, schedule posting, lifecycle,
+  attachment retention, and goal movement
+- [x] Preserve the deterministic clock, store-generation guards, cancellation,
+  and quarantine behavior through the decomposition
+- [x] Close C12 with FIFO profile mutation serialization, latest-choice
+  convergence, and scoped-failure isolation tests
+- [x] Enforce 1,200-line files, 600-line type/extension bodies, and 80-line
+  function bodies under `App/` and `Sources/` in CI and release validation
+- [ ] Release blocker: the final PR SHA and merged SHA must each pass the pinned
+  macOS 15 / Xcode 16.4 CI before W1 is called done
+- [ ] Deferred: physical-device, accessibility, and performance evidence is not
+  produced by this behavior-neutral architecture slice
+
 ## Foundation
 
 - [x] Exact Decimal money, currency minor-unit policy, locale-safe parsing, and

@@ -155,19 +155,39 @@ public enum CaptureSuggestionEngine {
             accountSuggestion: nil,
             categorySuggestion: nil
         )
-        guard query.occurredAt.timeIntervalSinceReferenceDate.isFinite,
-              let directions = directions(for: query.kind) else {
+        guard let context = suggestionContext(for: query, accounts: accounts) else {
             return empty
         }
+        let summary = suggestionSummary(
+            entries: entries,
+            query: query,
+            context: context
+        )
+        return CaptureSuggestionResult(
+            queryFingerprint: query.fingerprint,
+            accountSuggestion: bestSuggestion(
+                from: summary.accountStats,
+                eligibleEntryCount: summary.accountEligibleEntryCount,
+                usedPayeeHistory: context.usesPayeeHistory
+            ),
+            categorySuggestion: bestSuggestion(
+                from: summary.categoryStats,
+                eligibleEntryCount: summary.categoryEligibleEntryCount,
+                usedPayeeHistory: context.usesPayeeHistory
+            )
+        )
+    }
 
+    private static func suggestionContext(
+        for query: CaptureSuggestionQuery,
+        accounts: [LedgerAccount]
+    ) -> SuggestionContext? {
+        guard query.occurredAt.timeIntervalSinceReferenceDate.isFinite,
+              let directions = directions(for: query.kind) else { return nil }
         let suppliedPayee = CaptureCanonicalText.nonEmptyOriginal(query.payee)
         let payeeKey = CaptureCanonicalText.key(suppliedPayee)
-        let usesPayeeHistory = payeeKey != nil
         if suppliedPayee != nil,
-           !CaptureCanonicalText.isMeaningfulPayeeKey(payeeKey) {
-            return empty
-        }
-
+           !CaptureCanonicalText.isMeaningfulPayeeKey(payeeKey) { return nil }
         let accountsByID = unambiguousAccounts(accounts)
         let financialAccountIDs = Set(accountsByID.values.lazy.filter { account in
             !account.isArchived
@@ -181,82 +201,75 @@ public enum CaptureSuggestionEngine {
                 && account.kind == directions.categoryKind
                 && (account.currency == nil || account.currency == query.currency)
         }.map(\.id))
+        return SuggestionContext(
+            directions: directions,
+            payeeKey: payeeKey,
+            financialAccountIDs: financialAccountIDs,
+            categoryAccountIDs: categoryAccountIDs
+        )
+    }
 
-        var accountStats: [UUID: SuggestionStats] = [:]
-        var categoryStats: [UUID: SuggestionStats] = [:]
-        var accountEligibleEntryCount = 0
-        var categoryEligibleEntryCount = 0
-
+    private static func suggestionSummary(
+        entries: [JournalEntry],
+        query: CaptureSuggestionQuery,
+        context: SuggestionContext
+    ) -> SuggestionSummary {
+        var summary = SuggestionSummary()
         for entry in entries {
             guard entry.occurredAt <= query.occurredAt,
-                  entry.kind == directions.journalKind else {
-                continue
-            }
-
+                  entry.kind == context.directions.journalKind else { continue }
             let storedPayeeKey = CaptureCanonicalText.key(entry.payee)
-            if let payeeKey,
+            if let payeeKey = context.payeeKey,
                !CaptureCanonicalText.payeeMatches(storedPayeeKey, payeeKey) {
                 continue
             }
-            let exactPayeeMatch = payeeKey != nil && storedPayeeKey == payeeKey
-
-            let matchingFinancialAccounts: Set<UUID> = Set(
-                entry.postings.lazy.compactMap { posting -> UUID? in
-                    guard posting.money.currency == query.currency,
-                          directions.accountSign.matches(posting.money.amount),
-                          financialAccountIDs.contains(posting.accountID) else {
-                        return nil
-                    }
-                    return posting.accountID
-                }
+            let exactPayeeMatch = context.payeeKey != nil
+                && storedPayeeKey == context.payeeKey
+            summary.recordFinancialAccounts(
+                financialAccountIDs(in: entry, query: query, context: context),
+                entry: entry,
+                exactPayeeMatch: exactPayeeMatch
             )
-            if !matchingFinancialAccounts.isEmpty {
-                accountEligibleEntryCount += 1
-                for accountID in matchingFinancialAccounts {
-                    accountStats[accountID, default: SuggestionStats()].record(
-                        occurredAt: entry.occurredAt,
-                        exactPayeeMatch: exactPayeeMatch
-                    )
-                }
-            }
-
-            let categoryLegIDs: Set<UUID> = Set(
-                entry.postings.lazy.compactMap { posting -> UUID? in
-                    guard posting.money.currency == query.currency,
-                          directions.categorySign.matches(posting.money.amount) else {
-                        return nil
-                    }
-                    return posting.accountID
-                }
+            summary.recordCategory(
+                categoryID(in: entry, query: query, context: context),
+                entry: entry,
+                exactPayeeMatch: exactPayeeMatch
             )
-            // A transaction split across multiple categories is evidence for
-            // the split itself, not for choosing one category for a future
-            // unsplit capture. Exclude that ambiguous vote so repeated A+B
-            // splits can never manufacture a high-confidence A or B default.
-            if categoryLegIDs.count == 1,
-               let categoryID = categoryLegIDs.first,
-               categoryAccountIDs.contains(categoryID) {
-                categoryEligibleEntryCount += 1
-                categoryStats[categoryID, default: SuggestionStats()].record(
-                    occurredAt: entry.occurredAt,
-                    exactPayeeMatch: exactPayeeMatch
-                )
-            }
         }
+        return summary
+    }
 
-        return CaptureSuggestionResult(
-            queryFingerprint: query.fingerprint,
-            accountSuggestion: bestSuggestion(
-                from: accountStats,
-                eligibleEntryCount: accountEligibleEntryCount,
-                usedPayeeHistory: usesPayeeHistory
-            ),
-            categorySuggestion: bestSuggestion(
-                from: categoryStats,
-                eligibleEntryCount: categoryEligibleEntryCount,
-                usedPayeeHistory: usesPayeeHistory
-            )
-        )
+    private static func financialAccountIDs(
+        in entry: JournalEntry,
+        query: CaptureSuggestionQuery,
+        context: SuggestionContext
+    ) -> Set<UUID> {
+        Set(entry.postings.lazy.compactMap { posting -> UUID? in
+            guard posting.money.currency == query.currency,
+                  context.directions.accountSign.matches(posting.money.amount),
+                  context.financialAccountIDs.contains(posting.accountID) else {
+                return nil
+            }
+            return posting.accountID
+        })
+    }
+
+    private static func categoryID(
+        in entry: JournalEntry,
+        query: CaptureSuggestionQuery,
+        context: SuggestionContext
+    ) -> UUID? {
+        let legIDs = Set(entry.postings.lazy.compactMap { posting -> UUID? in
+            guard posting.money.currency == query.currency,
+                  context.directions.categorySign.matches(posting.money.amount) else {
+                return nil
+            }
+            return posting.accountID
+        })
+        guard legIDs.count == 1,
+              let categoryID = legIDs.first,
+              context.categoryAccountIDs.contains(categoryID) else { return nil }
+        return categoryID
     }
 
     private static func directions(
@@ -898,6 +911,50 @@ public enum CaptureDuplicateDetector {
         return CaptureCanonicalText.key(sourceReference.system)
                 == CaptureCanonicalText.key(entrySystem)
             && sourceReference.fingerprint == entryFingerprint
+    }
+}
+
+private struct SuggestionContext {
+    let directions: SuggestionDirections
+    let payeeKey: String?
+    let financialAccountIDs: Set<UUID>
+    let categoryAccountIDs: Set<UUID>
+
+    var usesPayeeHistory: Bool { payeeKey != nil }
+}
+
+private struct SuggestionSummary {
+    var accountStats: [UUID: SuggestionStats] = [:]
+    var categoryStats: [UUID: SuggestionStats] = [:]
+    var accountEligibleEntryCount = 0
+    var categoryEligibleEntryCount = 0
+
+    mutating func recordFinancialAccounts(
+        _ accountIDs: Set<UUID>,
+        entry: JournalEntry,
+        exactPayeeMatch: Bool
+    ) {
+        guard !accountIDs.isEmpty else { return }
+        accountEligibleEntryCount += 1
+        for accountID in accountIDs {
+            accountStats[accountID, default: SuggestionStats()].record(
+                occurredAt: entry.occurredAt,
+                exactPayeeMatch: exactPayeeMatch
+            )
+        }
+    }
+
+    mutating func recordCategory(
+        _ categoryID: UUID?,
+        entry: JournalEntry,
+        exactPayeeMatch: Bool
+    ) {
+        guard let categoryID else { return }
+        categoryEligibleEntryCount += 1
+        categoryStats[categoryID, default: SuggestionStats()].record(
+            occurredAt: entry.occurredAt,
+            exactPayeeMatch: exactPayeeMatch
+        )
     }
 }
 

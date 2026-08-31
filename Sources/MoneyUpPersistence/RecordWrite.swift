@@ -223,11 +223,46 @@ public struct RecordWrite: Sendable {
         id: String,
         in collection: RecordCollection
     ) throws {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys]
+        let payload = try Self.encodedPayload(value)
+        try Self.validatePayload(payload, id: id, collection: collection)
+        try Self.validateCanonicalIdentity(payload, id: id, collection: collection)
+        let journalEntry = try Self.journalEntry(
+            payload,
+            id: id,
+            collection: collection
+        )
+        let receiptIndex = Self.receiptAttachmentIndex(
+            payload,
+            id: id,
+            collection: collection
+        )
+        let attributionIndex = try Self.budgetAttributionIndex(
+            payload,
+            id: id,
+            collection: collection
+        )
         self.collection = collection
         self.id = id
-        payload = try encoder.encode(value)
+        self.payload = payload
+        indexedAt = journalEntry?.occurredAt.timeIntervalSince1970
+        journalIndex = journalEntry.map { JournalIndexWrite(entry: $0, recordID: id) }
+        receiptAttachmentIndex = receiptIndex
+        budgetAttributionIndex = attributionIndex
+    }
+
+    private static func encodedPayload<Value: Encodable & Sendable>(
+        _ value: Value
+    ) throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return try encoder.encode(value)
+    }
+
+    private static func validatePayload(
+        _ payload: Data,
+        id: String,
+        collection: RecordCollection
+    ) throws {
         let payloadLimit = collection == .receiptAttachments
             ? Self.maximumReceiptPayloadByteCount
             : Self.maximumPayloadByteCount
@@ -240,99 +275,105 @@ public struct RecordWrite: Sendable {
                 recordID: id
             )
         }
-        if collection.requiresCanonicalPayloadUUID {
-            do {
-                let identity = try JSONDecoder().decode(
-                    UUIDRecordIdentity.self,
-                    from: payload
-                )
-                guard identity.id.uuidString == id else {
-                    throw PersistenceError.invalidStoredRecord(
-                        collection: collection,
-                        recordID: id
-                    )
-                }
-            } catch is CancellationError {
-                throw CancellationError()
-            } catch let error as PersistenceError {
-                throw error
-            } catch {
+    }
+
+    private static func validateCanonicalIdentity(
+        _ payload: Data,
+        id: String,
+        collection: RecordCollection
+    ) throws {
+        guard collection.requiresCanonicalPayloadUUID else { return }
+        do {
+            let identity = try JSONDecoder().decode(UUIDRecordIdentity.self, from: payload)
+            guard identity.id.uuidString == id else {
                 throw PersistenceError.invalidStoredRecord(
                     collection: collection,
                     recordID: id
                 )
             }
-        }
-        let decodedJournalEntry: JournalEntry?
-        if collection == .journalEntries {
-            do {
-                decodedJournalEntry = try JSONDecoder().decode(
-                    JournalEntry.self,
-                    from: payload
-                )
-            } catch is CancellationError {
-                throw CancellationError()
-            } catch {
-                throw PersistenceError.invalidStoredRecord(
-                    collection: collection,
-                    recordID: id
-                )
-            }
-        } else {
-            decodedJournalEntry = nil
-        }
-        if let decodedJournalEntry,
-           decodedJournalEntry.id.uuidString != id {
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let error as PersistenceError {
+            throw error
+        } catch {
             throw PersistenceError.invalidStoredRecord(
                 collection: collection,
                 recordID: id
             )
         }
-        let journalEntry = decodedJournalEntry
-        indexedAt = journalEntry?.occurredAt.timeIntervalSince1970
-        journalIndex = journalEntry.map { JournalIndexWrite(entry: $0, recordID: id) }
-        let decodedReceiptAttachment: ReceiptAttachment?
-        if collection == .receiptAttachments {
-            decodedReceiptAttachment = try? JSONDecoder().decode(
-                ReceiptAttachment.self,
+    }
+
+    private static func journalEntry(
+        _ payload: Data,
+        id: String,
+        collection: RecordCollection
+    ) throws -> JournalEntry? {
+        guard collection == .journalEntries else { return nil }
+        let entry: JournalEntry
+        do {
+            entry = try JSONDecoder().decode(JournalEntry.self, from: payload)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            throw PersistenceError.invalidStoredRecord(
+                collection: collection,
+                recordID: id
+            )
+        }
+        guard entry.id.uuidString == id else {
+            throw PersistenceError.invalidStoredRecord(
+                collection: collection,
+                recordID: id
+            )
+        }
+        return entry
+    }
+
+    private static func receiptAttachmentIndex(
+        _ payload: Data,
+        id: String,
+        collection: RecordCollection
+    ) -> ReceiptAttachmentIndexWrite? {
+        guard collection == .receiptAttachments,
+              let attachment = try? JSONDecoder().decode(
+                  ReceiptAttachment.self,
+                  from: payload
+              ) else { return nil }
+        return attachment.id.uuidString == id
+            ? ReceiptAttachmentIndexWrite(attachment: attachment, recordID: id)
+            : nil
+    }
+
+    private static func budgetAttributionIndex(
+        _ payload: Data,
+        id: String,
+        collection: RecordCollection
+    ) throws -> BudgetAttributionIndexWrite? {
+        guard collection == .budgetEntryAttributions else { return nil }
+        do {
+            let attribution = try JSONDecoder().decode(
+                BudgetEntryAttribution.self,
                 from: payload
             )
-        } else {
-            decodedReceiptAttachment = nil
-        }
-        receiptAttachmentIndex = decodedReceiptAttachment.flatMap { attachment in
-            attachment.id.uuidString == id
-                ? ReceiptAttachmentIndexWrite(attachment: attachment, recordID: id)
-                : nil
-        }
-        if collection == .budgetEntryAttributions {
-            do {
-                let attribution = try JSONDecoder().decode(
-                    BudgetEntryAttribution.self,
-                    from: payload
-                )
-                guard attribution.id.uuidString == id else {
-                    throw PersistenceError.invalidStoredRecord(
-                        collection: collection,
-                        recordID: id
-                    )
-                }
-                budgetAttributionIndex = try BudgetAttributionIndexWrite(
-                    attribution: attribution,
-                    recordID: id
-                )
-            } catch is CancellationError {
-                throw CancellationError()
-            } catch let error as PersistenceError {
-                throw error
-            } catch {
+            guard attribution.id.uuidString == id else {
                 throw PersistenceError.invalidStoredRecord(
                     collection: collection,
                     recordID: id
                 )
             }
-        } else {
-            budgetAttributionIndex = nil
+            return try BudgetAttributionIndexWrite(
+                attribution: attribution,
+                recordID: id
+            )
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let error as PersistenceError {
+            throw error
+        } catch {
+            throw PersistenceError.invalidStoredRecord(
+                collection: collection,
+                recordID: id
+            )
         }
     }
 

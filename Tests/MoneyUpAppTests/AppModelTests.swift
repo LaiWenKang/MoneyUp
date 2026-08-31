@@ -2,6 +2,7 @@ import Foundation
 @testable import MoneyUp
 import MoneyUpCore
 import MoneyUpPersistence
+import Observation
 import XCTest
 
 final class AppModelTests: XCTestCase {
@@ -9907,6 +9908,149 @@ extension AppModelTests {
     }
 
     @MainActor
+    func testObservationInvalidatesOnlyTrackedAppModelProperties() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let services = AppModelServices()
+        let model = fixture.model(services: services)
+        let ledgerChanges = ObservationCounter()
+        let planningChanges = ObservationCounter()
+        let assetsChanges = ObservationCounter()
+        let captureChanges = ObservationCounter()
+        let portabilityChanges = ObservationCounter()
+
+        withObservationTracking {
+            _ = model.ledgerService.journalEntryCount
+        } onChange: {
+            ledgerChanges.increment()
+        }
+        withObservationTracking {
+            _ = model.planningService.savingsGoals
+        } onChange: {
+            planningChanges.increment()
+        }
+        withObservationTracking {
+            _ = model.assetsService.netWorthSnapshots
+        } onChange: {
+            assetsChanges.increment()
+        }
+        withObservationTracking {
+            _ = model.captureService.pendingLockedCaptureCount
+        } onChange: {
+            captureChanges.increment()
+        }
+        withObservationTracking {
+            _ = model.portabilityService.recoveryIssues
+        } onChange: {
+            portabilityChanges.increment()
+        }
+
+        services.capture.pendingLockedCaptureCount += 1
+        XCTAssertEqual(captureChanges.value, 1)
+        XCTAssertEqual(ledgerChanges.value, 0)
+        XCTAssertEqual(planningChanges.value, 0)
+        XCTAssertEqual(assetsChanges.value, 0)
+        XCTAssertEqual(portabilityChanges.value, 0)
+
+        services.planning.savingsGoals = []
+        XCTAssertEqual(planningChanges.value, 1)
+        XCTAssertEqual(ledgerChanges.value, 0)
+
+        services.assets.netWorthSnapshots = []
+        XCTAssertEqual(assetsChanges.value, 1)
+        XCTAssertEqual(ledgerChanges.value, 0)
+
+        services.portability.recoveryIssues = ["test/recovery"]
+        XCTAssertEqual(portabilityChanges.value, 1)
+        XCTAssertEqual(ledgerChanges.value, 0)
+
+        services.ledger.journalEntryCount += 1
+        XCTAssertEqual(ledgerChanges.value, 1)
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testProfileMutationsSerializeAndPreserveLatestUnrelatedChoices() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let profile = UserProfile(baseCurrency: fixture.sgd)
+        try await fixture.seed(
+            profile: profile,
+            accounts: [fixture.wallet, fixture.usAccount, fixture.food]
+        )
+        let firstWriteGate = FirstRefreshGate()
+        let model = fixture.model(
+            profile: profile,
+            lifecycleHooks: hooks(
+                pausingFirst: .beforeProfileWrite,
+                at: firstWriteGate
+            )
+        )
+
+        let firstDelay = Task { @MainActor in
+            try await model.updateAutoLockDelay(300)
+        }
+        await firstWriteGate.waitUntilReached()
+        let preferredAccount = Task { @MainActor in
+            try await model.updatePreferredAccount(fixture.wallet.id)
+        }
+        let latestDelay = Task { @MainActor in
+            try await model.updateAutoLockDelay(900)
+        }
+        for _ in 0..<10 { await Task.yield() }
+
+        await firstWriteGate.release()
+        try await firstDelay.value
+        try await preferredAccount.value
+        try await latestDelay.value
+
+        let persisted = try await fixture.store.fetch(
+            UserProfile.self,
+            id: UserProfile.primaryRecordID,
+            from: .profile
+        )
+        XCTAssertEqual(model.profile?.autoLockDelay, 900)
+        XCTAssertEqual(model.profile?.preferredAccountID, fixture.wallet.id)
+        XCTAssertEqual(persisted?.autoLockDelay, 900)
+        XCTAssertEqual(persisted?.preferredAccountID, fixture.wallet.id)
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testFailedProfileMutationDoesNotRollBackUnrelatedSetting() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let profile = UserProfile(baseCurrency: fixture.sgd)
+        try await fixture.seed(
+            profile: profile,
+            accounts: [fixture.wallet, fixture.usAccount, fixture.food]
+        )
+        let model = fixture.model(profile: profile)
+
+        try await model.updatePreferredAccount(fixture.wallet.id)
+        do {
+            try await model.mutateProfile { candidate in
+                candidate.preferredExpenseCategoryID = fixture.food.id
+                throw AppModelError.invalidBook
+            }
+            XCTFail("Expected the scoped profile mutation to fail")
+        } catch AppModelError.invalidBook {
+            // The failed local candidate must never replace committed state.
+        }
+
+        let persisted = try await fixture.store.fetch(
+            UserProfile.self,
+            id: UserProfile.primaryRecordID,
+            from: .profile
+        )
+        XCTAssertEqual(model.profile?.preferredAccountID, fixture.wallet.id)
+        XCTAssertNil(model.profile?.preferredExpenseCategoryID)
+        XCTAssertEqual(persisted?.preferredAccountID, fixture.wallet.id)
+        XCTAssertNil(persisted?.preferredExpenseCategoryID)
+        await fixture.store.close()
+    }
+
+    @MainActor
     func testAugustBudgetEditPersistsProspectiveTimelineAndKeepsClosedCarry() async throws {
         let fixture = try AppModelFixture()
         defer { fixture.removeFiles() }
@@ -11319,7 +11463,8 @@ private struct AppModelFixture {
         budgetWidgetSnapshotStore: BudgetWidgetSnapshotStore = BudgetWidgetSnapshotStore(),
         budgetConfigurationTimeline: BudgetConfigurationTimeline? = nil,
         budgetEntryAttributions: [UUID: BudgetEntryAttribution] = [:],
-        currentDate: @escaping @Sendable () -> Date = Date.init
+        currentDate: @escaping @Sendable () -> Date = Date.init,
+        services: AppModelServices? = nil
     ) -> AppModel {
         AppModel(
             store: store ?? self.store,
@@ -11345,7 +11490,8 @@ private struct AppModelFixture {
             budgetWidgetSnapshotStore: budgetWidgetSnapshotStore,
             budgetConfigurationTimeline: budgetConfigurationTimeline,
             budgetEntryAttributions: budgetEntryAttributions,
-            currentDate: currentDate
+            currentDate: currentDate,
+            services: services
         )
     }
 
@@ -11492,6 +11638,19 @@ private actor FirstRefreshGate {
         let waiters = releaseWaiters
         releaseWaiters.removeAll()
         waiters.forEach { $0.resume() }
+    }
+}
+
+private final class ObservationCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+
+    var value: Int {
+        lock.withLock { count }
+    }
+
+    func increment() {
+        lock.withLock { count += 1 }
     }
 }
 

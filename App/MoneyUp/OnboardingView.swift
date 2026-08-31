@@ -25,7 +25,7 @@ struct OnboardingView: View {
         case openingBalance
     }
 
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var step: Step = .welcome
     @State private var currencyCode = SupportedCurrencies.regionalDefault

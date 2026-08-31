@@ -4,14 +4,14 @@ import UIKit
 @main
 @MainActor
 struct MoneyUpApp: App {
-    @StateObject private var model = AppModel()
+    @State private var model = AppModel()
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
             ZStack {
                 RootView()
-                    .environmentObject(model)
+                    .environment(model)
                     .tint(.accentColor)
                     // The opaque cover protects pixels. These modifiers also
                     // remove the underlying financial controls from VoiceOver

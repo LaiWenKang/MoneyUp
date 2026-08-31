@@ -1,0 +1,240 @@
+import Foundation
+import MoneyUpCore
+import SwiftUI
+
+extension QuickLogEntryView {
+    func invalidateCaptureSuggestions(
+        preservingAccount: Bool = false,
+        preservingCategory: Bool = false,
+        restoresDefaults: Bool = true
+    ) {
+        var revertedField = false
+        if !preservingAccount,
+           let autoAppliedAccountSuggestionID,
+           accountID == autoAppliedAccountSuggestionID {
+            accountID = nil
+            accountWasEdited = false
+            revertedField = true
+        }
+        if !preservingCategory,
+           let autoAppliedCategorySuggestionID,
+           categoryID == autoAppliedCategorySuggestionID {
+            categoryID = nil
+            categoryWasEdited = false
+            revertedField = true
+        }
+        autoAppliedAccountSuggestionID = nil
+        autoAppliedCategorySuggestionID = nil
+        captureSuggestionResult = nil
+        if restoresDefaults, revertedField {
+            selectDefaults()
+        }
+    }
+
+    func clearCaptureSuggestionProvenance() {
+        autoAppliedAccountSuggestionID = nil
+        autoAppliedCategorySuggestionID = nil
+        captureSuggestionResult = nil
+    }
+
+    func clearPerTransactionReviewState() {
+        smartMessage = nil
+        receiptResult = nil
+        clearCaptureSuggestionProvenance()
+        pendingDuplicateReview = nil
+        receiptAttachmentData = nil
+        retainReceiptAttachment = false
+        receiptRetentionMessage = nil
+        photoItem = nil
+        errorMessage = nil
+    }
+
+    func refreshCaptureSuggestions(for draft: TransactionDraft) {
+        guard model.journalRecentEntriesAreCurrent,
+              let currency = selectedAccountCurrency else {
+            captureSuggestionResult = nil
+            return
+        }
+        let suggestionKind: CaptureIntelligenceKind
+        switch draft.kind {
+        case .expense: suggestionKind = .expense
+        case .income: suggestionKind = .income
+        case .refund: suggestionKind = .refund
+        }
+        let query = CaptureSuggestionQuery(
+            kind: suggestionKind,
+            payee: draft.payee,
+            currency: currency,
+            occurredAt: draft.occurredAt ?? occurredAt
+        )
+        let result = CaptureSuggestionEngine.suggestions(
+            for: query,
+            entries: model.entries,
+            accounts: model.accounts
+        )
+        captureSuggestionResult = result
+        applyAccountSuggestion(result.accountSuggestion, draft: draft)
+        applyCategorySuggestion(result.categorySuggestion, draft: draft)
+    }
+
+    private func applyAccountSuggestion(
+        _ suggestion: CaptureFieldSuggestion?,
+        draft: TransactionDraft
+    ) {
+        guard let suggestion,
+              QuickLogSuggestionPolicy.shouldPrefillHistorySuggestion(
+                  confidence: suggestion.confidence,
+                  fieldWasEdited: accountWasEdited,
+                  parserSuppliedValue: draft.accountID != nil,
+                  hasFixedDefault: validPreferred(
+                      model.profile?.preferredAccountID,
+                      in: model.userAccounts
+                  ) != nil,
+                  usedPayeeHistory: suggestion.evidence.usedPayeeHistory
+              ),
+              model.userAccounts.contains(where: {
+                  $0.id == suggestion.ledgerAccountID
+              }) else { return }
+        accountID = suggestion.ledgerAccountID
+        autoAppliedAccountSuggestionID = suggestion.ledgerAccountID
+    }
+
+    private func applyCategorySuggestion(
+        _ suggestion: CaptureFieldSuggestion?,
+        draft: TransactionDraft
+    ) {
+        guard splitLines.isEmpty,
+              let suggestion,
+              QuickLogSuggestionPolicy.shouldPrefillHistorySuggestion(
+                  confidence: suggestion.confidence,
+                  fieldWasEdited: categoryWasEdited,
+                  parserSuppliedValue: draft.categoryID != nil,
+                  hasFixedDefault: preferredCategoryIDForCurrentKind != nil,
+                  usedPayeeHistory: suggestion.evidence.usedPayeeHistory
+              ),
+              categories.contains(where: {
+                  $0.id == suggestion.ledgerAccountID
+              }) else { return }
+        categoryID = suggestion.ledgerAccountID
+        autoAppliedCategorySuggestionID = suggestion.ledgerAccountID
+    }
+
+    private var preferredCategoryIDForCurrentKind: UUID? {
+        switch kind {
+        case .income:
+            validPreferred(
+                model.profile?.preferredIncomeCategoryID,
+                in: model.incomeCategories
+            )
+        case .expense, .refund:
+            validPreferred(
+                model.profile?.preferredExpenseCategoryID,
+                in: model.expenseCategories
+            )
+        case .transfer:
+            nil
+        }
+    }
+
+    @ViewBuilder
+    func captureSuggestions(_ result: CaptureSuggestionResult) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("quick_log.suggestions_from_recent", systemImage: "lightbulb.max")
+                .font(.subheadline.weight(.semibold))
+            if let suggestion = result.accountSuggestion,
+               let account = model.accountsByID[suggestion.ledgerAccountID] {
+                captureSuggestionRow(
+                    title: String(localized: "quick_log.suggested_account"),
+                    account: account,
+                    suggestion: suggestion,
+                    isApplied: accountID == account.id
+                ) {
+                    accountID = account.id
+                    accountWasEdited = true
+                    autoAppliedAccountSuggestionID = nil
+                    persistUserDraftChange { $0.accountID = account.id }
+                }
+            }
+            if splitLines.isEmpty,
+               let suggestion = result.categorySuggestion,
+               let category = model.accountsByID[suggestion.ledgerAccountID] {
+                captureSuggestionRow(
+                    title: String(localized: "quick_log.suggested_category"),
+                    account: category,
+                    suggestion: suggestion,
+                    isApplied: categoryID == category.id
+                ) {
+                    categoryID = category.id
+                    categoryWasEdited = true
+                    autoAppliedCategorySuggestionID = nil
+                    persistUserDraftChange { $0.categoryID = category.id }
+                }
+            }
+            Text("quick_log.suggestions_recent_scope")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private func captureSuggestionRow(
+        title: String,
+        account: LedgerAccount,
+        suggestion: CaptureFieldSuggestion,
+        isApplied: Bool,
+        apply: @escaping () -> Void
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(account.name)
+                    .font(.body.weight(.medium))
+                Spacer(minLength: 8)
+                if isApplied {
+                    Label("quick_log.suggestion_applied", systemImage: "checkmark")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                } else {
+                    Button("quick_log.use_suggestion", action: apply)
+                        .buttonStyle(.borderless)
+                }
+            }
+            Text(
+                "\(captureConfidenceText(suggestion.confidence)) · "
+                    + captureEvidenceText(suggestion.evidence)
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+    }
+
+    func captureConfidenceText(_ confidence: CaptureConfidence) -> String {
+        switch confidence {
+        case .low: String(localized: "quick_log.confidence_low")
+        case .medium: String(localized: "quick_log.confidence_medium")
+        case .high: String(localized: "quick_log.confidence_high")
+        }
+    }
+
+    private func captureEvidenceText(_ evidence: CaptureSuggestionEvidence) -> String {
+        let format = evidence.usedPayeeHistory
+            ? String(localized: "quick_log.suggestion_payee_evidence_format")
+            : String(localized: "quick_log.suggestion_kind_evidence_format")
+        let count = String(
+            format: format,
+            evidence.supportingEntryCount,
+            evidence.eligibleEntryCount
+        )
+        let date = evidence.mostRecentUse.formattedForReporting(
+            .dateTime.year().month(.abbreviated).day(),
+            calendar: model.reportingCalendar
+        )
+        return String(
+            format: String(localized: "quick_log.suggestion_last_used_format"),
+            count,
+            date
+        )
+    }
+}

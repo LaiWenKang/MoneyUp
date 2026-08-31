@@ -17,13 +17,56 @@ public enum InvestmentLedgerIntegrity {
         accountsByID: [UUID: LedgerAccount],
         entriesByID: [UUID: JournalEntry]
     ) throws {
+        let relationship = try validatedRelationship(holding, accountsByID: accountsByID)
+        let funding = relationship.funding
+        let position = relationship.position
+        let currency = relationship.currency
+        let activities = try activities(for: holding, currency: currency)
+        var quantity = Decimal.zero
+        var price: Money?
+        var processedEntryIDs = Set<UUID>()
+        var hasLinkedLedgerEvent = false
+        for activity in activities {
+            if let entryID = activity.entryID {
+                guard processedEntryIDs.insert(entryID).inserted else { continue }
+                try replayLinkedActivity(
+                    entryID: entryID,
+                    activities: activities,
+                    entriesByID: entriesByID,
+                    fundingAccountID: funding.id,
+                    positionAccountID: position.id,
+                    currency: currency,
+                    accountsByID: accountsByID,
+                    mayBeOpening: !hasLinkedLedgerEvent,
+                    quantity: &quantity,
+                    price: &price
+                )
+                hasLinkedLedgerEvent = true
+            } else {
+                try replayUnlinkedActivity(
+                    activity,
+                    currency: currency,
+                    quantity: &quantity,
+                    price: &price
+                )
+            }
+        }
+        guard quantity == holding.quantity,
+              price == holding.price else {
+            throw InvestmentLedgerIntegrityError.invalidHoldingRelationship
+        }
+    }
+
+    private static func validatedRelationship(
+        _ holding: InvestmentHolding,
+        accountsByID: [UUID: LedgerAccount]
+    ) throws -> (funding: LedgerAccount, position: LedgerAccount, currency: CurrencyCode) {
         guard let positionID = holding.positionAccountID,
               positionID != holding.accountID,
               let funding = accountsByID[holding.accountID],
               funding.kind == .asset,
               funding.systemRole == nil,
-              funding.accountType == .brokerage
-                || funding.accountType == .investment,
+              funding.accountType == .brokerage || funding.accountType == .investment,
               let currency = funding.currency,
               let position = accountsByID[positionID],
               position.kind == .asset,
@@ -31,79 +74,60 @@ public enum InvestmentLedgerIntegrity {
               position.currency == currency else {
             throw InvestmentLedgerIntegrityError.invalidHoldingRelationship
         }
+        return (funding, position, currency)
+    }
 
-        let activities = try activities(for: holding, currency: currency)
-        var quantity = Decimal.zero
-        var price: Money?
-        var processedEntryIDs = Set<UUID>()
-        var hasLinkedLedgerEvent = false
-
-        for activity in activities {
-            if let entryID = activity.entryID {
-                guard processedEntryIDs.insert(entryID).inserted else { continue }
-                let grouped = activities.filter { $0.entryID == entryID }.sorted {
-                    $0.sequence < $1.sequence
-                }
-                guard let first = grouped.first,
-                      grouped.allSatisfy({ $0.date == first.date }),
-                      let entry = entriesByID[entryID] else {
-                    throw InvestmentLedgerIntegrityError.missingLinkedEntry(entryID)
-                }
-                let before = try positionValue(
-                    quantity: quantity,
-                    price: price,
-                    currency: currency
-                )
-                for groupedActivity in grouped {
-                    try apply(
-                        groupedActivity,
-                        quantity: &quantity,
-                        price: &price
-                    )
-                }
-                let after = try positionValue(
-                    quantity: quantity,
-                    price: price,
-                    currency: currency
-                )
-                try validate(
-                    entry: entry,
-                    activities: grouped,
-                    beforePositionValue: before,
-                    afterPositionValue: after,
-                    fundingAccountID: funding.id,
-                    positionAccountID: position.id,
-                    currency: currency,
-                    accountsByID: accountsByID,
-                    mayBeOpening: !hasLinkedLedgerEvent
-                )
-                hasLinkedLedgerEvent = true
-            } else {
-                // Only a price observation whose market value is unchanged may
-                // lack a journal identity. Acquisitions always require ledger
-                // evidence once a holding has a connected position account.
-                guard case .price = activity else {
-                    throw InvestmentLedgerIntegrityError.invalidHoldingRelationship
-                }
-                let before = try positionValue(
-                    quantity: quantity,
-                    price: price,
-                    currency: currency
-                )
-                try apply(activity, quantity: &quantity, price: &price)
-                let after = try positionValue(
-                    quantity: quantity,
-                    price: price,
-                    currency: currency
-                )
-                guard before == after else {
-                    throw InvestmentLedgerIntegrityError.invalidHoldingRelationship
-                }
-            }
+    private static func replayLinkedActivity(
+        entryID: UUID,
+        activities: [Activity],
+        entriesByID: [UUID: JournalEntry],
+        fundingAccountID: UUID,
+        positionAccountID: UUID,
+        currency: CurrencyCode,
+        accountsByID: [UUID: LedgerAccount],
+        mayBeOpening: Bool,
+        quantity: inout Decimal,
+        price: inout Money?
+    ) throws {
+        let grouped = activities.filter { $0.entryID == entryID }.sorted {
+            $0.sequence < $1.sequence
         }
+        guard let first = grouped.first,
+              grouped.allSatisfy({ $0.date == first.date }),
+              let entry = entriesByID[entryID] else {
+            throw InvestmentLedgerIntegrityError.missingLinkedEntry(entryID)
+        }
+        let before = try positionValue(quantity: quantity, price: price, currency: currency)
+        for activity in grouped {
+            try apply(activity, quantity: &quantity, price: &price)
+        }
+        let after = try positionValue(quantity: quantity, price: price, currency: currency)
+        try validate(
+            entry: entry,
+            activities: grouped,
+            beforePositionValue: before,
+            afterPositionValue: after,
+            fundingAccountID: fundingAccountID,
+            positionAccountID: positionAccountID,
+            currency: currency,
+            accountsByID: accountsByID,
+            mayBeOpening: mayBeOpening
+        )
+    }
 
-        guard quantity == holding.quantity,
-              price == holding.price else {
+    private static func replayUnlinkedActivity(
+        _ activity: Activity,
+        currency: CurrencyCode,
+        quantity: inout Decimal,
+        price: inout Money?
+    ) throws {
+        guard case .price = activity else {
+            throw InvestmentLedgerIntegrityError.invalidHoldingRelationship
+        }
+        let before = try positionValue(quantity: quantity, price: price, currency: currency)
+        try apply(activity, quantity: &quantity, price: &price)
+        let after = try positionValue(quantity: quantity, price: price, currency: currency)
+        guard before == after else {
             throw InvestmentLedgerIntegrityError.invalidHoldingRelationship
         }
     }
@@ -256,88 +280,17 @@ public enum InvestmentLedgerIntegrity {
         }
 
         do {
-            let positionDelta = try CheckedDecimal.subtracting(
-                afterPositionValue.amount,
-                beforePositionValue.amount
+            let expected = try expectedPostings(
+                entry: entry,
+                activities: activities,
+                beforePositionValue: beforePositionValue,
+                afterPositionValue: afterPositionValue,
+                fundingAccountID: fundingAccountID,
+                positionAccountID: positionAccountID,
+                currency: currency,
+                accountsByID: accountsByID,
+                mayBeOpening: mayBeOpening
             )
-            var expected: [UUID: Decimal] = [:]
-            if let purchase = purchases.first {
-                let cashCost = try CheckedDecimal.productForCurrencyRounding(
-                    purchase.originalQuantity,
-                    purchase.unitCost.amount,
-                    currency: currency
-                )
-                let fundingPosting = entry.postings.first {
-                    $0.accountID == fundingAccountID
-                }
-                if fundingPosting != nil {
-                    try addExpected(-cashCost, to: fundingAccountID, in: &expected)
-                    try addExpected(positionDelta, to: positionAccountID, in: &expected)
-                    let residual = try CheckedDecimal.subtracting(
-                        cashCost,
-                        positionDelta
-                    )
-                    if residual != .zero {
-                        let gainID = try uniqueSystemPostingAccount(
-                            role: .investmentGainLoss,
-                            in: entry,
-                            accountsByID: accountsByID
-                        )
-                        try addExpected(residual, to: gainID, in: &expected)
-                    }
-                } else {
-                    guard mayBeOpening,
-                          beforePositionValue.isZero,
-                          positionDelta == afterPositionValue.amount,
-                          positionDelta > .zero else {
-                        throw InvestmentLedgerIntegrityError.invalidLinkedEntry(entry.id)
-                    }
-                    try addExpected(positionDelta, to: positionAccountID, in: &expected)
-                    let equityID = try uniqueSystemPostingAccount(
-                        role: .openingBalances,
-                        in: entry,
-                        accountsByID: accountsByID
-                    )
-                    try addExpected(-positionDelta, to: equityID, in: &expected)
-                }
-            } else if let sale = sales.first {
-                try addExpected(
-                    sale.proceeds.amount,
-                    to: fundingAccountID,
-                    in: &expected
-                )
-                try addExpected(positionDelta, to: positionAccountID, in: &expected)
-                let proceedsAndPosition = try CheckedDecimal.adding(
-                    sale.proceeds.amount,
-                    positionDelta
-                )
-                let counter = try CheckedDecimal.subtracting(
-                    .zero,
-                    proceedsAndPosition
-                )
-                if counter != .zero {
-                    let gainID = try uniqueSystemPostingAccount(
-                        role: .investmentGainLoss,
-                        in: entry,
-                        accountsByID: accountsByID
-                    )
-                    try addExpected(counter, to: gainID, in: &expected)
-                }
-            } else {
-                guard activities.count == 1,
-                      case .price = activities[0],
-                      positionDelta != .zero else {
-                    throw InvestmentLedgerIntegrityError.invalidLinkedEntry(entry.id)
-                }
-                try addExpected(positionDelta, to: positionAccountID, in: &expected)
-                let gainID = try uniqueSystemPostingAccount(
-                    role: .investmentGainLoss,
-                    in: entry,
-                    accountsByID: accountsByID
-                )
-                try addExpected(-positionDelta, to: gainID, in: &expected)
-            }
-
             let actual = Dictionary(
                 uniqueKeysWithValues: entry.postings.map {
                     ($0.accountID, $0.money.amount)
@@ -353,6 +306,162 @@ public enum InvestmentLedgerIntegrity {
         } catch {
             throw InvestmentLedgerIntegrityError.arithmeticFailure
         }
+    }
+
+    private static func expectedPostings(
+        entry: JournalEntry,
+        activities: [Activity],
+        beforePositionValue: Money,
+        afterPositionValue: Money,
+        fundingAccountID: UUID,
+        positionAccountID: UUID,
+        currency: CurrencyCode,
+        accountsByID: [UUID: LedgerAccount],
+        mayBeOpening: Bool
+    ) throws -> [UUID: Decimal] {
+        let positionDelta = try CheckedDecimal.subtracting(
+            afterPositionValue.amount,
+            beforePositionValue.amount
+        )
+        let purchases = activities.compactMap { activity -> InvestmentLot? in
+            guard case let .purchase(lot) = activity else { return nil }
+            return lot
+        }
+        let sales = activities.compactMap { activity -> InvestmentDisposal? in
+            guard case let .sale(disposal) = activity else { return nil }
+            return disposal
+        }
+        var expected: [UUID: Decimal] = [:]
+        if let purchase = purchases.first {
+            try addPurchasePostings(
+                purchase: purchase,
+                entry: entry,
+                positionDelta: positionDelta,
+                beforePositionValue: beforePositionValue,
+                afterPositionValue: afterPositionValue,
+                fundingAccountID: fundingAccountID,
+                positionAccountID: positionAccountID,
+                currency: currency,
+                accountsByID: accountsByID,
+                mayBeOpening: mayBeOpening,
+                expected: &expected
+            )
+        } else if let sale = sales.first {
+            try addSalePostings(
+                sale: sale,
+                entry: entry,
+                positionDelta: positionDelta,
+                fundingAccountID: fundingAccountID,
+                positionAccountID: positionAccountID,
+                accountsByID: accountsByID,
+                expected: &expected
+            )
+        } else {
+            try addPricePostings(
+                activities: activities,
+                entry: entry,
+                positionDelta: positionDelta,
+                positionAccountID: positionAccountID,
+                accountsByID: accountsByID,
+                expected: &expected
+            )
+        }
+        return expected
+    }
+
+    private static func addPurchasePostings(
+        purchase: InvestmentLot,
+        entry: JournalEntry,
+        positionDelta: Decimal,
+        beforePositionValue: Money,
+        afterPositionValue: Money,
+        fundingAccountID: UUID,
+        positionAccountID: UUID,
+        currency: CurrencyCode,
+        accountsByID: [UUID: LedgerAccount],
+        mayBeOpening: Bool,
+        expected: inout [UUID: Decimal]
+    ) throws {
+        let cashCost = try CheckedDecimal.productForCurrencyRounding(
+            purchase.originalQuantity,
+            purchase.unitCost.amount,
+            currency: currency
+        )
+        if entry.postings.contains(where: { $0.accountID == fundingAccountID }) {
+            try addExpected(-cashCost, to: fundingAccountID, in: &expected)
+            try addExpected(positionDelta, to: positionAccountID, in: &expected)
+            let residual = try CheckedDecimal.subtracting(cashCost, positionDelta)
+            if residual != .zero {
+                let gainID = try uniqueSystemPostingAccount(
+                    role: .investmentGainLoss,
+                    in: entry,
+                    accountsByID: accountsByID
+                )
+                try addExpected(residual, to: gainID, in: &expected)
+            }
+            return
+        }
+        guard mayBeOpening,
+              beforePositionValue.isZero,
+              positionDelta == afterPositionValue.amount,
+              positionDelta > .zero else {
+            throw InvestmentLedgerIntegrityError.invalidLinkedEntry(entry.id)
+        }
+        try addExpected(positionDelta, to: positionAccountID, in: &expected)
+        let equityID = try uniqueSystemPostingAccount(
+            role: .openingBalances,
+            in: entry,
+            accountsByID: accountsByID
+        )
+        try addExpected(-positionDelta, to: equityID, in: &expected)
+    }
+
+    private static func addSalePostings(
+        sale: InvestmentDisposal,
+        entry: JournalEntry,
+        positionDelta: Decimal,
+        fundingAccountID: UUID,
+        positionAccountID: UUID,
+        accountsByID: [UUID: LedgerAccount],
+        expected: inout [UUID: Decimal]
+    ) throws {
+        try addExpected(sale.proceeds.amount, to: fundingAccountID, in: &expected)
+        try addExpected(positionDelta, to: positionAccountID, in: &expected)
+        let proceedsAndPosition = try CheckedDecimal.adding(
+            sale.proceeds.amount,
+            positionDelta
+        )
+        let counter = try CheckedDecimal.subtracting(.zero, proceedsAndPosition)
+        if counter != .zero {
+            let gainID = try uniqueSystemPostingAccount(
+                role: .investmentGainLoss,
+                in: entry,
+                accountsByID: accountsByID
+            )
+            try addExpected(counter, to: gainID, in: &expected)
+        }
+    }
+
+    private static func addPricePostings(
+        activities: [Activity],
+        entry: JournalEntry,
+        positionDelta: Decimal,
+        positionAccountID: UUID,
+        accountsByID: [UUID: LedgerAccount],
+        expected: inout [UUID: Decimal]
+    ) throws {
+        guard activities.count == 1,
+              case .price = activities[0],
+              positionDelta != .zero else {
+            throw InvestmentLedgerIntegrityError.invalidLinkedEntry(entry.id)
+        }
+        try addExpected(positionDelta, to: positionAccountID, in: &expected)
+        let gainID = try uniqueSystemPostingAccount(
+            role: .investmentGainLoss,
+            in: entry,
+            accountsByID: accountsByID
+        )
+        try addExpected(-positionDelta, to: gainID, in: &expected)
     }
 
     private static func uniqueSystemPostingAccount(

@@ -34,14 +34,31 @@ public enum LedgerXLSXExporter {
         let accountByID = Dictionary(
             uniqueKeysWithValues: uniqueAccounts.map { ($0.id, $0) }
         )
+        let transactionRows = transactionRows(
+            entries: entries,
+            accountsByID: accountByID,
+            attachmentMetadata: attachmentMetadata
+        )
+        let files = workbookFiles(
+            transactionRows: transactionRows,
+            accountRows: accountRows(uniqueAccounts),
+            rateRows: rateRows(rates)
+        )
+        return StoredZIPArchive(files: files).data()
+    }
+
+    private static func transactionRows(
+        entries: [JournalEntry],
+        accountsByID: [UUID: LedgerAccount],
+        attachmentMetadata: [ReceiptAttachmentMetadata]
+    ) -> [[XLSXCell]] {
         let attachmentCounts = Dictionary(grouping: attachmentMetadata, by: \.entryID)
             .mapValues { $0.count }
         let sortedEntries = entries.sorted {
             if $0.occurredAt == $1.occurredAt { return $0.createdAt < $1.createdAt }
             return $0.occurredAt < $1.occurredAt
         }
-
-        var transactionRows: [[XLSXCell]] = [[
+        var rows: [[XLSXCell]] = [[
             .text("entry_id"), .text("entry_kind"), .text("occurred_at"),
             .text("origin_day"), .text("origin_calendar"), .text("origin_time_zone"),
             .text("origin_utc_offset_seconds"), .text("origin_inferred"),
@@ -53,8 +70,8 @@ public enum LedgerXLSXExporter {
         ]]
         for entry in sortedEntries {
             for posting in entry.postings {
-                let account = accountByID[posting.accountID]
-                transactionRows.append([
+                let account = accountsByID[posting.accountID]
+                rows.append([
                     .text(entry.id.uuidString.lowercased()),
                     .text(entry.kind.rawValue),
                     .text(iso8601(entry.occurredAt)),
@@ -79,13 +96,18 @@ public enum LedgerXLSXExporter {
                 ])
             }
         }
+        return rows
+    }
 
+    private static func accountRows(
+        _ accounts: [LedgerAccount]
+    ) -> [[XLSXCell]] {
         var accountRows: [[XLSXCell]] = [[
             .text("account_id"), .text("name"), .text("kind"),
             .text("currency"), .text("account_type"), .text("system_role"),
             .text("parent_account_id"), .text("archived")
         ]]
-        accountRows += uniqueAccounts.sorted {
+        accountRows += accounts.sorted {
             $0.name.localizedStandardCompare($1.name) == .orderedAscending
         }
             .map { account in
@@ -100,7 +122,12 @@ public enum LedgerXLSXExporter {
                     .text(account.isArchived ? "true" : "false")
                 ]
             }
+        return accountRows
+    }
 
+    private static func rateRows(
+        _ rates: [DatedExchangeRate]
+    ) -> [[XLSXCell]] {
         var rateRows: [[XLSXCell]] = [[
             .text("rate_id"), .text("base_currency"), .text("quote_currency"),
             .number("quote_per_base"), .text("effective_day"),
@@ -123,8 +150,15 @@ public enum LedgerXLSXExporter {
                 .text(iso8601(rate.createdAt))
             ]
         }
+        return rateRows
+    }
 
-        let files: [(String, Data)] = [
+    private static func workbookFiles(
+        transactionRows: [[XLSXCell]],
+        accountRows: [[XLSXCell]],
+        rateRows: [[XLSXCell]]
+    ) -> [(String, Data)] {
+        [
             ("[Content_Types].xml", xmlData(contentTypesXML)),
             ("_rels/.rels", xmlData(rootRelationshipsXML)),
             ("docProps/app.xml", xmlData(appPropertiesXML)),
@@ -136,7 +170,6 @@ public enum LedgerXLSXExporter {
             ("xl/worksheets/sheet2.xml", xmlData(worksheetXML(accountRows))),
             ("xl/worksheets/sheet3.xml", xmlData(worksheetXML(rateRows)))
         ]
-        return StoredZIPArchive(files: files).data()
     }
 
     private enum XLSXCell {
