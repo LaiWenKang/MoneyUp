@@ -203,7 +203,7 @@ struct TransactionRow: View {
 }
 
 private extension JournalEntryKind {
-    var localizedKey: String.LocalizationValue {
+    var localizedKey: String {
         switch self {
         case .expense: "transaction.expense"
         case .income: "transaction.income"

@@ -522,7 +522,7 @@ struct OnboardingView: View {
 }
 
 private extension FinancialAccountType {
-    var localizedResource: String.LocalizationValue {
+    var localizedResource: String {
         switch self {
         case .cash: "account.type.cash"
         case .bank: "account.type.bank"
