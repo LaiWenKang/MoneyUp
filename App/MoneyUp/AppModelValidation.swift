@@ -13,6 +13,7 @@ private struct LoadedInvestmentValidationContext {
 
 extension AppModel {
     func clearDecodedState() {
+        intelligenceService.cancelPendingWork()
         journalProjectionRevision &+= 1
         journalDerivedRefreshTask?.cancel()
         journalDerivedRefreshTask = nil

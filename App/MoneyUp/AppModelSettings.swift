@@ -26,6 +26,22 @@ extension AppModel {
         WidgetCenter.shared.reloadTimelines(ofKind: "MoneyUpQuickLog")
     }
 
+    func updateIntelligenceEnabled(_ enabled: Bool) async throws {
+        let wasEnabled = profile?.intelligenceEnabled == true
+        if !enabled { intelligenceService.cancelPendingWork() }
+        do {
+            try await mutateProfile { $0.intelligenceEnabled = enabled }
+        } catch {
+            if wasEnabled { refreshIntelligence() }
+            throw error
+        }
+        if enabled {
+            refreshIntelligence()
+        } else {
+            intelligenceService.cancelPendingWork()
+        }
+    }
+
     func updatePreferredAccount(_ id: UUID?) async throws {
         try await mutateProfile { $0.preferredAccountID = id }
     }

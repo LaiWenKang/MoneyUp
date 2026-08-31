@@ -131,6 +131,7 @@ extension QuickLogEntryView {
 
     func discardDraftAndLaunch(_ launchMode: QuickLogLaunchMode) {
         cancelReceiptProcessing()
+        cancelCaptureSuggestionLookup()
         accountWasEdited = false
         categoryWasEdited = false
         amountText = ""

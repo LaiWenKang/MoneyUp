@@ -94,6 +94,29 @@ struct AppSettingsView: View {
             }
 
             Section {
+                Toggle(
+                    "settings.intelligence",
+                    isOn: Binding(
+                        get: {
+                            bindableModel.profile?.intelligenceEnabled ?? true
+                        },
+                        set: { enabled in
+                            Task {
+                                await update {
+                                    try await bindableModel
+                                        .updateIntelligenceEnabled(enabled)
+                                }
+                            }
+                        }
+                    )
+                )
+            } header: {
+                Text("settings.intelligence_section")
+            } footer: {
+                Text("settings.intelligence_detail")
+            }
+
+            Section {
                 Picker(
                     "settings.auto_lock",
                     selection: Binding(

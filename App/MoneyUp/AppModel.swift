@@ -300,7 +300,7 @@ final class AppModel {
     var assetsService: any AssetsServicing { services.assets }
     var portabilityService: any PortabilityServicing { services.portability }
     var captureService: any CaptureServicing { services.capture }
-    var intelligenceService: any IntelligenceServicing { services.intelligence }
+    var intelligenceService: IntelligenceService { services.intelligence }
 
     static func ledgerShape(_ account: LedgerAccount) -> String {
         "\(account.id.uuidString)|\(account.currency?.value ?? "-")"

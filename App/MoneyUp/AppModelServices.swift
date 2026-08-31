@@ -1,5 +1,7 @@
 import Foundation
 import MoneyUpCore
+import MoneyUpIntelligence
+import MoneyUpPersistence
 import Observation
 
 @MainActor
@@ -131,12 +133,114 @@ final class CaptureService: CaptureServicing {
 
 @MainActor
 protocol IntelligenceServicing: AnyObject {
+    var findings: [IntelligenceFinding] { get }
+    var isRefreshing: Bool { get }
+    var isUnavailable: Bool { get }
+    var resultsAreLimited: Bool { get }
+
+    func refresh(
+        store: EncryptedRecordStore,
+        originDayKeyRange: ClosedRange<Int>,
+        asOfDay: Int,
+        enabled: Bool
+    )
     func cancelPendingWork()
 }
 
 @MainActor
+@Observable
 final class IntelligenceService: IntelligenceServicing {
-    func cancelPendingWork() {}
+    private(set) var findings: [IntelligenceFinding] = []
+    private(set) var isRefreshing = false
+    private(set) var isUnavailable = false
+    private(set) var resultsAreLimited = false
+    @ObservationIgnored private var refreshTask: Task<Void, Never>?
+    @ObservationIgnored private var revision: UInt64 = 0
+
+    func refresh(
+        store: EncryptedRecordStore,
+        originDayKeyRange: ClosedRange<Int>,
+        asOfDay: Int,
+        enabled: Bool
+    ) {
+        beginRefresh()
+        guard enabled else { return }
+        isRefreshing = true
+        let refreshRevision = revision
+        refreshTask = Task { [weak self] in
+            do {
+                let observations = try await store.intelligenceObservations(
+                    originDayKeyRange: originDayKeyRange
+                )
+                try Task.checkCancellation()
+                let detected = try await Task.detached(priority: .utility) {
+                    try Self.detectedFindings(
+                        observations: observations,
+                        asOfDay: asOfDay
+                    )
+                }.value
+                guard let self,
+                      !Task.isCancelled,
+                      refreshRevision == revision else { return }
+                findings = detected
+                resultsAreLimited = observations.count
+                    == EncryptedRecordStore.maximumIntelligenceObservationCount
+                isRefreshing = false
+            } catch is CancellationError {
+                return
+            } catch {
+                guard let self,
+                      !Task.isCancelled,
+                      refreshRevision == revision else { return }
+                findings = []
+                resultsAreLimited = false
+                isUnavailable = true
+                isRefreshing = false
+            }
+        }
+    }
+
+    func cancelPendingWork() {
+        revision &+= 1
+        refreshTask?.cancel()
+        refreshTask = nil
+        findings = []
+        isRefreshing = false
+        isUnavailable = false
+        resultsAreLimited = false
+    }
+
+    private func beginRefresh() {
+        revision &+= 1
+        refreshTask?.cancel()
+        refreshTask = nil
+        findings = []
+        isRefreshing = false
+        isUnavailable = false
+        resultsAreLimited = false
+    }
+
+    nonisolated private static func detectedFindings(
+        observations: [IntelligenceObservation],
+        asOfDay: Int
+    ) throws -> [IntelligenceFinding] {
+        let groups = try [
+            RecurrenceDetector.findings(in: observations, asOfDay: asOfDay),
+            DuplicateDetector.findings(in: observations),
+            CategoryAnomalyDetector.findings(in: observations, asOfDay: asOfDay)
+        ]
+        return groups.flatMap { $0 }.sorted(by: findingOrder)
+    }
+
+    nonisolated private static func findingOrder(
+        _ lhs: IntelligenceFinding,
+        _ rhs: IntelligenceFinding
+    ) -> Bool {
+        if lhs.kind.rawValue != rhs.kind.rawValue {
+            return lhs.kind.rawValue < rhs.kind.rawValue
+        }
+        return lhs.id < rhs.id
+    }
 }
 
 /// Concrete services are injected as one dependency so previews and tests can
@@ -148,7 +252,7 @@ struct AppModelServices {
     let assets: AssetsService
     let portability: PortabilityService
     let capture: CaptureService
-    let intelligence: any IntelligenceServicing
+    let intelligence: IntelligenceService
 
     init(
         ledger: LedgerService = LedgerService(),
@@ -156,7 +260,7 @@ struct AppModelServices {
         assets: AssetsService = AssetsService(),
         portability: PortabilityService = PortabilityService(),
         capture: CaptureService = CaptureService(),
-        intelligence: any IntelligenceServicing = IntelligenceService()
+        intelligence: IntelligenceService = IntelligenceService()
     ) {
         self.ledger = ledger
         self.planning = planning

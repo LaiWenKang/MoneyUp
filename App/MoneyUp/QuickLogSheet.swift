@@ -274,6 +274,8 @@ struct QuickLogEntryView: View {
     @State var receiptScanBaseline: ReceiptScanBaseline?
     @State var receiptResult: ReceiptParseResult?
     @State var captureSuggestionResult: CaptureSuggestionResult?
+    @State var captureSuggestionTask: Task<Void, Never>?
+    @State var captureSuggestionGeneration = 0
     @State var pendingDuplicateReview: PendingDuplicateReview?
     @State var preservesCaptureSuggestionsAcrossNextKindChange = false
     @State var autoAppliedAccountSuggestionID: UUID?

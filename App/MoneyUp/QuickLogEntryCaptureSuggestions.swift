@@ -8,6 +8,7 @@ extension QuickLogEntryView {
         preservingCategory: Bool = false,
         restoresDefaults: Bool = true
     ) {
+        cancelCaptureSuggestionLookup()
         var revertedField = false
         if !preservingAccount,
            let autoAppliedAccountSuggestionID,
@@ -32,6 +33,7 @@ extension QuickLogEntryView {
     }
 
     func clearCaptureSuggestionProvenance() {
+        cancelCaptureSuggestionLookup()
         autoAppliedAccountSuggestionID = nil
         autoAppliedCategorySuggestionID = nil
         captureSuggestionResult = nil
@@ -50,8 +52,8 @@ extension QuickLogEntryView {
     }
 
     func refreshCaptureSuggestions(for draft: TransactionDraft) {
-        guard model.journalRecentEntriesAreCurrent,
-              let currency = selectedAccountCurrency else {
+        cancelCaptureSuggestionLookup()
+        guard let currency = selectedAccountCurrency else {
             captureSuggestionResult = nil
             return
         }
@@ -67,14 +69,26 @@ extension QuickLogEntryView {
             currency: currency,
             occurredAt: draft.occurredAt ?? occurredAt
         )
-        let result = CaptureSuggestionEngine.suggestions(
-            for: query,
-            entries: model.entries,
-            accounts: model.accounts
-        )
-        captureSuggestionResult = result
-        applyAccountSuggestion(result.accountSuggestion, draft: draft)
-        applyCategorySuggestion(result.categorySuggestion, draft: draft)
+        let generation = captureSuggestionGeneration
+        let eligibleCategoryIDs = Set(categories.map(\.id))
+        captureSuggestionTask = Task { @MainActor in
+            let result = await model.indexedCaptureSuggestion(
+                for: query,
+                eligibleCategoryIDs: eligibleCategoryIDs
+            )
+            guard !Task.isCancelled,
+                  generation == captureSuggestionGeneration else { return }
+            captureSuggestionResult = result
+            applyAccountSuggestion(result.accountSuggestion, draft: draft)
+            applyCategorySuggestion(result.categorySuggestion, draft: draft)
+            captureSuggestionTask = nil
+        }
+    }
+
+    func cancelCaptureSuggestionLookup() {
+        captureSuggestionGeneration &+= 1
+        captureSuggestionTask?.cancel()
+        captureSuggestionTask = nil
     }
 
     private func applyAccountSuggestion(
@@ -139,7 +153,7 @@ extension QuickLogEntryView {
     @ViewBuilder
     func captureSuggestions(_ result: CaptureSuggestionResult) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label("quick_log.suggestions_from_recent", systemImage: "lightbulb.max")
+            Label("quick_log.suggestions_from_book", systemImage: "lightbulb.max")
                 .font(.subheadline.weight(.semibold))
             if let suggestion = result.accountSuggestion,
                let account = model.accountsByID[suggestion.ledgerAccountID] {
@@ -170,7 +184,7 @@ extension QuickLogEntryView {
                     persistUserDraftChange { $0.categoryID = category.id }
                 }
             }
-            Text("quick_log.suggestions_recent_scope")
+            Text("quick_log.suggestions_book_scope")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

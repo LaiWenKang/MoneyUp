@@ -431,6 +431,7 @@ extension QuickLogEntryView {
             }
             .onDisappear {
                 cancelReceiptProcessing()
+                cancelCaptureSuggestionLookup()
                 receiptScanTask = nil
                 photoItem = nil
                 pendingDuplicateReview = nil

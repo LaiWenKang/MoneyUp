@@ -145,6 +145,7 @@ extension QuickLogEntryView {
     /// the next routine entry takes only an amount and a tap on Save.
     func completeSuccessfulSave(entryID: UUID?) {
         cancelReceiptProcessing()
+        cancelCaptureSuggestionLookup()
         if let nextCapture = model.quickLogDraft,
            nextCapture.sourceCaptureID != nil,
            !dismissAfterSave {
