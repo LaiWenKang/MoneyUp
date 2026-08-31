@@ -52,7 +52,7 @@ public struct CaptureSuggestionQuery: Equatable, Sendable {
         occurredAt: Date = Date()
     ) {
         self.kind = kind
-        self.payee = CaptureCanonicalText.nonEmptyOriginal(payee)
+        self.payee = PayeeNormalization.original(payee)
         self.currency = currency
         self.occurredAt = occurredAt
     }
@@ -63,7 +63,7 @@ public struct CaptureSuggestionQuery: Equatable, Sendable {
         CaptureFingerprint.make(fields: [
             "suggestion-v1",
             kind.rawValue,
-            CaptureCanonicalText.key(payee),
+            PayeeNormalization.key(payee),
             currency.value,
             CaptureFingerprint.dateKey(occurredAt)
         ])
@@ -184,10 +184,10 @@ public enum CaptureSuggestionEngine {
     ) -> SuggestionContext? {
         guard query.occurredAt.timeIntervalSinceReferenceDate.isFinite,
               let directions = directions(for: query.kind) else { return nil }
-        let suppliedPayee = CaptureCanonicalText.nonEmptyOriginal(query.payee)
-        let payeeKey = CaptureCanonicalText.key(suppliedPayee)
+        let suppliedPayee = PayeeNormalization.original(query.payee)
+        let payeeKey = PayeeNormalization.key(suppliedPayee)
         if suppliedPayee != nil,
-           !CaptureCanonicalText.isMeaningfulPayeeKey(payeeKey) { return nil }
+           !PayeeNormalization.isMeaningful(payeeKey) { return nil }
         let accountsByID = unambiguousAccounts(accounts)
         let financialAccountIDs = Set(accountsByID.values.lazy.filter { account in
             !account.isArchived
@@ -218,9 +218,9 @@ public enum CaptureSuggestionEngine {
         for entry in entries {
             guard entry.occurredAt <= query.occurredAt,
                   entry.kind == context.directions.journalKind else { continue }
-            let storedPayeeKey = CaptureCanonicalText.key(entry.payee)
+            let storedPayeeKey = PayeeNormalization.key(entry.payee)
             if let payeeKey = context.payeeKey,
-               !CaptureCanonicalText.payeeMatches(storedPayeeKey, payeeKey) {
+               !PayeeNormalization.matches(storedPayeeKey, query: payeeKey) {
                 continue
             }
             let exactPayeeMatch = context.payeeKey != nil
@@ -447,7 +447,7 @@ public struct CaptureDuplicateQuery: Equatable, Sendable {
     ) {
         self.kind = kind
         self.occurredAt = occurredAt
-        self.descriptor = CaptureCanonicalText.nonEmptyOriginal(descriptor)
+        self.descriptor = PayeeNormalization.original(descriptor)
         self.sourceReference = sourceReference?.isUsable == true ? sourceReference : nil
         self.sourceAmount = sourceAmount
         self.sourceAccountID = sourceAccountID
@@ -606,8 +606,8 @@ public struct CaptureDuplicateQuery: Equatable, Sendable {
             "duplicate-v1",
             kind.rawValue,
             CaptureFingerprint.dateKey(occurredAt),
-            CaptureCanonicalText.key(descriptor),
-            sourceReference.flatMap { CaptureCanonicalText.key($0.system) },
+            PayeeNormalization.key(descriptor),
+            sourceReference.flatMap { PayeeNormalization.key($0.system) },
             sourceReference?.fingerprint,
             CaptureFingerprint.moneyKey(sourceAmount),
             sourceAccountID.uuidString.lowercased(),
@@ -750,9 +750,9 @@ public enum CaptureDuplicateDetector {
             || query.kind == .refund
             ? entry.payee
             : entry.note
-        let descriptorMatched = CaptureCanonicalText.key(query.descriptor) != nil
-            && CaptureCanonicalText.key(query.descriptor)
-                == CaptureCanonicalText.key(entryDescriptor)
+        let descriptorMatched = PayeeNormalization.key(query.descriptor) != nil
+            && PayeeNormalization.key(query.descriptor)
+                == PayeeNormalization.key(entryDescriptor)
 
         let confidence: CaptureConfidence?
         if sourceMatched {
@@ -908,8 +908,8 @@ public enum CaptureDuplicateDetector {
               let entryFingerprint = entry.sourceFingerprint else {
             return false
         }
-        return CaptureCanonicalText.key(sourceReference.system)
-                == CaptureCanonicalText.key(entrySystem)
+        return PayeeNormalization.key(sourceReference.system)
+                == PayeeNormalization.key(entrySystem)
             && sourceReference.fingerprint == entryFingerprint
     }
 }
@@ -985,73 +985,6 @@ private enum CaptureAmountSign {
         switch self {
         case .positive: amount > .zero
         case .negative: amount < .zero
-        }
-    }
-}
-
-private enum CaptureCanonicalText {
-    private static let cjkRanges: [ClosedRange<UInt32>] = [
-        0x3400...0x4DBF,
-        0x4E00...0x9FFF,
-        0xF900...0xFAFF
-    ]
-
-    static func nonEmptyOriginal(_ text: String?) -> String? {
-        guard let trimmed = text?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !trimmed.isEmpty else {
-            return nil
-        }
-        return trimmed
-    }
-
-    static func key(_ text: String?) -> String? {
-        guard let text = nonEmptyOriginal(text) else { return nil }
-        let folded = text.folding(
-            options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive],
-            locale: Locale(identifier: "en_US_POSIX")
-        )
-        var pieces: [String] = []
-        var current = ""
-        for character in folded.lowercased(with: Locale(identifier: "en_US_POSIX")) {
-            if character.isLetter || character.isNumber {
-                current.append(character)
-            } else if !current.isEmpty {
-                pieces.append(current)
-                current = ""
-            }
-        }
-        if !current.isEmpty { pieces.append(current) }
-        let result = pieces.joined(separator: " ")
-        return result.isEmpty ? nil : result
-    }
-
-    static func isMeaningfulPayeeKey(_ key: String?) -> Bool {
-        guard let key else { return false }
-        if containsCJK(key) { return true }
-        return key.filter { $0.isLetter || $0.isNumber }.count >= 2
-    }
-
-    static func payeeMatches(_ stored: String?, _ query: String) -> Bool {
-        guard let stored else { return false }
-        if stored == query { return true }
-        if containsCJK(stored) || containsCJK(query) {
-            return stored.contains(query) || query.contains(stored)
-        }
-        guard stored.count >= 3, query.count >= 3 else { return false }
-        return tokenSequence(query, appearsIn: stored)
-            || tokenSequence(stored, appearsIn: query)
-    }
-
-    private static func tokenSequence(_ needle: String, appearsIn haystack: String) -> Bool {
-        haystack == needle
-            || haystack.hasPrefix(needle + " ")
-            || haystack.hasSuffix(" " + needle)
-            || haystack.contains(" " + needle + " ")
-    }
-
-    private static func containsCJK(_ text: String) -> Bool {
-        text.unicodeScalars.contains { scalar in
-            cjkRanges.contains { $0.contains(scalar.value) }
         }
     }
 }

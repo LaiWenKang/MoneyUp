@@ -309,6 +309,10 @@ extension EncryptedRecordStore {
     func failNextWriteRollbackForTesting() {
         connection.failNextWriteRollbackForTesting()
     }
+
+    func installSchema6IntelligenceStateForTesting() throws {
+        try connection.installSchema6IntelligenceStateForTesting()
+    }
     #endif
 
     public func close() {

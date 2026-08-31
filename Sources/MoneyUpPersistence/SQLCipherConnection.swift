@@ -17,6 +17,9 @@ final class SQLCipherConnection: @unchecked Sendable {
         var balanceDeltas: [BalanceKey: Decimal] = [:]
         var priorPostingRowsRead = 0
         var journalEntriesChanged = 0
+        var affectedPayeeKeys = Set<String>()
+        var accountIntelligenceChanged = false
+        var intelligencePreference: Bool?
     }
 
     var database: OpaquePointer?
@@ -37,6 +40,11 @@ final class SQLCipherConnection: @unchecked Sendable {
     )
     var lastReceiptAttachmentReadDiagnostics =
         ReceiptAttachmentReadDiagnostics(metadataRowsRead: 0, blobPayloadsDecoded: 0)
+    var lastIntelligenceReadDiagnostics = IntelligenceReadDiagnostics(
+        affinityRowsRead: 0,
+        observationRowsRead: 0,
+        journalPayloadsDecoded: 0
+    )
 
     init(
         databaseURL: URL,
@@ -183,6 +191,7 @@ final class SQLCipherConnection: @unchecked Sendable {
             try apply(deletion, state: &state)
         }
         let compactBalanceRowsRead = try applyBalanceDeltas(state.balanceDeltas)
+        try finalizeIntelligenceWrite(state)
         try enforceLogicalStoreLimits(
             before: metricsBeforeWrite,
             after: storageMetrics()
@@ -204,6 +213,9 @@ final class SQLCipherConnection: @unchecked Sendable {
             state.priorPostingRowsRead += prior.rowCount
             try merge(prior.totals, subtractingFrom: &state.balanceDeltas)
             state.journalEntriesChanged += 1
+            if let key = try journalIntelligencePayeeKey(entryID: record.id) {
+                state.affectedPayeeKeys.insert(key)
+            }
         }
         try upsertRecord(
             collection: record.collection.rawValue,
@@ -218,6 +230,21 @@ final class SQLCipherConnection: @unchecked Sendable {
                 postingTotals(for: record.journalIndex),
                 addingTo: &state.balanceDeltas
             )
+            if try intelligenceIndexingEnabled(), let index = record.journalIndex {
+                try replaceJournalIntelligenceSource(entryID: record.id, with: index)
+                if let key = index.normalizedPayeeKey {
+                    state.affectedPayeeKeys.insert(key)
+                }
+            }
+        }
+        if record.collection == .accounts,
+           let accountIndex = record.ledgerAccountIndex,
+           try intelligenceIndexingEnabled() {
+            try replaceLedgerAccountIntelligenceIndex(
+                accountID: record.id,
+                with: accountIndex
+            )
+            state.accountIntelligenceChanged = true
         }
         if record.collection == .receiptAttachments,
            let attachmentIndex = record.receiptAttachmentIndex {
@@ -233,6 +260,9 @@ final class SQLCipherConnection: @unchecked Sendable {
                 with: attributionIndex
             )
         }
+        if let preference = record.profileIntelligenceEnabled {
+            state.intelligencePreference = preference
+        }
     }
 
     private func apply(
@@ -244,7 +274,15 @@ final class SQLCipherConnection: @unchecked Sendable {
             state.priorPostingRowsRead += prior.rowCount
             try merge(prior.totals, subtractingFrom: &state.balanceDeltas)
             state.journalEntriesChanged += 1
+            if let key = try journalIntelligencePayeeKey(entryID: deletion.id) {
+                state.affectedPayeeKeys.insert(key)
+            }
             try deleteJournalIndex(entryID: deletion.id)
+        }
+        if deletion.collection == .accounts,
+           try intelligenceIndexingEnabled() {
+            try deleteLedgerAccountIntelligenceIndex(accountID: deletion.id)
+            state.accountIntelligenceChanged = true
         }
         if deletion.collection == .receiptAttachments {
             try deleteReceiptAttachmentIndex(attachmentID: deletion.id)
@@ -256,6 +294,29 @@ final class SQLCipherConnection: @unchecked Sendable {
             collection: deletion.collection.rawValue,
             recordID: deletion.id
         )
+        if deletion.collection == .profile,
+           deletion.id == UserProfile.primaryRecordID {
+            state.intelligencePreference = true
+        }
+    }
+
+    private func finalizeIntelligenceWrite(
+        _ state: WriteTransactionState
+    ) throws {
+        if state.intelligencePreference != nil {
+            try rebuildAllIntelligenceIndexesFromRecords()
+            return
+        }
+        guard try intelligenceIndexingEnabled() else { return }
+        if state.accountIntelligenceChanged {
+            for key in try indexedPayeeKeys() {
+                try rebuildPayeeAffinity(for: key)
+            }
+            return
+        }
+        for key in state.affectedPayeeKeys.sorted() {
+            try rebuildPayeeAffinity(for: key)
+        }
     }
 
     private func merge(

@@ -305,7 +305,7 @@ struct IndexedReferenceCountRow {
 /// encrypted SQLite database. Journal entries therefore remain atomic, while
 /// migrations can evolve collections without rewriting an entire user book.
 public actor EncryptedRecordStore {
-    public static let currentSchemaVersion: Int32 = 6
+    public static let currentSchemaVersion: Int32 = 7
 
     let connection: SQLCipherConnection
 
