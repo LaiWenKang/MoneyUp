@@ -39,6 +39,10 @@ final class AppModelIntelligenceTests: XCTestCase {
             result.categorySuggestion?.evidence.supportingEntryCount,
             entries.count
         )
+        let reviewed = try await model.intelligenceHistoryEntries(
+            entryIDs: entries.map(\.id)
+        )
+        XCTAssertEqual(Set(reviewed.map(\.id)), Set(entries.map(\.id)))
         await fixture.store.close()
     }
 
@@ -60,6 +64,27 @@ final class AppModelIntelligenceTests: XCTestCase {
         model.refreshIntelligence()
         try await waitForIntelligenceToSettle(model)
         XCTAssertTrue(model.intelligenceFindings.contains {
+            $0.kind == .recurrence
+        })
+        XCTAssertTrue(model.scheduledTransactions.isEmpty)
+        let recurrence = try XCTUnwrap(model.intelligenceFindings.first {
+            $0.kind == .recurrence
+        })
+        guard case let .scheduleOffer(offer) = recurrence.route else {
+            return XCTFail("Recurrence must remain review-only schedule offer")
+        }
+        let schedule = try ScheduledTransaction(
+            kind: offer.kind,
+            name: offer.payeeKey,
+            amount: offer.amount,
+            accountID: offer.accountID,
+            categoryAccountID: offer.categoryID,
+            nextOccurrence: dates[3].addingTimeInterval(7 * 86_400),
+            frequency: offer.frequency,
+            recurrenceTimeZoneIdentifier: "GMT"
+        )
+        try await model.addScheduledTransaction(schedule)
+        XCTAssertFalse(model.intelligenceFindings.contains {
             $0.kind == .recurrence
         })
 

@@ -7,6 +7,7 @@ extension DashboardView {
             ScrollView {
                 LazyVStack(spacing: 16) {
                     safeToSpendHero
+                    IntelligenceSummaryLink()
 
                     MoneyUpCard {
                         VStack(alignment: .leading, spacing: 14) {

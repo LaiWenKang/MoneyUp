@@ -4,8 +4,10 @@ import MoneyUpIntelligence
 import MoneyUpPersistence
 
 extension AppModel {
+    static let maximumIntelligenceHistoryReviewCount = 100
+
     var intelligenceFindings: [IntelligenceFinding] {
-        intelligenceService.findings
+        intelligenceService.findings.filter { !isCoveredByExistingSchedule($0) }
     }
 
     var isIntelligenceRefreshing: Bool {
@@ -18,6 +20,20 @@ extension AppModel {
 
     var intelligenceResultsAreLimited: Bool {
         intelligenceService.resultsAreLimited
+    }
+
+    private func isCoveredByExistingSchedule(
+        _ finding: IntelligenceFinding
+    ) -> Bool {
+        guard case let .scheduleOffer(offer) = finding.route else { return false }
+        return scheduledTransactions.contains { schedule in
+            schedule.status == .active
+                && schedule.kind == offer.kind
+                && schedule.accountID == offer.accountID
+                && schedule.categoryAccountID == offer.categoryID
+                && schedule.frequency == offer.frequency
+                && schedule.amount == offer.amount
+        }
     }
 
     func refreshIntelligence() {
@@ -93,6 +109,33 @@ extension AppModel {
         } catch {
             return empty
         }
+    }
+
+    /// User-directed evidence review may decode only the exact requested rows.
+    /// Routine detection and Quick Log suggestions remain normalized-index only.
+    func intelligenceHistoryEntries(
+        entryIDs: [UUID]
+    ) async throws -> [JournalEntry] {
+        guard !entryIDs.isEmpty,
+              entryIDs.count <= Self.maximumIntelligenceHistoryReviewCount else {
+            throw AppModelError.invalidBook
+        }
+        let generation = storeGeneration
+        let historyStore = try requireStore()
+        var result: [JournalEntry] = []
+        result.reserveCapacity(entryIDs.count)
+        for id in entryIDs where !invalidJournalEntryIDs.contains(id) {
+            try Task.checkCancellation()
+            if let entry = try await historyStore.fetch(
+                JournalEntry.self,
+                id: id.uuidString,
+                from: .journalEntries
+            ) {
+                result.append(entry)
+            }
+        }
+        guard ownsStoreGeneration(generation) else { throw AppModelError.locked }
+        return result.sorted { $0.occurredAt > $1.occurredAt }
     }
 
     private func date(fromIntelligenceDay value: Int) -> Date? {
