@@ -18,6 +18,7 @@ later explicit product, privacy, and threat-model decision.
 | Scale architecture | SQLCipher schema 7 implemented; merged-main CI passed | Exact store metrics, normalized budget attribution, monthly carry checkpoints, compact balances, bounded recent activity, on-demand reads, and payload-free intelligence indexes are integrated; physical measurements remain open |
 | Privacy | Source and policy aligned | Local processing, no tracking/backend, metadata-stripped optional encrypted receipts, and a percentage/state-only App Group widget snapshot |
 | CI | Merged W1/W2 `main` passed | CI run 246 passed release/structure validation, Core/persistence/intelligence tests, app-model tests, coverage reporting, and the unsigned app/widget Simulator build on exact SHA `4159df31`; this does not close physical or exact-binary gates |
+| Automated scale baseline | W4.1 source-configured; exact-candidate run open | A serial Release XCTest target seeds the SHA-bound W2 intelligence-v1 10,000-entry corpus and 20 schedules outside measured blocks, checks its detector/operation invariants, records clock/CPU/memory/logical-write metrics on an exact iPhone 16 Pro/iOS 18.5 Simulator, and is configured to retain raw/JSON evidence; no artifact exists until the first exact-candidate run, and the job sets no release ceilings or physical-gate closure |
 | Backup scale | Source remediation and Mac CI passed; physical evidence open | Version 2 streams file-backed 1 MiB authenticated chunks across a 100,000-record/512 MB stored-payload envelope, so current accepted books have a complete export; interruption, near-limit v2, and compatible-v1 physical-memory evidence remain required |
 | Apple capability | Signed validation passed for the main baseline | TestFlight [run 20](https://github.com/LaiWenKang/MoneyUp/actions/runs/33243930699) exported and validated app/widget signatures and App Group entitlements; future binaries must repeat the exact-binary check |
 | Distribution | Previous baseline 0.6.0 (1020.1) uploaded from `ff272da8`; 0.7.0 not uploaded | Apple accepted the earlier upload on 29 August 2026; its processing/installation and every new 0.7.0 signed/upload gate remain unproven |
@@ -42,6 +43,9 @@ Required:
 - generate the Xcode project on macOS, run core/persistence tests with warnings
   as errors, run app-model XCTest on a booted iPhone Simulator, and build the
   app plus widget without signing;
+- run the serial Release measurement baseline on its exact iPhone 16 Pro/iOS
+  18.5 Simulator and retain the environment, metric/summary/file-manifest JSON, log, and raw
+  result bundle described in [the performance guide](PERFORMANCE_BASELINE.md);
 - record the exact commit and keep every failed check open; do not promote a
   different working tree based on partial results.
 

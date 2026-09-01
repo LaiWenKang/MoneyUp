@@ -124,6 +124,9 @@ jobs:
           ditto -x -k "$ARCHIVE" "$RUNNER_TEMP/xcodegen-release"
           echo "$RUNNER_TEMP/xcodegen-release/xcodegen/bin" >> "$GITHUB_PATH"
 
+      - name: Validate domain-payload-free performance signposts
+        run: python3 Scripts/validate_performance_signposts.py
+
       - name: Validate release assets
         run: python3 Scripts/validate_release_assets.py
 

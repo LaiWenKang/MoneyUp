@@ -230,6 +230,10 @@ final class IntelligenceService: IntelligenceServicing {
         observations: [IntelligenceObservation],
         asOfDay: Int
     ) throws -> [IntelligenceFinding] {
+        let performanceInterval = MoneyUpPerformanceSignposts.begin(
+            .deterministicIntelligence
+        )
+        defer { MoneyUpPerformanceSignposts.end(performanceInterval) }
         let groups = try [
             RecurrenceDetector.findings(in: observations, asOfDay: asOfDay),
             DuplicateDetector.findings(in: observations),

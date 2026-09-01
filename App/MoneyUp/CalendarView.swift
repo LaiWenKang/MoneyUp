@@ -4,6 +4,13 @@ import SwiftUI
 private struct CalendarLoadRequest: Hashable {
     let day: Date
     let generation: Int
+    let computationGeneration: Int
+}
+
+private struct CalendarDateComputation {
+    let day: Date
+    let scheduledTransactions: [ScheduledTransaction]
+    let dayFlows: DerivedValue<[CurrencyFlow]>
 }
 
 struct CalendarView: View {
@@ -18,13 +25,19 @@ struct CalendarView: View {
     @State private var isLoadingActuals = true
     @State private var actualsUnavailable = false
     @State private var reloadGeneration = 0
+    @State private var computationGeneration = 0
+    @State private var dateComputation: CalendarDateComputation?
     @State private var scheduleMatchCandidates: [UUID: [JournalEntry]] = [:]
     @State private var scheduleMatchesLoading = Set<UUID>()
 
     private var selectedDayInterval: DateInterval? {
+        dayInterval(for: selectedDate)
+    }
+
+    private func dayInterval(for date: Date) -> DateInterval? {
         FinancialPeriodBoundary.inclusiveDayInterval(
-            from: selectedDate,
-            through: selectedDate,
+            from: date,
+            through: date,
             calendar: model.reportingCalendar
         )
     }
@@ -32,50 +45,19 @@ struct CalendarView: View {
     private var loadRequest: CalendarLoadRequest {
         CalendarLoadRequest(
             day: selectedDayInterval?.start ?? selectedDate,
-            generation: reloadGeneration
+            generation: reloadGeneration,
+            computationGeneration: computationGeneration
         )
     }
 
-    private var scheduledForDay: [ScheduledTransaction] {
-        let calendar = model.reportingCalendar
-        return model.scheduledTransactions.filter { item in
-            item.occurs(on: selectedDate, calendar: calendar)
-        }
-    }
-
-    /// The day's money flow, one line per currency. A day spent abroad used to
-    /// read as zero because everything outside the base currency was filtered
-    /// out before the totals were taken.
-    private var dayFlows: DerivedValue<[CurrencyFlow]> {
-        guard let currency = model.profile?.baseCurrency else {
-            return .unavailable(.appNotReady)
-        }
-        guard let interval = selectedDayInterval else {
-            DerivedValueDiagnostics.record(
-                .invalidPeriod,
-                operation: "calendar-day-interval"
-            )
-            return .unavailable(.invalidPeriod)
-        }
-        do {
-            return .available(try FinanceCalculator.dailyFlows(
-                interval: interval,
-                accounts: model.accounts,
-                entries: selectedEntries,
-                baseCurrency: currency,
-                calendar: model.reportingCalendar
-            ))
-        } catch {
-            DerivedValueDiagnostics.record(
-                .ledgerCalculationFailed,
-                operation: "calendar-day-flow",
-                error: error
-            )
-            return .unavailable(.ledgerCalculationFailed)
-        }
+    private var currentDateComputation: CalendarDateComputation? {
+        guard dateComputation?.day == loadRequest.day else { return nil }
+        return dateComputation
     }
 
     var body: some View {
+        let dateComputation = currentDateComputation
+        let isDateComputationLoading = isLoadingActuals || dateComputation == nil
         NavigationStack {
             List {
                 DatePicker(
@@ -85,7 +67,7 @@ struct CalendarView: View {
                 )
                 .datePickerStyle(.graphical)
 
-                if isLoadingActuals {
+                if isDateComputationLoading {
                     Section("calendar.money_flow") {
                         HStack(spacing: 10) {
                             ProgressView()
@@ -103,7 +85,8 @@ struct CalendarView: View {
                             Button("action.retry") { reloadGeneration += 1 }
                         }
                     }
-                } else if case let .available(flows) = dayFlows,
+                } else if let dateComputation,
+                   case let .available(flows) = dateComputation.dayFlows,
                    !flows.isEmpty {
                     Section("calendar.money_flow") {
                         ForEach(flows) { flow in
@@ -119,7 +102,8 @@ struct CalendarView: View {
                             }
                         }
                     }
-                } else if case let .unavailable(issue) = dayFlows {
+                } else if let dateComputation,
+                   case let .unavailable(issue) = dateComputation.dayFlows {
                     Section("calendar.money_flow") {
                         DerivedValueUnavailableView(issue: issue)
                     }
@@ -153,13 +137,17 @@ struct CalendarView: View {
                 }
 
                 Section("calendar.scheduled") {
-                    if scheduledForDay.isEmpty {
+                    if let dateComputation,
+                       dateComputation.scheduledTransactions.isEmpty {
                         Text("calendar.no_scheduled")
                             .foregroundStyle(.secondary)
-                    } else {
-                        ForEach(scheduledForDay) { item in
+                    } else if let dateComputation {
+                        ForEach(dateComputation.scheduledTransactions) { item in
                             scheduledRow(for: item)
                         }
+                    } else {
+                        ProgressView()
+                            .frame(maxWidth: .infinity, alignment: .center)
                     }
                 }
 
@@ -172,6 +160,15 @@ struct CalendarView: View {
             .navigationTitle("tab.calendar")
             .task(id: loadRequest) {
                 await loadSelectedActuals()
+            }
+            .onChange(of: model.scheduledTransactions) { _, _ in
+                computationGeneration &+= 1
+            }
+            .onChange(of: model.accounts) { _, _ in
+                computationGeneration &+= 1
+            }
+            .onChange(of: model.profile) { _, _ in
+                computationGeneration &+= 1
             }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -417,25 +414,125 @@ struct CalendarView: View {
     }
 
     private func loadSelectedActuals() async {
-        guard let interval = selectedDayInterval else {
-            selectedEntries = []
+        let request = loadRequest
+        isLoadingActuals = true
+        actualsUnavailable = false
+        selectedEntries = []
+        dateComputation = nil
+        guard let interval = dayInterval(for: request.day) else {
+            guard loadRequest == request else { return }
+            dateComputation = computeSelectedDate(
+                request: request,
+                entries: [],
+                actualsAreAvailable: false
+            )
             actualsUnavailable = true
             isLoadingActuals = false
             return
         }
-        isLoadingActuals = true
-        actualsUnavailable = false
         do {
             let loaded = try await model.calendarEntries(in: interval)
             try Task.checkCancellation()
+            guard loadRequest == request else { return }
+            let computed = computeSelectedDate(
+                request: request,
+                entries: loaded,
+                actualsAreAvailable: true
+            )
             selectedEntries = loaded
+            dateComputation = computed
             isLoadingActuals = false
         } catch is CancellationError {
             return
         } catch {
+            guard loadRequest == request else { return }
             selectedEntries = []
+            dateComputation = computeSelectedDate(
+                request: request,
+                entries: [],
+                actualsAreAvailable: false
+            )
             actualsUnavailable = true
             isLoadingActuals = false
+        }
+    }
+
+    /// Runs exactly once for a matching load request, after indexed I/O has
+    /// returned. SwiftUI body reevaluations never create timing samples.
+    private func computeSelectedDate(
+        request: CalendarLoadRequest,
+        entries: [JournalEntry],
+        actualsAreAvailable: Bool
+    ) -> CalendarDateComputation {
+        let performanceInterval = MoneyUpPerformanceSignposts.begin(
+            .calendarDateComputation
+        )
+        var performanceOutcome = MoneyUpPerformanceOutcome.success
+        defer {
+            MoneyUpPerformanceSignposts.end(
+                performanceInterval,
+                outcome: performanceOutcome
+            )
+        }
+        let calendar = model.reportingCalendar
+        let schedules = model.scheduledTransactions.filter {
+            $0.occurs(on: request.day, calendar: calendar)
+        }
+        guard actualsAreAvailable else {
+            performanceOutcome = .failure
+            return CalendarDateComputation(
+                day: request.day,
+                scheduledTransactions: schedules,
+                dayFlows: .unavailable(.appNotReady)
+            )
+        }
+        let flows = calendarDayFlows(
+            on: request.day,
+            entries: entries,
+            calendar: calendar,
+            outcome: &performanceOutcome
+        )
+        return CalendarDateComputation(
+            day: request.day,
+            scheduledTransactions: schedules,
+            dayFlows: flows
+        )
+    }
+
+    private func calendarDayFlows(
+        on day: Date,
+        entries: [JournalEntry],
+        calendar: Calendar,
+        outcome: inout MoneyUpPerformanceOutcome
+    ) -> DerivedValue<[CurrencyFlow]> {
+        guard let currency = model.profile?.baseCurrency else {
+            outcome = .failure
+            return .unavailable(.appNotReady)
+        }
+        guard let interval = dayInterval(for: day) else {
+            outcome = .failure
+            DerivedValueDiagnostics.record(
+                .invalidPeriod,
+                operation: "calendar-day-interval"
+            )
+            return .unavailable(.invalidPeriod)
+        }
+        do {
+            return .available(try FinanceCalculator.dailyFlows(
+                interval: interval,
+                accounts: model.accounts,
+                entries: entries,
+                baseCurrency: currency,
+                calendar: calendar
+            ))
+        } catch {
+            outcome = .failure
+            DerivedValueDiagnostics.record(
+                .ledgerCalculationFailed,
+                operation: "calendar-day-flow",
+                error: error
+            )
+            return .unavailable(.ledgerCalculationFailed)
         }
     }
 
@@ -460,10 +557,9 @@ struct CalendarView: View {
                 try await operation()
                 // Calendar owns a range-scoped actuals snapshot. Production's
                 // recent cache is intentionally not authoritative, so every
-                // successful schedule action re-queries the selected day and
-                // discards match candidates derived before the mutation.
+                // successful schedule action discards match candidates. The
+                // observed schedule change restarts the selected-day query.
                 scheduleMatchCandidates.removeAll()
-                reloadGeneration &+= 1
             } catch {
                 errorMessage = safeUserMessage(for: error, context: .save)
             }

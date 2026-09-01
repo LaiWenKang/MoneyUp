@@ -1,4 +1,4 @@
-import CryptoKit
+import struct CryptoKit.SHA256
 import Foundation
 
 extension TransactionCSVImporter {

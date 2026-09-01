@@ -30,6 +30,19 @@ jobs:
           persist-credentials: false
       - name: Enforce Swift structure limits
         run: python3 Scripts/validate_swift_structure.py
+      - name: Test architecture fitness validator
+        run: >-
+          python3 -m unittest discover -s Scripts/tests
+          -p 'test_validate_architecture_fitness.py'
+      - name: Enforce architecture fitness
+        run: python3 Scripts/validate_architecture_fitness.py
+      - name: Test performance-signpost source validator
+        run: >-
+          python3 -m unittest discover
+          -s Tests/PerformanceSignpostsValidatorTests
+          -p 'test_*.py'
+      - name: Validate domain-payload-free performance signposts
+        run: python3 Scripts/validate_performance_signposts.py
       - name: Validate privacy, localization, icons, and launch docs
         run: python3 Scripts/validate_release_assets.py
 
@@ -174,4 +187,252 @@ jobs:
             app-model-coverage.json
             ${{ runner.temp }}/MoneyUpTests.xcresult
           if-no-files-found: warn
+          retention-days: 14
+
+  performance-baseline:
+    name: iPhone Simulator performance baseline
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+      PERFORMANCE_DEVICE_NAME: iPhone 16 Pro
+      PERFORMANCE_RUNTIME_IDENTIFIER: com.apple.CoreSimulator.SimRuntime.iOS-18-5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Verify the exact performance toolchain and runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -x "$DEVELOPER_DIR/usr/bin/xcodebuild"
+          XCODE_VERSION_LINE="$(xcodebuild -version | sed -n '1p')"
+          XCODE_BUILD_LINE="$(xcodebuild -version | sed -n '2p')"
+          SDK_VERSION="$(xcrun --sdk iphonesimulator --show-sdk-version)"
+          if [[ "$XCODE_VERSION_LINE" != "Xcode $CI_XCODE_VERSION" || \
+                "$XCODE_BUILD_LINE" != "Build version $CI_XCODE_BUILD" || \
+                "$SDK_VERSION" != "$CI_IPHONESIMULATOR_SDK_VERSION" ]]; then
+            echo "::error::The runner does not contain the reviewed performance toolchain."
+            exit 1
+          fi
+          xcrun simctl list runtimes available --json > performance-runtimes.json
+          python3 - "$PERFORMANCE_RUNTIME_IDENTIFIER" <<'PY'
+          import json
+          import sys
+
+          expected = sys.argv[1]
+          with open("performance-runtimes.json", encoding="utf-8") as source:
+              runtimes = json.load(source)["runtimes"]
+          matches = [
+              runtime for runtime in runtimes
+              if runtime.get("identifier") == expected
+              and runtime.get("isAvailable", True)
+          ]
+          if len(matches) != 1:
+              raise SystemExit(f"expected one available {expected} runtime")
+          if matches[0].get("version") != "18.5":
+              raise SystemExit("performance runtime is not exactly iOS 18.5")
+          PY
+          printf '%s\n' "$XCODE_VERSION_LINE" "$XCODE_BUILD_LINE" \
+            "iPhoneSimulator SDK $SDK_VERSION" "$PERFORMANCE_RUNTIME_IDENTIFIER"
+      - name: Install checksum-verified XcodeGen for performance tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          ARCHIVE="$RUNNER_TEMP/xcodegen-performance.zip"
+          curl --fail --location --silent --show-error \
+            --output "$ARCHIVE" \
+            "https://github.com/yonaskolb/XcodeGen/releases/download/${XCODEGEN_VERSION}/xcodegen.zip"
+          printf '%s  %s\n' "$XCODEGEN_SHA256" "$ARCHIVE" | shasum -a 256 -c -
+          ditto -x -k "$ARCHIVE" "$RUNNER_TEMP/xcodegen-performance-release"
+          echo "$RUNNER_TEMP/xcodegen-performance-release/xcodegen/bin" >> "$GITHUB_PATH"
+      - name: Generate performance-test Xcode project
+        run: xcodegen generate
+      - name: Select and boot the exact iPhone 16 Pro iOS 18.5 Simulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          SIMULATOR_JSON="$RUNNER_TEMP/performance-simulators.json"
+          xcrun simctl list devices available --json > "$SIMULATOR_JSON"
+          SIMULATOR_UDID="$(python3 - "$SIMULATOR_JSON" \
+            "$PERFORMANCE_RUNTIME_IDENTIFIER" "$PERFORMANCE_DEVICE_NAME" <<'PY'
+          import json
+          import sys
+
+          path, runtime, name = sys.argv[1:]
+          with open(path, encoding="utf-8") as source:
+              devices = json.load(source)["devices"].get(runtime, [])
+          matches = [
+              device for device in devices
+              if device.get("name") == name
+              and device.get("isAvailable", True)
+          ]
+          if len(matches) != 1:
+              raise SystemExit(
+                  f"expected one available {name} on {runtime}, found {len(matches)}"
+              )
+          print(matches[0]["udid"])
+          PY
+          )"
+          test -n "$SIMULATOR_UDID"
+          xcrun simctl shutdown "$SIMULATOR_UDID" 2>/dev/null || true
+          xcrun simctl erase "$SIMULATOR_UDID"
+          xcrun simctl boot "$SIMULATOR_UDID"
+          xcrun simctl bootstatus "$SIMULATOR_UDID" -b
+          echo "PERFORMANCE_SIMULATOR_UDID=$SIMULATOR_UDID" >> "$GITHUB_ENV"
+      - name: Record machine-readable performance environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${ImageOS:?GitHub runner ImageOS metadata is unavailable}"
+          : "${ImageVersion:?GitHub runner ImageVersion metadata is unavailable}"
+          python3 - <<'PY' > performance-environment.json
+          import json
+          import os
+          import platform
+          import subprocess
+          import sys
+
+          xcode_lines = subprocess.check_output(
+              ["xcodebuild", "-version"], text=True
+          ).splitlines()
+          simulator_sdk = subprocess.check_output(
+              ["xcrun", "--sdk", "iphonesimulator", "--show-sdk-version"],
+              text=True,
+          ).strip()
+          payload = {
+              "configuration": "Release",
+              "corpus_currencies": ["KWD", "SGD", "USD"],
+              "corpus_profile": "intelligence-v1",
+              "entry_count": 10000,
+              "iteration_count": 3,
+              "logical_csv_payload_sha256":
+                  "92fe646bbcc7e52fc11a340266a194d3d18b1b147ef70ff53ffab1026a495df5",
+              "total_invocation_count": 4,
+              "metrics": [
+                  "clock", "cpu", "memory", "logical_storage_writes"
+              ],
+              "operations": [
+                  "store_open_close", "store_load", "save", "history_page_query",
+                  "csv_xlsx_export", "archive", "restore",
+                  "receipt_text_processing", "projection", "intelligence",
+              ],
+              "oracle_sha256":
+                  "4c33ed9e0b8082a6c5af936fe7399195c30f4045a01583bad5c6eaccd6945fa5",
+              "parallel_testing": False,
+              "physical_device_gates": "open",
+              "runner_architecture": platform.machine(),
+              "runner_hardware_model": subprocess.check_output(
+                  ["sysctl", "-n", "hw.model"], text=True
+              ).strip(),
+              "runner_image_os": os.environ["ImageOS"],
+              "runner_image_version": os.environ["ImageVersion"],
+              "schedule_count": 20,
+              "scheme": "MoneyUpPerformance",
+              "simulator_device_name": os.environ["PERFORMANCE_DEVICE_NAME"],
+              "simulator_os_version": "18.5",
+              "simulator_runtime_identifier": os.environ[
+                  "PERFORMANCE_RUNTIME_IDENTIFIER"
+              ],
+              "simulator_sdk_version": simulator_sdk,
+              "simulator_udid": os.environ["PERFORMANCE_SIMULATOR_UDID"],
+              "source_sha": os.environ["GITHUB_SHA"],
+              "target": "MoneyUpPerformanceTests",
+              "xcode_build": xcode_lines[1],
+              "xcode_version": xcode_lines[0],
+          }
+          json.dump(payload, sys.stdout, indent=2, sort_keys=True)
+          print()
+          PY
+      - name: Run serial Release performance baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESULT_BUNDLE="$RUNNER_TEMP/MoneyUpPerformanceTests.xcresult"
+          DERIVED_DATA="$RUNNER_TEMP/MoneyUpPerformanceDerivedData"
+          echo "PERFORMANCE_RESULT_BUNDLE=$RESULT_BUNDLE" >> "$GITHUB_ENV"
+          xcodebuild \
+            -project MoneyUp.xcodeproj \
+            -scheme MoneyUpPerformance \
+            -configuration Release \
+            -destination "platform=iOS Simulator,id=$PERFORMANCE_SIMULATOR_UDID" \
+            -derivedDataPath "$DERIVED_DATA" \
+            -only-testing:MoneyUpPerformanceTests \
+            -parallel-testing-enabled NO \
+            -maximum-parallel-testing-workers 1 \
+            -enableCodeCoverage NO \
+            -resultBundlePath "$RESULT_BUNDLE" \
+            SWIFT_TREAT_WARNINGS_AS_ERRORS=YES \
+            CODE_SIGNING_ALLOWED=NO \
+            test 2>&1 | tee performance-tests.log
+      - name: Export machine-readable performance evidence
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESULT_BUNDLE="${PERFORMANCE_RESULT_BUNDLE:-$RUNNER_TEMP/MoneyUpPerformanceTests.xcresult}"
+          test -d "$RESULT_BUNDLE"
+          xcrun xcresulttool get test-results summary \
+            --path "$RESULT_BUNDLE" --compact > performance-summary.json
+          xcrun xcresulttool get test-results metrics \
+            --path "$RESULT_BUNDLE" --compact > performance-metrics.json
+          python3 -m json.tool performance-summary.json >/dev/null
+          python3 -m json.tool performance-metrics.json >/dev/null
+          python3 -m json.tool performance-environment.json >/dev/null
+          python3 -m json.tool performance-runtimes.json >/dev/null
+          test -s performance-tests.log
+          for evidence_file in \
+            performance-environment.json \
+            performance-metrics.json \
+            performance-runtimes.json \
+            performance-summary.json \
+            performance-tests.log; do
+            test -s "$evidence_file"
+          done
+          python3 - "$RESULT_BUNDLE" <<'PY' > performance-evidence-manifest.json
+          import hashlib
+          import json
+          from pathlib import Path
+          import sys
+
+          result_bundle = Path(sys.argv[1])
+          files = [
+              Path("performance-environment.json"),
+              Path("performance-metrics.json"),
+              Path("performance-runtimes.json"),
+              Path("performance-summary.json"),
+              Path("performance-tests.log"),
+          ]
+          payload = {
+              "files": [
+                  {
+                      "name": path.name,
+                      "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                      "size_bytes": path.stat().st_size,
+                  }
+                  for path in files
+              ],
+              "raw_xcresult_directory_present": result_bundle.is_dir(),
+              "raw_xcresult_name": result_bundle.name,
+          }
+          if not payload["raw_xcresult_directory_present"]:
+              raise SystemExit("raw performance xcresult is missing")
+          json.dump(payload, sys.stdout, indent=2, sort_keys=True)
+          print()
+          PY
+          python3 -m json.tool performance-evidence-manifest.json >/dev/null
+      - name: Preserve performance baseline evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: iphone-simulator-performance-baseline
+          path: |
+            performance-environment.json
+            performance-evidence-manifest.json
+            performance-metrics.json
+            performance-runtimes.json
+            performance-summary.json
+            performance-tests.log
+            ${{ runner.temp }}/MoneyUpPerformanceTests.xcresult
+          if-no-files-found: error
           retention-days: 14

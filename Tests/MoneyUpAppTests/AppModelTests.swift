@@ -3967,7 +3967,10 @@ final class AppModelTests: XCTestCase {
             dataEraseIntent: intent,
             openDatabaseStore: { _ in
                 events.record("database-opened")
-                return replacementStore
+                return OpenedDatabaseStore(
+                    store: replacementStore,
+                    unlockToFirstUsefulContentInterval: nil
+                )
             }
         )
 
@@ -4019,7 +4022,10 @@ final class AppModelTests: XCTestCase {
             dataEraseIntent: intent,
             openDatabaseStore: { _ in
                 events.record("database-opened")
-                return replacementStore
+                return OpenedDatabaseStore(
+                    store: replacementStore,
+                    unlockToFirstUsefulContentInterval: nil
+                )
             }
         )
 
@@ -4066,7 +4072,10 @@ final class AppModelTests: XCTestCase {
             dataEraseIntent: intent.access,
             openDatabaseStore: { _ in
                 events.record("database-opened")
-                return replacementStore
+                return OpenedDatabaseStore(
+                    store: replacementStore,
+                    unlockToFirstUsefulContentInterval: nil
+                )
             }
         )
 

@@ -331,6 +331,15 @@ python3 Scripts/generate_release_fixture.py \
   and monthly, with distinct positive amounts and future next-occurrence dates.
 - Generate and save a Data inventory. Confirm 10,000 transactions and 20
   schedules before collecting measurements; retain the JSON with the evidence.
+- Review the exact candidate's retained automated
+  [`MoneyUpPerformanceTests`](PERFORMANCE_BASELINE.md) artifacts for gross
+  regression context. Simulator values are not substitutes for any measurement
+  below and do not close a physical gate.
+- Complete the [domain-payload-free performance signpost runbook](PERFORMANCE_SIGNPOSTS.md)
+  for the exact Release candidate. Retain the Instruments trace and confirm the
+  `Performance` category contains only the 18 reviewed names and only empty or
+  fixed success/failure/cancelled outcome messages before using the trace as
+  release evidence.
 - On the oldest supported iPhone, record p95 unlock, tab-first-content, History
   search/filter after debounce, save, and Calendar-date computation against the
   Golden PRD budgets; inspect scrolling for sustained jank.

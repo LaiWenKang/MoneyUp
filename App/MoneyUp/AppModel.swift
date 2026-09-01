@@ -317,6 +317,8 @@ final class AppModel {
     let restartAfterErase: Bool
     let budgetWidgetSnapshotStore: BudgetWidgetSnapshotStore
     let currentDate: @Sendable () -> Date
+    @ObservationIgnored var unlockToFirstUsefulContentInterval:
+        MoneyUpPerformanceInterval?
     let savingsGoalMutationSerializer = SavingsGoalMutationSerializer()
     let profileMutationSerializer = ProfileMutationSerializer()
     var quickLogDraftWriteTask: Task<Void, Never>?

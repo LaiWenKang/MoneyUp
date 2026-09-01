@@ -297,6 +297,23 @@ extension DashboardView {
         .task(id: reportingClockTaskID) {
             await refreshAtReportingDayBoundaries()
         }
+        .background {
+            if scenePhase == .active,
+               !model.requiresAuthenticationPrivacyCover,
+               model.state == .ready {
+                // `onAppear` is an honest SwiftUI hierarchy-publication proxy.
+                // It deliberately does not claim that Core Animation presented
+                // a pixel; physical Instruments collection owns that distinction.
+                Color.clear
+                    .frame(width: 0, height: 0)
+                    .accessibilityHidden(true)
+                    .onAppear {
+                        model.finishUnlockToFirstUsefulContentMeasurement(
+                            outcome: .success
+                        )
+                    }
+            }
+        }
         .onChange(of: scenePhase) { _, newPhase in
             guard newPhase == .active else { return }
             restartReportingClock()

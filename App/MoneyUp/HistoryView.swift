@@ -142,6 +142,12 @@ private struct HistoryLoadIdentifier: Equatable {
     let refreshGeneration: Int
 }
 
+private struct HistoryPerformanceMeasurement {
+    let id: UUID
+    let loadIdentifier: HistoryLoadIdentifier
+    let interval: MoneyUpPerformanceInterval?
+}
+
 private struct HistoryDayGroup: Identifiable {
     let date: Date
     let entries: [JournalEntry]
@@ -178,6 +184,12 @@ struct HistoryView: View {
     @State private var paginationErrorMessage: String?
     @State private var refreshGeneration = 0
     @State private var didInitializeReportingDates = false
+    @State private var isInitialHistoryLoadInProgress = false
+    @State private var pendingPaginationAfterInitialLoad = false
+    @State private var initialHistoryPerformanceMeasurement:
+        HistoryPerformanceMeasurement?
+    @State private var paginationPerformanceMeasurement:
+        HistoryPerformanceMeasurement?
     init(preset: HistoryPreset? = nil) {
         _filters = State(initialValue: HistoryFilterDraft(preset: preset))
     }
@@ -290,7 +302,7 @@ struct HistoryView: View {
                                 }
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
-                        } else if isLoadingPage {
+                        } else if isInitialHistoryLoadInProgress {
                             HStack {
                                 Spacer()
                                 ProgressView()
@@ -334,8 +346,10 @@ struct HistoryView: View {
                                     }
                                     .buttonStyle(.plain)
                                     .onAppear {
-                                        guard entry.id == loadedEntries.last?.id else { return }
-                                        Task { await loadNextPage() }
+                                        guard entry.id == loadedEntries.last?.id else {
+                                            return
+                                        }
+                                        requestNextPageWhenReady()
                                     }
                                     .swipeActions(edge: .trailing) {
                                         if !model.isProtectedJournalEntry(entry) {
@@ -395,6 +409,7 @@ struct HistoryView: View {
             .task(id: searchText) {
                 do {
                     try await Task.sleep(for: .milliseconds(250))
+                    guard appliedSearchText != searchText else { return }
                     appliedSearchText = searchText
                 } catch {
                     // A newer keystroke superseded this search.
@@ -411,7 +426,15 @@ struct HistoryView: View {
                 initialPageErrorMessage = nil
                 summaryErrorMessage = nil
                 paginationErrorMessage = nil
+                finishInitialHistoryMeasurement(outcome: .cancelled)
+                finishPaginationMeasurement(outcome: .cancelled)
+                isInitialHistoryLoadInProgress = false
+                pendingPaginationAfterInitialLoad = false
                 if isCurrent { refreshGeneration &+= 1 }
+            }
+            .onDisappear {
+                finishInitialHistoryMeasurement(outcome: .cancelled)
+                finishPaginationMeasurement(outcome: .cancelled)
             }
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
@@ -438,7 +461,10 @@ struct HistoryView: View {
                         $0.kind == .expense || $0.kind == .income
                     },
                     calendar: model.reportingCalendar
-                ) { filters = $0 }
+                ) { updatedFilters in
+                    guard filters != updatedFilters else { return }
+                    filters = updatedFilters
+                }
             }
             .sheet(item: $selectedEntry, onDismiss: {
                 refreshGeneration &+= 1
@@ -490,12 +516,28 @@ struct HistoryView: View {
             nextCursor = nil
             summary = nil
             isLoadingPage = false
+            isInitialHistoryLoadInProgress = false
             initialPageErrorMessage = nil
             summaryErrorMessage = nil
             paginationErrorMessage = nil
             return
         }
         let expectedIdentifier = loadIdentifier
+        let performanceMeasurementID = beginInitialHistoryMeasurement(
+            loadIdentifier: expectedIdentifier
+        )
+        var performanceOutcome = MoneyUpPerformanceOutcome.cancelled
+        defer {
+            finishInitialHistoryMeasurement(
+                id: performanceMeasurementID,
+                loadIdentifier: expectedIdentifier,
+                outcome: performanceOutcome
+            )
+            completeInitialHistoryLoadIfCurrent(
+                expectedIdentifier,
+                outcome: performanceOutcome
+            )
+        }
         let querySnapshot = query
         loadedEntries = []
         nextCursor = nil
@@ -503,15 +545,15 @@ struct HistoryView: View {
         initialPageErrorMessage = nil
         summaryErrorMessage = nil
         paginationErrorMessage = nil
-        isLoadingPage = true
 
         async let pageOutcome = initialPageOutcome(query: querySnapshot)
         async let totalsOutcome = summaryOutcome(query: querySnapshot)
         let resolvedPage = await pageOutcome
 
-        guard !Task.isCancelled,
+        guard model.journalRecentEntriesAreCurrent,
+              !Task.isCancelled,
               loadIdentifier == expectedIdentifier else { return }
-        isLoadingPage = false
+        var didFail = false
 
         switch resolvedPage {
         case let .available(page):
@@ -519,21 +561,75 @@ struct HistoryView: View {
             nextCursor = page.nextCursor
         case let .unavailable(message):
             initialPageErrorMessage = message
+            didFail = true
         case .cancelled:
             return
         }
 
         let resolvedSummary = await totalsOutcome
-        guard !Task.isCancelled,
+        guard model.journalRecentEntriesAreCurrent,
+              !Task.isCancelled,
               loadIdentifier == expectedIdentifier else { return }
         switch resolvedSummary {
         case let .available(resolvedSummary):
             summary = resolvedSummary
         case let .unavailable(message):
             summaryErrorMessage = message
+            didFail = true
         case .cancelled:
             return
         }
+        // Both result states now belong to this exact load generation. The
+        // interval ends at their SwiftUI state-publication boundary, not pixels.
+        performanceOutcome = didFail ? .failure : .success
+    }
+
+    @MainActor
+    private func beginInitialHistoryMeasurement(
+        loadIdentifier: HistoryLoadIdentifier
+    ) -> UUID {
+        finishInitialHistoryMeasurement(outcome: .cancelled)
+        finishPaginationMeasurement(outcome: .cancelled)
+        let id = UUID()
+        initialHistoryPerformanceMeasurement = HistoryPerformanceMeasurement(
+            id: id,
+            loadIdentifier: loadIdentifier,
+            interval: MoneyUpPerformanceSignposts.begin(.historyQueryToContent)
+        )
+        isInitialHistoryLoadInProgress = true
+        isLoadingPage = false
+        pendingPaginationAfterInitialLoad = false
+        return id
+    }
+
+    @MainActor
+    private func finishInitialHistoryMeasurement(
+        id: UUID? = nil,
+        loadIdentifier: HistoryLoadIdentifier? = nil,
+        outcome: MoneyUpPerformanceOutcome
+    ) {
+        guard let measurement = initialHistoryPerformanceMeasurement,
+              id == nil || measurement.id == id,
+              loadIdentifier == nil
+                || measurement.loadIdentifier == loadIdentifier else { return }
+        initialHistoryPerformanceMeasurement = nil
+        MoneyUpPerformanceSignposts.end(
+            measurement.interval,
+            outcome: outcome
+        )
+    }
+
+    @MainActor
+    private func completeInitialHistoryLoadIfCurrent(
+        _ expectedIdentifier: HistoryLoadIdentifier,
+        outcome: MoneyUpPerformanceOutcome
+    ) {
+        guard loadIdentifier == expectedIdentifier else { return }
+        isInitialHistoryLoadInProgress = false
+        guard outcome != .cancelled,
+              pendingPaginationAfterInitialLoad else { return }
+        pendingPaginationAfterInitialLoad = false
+        Task { await loadNextPage() }
     }
 
     @MainActor
@@ -560,8 +656,21 @@ struct HistoryView: View {
 
     @MainActor
     private func loadNextPage() async {
-        guard !isLoadingPage, let cursor = nextCursor else { return }
+        guard !isInitialHistoryLoadInProgress,
+              !isLoadingPage,
+              let cursor = nextCursor else { return }
         let expectedIdentifier = loadIdentifier
+        let performanceMeasurementID = beginPaginationMeasurement(
+            loadIdentifier: expectedIdentifier
+        )
+        var performanceOutcome = MoneyUpPerformanceOutcome.cancelled
+        defer {
+            finishPaginationMeasurement(
+                id: performanceMeasurementID,
+                loadIdentifier: expectedIdentifier,
+                outcome: performanceOutcome
+            )
+        }
         let querySnapshot = query
         isLoadingPage = true
         paginationErrorMessage = nil
@@ -571,20 +680,68 @@ struct HistoryView: View {
                 after: cursor
             )
             try Task.checkCancellation()
-            guard loadIdentifier == expectedIdentifier else { return }
+            guard model.journalRecentEntriesAreCurrent,
+                  loadIdentifier == expectedIdentifier else { return }
             let knownIDs = Set(loadedEntries.map(\.id))
             loadedEntries.append(contentsOf: page.entries.filter {
                 !knownIDs.contains($0.id)
             })
             nextCursor = page.nextCursor
             isLoadingPage = false
+            // Appended rows and cursor now share one generation-owned state
+            // publication. This later-page name is distinct from initial query.
+            performanceOutcome = .success
         } catch is CancellationError {
-            if loadIdentifier == expectedIdentifier { isLoadingPage = false }
+            if model.journalRecentEntriesAreCurrent,
+               loadIdentifier == expectedIdentifier { isLoadingPage = false }
         } catch {
-            if loadIdentifier == expectedIdentifier {
+            if model.journalRecentEntriesAreCurrent,
+               loadIdentifier == expectedIdentifier {
                 isLoadingPage = false
                 paginationErrorMessage = safeUserMessage(for: error, context: .read)
+                performanceOutcome = .failure
             }
         }
+    }
+
+    @MainActor
+    private func beginPaginationMeasurement(
+        loadIdentifier: HistoryLoadIdentifier
+    ) -> UUID {
+        finishPaginationMeasurement(outcome: .cancelled)
+        let id = UUID()
+        paginationPerformanceMeasurement = HistoryPerformanceMeasurement(
+            id: id,
+            loadIdentifier: loadIdentifier,
+            interval: MoneyUpPerformanceSignposts.begin(.historyPageToContent)
+        )
+        return id
+    }
+
+    @MainActor
+    private func finishPaginationMeasurement(
+        id: UUID? = nil,
+        loadIdentifier: HistoryLoadIdentifier? = nil,
+        outcome: MoneyUpPerformanceOutcome
+    ) {
+        guard let measurement = paginationPerformanceMeasurement,
+              id == nil || measurement.id == id,
+              loadIdentifier == nil
+                || measurement.loadIdentifier == loadIdentifier else { return }
+        paginationPerformanceMeasurement = nil
+        MoneyUpPerformanceSignposts.end(
+            measurement.interval,
+            outcome: outcome
+        )
+    }
+
+    @MainActor
+    private func requestNextPageWhenReady() {
+        guard nextCursor != nil else { return }
+        guard !isInitialHistoryLoadInProgress else {
+            pendingPaginationAfterInitialLoad = true
+            return
+        }
+        Task { await loadNextPage() }
     }
 }

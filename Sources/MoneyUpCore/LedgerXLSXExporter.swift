@@ -27,6 +27,8 @@ public enum LedgerXLSXExporter {
         rates: [DatedExchangeRate] = [],
         attachmentMetadata: [ReceiptAttachmentMetadata] = []
     ) -> Data {
+        let performanceInterval = MoneyUpPerformanceSignposts.begin(.xlsxExport)
+        defer { MoneyUpPerformanceSignposts.end(performanceInterval) }
         var seenAccountIDs = Set<UUID>()
         let uniqueAccounts = accounts.filter {
             seenAccountIDs.insert($0.id).inserted
