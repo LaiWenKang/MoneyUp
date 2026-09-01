@@ -63,6 +63,10 @@ extension AppModel {
         )
     }
 
+    func waitForCurrentIntelligenceRefresh() async {
+        await intelligenceService.waitForCurrentRefresh()
+    }
+
     func indexedCaptureSuggestion(
         for query: CaptureSuggestionQuery,
         eligibleCategoryIDs: Set<UUID>
