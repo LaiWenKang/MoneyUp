@@ -144,6 +144,26 @@ private struct BudgetPlanView: View {
                 }
 
                 Section {
+                    if model.profile?.intelligenceEnabled == true {
+                        NavigationLink {
+                            BudgetSuggestionReviewView()
+                        } label: {
+                            HStack(spacing: 12) {
+                                MoneyUpSymbolBadge(
+                                    systemImage: "wand.and.stars",
+                                    color: .accentColor
+                                )
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text("intelligence.budget.review_title")
+                                        .font(.headline)
+                                    Text("intelligence.budget.row_detail")
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .padding(.vertical, 4)
+                        }
+                    }
                     NavigationLink {
                         BudgetSimulatorView()
                     } label: {

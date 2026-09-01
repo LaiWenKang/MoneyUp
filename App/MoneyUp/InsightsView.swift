@@ -108,6 +108,7 @@ struct InsightsView: View {
             LazyVStack(spacing: MoneyUpLayout.standardSpacing) {
                 periodCard
                 IntelligenceSummaryLink()
+                IntelligenceProjectionCard()
 
                 switch model.reportResult(for: period) {
                 case let .available(report):
