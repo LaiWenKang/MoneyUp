@@ -219,8 +219,9 @@ bytes, user-authored identifiers, names, amounts, currencies, notes, or balances
 
 ## Evidence boundary
 
-W1 is merged and its exact merged-main CI passed. This architecture also
-includes the source-integrated W2 candidate; it is not a claim that final W2
-PR/merged-main CI, 10,000-entry physical budgets, upgrade/restore on iPhones, or
-TestFlight/App Review passed. Those gates remain tracked in
+W1 and W2 are merged, and their exact PR-head and merged-main CI gates passed,
+most recently for W2 on `main@4159df31`. This is not evidence that the final
+0.7.0 release candidate repeated those gates or passed signed-binary validation,
+10,000-entry physical budgets, upgrade/restore on iPhones, TestFlight
+processing, beta use, or App Review. Those gates remain tracked in
 [Golden PRD traceability](GOLDEN_TRACEABILITY.md).

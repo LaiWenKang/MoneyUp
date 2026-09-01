@@ -231,7 +231,8 @@ These rows retain the explainable-capture behavior merged to `main` through PR
 #28. They do not change the controlling count of 97 Golden requirements or
 close any physical-device or exact-binary release gate. Automated source
 coverage is present. W1 is merged with green exact-main CI; the additive W2
-candidate still needs its final exact-SHA and merged-main CI runs.
+branch and merged-main gates also passed. The final 0.7.0 release candidate must
+repeat exact-SHA CI before promotion.
 
 | ID | Risk | Acceptance summary | Source / test cases | State |
 |---|---|---|---|---|
