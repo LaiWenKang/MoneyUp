@@ -1,6 +1,6 @@
 # MoneyUp Rollout Plan
 
-Last updated: 29 August 2026
+Last updated: 1 September 2026
 
 ## Release decision
 
@@ -14,13 +14,13 @@ later explicit product, privacy, and threat-model decision.
 
 | Area | Status | Release meaning |
 |---|---|---|
-| Product | PR #28 reviewed merge candidate, 0.6.0 source build 8 | Golden functional surfaces remain intact; explainable local capture suggestions, receipt review, and duplicate advisories are integrated without a schema, identity, or navigation change; physical acceptance remains open |
-| Scale architecture | Implemented; Mac CI passed | SQLCipher schema 6 adds exact store metrics, normalized budget attribution, monthly carry checkpoints, compact balances, bounded recent activity, and on-demand reads; physical measurements remain open |
+| Product | W1/W2 merged on `main@4159df31`; 0.7.0 source build 9 | Golden functional surfaces remain intact; Observation service boundaries, full-book explainable intelligence, language override, visible transaction details, and category management are integrated; physical acceptance remains open |
+| Scale architecture | SQLCipher schema 7 implemented; merged-main CI passed | Exact store metrics, normalized budget attribution, monthly carry checkpoints, compact balances, bounded recent activity, on-demand reads, and payload-free intelligence indexes are integrated; physical measurements remain open |
 | Privacy | Source and policy aligned | Local processing, no tracking/backend, metadata-stripped optional encrypted receipts, and a percentage/state-only App Group widget snapshot |
-| CI | Exact PR candidate passed | The pinned Xcode 16.4 workflow passed release validation, 345 core/persistence tests, 243 app tests, coverage reporting, and the unsigned app/widget Simulator build on the exact reviewed PR head; this does not close physical or exact-binary gates |
+| CI | Merged W1/W2 `main` passed | CI run 246 passed release/structure validation, Core/persistence/intelligence tests, app-model tests, coverage reporting, and the unsigned app/widget Simulator build on exact SHA `4159df31`; this does not close physical or exact-binary gates |
 | Backup scale | Source remediation and Mac CI passed; physical evidence open | Version 2 streams file-backed 1 MiB authenticated chunks across a 100,000-record/512 MB stored-payload envelope, so current accepted books have a complete export; interruption, near-limit v2, and compatible-v1 physical-memory evidence remain required |
 | Apple capability | Signed validation passed for the main baseline | TestFlight [run 20](https://github.com/LaiWenKang/MoneyUp/actions/runs/33243930699) exported and validated app/widget signatures and App Group entitlements; future binaries must repeat the exact-binary check |
-| Distribution | 0.6.0 (1020.1) uploaded from `ff272da8` | Apple accepted the upload on 29 August 2026; processing, tester-group availability, installation, and external Beta App Review are not proven by the workflow result |
+| Distribution | Previous baseline 0.6.0 (1020.1) uploaded from `ff272da8`; 0.7.0 not uploaded | Apple accepted the earlier upload on 29 August 2026; its processing/installation and every new 0.7.0 signed/upload gate remain unproven |
 | Physical QA | Open | Upgrade/restore, 10,000-entry/20-schedule performance, bilingual accessibility/widget matrix, and the founder/co-tester seven-day run remain open |
 | Public release | Blocked | Closed beta, exact-binary compliance, App Review, manual release, and 72-hour operations evidence are not complete |
 
@@ -29,7 +29,7 @@ and evidence boundary is in [Golden PRD traceability](GOLDEN_TRACEABILITY.md).
 
 ## Stage 0 - exact source candidate
 
-Target: one reviewable 0.6.0 commit whose source version is 0.6.0 build 8 and
+Target: one reviewable 0.7.0 commit whose source version is 0.7.0 build 9 and
 whose app/widget/localization/privacy/release documents agree.
 
 Required:
@@ -67,7 +67,7 @@ The account holder performs these actions without sharing Apple credentials:
 
 The workflow must verify:
 
-- source marketing version 0.6.0 and source build 8 before assigning a unique
+- source marketing version 0.7.0 and source build 9 before assigning a unique
   upload build number;
 - the exact dispatched commit, Xcode/toolchain, immutable dependencies, release
   assets, tests, and app/widget build;
@@ -86,8 +86,9 @@ and does not mean a TestFlight upload or App Review occurred.
 After a separately confirmed upload, verify the encrypted recovery artifact was
 retained before the upload step and contains the archive/dSYMs, complete export
 directory, exact validated IPA, and matching SHA-256 manifest. After Apple
-processing, add that exact build to **Founders Internal**. Update the account
-holder's installed 0.5.1 build in place; never delete it as an upgrade procedure.
+processing, add that exact build to **Founders Internal**. First confirm the
+accepted 0.6.0 baseline is installed without deletion, then update it to 0.7.0
+in place; never delete the app as an upgrade procedure.
 
 Complete [the founder/co-tester runbook](FIRST_TEST.md), including:
 
@@ -201,7 +202,7 @@ Public submission remains blocked until:
 - the account holder chooses manual release after approval.
 
 The working copy is [App Store submission](APP_STORE_SUBMISSION.md). Do not call
-0.6.0 public 1.0 and do not infer approval from a successful upload.
+0.7.0 public 1.0 and do not infer approval from a successful upload.
 
 ## Stage 6 - manual release and first 72 hours
 
@@ -219,8 +220,9 @@ After approval, the account holder manually releases 1.0. For 72 hours:
    candidate; do not reuse the `ff272da8` result for a changed binary.
 2. Confirm Apple processing, tester-group availability, and installation for
    uploaded build 0.6.0 (1020.1); upload success alone is not that evidence.
-3. Physical 0.5.1-to-0.6.0 upgrade, clean-device v2 restore, compatible-v1
-   restore, and receipt-heavy interruption/near-limit memory evidence.
+3. Physical installed-beta-to-0.6.0-to-0.7.0 upgrade continuity, clean-device
+   v2 restore, compatible-v1 restore, and receipt-heavy interruption/near-limit
+   memory evidence.
 4. Oldest-device 10,000-entry/20-schedule cold-start, monthly-checkpoint,
    rollover, and interaction measurements.
 5. Bilingual accessibility, appearance, widget, and metadata-stripped receipt
@@ -249,7 +251,7 @@ screen sharing when account access is required.
 
 ## Definition of ready
 
-MoneyUp 0.6.0 is ready for the founder/co-tester run only after exact-candidate
+MoneyUp 0.7.0 is ready for the founder/co-tester run only after exact-candidate
 Mac CI, signed validation, physical smoke/upgrade/restore, and TestFlight
 processing pass. It is ready for public 1.0 only after every physical,
 accessibility, performance, recovery, beta, compliance, review, and exact-binary

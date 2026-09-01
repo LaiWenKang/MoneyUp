@@ -9,9 +9,10 @@ invariants remain non-negotiable. The earlier PRD is supporting evidence only
 where it does not conflict. Its StoreKit and CloudKit requirements are
 superseded: the approved first public release is free and local-only.
 
-Checked source items describe the source-integrated 0.6.0 candidate. Exact-
-candidate Mac CI passed in run 141; checked source items do not close physical-
-device, TestFlight, closed-beta, or App Store gates. See [Golden PRD
+Checked source items describe the source-integrated 0.7.0 candidate. W1 and W2
+passed exact-candidate and merged-main CI, most recently in run 246 on
+`main@4159df31`; checked source items do not close physical-device, signed-
+binary, TestFlight, closed-beta, or App Store gates. See [Golden PRD
 traceability](GOLDEN_TRACEABILITY.md) for every requirement ID and its evidence
 status.
 
@@ -57,7 +58,10 @@ status.
   from Log, and category rename/archive/restore/merge/reassign/delete management
 - [x] Add the deterministic 10,000-row, three-currency intelligence profile and
   committed oracle while preserving the original release fixture byte-for-byte
-- [ ] Release blocker: final W2 branch and merged-main SHAs must pass pinned CI
+- [x] PR #31 head `488bdd11617565ffa6e7381ad95b63b66f718176`
+  and merge SHA `4159df31b7e0b9489d1ddcd84c261296faaeda39`
+  passed pinned macOS 15 / Xcode 16.4 CI, including Core/persistence/
+  intelligence tests, app-model tests, and the app/widget Simulator build
 - [ ] Deferred: exact-candidate physical iPhone, accessibility, migration,
   restore, and oldest-device performance evidence remains open
 
@@ -77,8 +81,8 @@ status.
   metrics, budget-attribution, and derived intelligence indexes; compact
   balances, monthly rollover checkpoints, bounded recent activity, and
   on-demand paging
-- [ ] Exact-candidate Mac core/persistence/app tests and app/widget Simulator
-  build
+- [x] Exact-candidate Mac core/persistence/intelligence/app tests and app/widget
+  Simulator build passed on merged W2 `main@4159df31` in CI run 246
 - [ ] Physical migration, restore, and oldest-device scale evidence
 
 ## Daily use and correction
@@ -182,11 +186,26 @@ status.
   213 app-model tests, coverage reporting, and app/widget Simulator build on
   macOS in CI run 141
 
+This identity is retained as the installed migration baseline. TestFlight
+accepted 0.6.0 (1020.1) from `ff272da8` on 29 August 2026; processing,
+installation, and physical evidence are separate gates.
+
+## 0.7.0 candidate identity
+
+- [x] Source app and widget marketing version: 0.7.0
+- [x] Source build: 9
+- [x] TestFlight workflow marketing version: 0.7.0; source build 9 is checked
+  before the workflow assigns a unique upload build
+- [x] Bilingual in-app 0.7.0 release notes cover W1/W2 user-visible changes
+- [x] W1/W2 implementation passed merged-main CI run 246 on `4159df31`
+- [ ] The final release-truth commit and every later 0.7.0 release candidate
+  must repeat exact-SHA CI and signed validation
+
 ## G2 - before wider testers
 
-- [ ] Install 0.6.0 over the founder's existing 0.5.1 TestFlight app without
-  deletion; reconcile every collection, Keychain state, pending capture, and
-  widget before/after
+- [ ] Confirm 0.6.0 (1020.1) is available and installed without deleting the
+  founder's existing beta, then install 0.7.0 over it and reconcile every
+  collection, Keychain state, pending capture, and widget before/after
 - [ ] Restore `.moneyup` on a clean/fresh install; wrong password, tampering,
   cancellation, and failure leave the current book untouched
 - [ ] Pass keyboard/draft/lock/routing and receipt/screenshot checks on the
@@ -201,7 +220,7 @@ status.
 ## G3 - before public App Store 1.0
 
 - [x] All Golden functional source surfaces mapped in traceability
-- [x] Exact-candidate Mac/Simulator gate (CI run 141)
+- [x] Merged W1/W2 Mac/Simulator gate (CI run 246 on `4159df31`)
 - [ ] Founder/co-tester seven-day run without P0/open P1
 - [ ] Fourteen-day invited closed beta and update/restore evidence
 - [ ] Final accessibility, performance, energy, recovery, and privacy matrices

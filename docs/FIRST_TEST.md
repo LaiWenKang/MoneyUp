@@ -1,6 +1,6 @@
 # MoneyUp Founder/Co-tester Runbook
 
-Version target: 0.6.0, source build 8 (the GitHub workflow assigns a unique
+Version target: 0.7.0, source build 9 (the GitHub workflow assigns a unique
 TestFlight upload build)
 
 This runbook is for MoneyUp's founder and co-tester on their two iPhones. Use
@@ -9,13 +9,14 @@ place for records that cannot be reconstructed.
 
 ## How installation works
 
-The account holder has already installed the signed 0.5.1 beta from the private
-**Founders Internal** TestFlight group. Install the 0.6.0 candidate from that
+The account holder may still have the signed 0.5.1 beta from the private
+**Founders Internal** TestFlight group. Confirm the accepted 0.6.0 (1020.1)
+baseline is installed in place first, then install the 0.7.0 candidate from that
 same group when it appears. The co-tester is invited by email to the
 private **Founders External** group after Apple's TestFlight Beta App Review
 accepts the selected build.
 
-Before the account holder updates the installed 0.5.1 build, pin its existing
+Before the account holder updates the installed beta, pin its existing
 small and medium MoneyUp widgets. Confirm the small widget opens Expense and
 the medium widget's Expense and Income links work, then leave both pinned for
 the migration checks in section 7.
@@ -36,8 +37,8 @@ well before the expiry date shown in TestFlight.
 ## Before starting
 
 - Use an iPhone running iOS 18 or later with a device passcode enabled.
-- Confirm TestFlight shows version 0.6.0 and a build newer than the installed
-  0.5.1 build.
+- Confirm TestFlight shows version 0.7.0 and a build newer than the installed
+  0.6.0 build.
 - Decide who tests English and who tests Simplified Chinese first; switch roles
   on a later day.
 - Prepare fictional sample accounts, merchants, balances, and a receipt image.
@@ -219,9 +220,9 @@ the app silently resets, or the opening balance is wrong.
 
 ### 7. Widget
 
-- On the account holder's upgraded phone, confirm both pinned 0.5.1 widgets still
+- On the account holder's upgraded phone, confirm both previously pinned widgets still
   render, their legacy expense/income links open correctly, they can be resized
-  and edited, and they survive a reboot. Then choose a 0.6.0 preferred action. If
+  and edited, and they survive a reboot. Then choose a 0.7.0 preferred action. If
   migration fails, remove and re-add the widget and report both build numbers.
 - Add small and medium MoneyUp widgets to the Home Screen and one MoneyUp widget
   to the Lock Screen.
@@ -245,7 +246,7 @@ the app silently resets, or the opening balance is wrong.
 
 ### 8. Upgrade, backup, restore, and import
 
-- Before updating, record the 0.5.1 transaction count and several balances.
+- Before updating from 0.6.0, record the transaction count and several balances.
 - Update in TestFlight without deleting the app. Confirm onboarding does not
   reappear and every prior balance, transaction, budget, schedule, and holding
   remains. Reconcile goals, rates, receipt attachments, investment lots,

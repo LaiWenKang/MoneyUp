@@ -3,7 +3,7 @@
 MoneyUp handles sensitive financial data. Security claims here distinguish
 implemented controls from planned work and known limits.
 
-## Founders Beta 0.6.0 source controls
+## Founders Beta 0.7.0 source controls
 
 "Implemented" below describes the source-integrated candidate. Exact-candidate
 Mac CI, signed-entitlement inspection, physical-device checks, beta evidence,
@@ -31,7 +31,8 @@ and App Review remain separate release gates.
 | Separate encrypted, no-balance Quick Capture inbox while locked | Implemented |
 | File-backed chunk-authenticated portable backup and transactional restore | Implemented with v1 compatibility and test coverage; exact-candidate/physical execution open |
 | Previewable local CSV/Qianji import with atomic commit | Implemented with test coverage; exact-candidate execution open |
-| SQLCipher schema-6 journal/posting/receipt/budget indexes, store metrics, and compact exact balances | Implemented; exact-candidate tests open |
+| SQLCipher schema-7 journal/posting/receipt/budget/intelligence indexes, store metrics, and compact exact balances | Implemented; exact-candidate tests open |
+| Optional explainable local intelligence with review-only actions and derived-data opt-out clearing | Implemented; exact-candidate and physical review open |
 | Optional end-to-end-encrypted device sync | Explicitly deferred from 1.0 |
 
 ## Privacy guarantee

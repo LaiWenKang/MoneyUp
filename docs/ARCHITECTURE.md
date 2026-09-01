@@ -33,7 +33,7 @@ required.
 |---|---|---|
 | MoneyUp app | Observation-tracked state coordinator, locking, bilingual SwiftUI, local guidance and workflows | Implemented — verification pending |
 | MoneyUpCore | Exact money, ledger, hierarchy, recurrence, goals, investments, reports, export rules | Implemented in source; exact-candidate core tests open |
-| MoneyUpIntelligence | Pure deterministic detectors, exact evidence contracts, projections, and budget proposals; depends only on MoneyUpCore | Implemented in source; final W2 exact-SHA gate open |
+| MoneyUpIntelligence | Pure deterministic detectors, exact evidence contracts, projections, and budget proposals; depends only on MoneyUpCore | Implemented; W2 branch and merged-main CI passed; final-candidate repeat open |
 | MoneyUpPersistence | SQLCipher schema/migrations, normalized encrypted indexes, atomic writes, snapshots | Implemented in source; Mac test gate open |
 | Widget | Redacted actions plus opt-in percentage/state status | Implemented in source; App Group registration/signing and device matrix open |
 | Portability | CSV/XLSX, mapped local import, sanitized encrypted attachments, file-backed archive lifecycle | Implemented in source; exact-candidate and physical restore/export drills open |

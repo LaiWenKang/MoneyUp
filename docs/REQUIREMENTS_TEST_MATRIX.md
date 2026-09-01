@@ -1,4 +1,4 @@
-# MoneyUp 0.6.0 / 0.7.0 W1-W2 Requirement Traceability Matrix
+# MoneyUp 0.7.0 Requirement Traceability Matrix
 
 Reviewed: 1 September 2026
 
@@ -13,6 +13,7 @@ the earlier `MoneyUp-PRD-v1.1.pdf` is contextual where it does not conflict.
 | State | Meaning |
 |---|---|
 | `STATIC-PASS` | The cited source/configuration and local repository validator passed inspection on this branch. |
+| `AUTO-PASS` | The named deterministic tests passed on the cited exact branch or merged-main SHA; a later release candidate must repeat the gate. |
 | `AUTO-PENDING` | The named deterministic test exists, but this exact candidate has not completed a macOS run; Swift/Xcode are unavailable in the review environment. |
 | `MANUAL-OPEN` | A physical-device, usability, accessibility, appearance, performance, migration, or exact-binary case remains to be executed. |
 | `BLOCKED-P1` | A release-blocking product or evidence issue remains open. |
@@ -38,17 +39,19 @@ and **Release blocker**.
 ## 0.7.0 W2 acceptance overlay
 
 These approved additive rows supplement the same 97 Golden requirements. The
-W2 final branch and merged-main CI gates remain open until their exact SHAs run.
+W2 branch and merged-main gates passed on PR #31 head `488bdd11617565f` and
+`main@4159df31b7e0b9489d1ddcd84c261296faaeda39` in CI run `33480659702`.
+Physical-device review and a repeat on the final 0.7.0 candidate remain open.
 
 | ID | Acceptance summary | Source / test cases | State |
 |---|---|---|---|
-| W2-PURE | `MoneyUpIntelligence` depends only on Core; exact-Decimal detectors are deterministic across locale and input order, and findings carry stable keys, rules, figures, samples, confidence, and routes. | `Package.swift`; `Sources/MoneyUpIntelligence`; `IntelligenceDetectorTests`. | AUTO-PENDING on final W2 SHA |
-| W2-IDX | Schema 7 backfills missing metadata transactionally without payload drift; routine affinity/observation reads are bounded and payload-free; edit/delete/restore and opt-out stay atomic. | `SQLCipherConnectionIntelligence*`; `IntelligenceIndexTests.testSchema6MigrationPreservesPayloadBytesAndBuildsSchema7Index`, `.testAffinityUsesEntireEncryptedIndexAndTracksEditDelete`, `.testProfileOptOutClearsAndReenableRebuildsDerivedIndexes`, `.testSnapshotRestoreRebuildsAffinityInsideReplacementTransaction`. | AUTO-PENDING on final W2 SHA |
-| W2-REVIEW | Recurrence offers never auto-save, History review is bounded, opt-out clears findings, and detector actions remain advisory. | `AppModelIntelligence`; `IntelligenceScheduleReviewView`; `AppModelIntelligenceTests.testRefreshPublishesThenOptOutClearsDerivedState`. | AUTO-PENDING; physical review open |
-| W2-PROJ | Month-end components remain separate per currency, use confirmed remaining schedules, require at least seven reporting days, and never infer FX or zero. | `MonthEndProjectionDetector`; `AppModelIntelligenceTests.testMonthEndProjectionSeparatesCurrenciesAndConfirmedSchedules`. | AUTO-PENDING; physical review open |
-| W2-BUD | Budget proposals use complete trailing months and median plus two MAD; selected changes apply and undo as one reviewed transaction, and stale proposals fail before persistence. | `BudgetLimitSuggestionDetector`; `AppModelBudgetSuggestions`; `AppModelIntelligenceTests.testBudgetSuggestionsApplyAndUndoAsOneReviewedPatch`. | AUTO-PENDING; physical review open |
-| W2-CFG | Settings offers System/English/Simplified Chinese and full category management; Quick Log exposes title-or-merchant, description/notes, and add-category. | `AppLocalization`, `AppSettingsView`, `QuickLogEntryBody`, `LedgerLifecycleViews`; `AppLocalizationTests`. | AUTO-PENDING; bilingual/device review open |
-| W2-FIX | Default release fixture remains byte-identical; explicit intelligence profile creates 10,000 deterministic rows across KWD/SGD/USD plus an exact planted finding/negative-case oracle. | `generate_release_fixture.py`; `MoneyUp-Intelligence-Oracle.json`; `validate_release_assets.py`; `IntelligenceDetectorTests.testCommittedScaleOracleProducesOnlyPlantedFindings`. | STATIC-PASS locally; AUTO-PENDING on final W2 SHA |
+| W2-PURE | `MoneyUpIntelligence` depends only on Core; exact-Decimal detectors are deterministic across locale and input order, and findings carry stable keys, rules, figures, samples, confidence, and routes. | `Package.swift`; `Sources/MoneyUpIntelligence`; `IntelligenceDetectorTests`. | AUTO-PASS on PR #31 and merged main; final-candidate repeat pending |
+| W2-IDX | Schema 7 backfills missing metadata transactionally without payload drift; routine affinity/observation reads are bounded and payload-free; edit/delete/restore and opt-out stay atomic. | `SQLCipherConnectionIntelligence*`; `IntelligenceIndexTests.testSchema6MigrationPreservesPayloadBytesAndBuildsSchema7Index`, `.testAffinityUsesEntireEncryptedIndexAndTracksEditDelete`, `.testProfileOptOutClearsAndReenableRebuildsDerivedIndexes`, `.testSnapshotRestoreRebuildsAffinityInsideReplacementTransaction`. | AUTO-PASS on PR #31 and merged main; final-candidate repeat pending |
+| W2-REVIEW | Recurrence offers never auto-save, History review is bounded, opt-out clears findings, and detector actions remain advisory. | `AppModelIntelligence`; `IntelligenceScheduleReviewView`; `AppModelIntelligenceTests.testRefreshPublishesThenOptOutClearsDerivedState`. | AUTO-PASS; physical review open |
+| W2-PROJ | Month-end components remain separate per currency, use confirmed remaining schedules, require at least seven reporting days, and never infer FX or zero. | `MonthEndProjectionDetector`; `AppModelIntelligenceTests.testMonthEndProjectionSeparatesCurrenciesAndConfirmedSchedules`. | AUTO-PASS; physical review open |
+| W2-BUD | Budget proposals use complete trailing months and median plus two MAD; selected changes apply and undo as one reviewed transaction, and stale proposals fail before persistence. | `BudgetLimitSuggestionDetector`; `AppModelBudgetSuggestions`; `AppModelIntelligenceTests.testBudgetSuggestionsApplyAndUndoAsOneReviewedPatch`. | AUTO-PASS; physical review open |
+| W2-CFG | Settings offers System/English/Simplified Chinese and full category management; Quick Log exposes title-or-merchant, description/notes, and add-category. | `AppLocalization`, `AppSettingsView`, `QuickLogEntryBody`, `LedgerLifecycleViews`; `AppLocalizationTests`. | AUTO-PASS; bilingual/device review open |
+| W2-FIX | Default release fixture remains byte-identical; explicit intelligence profile creates 10,000 deterministic rows across KWD/SGD/USD plus an exact planted finding/negative-case oracle. | `generate_release_fixture.py`; `MoneyUp-Intelligence-Oracle.json`; `validate_release_assets.py`; `IntelligenceDetectorTests.testCommittedScaleOracleProducesOnlyPlantedFindings`. | STATIC-PASS locally and AUTO-PASS in CI; final-candidate repeat pending |
 
 ## Log and transaction capture
 
