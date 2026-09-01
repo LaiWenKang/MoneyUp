@@ -72,10 +72,12 @@ struct BudgetSuggestionReviewView: View {
                     )
                 }
             } else {
-                Section("intelligence.budget.review_detail") {
+                Section {
                     ForEach(suggestions, id: \.categoryID) { suggestion in
                         suggestionRow(suggestion)
                     }
+                } header: {
+                    Text("intelligence.budget.review_detail")
                 } footer: {
                     Text("intelligence.budget.apply_detail")
                 }
