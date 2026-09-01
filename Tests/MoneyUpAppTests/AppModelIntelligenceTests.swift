@@ -62,7 +62,8 @@ final class AppModelIntelligenceTests: XCTestCase {
         let model = fixture.model(profile: profile, currentDate: { currentDate })
 
         model.refreshIntelligence()
-        try await waitForIntelligenceToSettle(model)
+        await model.waitForCurrentIntelligenceRefresh()
+        XCTAssertFalse(model.isIntelligenceRefreshing)
         XCTAssertTrue(model.intelligenceFindings.contains {
             $0.kind == .recurrence
         })
@@ -295,17 +296,6 @@ final class AppModelIntelligenceTests: XCTestCase {
         await fixture.store.close()
     }
 
-    @MainActor
-    private func waitForIntelligenceToSettle(
-        _ model: AppModel
-    ) async throws {
-        let clock = ContinuousClock()
-        let deadline = clock.now.advanced(by: .seconds(5))
-        while model.isIntelligenceRefreshing, clock.now < deadline {
-            try await Task.sleep(for: .milliseconds(10))
-        }
-        XCTAssertFalse(model.isIntelligenceRefreshing)
-    }
 }
 
 private struct IntelligenceAppFixture {

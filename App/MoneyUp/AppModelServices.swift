@@ -144,6 +144,7 @@ protocol IntelligenceServicing: AnyObject {
         asOfDay: Int,
         enabled: Bool
     )
+    func waitForCurrentRefresh() async
     func cancelPendingWork()
 }
 
@@ -208,6 +209,11 @@ final class IntelligenceService: IntelligenceServicing {
         isRefreshing = false
         isUnavailable = false
         resultsAreLimited = false
+    }
+
+    func waitForCurrentRefresh() async {
+        guard let refreshTask else { return }
+        await refreshTask.value
     }
 
     private func beginRefresh() {
