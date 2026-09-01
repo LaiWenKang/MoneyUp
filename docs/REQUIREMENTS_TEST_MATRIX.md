@@ -247,9 +247,9 @@ repeat exact-SHA CI before promotion.
 
 - Requirements traced: **97 / 97**.
 - Requirements with at least one named automated or manual case: **97 / 97**.
-- Declared automated tests in source after this review: **614** (296 core, 54
-  persistence, 11 intelligence, and 253 app-target declarations; XCTest methods
-  plus Swift Testing `@Test` declarations). Of those declarations, **564** are XCTest
+- Declared automated tests in source after this review: **615** (296 core, 54
+  persistence, 11 intelligence, and 254 app-target declarations; XCTest methods
+  plus Swift Testing `@Test` declarations). Of those declarations, **565** are XCTest
   functions named `test...`; the remaining 50 are Swift Testing `@Test`
   declarations in MoneyUpCore.
 - Tests executed against this exact candidate in this environment: **0**;
