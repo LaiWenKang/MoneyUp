@@ -5,6 +5,7 @@ private struct CalendarLoadRequest: Hashable {
     let day: Date
     let generation: Int
     let computationGeneration: Int
+    let logicalBookRevision: UInt64
 }
 
 private struct CalendarDateComputation {
@@ -46,7 +47,8 @@ struct CalendarView: View {
         CalendarLoadRequest(
             day: selectedDayInterval?.start ?? selectedDate,
             generation: reloadGeneration,
-            computationGeneration: computationGeneration
+            computationGeneration: computationGeneration,
+            logicalBookRevision: model.logicalBookRevision
         )
     }
 
@@ -63,45 +65,95 @@ struct CalendarView: View {
         .environment(\.timeZone, model.reportingCalendar.timeZone)
     }
 
-    private var calendarList: some View {
+    private var calendarListContent: some View {
+        List {
+            calendarDatePicker
+            calendarMoneyFlowSection
+            actualsSection
+            calendarScheduledSection
+        }
+    }
+
+    private var calendarDatePicker: some View {
+        DatePicker(
+            "calendar.select_date",
+            selection: $selectedDate,
+            displayedComponents: .date
+        )
+        .datePickerStyle(.graphical)
+    }
+
+    private var calendarMoneyFlowSection: some View {
         let dateComputation = currentDateComputation
         let isDateComputationLoading = isLoadingActuals || dateComputation == nil
-        return List {
-            DatePicker(
-                "calendar.select_date",
-                selection: $selectedDate,
-                displayedComponents: .date
-            )
-            .datePickerStyle(.graphical)
+        return moneyFlowSection(
+            dateComputation: dateComputation,
+            isLoading: isDateComputationLoading
+        )
+    }
 
-            moneyFlowSection(
-                dateComputation: dateComputation,
-                isLoading: isDateComputationLoading
-            )
+    private var calendarScheduledSection: some View {
+        scheduledSection(dateComputation: currentDateComputation)
+    }
 
-            actualsSection
-
-            scheduledSection(dateComputation: dateComputation)
-
-            if let errorMessage {
-                Section { Text(errorMessage).foregroundStyle(.red) }
-            }
-        }
+    private var styledCalendarList: some View {
+        calendarListContent
         .scrollContentBackground(.hidden)
         .background(Color.moneyUpBackground)
         .navigationTitle("tab.calendar")
+    }
+
+    private var loadingCalendarList: some View {
+        styledCalendarList
         .task(id: loadRequest) {
             await loadSelectedActuals()
         }
+    }
+
+    private var scheduleObservedCalendarList: some View {
+        loadingCalendarList
         .onChange(of: model.scheduledTransactions) { _, _ in
-            computationGeneration &+= 1
+            invalidateDateComputation()
         }
+    }
+
+    private var accountObservedCalendarList: some View {
+        scheduleObservedCalendarList
         .onChange(of: model.accounts) { _, _ in
-            computationGeneration &+= 1
+            invalidateDateComputation()
         }
+    }
+
+    private var profileObservedCalendarList: some View {
+        accountObservedCalendarList
         .onChange(of: model.profile) { _, _ in
-            computationGeneration &+= 1
+            invalidateDateComputation()
         }
+    }
+
+    private var calendarList: some View {
+        profileObservedCalendarList
+        .onChange(of: model.logicalBookRevision) { _, _ in
+            resetForLogicalBookRevision()
+        }
+    }
+
+    private func invalidateDateComputation() {
+        computationGeneration &+= 1
+    }
+
+    private func resetForLogicalBookRevision() {
+        selectedEntries = []
+        dateComputation = nil
+        scheduleMatchCandidates = [:]
+        scheduleMatchesLoading = []
+        entryPendingDeletion = nil
+        schedulePendingDeletion = nil
+        scheduleBeingEdited = nil
+        isAddingSchedule = false
+        errorMessage = nil
+        actualsUnavailable = false
+        isLoadingActuals = true
     }
 
     private var calendarListWithToolbar: some View {
@@ -170,6 +222,7 @@ struct CalendarView: View {
             } message: { _ in
                 Text("schedule.delete_detail")
             }
+            .moneyUpOperationErrorAlert(message: $errorMessage)
     }
 
     @ViewBuilder
@@ -450,7 +503,9 @@ struct CalendarView: View {
             Label("schedule.match", systemImage: "link")
         }
     }
+}
 
+extension CalendarView {
     private func loadSelectedActuals() async {
         let request = loadRequest
         isLoadingActuals = true
@@ -459,6 +514,7 @@ struct CalendarView: View {
         dateComputation = nil
         guard let interval = dayInterval(for: request.day) else {
             guard loadRequest == request else { return }
+            guard !model.isBookReplacementInProgress else { return }
             dateComputation = computeSelectedDate(
                 request: request,
                 entries: [],
@@ -472,6 +528,7 @@ struct CalendarView: View {
             let loaded = try await model.calendarEntries(in: interval)
             try Task.checkCancellation()
             guard loadRequest == request else { return }
+            guard !model.isBookReplacementInProgress else { return }
             let computed = computeSelectedDate(
                 request: request,
                 entries: loaded,
@@ -484,6 +541,7 @@ struct CalendarView: View {
             return
         } catch {
             guard loadRequest == request else { return }
+            guard !model.isBookReplacementInProgress else { return }
             selectedEntries = []
             dateComputation = computeSelectedDate(
                 request: request,
@@ -575,14 +633,23 @@ struct CalendarView: View {
     }
 
     private func loadMatches(for item: ScheduledTransaction) async {
+        let expectedRevision = model.logicalBookRevision
         guard scheduleMatchesLoading.insert(item.id).inserted else { return }
-        defer { scheduleMatchesLoading.remove(item.id) }
+        defer {
+            if expectedRevision == model.logicalBookRevision {
+                scheduleMatchesLoading.remove(item.id)
+            }
+        }
         do {
-            scheduleMatchCandidates[item.id] = try await model.matchingEntries(
+            let matches = try await model.matchingEntries(
                 for: item,
                 calendar: model.reportingCalendar
             )
+            guard expectedRevision == model.logicalBookRevision,
+                  !model.isBookReplacementInProgress else { return }
+            scheduleMatchCandidates[item.id] = matches
         } catch {
+            guard expectedRevision == model.logicalBookRevision else { return }
             errorMessage = safeUserMessage(for: error, context: .read)
         }
     }
@@ -683,9 +750,6 @@ private struct AddScheduleSheet: View {
                     }
                 }
 
-                if let errorMessage {
-                    Section { Text(errorMessage).foregroundStyle(.red) }
-                }
             }
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
@@ -707,6 +771,7 @@ private struct AddScheduleSheet: View {
             }
             .onAppear { selectDefaults() }
             .onChange(of: kind) { _, _ in selectDefaults() }
+            .moneyUpOperationErrorAlert(message: $errorMessage)
         }
         .environment(\.calendar, model.reportingCalendar)
         .environment(\.timeZone, model.reportingCalendar.timeZone)

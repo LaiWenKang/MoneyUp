@@ -44,23 +44,21 @@ private struct JournalEntryReplacementWritePlan: Sendable {
 
 extension AppModel {
     func receiptAttachment(id: UUID) async throws -> ReceiptAttachment {
+        let read = try beginLogicalBookRead()
         guard let expectedMetadata = receiptAttachmentMetadata.first(
             where: { $0.id == id }
         ) else {
             throw AppModelError.missingRecord
         }
-        let generation = storeGeneration
-        let attachmentStore = try requireStore()
+        let attachmentStore = read.store
         guard let attachment = try await attachmentStore.receiptAttachment(id: id)
         else { throw AppModelError.missingRecord }
-        guard isCurrentStoreGeneration(generation) else {
-            throw AppModelError.locked
-        }
+        try requireLogicalBookRead(read.token)
         guard receiptAttachmentMetadata.contains(expectedMetadata),
               ReceiptAttachmentMetadata(attachment) == expectedMetadata else {
             throw AppModelError.invalidBook
         }
-        return attachment
+        return try await finishLogicalBookRead(attachment, token: read.token)
     }
 
     func deleteReceiptAttachment(id: UUID) async throws {

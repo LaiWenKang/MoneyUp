@@ -9,6 +9,14 @@ extension QuickLogEntryView {
     @ViewBuilder
     var body: some View {
         let historicalFXConversionResult = historicalFXConversion
+        let amountValidationMessage = monetaryInputError(
+            text: amountText,
+            currency: selectedAccountCurrency
+        )
+        let destinationAmountValidationMessage = monetaryInputError(
+            text: destinationAmountText,
+            currency: selectedDestinationCurrency
+        )
         NavigationStack {
             Form {
                 if dynamicTypeSize.isAccessibilitySize {
@@ -30,6 +38,7 @@ extension QuickLogEntryView {
                         .moneyAmountKeyboard(currency: selectedAccountCurrency)
                         .font(.title2.monospacedDigit())
                         .focused($focusedField, equals: .amount)
+                        .moneyUpFieldValidation(amountValidationMessage)
                         if let currency = selectedAccountCurrency {
                             Text(currency.value)
                                 .font(.subheadline.weight(.semibold))
@@ -38,14 +47,8 @@ extension QuickLogEntryView {
                                 .accessibilityValue(Text(currency.value))
                         }
                     }
-                    if let message = monetaryInputError(
-                        text: amountText,
-                        currency: selectedAccountCurrency
-                    ) {
-                        Label(message, systemImage: "exclamationmark.circle.fill")
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                            .accessibilityAddTraits(.isStaticText)
+                    if let amountValidationMessage {
+                        MoneyUpFieldError(message: amountValidationMessage)
                     }
 
                     Picker(
@@ -89,19 +92,14 @@ extension QuickLogEntryView {
                                 )
                                 .moneyAmountKeyboard(currency: selectedDestinationCurrency)
                                 .focused($focusedField, equals: .destinationAmount)
+                                .moneyUpFieldValidation(destinationAmountValidationMessage)
                                 if let currency = selectedDestinationCurrency {
                                     Text(currency.value)
                                         .foregroundStyle(.secondary)
                                 }
                             }
-                            if let message = monetaryInputError(
-                                text: destinationAmountText,
-                                currency: selectedDestinationCurrency
-                            ) {
-                                Label(message, systemImage: "exclamationmark.circle.fill")
-                                    .font(.caption)
-                                    .foregroundStyle(.red)
-                                    .accessibilityAddTraits(.isStaticText)
+                            if let destinationAmountValidationMessage {
+                                MoneyUpFieldError(message: destinationAmountValidationMessage)
                             }
 
                             if case let .available(.some(conversion)) =
@@ -346,6 +344,14 @@ extension QuickLogEntryView {
                     focusedField = .amount
                 }
             }
+            .onChange(of: model.logicalBookRevision) { _, _ in
+                reloadDraftForLogicalBookReplacement()
+            }
+            .onChange(of: model.state) { _, state in
+                guard state != .ready else { return }
+                cancelReceiptProcessing()
+                invalidateCaptureSuggestions(restoresDefaults: false)
+            }
             .onChange(of: kind) { _, newKind in
                 if preservesCaptureSuggestionsAcrossNextKindChange {
                     preservesCaptureSuggestionsAcrossNextKindChange = false
@@ -417,7 +423,11 @@ extension QuickLogEntryView {
                 retainReceiptAttachment = false
                 receiptRetentionMessage = nil
                 receiptScanTask = Task { @MainActor in
-                    await scanReceipt(item, generation: generation)
+                    await scanReceipt(
+                        item,
+                        generation: generation,
+                        logicalBookRevision: model.logicalBookRevision
+                    )
                 }
             }
             .onChange(of: accountID) { _, _ in
@@ -568,14 +578,7 @@ extension QuickLogEntryView {
         } message: {
             Text(duplicateReviewMessage)
         }
-        .alert("error.could_not_save", isPresented: Binding(
-            get: { errorMessage != nil },
-            set: { if !$0 { errorMessage = nil } }
-        )) {
-            Button("action.okay", role: .cancel) { errorMessage = nil }
-        } message: {
-            Text(errorMessage ?? "")
-        }
+        .moneyUpOperationErrorAlert(message: $errorMessage)
         .environment(\.calendar, model.reportingCalendar)
         .environment(\.timeZone, model.reportingCalendar.timeZone)
     }

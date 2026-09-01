@@ -18,6 +18,7 @@ struct LockedQuickCaptureView: View {
     @State private var isSaving = false
     @State private var errorMessage: String?
     @State private var didSave = false
+    @State private var showsFieldErrors = false
     @FocusState private var focusedField: FocusedField?
 
     private var hasValidAmount: Bool {
@@ -39,6 +40,27 @@ struct LockedQuickCaptureView: View {
         !amountText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             || !payee.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             || !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var amountValidationMessage: String? {
+        guard (showsFieldErrors || !amountText.isEmpty), !hasValidAmount else {
+            return nil
+        }
+        return AppLocalization.string("error.invalid_amount")
+    }
+
+    private var payeeValidationMessage: String? {
+        guard payee.utf8.count > LockedCapture.maximumPayeeByteCount else {
+            return nil
+        }
+        return AppLocalization.string("capture.input_too_long")
+    }
+
+    private var noteValidationMessage: String? {
+        guard note.utf8.count > LockedCapture.maximumNoteByteCount else {
+            return nil
+        }
+        return AppLocalization.string("capture.input_too_long")
     }
 
     private var pendingCaptureCountText: String {
@@ -113,27 +135,16 @@ struct LockedQuickCaptureView: View {
                             .font(.system(.largeTitle, design: .rounded, weight: .bold))
                             .monospacedDigit()
                             .focused($focusedField, equals: .amount)
-                        if !amountText.isEmpty && !canSave
-                            && payee.utf8.count <= LockedCapture.maximumPayeeByteCount
-                            && note.utf8.count <= LockedCapture.maximumNoteByteCount {
-                            Label(
-                                "error.invalid_amount",
-                                systemImage: "exclamationmark.circle.fill"
-                            )
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                            .accessibilityAddTraits(.isStaticText)
+                            .moneyUpFieldValidation(amountValidationMessage)
+                        if let amountValidationMessage {
+                            MoneyUpFieldError(message: amountValidationMessage)
                         }
 
                         TextField("transaction.title_or_merchant", text: $payee)
                             .focused($focusedField, equals: .payee)
-                        if payee.utf8.count > LockedCapture.maximumPayeeByteCount {
-                            Label(
-                                "capture.input_too_long",
-                                systemImage: "exclamationmark.circle.fill"
-                            )
-                            .font(.caption)
-                            .foregroundStyle(.red)
+                            .moneyUpFieldValidation(payeeValidationMessage)
+                        if let payeeValidationMessage {
+                            MoneyUpFieldError(message: payeeValidationMessage)
                         }
                         TextField(
                             "transaction.description_or_notes",
@@ -142,13 +153,9 @@ struct LockedQuickCaptureView: View {
                         )
                         .lineLimit(2...4)
                         .focused($focusedField, equals: .note)
-                        if note.utf8.count > LockedCapture.maximumNoteByteCount {
-                            Label(
-                                "capture.input_too_long",
-                                systemImage: "exclamationmark.circle.fill"
-                            )
-                            .font(.caption)
-                            .foregroundStyle(.red)
+                        .moneyUpFieldValidation(noteValidationMessage)
+                        if let noteValidationMessage {
+                            MoneyUpFieldError(message: noteValidationMessage)
                         }
                     } header: {
                         Text(mode.kind.title)
@@ -213,14 +220,7 @@ struct LockedQuickCaptureView: View {
             focusedField = .amount
         }
         .sensoryFeedback(.success, trigger: didSave)
-        .alert("error.could_not_save", isPresented: Binding(
-            get: { errorMessage != nil },
-            set: { if !$0 { errorMessage = nil } }
-        )) {
-            Button("action.okay", role: .cancel) { errorMessage = nil }
-        } message: {
-            Text(errorMessage ?? "")
-        }
+        .moneyUpOperationErrorAlert(message: $errorMessage)
     }
 
     private func save() async {
@@ -254,13 +254,12 @@ struct LockedQuickCaptureView: View {
         // not appended again. Promotion into authenticated Log remains the
         // model's existing exactly-once path and still requires normal review.
         if hasUnsavedInput, !didSave {
+            showsFieldErrors = true
             guard hasValidAmount else {
-                errorMessage = AppLocalization.string("error.invalid_amount")
                 focusedField = .amount
                 return
             }
             guard detailsFitCapture else {
-                errorMessage = AppLocalization.string("capture.input_too_long")
                 focusedField = payee.utf8.count > LockedCapture.maximumPayeeByteCount
                     ? .payee : .note
                 return

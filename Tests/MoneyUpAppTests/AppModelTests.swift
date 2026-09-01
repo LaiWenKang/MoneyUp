@@ -3,6 +3,7 @@ import Foundation
 import MoneyUpCore
 import MoneyUpPersistence
 import Observation
+import Security
 import XCTest
 
 final class AppModelTests: XCTestCase {
@@ -11,6 +12,15 @@ final class AppModelTests: XCTestCase {
     ) -> Int? {
         guard case let .available(percentUsed, _) = snapshot else { return nil }
         return percentUsed
+    }
+
+    private func artifactSnapshot(at urls: [URL]) -> [String: Data] {
+        let artifacts: [(String, Data)] = urls.compactMap { url in
+            guard FileManager.default.fileExists(atPath: url.path),
+                  let data = try? Data(contentsOf: url) else { return nil }
+            return (url.lastPathComponent, data)
+        }
+        return Dictionary(uniqueKeysWithValues: artifacts)
     }
 
     func testDatabaseKeyCreationRequiresEveryCiphertextArtifactToBeAbsent() {
@@ -42,6 +52,1107 @@ final class AppModelTests: XCTestCase {
                 "/private/test/moneyup.sqlite-shm"
             ]
         )
+    }
+
+    func testRecoveryKeyPasscodePreflightIsNonMutatingAndRecheckedAtInstall() {
+        var evaluationCount = 0
+        XCTAssertThrowsError(
+            try DatabaseKeyStore.requireDevicePasscodeForRecovery(
+                canEvaluateOwnerAuthentication: {
+                    evaluationCount += 1
+                    return false
+                }
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? DatabaseKeyStoreError,
+                .devicePasscodeRequired
+            )
+        }
+        XCTAssertEqual(evaluationCount, 1)
+
+        var installEvaluationCount = 0
+        XCTAssertThrowsError(
+            try DatabaseKeyStore.storeRecoveryKey(
+                Data(repeating: 0xA5, count: 32),
+                canEvaluateOwnerAuthentication: {
+                    installEvaluationCount += 1
+                    return false
+                }
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? DatabaseKeyStoreError,
+                .devicePasscodeRequired
+            )
+        }
+        XCTAssertEqual(installEvaluationCount, 1)
+        XCTAssertEqual(
+            DatabaseKeyStore.mappedError(for: errSecAuthFailed),
+            .authenticationCancelled
+        )
+    }
+
+    func testKeyCliffFilesystemTransactionRestoresExactOriginalArtifacts()
+        throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("MoneyUpKeyCliff-\(UUID().uuidString)")
+        let databaseURL = directory.appendingPathComponent("moneyup.sqlite")
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let originalMain = Data("original-main".utf8)
+        let originalWAL = Data("original-wal".utf8)
+        try originalMain.write(to: databaseURL)
+        try originalWAL.write(
+            to: URL(fileURLWithPath: databaseURL.path + "-wal")
+        )
+        try KeyCliffRecoveryTransaction.prepareCandidateDirectory(
+            for: databaseURL
+        )
+        let candidateURL = KeyCliffRecoveryTransaction
+            .candidateDatabaseURL(for: databaseURL)
+        let candidateMain = Data("candidate-main".utf8)
+        let candidateSHM = Data("candidate-shm".utf8)
+        try candidateMain.write(to: candidateURL)
+        try candidateSHM.write(
+            to: URL(fileURLWithPath: candidateURL.path + "-shm")
+        )
+        try KeyCliffRecoveryTransaction.publishManifest(for: databaseURL)
+
+        try KeyCliffRecoveryTransaction.installCandidate(for: databaseURL)
+        // Repeating installation models a process interruption after the
+        // candidate main file moved but before startup acknowledged success.
+        try KeyCliffRecoveryTransaction.installCandidate(for: databaseURL)
+        XCTAssertEqual(try Data(contentsOf: databaseURL), candidateMain)
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: databaseURL.path + "-wal")
+        )
+        XCTAssertEqual(
+            try Data(contentsOf: URL(fileURLWithPath: databaseURL.path + "-shm")),
+            candidateSHM
+        )
+
+        try KeyCliffRecoveryTransaction.beginRollback(for: databaseURL)
+        try KeyCliffRecoveryTransaction.restoreOriginal(for: databaseURL)
+        XCTAssertEqual(try Data(contentsOf: databaseURL), originalMain)
+        XCTAssertEqual(
+            try Data(contentsOf: URL(fileURLWithPath: databaseURL.path + "-wal")),
+            originalWAL
+        )
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: databaseURL.path + "-shm")
+        )
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: KeyCliffRecoveryTransaction
+                    .directoryURL(for: databaseURL).path
+            )
+        )
+    }
+
+    func testKeyCliffCompletionMarkerFailurePreservesRollbackAuthority()
+        throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("MoneyUpKeyCliffMarker-\(UUID().uuidString)")
+        let databaseURL = directory.appendingPathComponent("moneyup.sqlite")
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let originalMain = Data("original-main".utf8)
+        let originalWAL = Data("original-wal".utf8)
+        try originalMain.write(to: databaseURL)
+        try originalWAL.write(
+            to: URL(fileURLWithPath: databaseURL.path + "-wal")
+        )
+        try KeyCliffRecoveryTransaction.prepareCandidateDirectory(
+            for: databaseURL
+        )
+        let candidateURL = KeyCliffRecoveryTransaction
+            .candidateDatabaseURL(for: databaseURL)
+        let candidateMain = Data("candidate-main".utf8)
+        try candidateMain.write(to: candidateURL)
+        try KeyCliffRecoveryTransaction.publishManifest(for: databaseURL)
+        try KeyCliffRecoveryTransaction.installCandidate(for: databaseURL)
+
+        var cleanupWasCalled = false
+        XCTAssertThrowsError(try KeyCliffRecoveryTransaction.complete(
+            for: databaseURL,
+            removeCommitMarker: { marker in
+                XCTAssertTrue(
+                    FileManager.default.fileExists(atPath: marker.path)
+                )
+                throw CocoaError(.fileWriteNoPermission)
+            },
+            cleanupMarkerlessDirectory: { _ in cleanupWasCalled = true }
+        ))
+
+        XCTAssertFalse(cleanupWasCalled)
+        XCTAssertTrue(
+            KeyCliffRecoveryTransaction.hasPendingManifest(for: databaseURL)
+        )
+        XCTAssertEqual(
+            try KeyCliffRecoveryTransaction.phase(for: databaseURL),
+            .installing
+        )
+        XCTAssertEqual(try Data(contentsOf: databaseURL), candidateMain)
+
+        try KeyCliffRecoveryTransaction.beginRollback(for: databaseURL)
+        try KeyCliffRecoveryTransaction.restoreOriginal(for: databaseURL)
+        XCTAssertEqual(try Data(contentsOf: databaseURL), originalMain)
+        XCTAssertEqual(
+            try Data(contentsOf: URL(fileURLWithPath: databaseURL.path + "-wal")),
+            originalWAL
+        )
+        XCTAssertFalse(
+            KeyCliffRecoveryTransaction.hasPendingManifest(for: databaseURL)
+        )
+    }
+
+    func testMarkerlessCompletionResidueScavengesAfterEveryPartialCleanup()
+        throws {
+        for removedChildCount in 0...3 {
+            let directory = FileManager.default.temporaryDirectory
+                .appendingPathComponent(
+                    "MoneyUpKeyCliffCleanup-\(UUID().uuidString)"
+                )
+            let databaseURL = directory.appendingPathComponent("moneyup.sqlite")
+            try FileManager.default.createDirectory(
+                at: directory,
+                withIntermediateDirectories: true
+            )
+            defer { try? FileManager.default.removeItem(at: directory) }
+
+            try Data("original-main".utf8).write(to: databaseURL)
+            for suffix in ["-wal", "-shm"] {
+                try Data("original\(suffix)".utf8).write(
+                    to: URL(fileURLWithPath: databaseURL.path + suffix)
+                )
+            }
+            try KeyCliffRecoveryTransaction.prepareCandidateDirectory(
+                for: databaseURL
+            )
+            let candidateURL = KeyCliffRecoveryTransaction
+                .candidateDatabaseURL(for: databaseURL)
+            let candidateMain = Data("candidate-main".utf8)
+            try candidateMain.write(to: candidateURL)
+            try KeyCliffRecoveryTransaction.publishManifest(for: databaseURL)
+            try KeyCliffRecoveryTransaction.installCandidate(for: databaseURL)
+
+            let transactionDirectory = KeyCliffRecoveryTransaction
+                .directoryURL(for: databaseURL)
+            try KeyCliffRecoveryTransaction.complete(
+                for: databaseURL,
+                cleanupMarkerlessDirectory: { ownedDirectory in
+                    XCTAssertFalse(
+                        KeyCliffRecoveryTransaction.hasPendingManifest(
+                            for: databaseURL
+                        )
+                    )
+                    let children = try FileManager.default
+                        .contentsOfDirectory(
+                            at: ownedDirectory,
+                            includingPropertiesForKeys: nil
+                        )
+                        .sorted { $0.lastPathComponent < $1.lastPathComponent }
+                    XCTAssertEqual(children.count, 3)
+                    for child in children.prefix(removedChildCount) {
+                        try FileManager.default.removeItem(at: child)
+                    }
+                    throw CocoaError(.fileWriteUnknown)
+                }
+            )
+
+            XCTAssertFalse(
+                KeyCliffRecoveryTransaction.hasPendingManifest(for: databaseURL)
+            )
+            XCTAssertTrue(
+                FileManager.default.fileExists(atPath: transactionDirectory.path)
+            )
+            XCTAssertEqual(try Data(contentsOf: databaseURL), candidateMain)
+            XCTAssertFalse(
+                FileManager.default.fileExists(atPath: databaseURL.path + "-wal")
+            )
+            XCTAssertFalse(
+                FileManager.default.fileExists(atPath: databaseURL.path + "-shm")
+            )
+
+            KeyCliffRecoveryTransaction.scavengeUncommittedCandidate(
+                for: databaseURL
+            )
+            XCTAssertFalse(
+                FileManager.default.fileExists(atPath: transactionDirectory.path)
+            )
+            XCTAssertEqual(try Data(contentsOf: databaseURL), candidateMain)
+        }
+    }
+
+    @MainActor
+    func testStartupPublishesCandidateAfterPersistentMarkerlessCleanupFailure()
+        async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let oldProfile = UserProfile(baseCurrency: fixture.sgd)
+        try await fixture.seed(
+            profile: oldProfile,
+            accounts: [fixture.wallet, fixture.food]
+        )
+        await fixture.store.close()
+
+        let recoveryKey = Data(repeating: 0x5c, count: 32)
+        try KeyCliffRecoveryTransaction.prepareCandidateDirectory(
+            for: fixture.databaseURL
+        )
+        let candidateStore = try EncryptedRecordStore(
+            databaseURL: KeyCliffRecoveryTransaction.candidateDatabaseURL(
+                for: fixture.databaseURL
+            ),
+            key: recoveryKey
+        )
+        let candidateProfile = UserProfile(
+            baseCurrency: fixture.sgd,
+            allowLockedQuickCapture: false
+        )
+        try await candidateStore.write([
+            try RecordWrite(
+                candidateProfile,
+                id: UserProfile.primaryRecordID,
+                in: .profile
+            ),
+            try RecordWrite(
+                fixture.wallet,
+                id: fixture.wallet.id.uuidString,
+                in: .accounts
+            ),
+            try RecordWrite(
+                fixture.food,
+                id: fixture.food.id.uuidString,
+                in: .accounts
+            ),
+        ])
+        await candidateStore.close()
+        try KeyCliffRecoveryTransaction.publishManifest(
+            for: fixture.databaseURL
+        )
+        try KeyCliffRecoveryTransaction.installCandidate(
+            for: fixture.databaseURL
+        )
+
+        let transactionDirectory = KeyCliffRecoveryTransaction.directoryURL(
+            for: fixture.databaseURL
+        )
+        try KeyCliffRecoveryTransaction.complete(
+            for: fixture.databaseURL,
+            cleanupMarkerlessDirectory: { ownedDirectory in
+                let children = try FileManager.default.contentsOfDirectory(
+                    at: ownedDirectory,
+                    includingPropertiesForKeys: nil
+                )
+                if let first = children.first {
+                    try FileManager.default.removeItem(at: first)
+                }
+                throw CocoaError(.fileWriteUnknown)
+            }
+        )
+        XCTAssertFalse(
+            KeyCliffRecoveryTransaction.hasPendingManifest(
+                for: fixture.databaseURL
+            )
+        )
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: transactionDirectory.path)
+        )
+
+        let keyEvents = EraseEventRecorder()
+        let model = fixture.model(
+            profile: oldProfile,
+            openDatabaseStore: { url in
+                OpenedDatabaseStore(
+                    store: try EncryptedRecordStore(
+                        databaseURL: url,
+                        key: recoveryKey
+                    ),
+                    unlockToFirstUsefulContentInterval: nil
+                )
+            },
+            keyCliffRecoveryKeyAccess: KeyCliffRecoveryKeyAccess(
+                generate: { throw DatabaseKeyStoreError.invalidStoredKey },
+                store: { _ in throw DatabaseKeyStoreError.invalidStoredKey },
+                delete: { keyEvents.record("unexpected-key-delete") }
+            ),
+            keyCliffRecoveryResidueScavenger: { databaseURL in
+                KeyCliffRecoveryTransaction.scavengeUncommittedCandidate(
+                    for: databaseURL,
+                    cleanupMarkerlessDirectory: { _ in
+                        throw CocoaError(.fileWriteNoPermission)
+                    }
+                )
+            }
+        )
+
+        await model.start()
+
+        XCTAssertEqual(model.state, .ready)
+        XCTAssertEqual(model.profile, candidateProfile)
+        XCTAssertNil(model.startupFailureKind)
+        XCTAssertTrue(keyEvents.snapshot().isEmpty)
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: transactionDirectory.path)
+        )
+        await model.store?.close()
+    }
+
+    @MainActor
+    func testMissingDeviceKeyPublishesDedicatedRecoveryState() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let inbox = InMemoryLockedCaptureStore(captures: [
+            LockedCapture(kind: .expense, amountText: "12.50")
+        ])
+        let model = fixture.model(
+            lockedCaptureStore: inbox,
+            openDatabaseStore: { _ in
+                throw DatabaseKeyStoreError.missingDeviceBoundKey
+            }
+        )
+
+        await model.start()
+
+        guard case .failed = model.state else {
+            return XCTFail("Missing device key must fail into recovery")
+        }
+        XCTAssertEqual(
+            model.startupFailureKind,
+            .missingDeviceBoundKey
+        )
+        XCTAssertNil(model.store)
+        XCTAssertTrue(model.accounts.isEmpty)
+        XCTAssertTrue(model.entries.isEmpty)
+        XCTAssertEqual(model.pendingLockedCaptureCount, 1)
+
+        XCTAssertFalse(model.handleDeepLink(
+            try XCTUnwrap(
+                URL(string: "moneyup://quick-log/scan-receipt")
+            )
+        ))
+        XCTAssertNil(model.requestedQuickLogMode)
+    }
+
+    @MainActor
+    func testPendingKeyCliffReplacementDeniesLockedCapture() throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        try KeyCliffRecoveryTransaction.prepareCandidateDirectory(
+            for: fixture.databaseURL
+        )
+        defer {
+            try? KeyCliffRecoveryTransaction.removeAll(
+                for: fixture.databaseURL
+            )
+        }
+        try Data("encrypted-candidate".utf8).write(
+            to: KeyCliffRecoveryTransaction.candidateDatabaseURL(
+                for: fixture.databaseURL
+            )
+        )
+        try KeyCliffRecoveryTransaction.publishManifest(
+            for: fixture.databaseURL
+        )
+        let model = fixture.model()
+        model.state = .locked
+        model.requestedQuickLogMode = .expense
+
+        XCTAssertFalse(model.lockedCaptureIsAllowedByLifecycleAndEraseIntent)
+        XCTAssertFalse(model.canPresentLockedQuickCapture)
+    }
+
+    @MainActor
+    func testStartupFinishesInterruptedKeyCliffRollbackBeforeDatabaseOpen()
+        async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        await fixture.store.close()
+        let original = try Data(contentsOf: fixture.databaseURL)
+        try KeyCliffRecoveryTransaction.prepareCandidateDirectory(
+            for: fixture.databaseURL
+        )
+        try Data("replacement-ciphertext".utf8).write(
+            to: KeyCliffRecoveryTransaction.candidateDatabaseURL(
+                for: fixture.databaseURL
+            )
+        )
+        try KeyCliffRecoveryTransaction.publishManifest(
+            for: fixture.databaseURL
+        )
+        try KeyCliffRecoveryTransaction.installCandidate(
+            for: fixture.databaseURL
+        )
+        try KeyCliffRecoveryTransaction.beginRollback(
+            for: fixture.databaseURL
+        )
+        let events = EraseEventRecorder()
+        let model = fixture.model(
+            openDatabaseStore: { _ in
+                events.record("unexpected-open")
+                throw PersistenceError.databaseClosed
+            },
+            keyCliffRecoveryKeyAccess: KeyCliffRecoveryKeyAccess(
+                generate: { throw DatabaseKeyStoreError.invalidStoredKey },
+                store: { _ in throw DatabaseKeyStoreError.invalidStoredKey },
+                delete: { events.record("replacement-key-deleted") }
+            )
+        )
+
+        await model.start()
+
+        XCTAssertEqual(events.snapshot(), ["replacement-key-deleted"])
+        XCTAssertEqual(try Data(contentsOf: fixture.databaseURL), original)
+        XCTAssertEqual(
+            model.startupFailureKind,
+            .missingDeviceBoundKey
+        )
+        XCTAssertFalse(
+            KeyCliffRecoveryTransaction.hasPendingManifest(
+                for: fixture.databaseURL
+            )
+        )
+    }
+
+    @MainActor
+    func testStartupRollsBackInstallMarkerPublishedBeforeReplacementKey()
+        async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        await fixture.store.close()
+        let original = try Data(contentsOf: fixture.databaseURL)
+        try KeyCliffRecoveryTransaction.prepareCandidateDirectory(
+            for: fixture.databaseURL
+        )
+        try Data("replacement-ciphertext".utf8).write(
+            to: KeyCliffRecoveryTransaction.candidateDatabaseURL(
+                for: fixture.databaseURL
+            )
+        )
+        try KeyCliffRecoveryTransaction.publishManifest(
+            for: fixture.databaseURL
+        )
+        let events = EraseEventRecorder()
+        let liveDatabaseURL = fixture.databaseURL
+        let model = fixture.model(
+            openDatabaseStore: { _ in
+                throw DatabaseKeyStoreError.missingDeviceBoundKey
+            },
+            keyCliffRecoveryKeyAccess: KeyCliffRecoveryKeyAccess(
+                generate: { throw DatabaseKeyStoreError.invalidStoredKey },
+                store: { _ in throw DatabaseKeyStoreError.invalidStoredKey },
+                delete: {
+                    let phase = try KeyCliffRecoveryTransaction.phase(
+                        for: liveDatabaseURL
+                    )
+                    events.record("delete-\(phase.rawValue)")
+                }
+            )
+        )
+
+        await model.start()
+
+        XCTAssertEqual(events.snapshot(), ["delete-rollingBack"])
+        XCTAssertEqual(try Data(contentsOf: fixture.databaseURL), original)
+        XCTAssertEqual(model.startupFailureKind, .missingDeviceBoundKey)
+        XCTAssertFalse(
+            KeyCliffRecoveryTransaction.hasPendingManifest(
+                for: fixture.databaseURL
+            )
+        )
+    }
+
+    @MainActor
+    func testStartupResumesKeyCliffCandidateBeforePublishingBook()
+        async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let oldProfile = UserProfile(
+            baseCurrency: fixture.sgd,
+            allowLockedQuickCapture: true,
+            showsBudgetStatusWidget: true,
+            reportingTimeZoneIdentifier: "GMT"
+        )
+        try await fixture.seed(
+            profile: oldProfile,
+            accounts: [fixture.wallet, fixture.food]
+        )
+        await fixture.store.close()
+        let recoveryKey = Data(repeating: 0x7d, count: 32)
+        try KeyCliffRecoveryTransaction.prepareCandidateDirectory(
+            for: fixture.databaseURL
+        )
+        let candidateStore = try EncryptedRecordStore(
+            databaseURL: KeyCliffRecoveryTransaction.candidateDatabaseURL(
+                for: fixture.databaseURL
+            ),
+            key: recoveryKey
+        )
+        let candidateProfile = UserProfile(
+            baseCurrency: fixture.sgd,
+            allowLockedQuickCapture: false,
+            showsBudgetStatusWidget: true,
+            intelligenceEnabled: true,
+            reportingTimeZoneIdentifier: "GMT"
+        )
+        try await candidateStore.write([
+            try RecordWrite(
+                candidateProfile,
+                id: UserProfile.primaryRecordID,
+                in: .profile
+            ),
+            try RecordWrite(
+                fixture.wallet,
+                id: fixture.wallet.id.uuidString,
+                in: .accounts
+            ),
+            try RecordWrite(
+                fixture.food,
+                id: fixture.food.id.uuidString,
+                in: .accounts
+            ),
+        ])
+        await candidateStore.close()
+        try KeyCliffRecoveryTransaction.publishManifest(
+            for: fixture.databaseURL
+        )
+
+        let publicationGate = AsyncGate()
+        let inbox = InMemoryLockedCaptureStore(
+            captures: [],
+            observingManifestFor: fixture.databaseURL
+        )
+        let suiteName = "MoneyUpKeyCliffResume-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let widgetStore = BudgetWidgetSnapshotStore(defaults: defaults)
+        let services = AppModelServices()
+        let priorCapturePreference = UserDefaults.standard.object(
+            forKey: AppModel.lockedQuickCapturePreferenceKey
+        )
+        defer {
+            if let priorCapturePreference {
+                UserDefaults.standard.set(
+                    priorCapturePreference,
+                    forKey: AppModel.lockedQuickCapturePreferenceKey
+                )
+            } else {
+                UserDefaults.standard.removeObject(
+                    forKey: AppModel.lockedQuickCapturePreferenceKey
+                )
+            }
+        }
+        UserDefaults.standard.set(
+            true,
+            forKey: AppModel.lockedQuickCapturePreferenceKey
+        )
+        widgetStore.publish(
+            enabled: true,
+            percentUsed: 87,
+            periodToken: "2026-08",
+            validUntil: .distantFuture
+        )
+        let model = fixture.model(
+            profile: oldProfile,
+            lockedCaptureStore: inbox,
+            lifecycleHooks: hooks(
+                pausing: .afterKeyCliffValidationBeforeCompletion,
+                at: publicationGate
+            ),
+            openDatabaseStore: { url in
+                OpenedDatabaseStore(
+                    store: try EncryptedRecordStore(
+                        databaseURL: url,
+                        key: recoveryKey
+                    ),
+                    unlockToFirstUsefulContentInterval: nil
+                )
+            },
+            budgetWidgetSnapshotStore: widgetStore,
+            services: services
+        )
+
+        let startTask = Task { @MainActor in await model.start() }
+        let reachedBoundary = await publicationGate.waitUntilReached(
+            timeout: .seconds(5)
+        )
+        XCTAssertTrue(reachedBoundary)
+        XCTAssertNotEqual(model.state, .ready)
+        XCTAssertEqual(model.startupFailureKind, .missingDeviceBoundKey)
+        XCTAssertTrue(
+            KeyCliffRecoveryTransaction.hasPendingManifest(
+                for: fixture.databaseURL
+            )
+        )
+        XCTAssertTrue(UserDefaults.standard.bool(
+            forKey: AppModel.lockedQuickCapturePreferenceKey
+        ))
+        XCTAssertEqual(widgetStore.read(), .disabled)
+        let inboxReadsBeforeCompletion = await inbox.allReadCount()
+        let manifestStatesBeforeCompletion = await inbox
+            .manifestStatesAtAllReads()
+        XCTAssertEqual(inboxReadsBeforeCompletion, 1)
+        XCTAssertEqual(manifestStatesBeforeCompletion, [true])
+        XCTAssertEqual(services.intelligence.refreshInvocationCount, 0)
+        XCTAssertNil(model.quickLogDraft)
+        XCTAssertNil(model.requestedQuickLogMode)
+
+        await publicationGate.release()
+        await startTask.value
+
+        XCTAssertEqual(model.state, .ready)
+        XCTAssertNil(model.startupFailureKind)
+        XCTAssertEqual(model.profile, candidateProfile)
+        XCTAssertFalse(
+            KeyCliffRecoveryTransaction.hasPendingManifest(
+                for: fixture.databaseURL
+            )
+        )
+        XCTAssertFalse(UserDefaults.standard.bool(
+            forKey: AppModel.lockedQuickCapturePreferenceKey
+        ))
+        let inboxReadsAfterCompletion = await inbox.allReadCount()
+        let manifestStates = await inbox.manifestStatesAtAllReads()
+        XCTAssertEqual(inboxReadsAfterCompletion, 2)
+        XCTAssertEqual(manifestStates, [true, false])
+        XCTAssertNil(model.quickLogDraft)
+        XCTAssertNil(model.requestedQuickLogMode)
+        guard case .needsBudget = widgetStore.read() else {
+            return XCTFail("Candidate widget must publish only after complete")
+        }
+        XCTAssertEqual(services.intelligence.refreshInvocationCount, 1)
+        await model.store?.close()
+    }
+
+    @MainActor
+    func testStartupRejectsCaptureBeforeCompletingKeyCliffCandidate()
+        async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let oldProfile = UserProfile(
+            baseCurrency: fixture.sgd,
+            allowLockedQuickCapture: true,
+            showsBudgetStatusWidget: true,
+            reportingTimeZoneIdentifier: "GMT"
+        )
+        try await fixture.seed(
+            profile: oldProfile,
+            accounts: [fixture.wallet, fixture.food]
+        )
+        await fixture.store.close()
+        let original = try Data(contentsOf: fixture.databaseURL)
+        let recoveryKey = Data(repeating: 0x6d, count: 32)
+        try KeyCliffRecoveryTransaction.prepareCandidateDirectory(
+            for: fixture.databaseURL
+        )
+        let candidateStore = try EncryptedRecordStore(
+            databaseURL: KeyCliffRecoveryTransaction.candidateDatabaseURL(
+                for: fixture.databaseURL
+            ),
+            key: recoveryKey
+        )
+        let candidateProfile = UserProfile(
+            baseCurrency: fixture.sgd,
+            allowLockedQuickCapture: false,
+            showsBudgetStatusWidget: true,
+            reportingTimeZoneIdentifier: "GMT"
+        )
+        try await candidateStore.write([
+            try RecordWrite(
+                candidateProfile,
+                id: UserProfile.primaryRecordID,
+                in: .profile
+            ),
+            try RecordWrite(
+                fixture.wallet,
+                id: fixture.wallet.id.uuidString,
+                in: .accounts
+            ),
+            try RecordWrite(
+                fixture.food,
+                id: fixture.food.id.uuidString,
+                in: .accounts
+            ),
+        ])
+        await candidateStore.close()
+        try KeyCliffRecoveryTransaction.publishManifest(
+            for: fixture.databaseURL
+        )
+
+        let capture = LockedCapture(kind: .expense, amountText: "19.25")
+        let inbox = InMemoryLockedCaptureStore(
+            captures: [capture],
+            observingManifestFor: fixture.databaseURL
+        )
+        let events = EraseEventRecorder()
+        let suiteName = "MoneyUpKeyCliffResumeCapture-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let widgetStore = BudgetWidgetSnapshotStore(defaults: defaults)
+        let services = AppModelServices()
+        let priorCapturePreference = UserDefaults.standard.object(
+            forKey: AppModel.lockedQuickCapturePreferenceKey
+        )
+        defer {
+            if let priorCapturePreference {
+                UserDefaults.standard.set(
+                    priorCapturePreference,
+                    forKey: AppModel.lockedQuickCapturePreferenceKey
+                )
+            } else {
+                UserDefaults.standard.removeObject(
+                    forKey: AppModel.lockedQuickCapturePreferenceKey
+                )
+            }
+        }
+        UserDefaults.standard.set(
+            true,
+            forKey: AppModel.lockedQuickCapturePreferenceKey
+        )
+        widgetStore.publish(
+            enabled: true,
+            percentUsed: 87,
+            periodToken: "2026-08",
+            validUntil: .distantFuture
+        )
+        let liveDatabaseURL = fixture.databaseURL
+        let model = fixture.model(
+            profile: oldProfile,
+            lockedCaptureStore: inbox,
+            openDatabaseStore: { url in
+                OpenedDatabaseStore(
+                    store: try EncryptedRecordStore(
+                        databaseURL: url,
+                        key: recoveryKey
+                    ),
+                    unlockToFirstUsefulContentInterval: nil
+                )
+            },
+            keyCliffRecoveryKeyAccess: KeyCliffRecoveryKeyAccess(
+                generate: { throw DatabaseKeyStoreError.invalidStoredKey },
+                store: { _ in throw DatabaseKeyStoreError.invalidStoredKey },
+                delete: {
+                    let phase = try KeyCliffRecoveryTransaction.phase(
+                        for: liveDatabaseURL
+                    )
+                    events.record("deleted-\(phase.rawValue)")
+                }
+            ),
+            budgetWidgetSnapshotStore: widgetStore,
+            services: services
+        )
+
+        await model.start()
+
+        XCTAssertEqual(model.startupFailureKind, .missingDeviceBoundKey)
+        guard case .failed = model.state else {
+            return XCTFail("Pending capture must return to key-cliff recovery")
+        }
+        XCTAssertNil(model.store)
+        XCTAssertNil(model.profile)
+        XCTAssertNil(model.quickLogDraft)
+        XCTAssertNil(model.requestedQuickLogMode)
+        XCTAssertEqual(try Data(contentsOf: fixture.databaseURL), original)
+        XCTAssertEqual(events.snapshot(), ["deleted-rollingBack"])
+        XCTAssertFalse(
+            KeyCliffRecoveryTransaction.hasPendingManifest(
+                for: fixture.databaseURL
+            )
+        )
+        XCTAssertTrue(UserDefaults.standard.bool(
+            forKey: AppModel.lockedQuickCapturePreferenceKey
+        ))
+        XCTAssertEqual(widgetStore.read(), .disabled)
+        XCTAssertEqual(services.intelligence.refreshInvocationCount, 0)
+        let manifestStates = await inbox.manifestStatesAtAllReads()
+        XCTAssertEqual(manifestStates, [true, false])
+        XCTAssertEqual(model.pendingLockedCaptureCount, 1)
+    }
+
+    @MainActor
+    func testOrdinaryStartupDoesNotSwallowUnexpectedCaptureFailure()
+        async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let profile = UserProfile(baseCurrency: fixture.sgd)
+        try await fixture.seed(
+            profile: profile,
+            accounts: [fixture.wallet, fixture.food]
+        )
+        let inbox = InMemoryLockedCaptureStore(
+            captures: [],
+            failingAllRead: 1
+        )
+        let model = fixture.model(
+            profile: profile,
+            lockedCaptureStore: inbox,
+            openDatabaseStore: { url in
+                OpenedDatabaseStore(
+                    store: try EncryptedRecordStore(
+                        databaseURL: url,
+                        key: Data(repeating: 0x2a, count: 32)
+                    ),
+                    unlockToFirstUsefulContentInterval: nil
+                )
+            }
+        )
+
+        await model.start()
+
+        guard case .failed = model.state else {
+            return XCTFail("Ordinary startup must preserve unexpected failure")
+        }
+        XCTAssertNil(model.startupFailureKind)
+        XCTAssertFalse(model.recoveryIssues.contains(
+            "locked_captures/promotion-unavailable"
+        ))
+        let inboxReads = await inbox.allReadCount()
+        XCTAssertEqual(inboxReads, 1)
+        await model.store?.close()
+    }
+
+    @MainActor
+    func testKeyCliffPendingCaptureRequiresExplicitDiscardBeforeRestore()
+        async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let inbox = InMemoryLockedCaptureStore(captures: [
+            LockedCapture(kind: .expense, amountText: "18.40")
+        ])
+        let model = fixture.model(lockedCaptureStore: inbox)
+        await fixture.store.close()
+        let original = try Data(contentsOf: fixture.databaseURL)
+        model.store = nil
+        model.storeGeneration &+= 1
+        model.clearDecodedState()
+        model.startupFailureKind = .missingDeviceBoundKey
+        model.state = .failed(
+            AppLocalization.string("error.missing_device_bound_key")
+        )
+        let invalidArchiveURL = fixture.directoryURL.appendingPathComponent(
+            "capture-boundary.moneyup"
+        )
+        try Data("not-an-archive".utf8).write(to: invalidArchiveURL)
+
+        do {
+            _ = try await model.prepareEncryptedRestorePreview(
+                from: invalidArchiveURL,
+                password: "capture-boundary"
+            )
+            XCTFail("Pending old-book input must block archive parsing")
+        } catch AppModelError.pendingLockedCaptures {
+            // The archive was not parsed and no recovery key was generated.
+        }
+        XCTAssertEqual(model.pendingLockedCaptureCount, 1)
+        XCTAssertEqual(try Data(contentsOf: fixture.databaseURL), original)
+
+        try await model.discardPendingLockedCapturesForKeyCliffRecovery()
+
+        let remainingCaptures = try await inbox.all()
+        XCTAssertEqual(model.pendingLockedCaptureCount, 0)
+        XCTAssertTrue(remainingCaptures.isEmpty)
+        XCTAssertEqual(try Data(contentsOf: fixture.databaseURL), original)
+    }
+
+    @MainActor
+    func testKeyCliffPasscodePreflightStopsBeforeCandidateOrLiveMutation()
+        async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let archiveURL = fixture.directoryURL.appendingPathComponent(
+            "passcode-preflight.moneyup"
+        )
+        try await fixture.seed(
+            profile: UserProfile(baseCurrency: fixture.sgd),
+            accounts: [fixture.wallet, fixture.food]
+        )
+        try await fixture.store.exportPortableArchive(
+            to: archiveURL,
+            password: "passcode-preflight"
+        )
+        await fixture.store.close()
+        let original = try Data(contentsOf: fixture.databaseURL)
+        let events = EraseEventRecorder()
+        let model = fixture.model(
+            openDatabaseStoreWithKey: { _, _ in
+                events.record("candidate-opened")
+                throw PersistenceError.databaseClosed
+            },
+            keyCliffRecoveryKeyAccess: KeyCliffRecoveryKeyAccess(
+                generate: {
+                    events.record("passcode-preflight")
+                    throw DatabaseKeyStoreError.devicePasscodeRequired
+                },
+                store: { _ in events.record("key-stored") },
+                delete: { events.record("key-deleted") }
+            )
+        )
+        model.store = nil
+        model.storeGeneration &+= 1
+        model.clearDecodedState()
+        model.startupFailureKind = .missingDeviceBoundKey
+        model.state = .failed(
+            AppLocalization.string("error.missing_device_bound_key")
+        )
+        let ticket = try await model.prepareEncryptedRestorePreview(
+            from: archiveURL,
+            password: "passcode-preflight"
+        )
+
+        do {
+            try await model.restoreEncryptedBackup(
+                ticket,
+                password: "passcode-preflight"
+            )
+            XCTFail("A missing passcode must stop before candidate validation")
+        } catch DatabaseKeyStoreError.devicePasscodeRequired {
+            // Expected.
+        }
+
+        XCTAssertEqual(events.snapshot(), ["passcode-preflight"])
+        XCTAssertEqual(try Data(contentsOf: fixture.databaseURL), original)
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: KeyCliffRecoveryTransaction
+                    .directoryURL(for: fixture.databaseURL).path
+            )
+        )
+        XCTAssertFalse(
+            KeyCliffRecoveryTransaction.hasPendingManifest(
+                for: fixture.databaseURL
+            )
+        )
+        XCTAssertEqual(model.startupFailureKind, .missingDeviceBoundKey)
+    }
+
+    @MainActor
+    func testKeyCliffPasscodeRemovalAtFinalKeyInstallRollsBackCandidate()
+        async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let profile = UserProfile(baseCurrency: fixture.sgd)
+        try await fixture.seed(
+            profile: profile,
+            accounts: [fixture.wallet, fixture.usAccount, fixture.food]
+        )
+        let archiveURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "MoneyUp-KeyCliff-Passcode-Race-\(UUID().uuidString).moneyup"
+            )
+        defer { try? FileManager.default.removeItem(at: archiveURL) }
+        let events = EraseEventRecorder()
+        let model = fixture.model(
+            profile: profile,
+            keyCliffRecoveryKeyAccess: KeyCliffRecoveryKeyAccess(
+                generate: {
+                    events.record("generated")
+                    return Data(repeating: 0x7f, count: 32)
+                },
+                store: { _ in
+                    events.record("passcode-removed-before-store")
+                    throw DatabaseKeyStoreError.devicePasscodeRequired
+                },
+                delete: { events.record("key-deleted") }
+            )
+        )
+        try await model.encryptedBackup(
+            to: archiveURL,
+            password: "passcode-race-password"
+        )
+        await fixture.store.close()
+        let artifactURLs = DatabaseKeyCreationPolicy.artifactURLs(
+            for: fixture.databaseURL
+        )
+        let originalArtifacts = artifactSnapshot(at: artifactURLs)
+        model.store = nil
+        model.storeGeneration &+= 1
+        model.clearDecodedState()
+        model.startupFailureKind = .missingDeviceBoundKey
+        model.state = .failed(
+            AppLocalization.string("error.missing_device_bound_key")
+        )
+        let ticket = try await model.prepareEncryptedRestorePreview(
+            from: archiveURL,
+            password: "passcode-race-password"
+        )
+
+        do {
+            try await model.restoreEncryptedBackup(
+                ticket,
+                password: "passcode-race-password"
+            )
+            XCTFail("Final key install must recheck passcode availability")
+        } catch DatabaseKeyStoreError.devicePasscodeRequired {
+            // Expected: the durable candidate marker was rolled back.
+        }
+
+        XCTAssertEqual(
+            events.snapshot(),
+            ["generated", "passcode-removed-before-store"]
+        )
+        XCTAssertEqual(
+            artifactSnapshot(at: artifactURLs),
+            originalArtifacts
+        )
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: KeyCliffRecoveryTransaction
+                    .directoryURL(for: fixture.databaseURL).path
+            )
+        )
+        XCTAssertEqual(model.startupFailureKind, .missingDeviceBoundKey)
+        guard case .failed = model.state else {
+            return XCTFail("Passcode race must return to key-cliff recovery")
+        }
+    }
+
+    @MainActor
+    func testKeyCliffCaptureDiscardReclassifiesNewlyMissingInboxKey()
+        async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let inbox = ScriptedLockedCaptureStore(captures: [
+            LockedCapture(kind: .expense, amountText: "8.20")
+        ])
+        let model = fixture.model(lockedCaptureStore: inbox)
+        await fixture.store.close()
+        model.store = nil
+        model.storeGeneration &+= 1
+        model.clearDecodedState()
+        model.startupFailureKind = .missingDeviceBoundKey
+        model.state = .failed(
+            AppLocalization.string("error.missing_device_bound_key")
+        )
+        model.pendingLockedCaptureCount = 1
+        await inbox.setReadError(.keyMissing)
+
+        do {
+            try await model.discardPendingLockedCapturesForKeyCliffRecovery()
+            XCTFail("Fresh missing-key evidence must require orphan discard")
+        } catch LockedCaptureStoreError.keyMissing {
+            // The first confirmation did not silently reinterpret the state.
+        }
+        XCTAssertTrue(model.lockedCaptureInboxIsUnrecoverable)
+        XCTAssertEqual(model.pendingLockedCaptureCount, 0)
+        let eraseCountBeforeConfirmation = await inbox.eraseCount()
+        XCTAssertEqual(eraseCountBeforeConfirmation, 0)
+
+        try await model.discardUnavailableLockedCaptures()
+
+        XCTAssertEqual(model.pendingLockedCaptureCount, 0)
+        XCTAssertFalse(model.lockedCaptureInboxIsUnrecoverable)
+        let eraseCountAfterConfirmation = await inbox.eraseCount()
+        XCTAssertEqual(eraseCountAfterConfirmation, 1)
     }
 
     func testBoundedFileReaderConsumesToEOFAndStopsOneBytePastTheLimit() throws {
@@ -888,6 +1999,561 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testKeyCliffRestoreRejectsThenCancelsWithoutMutationAndCommitsValidArchive()
+        async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let profile = UserProfile(
+            baseCurrency: fixture.sgd,
+            allowLockedQuickCapture: false,
+            showsBudgetStatusWidget: true,
+            reportingTimeZoneIdentifier: "GMT"
+        )
+        try await fixture.seed(
+            profile: profile,
+            accounts: [fixture.wallet, fixture.usAccount, fixture.food]
+        )
+        let archiveURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "MoneyUp-KeyCliff-\(UUID().uuidString).moneyup"
+            )
+        defer { try? FileManager.default.removeItem(at: archiveURL) }
+        let keyEvents = EraseEventRecorder()
+        let recoveryKey = Data(repeating: 0x5d, count: 32)
+        let inbox = InMemoryLockedCaptureStore(captures: [])
+        let publicationGate = AsyncGate()
+        let suiteName = "MoneyUpKeyCliffBoundary-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let widgetStore = BudgetWidgetSnapshotStore(defaults: defaults)
+        let priorCapturePreference = UserDefaults.standard.object(
+            forKey: AppModel.lockedQuickCapturePreferenceKey
+        )
+        defer {
+            if let priorCapturePreference {
+                UserDefaults.standard.set(
+                    priorCapturePreference,
+                    forKey: AppModel.lockedQuickCapturePreferenceKey
+                )
+            } else {
+                UserDefaults.standard.removeObject(
+                    forKey: AppModel.lockedQuickCapturePreferenceKey
+                )
+            }
+        }
+        UserDefaults.standard.set(
+            true,
+            forKey: AppModel.lockedQuickCapturePreferenceKey
+        )
+        let model = fixture.model(
+            profile: profile,
+            lockedCaptureStore: inbox,
+            lifecycleHooks: hooks(
+                pausing: .afterKeyCliffValidationBeforeCompletion,
+                at: publicationGate
+            ),
+            keyCliffRecoveryKeyAccess: KeyCliffRecoveryKeyAccess(
+                generate: {
+                    keyEvents.record("generated")
+                    return recoveryKey
+                },
+                store: { _ in keyEvents.record("stored") },
+                delete: { keyEvents.record("deleted") }
+            ),
+            budgetWidgetSnapshotStore: widgetStore
+        )
+        widgetStore.publish(
+            enabled: true,
+            percentUsed: 73,
+            periodToken: "2026-08",
+            validUntil: .distantFuture
+        )
+        try await model.encryptedBackup(
+            to: archiveURL,
+            password: "key-cliff-password"
+        )
+        await fixture.store.close()
+        let artifactURLs = DatabaseKeyCreationPolicy.artifactURLs(
+            for: fixture.databaseURL
+        )
+        let originalArtifacts = artifactSnapshot(at: artifactURLs)
+        model.store = nil
+        model.storeGeneration &+= 1
+        model.clearDecodedState()
+        model.startupFailureKind = .missingDeviceBoundKey
+        model.state = .failed(
+            AppLocalization.string("error.missing_device_bound_key")
+        )
+
+        do {
+            try await model.restoreEncryptedBackup(
+                from: archiveURL,
+                password: "key-cliff-password"
+            )
+            XCTFail("Key-cliff recovery must require a reviewed ticket")
+        } catch AppModelError.restorePreviewRequired {}
+        XCTAssertTrue(keyEvents.snapshot().isEmpty)
+
+        do {
+            _ = try await model.prepareEncryptedRestorePreview(
+                from: archiveURL,
+                password: "wrong-key-cliff-password"
+            )
+            XCTFail("Wrong password must reject before Keychain mutation")
+        } catch PortableArchiveError.authenticationFailed {
+            // Expected: only an isolated, disposable candidate was touched.
+        }
+        XCTAssertTrue(keyEvents.snapshot().isEmpty)
+        XCTAssertEqual(
+            artifactSnapshot(at: artifactURLs),
+            originalArtifacts
+        )
+        XCTAssertFalse(
+            KeyCliffRecoveryTransaction.hasPendingManifest(
+                for: fixture.databaseURL
+            )
+        )
+
+        let ticket = try await model.prepareEncryptedRestorePreview(
+            from: archiveURL,
+            password: "key-cliff-password"
+        )
+        XCTAssertEqual(ticket.preview.current, .inaccessible)
+        let validatedArchive = try Data(contentsOf: archiveURL)
+        var changedArchive = validatedArchive
+        changedArchive[changedArchive.index(before: changedArchive.endIndex)] ^= 0xa5
+        try changedArchive.write(to: archiveURL, options: .atomic)
+        do {
+            try await model.restoreEncryptedBackup(
+                ticket,
+                password: "key-cliff-password"
+            )
+            XCTFail("Changed key-cliff bytes must fail before key generation")
+        } catch AppModelError.restorePreviewChanged {}
+        XCTAssertTrue(keyEvents.snapshot().isEmpty)
+        XCTAssertFalse(
+            KeyCliffRecoveryTransaction.hasPendingManifest(
+                for: fixture.databaseURL
+            )
+        )
+        try validatedArchive.write(to: archiveURL, options: .atomic)
+        let validTicket = try await model.prepareEncryptedRestorePreview(
+            from: archiveURL,
+            password: "key-cliff-password"
+        )
+        let cancelled = Task { @MainActor in
+            withUnsafeCurrentTask { $0?.cancel() }
+            try await model.restoreEncryptedBackup(
+                validTicket,
+                password: "key-cliff-password"
+            )
+        }
+        do {
+            try await cancelled.value
+            XCTFail("Cancellation must stop before candidate/key commit")
+        } catch is CancellationError {
+            // Expected.
+        }
+        XCTAssertTrue(keyEvents.snapshot().isEmpty)
+        XCTAssertEqual(
+            artifactSnapshot(at: artifactURLs),
+            originalArtifacts
+        )
+
+        let inboxReadsBeforeCommit = await inbox.allReadCount()
+        let restoreTask = Task { @MainActor in
+            try await model.restoreEncryptedBackup(
+                validTicket,
+                password: "key-cliff-password"
+            )
+        }
+        let reachedPublicationBoundary = await publicationGate
+            .waitUntilReached(timeout: .seconds(5))
+        XCTAssertTrue(reachedPublicationBoundary)
+        XCTAssertTrue(
+            KeyCliffRecoveryTransaction.hasPendingManifest(
+                for: fixture.databaseURL
+            )
+        )
+        guard case .failed = model.state else {
+            return XCTFail("Candidate must remain unpublished behind marker")
+        }
+        XCTAssertEqual(model.startupFailureKind, .missingDeviceBoundKey)
+        XCTAssertEqual(widgetStore.read(), .disabled)
+        let inboxReadsAtBoundary = await inbox.allReadCount()
+        XCTAssertEqual(inboxReadsAtBoundary, inboxReadsBeforeCommit + 2)
+        XCTAssertTrue(UserDefaults.standard.bool(
+            forKey: AppModel.lockedQuickCapturePreferenceKey
+        ))
+
+        await publicationGate.release()
+        try await restoreTask.value
+
+        XCTAssertEqual(model.state, .ready)
+        XCTAssertNil(model.startupFailureKind)
+        XCTAssertEqual(model.profile, profile)
+        XCTAssertFalse(UserDefaults.standard.bool(
+            forKey: AppModel.lockedQuickCapturePreferenceKey
+        ))
+        let inboxReadsAfterPublication = await inbox.allReadCount()
+        XCTAssertEqual(inboxReadsAfterPublication, inboxReadsBeforeCommit + 3)
+        guard case .needsBudget = widgetStore.read() else {
+            return XCTFail("Authoritative opt-in book must refresh the widget")
+        }
+        XCTAssertEqual(
+            keyEvents.snapshot(),
+            ["generated", "stored"]
+        )
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: KeyCliffRecoveryTransaction
+                    .directoryURL(for: fixture.databaseURL).path
+            )
+        )
+        await model.store?.close()
+    }
+
+    @MainActor
+    func testKeyCliffFinalInboxRecheckRollsBackLateCaptureBeforePublication()
+        async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let profile = UserProfile(
+            baseCurrency: fixture.sgd,
+            allowLockedQuickCapture: false,
+            showsBudgetStatusWidget: true,
+            reportingTimeZoneIdentifier: "GMT"
+        )
+        try await fixture.seed(
+            profile: profile,
+            accounts: [fixture.wallet, fixture.food]
+        )
+        let archiveURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "MoneyUp-KeyCliff-Late-Capture-\(UUID().uuidString).moneyup"
+            )
+        defer { try? FileManager.default.removeItem(at: archiveURL) }
+        let lateCapture = LockedCapture(kind: .expense, amountText: "31.40")
+        let inbox = InMemoryLockedCaptureStore(
+            captures: [],
+            observingManifestFor: fixture.databaseURL,
+            capturesBeginningAtAllRead: 4,
+            delayedCaptures: [lateCapture]
+        )
+        let events = EraseEventRecorder()
+        let recoveryKey = Data(repeating: 0x3e, count: 32)
+        let liveDatabaseURL = fixture.databaseURL
+        let suiteName = "MoneyUpKeyCliffLateCapture-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let widgetStore = BudgetWidgetSnapshotStore(defaults: defaults)
+        let services = AppModelServices()
+        let priorCapturePreference = UserDefaults.standard.object(
+            forKey: AppModel.lockedQuickCapturePreferenceKey
+        )
+        defer {
+            if let priorCapturePreference {
+                UserDefaults.standard.set(
+                    priorCapturePreference,
+                    forKey: AppModel.lockedQuickCapturePreferenceKey
+                )
+            } else {
+                UserDefaults.standard.removeObject(
+                    forKey: AppModel.lockedQuickCapturePreferenceKey
+                )
+            }
+        }
+        UserDefaults.standard.set(
+            true,
+            forKey: AppModel.lockedQuickCapturePreferenceKey
+        )
+        let model = fixture.model(
+            profile: profile,
+            lockedCaptureStore: inbox,
+            keyCliffRecoveryKeyAccess: KeyCliffRecoveryKeyAccess(
+                generate: {
+                    events.record("generated")
+                    return recoveryKey
+                },
+                store: { _ in events.record("stored") },
+                delete: {
+                    let phase = try KeyCliffRecoveryTransaction.phase(
+                        for: liveDatabaseURL
+                    )
+                    events.record("deleted-\(phase.rawValue)")
+                }
+            ),
+            budgetWidgetSnapshotStore: widgetStore,
+            services: services
+        )
+        widgetStore.publish(
+            enabled: true,
+            percentUsed: 62,
+            periodToken: "2026-08",
+            validUntil: .distantFuture
+        )
+        try await model.encryptedBackup(
+            to: archiveURL,
+            password: "late-capture-boundary"
+        )
+        await fixture.store.close()
+        let artifactURLs = DatabaseKeyCreationPolicy.artifactURLs(
+            for: fixture.databaseURL
+        )
+        let originalArtifacts = artifactSnapshot(at: artifactURLs)
+        model.store = nil
+        model.storeGeneration &+= 1
+        model.clearDecodedState()
+        model.startupFailureKind = .missingDeviceBoundKey
+        model.state = .failed(
+            AppLocalization.string("error.missing_device_bound_key")
+        )
+        let ticket = try await model.prepareEncryptedRestorePreview(
+            from: archiveURL,
+            password: "late-capture-boundary"
+        )
+
+        do {
+            try await model.restoreEncryptedBackup(
+                ticket,
+                password: "late-capture-boundary"
+            )
+            XCTFail("A capture arriving before marker completion must roll back")
+        } catch AppModelError.pendingLockedCaptures {}
+
+        XCTAssertEqual(
+            events.snapshot(),
+            ["generated", "stored", "deleted-rollingBack"]
+        )
+        XCTAssertEqual(
+            artifactSnapshot(at: artifactURLs),
+            originalArtifacts
+        )
+        XCTAssertEqual(model.startupFailureKind, .missingDeviceBoundKey)
+        guard case .failed = model.state else {
+            return XCTFail("Late capture must return to key-cliff recovery")
+        }
+        XCTAssertNil(model.store)
+        XCTAssertNil(model.profile)
+        XCTAssertEqual(model.pendingLockedCaptureCount, 1)
+        let retainedCaptureIDs = await inbox.captureIDs()
+        let manifestStates = await inbox.manifestStatesAtAllReads()
+        XCTAssertEqual(retainedCaptureIDs, [lateCapture.id])
+        XCTAssertEqual(manifestStates, [false, false, false, true])
+        XCTAssertEqual(widgetStore.read(), .disabled)
+        XCTAssertEqual(services.intelligence.refreshInvocationCount, 0)
+        XCTAssertTrue(UserDefaults.standard.bool(
+            forKey: AppModel.lockedQuickCapturePreferenceKey
+        ))
+        XCTAssertFalse(
+            KeyCliffRecoveryTransaction.hasPendingManifest(
+                for: fixture.databaseURL
+            )
+        )
+        XCTAssertTrue(FileManager.default.fileExists(atPath: archiveURL.path))
+    }
+
+    @MainActor
+    func testKeyCliffRestoreRollsBackCiphertextAndNewKeyWhenReopenFails()
+        async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let profile = UserProfile(baseCurrency: fixture.sgd)
+        try await fixture.seed(
+            profile: profile,
+            accounts: [fixture.wallet, fixture.usAccount, fixture.food]
+        )
+        let archiveURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "MoneyUp-KeyCliff-Rollback-\(UUID().uuidString).moneyup"
+            )
+        defer { try? FileManager.default.removeItem(at: archiveURL) }
+        let keyEvents = EraseEventRecorder()
+        let recoveryKey = Data(repeating: 0x6e, count: 32)
+        let liveDatabaseURL = fixture.databaseURL
+        let suiteName = "MoneyUpKeyCliffWidget-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let widgetStore = BudgetWidgetSnapshotStore(defaults: defaults)
+        let model = fixture.model(
+            profile: profile,
+            openDatabaseStoreWithKey: { url, key in
+                if url.standardizedFileURL == liveDatabaseURL.standardizedFileURL {
+                    throw PersistenceError.databaseClosed
+                }
+                return try await DatabaseStoreOpeners.productionWithKey(url, key)
+            },
+            keyCliffRecoveryKeyAccess: KeyCliffRecoveryKeyAccess(
+                generate: {
+                    keyEvents.record("generated")
+                    return recoveryKey
+                },
+                store: { _ in keyEvents.record("stored") },
+                delete: {
+                    let phase = try KeyCliffRecoveryTransaction.phase(
+                        for: liveDatabaseURL
+                    )
+                    keyEvents.record("deleted-\(phase.rawValue)")
+                }
+            ),
+            budgetWidgetSnapshotStore: widgetStore
+        )
+        widgetStore.publish(
+            enabled: true,
+            percentUsed: 42,
+            periodToken: "2026-08",
+            validUntil: .distantFuture
+        )
+        try await model.encryptedBackup(
+            to: archiveURL,
+            password: "key-cliff-rollback"
+        )
+        await fixture.store.close()
+        let artifactURLs = DatabaseKeyCreationPolicy.artifactURLs(
+            for: fixture.databaseURL
+        )
+        let originalArtifacts = artifactSnapshot(at: artifactURLs)
+        model.store = nil
+        model.storeGeneration &+= 1
+        model.clearDecodedState()
+        model.startupFailureKind = .missingDeviceBoundKey
+        model.state = .failed(
+            AppLocalization.string("error.missing_device_bound_key")
+        )
+        let ticket = try await model.prepareEncryptedRestorePreview(
+            from: archiveURL,
+            password: "key-cliff-rollback"
+        )
+
+        do {
+            try await model.restoreEncryptedBackup(
+                ticket,
+                password: "key-cliff-rollback"
+            )
+            XCTFail("A failed replacement reopen must roll back")
+        } catch PersistenceError.databaseClosed {
+            // The original error remains visible after complete rollback.
+        }
+
+        XCTAssertEqual(
+            keyEvents.snapshot(),
+            ["generated", "stored", "deleted-rollingBack"]
+        )
+        XCTAssertEqual(
+            artifactSnapshot(at: artifactURLs),
+            originalArtifacts
+        )
+        XCTAssertEqual(
+            model.startupFailureKind,
+            .missingDeviceBoundKey
+        )
+        guard case .failed = model.state else {
+            return XCTFail("Rollback must return to key-cliff recovery")
+        }
+        XCTAssertEqual(widgetStore.read(), .disabled)
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: KeyCliffRecoveryTransaction
+                    .directoryURL(for: fixture.databaseURL).path
+            )
+        )
+    }
+
+    @MainActor
+    func testKeyCliffPostCompletionInboxFailureKeepsAuthoritativeBookRetryable()
+        async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let profile = UserProfile(baseCurrency: fixture.sgd)
+        try await fixture.seed(
+            profile: profile,
+            accounts: [fixture.wallet, fixture.usAccount, fixture.food]
+        )
+        let archiveURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "MoneyUp-KeyCliff-PostComplete-\(UUID().uuidString).moneyup"
+            )
+        defer { try? FileManager.default.removeItem(at: archiveURL) }
+        let inbox = InMemoryLockedCaptureStore(
+            captures: [],
+            failingAllRead: 5,
+            observingManifestFor: fixture.databaseURL
+        )
+        let events = EraseEventRecorder()
+        let model = fixture.model(
+            profile: profile,
+            lockedCaptureStore: inbox,
+            keyCliffRecoveryKeyAccess: KeyCliffRecoveryKeyAccess(
+                generate: {
+                    events.record("generated")
+                    return Data(repeating: 0x4c, count: 32)
+                },
+                store: { _ in events.record("stored") },
+                delete: { events.record("deleted") }
+            )
+        )
+        // Read 1: portable-backup completeness. Read 2: preview. Reads 3-4:
+        // key-cliff precommit and final marker-boundary recheck. Read 5 fails
+        // only during post-complete publication.
+        try await model.encryptedBackup(
+            to: archiveURL,
+            password: "post-complete-inbox"
+        )
+        await fixture.store.close()
+        model.store = nil
+        model.storeGeneration &+= 1
+        model.clearDecodedState()
+        model.startupFailureKind = .missingDeviceBoundKey
+        model.state = .failed(
+            AppLocalization.string("error.missing_device_bound_key")
+        )
+        let ticket = try await model.prepareEncryptedRestorePreview(
+            from: archiveURL,
+            password: "post-complete-inbox"
+        )
+
+        try await model.restoreEncryptedBackup(
+            ticket,
+            password: "post-complete-inbox"
+        )
+
+        XCTAssertEqual(model.state, .ready)
+        XCTAssertNil(model.startupFailureKind)
+        XCTAssertEqual(events.snapshot(), ["generated", "stored"])
+        XCTAssertFalse(
+            KeyCliffRecoveryTransaction.hasPendingManifest(
+                for: fixture.databaseURL
+            )
+        )
+        let manifestWasPendingAtFailure = await inbox
+            .manifestWasPendingAtInjectedFailure()
+        XCTAssertEqual(manifestWasPendingAtFailure, false)
+        XCTAssertTrue(
+            model.recoveryIssues.contains(
+                "locked_captures/promotion-unavailable"
+            )
+        )
+        try FileManager.default.removeItem(at: archiveURL)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: archiveURL.path))
+        XCTAssertFalse(FileManager.default.fileExists(
+            atPath: model.restoreCommitArchiveURL.path
+        ))
+        XCTAssertFalse(FileManager.default.fileExists(
+            atPath: KeyCliffRecoveryTransaction.directoryURL(
+                for: fixture.databaseURL
+            ).path
+        ))
+
+        try await model.promotePendingLockedCapture()
+        XCTAssertFalse(model.recoveryIssues.contains {
+            $0.hasPrefix("locked_captures/")
+        })
+        let inboxReadCountAfterRetry = await inbox.allReadCount()
+        XCTAssertEqual(inboxReadCountAfterRetry, 6)
+        await model.store?.close()
+    }
+
+    @MainActor
     func testExpiredAutoLockKeepsPrivacyCoverWhileRestoreDrains() async throws {
         let fixture = try AppModelFixture()
         defer { fixture.removeFiles() }
@@ -1203,6 +2869,767 @@ final class AppModelTests: XCTestCase {
             )
         )
         await fixture.store.close()
+    }
+
+    @MainActor
+    func testLogicalBookRevisionRejectsPausedHistoryReadAcrossNormalRestore()
+        async throws {
+        let current = try AppModelFixture()
+        let candidate = try AppModelFixture()
+        defer { current.removeFiles(); candidate.removeFiles() }
+        let profile = UserProfile(baseCurrency: current.sgd)
+        let oldEntry = try current.expense(amount: 4)
+        let newEntry = try candidate.expense(amount: 9)
+        try await current.seed(
+            profile: profile,
+            accounts: [current.wallet, current.food],
+            entries: [oldEntry]
+        )
+        try await candidate.seed(
+            profile: UserProfile(baseCurrency: candidate.sgd),
+            accounts: [candidate.wallet, candidate.food],
+            entries: [newEntry]
+        )
+        let archive = candidate.directoryURL.appendingPathComponent("history.moneyup")
+        try await candidate.store.exportPortableArchive(
+            to: archive,
+            password: "logical-history"
+        )
+        let ticket = try await current.model(
+            profile: profile,
+            accounts: [current.wallet, current.food],
+            entries: [oldEntry]
+        ).prepareEncryptedRestorePreview(from: archive, password: "logical-history")
+        let gate = AsyncGate()
+        let model = current.model(
+            profile: profile,
+            accounts: [current.wallet, current.food],
+            entries: [oldEntry],
+            lifecycleHooks: hooks(
+                pausing: .afterBookScopedReadBeforeReturn,
+                at: gate
+            )
+        )
+        let physicalGeneration = model.storeGeneration
+        let staleRead = Task { @MainActor in
+            let outcome: Result<AppModel.HistoryPageResult, Error>
+            do { outcome = .success(try await model.historyPage(query: HistoryQuery())) }
+            catch { outcome = .failure(error) }
+            return outcome
+        }
+        await gate.waitUntilReached()
+        try await model.restoreEncryptedBackup(ticket, password: "logical-history")
+        XCTAssertEqual(model.storeGeneration, physicalGeneration)
+        await gate.release()
+        guard case let .failure(error) = await staleRead.value else {
+            return XCTFail("Old-book history escaped after same-store replacement")
+        }
+        XCTAssertTrue(error is AppModelError)
+        let fresh = try await model.historyPage(query: HistoryQuery())
+        XCTAssertEqual(fresh.entries.map(\.id), [newEntry.id])
+        await current.store.close()
+        await candidate.store.close()
+    }
+
+    @MainActor
+    func testLogicalBookRevisionRejectsPausedIntelligenceReadsAcrossNormalRestore()
+        async throws {
+        let current = try AppModelFixture()
+        let candidate = try AppModelFixture()
+        defer { current.removeFiles(); candidate.removeFiles() }
+        let oldProfile = UserProfile(baseCurrency: current.sgd, intelligenceEnabled: true)
+        let newProfile = UserProfile(baseCurrency: candidate.sgd, intelligenceEnabled: true)
+        let oldEntries = try (0..<4).map {
+            try current.expense(
+                amount: 4,
+                occurredAt: Date(timeIntervalSinceReferenceDate: 700_000_000
+                    + Double($0) * 604_800)
+            )
+        }
+        let newEntries = try (0..<4).map {
+            try candidate.expense(
+                amount: 9,
+                occurredAt: Date(timeIntervalSinceReferenceDate: 700_000_000
+                    + Double($0) * 604_800)
+            )
+        }
+        try await current.seed(
+            profile: oldProfile,
+            accounts: [current.wallet, current.food],
+            entries: oldEntries
+        )
+        try await candidate.seed(
+            profile: newProfile,
+            accounts: [candidate.wallet, candidate.food],
+            entries: newEntries
+        )
+        let archive = candidate.directoryURL.appendingPathComponent("intel.moneyup")
+        try await candidate.store.exportPortableArchive(to: archive, password: "logical-intel")
+        let ticket = try await current.model(profile: oldProfile)
+            .prepareEncryptedRestorePreview(from: archive, password: "logical-intel")
+        let gate = CountingAsyncGate(target: 2)
+        let model = current.model(
+            profile: oldProfile,
+            accounts: [current.wallet, current.food],
+            lifecycleHooks: hooks(
+                pausing: .afterBookScopedReadBeforeReturn,
+                at: gate
+            )
+        )
+        let query = CaptureSuggestionQuery(
+            kind: .expense,
+            payee: "Cafe",
+            currency: current.sgd,
+            occurredAt: oldEntries[3].occurredAt
+        )
+        async let oldSuggestion = model.indexedCaptureSuggestion(
+            for: query,
+            eligibleCategoryIDs: [current.food.id]
+        )
+        let oldHistory = Task { @MainActor in
+            try await model.intelligenceHistoryEntries(entryIDs: oldEntries.map(\.id))
+        }
+        await gate.waitUntilReached()
+        try await model.restoreEncryptedBackup(ticket, password: "logical-intel")
+        await gate.release()
+        let staleSuggestion = await oldSuggestion
+        XCTAssertNil(staleSuggestion.categorySuggestion)
+        do { _ = try await oldHistory.value; XCTFail("Old intelligence history escaped") }
+        catch { XCTAssertTrue(error is AppModelError) }
+        let fresh = try await model.intelligenceHistoryEntries(
+            entryIDs: newEntries.map(\.id)
+        )
+        XCTAssertEqual(Set(fresh.map(\.id)), Set(newEntries.map(\.id)))
+        await current.store.close()
+        await candidate.store.close()
+    }
+
+    @MainActor
+    func testLogicalBookRevisionRejectsStaleBudgetPatch() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let model = fixture.model()
+        let patch = BudgetSuggestionPatch(
+            before: [],
+            after: [],
+            logicalBookRevision: model.logicalBookRevision
+        )
+        model.logicalBookRevision &+= 1
+        do {
+            try await model.undoBudgetSuggestionPatch(patch)
+            XCTFail("An old-book patch must not mutate the replacement book")
+        } catch AppModelError.locked {
+            // The logical-book binding rejects before validating patch content.
+        }
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testRestorePreviewReportsExactReplacementSummaryAndCommitsTicket() async throws {
+        let current = try AppModelFixture()
+        let candidate = try AppModelFixture()
+        defer {
+            current.removeFiles()
+            candidate.removeFiles()
+        }
+        let currentProfile = UserProfile(
+            baseCurrency: current.sgd,
+            showsBudgetStatusWidget: true,
+            reportingTimeZoneIdentifier: "America/Los_Angeles"
+        )
+        let candidateProfile = UserProfile(
+            baseCurrency: candidate.sgd,
+            reportingTimeZoneIdentifier: "Pacific/Kiritimati"
+        )
+        let currentEntry = try current.expense(amount: 4)
+        try await current.seed(
+            profile: currentProfile,
+            accounts: [current.wallet, current.food],
+            entries: [currentEntry]
+        )
+        let oldest = Date(timeIntervalSinceReferenceDate: 10_000)
+        let newest = Date(timeIntervalSinceReferenceDate: 20_000)
+        let first = try TransactionFactory.expense(
+            amount: try Money(12, currency: candidate.sgd),
+            paidFrom: candidate.wallet.id,
+            category: candidate.food.id,
+            occurredAt: oldest
+        )
+        let second = try TransactionFactory.expense(
+            amount: try Money(8, currency: candidate.usd),
+            paidFrom: candidate.usAccount.id,
+            category: candidate.food.id,
+            occurredAt: newest
+        )
+        try await candidate.seed(
+            profile: candidateProfile,
+            accounts: [candidate.wallet, candidate.usAccount, candidate.food],
+            entries: [first, second]
+        )
+        let archiveURL = candidate.directoryURL.appendingPathComponent("candidate.moneyup")
+        try await candidate.store.exportPortableArchive(
+            to: archiveURL,
+            password: "preview-restore-password"
+        )
+        let archiveBefore = try Data(contentsOf: archiveURL)
+        let now = Date(timeIntervalSince1970: 1_776_211_200)
+        let suiteName = "MoneyUpRestoreBoundary-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let widgetStore = BudgetWidgetSnapshotStore(defaults: defaults)
+        let replacementGate = AsyncGate()
+        let services = AppModelServices()
+        let model = current.model(
+            profile: currentProfile,
+            accounts: [current.wallet, current.food],
+            entries: [currentEntry],
+            lifecycleHooks: hooks(
+                pausing: .afterRestoreCommitBeforeCandidateLoad,
+                at: replacementGate
+            ),
+            budgetWidgetSnapshotStore: widgetStore,
+            currentDate: { now },
+            services: services
+        )
+        widgetStore.publish(
+            enabled: true,
+            percentUsed: 31,
+            periodToken: "2026-04",
+            validUntil: .distantFuture
+        )
+        model.refreshIntelligence()
+        XCTAssertEqual(services.intelligence.refreshInvocationCount, 1)
+
+        let ticket = try await model.prepareEncryptedRestorePreview(
+            from: archiveURL,
+            password: "preview-restore-password"
+        )
+
+        XCTAssertEqual(ticket.preview.archiveFormatVersion, 2)
+        XCTAssertEqual(ticket.preview.archiveSchemaVersion, 7)
+        guard case let .available(currentSummary) = ticket.preview.current else {
+            return XCTFail("An open live book must have a readable current summary")
+        }
+        XCTAssertEqual(currentSummary.storedRecordCount(in: .journalEntries), 1)
+        XCTAssertEqual(currentSummary.entryDateSpan?.oldest, currentEntry.occurredAt)
+        XCTAssertEqual(currentSummary.entryDateSpan?.newest, currentEntry.occurredAt)
+        XCTAssertEqual(currentSummary.currencies, [current.sgd])
+        XCTAssertEqual(currentSummary.quarantinedRecordCount, 0)
+        XCTAssertEqual(
+            currentSummary.reportingTimeZoneIdentifier,
+            currentProfile.reportingTimeZoneIdentifier
+        )
+        XCTAssertEqual(ticket.preview.candidate.storedRecordCount(in: .accounts), 3)
+        XCTAssertEqual(ticket.preview.candidate.storedRecordCount(in: .journalEntries), 2)
+        XCTAssertEqual(ticket.preview.candidate.entryDateSpan?.oldest, oldest)
+        XCTAssertEqual(ticket.preview.candidate.entryDateSpan?.newest, newest)
+        XCTAssertEqual(ticket.preview.candidate.currencies, [candidate.sgd, candidate.usd])
+        XCTAssertEqual(ticket.preview.candidate.quarantinedRecordCount, 0)
+        XCTAssertEqual(
+            ticket.preview.candidate.reportingTimeZoneIdentifier,
+            candidateProfile.reportingTimeZoneIdentifier
+        )
+        XCTAssertEqual(
+            Set(ticket.preview.candidate.storedRecordCounts.keys),
+            Set(RecordCollection.allCases.map(\.rawValue))
+        )
+
+        let restoreTask = Task { @MainActor in
+            try await model.restoreEncryptedBackup(
+                ticket,
+                password: "preview-restore-password"
+            )
+        }
+        let reachedReplacementBoundary = await replacementGate
+            .waitUntilReached(timeout: .seconds(5))
+        XCTAssertTrue(reachedReplacementBoundary)
+        XCTAssertEqual(services.intelligence.cancelInvocationCount, 1)
+        XCTAssertTrue(model.intelligenceFindings.isEmpty)
+        XCTAssertEqual(
+            widgetStore.read(now: now),
+            .available(percentUsed: 31, validUntil: .distantFuture)
+        )
+        let handledDuringReplacement = model.handleDeepLink(
+            try XCTUnwrap(URL(string: "moneyup://quick-log/expense"))
+        )
+        XCTAssertFalse(handledDuringReplacement)
+        XCTAssertNil(model.requestedQuickLogMode)
+        await replacementGate.release()
+        try await restoreTask.value
+        XCTAssertEqual(widgetStore.read(now: now), .disabled)
+        XCTAssertEqual(services.intelligence.refreshInvocationCount, 2)
+        let restored = try await current.store.fetchAll(
+            JournalEntry.self,
+            from: .journalEntries
+        )
+        XCTAssertEqual(Set(restored.map(\.id)), Set([first.id, second.id]))
+        XCTAssertEqual(try Data(contentsOf: archiveURL), archiveBefore)
+        XCTAssertFalse(FileManager.default.fileExists(
+            atPath: model.restoreRollbackDirectoryURL.path
+        ))
+        await current.store.close()
+        await candidate.store.close()
+    }
+
+    @MainActor
+    func testRestorePreviewRejectsWrongPasswordAndTamperBeforeConfirmation() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        try await fixture.seed(
+            profile: UserProfile(baseCurrency: fixture.sgd),
+            accounts: [fixture.wallet, fixture.food]
+        )
+        let archiveURL = fixture.directoryURL.appendingPathComponent("valid.moneyup")
+        try await fixture.store.exportPortableArchive(
+            to: archiveURL,
+            password: "correct-preview-password"
+        )
+        let archiveBefore = try Data(contentsOf: archiveURL)
+        let model = fixture.model(accounts: [fixture.wallet, fixture.food])
+        let liveBefore = try await fixture.store.snapshot()
+
+        do {
+            _ = try await model.prepareEncryptedRestorePreview(
+                from: archiveURL,
+                password: "wrong-preview-password"
+            )
+            XCTFail("Wrong password must not create a confirmation ticket")
+        } catch PortableArchiveError.authenticationFailed {}
+        XCTAssertFalse(FileManager.default.fileExists(
+            atPath: model.restorePreviewValidationArchiveURL.path
+        ))
+
+        let ticket = try await model.prepareEncryptedRestorePreview(
+            from: archiveURL,
+            password: "correct-preview-password"
+        )
+        do {
+            try await model.restoreEncryptedBackup(
+                ticket,
+                password: "wrong-preview-password"
+            )
+            XCTFail("A changed password must not reach live replacement")
+        } catch PortableArchiveError.authenticationFailed {}
+        XCTAssertFalse(FileManager.default.fileExists(
+            atPath: model.restoreCommitArchiveURL.path
+        ))
+
+        var tampered = try Data(contentsOf: archiveURL)
+        tampered[tampered.index(before: tampered.endIndex)] ^= 0x01
+        let tamperedURL = fixture.directoryURL.appendingPathComponent("tampered.moneyup")
+        try tampered.write(to: tamperedURL, options: .atomic)
+        do {
+            _ = try await model.prepareEncryptedRestorePreview(
+                from: tamperedURL,
+                password: "correct-preview-password"
+            )
+            XCTFail("Tamper must not create a confirmation ticket")
+        } catch PortableArchiveError.authenticationFailed {}
+
+        var unsupported = Data("MONEYUP\u{0}".utf8)
+        unsupported.append(99)
+        let unsupportedURL = fixture.directoryURL.appendingPathComponent(
+            "unsupported.moneyup"
+        )
+        try unsupported.write(to: unsupportedURL, options: .atomic)
+        do {
+            _ = try await model.prepareEncryptedRestorePreview(
+                from: unsupportedURL,
+                password: "correct-preview-password"
+            )
+            XCTFail("Unsupported archive must not create a confirmation ticket")
+        } catch PortableArchiveError.unsupportedVersion(99) {}
+
+        let futureSchemaURL = fixture.directoryURL.appendingPathComponent(
+            "future-schema.moneyup"
+        )
+        try PortableArchive.seal(
+            DatabaseSnapshot(
+                schemaVersion: EncryptedRecordStore.currentSchemaVersion + 1,
+                records: liveBefore.records
+            ),
+            password: "correct-preview-password",
+            to: futureSchemaURL
+        )
+        do {
+            _ = try await model.prepareEncryptedRestorePreview(
+                from: futureSchemaURL,
+                password: "correct-preview-password"
+            )
+            XCTFail("A future book schema must not reach confirmation")
+        } catch let PersistenceError.unsupportedSchema(found, supported) {
+            XCTAssertEqual(found, EncryptedRecordStore.currentSchemaVersion + 1)
+            XCTAssertEqual(supported, EncryptedRecordStore.currentSchemaVersion)
+        }
+
+        let liveAfterRejections = try await fixture.store.snapshot()
+        XCTAssertEqual(liveAfterRejections.schemaVersion, liveBefore.schemaVersion)
+        XCTAssertEqual(liveAfterRejections.records, liveBefore.records)
+        XCTAssertEqual(try Data(contentsOf: archiveURL), archiveBefore)
+        XCTAssertFalse(model.isWorking)
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testRestorePreviewCancelWrongPasswordAndTamperNeverFlushInMemoryDraft() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let profile = UserProfile(baseCurrency: fixture.sgd)
+        let durable = QuickLogDraft(
+            kind: .expense,
+            amountText: "11",
+            destinationAmountText: "",
+            accountID: fixture.wallet.id,
+            destinationAccountID: nil,
+            categoryID: fixture.food.id,
+            occurredAt: Date(timeIntervalSinceReferenceDate: 5_000),
+            dateWasEdited: false,
+            payee: "Durable draft",
+            note: "",
+            smartText: ""
+        )
+        var inMemory = durable
+        inMemory.payee = "Uncommitted in-memory draft"
+        try await fixture.seed(
+            profile: profile,
+            accounts: [fixture.wallet, fixture.food],
+            quickLogDraft: durable
+        )
+        let archiveURL = fixture.directoryURL.appendingPathComponent("draft.moneyup")
+        try await fixture.store.exportPortableArchive(
+            to: archiveURL,
+            password: "draft-preview-password"
+        )
+        let model = fixture.model(
+            profile: profile,
+            accounts: [fixture.wallet, fixture.food],
+            quickLogDraft: inMemory
+        )
+        let recordsBefore = try await fixture.store.snapshot().records
+        let countsBefore = try await fixture.store.recordCountSnapshot()
+            .storedRecordCounts
+        let archiveBefore = try Data(contentsOf: archiveURL)
+
+        _ = try await model.prepareEncryptedRestorePreview(
+            from: archiveURL,
+            password: "draft-preview-password"
+        )
+        let recordsAfterCancel = try await fixture.store.snapshot().records
+        let countsAfterCancel = try await fixture.store.recordCountSnapshot()
+            .storedRecordCounts
+        XCTAssertEqual(recordsAfterCancel, recordsBefore)
+        XCTAssertEqual(countsAfterCancel, countsBefore)
+        XCTAssertEqual(try Data(contentsOf: archiveURL), archiveBefore)
+
+        let ticket = try await model.prepareEncryptedRestorePreview(
+            from: archiveURL,
+            password: "draft-preview-password"
+        )
+        do {
+            try await model.restoreEncryptedBackup(ticket, password: "wrong-password")
+            XCTFail("Wrong password must fail before any live draft flush")
+        } catch PortableArchiveError.authenticationFailed {}
+        let recordsAfterWrongPassword = try await fixture.store.snapshot().records
+        let countsAfterWrongPassword = try await fixture.store
+            .recordCountSnapshot().storedRecordCounts
+        XCTAssertEqual(recordsAfterWrongPassword, recordsBefore)
+        XCTAssertEqual(countsAfterWrongPassword, countsBefore)
+        XCTAssertEqual(try Data(contentsOf: archiveURL), archiveBefore)
+
+        let tamperedURL = fixture.directoryURL.appendingPathComponent(
+            "tampered-draft.moneyup"
+        )
+        var tamperedBytes = archiveBefore
+        tamperedBytes[tamperedBytes.index(before: tamperedBytes.endIndex)] ^= 0x01
+        try tamperedBytes.write(to: tamperedURL, options: .atomic)
+        let tamperedBefore = try Data(contentsOf: tamperedURL)
+        do {
+            _ = try await model.prepareEncryptedRestorePreview(
+                from: tamperedURL,
+                password: "draft-preview-password"
+            )
+            XCTFail("Tamper must fail before any live draft flush")
+        } catch PortableArchiveError.authenticationFailed {}
+        let recordsAfterTamper = try await fixture.store.snapshot().records
+        let countsAfterTamper = try await fixture.store.recordCountSnapshot()
+            .storedRecordCounts
+        XCTAssertEqual(recordsAfterTamper, recordsBefore)
+        XCTAssertEqual(countsAfterTamper, countsBefore)
+        XCTAssertEqual(try Data(contentsOf: tamperedURL), tamperedBefore)
+        let durableAfterRejections = try await fixture.store.fetch(
+            QuickLogDraft.self,
+            id: QuickLogDraft.primaryRecordID,
+            from: .quickLogDrafts
+        )
+        XCTAssertEqual(model.quickLogDraft, inMemory)
+        XCTAssertEqual(
+            durableAfterRejections,
+            durable
+        )
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testRestorePreviewSameLengthDigestMismatchCannotReachLiveReplacement() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        try await fixture.seed(
+            profile: UserProfile(baseCurrency: fixture.sgd),
+            accounts: [fixture.wallet, fixture.food]
+        )
+        let archiveURL = fixture.directoryURL.appendingPathComponent("staged.moneyup")
+        try await fixture.store.exportPortableArchive(
+            to: archiveURL,
+            password: "digest-preview-password"
+        )
+        let model = fixture.model(accounts: [fixture.wallet, fixture.food])
+        let ticket = try await model.prepareEncryptedRestorePreview(
+            from: archiveURL,
+            password: "digest-preview-password"
+        )
+        let liveBefore = try await fixture.store.snapshot()
+        var changedBytes = try Data(contentsOf: archiveURL)
+        let originalByteCount = changedBytes.count
+        let changedIndex = changedBytes.index(before: changedBytes.endIndex)
+        changedBytes[changedIndex] ^= 0xa5
+        try changedBytes.write(to: archiveURL, options: .atomic)
+        XCTAssertEqual(try Data(contentsOf: archiveURL).count, originalByteCount)
+        let changedArchiveBeforeRestore = try Data(contentsOf: archiveURL)
+
+        do {
+            try await model.restoreEncryptedBackup(
+                ticket,
+                password: "digest-preview-password"
+            )
+            XCTFail("Changed staged bytes must invalidate the preview ticket")
+        } catch AppModelError.restorePreviewChanged {}
+
+        let liveAfterMismatch = try await fixture.store.snapshot()
+        XCTAssertEqual(liveAfterMismatch.schemaVersion, liveBefore.schemaVersion)
+        XCTAssertEqual(liveAfterMismatch.records, liveBefore.records)
+        XCTAssertEqual(
+            try Data(contentsOf: archiveURL),
+            changedArchiveBeforeRestore
+        )
+        XCTAssertFalse(model.isWorking)
+        await fixture.store.close()
+    }
+
+    func testRestoreArchivePrivateCopiesAreOwnerReadOnly() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let source = fixture.directoryURL.appendingPathComponent("source.moneyup")
+        let validationURL = fixture.directoryURL.appendingPathComponent("validation.moneyup")
+        let commitURL = fixture.directoryURL.appendingPathComponent("commit.moneyup")
+        try FileManager.default.createDirectory(
+            at: fixture.directoryURL,
+            withIntermediateDirectories: true
+        )
+        try Data(repeating: 0xa5, count: 4_096).write(to: source)
+        let validation = try await RestoreArchiveStaging.validationCopy(
+            from: source,
+            to: validationURL
+        )
+        XCTAssertEqual(try posixPermissions(at: validationURL), 0o400)
+        let emptyBook = RestorePreview.BookSummary(
+            storedRecordCounts: [:],
+            entryDateSpan: nil,
+            currencies: [],
+            quarantinedRecordCount: 0,
+            reportingTimeZoneIdentifier: "GMT"
+        )
+        let ticket = RestorePreviewTicket(
+            preview: RestorePreview(
+                archiveFormatVersion: 2,
+                archiveSchemaVersion: 7,
+                current: emptyBook,
+                candidate: emptyBook
+            ),
+            stagedArchiveURL: source,
+            archiveFingerprint: validation.fingerprint
+        )
+        _ = try await RestoreArchiveStaging.verifiedCommitCopy(
+            for: ticket,
+            to: commitURL
+        )
+        XCTAssertEqual(try posixPermissions(at: commitURL), 0o400)
+        let exportURL = fixture.directoryURL.appendingPathComponent(
+            "external-destination.moneyup"
+        )
+        let unownedWritingSibling = exportURL.appendingPathExtension("writing")
+        let sentinel = Data("unowned-writing-sibling".utf8)
+        try sentinel.write(to: unownedWritingSibling)
+        try Data("old-broad-destination".utf8).write(to: exportURL)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o644],
+            ofItemAtPath: exportURL.path
+        )
+        XCTAssertEqual(try posixPermissions(at: exportURL), 0o644)
+        try await fixture.store.exportPortableArchive(
+            to: exportURL,
+            password: "private-export-destination"
+        )
+        XCTAssertEqual(try Data(contentsOf: unownedWritingSibling), sentinel)
+        XCTAssertEqual(try posixPermissions(at: exportURL), 0o600)
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testStartupScavengesEveryDeterministicRestoreArchive() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let replacementDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("MoneyUpRestoreScavenge-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: replacementDirectory) }
+        let replacementStore = try EncryptedRecordStore(
+            databaseURL: replacementDirectory.appendingPathComponent("replacement.sqlite"),
+            key: Data(repeating: 0x74, count: 32)
+        )
+        let model = fixture.model(
+            openDatabaseStore: { _ in
+                OpenedDatabaseStore(
+                    store: replacementStore,
+                    unlockToFirstUsefulContentInterval: nil
+                )
+            }
+        )
+        let fileArtifacts = [
+            model.restorePreviewValidationArchiveURL,
+            model.restoreStagedArchiveURL,
+            model.restoreCommitArchiveURL
+        ]
+        let rollbackDirectory = model.restoreRollbackDirectoryURL
+        let artifacts = fileArtifacts + [rollbackDirectory]
+        let unownedSibling = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "MoneyUp-RestoreCommit-unowned-\(UUID().uuidString).moneyup"
+            )
+        let unownedDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "MoneyUp-RestoreRollback-unowned-\(UUID().uuidString)",
+                isDirectory: true
+            )
+        defer {
+            (artifacts + [unownedSibling, unownedDirectory]).forEach {
+                try? FileManager.default.removeItem(at: $0)
+            }
+        }
+        for artifact in fileArtifacts {
+            try Data([0xa5]).write(to: artifact)
+            XCTAssertTrue(FileManager.default.fileExists(atPath: artifact.path))
+        }
+        try FileManager.default.createDirectory(
+            at: rollbackDirectory,
+            withIntermediateDirectories: true
+        )
+        try Data([0xa5]).write(
+            to: rollbackDirectory.appendingPathComponent(
+                ".moneyup-archive-interrupted.tmp"
+            )
+        )
+        try Data([0x5a]).write(to: unownedSibling)
+        try FileManager.default.createDirectory(
+            at: unownedDirectory,
+            withIntermediateDirectories: true
+        )
+
+        await model.start()
+
+        XCTAssertTrue(artifacts.allSatisfy {
+            !FileManager.default.fileExists(atPath: $0.path)
+        })
+        XCTAssertTrue(FileManager.default.fileExists(atPath: unownedSibling.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: unownedDirectory.path))
+        XCTAssertEqual(model.state, .onboarding)
+        await replacementStore.close()
+    }
+
+    func testRestorePreviewDateSpanUsesEachBookReportingZone() throws {
+        let instant = Date(timeIntervalSince1970: 1_767_240_000)
+        let span = RestorePreview.EntryDateSpan(oldest: instant, newest: instant)
+        func book(_ timeZone: String) -> RestorePreview.BookSummary {
+            RestorePreview.BookSummary(
+                storedRecordCounts: [:],
+                entryDateSpan: span,
+                currencies: [],
+                quarantinedRecordCount: 0,
+                reportingTimeZoneIdentifier: timeZone
+            )
+        }
+        let locale = Locale(identifier: "en_US_POSIX")
+
+        XCTAssertEqual(
+            RestorePreviewPresentation.dateSpanSummary(
+                for: book("Pacific/Kiritimati"),
+                locale: locale
+            ),
+            "Jan 1, 2026 – Jan 1, 2026"
+        )
+        XCTAssertEqual(
+            RestorePreviewPresentation.dateSpanSummary(
+                for: book("America/Los_Angeles"),
+                locale: locale
+            ),
+            "Dec 31, 2025 – Dec 31, 2025"
+        )
+    }
+
+    @MainActor
+    func testCancelledTicketRestoreLeavesLiveBookAndExternalArchiveUntouched() async throws {
+        let current = try AppModelFixture()
+        let candidate = try AppModelFixture()
+        defer {
+            current.removeFiles()
+            candidate.removeFiles()
+        }
+        try await current.seed(
+            profile: UserProfile(baseCurrency: current.sgd),
+            accounts: [current.wallet, current.food]
+        )
+        try await candidate.seed(
+            profile: UserProfile(baseCurrency: candidate.sgd),
+            accounts: [candidate.wallet, candidate.food],
+            entries: [try candidate.expense(amount: 21)]
+        )
+        let externalURL = candidate.directoryURL.appendingPathComponent("external.moneyup")
+        try await candidate.store.exportPortableArchive(
+            to: externalURL,
+            password: "cancel-preview-password"
+        )
+        let externalBefore = try Data(contentsOf: externalURL)
+        let stagedURL = current.directoryURL.appendingPathComponent("staged.moneyup")
+        try externalBefore.write(to: stagedURL, options: .atomic)
+        let gate = AsyncGate()
+        let model = current.model(
+            accounts: [current.wallet, current.food],
+            lifecycleHooks: hooks(pausing: .beforeRestoreCommit, at: gate)
+        )
+        let ticket = try await model.prepareEncryptedRestorePreview(
+            from: stagedURL,
+            password: "cancel-preview-password"
+        )
+        let liveBefore = try await current.store.snapshot()
+        let restore = Task { @MainActor in
+            try await model.restoreEncryptedBackup(
+                ticket,
+                password: "cancel-preview-password"
+            )
+        }
+        await gate.waitUntilReached()
+        restore.cancel()
+        await gate.release()
+        do {
+            try await restore.value
+            XCTFail("Cancellation before commit must stop replacement")
+        } catch is CancellationError {}
+
+        let liveAfterCancellation = try await current.store.snapshot()
+        XCTAssertEqual(liveAfterCancellation.schemaVersion, liveBefore.schemaVersion)
+        XCTAssertEqual(liveAfterCancellation.records, liveBefore.records)
+        XCTAssertEqual(try Data(contentsOf: externalURL), externalBefore)
+        XCTAssertFalse(model.isWorking)
+        await current.store.close()
+        await candidate.store.close()
     }
 
     @MainActor
@@ -1663,7 +4090,11 @@ final class AppModelTests: XCTestCase {
     func testCancellationAfterRestoreCommitRecoversJournalIndexesAndBalance() async throws {
         let fixture = try AppModelFixture()
         defer { fixture.removeFiles() }
-        let currentProfile = UserProfile(baseCurrency: fixture.sgd)
+        let currentProfile = UserProfile(
+            baseCurrency: fixture.sgd,
+            showsBudgetStatusWidget: true,
+            reportingTimeZoneIdentifier: "GMT"
+        )
         let original = try fixture.expense(amount: 17)
         try await fixture.seed(
             profile: currentProfile,
@@ -1692,14 +4123,31 @@ final class AppModelTests: XCTestCase {
             password: "restore-password"
         )
         let gate = AsyncGate()
+        let now = Date(timeIntervalSince1970: 1_776_211_200)
+        let suiteName = "MoneyUpRestoreRollbackBoundary-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let widgetStore = BudgetWidgetSnapshotStore(defaults: defaults)
+        let services = AppModelServices()
         let model = fixture.model(
             profile: currentProfile,
             entries: [original],
             lifecycleHooks: hooks(
                 pausing: .afterRestoreCommitBeforeCandidateLoad,
                 at: gate
-            )
+            ),
+            budgetWidgetSnapshotStore: widgetStore,
+            currentDate: { now },
+            services: services
         )
+        widgetStore.publish(
+            enabled: true,
+            percentUsed: 41,
+            periodToken: "2026-04",
+            validUntil: .distantFuture
+        )
+        model.refreshIntelligence()
+        XCTAssertEqual(services.intelligence.refreshInvocationCount, 1)
         let restoreTask = Task { @MainActor in
             try await model.restoreEncryptedBackup(
                 archive,
@@ -1714,6 +4162,12 @@ final class AppModelTests: XCTestCase {
             _ = try? await restoreTask.value
             return XCTFail("Postcommit restore checkpoint timed out")
         }
+        XCTAssertEqual(
+            widgetStore.read(now: now),
+            .available(percentUsed: 41, validUntil: .distantFuture)
+        )
+        XCTAssertEqual(services.intelligence.cancelInvocationCount, 1)
+        XCTAssertTrue(model.intelligenceFindings.isEmpty)
         restoreTask.cancel()
         await gate.release()
         do {
@@ -1733,6 +4187,10 @@ final class AppModelTests: XCTestCase {
             model.displayBalanceResult(for: fixture.wallet).value?.amount,
             -17
         )
+        guard case .needsBudget = widgetStore.read(now: now) else {
+            return XCTFail("Rollback must republish the authoritative old book")
+        }
+        XCTAssertEqual(services.intelligence.refreshInvocationCount, 2)
 
         let diagnostics = try await fixture.store.journalIndexDiagnostics()
         XCTAssertEqual(diagnostics.journalRecordCount, 1)
@@ -1751,6 +4209,9 @@ final class AppModelTests: XCTestCase {
             ledger.balances[fixture.wallet.id]?[fixture.sgd]?.amount,
             -17
         )
+        XCTAssertFalse(FileManager.default.fileExists(
+            atPath: model.restoreRollbackDirectoryURL.path
+        ))
         await fixture.store.close()
     }
 
@@ -11406,6 +13867,14 @@ extension AppModelTests {
     }
 }
 
+private func posixPermissions(at url: URL) throws -> Int {
+    let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+    guard let value = attributes[.posixPermissions] as? NSNumber else {
+        throw CocoaError(.fileReadUnknown)
+    }
+    return value.intValue & 0o777
+}
+
 private final class MutableTestDate: @unchecked Sendable {
     private let lock = NSLock()
     private var storedValue: Date
@@ -11481,6 +13950,12 @@ private struct AppModelFixture {
         dataEraseIntent: DataEraseIntentAccess = .none,
         openDatabaseStore: @escaping DatabaseStoreOpener =
             DatabaseStoreOpeners.production,
+        openDatabaseStoreWithKey: @escaping DatabaseStoreWithKeyOpener =
+            DatabaseStoreOpeners.productionWithKey,
+        keyCliffRecoveryKeyAccess: KeyCliffRecoveryKeyAccess = .unavailable,
+        keyCliffRecoveryResidueScavenger: @escaping @Sendable (URL) -> Void = {
+            KeyCliffRecoveryTransaction.scavengeUncommittedCandidate(for: $0)
+        },
         retainsCompleteJournal: Bool = true,
         budgetWidgetSnapshotStore: BudgetWidgetSnapshotStore = BudgetWidgetSnapshotStore(),
         budgetConfigurationTimeline: BudgetConfigurationTimeline? = nil,
@@ -11508,6 +13983,10 @@ private struct AppModelFixture {
             deleteDatabaseKey: deleteDatabaseKey,
             dataEraseIntent: dataEraseIntent,
             openDatabaseStore: openDatabaseStore,
+            openDatabaseStoreWithKey: openDatabaseStoreWithKey,
+            keyCliffRecoveryKeyAccess: keyCliffRecoveryKeyAccess,
+            keyCliffRecoveryResidueScavenger:
+                keyCliffRecoveryResidueScavenger,
             retainsCompleteJournal: retainsCompleteJournal,
             budgetWidgetSnapshotStore: budgetWidgetSnapshotStore,
             budgetConfigurationTimeline: budgetConfigurationTimeline,
@@ -11579,13 +14058,17 @@ private struct AppModelFixture {
         )
     }
 
-    func expense(amount: Decimal) throws -> JournalEntry {
+    func expense(
+        amount: Decimal,
+        occurredAt: Date = Date(timeIntervalSinceReferenceDate: 100),
+        payee: String = "Cafe"
+    ) throws -> JournalEntry {
         try TransactionFactory.expense(
             amount: Money(amount, currency: sgd),
             paidFrom: wallet.id,
             category: food.id,
-            occurredAt: Date(timeIntervalSinceReferenceDate: 100),
-            payee: "Cafe"
+            occurredAt: occurredAt,
+            payee: payee
         )
     }
 
@@ -11611,6 +14094,51 @@ private func hooks(
     AppModelLifecycleHooks { candidate in
         guard candidate == checkpoint else { return }
         await gate.suspendFirstCaller()
+    }
+}
+
+private func hooks(
+    pausing checkpoint: AppModelLifecycleCheckpoint,
+    at gate: CountingAsyncGate
+) -> AppModelLifecycleHooks {
+    AppModelLifecycleHooks { candidate in
+        guard candidate == checkpoint else { return }
+        await gate.suspend()
+    }
+}
+
+private actor CountingAsyncGate {
+    private let target: Int
+    private var count = 0
+    private var released = false
+    private var reachWaiters: [CheckedContinuation<Void, Never>] = []
+    private var releaseWaiters: [CheckedContinuation<Void, Never>] = []
+
+    init(target: Int) {
+        self.target = target
+    }
+
+    func suspend() async {
+        count += 1
+        if count >= target {
+            let waiters = reachWaiters
+            reachWaiters.removeAll()
+            waiters.forEach { $0.resume() }
+        }
+        guard !released else { return }
+        await withCheckedContinuation { releaseWaiters.append($0) }
+    }
+
+    func waitUntilReached() async {
+        guard count < target else { return }
+        await withCheckedContinuation { reachWaiters.append($0) }
+    }
+
+    func release() {
+        released = true
+        let waiters = releaseWaiters
+        releaseWaiters.removeAll()
+        waiters.forEach { $0.resume() }
     }
 }
 
@@ -11724,15 +14252,66 @@ private actor AsyncGate {
 
 private actor InMemoryLockedCaptureStore: LockedCaptureStoring {
     private var captures: [LockedCapture]
+    private let capturesBeginningAtAllRead: Int?
+    private let delayedCaptures: [LockedCapture]
     private var removeFailuresRemaining: Int
+    private var allReadCountValue = 0
+    private let failingAllRead: Int?
+    private let observedManifestDatabaseURL: URL?
+    private var manifestWasPendingAtFailure: Bool?
+    private var manifestStatesAtAllReadValues: [Bool] = []
 
-    init(captures: [LockedCapture], removeFailuresRemaining: Int = 0) {
+    init(
+        captures: [LockedCapture],
+        removeFailuresRemaining: Int = 0,
+        failingAllRead: Int? = nil,
+        observingManifestFor databaseURL: URL? = nil,
+        capturesBeginningAtAllRead: Int? = nil,
+        delayedCaptures: [LockedCapture] = []
+    ) {
         self.captures = captures
+        self.capturesBeginningAtAllRead = capturesBeginningAtAllRead
+        self.delayedCaptures = delayedCaptures
         self.removeFailuresRemaining = removeFailuresRemaining
+        self.failingAllRead = failingAllRead
+        observedManifestDatabaseURL = databaseURL
     }
 
     func all() async throws -> [LockedCapture] {
-        captures
+        allReadCountValue += 1
+        if let capturesBeginningAtAllRead,
+           allReadCountValue == capturesBeginningAtAllRead {
+            captures = delayedCaptures
+        }
+        if let observedManifestDatabaseURL {
+            let isPending = KeyCliffRecoveryTransaction.hasPendingManifest(
+                for: observedManifestDatabaseURL
+            )
+            manifestStatesAtAllReadValues.append(isPending)
+            if allReadCountValue == failingAllRead {
+                manifestWasPendingAtFailure = isPending
+            }
+        }
+        if allReadCountValue == failingAllRead {
+            throw AppModelError.invalidBook
+        }
+        return captures
+    }
+
+    func allReadCount() -> Int {
+        allReadCountValue
+    }
+
+    func manifestWasPendingAtInjectedFailure() -> Bool? {
+        manifestWasPendingAtFailure
+    }
+
+    func manifestStatesAtAllReads() -> [Bool] {
+        manifestStatesAtAllReadValues
+    }
+
+    func captureIDs() -> [UUID] {
+        captures.map(\.id)
     }
 
     @discardableResult

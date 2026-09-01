@@ -137,6 +137,43 @@ class PerformanceSignpostsValidatorTests(unittest.TestCase):
             )
         )
 
+    def test_pins_recovery_unlock_handoff_and_onboarding_end(self) -> None:
+        sources = self.swift_sources()
+        recovery_path = "App/MoneyUp/AppModelKeyCliffRecovery.swift"
+        sources[recovery_path] = sources[recovery_path].replace(
+            "            adoptUnlockToFirstUsefulContentInterval("
+            "openedDatabase.unlockToFirstUsefulContentInterval)\n",
+            "",
+            1,
+        )
+
+        recovery_errors = VALIDATOR.validate_journey_boundaries(sources)
+
+        self.assertTrue(
+            any(
+                "AppModelKeyCliffRecovery.swift" in error
+                for error in recovery_errors
+            )
+        )
+
+        sources = self.swift_sources()
+        publication_path = "App/MoneyUp/AppModelStartupPublication.swift"
+        sources[publication_path] = sources[publication_path].replace(
+            "            finishUnlockToFirstUsefulContentMeasurement("
+            "outcome: .cancelled)\n",
+            "",
+            1,
+        )
+
+        publication_errors = VALIDATOR.validate_journey_boundaries(sources)
+
+        self.assertTrue(
+            any(
+                "AppModelStartupPublication.swift" in error
+                for error in publication_errors
+            )
+        )
+
     def test_rejects_indirect_wrapper_alias(self) -> None:
         sources = self.swift_sources()
         path = "App/MoneyUp/HistoryView.swift"

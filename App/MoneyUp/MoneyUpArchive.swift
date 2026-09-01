@@ -11,6 +11,10 @@ extension UTType {
     )
 }
 
+enum PortableBackupReminder {
+    static let storageKey = "moneyup.hasCreatedPortableBackup"
+}
+
 extension PortableArchiveError: @retroactive LocalizedError {
     public var errorDescription: String? {
         switch self {

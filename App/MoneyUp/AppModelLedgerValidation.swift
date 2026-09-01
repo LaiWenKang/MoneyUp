@@ -347,6 +347,24 @@ extension AppModel {
         }
     }
 
+    /// Reads only the separately encrypted, book-agnostic inbox so the
+    /// missing-key screen can explain a required discard before the user
+    /// spends time choosing and authenticating an archive.
+    func refreshLockedCaptureStateForKeyCliffRecovery() async {
+        pendingLockedCaptureCount = 0
+        do {
+            let captures = try await lockedCaptureStore.all()
+            pendingLockedCaptureCount = captures.count
+            recoveryIssues.removeAll { $0.hasPrefix("locked_captures/") }
+        } catch let error as LockedCaptureStoreError {
+            recordLockedCaptureStoreIssue(error)
+        } catch is CancellationError {
+            // Startup cancellation does not prove the inbox is damaged.
+        } catch {
+            recordRecoveryIssue("locked_captures/unavailable")
+        }
+    }
+
     /// Explicitly discards only an inbox that is already cryptographically
     /// unreadable. The authenticated main book remains untouched, restoring
     /// backup/restore availability without pretending the lost captures can
@@ -358,6 +376,7 @@ extension AppModel {
             hasUsableRecoveryStore = true
         case .failed:
             hasUsableRecoveryStore = store != nil
+                || startupFailureKind == .missingDeviceBoundKey
         case .launching, .locked:
             hasUsableRecoveryStore = false
         }
@@ -386,6 +405,38 @@ extension AppModel {
         try await lockedCaptureStore.eraseAll()
         pendingLockedCaptureCount = 0
         recoveryIssues.removeAll { $0.hasPrefix("locked_captures/") }
+    }
+
+    /// A readable redacted inbox still cannot cross from the inaccessible old
+    /// book into an archive-restored book. Key-cliff recovery therefore offers
+    /// one explicit, separately confirmed discard; it never happens as a side
+    /// effect of choosing or validating an archive.
+    func discardPendingLockedCapturesForKeyCliffRecovery() async throws {
+        guard startupFailureKind == .missingDeviceBoundKey,
+              store == nil,
+              case .failed = state else {
+            throw AppModelError.locked
+        }
+        try beginLifecycleMutation(invalidatesJournalProjection: false)
+        defer { endLifecycleMutation() }
+        do {
+            let captures = try await lockedCaptureStore.all()
+            guard !captures.isEmpty else {
+                throw AppModelError.missingRecord
+            }
+            try await lockedCaptureStore.eraseAll()
+            pendingLockedCaptureCount = 0
+            recoveryIssues.removeAll { $0.hasPrefix("locked_captures/") }
+        } catch let error as LockedCaptureStoreError {
+            // An erase can destroy the inbox key before a later unlink fails.
+            // Reclassify from fresh evidence so the separately confirmed
+            // orphan-ciphertext discard remains reachable on the next action.
+            recordLockedCaptureStoreIssue(error)
+            if error.isDefinitivelyUnrecoverable {
+                pendingLockedCaptureCount = 0
+            }
+            throw error
+        }
     }
 
     func beginLifecycleMutation(
@@ -502,5 +553,27 @@ extension AppModel {
         goalMutationBarrierClosed = false
         isWorking = false
         endLifecycleMutation()
+    }
+
+    /// Ends a book replacement only after republishing one authoritative
+    /// external widget state. Candidate decoding remains suppressed, while a
+    /// failed unrecoverable replacement cannot leave old-book data visible.
+    func finishBookReplacementMutation() {
+        isBookReplacementInProgress = false
+        // Trigger retained views to reload only after the authoritative old or
+        // replacement book can accept reads again.
+        logicalBookRevision &+= 1
+        switch state {
+        case .ready:
+            refreshBudgetWidgetSnapshot()
+            refreshIntelligence()
+        case .onboarding, .failed:
+            disableBudgetWidgetSnapshot()
+            intelligenceService.cancelPendingWork()
+        case .launching, .locked:
+            intelligenceService.cancelPendingWork()
+            break
+        }
+        finishExclusiveDataLifecycleMutation()
     }
 }

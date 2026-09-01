@@ -7,6 +7,47 @@ import UIKit
 import WidgetKit
 
 extension AppModel {
+    struct LogicalBookReadToken: Equatable, Sendable {
+        let storeGeneration: Int
+        let logicalBookRevision: UInt64
+    }
+
+    /// Opens a read only while one stable, published book owns the live store.
+    /// Normal restore intentionally keeps the same actor, so callers must use
+    /// both halves of the returned authority token across every suspension.
+    func beginLogicalBookRead()
+    throws -> (store: EncryptedRecordStore, token: LogicalBookReadToken) {
+        guard !isBookReplacementInProgress,
+              let store else { throw AppModelError.locked }
+        return (
+            store,
+            LogicalBookReadToken(
+                storeGeneration: storeGeneration,
+                logicalBookRevision: logicalBookRevision
+            )
+        )
+    }
+
+    func ownsLogicalBookRead(_ token: LogicalBookReadToken) -> Bool {
+        !isBookReplacementInProgress
+            && token.storeGeneration == storeGeneration
+            && token.logicalBookRevision == logicalBookRevision
+            && store != nil
+    }
+
+    func requireLogicalBookRead(_ token: LogicalBookReadToken) throws {
+        guard ownsLogicalBookRead(token) else { throw AppModelError.locked }
+    }
+
+    func finishLogicalBookRead<Value>(
+        _ value: Value,
+        token: LogicalBookReadToken
+    ) async throws -> Value {
+        await lifecycleHooks.checkpoint(.afterBookScopedReadBeforeReturn)
+        try requireLogicalBookRead(token)
+        return value
+    }
+
     func requireStore() throws -> EncryptedRecordStore {
         guard let store else { throw AppModelError.locked }
         return store

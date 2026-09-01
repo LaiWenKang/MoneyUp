@@ -669,10 +669,15 @@ def validate_journey_boundaries(sources: dict[str, str]) -> list[str]:
             "outcome: .failure",
         ],
         "App/MoneyUp/AppModelLifecycle.swift": [
+            "finishUnlockToFirstUsefulContentMeasurement(outcome: .failure)",
+            "finishUnlockToFirstUsefulContentMeasurement(outcome: .cancelled)",
+        ],
+        "App/MoneyUp/AppModelKeyCliffRecovery.swift": [
             "adoptUnlockToFirstUsefulContentInterval(",
             "openedDatabase.unlockToFirstUsefulContentInterval",
+        ],
+        "App/MoneyUp/AppModelStartupPublication.swift": [
             "state = .ready",
-            "finishUnlockToFirstUsefulContentMeasurement(outcome: .failure)",
             "finishUnlockToFirstUsefulContentMeasurement(outcome: .cancelled)",
         ],
         "App/MoneyUp/AppModelPerformance.swift": [

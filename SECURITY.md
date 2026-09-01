@@ -30,6 +30,7 @@ and App Review remain separate release gates.
 | Wrong-key, plaintext-leak, decimal round-trip, and atomic-rollback tests | Test coverage present; exact-candidate execution open |
 | Separate encrypted, no-balance Quick Capture inbox while locked | Implemented |
 | File-backed chunk-authenticated portable backup and transactional restore | Implemented with v1 compatibility and test coverage; exact-candidate/physical execution open |
+| Missing-device-key detection and keyless `.moneyup` recovery transaction | Implemented with isolated validation, crash-resume, and rollback tests; physical passcode-removal drill open |
 | Previewable local CSV/Qianji import with atomic commit | Implemented with test coverage; exact-candidate execution open |
 | SQLCipher schema-7 journal/posting/receipt/budget/intelligence indexes, store metrics, and compact exact balances | Implemented; exact-candidate tests open |
 | Optional explainable local intelligence with review-only actions and derived-data opt-out clearing | Implemented; exact-candidate and physical review open |
@@ -86,9 +87,24 @@ The guarantee does not cover:
    immediate. Receipt images are never part of the draft. When retention is
    explicitly selected, the encrypted attachment, transaction, and removal of
    its pre-save draft are committed in one database transaction.
-6. If the protected key and database no longer match, the app refuses to read
-   records. A separately confirmed reset removes the inaccessible database and
-   key; it never guesses, downgrades encryption, or silently overwrites data.
+6. Removing the device passcode can permanently destroy the this-device-only
+   key; deleting MoneyUp removes both its key and local ciphertext. MoneyUp
+   warns about both cliffs during setup, in Security and Data Safety, and until
+   the first portable backup is exported.
+7. If the Keychain item is missing beside any surviving main/WAL/SHM artifact,
+   MoneyUp publishes a dedicated device-key recovery state. It never creates a
+   replacement key beside that ciphertext and never labels the book as empty.
+8. In that state, a user first ensures the device has a passcode, then can
+   restore a password-protected `.moneyup` archive. MoneyUp copies and fully
+   validates it in an isolated randomly keyed
+   SQLCipher store before any live mutation. Wrong password, tamper,
+   cancellation, or validation failure leaves the old ciphertext and Keychain
+   untouched. After validation, a non-secret artifact-mask marker,
+   device-bound replacement key, and same-volume file transaction let startup
+   finish or roll back every interruption. Both immediate completion and
+   startup resume recheck that the old-book capture inbox is empty before
+   removing the marker; a late capture forces rollback. The external archive
+   is never modified. A separately confirmed erase remains the last resort.
 
 ## Storage and integrity
 
@@ -121,12 +137,33 @@ length, and total chunk count; production export/import remains file-backed.
 Current writes enforce the archive's 100,000-record/512 MB stored-payload
 envelope. Restore validates in an isolated SQLCipher store, replaces the live
 logical store transactionally, and uses a separate encrypted file-backed
-rollback archive if post-commit loading fails. Legacy version-1 archives remain
-readable within their compatibility limit and require near-limit physical-memory
-measurement before release. MoneyUp cannot recover a forgotten archive
-password. CSV and XLSX exports are readable and useful in Numbers or Excel, but
-neither is a full-fidelity restore format. The live database directory remains
-excluded from system backup because its device-bound key cannot migrate.
+rollback archive if post-commit loading fails. Confirmation is available only
+after full isolated validation and a privacy-safe replacement preview. Its
+ticket binds the preview to the staged ciphertext SHA-256; commit verifies a
+bounded private copy against that digest before touching the live store. Cancel,
+wrong password, tamper, unsupported schema, or a staged-file swap therefore
+cannot reach replacement and never modifies the user-selected archive.
+Staging, validation, verified-commit, and rollback ciphertext ownership is
+deterministic, permission-bound, and scavenged exactly on startup so
+interruption cannot accumulate artifacts. The rollback archive and a writer
+interrupted mid-export remain inside one private owned directory. Legacy
+version-1 archives remain readable within their compatibility limit and require
+near-limit physical-memory measurement before release. MoneyUp cannot recover a
+forgotten archive password. CSV and XLSX exports are readable and useful in
+Numbers or Excel, but neither is a full-fidelity restore format. The live
+database directory remains excluded from system backup because its device-bound
+key cannot migrate.
+
+When the live key is already missing, restore uses a separate filesystem
+transaction because the old logical store cannot open. The candidate remains
+SQLCipher-encrypted throughout, no password or replacement key enters the
+manifest, and old ciphertext is retained until the installed candidate opens
+and passes the normal strict domain load. The reviewed ticket is privately
+reverified before key creation; preview copy states that current counts are
+inaccessible. Marker removal is the authority boundary for restored capture
+preference/promotion, ready state, widget, and intelligence. Physical
+passcode-removal and interruption evidence is still a release gate; this source
+implementation does not claim that device result.
 
 ## App Group capability
 

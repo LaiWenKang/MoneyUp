@@ -459,6 +459,33 @@ _ = Darwin.connect(descriptor, nil, 0)
         )
         self.assertIn("offline-boundary", self.rules(violations))
 
+    def test_recovery_manifest_local_load_exception_is_exactly_counted(self) -> None:
+        path = "App/MoneyUp/KeyCliffRecoveryTransaction.swift"
+        snippet = "Data(contentsOf: manifestURL(for: databaseURL))"
+        self.write(
+            path,
+            "import Foundation\n"
+            "func load(_ databaseURL: URL) throws {\n"
+            f"    _ = try {snippet}\n"
+            "}\n",
+        )
+
+        self.assertEqual(fitness.validate_offline_boundary(self.root), [])
+
+        self.write(
+            path,
+            "import Foundation\n"
+            "func load(_ databaseURL: URL) throws {\n"
+            f"    _ = try {snippet}\n"
+            f"    _ = try {snippet}\n"
+            "}\n",
+        )
+        violations = fitness.validate_offline_boundary(self.root)
+
+        self.assertTrue(
+            any(violation.rule == "offline-local-load" for violation in violations)
+        )
+
     def test_interpolation_code_remains_visible_to_safety_boundaries(self) -> None:
         self.write(
             "App/MoneyUp/Interpolation.swift",

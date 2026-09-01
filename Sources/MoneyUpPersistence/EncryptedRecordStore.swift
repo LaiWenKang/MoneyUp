@@ -245,6 +245,20 @@ public struct DatabaseStorageMetrics: Equatable, Sendable {
     }
 }
 
+/// Authenticated compatibility facts from an archive replacement transaction.
+public struct PortableArchiveRestoreMetadata: Equatable, Sendable {
+    public let archiveVersion: Int
+    public let schemaVersion: Int32
+
+    public init(
+        archiveVersion: Int,
+        schemaVersion: Int32
+    ) {
+        self.archiveVersion = archiveVersion
+        self.schemaVersion = schemaVersion
+    }
+}
+
 public struct RecordDecodeIssue: Equatable, Sendable, Identifiable {
     public let collection: RecordCollection
     public let recordID: String

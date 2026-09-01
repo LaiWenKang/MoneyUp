@@ -71,6 +71,10 @@ struct HistoryFilterDraft: Hashable {
     }
 
     func isValid(calendar: Calendar) -> Bool {
+        hasValidAmountRange && hasValidDateRange(calendar: calendar)
+    }
+
+    var hasValidAmountRange: Bool {
         let minimumText = minimumAmountText.trimmingCharacters(in: .whitespacesAndNewlines)
         let maximumText = maximumAmountText.trimmingCharacters(in: .whitespacesAndNewlines)
         if !minimumText.isEmpty, minimumAmount == nil { return false }
@@ -80,6 +84,10 @@ struct HistoryFilterDraft: Hashable {
         if let minimumAmount, let maximumAmount, minimumAmount > maximumAmount {
             return false
         }
+        return true
+    }
+
+    func hasValidDateRange(calendar: Calendar) -> Bool {
         if includesStartDate, includesEndDate,
            FinancialPeriodBoundary.startOfDay(containing: startDate, calendar: calendar)
             > FinancialPeriodBoundary.startOfDay(containing: endDate, calendar: calendar) {
@@ -140,6 +148,7 @@ private struct HistoryLoadIdentifier: Equatable {
     let searchText: String
     let filters: HistoryFilterDraft
     let refreshGeneration: Int
+    let logicalBookRevision: UInt64
 }
 
 private struct HistoryPerformanceMeasurement {
@@ -205,7 +214,8 @@ struct HistoryView: View {
         HistoryLoadIdentifier(
             searchText: appliedSearchText,
             filters: filters,
-            refreshGeneration: refreshGeneration
+            refreshGeneration: refreshGeneration,
+            logicalBookRevision: model.logicalBookRevision
         )
     }
 
@@ -436,6 +446,20 @@ struct HistoryView: View {
                 finishInitialHistoryMeasurement(outcome: .cancelled)
                 finishPaginationMeasurement(outcome: .cancelled)
             }
+            .onChange(of: model.logicalBookRevision) { _, _ in
+                loadedEntries = []
+                nextCursor = nil
+                summary = nil
+                isLoadingPage = false
+                initialPageErrorMessage = nil
+                summaryErrorMessage = nil
+                paginationErrorMessage = nil
+                selectedEntry = nil
+                finishInitialHistoryMeasurement(outcome: .cancelled)
+                finishPaginationMeasurement(outcome: .cancelled)
+                isInitialHistoryLoadInProgress = false
+                pendingPaginationAfterInitialLoad = false
+            }
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button {
@@ -488,16 +512,9 @@ struct HistoryView: View {
             } message: { _ in
                 Text("transaction.delete_detail")
             }
-            .alert("error.could_not_save", isPresented: Binding(
-                get: { errorMessage != nil },
-                set: { if !$0 { errorMessage = nil } }
-            )) {
-                Button("action.okay") { errorMessage = nil }
-            } message: {
-                Text(errorMessage ?? "")
-            }
-        .environment(\.calendar, model.reportingCalendar)
-        .environment(\.timeZone, model.reportingCalendar.timeZone)
+            .moneyUpOperationErrorAlert(message: $errorMessage)
+            .environment(\.calendar, model.reportingCalendar)
+            .environment(\.timeZone, model.reportingCalendar.timeZone)
     }
 
     private func delete(_ entry: JournalEntry) async {

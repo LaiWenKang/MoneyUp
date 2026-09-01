@@ -6,6 +6,7 @@ import MoneyUpPersistence
 struct BudgetSuggestionPatch: Sendable {
     let before: [BudgetNode]
     let after: [BudgetNode]
+    let logicalBookRevision: UInt64
 }
 
 extension AppModel {
@@ -13,13 +14,16 @@ extension AppModel {
         asOf requestedDate: Date? = nil
     ) async -> DerivedValue<[BudgetLimitSuggestion]> {
         guard state == .ready,
+              !isBookReplacementInProgress,
               profile?.intelligenceEnabled == true else {
             return .unavailable(.intelligenceBudgetUnavailable)
         }
         let asOf = requestedDate ?? currentDate()
         do {
+            let read = try beginLogicalBookRead()
             let context = try budgetSuggestionContext(asOf: asOf)
             let events = try await journalPostingEvents(in: context.interval)
+            try requireLogicalBookRead(read.token)
             let histories = try categoryLimitHistories(
                 events: events,
                 context: context
@@ -27,7 +31,10 @@ extension AppModel {
             let suggestions = try BudgetSuggestionEngine.suggestions(
                 from: histories
             ).filter { $0.proposedLimit.amount > .zero }
-            return .available(suggestions)
+            let result: DerivedValue<[BudgetLimitSuggestion]> = .available(
+                suggestions
+            )
+            return try await finishLogicalBookRead(result, token: read.token)
         } catch {
             DerivedValueDiagnostics.record(
                 .intelligenceBudgetUnavailable,
@@ -39,8 +46,13 @@ extension AppModel {
     }
 
     func applyBudgetSuggestions(
-        _ suggestions: [BudgetLimitSuggestion]
+        _ suggestions: [BudgetLimitSuggestion],
+        expectedLogicalBookRevision: UInt64
     ) async throws -> BudgetSuggestionPatch {
+        guard expectedLogicalBookRevision == logicalBookRevision,
+              !isBookReplacementInProgress else {
+            throw AppModelError.locked
+        }
         try beginJournalMutation()
         defer { endJournalMutation() }
         let update = try budgetSuggestionUpdate(suggestions)
@@ -53,13 +65,18 @@ extension AppModel {
         budgetNodes = update.nodes
         return BudgetSuggestionPatch(
             before: update.changedBefore,
-            after: update.changedAfter
+            after: update.changedAfter,
+            logicalBookRevision: logicalBookRevision
         )
     }
 
     func undoBudgetSuggestionPatch(
         _ patch: BudgetSuggestionPatch
     ) async throws {
+        guard patch.logicalBookRevision == logicalBookRevision,
+              !isBookReplacementInProgress else {
+            throw AppModelError.locked
+        }
         try beginJournalMutation()
         defer { endJournalMutation() }
         let restored = try budgetNodesRestoring(patch)

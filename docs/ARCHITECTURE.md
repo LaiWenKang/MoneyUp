@@ -100,6 +100,22 @@ execution must guard on `SystemLanguageModel.default.availability`, while
 generated output stays limited to fixed local enums or literal `0...255`
 range-guided ordinals.
 
+Operation failures cross one of two owned accessibility boundaries. Transient
+form failures use `AccessibleErrorPresentation`, whose latest-wins reducer
+snapshots a non-empty safe localized failure, resnapshots after every explicit
+dismissal update boundary to recover coalesced identical failures, and presents
+a native alert that owns VoiceOver focus and announcement. Load and root failures use a
+target-bound visible summary with an adjacent retry action. Dismissal clears
+only the presentation value. Correctable field validation remains inline, uses
+an icon plus text rather than color alone, and is attached to its input as an
+accessibility hint. The static `validate_accessible_errors.py` gate builds
+fully-qualified declaration scopes across split extensions, rejects every
+safe-message context without an exact same-owner alert or mapped retry action,
+and requires the same field message directly on an input and its non-color-only
+label. No-op retry, nested-owner, unrelated-recovery, cross-struct,
+unrelated-alert, non-input-field, unassociated-field, and passive-red mutations
+self-test the recursively inventoried gate.
+
 ## State and lock lifecycle
 
 The application moves between launching, locked, onboarding, ready, and failed
@@ -222,8 +238,44 @@ Current writes enforce a 100,000-record/512 MB stored-payload envelope, while
 legacy version-1 archives remain readable within their compatibility limit.
 Attachments, user rates, goals, snapshots, and quarantined encrypted raw
 records remain in the archive. Restore streams into an isolated SQLCipher store
-and then one live transaction; wrong password, tampering, cancellation, future
-schema, or failure leaves or restores the prior book.
+before confirmation, then presents only archive/schema versions, collection
+counts, entry span, currencies, quarantine count, and current-to-candidate
+replacement counts. The confirmation ticket binds that preview to the staged
+ciphertext SHA-256; commit first makes a bounded private copy and rejects any
+digest change before the existing encrypted rollback checkpoint and one live
+transaction. Wrong password, tampering, cancellation, future schema, file swap,
+or failure leaves or restores the prior book and never edits the selected file.
+Deterministic encrypted staging, validation, verified-commit, and rollback
+ownership is removed on normal completion and scavenged exactly at startup
+after interruption. The rollback archive and any interrupted writer live in
+one private owned directory; external export siblings remain untouched.
+
+The same preview ticket owns normal and missing-device-key restore. Key-cliff
+review represents the unreadable current ciphertext as inaccessible, never as
+an empty book, and re-verifies its private copy before key generation. While
+either restore replaces a book, widget, deep-link, capture, and intelligence
+publication remain behind the authority boundary. Key-cliff validation keeps
+the durable marker present; only marker removal permits restored preferences,
+capture promotion, ready state, intelligence, and widget publication. Restore
+failures wait for the preview sheet to dismiss before the native alert. When
+the ready hierarchy survives, success focuses one visible confirmation; any
+recovery-to-ready root transition is consumed once by the rendered hierarchy.
+
+A missing device-bound key beside surviving main/WAL/SHM ciphertext is a
+dedicated recovery state, not a corrupt-key or empty-book state. Because the
+old logical store cannot open, `.moneyup` recovery first builds and strictly
+validates a separately keyed SQLCipher candidate. Only afterward does it write
+a non-secret artifact-mask manifest, store the new this-device-only key, and
+rename the old and candidate artifact sets on the same volume. Startup can
+idempotently finish that installation; any reopen/load failure deletes the new
+key and restores the exact old artifact set. Immediate commit and startup
+resume both recheck the separately encrypted capture inbox before removing the
+marker; a late old-book capture forces rollback instead of crossing books.
+Wrong password, tamper,
+cancellation, and candidate validation failure precede all live/Keychain
+mutation. The selected external archive is copied and never modified.
+A post-completion inbox handoff failure records one redacted retryable issue;
+it cannot roll back an already authoritative book or duplicate promotion.
 
 The Data inventory is a separate metadata-only JSON manifest for upgrade and
 restore reconciliation. Every durable collection count comes from one

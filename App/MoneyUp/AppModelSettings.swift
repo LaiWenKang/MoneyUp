@@ -154,9 +154,10 @@ extension AppModel {
                 databaseURL: databaseURL,
                 deleteDatabaseKey: deleteDatabaseKey,
                 lockedCaptureStore: lockedCaptureStore,
+                removeKeyCliffRecoveryArtifacts: { try KeyCliffRecoveryTransaction.removeAll(for: databaseURL) },
                 clearEraseIntent: dataEraseIntent.clear
             )
-            pendingLockedCaptureCount = 0
+            finishSuccessfulEraseRecoveryState()
             if restartAfterErase {
                 finishExclusiveDataLifecycleMutation()
                 await start()
@@ -171,5 +172,10 @@ extension AppModel {
             isWorking = false
             finishExclusiveDataLifecycleMutation()
         }
+    }
+
+    private func finishSuccessfulEraseRecoveryState() {
+        pendingLockedCaptureCount = 0
+        startupFailureKind = nil
     }
 }

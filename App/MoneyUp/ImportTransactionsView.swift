@@ -236,9 +236,6 @@ struct ImportTransactionsView: View {
                 Section { Label(message, systemImage: "checkmark.circle.fill") }
                     .foregroundStyle(.green)
             }
-            if let errorMessage {
-                Section { Text(errorMessage).foregroundStyle(.red) }
-            }
         }
         .scrollContentBackground(.hidden)
         .background(Color.moneyUpBackground)
@@ -252,6 +249,7 @@ struct ImportTransactionsView: View {
         ) { result in
             handleFileResult(result)
         }
+        .moneyUpOperationErrorAlert(message: $errorMessage)
     }
 
     private func selectDefaults() {

@@ -354,6 +354,16 @@ SAFE_EXCEPTIONS = (
 # exact, counted exception; all new contentsOf: URL loads fail closed.
 REVIEWED_LOCAL_URL_LOADS = (
     SafeException(
+        path="App/MoneyUp/KeyCliffRecoveryTransaction.swift",
+        kind="local-url-load",
+        snippet="Data(contentsOf: manifestURL(for: databaseURL))",
+        expected_count=1,
+        reason=(
+            "the private recovery manifest URL is derived only from the "
+            "owned local SQLCipher database URL"
+        ),
+    ),
+    SafeException(
         path="Sources/MoneyUpPersistence/PortableArchiveV2.swift",
         kind="local-url-load",
         snippet="Data(contentsOf: sourceURL, options: [.mappedIfSafe])",

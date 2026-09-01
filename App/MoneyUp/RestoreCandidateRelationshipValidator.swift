@@ -8,6 +8,7 @@ struct RestoreInvestmentRelationshipState: Sendable {
 }
 
 extension RestoreCandidateValidator {
+    @discardableResult
     static func validateRelationships(
         profile: UserProfile?,
         accounts: [LedgerAccount],
@@ -17,7 +18,7 @@ extension RestoreCandidateValidator {
         netWorthSnapshots: [NetWorthSnapshot],
         quickLogDraft: QuickLogDraft?,
         in store: EncryptedRecordStore
-    ) async throws {
+    ) async throws -> RestoreEntryPreviewMetadata {
         let profile = try validatedRelationshipProfile(
             profile,
             accounts: accounts,
@@ -75,6 +76,7 @@ extension RestoreCandidateValidator {
             in: store
         )
         try validateRelationshipDraft(quickLogDraft, accountByID: accountByID)
+        return try RestoreEntryPreviewMetadata.make(from: journalEntries)
     }
 }
 

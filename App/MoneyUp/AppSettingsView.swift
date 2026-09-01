@@ -160,6 +160,13 @@ struct AppSettingsView: View {
                 } label: {
                     Label("lock.lock_now", systemImage: "lock.fill")
                 }
+
+                Label(
+                    "settings.security.key_cliff_warning",
+                    systemImage: "externaldrive.badge.shield.checkmark"
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
             } header: {
                 Text("settings.security")
             } footer: {
@@ -305,9 +312,6 @@ struct AppSettingsView: View {
                 Text("assets.data")
             }
 
-            if let errorMessage {
-                Section { Text(errorMessage).foregroundStyle(.red) }
-            }
         }
         .scrollContentBackground(.hidden)
         .background(Color.moneyUpBackground)
@@ -316,6 +320,7 @@ struct AppSettingsView: View {
         .sheet(isPresented: $isManagingCategories) {
             CategoryManagementList()
         }
+        .moneyUpOperationErrorAlert(message: $errorMessage)
     }
 
     private func update(_ operation: () async throws -> Void) async {

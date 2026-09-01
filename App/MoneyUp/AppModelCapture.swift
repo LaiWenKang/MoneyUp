@@ -71,6 +71,10 @@ extension AppModel {
         }
         await refreshJournalAfterMutation()
         state = .ready
+        UserDefaults.standard.set(
+            false,
+            forKey: PortableBackupReminder.storageKey
+        )
         do {
             try await promoteLockedCaptureIfPossible(
                 to: store,

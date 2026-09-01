@@ -70,6 +70,7 @@ extension QuickLogEntryView {
             occurredAt: draft.occurredAt ?? occurredAt
         )
         let generation = captureSuggestionGeneration
+        let logicalBookRevision = model.logicalBookRevision
         let eligibleCategoryIDs = Set(categories.map(\.id))
         captureSuggestionTask = Task { @MainActor in
             let result = await model.indexedCaptureSuggestion(
@@ -77,7 +78,9 @@ extension QuickLogEntryView {
                 eligibleCategoryIDs: eligibleCategoryIDs
             )
             guard !Task.isCancelled,
-                  generation == captureSuggestionGeneration else { return }
+                  generation == captureSuggestionGeneration,
+                  logicalBookRevision == model.logicalBookRevision,
+                  !model.isBookReplacementInProgress else { return }
             captureSuggestionResult = result
             applyAccountSuggestion(result.accountSuggestion, draft: draft)
             applyCategorySuggestion(result.categorySuggestion, draft: draft)

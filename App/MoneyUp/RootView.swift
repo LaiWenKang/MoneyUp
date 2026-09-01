@@ -1,5 +1,6 @@
 import MoneyUpCore
 import SwiftUI
+import UIKit
 
 struct RootView: View {
     @Environment(AppModel.self) private var model
@@ -93,6 +94,12 @@ private struct RecoveryView: View {
     @State private var isConfirmingReset = false
     @State private var isShowingDataSafety = false
 
+    private var recoveryActionKey: LocalizedStringKey {
+        model.startupFailureKind == .missingDeviceBoundKey
+            ? "recovery.key_cliff.restore_action"
+            : "recovery.backup_or_restore"
+    }
+
     var body: some View {
         GeometryReader { proxy in
             ScrollView {
@@ -106,8 +113,28 @@ private struct RecoveryView: View {
                     Text(message)
                         .multilineTextAlignment(.center)
                         .foregroundStyle(.secondary)
-                    Button("action.try_again") {
-                        Task { await model.start() }
+                    if model.startupFailureKind == .missingDeviceBoundKey {
+                        Label(
+                            "recovery.key_cliff.detail",
+                            systemImage: "key.slash.fill"
+                        )
+                        .foregroundStyle(.orange)
+                        .multilineTextAlignment(.center)
+                        Text("recovery.key_cliff.steps")
+                            .font(.callout)
+                            .multilineTextAlignment(.leading)
+                    }
+
+                    Group {
+                        if model.startupFailureKind == .missingDeviceBoundKey {
+                            Button("recovery.key_cliff.retry") {
+                                Task { await model.start() }
+                            }
+                        } else {
+                            Button("action.try_again") {
+                                Task { await model.start() }
+                            }
+                        }
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(.moneyUpAction)
@@ -117,7 +144,7 @@ private struct RecoveryView: View {
                         isShowingDataSafety = true
                     } label: {
                         Label(
-                            "recovery.backup_or_restore",
+                            recoveryActionKey,
                             systemImage: "externaldrive.badge.shield.checkmark"
                         )
                     }
@@ -242,9 +269,28 @@ private struct MainTabView: View {
         }
         .onAppear {
             checkForUpdate(suppressPresentation: openRequestedLog())
+            announcePendingRestoreCompletionAfterAppearance()
         }
         .onChange(of: model.requestedQuickLogMode) { _, _ in
             openRequestedLog()
+        }
+        .onChange(of: model.pendingRestoreCompletionAnnouncement) { _, pending in
+            guard pending != nil else { return }
+            announcePendingRestoreCompletionAfterAppearance()
+        }
+    }
+
+    private func announcePendingRestoreCompletionAfterAppearance() {
+        Task { @MainActor in
+            // Defer until the ready hierarchy has completed one render turn;
+            // otherwise its own screen-change announcement can preempt this.
+            await Task.yield()
+            guard let completion = model
+                .takeRestoreCompletionForReadyHierarchy() else { return }
+            UIAccessibility.post(
+                notification: .announcement,
+                argument: completion
+            )
         }
     }
 

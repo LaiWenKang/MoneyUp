@@ -567,7 +567,9 @@ private struct BudgetSimulatorView: View {
                     "simulator.additional_spending",
                     text: $additionalSpendingText,
                     currency: currency,
-                    isValid: additionalSpending != nil
+                    validationMessage: additionalSpending == nil
+                        ? AppLocalization.string("simulator.invalid_amount")
+                        : nil
                 )
 
                 Divider()
@@ -576,7 +578,9 @@ private struct BudgetSimulatorView: View {
                     "simulator.additional_income",
                     text: $additionalIncomeText,
                     currency: currency,
-                    isValid: additionalIncome != nil
+                    validationMessage: additionalIncome == nil
+                        ? AppLocalization.string("simulator.invalid_amount")
+                        : nil
                 )
 
                 Button("simulator.reset") {
@@ -603,14 +607,6 @@ private struct BudgetSimulatorView: View {
                         .foregroundStyle(.secondary)
                 }
             }
-        } else {
-            MoneyUpCard {
-                Label(
-                    "simulator.invalid_amount",
-                    systemImage: "exclamationmark.triangle.fill"
-                )
-                .foregroundStyle(.red)
-            }
         }
     }
 
@@ -618,7 +614,7 @@ private struct BudgetSimulatorView: View {
         _ title: LocalizedStringKey,
         text: Binding<String>,
         currency: CurrencyCode,
-        isValid: Bool
+        validationMessage: String?
     ) -> some View {
         VStack(alignment: .leading, spacing: 7) {
             HStack {
@@ -632,10 +628,9 @@ private struct BudgetSimulatorView: View {
             TextField("simulator.amount_placeholder", text: text)
                 .moneyAmountKeyboard(currency: currency)
                 .textFieldStyle(.roundedBorder)
-            if !isValid {
-                Text("simulator.invalid_amount")
-                    .font(.caption)
-                    .foregroundStyle(.red)
+                .moneyUpFieldValidation(validationMessage)
+            if let validationMessage {
+                MoneyUpFieldError(message: validationMessage)
             }
         }
     }
@@ -861,9 +856,6 @@ private struct BudgetEditorSheet: View {
                 } footer: {
                     Text("plan.purpose_detail")
                 }
-                if let errorMessage {
-                    Section { Text(errorMessage).foregroundStyle(.red) }
-                }
             }
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
@@ -883,6 +875,7 @@ private struct BudgetEditorSheet: View {
                 }
                 MoneyUpKeyboardDoneToolbar()
             }
+            .moneyUpOperationErrorAlert(message: $errorMessage)
         }
         .presentationDetents([.medium])
     }
@@ -973,9 +966,6 @@ struct AddCategorySheet: View {
                         }
                     }
                 }
-                if let errorMessage {
-                    Text(errorMessage).foregroundStyle(.red)
-                }
             }
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
@@ -990,6 +980,7 @@ struct AddCategorySheet: View {
                         .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSaving)
                 }
             }
+            .moneyUpOperationErrorAlert(message: $errorMessage)
         }
     }
 

@@ -7,17 +7,23 @@ extension AppModel {
         asOf requestedDate: Date? = nil
     ) async -> DerivedValue<[MonthEndProjection]> {
         guard state == .ready,
+              !isBookReplacementInProgress,
               profile?.intelligenceEnabled == true else {
             return .unavailable(.intelligenceProjectionUnavailable)
         }
         let asOf = requestedDate ?? currentDate()
         do {
+            let read = try beginLogicalBookRead()
             let context = try monthEndProjectionContext(asOf: asOf)
             let events = try await journalPostingEvents(in: context.actualsInterval)
-            return .available(try monthEndProjections(
+            try requireLogicalBookRead(read.token)
+            let result: DerivedValue<[MonthEndProjection]> = .available(
+                try monthEndProjections(
                 events: events,
                 context: context
-            ))
+                )
+            )
+            return try await finishLogicalBookRead(result, token: read.token)
         } catch {
             DerivedValueDiagnostics.record(
                 .intelligenceProjectionUnavailable,

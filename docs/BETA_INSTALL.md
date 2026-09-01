@@ -101,10 +101,15 @@ encrypted by MoneyUp after they leave the app.
 
 ## Backup, restore, and migration
 
-The SQLCipher key is intentionally this-device-only. Before deleting MoneyUp or
-changing devices, open Settings → Backup and recovery and save a password-
-protected `.moneyup` archive. MoneyUp cannot recover that password. Restore is
-validated and transactional. CSV is not a full-fidelity backup, but Settings →
+The SQLCipher key is intentionally this-device-only. Removing the device
+passcode or deleting MoneyUp can make the live local book unrecoverable. Before
+either action—or changing devices—open Settings → Backup and recovery and save
+a password-protected `.moneyup` archive outside the app. MoneyUp cannot recover
+that password. If the device key is already missing, first ensure the device
+has a passcode, then use the dedicated recovery screen with that archive;
+wrong password, tamper, or cancellation leaves the old ciphertext untouched.
+With no archive, erase is irreversible and the old book cannot be recovered.
+CSV is not a full-fidelity backup, but Settings →
 Import transactions can preview Qianji-style or generic CSV/TSV files, map an
 unknown layout column by column, skip bad rows and repeat imports, and save
 accepted rows together.

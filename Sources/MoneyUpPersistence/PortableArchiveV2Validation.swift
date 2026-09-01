@@ -98,6 +98,7 @@ extension PortableArchiveV2 {
             throw PortableArchiveError.archiveTooLarge
         }
         return Metadata(
+            archiveVersion: PortableArchive.currentVersion,
             schemaVersion: schemaVersion,
             createdAt: createdAt,
             recordCount: metrics.recordCount,
@@ -248,6 +249,7 @@ extension PortableArchiveV2 {
             timeIntervalSinceReferenceDate: Double(bitPattern: fields.createdAtBits)
         )
         let metadata = Metadata(
+            archiveVersion: PortableArchive.currentVersion,
             schemaVersion: Int32(bitPattern: fields.schemaBits),
             createdAt: createdAt,
             recordCount: metrics.recordCount,
@@ -367,7 +369,8 @@ extension PortableArchiveV2 {
         )
         guard fileManager.createFile(
             atPath: temporaryURL.path,
-            contents: nil
+            contents: nil,
+            attributes: [.posixPermissions: 0o600]
         ) else {
             throw CocoaError(.fileWriteUnknown)
         }
@@ -386,11 +389,17 @@ extension PortableArchiveV2 {
         if fileManager.fileExists(atPath: destinationURL.path) {
             _ = try fileManager.replaceItemAt(
                 destinationURL,
-                withItemAt: temporaryURL
+                withItemAt: temporaryURL,
+                backupItemName: nil,
+                options: [.usingNewMetadataOnly]
             )
         } else {
             try fileManager.moveItem(at: temporaryURL, to: destinationURL)
         }
+        try fileManager.setAttributes(
+            [.posixPermissions: 0o600],
+            ofItemAtPath: destinationURL.path
+        )
         committed = true
     }
 

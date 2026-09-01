@@ -33,13 +33,15 @@ enum BoundedFileReader {
     static func copy(
         from sourceHandle: FileHandle,
         to destinationURL: URL,
-        maximumByteCount: Int
+        maximumByteCount: Int,
+        onChunk: (Data) throws -> Void = { _ in }
     ) throws -> Int {
         precondition(maximumByteCount >= 0)
         let fileManager = FileManager.default
         guard fileManager.createFile(
             atPath: destinationURL.path,
-            contents: nil
+            contents: nil,
+            attributes: [.posixPermissions: 0o600]
         ) else {
             throw CocoaError(.fileWriteUnknown)
         }
@@ -65,6 +67,7 @@ enum BoundedFileReader {
             guard nextByteCount <= maximumByteCount else {
                 throw PortableArchiveError.archiveTooLarge
             }
+            try onChunk(chunk)
             try destinationHandle.write(contentsOf: chunk)
             copiedByteCount = nextByteCount
         }

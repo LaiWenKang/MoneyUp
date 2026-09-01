@@ -30,7 +30,7 @@ struct IntelligenceProjectionCard: View {
                     projectionContent
                 }
             }
-            .task { await load() }
+            .task(id: model.logicalBookRevision) { await load() }
         }
     }
 
@@ -104,7 +104,11 @@ struct IntelligenceProjectionCard: View {
 
     @MainActor
     private func load() async {
+        let revision = model.logicalBookRevision
         result = nil
-        result = await model.monthEndProjectionResult()
+        let loaded = await model.monthEndProjectionResult()
+        guard revision == model.logicalBookRevision,
+              !model.isBookReplacementInProgress else { return }
+        result = loaded
     }
 }

@@ -44,6 +44,20 @@ struct OnboardingView: View {
         accountName.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    private var accountNameValidationMessage: String? {
+        guard showsAccountErrors, normalizedAccountName.isEmpty else { return nil }
+        return AppLocalization.string("onboarding.account_name_error")
+    }
+
+    private var openingBalanceValidationMessage: String? {
+        guard showsAccountErrors, startingBalance == nil else { return nil }
+        return AppLocalization.string(
+            accountType.isLiabilityAccount
+                ? "onboarding.amount_owed_error"
+                : "onboarding.current_balance_error"
+        )
+    }
+
     private var openingBalanceSummary: String {
         guard let startingBalance,
               let currency = try? CurrencyCode(currencyCode),
@@ -78,6 +92,7 @@ struct OnboardingView: View {
             .onChange(of: accountType) { _, _ in
                 errorMessage = nil
             }
+            .moneyUpOperationErrorAlert(message: $errorMessage)
         }
     }
 
@@ -219,9 +234,10 @@ struct OnboardingView: View {
                             .textFieldStyle(.roundedBorder)
                             .submitLabel(.next)
                             .onSubmit { focusedField = .openingBalance }
+                            .moneyUpFieldValidation(accountNameValidationMessage)
 
-                        if showsAccountErrors && normalizedAccountName.isEmpty {
-                            validationMessage("onboarding.account_name_error")
+                        if let accountNameValidationMessage {
+                            MoneyUpFieldError(message: accountNameValidationMessage)
                         }
                     }
 
@@ -252,6 +268,7 @@ struct OnboardingView: View {
                             )
                             .focused($focusedField, equals: .openingBalance)
                             .textFieldStyle(.roundedBorder)
+                            .moneyUpFieldValidation(openingBalanceValidationMessage)
                             Text(currencyCode)
                                 .font(.subheadline.monospaced().weight(.semibold))
                                 .foregroundStyle(.secondary)
@@ -260,12 +277,8 @@ struct OnboardingView: View {
                             .font(.footnote)
                             .foregroundStyle(.secondary)
 
-                        if showsAccountErrors && startingBalance == nil {
-                            validationMessage(
-                                accountType.isLiabilityAccount
-                                    ? "onboarding.amount_owed_error"
-                                    : "onboarding.current_balance_error"
-                            )
+                        if let openingBalanceValidationMessage {
+                            MoneyUpFieldError(message: openingBalanceValidationMessage)
                         }
                     }
                 }
@@ -321,14 +334,6 @@ struct OnboardingView: View {
 
     private var navigationBar: some View {
         VStack(spacing: 10) {
-            if let errorMessage {
-                Text(errorMessage)
-                    .font(.footnote)
-                    .foregroundStyle(.red)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .accessibilityAddTraits(.isStaticText)
-            }
-
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 12) {
                     backButton
@@ -490,13 +495,6 @@ struct OnboardingView: View {
                 .font(.body)
                 .foregroundStyle(.secondary)
         }
-    }
-
-    private func validationMessage(_ key: LocalizedStringKey) -> some View {
-        Label(key, systemImage: "exclamationmark.circle.fill")
-            .font(.footnote)
-            .foregroundStyle(.red)
-            .accessibilityAddTraits(.isStaticText)
     }
 
     private func reviewRow(_ title: LocalizedStringKey, value: String) -> some View {

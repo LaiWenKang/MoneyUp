@@ -7,6 +7,10 @@ enum DatabaseKeyStoreError: Error, Equatable, Sendable {
     case devicePasscodeRequired
     case unexpectedStatus(OSStatus)
     case invalidStoredKey
+    /// The device-bound Keychain item is gone while at least one SQLCipher
+    /// artifact still exists. This is a recovery state, never permission to
+    /// create a replacement key beside unreadable ciphertext.
+    case missingDeviceBoundKey
 }
 
 /// A pure, fail-closed decision boundary for first-install key creation.
@@ -93,6 +97,8 @@ extension DatabaseKeyStoreError: LocalizedError {
             return AppLocalization.string("error.keychain_unavailable")
         case .invalidStoredKey:
             return AppLocalization.string("error.invalid_database_key")
+        case .missingDeviceBoundKey:
+            return AppLocalization.string("error.missing_device_bound_key")
         }
     }
 }
@@ -126,10 +132,59 @@ enum DatabaseKeyStore {
                 writeAheadLogExists: exists[1],
                 sharedMemoryExists: exists[2]
             ) else {
-                throw DatabaseKeyStoreError.invalidStoredKey
+                throw DatabaseKeyStoreError.missingDeviceBoundKey
             }
             return try createKey()
         }
+    }
+
+    /// Verifies the device can protect a replacement key, then generates it
+    /// for the explicit key-cliff transaction. This does not change Keychain
+    /// or the live database and is therefore safe before archive validation.
+    static func generateRecoveryKey() throws -> Data {
+        try requireDevicePasscodeForRecovery()
+        _ = try deviceBoundAccessControl()
+        return try generateRandomKey()
+    }
+
+    /// `SecAccessControlCreateWithFlags` constructs a policy object but does
+    /// not prove that the device currently has a passcode. This non-interactive
+    /// LocalAuthentication check performs that preflight without creating a
+    /// temporary Keychain item or leaving any cleanup artifact behind.
+    static func requireDevicePasscodeForRecovery(
+        canEvaluateOwnerAuthentication: () -> Bool = {
+            LAContext().canEvaluatePolicy(
+                .deviceOwnerAuthentication,
+                error: nil
+            )
+        }
+    ) throws {
+        guard canEvaluateOwnerAuthentication() else {
+            throw DatabaseKeyStoreError.devicePasscodeRequired
+        }
+    }
+
+    /// Stores an already-validated recovery candidate's key under the same
+    /// device-bound policy as a first-install key. The caller owns the
+    /// crash-consistent filesystem transaction and must call this only after
+    /// its non-secret durable recovery marker exists.
+    static func storeRecoveryKey(
+        _ key: Data,
+        canEvaluateOwnerAuthentication: () -> Bool = {
+            LAContext().canEvaluatePolicy(
+                .deviceOwnerAuthentication,
+                error: nil
+            )
+        }
+    ) throws {
+        // Candidate validation can take long enough for the device passcode
+        // state to change. Recheck at the final Keychain boundary so a missing
+        // passcode has the same stable error as the initial preflight without
+        // depending on newer-SDK-only OSStatus values.
+        try requireDevicePasscodeForRecovery(
+            canEvaluateOwnerAuthentication: canEvaluateOwnerAuthentication
+        )
+        _ = try storeKey(key, loadExistingOnDuplicate: false)
     }
 
     static func deleteKey() throws {
@@ -159,23 +214,43 @@ enum DatabaseKeyStore {
     }
 
     private static func createKey() throws -> Data {
+        var key = try generateRandomKey()
+        do {
+            if let existing = try storeKey(
+                key,
+                loadExistingOnDuplicate: true
+            ) {
+                key.resetBytes(in: 0..<key.count)
+                return existing
+            }
+            return key
+        } catch {
+            key.resetBytes(in: 0..<key.count)
+            throw error
+        }
+    }
+
+    private static func generateRandomKey() throws -> Data {
         var key = Data(count: keyLength)
         let randomStatus = key.withUnsafeMutableBytes { bytes in
             SecRandomCopyBytes(kSecRandomDefault, keyLength, bytes.baseAddress!)
         }
         guard randomStatus == errSecSuccess else {
+            key.resetBytes(in: 0..<key.count)
             throw mappedError(for: randomStatus)
         }
+        return key
+    }
 
-        guard let accessControl = SecAccessControlCreateWithFlags(
-            kCFAllocatorDefault,
-            kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly,
-            .userPresence,
-            nil
-        ) else {
-            key.resetBytes(in: 0..<key.count)
-            throw DatabaseKeyStoreError.devicePasscodeRequired
+    private static func storeKey(
+        _ key: Data,
+        loadExistingOnDuplicate: Bool
+    ) throws -> Data? {
+        guard key.count == keyLength else {
+            throw DatabaseKeyStoreError.invalidStoredKey
         }
+
+        let accessControl = try deviceBoundAccessControl()
 
         var query = baseQuery
         query[kSecValueData as String] = key
@@ -184,13 +259,24 @@ enum DatabaseKeyStore {
 
         let status = SecItemAdd(query as CFDictionary, nil)
         guard status == errSecSuccess else {
-            key.resetBytes(in: 0..<key.count)
-            if status == errSecDuplicateItem {
+            if status == errSecDuplicateItem, loadExistingOnDuplicate {
                 return try loadKey().get()
             }
             throw mappedError(for: status)
         }
-        return key
+        return nil
+    }
+
+    private static func deviceBoundAccessControl() throws -> SecAccessControl {
+        guard let accessControl = SecAccessControlCreateWithFlags(
+            kCFAllocatorDefault,
+            kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly,
+            .userPresence,
+            nil
+        ) else {
+            throw DatabaseKeyStoreError.devicePasscodeRequired
+        }
+        return accessControl
     }
 
     private static var baseQuery: [String: Any] {
@@ -202,7 +288,7 @@ enum DatabaseKeyStore {
         ]
     }
 
-    private static func mappedError(for status: OSStatus) -> DatabaseKeyStoreError {
+    static func mappedError(for status: OSStatus) -> DatabaseKeyStoreError {
         switch status {
         case errSecUserCanceled, errSecAuthFailed, errSecInteractionNotAllowed:
             return .authenticationCancelled

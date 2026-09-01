@@ -103,6 +103,10 @@ struct IntelligenceView: View {
         .sheet(item: $scheduleSelection) { selection in
             IntelligenceScheduleReviewView(selection: selection)
         }
+        .onChange(of: model.logicalBookRevision) { _, _ in
+            historySelection = nil
+            scheduleSelection = nil
+        }
     }
 
     private var statusCard: some View {
@@ -200,7 +204,8 @@ struct IntelligenceView: View {
                     findingID: finding.id,
                     entryIDs: Array(entryIDs.suffix(maximum)),
                     day: day,
-                    wasTruncated: entryIDs.count > maximum
+                    wasTruncated: entryIDs.count > maximum,
+                    logicalBookRevision: model.logicalBookRevision
                 )
             } label: {
                 Label("intelligence.review_history", systemImage: "clock.arrow.circlepath")

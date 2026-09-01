@@ -75,9 +75,6 @@ struct AddHoldingSheet: View {
                     Text("holding.opening_treatment_help")
                 }
 
-                if let errorMessage {
-                    Text(errorMessage).foregroundStyle(.red)
-                }
             }
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
@@ -103,6 +100,7 @@ struct AddHoldingSheet: View {
                     currencyCode = code
                 }
             }
+            .moneyUpOperationErrorAlert(message: $errorMessage)
         }
     }
 
@@ -306,7 +304,6 @@ struct HoldingManagementSheet: View {
                     }
                 }
                 if let resultMessage { Section { Text(resultMessage).foregroundStyle(.green) } }
-                if let errorMessage { Section { Text(errorMessage).foregroundStyle(.red) } }
             }
             .navigationTitle(holding?.symbol.isEmpty == false ? holding?.symbol ?? "" : holding?.name ?? "")
             .navigationBarTitleDisplayMode(.inline)
@@ -337,6 +334,7 @@ struct HoldingManagementSheet: View {
             } message: {
                 Text("holding.migration_choice_detail")
             }
+            .moneyUpOperationErrorAlert(message: $errorMessage)
         }
     }
 

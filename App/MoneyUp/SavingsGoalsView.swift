@@ -216,12 +216,6 @@ private struct GoalEditorSheet: View {
                 } footer: {
                     Text("goal.reset_rule_detail")
                 }
-                if let errorMessage {
-                    Section {
-                        Label(errorMessage, systemImage: "exclamationmark.circle.fill")
-                            .foregroundStyle(.red)
-                    }
-                }
             }
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
@@ -241,6 +235,7 @@ private struct GoalEditorSheet: View {
                 }
             }
             .onAppear { currency = currency ?? availableCurrencies.first }
+            .moneyUpOperationErrorAlert(message: $errorMessage)
         }
     }
 
@@ -385,12 +380,6 @@ private struct GoalManagementSheet: View {
                     }
                 }
 
-                if let errorMessage {
-                    Section {
-                        Label(errorMessage, systemImage: "exclamationmark.circle.fill")
-                            .foregroundStyle(.red)
-                    }
-                }
             }
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
@@ -434,6 +423,7 @@ private struct GoalManagementSheet: View {
             } message: {
                 Text(confirmationMessage)
             }
+            .moneyUpOperationErrorAlert(message: $errorMessage)
         }
     }
 
@@ -525,10 +515,6 @@ private struct GoalMovementSheet: View {
                     in: ...Date(),
                     displayedComponents: .date
                 )
-                if let errorMessage {
-                    Label(errorMessage, systemImage: "exclamationmark.circle.fill")
-                        .foregroundStyle(.red)
-                }
             }
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
@@ -547,6 +533,7 @@ private struct GoalMovementSheet: View {
                     Button("action.done") { amountFocused = false }
                 }
             }
+            .moneyUpOperationErrorAlert(message: $errorMessage)
         }
     }
 

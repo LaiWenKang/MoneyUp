@@ -12,7 +12,8 @@ private final class ReceiptSuggestionSignpostState {
 extension QuickLogEntryView {
     func scanReceipt(
         _ item: PhotosPickerItem?,
-        generation: Int
+        generation: Int,
+        logicalBookRevision: UInt64
     ) async {
         guard let item else { return }
         let suggestionsSignpostID = Self.receiptSignposter.makeSignpostID()
@@ -29,7 +30,10 @@ extension QuickLogEntryView {
                     "outcome=incomplete"
                 )
             }
-            if generation == receiptScanGeneration {
+            if receiptScanIsCurrent(
+                generation: generation,
+                logicalBookRevision: logicalBookRevision
+            ) {
                 isScanning = false
                 receiptScanTask = nil
                 receiptScanBaseline = nil
@@ -37,7 +41,10 @@ extension QuickLogEntryView {
             }
         }
         guard !Task.isCancelled,
-              generation == receiptScanGeneration else { return }
+              receiptScanIsCurrent(
+                  generation: generation,
+                  logicalBookRevision: logicalBookRevision
+              ) else { return }
         isScanning = true
         smartMessage = nil
         receiptResult = nil
@@ -51,27 +58,38 @@ extension QuickLogEntryView {
                 throw ReceiptScannerError.unreadableImage
             }
             try Task.checkCancellation()
-            guard generation == receiptScanGeneration else { return }
+            guard receiptScanIsCurrent(
+                generation: generation,
+                logicalBookRevision: logicalBookRevision
+            ) else { return }
             try await ReceiptImageSanitizer.waitForPendingPreparation()
             try Task.checkCancellation()
-            guard generation == receiptScanGeneration else { return }
+            guard receiptScanIsCurrent(
+                generation: generation,
+                logicalBookRevision: logicalBookRevision
+            ) else { return }
             try await runReceiptPipeline(
                 data: data,
                 generation: generation,
+                logicalBookRevision: logicalBookRevision,
                 suggestionsInterval: suggestionsInterval,
                 signpostState: signpostState
             )
         } catch is CancellationError {
             return
         } catch {
-            guard generation == receiptScanGeneration else { return }
-            smartMessage = safeUserMessage(for: error, context: .scan)
+            guard receiptScanIsCurrent(
+                generation: generation,
+                logicalBookRevision: logicalBookRevision
+            ) else { return }
+            errorMessage = safeUserMessage(for: error, context: .scan)
         }
     }
 
     private func runReceiptPipeline(
         data: Data,
         generation: Int,
+        logicalBookRevision: UInt64,
         suggestionsInterval: OSSignpostIntervalState,
         signpostState: ReceiptSuggestionSignpostState
     ) async throws {
@@ -81,7 +99,10 @@ extension QuickLogEntryView {
                 prefersDayFirst: Self.localePrefersDayFirst
             )
         } handleSuggestions: { result in
-            guard generation == receiptScanGeneration else { return false }
+            guard receiptScanIsCurrent(
+                generation: generation,
+                logicalBookRevision: logicalBookRevision
+            ) else { return false }
             let didApplySuggestions = applyReceipt(result)
 
             // Saving and editing can resume as soon as the OCR result is
@@ -104,7 +125,10 @@ extension QuickLogEntryView {
             signpostState.ended = true
             return true
         } handleNoSuggestions: {
-            guard generation == receiptScanGeneration,
+            guard receiptScanIsCurrent(
+                      generation: generation,
+                      logicalBookRevision: logicalBookRevision
+                  ),
                   model.state == .ready else { return false }
             isScanning = false
             Self.receiptSignposter.endInterval(
@@ -115,8 +139,11 @@ extension QuickLogEntryView {
             signpostState.ended = true
             return true
         } handleRecognitionFailure: { error in
-            guard generation == receiptScanGeneration else { return false }
-            smartMessage = safeUserMessage(for: error, context: .scan)
+            guard receiptScanIsCurrent(
+                generation: generation,
+                logicalBookRevision: logicalBookRevision
+            ) else { return false }
+            errorMessage = safeUserMessage(for: error, context: .scan)
             isScanning = false
             Self.receiptSignposter.endInterval(
                 "Receipt selection to suggestions",
@@ -126,13 +153,18 @@ extension QuickLogEntryView {
             signpostState.ended = true
             return true
         } prepareRetention: {
-            try await prepareReceiptRetention(data, generation: generation)
+            try await prepareReceiptRetention(
+                data,
+                generation: generation,
+                logicalBookRevision: logicalBookRevision
+            )
         }
     }
 
     private func prepareReceiptRetention(
         _ data: Data,
-        generation: Int
+        generation: Int,
+        logicalBookRevision: UInt64
     ) async throws {
         let signpostID = Self.receiptSignposter.makeSignpostID()
         let interval = Self.receiptSignposter.beginInterval(
@@ -150,19 +182,35 @@ extension QuickLogEntryView {
             let sanitized = try await ReceiptImageSanitizer
                 .prepareForEncryptedStorage(data)
             try Task.checkCancellation()
-            guard generation == receiptScanGeneration else { return }
+            guard receiptScanIsCurrent(
+                generation: generation,
+                logicalBookRevision: logicalBookRevision
+            ) else { return }
             receiptAttachmentData = sanitized
             receiptRetentionMessage = nil
         } catch is CancellationError {
             throw CancellationError()
         } catch {
-            guard generation == receiptScanGeneration else { return }
+            guard receiptScanIsCurrent(
+                generation: generation,
+                logicalBookRevision: logicalBookRevision
+            ) else { return }
             receiptAttachmentData = nil
-            receiptRetentionMessage = safeUserMessage(
+            errorMessage = safeUserMessage(
                 for: error,
                 context: .scan
             )
         }
+    }
+
+    func receiptScanIsCurrent(
+        generation: Int,
+        logicalBookRevision: UInt64
+    ) -> Bool {
+        generation == receiptScanGeneration
+            && logicalBookRevision == model.logicalBookRevision
+            && !model.isBookReplacementInProgress
+            && model.state == .ready
     }
 
     /// Receipt fields are suggestions, not an automatic commit. Populate the

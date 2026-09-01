@@ -98,6 +98,10 @@ extension QuickLogEntryView {
     var splitEditor: some View {
         ForEach(Array(splitLines.enumerated()), id: \.element.id) { index, line in
             let lineID = line.id
+            let lineValidationMessage = monetaryInputError(
+                text: line.amountText,
+                currency: selectedAccountCurrency
+            )
             VStack(alignment: .leading, spacing: 8) {
                 Picker(
                     "quick_log.split_category",
@@ -138,6 +142,7 @@ extension QuickLogEntryView {
                     )
                     .moneyAmountKeyboard(currency: selectedAccountCurrency)
                     .focused($focusedField, equals: .splitAmount(lineID))
+                    .moneyUpFieldValidation(lineValidationMessage)
                     .accessibilityLabel(
                         Text(
                             String(
@@ -168,14 +173,8 @@ extension QuickLogEntryView {
                         )
                     }
                 }
-                if let message = monetaryInputError(
-                    text: line.amountText,
-                    currency: selectedAccountCurrency
-                ) {
-                    Label(message, systemImage: "exclamationmark.circle.fill")
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                        .accessibilityAddTraits(.isStaticText)
+                if let lineValidationMessage {
+                    MoneyUpFieldError(message: lineValidationMessage)
                 }
 
                 TextField(
