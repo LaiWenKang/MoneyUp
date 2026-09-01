@@ -56,120 +56,56 @@ struct CalendarView: View {
     }
 
     var body: some View {
+        NavigationStack {
+            presentedCalendarList
+        }
+        .environment(\.calendar, model.reportingCalendar)
+        .environment(\.timeZone, model.reportingCalendar.timeZone)
+    }
+
+    private var calendarList: some View {
         let dateComputation = currentDateComputation
         let isDateComputationLoading = isLoadingActuals || dateComputation == nil
-        NavigationStack {
-            List {
-                DatePicker(
-                    "calendar.select_date",
-                    selection: $selectedDate,
-                    displayedComponents: .date
-                )
-                .datePickerStyle(.graphical)
+        return List {
+            DatePicker(
+                "calendar.select_date",
+                selection: $selectedDate,
+                displayedComponents: .date
+            )
+            .datePickerStyle(.graphical)
 
-                if isDateComputationLoading {
-                    Section("calendar.money_flow") {
-                        HStack(spacing: 10) {
-                            ProgressView()
-                            Text("calendar.loading_actuals")
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                } else if actualsUnavailable {
-                    Section("calendar.money_flow") {
-                        ContentUnavailableView {
-                            Label("calendar.actuals_unavailable", systemImage: "exclamationmark.arrow.triangle.2.circlepath")
-                        } description: {
-                            Text("calendar.actuals_unavailable_detail")
-                        } actions: {
-                            Button("action.retry") { reloadGeneration += 1 }
-                        }
-                    }
-                } else if let dateComputation,
-                   case let .available(flows) = dateComputation.dayFlows,
-                   !flows.isEmpty {
-                    Section("calendar.money_flow") {
-                        ForEach(flows) { flow in
-                            LabeledContent {
-                                Text(formattedMoney(flow.income))
-                            } label: {
-                                Text("\(AppLocalization.string("transaction.income")) (\(flow.currency.value))")
-                            }
-                            LabeledContent {
-                                Text(formattedMoney(flow.expense))
-                            } label: {
-                                Text("\(AppLocalization.string("transaction.expense")) (\(flow.currency.value))")
-                            }
-                        }
-                    }
-                } else if let dateComputation,
-                   case let .unavailable(issue) = dateComputation.dayFlows {
-                    Section("calendar.money_flow") {
-                        DerivedValueUnavailableView(issue: issue)
-                    }
-                }
+            moneyFlowSection(
+                dateComputation: dateComputation,
+                isLoading: isDateComputationLoading
+            )
 
-                Section("calendar.actual") {
-                    if isLoadingActuals {
-                        ProgressView()
-                            .frame(maxWidth: .infinity, alignment: .center)
-                            .accessibilityLabel("calendar.loading_actuals")
-                    } else if actualsUnavailable {
-                        Text("calendar.actuals_unavailable_detail")
-                            .foregroundStyle(.secondary)
-                    } else if selectedEntries.isEmpty {
-                        Text("calendar.no_actual")
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ForEach(selectedEntries) { entry in
-                            TransactionRow(entry: entry)
-                                .swipeActions {
-                                    if !model.isProtectedJournalEntry(entry) {
-                                        Button(role: .destructive) {
-                                            entryPendingDeletion = entry
-                                        } label: {
-                                            Label("action.delete", systemImage: "trash")
-                                        }
-                                    }
-                                }
-                        }
-                    }
-                }
+            actualsSection
 
-                Section("calendar.scheduled") {
-                    if let dateComputation,
-                       dateComputation.scheduledTransactions.isEmpty {
-                        Text("calendar.no_scheduled")
-                            .foregroundStyle(.secondary)
-                    } else if let dateComputation {
-                        ForEach(dateComputation.scheduledTransactions) { item in
-                            scheduledRow(for: item)
-                        }
-                    } else {
-                        ProgressView()
-                            .frame(maxWidth: .infinity, alignment: .center)
-                    }
-                }
+            scheduledSection(dateComputation: dateComputation)
 
-                if let errorMessage {
-                    Section { Text(errorMessage).foregroundStyle(.red) }
-                }
+            if let errorMessage {
+                Section { Text(errorMessage).foregroundStyle(.red) }
             }
-            .scrollContentBackground(.hidden)
-            .background(Color.moneyUpBackground)
-            .navigationTitle("tab.calendar")
-            .task(id: loadRequest) {
-                await loadSelectedActuals()
-            }
-            .onChange(of: model.scheduledTransactions) { _, _ in
-                computationGeneration &+= 1
-            }
-            .onChange(of: model.accounts) { _, _ in
-                computationGeneration &+= 1
-            }
-            .onChange(of: model.profile) { _, _ in
-                computationGeneration &+= 1
-            }
+        }
+        .scrollContentBackground(.hidden)
+        .background(Color.moneyUpBackground)
+        .navigationTitle("tab.calendar")
+        .task(id: loadRequest) {
+            await loadSelectedActuals()
+        }
+        .onChange(of: model.scheduledTransactions) { _, _ in
+            computationGeneration &+= 1
+        }
+        .onChange(of: model.accounts) { _, _ in
+            computationGeneration &+= 1
+        }
+        .onChange(of: model.profile) { _, _ in
+            computationGeneration &+= 1
+        }
+    }
+
+    private var calendarListWithToolbar: some View {
+        calendarList
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Menu {
@@ -192,6 +128,10 @@ struct CalendarView: View {
                     }
                 }
             }
+    }
+
+    private var presentedCalendarList: some View {
+        calendarListWithToolbar
             .sheet(isPresented: $isAddingSchedule) {
                 AddScheduleSheet()
             }
@@ -230,9 +170,107 @@ struct CalendarView: View {
             } message: { _ in
                 Text("schedule.delete_detail")
             }
+    }
+
+    @ViewBuilder
+    private func moneyFlowSection(
+        dateComputation: CalendarDateComputation?,
+        isLoading: Bool
+    ) -> some View {
+        if isLoading {
+            Section("calendar.money_flow") {
+                HStack(spacing: 10) {
+                    ProgressView()
+                    Text("calendar.loading_actuals")
+                        .foregroundStyle(.secondary)
+                }
+            }
+        } else if actualsUnavailable {
+            Section("calendar.money_flow") {
+                ContentUnavailableView {
+                    Label(
+                        "calendar.actuals_unavailable",
+                        systemImage: "exclamationmark.arrow.triangle.2.circlepath"
+                    )
+                } description: {
+                    Text("calendar.actuals_unavailable_detail")
+                } actions: {
+                    Button("action.retry") { reloadGeneration += 1 }
+                }
+            }
+        } else if let dateComputation,
+                  case let .available(flows) = dateComputation.dayFlows,
+                  !flows.isEmpty {
+            Section("calendar.money_flow") {
+                ForEach(flows) { flow in
+                    LabeledContent {
+                        Text(formattedMoney(flow.income))
+                    } label: {
+                        Text("\(AppLocalization.string("transaction.income")) (\(flow.currency.value))")
+                    }
+                    LabeledContent {
+                        Text(formattedMoney(flow.expense))
+                    } label: {
+                        Text("\(AppLocalization.string("transaction.expense")) (\(flow.currency.value))")
+                    }
+                }
+            }
+        } else if let dateComputation,
+                  case let .unavailable(issue) = dateComputation.dayFlows {
+            Section("calendar.money_flow") {
+                DerivedValueUnavailableView(issue: issue)
+            }
         }
-        .environment(\.calendar, model.reportingCalendar)
-        .environment(\.timeZone, model.reportingCalendar.timeZone)
+    }
+
+    @ViewBuilder
+    private var actualsSection: some View {
+        Section("calendar.actual") {
+            if isLoadingActuals {
+                ProgressView()
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .accessibilityLabel("calendar.loading_actuals")
+            } else if actualsUnavailable {
+                Text("calendar.actuals_unavailable_detail")
+                    .foregroundStyle(.secondary)
+            } else if selectedEntries.isEmpty {
+                Text("calendar.no_actual")
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(selectedEntries) { entry in
+                    TransactionRow(entry: entry)
+                        .swipeActions {
+                            if !model.isProtectedJournalEntry(entry) {
+                                Button(role: .destructive) {
+                                    entryPendingDeletion = entry
+                                } label: {
+                                    Label("action.delete", systemImage: "trash")
+                                }
+                            }
+                        }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func scheduledSection(
+        dateComputation: CalendarDateComputation?
+    ) -> some View {
+        Section("calendar.scheduled") {
+            if let dateComputation,
+               dateComputation.scheduledTransactions.isEmpty {
+                Text("calendar.no_scheduled")
+                    .foregroundStyle(.secondary)
+            } else if let dateComputation {
+                ForEach(dateComputation.scheduledTransactions) { item in
+                    scheduledRow(for: item)
+                }
+            } else {
+                ProgressView()
+                    .frame(maxWidth: .infinity, alignment: .center)
+            }
+        }
     }
 
     private func scheduledRow(for item: ScheduledTransaction) -> some View {

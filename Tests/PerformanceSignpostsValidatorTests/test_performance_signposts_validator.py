@@ -102,6 +102,41 @@ class PerformanceSignpostsValidatorTests(unittest.TestCase):
 
         self.assertTrue(any("locations drifted" in error for error in extra_site))
 
+    def test_pins_xcode_compile_boundaries_for_unlock_and_calendar(self) -> None:
+        sources = self.swift_sources()
+        dependencies_path = "App/MoneyUp/AppModelDependencies.swift"
+        sources[dependencies_path] = sources[dependencies_path].replace(
+            "return try await Task.detached(priority: .userInitiated)",
+            "try await Task.detached(priority: .userInitiated)",
+            1,
+        )
+
+        unlock_errors = VALIDATOR.validate_journey_boundaries(sources)
+
+        self.assertTrue(
+            any(
+                "return try await Task.detached" in error
+                for error in unlock_errors
+            )
+        )
+
+        sources = self.swift_sources()
+        calendar_path = "App/MoneyUp/CalendarView.swift"
+        sources[calendar_path] = sources[calendar_path].replace(
+            "            presentedCalendarList\n",
+            '            List { Text("calendar.no_actual") }\n',
+            1,
+        )
+
+        calendar_errors = VALIDATOR.validate_journey_boundaries(sources)
+
+        self.assertTrue(
+            any(
+                "generic-heavy list and presentation graph" in error
+                for error in calendar_errors
+            )
+        )
+
     def test_rejects_indirect_wrapper_alias(self) -> None:
         sources = self.swift_sources()
         path = "App/MoneyUp/HistoryView.swift"

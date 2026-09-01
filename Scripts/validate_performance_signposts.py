@@ -662,6 +662,7 @@ def validate_journey_boundaries(sources: dict[str, str]) -> list[str]:
     errors: list[str] = []
     required_by_path = {
         "App/MoneyUp/AppModelDependencies.swift": [
+            "return try await Task.detached(priority: .userInitiated)",
             "unlockToFirstUsefulContentInterval: usefulContentInterval",
             "if !transfersUsefulContentInterval",
             "transfersUsefulContentInterval = true",
@@ -767,6 +768,25 @@ def validate_journey_boundaries(sources: dict[str, str]) -> list[str]:
         errors.append("History pagination must be blocked by initial completion")
 
     calendar = sources.get("App/MoneyUp/CalendarView.swift", "")
+    calendar_view_body = declaration_body(calendar, "var body: some View")
+    if calendar_view_body is None:
+        errors.append("Calendar View body is unreadable")
+    elif (
+        "presentedCalendarList" not in calendar_view_body
+        or any(
+            construct in calendar_view_body
+            for construct in (
+                "List {",
+                ".toolbar {",
+                ".sheet(",
+                ".confirmationDialog(",
+            )
+        )
+    ):
+        errors.append(
+            "Calendar View body must delegate its generic-heavy list and "
+            "presentation graph across compiler boundaries"
+        )
     compute_body = declaration_body(
         calendar,
         "private func computeSelectedDate(",

@@ -17,7 +17,7 @@ enum DatabaseStoreOpeners {
     static let production: DatabaseStoreOpener = { databaseURL in
         let performanceInterval = MoneyUpPerformanceSignposts.begin(.unlock)
         defer { MoneyUpPerformanceSignposts.end(performanceInterval) }
-        try await Task.detached(priority: .userInitiated) {
+        return try await Task.detached(priority: .userInitiated) {
             var key = try DatabaseKeyStore.loadOrCreateKey(
                 databaseURL: databaseURL
             )

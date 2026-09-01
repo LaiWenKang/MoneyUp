@@ -195,9 +195,11 @@ enum PerformanceOperations {
         store: EncryptedRecordStore,
         corpus: PerformanceIntelligenceCorpus
     ) async throws -> PerformanceIntelligenceResult {
+        let firstDayKey = MoneyUpPerformanceFixture.firstDayKey
+        let finalDayKey = MoneyUpPerformanceFixture.finalDayKey
+        let originDayKeyRange = firstDayKey...finalDayKey
         let observations = try await store.intelligenceObservations(
-            originDayKeyRange: MoneyUpPerformanceFixture.firstDayKey
-                ...MoneyUpPerformanceFixture.finalDayKey,
+            originDayKeyRange: originDayKeyRange,
             limit: EncryptedRecordStore.maximumIntelligenceObservationCount
         )
         var findings = try RecurrenceDetector.findings(

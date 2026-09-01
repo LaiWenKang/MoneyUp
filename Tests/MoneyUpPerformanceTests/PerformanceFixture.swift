@@ -247,7 +247,10 @@ final class MoneyUpPerformanceFixture: @unchecked Sendable {
                     in: .budgetEntryAttributions
                 ))
             }
-            try waitForPerformanceOperation { try await store.write(writes) }
+            let committedWrites = writes
+            try waitForPerformanceOperation {
+                try await store.write(committedWrites)
+            }
         }
     }
 
@@ -273,9 +276,10 @@ final class MoneyUpPerformanceFixture: @unchecked Sendable {
             throw PerformanceFixtureError.invalidSeedCounts
         }
 
+        let validAccountIDs = Set(accounts.map(\.id))
         let ledger = try waitForPerformanceOperation {
             try await store.journalLedgerIndex(
-                validAccountIDs: Set(accounts.map(\.id)),
+                validAccountIDs: validAccountIDs,
                 expectedAccountCurrencies: [:]
             )
         }
@@ -285,10 +289,11 @@ final class MoneyUpPerformanceFixture: @unchecked Sendable {
             throw PerformanceFixtureError.invalidLedger
         }
 
+        let intelligenceCorpus = corpus
         let intelligence = try waitForPerformanceOperation {
             try await PerformanceOperations.intelligence(
                 store: store,
-                corpus: corpus
+                corpus: intelligenceCorpus
             )
         }
         guard intelligence.observationCount
