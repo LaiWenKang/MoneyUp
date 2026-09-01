@@ -168,7 +168,22 @@ enum DatabaseKeyStore {
     /// device-bound policy as a first-install key. The caller owns the
     /// crash-consistent filesystem transaction and must call this only after
     /// its non-secret durable recovery marker exists.
-    static func storeRecoveryKey(_ key: Data) throws {
+    static func storeRecoveryKey(
+        _ key: Data,
+        canEvaluateOwnerAuthentication: () -> Bool = {
+            LAContext().canEvaluatePolicy(
+                .deviceOwnerAuthentication,
+                error: nil
+            )
+        }
+    ) throws {
+        // Candidate validation can take long enough for the device passcode
+        // state to change. Recheck at the final Keychain boundary so a missing
+        // passcode has the same stable error as the initial preflight without
+        // depending on newer-SDK-only OSStatus values.
+        try requireDevicePasscodeForRecovery(
+            canEvaluateOwnerAuthentication: canEvaluateOwnerAuthentication
+        )
         _ = try storeKey(key, loadExistingOnDuplicate: false)
     }
 
@@ -277,8 +292,6 @@ enum DatabaseKeyStore {
         switch status {
         case errSecUserCanceled, errSecAuthFailed, errSecInteractionNotAllowed:
             return .authenticationCancelled
-        case errSecPasscodeRequired:
-            return .devicePasscodeRequired
         default:
             return .unexpectedStatus(status)
         }

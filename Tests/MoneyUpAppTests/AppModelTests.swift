@@ -45,7 +45,7 @@ final class AppModelTests: XCTestCase {
         )
     }
 
-    func testRecoveryKeyPasscodePreflightIsNonMutatingAndMapsInstallRace() {
+    func testRecoveryKeyPasscodePreflightIsNonMutatingAndRecheckedAtInstall() {
         var evaluationCount = 0
         XCTAssertThrowsError(
             try DatabaseKeyStore.requireDevicePasscodeForRecovery(
@@ -61,9 +61,26 @@ final class AppModelTests: XCTestCase {
             )
         }
         XCTAssertEqual(evaluationCount, 1)
+
+        var installEvaluationCount = 0
+        XCTAssertThrowsError(
+            try DatabaseKeyStore.storeRecoveryKey(
+                Data(repeating: 0xA5, count: 32),
+                canEvaluateOwnerAuthentication: {
+                    installEvaluationCount += 1
+                    return false
+                }
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? DatabaseKeyStoreError,
+                .devicePasscodeRequired
+            )
+        }
+        XCTAssertEqual(installEvaluationCount, 1)
         XCTAssertEqual(
-            DatabaseKeyStore.mappedError(for: errSecPasscodeRequired),
-            .devicePasscodeRequired
+            DatabaseKeyStore.mappedError(for: errSecAuthFailed),
+            .authenticationCancelled
         )
     }
 

@@ -219,7 +219,7 @@ extension AppModel {
 
         var candidateFailure: (any Error)?
         do {
-            try await validateRestoreCandidate(
+            _ = try await validateRestoreCandidate(
                 in: candidateStore,
                 archiveURL: archiveURL,
                 password: password

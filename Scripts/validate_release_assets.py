@@ -121,6 +121,7 @@ def security_recovery_invariant_violations(
     """Return release-boundary violations for actual and mutated fixtures."""
     violations: list[str] = []
     key_cliff = swift_without_comments(sources["key_cliff"])
+    key_store = swift_without_comments(sources["key_store"])
     transaction = swift_without_comments(sources["transaction"])
     restore = swift_without_comments(sources["restore"])
     data_safety = swift_without_comments(sources["data_safety"])
@@ -163,14 +164,49 @@ def security_recovery_invariant_violations(
         "static func scavengeUncommittedCandidate",
         "static func prepareCandidateDirectory",
     )
+    recovery_key_store = source_section(
+        key_store,
+        "static func storeRecoveryKey",
+        "static func deleteKey",
+    )
+    mapped_key_error = source_section(
+        key_store,
+        "static func mappedError",
+        "\n}",
+    )
     for label, body in (
         ("initial key-cliff restore", recovery),
         ("key-cliff commit", commit),
         ("key-cliff startup resume", resume),
         ("key-cliff filesystem install", install),
+        ("recovery-key store", recovery_key_store),
     ):
         if not body:
             violations.append(f"{label} function boundary is missing")
+
+    if recovery_key_store and not ordered_fragments_are_present(
+        recovery_key_store,
+        (
+            "requireDevicePasscodeForRecovery(",
+            "storeKey(key, loadExistingOnDuplicate: false)",
+        ),
+    ):
+        violations.append(
+            "recovery-key storage must recheck passcode availability at the "
+            "final Keychain boundary"
+        )
+    if "errSecPasscodeRequired" in key_store:
+        violations.append(
+            "device-key errors must not depend on a newer-SDK-only OSStatus"
+        )
+    if not all(token in mapped_key_error for token in (
+        "errSecUserCanceled, errSecAuthFailed, errSecInteractionNotAllowed",
+        "return .authenticationCancelled",
+        "return .unexpectedStatus(status)",
+    )):
+        violations.append(
+            "device-key errors must retain stable supported-SDK classification"
+        )
 
     if recovery and (
         recovery.count("requireEmptyLockedCaptureInbox()") != 1
@@ -522,6 +558,9 @@ def validate_security_recovery_mutation_gate() -> None:
         "key_cliff": (
             app_root / "AppModelKeyCliffRecovery.swift"
         ).read_text(encoding="utf-8"),
+        "key_store": (
+            app_root / "DatabaseKeyStore.swift"
+        ).read_text(encoding="utf-8"),
         "transaction": (
             app_root / "KeyCliffRecoveryTransaction.swift"
         ).read_text(encoding="utf-8"),
@@ -594,6 +633,22 @@ def validate_security_recovery_mutation_gate() -> None:
             app_sources[filename] = fixture[key]
             fixture["app_sources"] = app_sources
         mutations.append((name, fixture))
+
+    fixture = dict(sources)
+    fixture["key_store"] = replace_in_source_section(
+        sources["key_store"],
+        "static func storeRecoveryKey",
+        "static func deleteKey",
+        "try requireDevicePasscodeForRecovery(",
+        "try recoveryPasscodeRecheckWasRemoved(",
+    )
+    mutations.append(("final recovery-key passcode recheck", fixture))
+
+    fixture = dict(sources)
+    fixture["key_store"] = (
+        sources["key_store"] + "\nlet errSecPasscodeRequired = unsupported\n"
+    )
+    mutations.append(("newer-SDK-only passcode status", fixture))
 
     for name, start, end, token in (
         (
@@ -1689,11 +1744,26 @@ def validate_key_cliff_recovery_boundary() -> None:
         "kSecAttrSynchronizable as String] = false",
         "requireDevicePasscodeForRecovery()",
         ".deviceOwnerAuthentication",
-        "case errSecPasscodeRequired:",
-        "return .devicePasscodeRequired",
+        "throw DatabaseKeyStoreError.devicePasscodeRequired",
     ]:
         if declaration not in key_store:
             fail(f"device-key lifecycle is missing {declaration}")
+
+    recovery_key_store = source_section(
+        swift_without_comments(key_store),
+        "static func storeRecoveryKey",
+        "static func deleteKey",
+    )
+    if not ordered_fragments_are_present(
+        recovery_key_store,
+        (
+            "requireDevicePasscodeForRecovery(",
+            "storeKey(key, loadExistingOnDuplicate: false)",
+        ),
+    ):
+        fail("device-key lifecycle is missing the final passcode recheck")
+    if "errSecPasscodeRequired" in key_store:
+        fail("device-key lifecycle uses a newer-SDK-only passcode status")
 
     for declaration in [
         "startupFailureKind = .missingDeviceBoundKey",

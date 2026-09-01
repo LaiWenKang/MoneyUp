@@ -65,54 +65,95 @@ struct CalendarView: View {
         .environment(\.timeZone, model.reportingCalendar.timeZone)
     }
 
-    private var calendarList: some View {
+    private var calendarListContent: some View {
+        List {
+            calendarDatePicker
+            calendarMoneyFlowSection
+            actualsSection
+            calendarScheduledSection
+        }
+    }
+
+    private var calendarDatePicker: some View {
+        DatePicker(
+            "calendar.select_date",
+            selection: $selectedDate,
+            displayedComponents: .date
+        )
+        .datePickerStyle(.graphical)
+    }
+
+    private var calendarMoneyFlowSection: some View {
         let dateComputation = currentDateComputation
         let isDateComputationLoading = isLoadingActuals || dateComputation == nil
-        return List {
-            DatePicker(
-                "calendar.select_date",
-                selection: $selectedDate,
-                displayedComponents: .date
-            )
-            .datePickerStyle(.graphical)
+        return moneyFlowSection(
+            dateComputation: dateComputation,
+            isLoading: isDateComputationLoading
+        )
+    }
 
-            moneyFlowSection(
-                dateComputation: dateComputation,
-                isLoading: isDateComputationLoading
-            )
+    private var calendarScheduledSection: some View {
+        scheduledSection(dateComputation: currentDateComputation)
+    }
 
-            actualsSection
-
-            scheduledSection(dateComputation: dateComputation)
-        }
+    private var styledCalendarList: some View {
+        calendarListContent
         .scrollContentBackground(.hidden)
         .background(Color.moneyUpBackground)
         .navigationTitle("tab.calendar")
+    }
+
+    private var loadingCalendarList: some View {
+        styledCalendarList
         .task(id: loadRequest) {
             await loadSelectedActuals()
         }
+    }
+
+    private var scheduleObservedCalendarList: some View {
+        loadingCalendarList
         .onChange(of: model.scheduledTransactions) { _, _ in
-            computationGeneration &+= 1
+            invalidateDateComputation()
         }
+    }
+
+    private var accountObservedCalendarList: some View {
+        scheduleObservedCalendarList
         .onChange(of: model.accounts) { _, _ in
-            computationGeneration &+= 1
+            invalidateDateComputation()
         }
+    }
+
+    private var profileObservedCalendarList: some View {
+        accountObservedCalendarList
         .onChange(of: model.profile) { _, _ in
-            computationGeneration &+= 1
+            invalidateDateComputation()
         }
+    }
+
+    private var calendarList: some View {
+        profileObservedCalendarList
         .onChange(of: model.logicalBookRevision) { _, _ in
-            selectedEntries = []
-            dateComputation = nil
-            scheduleMatchCandidates = [:]
-            scheduleMatchesLoading = []
-            entryPendingDeletion = nil
-            schedulePendingDeletion = nil
-            scheduleBeingEdited = nil
-            isAddingSchedule = false
-            errorMessage = nil
-            actualsUnavailable = false
-            isLoadingActuals = true
+            resetForLogicalBookRevision()
         }
+    }
+
+    private func invalidateDateComputation() {
+        computationGeneration &+= 1
+    }
+
+    private func resetForLogicalBookRevision() {
+        selectedEntries = []
+        dateComputation = nil
+        scheduleMatchCandidates = [:]
+        scheduleMatchesLoading = []
+        entryPendingDeletion = nil
+        schedulePendingDeletion = nil
+        scheduleBeingEdited = nil
+        isAddingSchedule = false
+        errorMessage = nil
+        actualsUnavailable = false
+        isLoadingActuals = true
     }
 
     private var calendarListWithToolbar: some View {
