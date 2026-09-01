@@ -1,11 +1,11 @@
 # App Store Submission Working Copy
 
-Last reviewed: 28 August 2026 for the 0.6.0 source candidate
+Last reviewed: 1 September 2026 for the 0.7.0 source candidate
 
 This file is the source of truth for App Store Connect entry. Verify every
 claim against the exact archived binary before submission.
 
-Status: working copy for the source-integrated 0.6.0 beta candidate. No 1.0
+Status: working copy for the source-integrated 0.7.0 beta candidate. No 1.0
 binary, screenshots, privacy answers, review notes, App Review approval, or
 public release is represented here as complete.
 
@@ -152,8 +152,10 @@ Beta description:
 > widget, Flexible Today, rollover and savings goals, a read-only budget
 > simulator, chart drill-through, on-device smart entry, indexed
 > History/edit/refunds/splits, ledger-linked investments, encrypted
-> backup/restore, and reviewed CSV/XLSX portability in English and Simplified
-> Chinese. Use sample
+> backup/restore, reviewed CSV/XLSX portability, configurable app language,
+> visible transaction details, category management, and optional explainable
+> local recurrence, duplicate, anomaly, projection, and budget suggestions in
+> English and Simplified Chinese. Use sample
 > data first while physical upgrade and restore drills are completed.
 
 What to test:
@@ -163,8 +165,11 @@ What to test:
 > nested budget roll-up, Flexible Today classification/arithmetic, the what-if simulator,
 > schedule edit/post/match, chart inspection/drill-through, rollover/goals,
 > holding purchases/sales/repricing/lots, percentage-only widget status,
-> shortcuts, confirmed deletion, update data retention, encrypted restore, and
-> CSV/XLSX export plus mapped import. Hide all private
+> shortcuts, confirmed deletion, language selection, visible merchant/title and
+> multiline notes, category create/rename/archive/restore/merge/reassign/delete,
+> intelligence opt-out and rebuild, evidence-backed recurrence/duplicate/anomaly
+> findings, currency-separated projections, reviewed budget proposals, update
+> data retention, encrypted restore, and CSV/XLSX export plus mapped import. Hide all private
 > values in feedback images.
 
 Private TestFlight fields are entered by the Account Holder directly in App

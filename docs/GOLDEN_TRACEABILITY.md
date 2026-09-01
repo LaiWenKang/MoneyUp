@@ -1,16 +1,19 @@
-# Golden PRD Traceability - MoneyUp 0.6.0 / 0.7.0 W1-W2 Candidate
+# Golden PRD Traceability - MoneyUp 0.7.0 Candidate
 
 Reconciled: 1 September 2026
 
-This is the requirement-to-evidence map for the MoneyUp 0.6.0 baseline, merged
-0.7.0 W1 architecture slice, and source-integrated W2 candidate. It prevents
+This is the requirement-to-evidence map for the retained MoneyUp 0.6.0
+migration baseline and the merged 0.7.0 W1/W2 candidate. It prevents
 "implemented in source" from being misreported as "released" or "accepted."
 
 The approved 0.6.0 baseline was
 `ff272da89de9f4e3cb9c44d4abd27deae7d2b338`. W1 merged through PR #30 at
 `da88df25ab06e93ec5998a9edbcf0153587a9af2`; its exact merged-main CI passed.
-W2 is additive work on a review branch. Its final branch and merged-main CI,
-physical-device evidence, and release evidence remain open.
+W2 merged through PR #31 at
+`4159df31b7e0b9489d1ddcd84c261296faaeda39`; CI run 246 passed the release,
+Core/persistence/intelligence, app-model, and app/widget Simulator gates on that
+exact merge SHA. Later candidate commits must repeat those gates. Physical-
+device, signed-binary, TestFlight, and release evidence remain open.
 
 The exact 97-row requirement-to-test mapping is in
 [REQUIREMENTS_TEST_MATRIX.md](REQUIREMENTS_TEST_MATRIX.md). The complete source,
@@ -46,15 +49,15 @@ exact-candidate run.
 
 | ID | Implementation and evidence anchor | Current evidence state |
 |---|---|---|
-| W2-MOD | `MoneyUpIntelligence` depends only on `MoneyUpCore`; its exact-Decimal detectors and stable finding contracts have no UI, database, network, logging, or locale dependency. | Source implemented; final W2 exact-SHA CI open. |
-| W2-S7 | Schema 7 adds `intelligence_control`, account/source facts, and `payee_affinity_index`. The approved migration decodes only missing metadata inside one transaction and preserves payload bytes, hashes, IDs, and timestamps. | Source implemented; migration/rollback CI and physical upgrade evidence open. |
-| W2-AFF | Full-book affinity updates with journal/account lifecycle writes; bounded routine reads decode zero journal payloads. History evidence is user-triggered, exact-ID, and capped at 100. | Source implemented; indexed read/edit/delete/restore tests present; final CI open. |
-| W2-DET | Weekly/monthly/yearly recurrence, lapse, price-step, exact duplicate, and category/currency median-MAD anomaly findings remain explainable and advisory. Transfers/splits and required negative cases fail closed. | Source implemented; pure tests and committed oracle present; physical accuracy review open. |
-| W2-PROJ | Month-end actuals, confirmed remaining schedules, and flexible burn rate remain separate per currency; missing evidence produces `DV-009`, never zero or FX. | Source implemented; deterministic app-model tests present; final CI open. |
-| W2-BUD | Suggestions use at least three complete positive months from the trailing six, median plus two MAD, and explicit selected diff. Apply/undo each use one transaction; stale proposals fail before writing. | Source implemented; atomic app-model tests present; final CI open. |
-| W2-OPT | Legacy profiles default intelligence on. Opt-out serially persists, cancels work, clears findings, and clears derived tables without deleting transactions; re-enable explicitly rebuilds. | Source implemented; persistence/app tests present; final CI open. |
-| W2-CFG | Settings offers System/English/Simplified Chinese and category management. Log exposes title-or-merchant, description/notes, and add-category without changing ledger meaning. | Source implemented; compile/localization tests pending final W2 CI; bilingual physical review open. |
-| W2-QA | `--profile intelligence` generates 10,000 deterministic KWD/SGD/USD rows and a committed oracle with six positive findings and three negative cases; default release output stays byte-identical. | Local validator passed; Swift oracle execution pending final W2 CI; physical scale budgets open. |
+| W2-MOD | `MoneyUpIntelligence` depends only on `MoneyUpCore`; its exact-Decimal detectors and stable finding contracts have no UI, database, network, logging, or locale dependency. | Merged; exact PR-head and merged-main CI passed. |
+| W2-S7 | Schema 7 adds `intelligence_control`, account/source facts, and `payee_affinity_index`. The approved migration decodes only missing metadata inside one transaction and preserves payload bytes, hashes, IDs, and timestamps. | Migration/rollback CI passed; physical upgrade evidence open. |
+| W2-AFF | Full-book affinity updates with journal/account lifecycle writes; bounded routine reads decode zero journal payloads. History evidence is user-triggered, exact-ID, and capped at 100. | Indexed read/edit/delete/restore tests passed in merged-main CI. |
+| W2-DET | Weekly/monthly/yearly recurrence, lapse, price-step, exact duplicate, and category/currency median-MAD anomaly findings remain explainable and advisory. Transfers/splits and required negative cases fail closed. | Pure tests and committed oracle passed; physical accuracy review open. |
+| W2-PROJ | Month-end actuals, confirmed remaining schedules, and flexible burn rate remain separate per currency; missing evidence produces `DV-009`, never zero or FX. | Deterministic app-model tests passed; physical review open. |
+| W2-BUD | Suggestions use at least three complete positive months from the trailing six, median plus two MAD, and explicit selected diff. Apply/undo each use one transaction; stale proposals fail before writing. | Atomic app-model tests passed; physical review open. |
+| W2-OPT | Legacy profiles default intelligence on. Opt-out serially persists, cancels work, clears findings, and clears derived tables without deleting transactions; re-enable explicitly rebuilds. | Persistence/app tests passed; physical behavior review open. |
+| W2-CFG | Settings offers System/English/Simplified Chinese and category management. Log exposes title-or-merchant, description/notes, and add-category without changing ledger meaning. | Compile/localization tests passed; bilingual physical review open. |
+| W2-QA | `--profile intelligence` generates 10,000 deterministic KWD/SGD/USD rows and a committed oracle with six positive findings and three negative cases; default release output stays byte-identical. | Validator and Swift oracle passed; physical scale budgets open. |
 
 ## Capture and transactions
 
@@ -190,11 +193,11 @@ exact-candidate run.
 
 | ID | Implementation and evidence anchor | Current evidence state |
 |---|---|---|
-| QA-01 | CI/TestFlight workflows configure warnings-as-errors core tests, app-model XCTest, and app/widget Simulator builds on PR/main/release paths. | Workflow configured; final unified SHA has not been proven green. |
+| QA-01 | CI/TestFlight workflows configure warnings-as-errors core tests, app-model XCTest, and app/widget Simulator builds on PR/main/release paths. | W1/W2 merged-main CI passed on `4159df31`; every later candidate must repeat the exact-SHA gate. |
 | QA-02 | `MoneyUpAppTests/AppModelTests` covers lock/save/scan/deep-link/erase/stale-generation/capture-promotion and additional lifecycle paths. | Test source implemented; exact-candidate macOS execution open. |
 | QA-03 | Core/persistence/app suites cover audit defects, minor units, locales, currency edits, revisions, caches/indexes, BOM, and rollback. | Test source implemented; exact-candidate execution open. |
 | QA-04 | `FIRST_TEST.md` defines the required iPhone/language/appearance/Dynamic Type/VoiceOver/Reduce Motion/widget matrix plus oldest-device archive/checkpoint measurements. | Physical gate open. |
-| QA-05 | `DataSafetyView` exports a privacy-safe inventory from one payload-free store count snapshot. The fixture generator preserves its original 10,000-row release output and adds an explicit three-currency intelligence profile plus committed oracle; `FIRST_TEST.md` binds these to upgrade, restore, scale, and planted-finding checks. | Local fixture/oracle validation passed; final Swift CI and physical gates open. |
+| QA-05 | `DataSafetyView` exports a privacy-safe inventory from one payload-free store count snapshot. The fixture generator preserves its original 10,000-row release output and adds an explicit three-currency intelligence profile plus committed oracle; `FIRST_TEST.md` binds these to upgrade, restore, scale, and planted-finding checks. | Fixture/oracle and merged W2 Swift CI passed; physical gates remain open. |
 | QA-06 | Roadmap/launch plan prohibit wider testing or App Review while mandatory evidence is open. | Gate enforced in documentation; wider-test/review approval remains open. |
 | QA-07 | Workflow and store checklist bind metadata, screenshots, review notes, privacy, languages, version/build, archive, widget, App Group, and binary capabilities. | Exact-binary/App Store gate open. |
 
@@ -236,8 +239,9 @@ with 10,000 entries and 20 schedules:
 | Calendar date computation | p95 <= 100 ms | Open |
 | Scrolling/interaction | No sustained jank | Open |
 
-Also open: signed App Group entitlement validation, in-place 0.5.1-to-0.6.0
-upgrade, clean-device restore, founder/co-tester seven-day run, 14-day invited
+Also open: signed App Group entitlement validation for the final 0.7.0 binary,
+in-place installed-beta-to-0.6.0-to-0.7.0 upgrade continuity, clean-device
+restore, founder/co-tester seven-day run, 14-day invited
 closed beta, exact-binary privacy/store review, App Review, account-holder
 manual release, and first-72-hour monitoring.
 

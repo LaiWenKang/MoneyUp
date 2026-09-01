@@ -8,13 +8,13 @@ on-device charts, accounts and holdings, and spreadsheet-friendly export.
 
 ## Project status
 
-MoneyUp's source app identity remains **Founders Beta 0.6.0 (source build 8)**.
-The active 0.7.0 workstream builds on the merged W1 Observation/service-boundary
-migration; W2 adds optional deterministic on-device intelligence plus more
-visible language, transaction-detail, and category controls. The W2 branch
-still requires its final exact-SHA CI, physical iPhone validation, TestFlight
-processing, and App Review before it can be described as released. Developers
-can install the app from source on an iOS 18 device through Xcode.
+MoneyUp's source app identity is **Founders Beta 0.7.0 (source build 9)**.
+The merged W1 Observation/service-boundary migration and W2 configurable,
+explainable local-intelligence work passed exact-SHA macOS CI on
+`main@4159df31`. Physical iPhone migration, restore, accessibility, performance,
+signed-binary, TestFlight-processing, closed-beta, and App Review evidence
+remain release gates. Developers can install the app from source on an iOS 18
+device through Xcode.
 
 The beta includes:
 
@@ -105,13 +105,12 @@ The beta includes:
 - source-configured Swift domain and app-model suites plus an unsigned iOS
   Simulator app/widget build gate in CI.
 
-The unified W2 candidate still requires final exact-commit release validation
-on macOS, physical upgrade/restore and 10,000-entry performance
-drills, bilingual visual/accessibility/widget checks, the founder/co-tester
-seven-day run, closed beta, and App Store gates. Source implementation is not
-evidence that those gates passed. Keep a separate encrypted backup; CSV and XLSX
-snapshots remain readable plaintext and should be protected. The complete
-requirement/evidence split is in
+The unified 0.7.0 candidate still requires signed exact-binary validation,
+physical upgrade/restore and 10,000-entry performance drills, bilingual
+visual/accessibility/widget checks, the founder/co-tester seven-day run, closed
+beta, and App Store gates. Source implementation is not evidence that those
+gates passed. Keep a separate encrypted backup; CSV and XLSX snapshots remain
+readable plaintext and should be protected. The complete requirement/evidence split is in
 [Golden PRD traceability](docs/GOLDEN_TRACEABILITY.md).
 
 ## Install the beta

@@ -1,4 +1,4 @@
-# Install and Use Founders Beta 0.6.0
+# Install and Use Founders Beta 0.7.0
 
 MoneyUp is available to its approved founder and co-tester through private
 TestFlight groups and can also be installed from source. New builds still pass
@@ -6,10 +6,11 @@ through the protected release workflow before they appear in TestFlight.
 
 ## iPhone-only TestFlight installation
 
-The account holder has already installed version 0.5.1 from the private
-Founders Internal TestFlight group. The 0.6.0 candidate appears in that same
-group only after the protected release workflow completes for its exact commit,
-Apple processes the upload, and the account holder selects the build.
+Confirm the account holder has installed the accepted 0.6.0 (1020.1) baseline
+from the private Founders Internal TestFlight group without deleting the app.
+The 0.7.0 candidate appears in that same group only after the protected release
+workflow completes for its exact commit, Apple processes the upload, and the
+account holder selects the build.
 The second tester receives a private email invitation to the Founders External
 group after TestFlight Beta App Review. Both testers install through Apple's
 TestFlight app. MoneyUp has no account and the invitation does not require
@@ -114,7 +115,7 @@ must use the same `com.laiwenkang.MoneyUp` identity and the app/widget must keep
 the reviewed `group.com.laiwenkang.MoneyUp` capability; run the upgrade drill
 in `FIRST_TEST.md` before release.
 
-The 0.6.0 source candidate is not a public release. Exact-candidate Mac CI,
+The 0.7.0 source candidate is not a public release. Exact-candidate Mac CI,
 physical performance/accessibility, upgrade/restore, founder/co-tester
-seven-day use, closed beta, 0.6.0 TestFlight processing, and App Store gates
+seven-day use, closed beta, 0.7.0 TestFlight processing, and App Store gates
 remain open until evidence is recorded.
