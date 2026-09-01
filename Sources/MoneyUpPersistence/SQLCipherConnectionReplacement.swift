@@ -55,6 +55,7 @@ extension SQLCipherConnection {
                 for: affectedBalances,
                 observesCancellation: observesCancellation
             )
+            try rebuildAllIntelligenceIndexesFromRecords()
             if observesCancellation { try Task.checkCancellation() }
             try execute("COMMIT;")
         } catch let operationError {
@@ -99,6 +100,7 @@ extension SQLCipherConnection {
                 for: affectedBalances,
                 observesCancellation: observesCancellation
             )
+            try rebuildAllIntelligenceIndexesFromRecords()
             if observesCancellation { try Task.checkCancellation() }
             try execute("COMMIT;")
         } catch let operationError {
@@ -107,6 +109,7 @@ extension SQLCipherConnection {
     }
 
     func clearRecordsForReplacement() throws {
+        try clearIntelligenceDerivedTables()
         try execute("DELETE FROM journal_entry_index;")
         try execute("DELETE FROM journal_balance;")
         try execute("DELETE FROM receipt_attachment_index;")

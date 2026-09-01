@@ -1,17 +1,28 @@
 import SwiftUI
 import UIKit
+import WidgetKit
 
 @main
 @MainActor
 struct MoneyUpApp: App {
     @State private var model = AppModel()
+    @AppStorage(
+        AppLanguagePreference.storageKey,
+        store: AppLanguagePreference.defaults
+    )
+    private var appLanguageRawValue = AppLanguagePreference.system.rawValue
     @Environment(\.scenePhase) private var scenePhase
+
+    private var appLanguage: AppLanguagePreference {
+        AppLanguagePreference(rawValue: appLanguageRawValue) ?? .system
+    }
 
     var body: some Scene {
         WindowGroup {
             ZStack {
                 RootView()
                     .environment(model)
+                    .environment(\.locale, appLanguage.locale)
                     .tint(.accentColor)
                     // The opaque cover protects pixels. These modifiers also
                     // remove the underlying financial controls from VoiceOver
@@ -40,7 +51,8 @@ struct MoneyUpApp: App {
                 .background {
                     ScenePrivacyShield(
                         isPresented: scenePhase != .active
-                            || model.requiresAuthenticationPrivacyCover
+                            || model.requiresAuthenticationPrivacyCover,
+                        locale: appLanguage.locale
                     )
                     .frame(width: 0, height: 0)
                 }
@@ -64,12 +76,16 @@ struct MoneyUpApp: App {
                         break
                     }
                 }
+                .onChange(of: appLanguageRawValue) { _, _ in
+                    WidgetCenter.shared.reloadAllTimelines()
+                }
         }
     }
 }
 
 private struct ScenePrivacyShield: UIViewRepresentable {
     let isPresented: Bool
+    let locale: Locale
 
     func makeUIView(context: Context) -> PrivacyShieldAnchorView {
         PrivacyShieldAnchorView()
@@ -79,19 +95,20 @@ private struct ScenePrivacyShield: UIViewRepresentable {
         _ uiView: PrivacyShieldAnchorView,
         context: Context
     ) {
-        uiView.setPresented(isPresented)
+        uiView.setPresented(isPresented, locale: locale)
     }
 
     static func dismantleUIView(
         _ uiView: PrivacyShieldAnchorView,
         coordinator: ()
     ) {
-        uiView.setPresented(false)
+        uiView.setPresented(false, locale: .autoupdatingCurrent)
     }
 }
 
 private final class PrivacyShieldAnchorView: UIView {
     private var isPresented = false
+    private var localeIdentifier = Locale.autoupdatingCurrent.identifier
     private var shieldWindow: UIWindow?
 
     override init(frame: CGRect) {
@@ -110,8 +127,14 @@ private final class PrivacyShieldAnchorView: UIView {
         synchronizeShield()
     }
 
-    func setPresented(_ presented: Bool) {
+    func setPresented(_ presented: Bool, locale: Locale) {
         isPresented = presented
+        if localeIdentifier != locale.identifier {
+            localeIdentifier = locale.identifier
+            shieldWindow?.isHidden = true
+            shieldWindow?.rootViewController = nil
+            shieldWindow = nil
+        }
         synchronizeShield()
     }
 
@@ -132,7 +155,12 @@ private final class PrivacyShieldAnchorView: UIView {
             shield.backgroundColor = brandBackground
             shield.isUserInteractionEnabled = true
             let host = UIHostingController(
-                rootView: PrivacyCoverView().tint(.accentColor)
+                rootView: PrivacyCoverView()
+                    .environment(
+                        \.locale,
+                        Locale(identifier: localeIdentifier)
+                    )
+                    .tint(.accentColor)
             )
             host.view.backgroundColor = brandBackground
             host.view.accessibilityViewIsModal = true

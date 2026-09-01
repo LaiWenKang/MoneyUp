@@ -15,17 +15,17 @@ extension PortableArchiveError: @retroactive LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .passwordTooShort:
-            String(localized: "backup.error.password_short")
+            AppLocalization.string("backup.error.password_short")
         case .passwordTooLong:
-            String(localized: "backup.error.password_long")
+            AppLocalization.string("backup.error.password_long")
         case .archiveTooLarge:
-            String(localized: "backup.error.too_large")
+            AppLocalization.string("backup.error.too_large")
         case .invalidArchive:
-            String(localized: "backup.error.invalid")
+            AppLocalization.string("backup.error.invalid")
         case let .unsupportedVersion(version):
-            String(format: String(localized: "backup.error.version"), version)
+            String(format: AppLocalization.string("backup.error.version"), version)
         case .authenticationFailed:
-            String(localized: "backup.error.authentication")
+            AppLocalization.string("backup.error.authentication")
         }
     }
 }

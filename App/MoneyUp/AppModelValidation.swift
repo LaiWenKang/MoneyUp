@@ -13,6 +13,7 @@ private struct LoadedInvestmentValidationContext {
 
 extension AppModel {
     func clearDecodedState() {
+        intelligenceService.cancelPendingWork()
         journalProjectionRevision &+= 1
         journalDerivedRefreshTask?.cancel()
         journalDerivedRefreshTask = nil
@@ -298,45 +299,45 @@ extension AppModel {
         mainAccount: LedgerAccount
     ) -> (accounts: [LedgerAccount], budgetNodes: [BudgetNode]) {
         let openingBalances = LedgerAccount(
-            name: String(localized: "account.opening_balances"),
+            name: AppLocalization.string("account.opening_balances"),
             kind: .equity,
             systemRole: .openingBalances
         )
-        let essentials = LedgerAccount(name: String(localized: "category.essentials"), kind: .expense)
+        let essentials = LedgerAccount(name: AppLocalization.string("category.essentials"), kind: .expense)
         let food = LedgerAccount(
-            name: String(localized: "category.food"),
+            name: AppLocalization.string("category.food"),
             kind: .expense,
             parentID: essentials.id
         )
         let transport = LedgerAccount(
-            name: String(localized: "category.transport"),
+            name: AppLocalization.string("category.transport"),
             kind: .expense,
             parentID: essentials.id
         )
-        let housing = LedgerAccount(name: String(localized: "category.housing"), kind: .expense)
+        let housing = LedgerAccount(name: AppLocalization.string("category.housing"), kind: .expense)
         let rent = LedgerAccount(
-            name: String(localized: "category.rent"),
+            name: AppLocalization.string("category.rent"),
             kind: .expense,
             parentID: housing.id
         )
         let utilities = LedgerAccount(
-            name: String(localized: "category.utilities"),
+            name: AppLocalization.string("category.utilities"),
             kind: .expense,
             parentID: housing.id
         )
-        let lifestyle = LedgerAccount(name: String(localized: "category.lifestyle"), kind: .expense)
+        let lifestyle = LedgerAccount(name: AppLocalization.string("category.lifestyle"), kind: .expense)
         let shopping = LedgerAccount(
-            name: String(localized: "category.shopping"),
+            name: AppLocalization.string("category.shopping"),
             kind: .expense,
             parentID: lifestyle.id
         )
         let entertainment = LedgerAccount(
-            name: String(localized: "category.entertainment"),
+            name: AppLocalization.string("category.entertainment"),
             kind: .expense,
             parentID: lifestyle.id
         )
-        let salary = LedgerAccount(name: String(localized: "category.salary"), kind: .income)
-        let otherIncome = LedgerAccount(name: String(localized: "category.other_income"), kind: .income)
+        let salary = LedgerAccount(name: AppLocalization.string("category.salary"), kind: .income)
+        let otherIncome = LedgerAccount(name: AppLocalization.string("category.other_income"), kind: .income)
         let expenseAccounts = [
             essentials, food, transport, housing, rent, utilities,
             lifestyle, shopping, entertainment
@@ -390,63 +391,63 @@ enum AppModelError: Error {
 extension AppModelError: LocalizedError {
     var errorDescription: String? {
         switch self {
-        case .locked: String(localized: "error.app_locked")
-        case .emptyName: String(localized: "error.empty_name")
-        case .invalidCategoryKind: String(localized: "error.invalid_category")
-        case .missingRecord: String(localized: "error.missing_record")
-        case .negativeAmount: String(localized: "error.negative_amount")
-        case .accountHasNoCurrency: String(localized: "error.account_currency")
+        case .locked: AppLocalization.string("error.app_locked")
+        case .emptyName: AppLocalization.string("error.empty_name")
+        case .invalidCategoryKind: AppLocalization.string("error.invalid_category")
+        case .missingRecord: AppLocalization.string("error.missing_record")
+        case .negativeAmount: AppLocalization.string("error.negative_amount")
+        case .accountHasNoCurrency: AppLocalization.string("error.account_currency")
         case .foreignCurrencyTransferRequiresExchangeRate:
-            String(localized: "error.fx_transfer_not_supported")
-        case .invalidBook: String(localized: "error.invalid_book")
-        case .transactionInProgress: String(localized: "error.transaction_in_progress")
+            AppLocalization.string("error.fx_transfer_not_supported")
+        case .invalidBook: AppLocalization.string("error.invalid_book")
+        case .transactionInProgress: AppLocalization.string("error.transaction_in_progress")
         case let .unsupportedPrecision(currency):
             String(
-                format: String(localized: "error.currency_precision"),
+                format: AppLocalization.string("error.currency_precision"),
                 currency.value,
                 currency.minorUnits
             )
         case .amountTooLarge:
-            String(localized: "error.amount_too_large")
+            AppLocalization.string("error.amount_too_large")
         case .crossCurrencyEditRequiresConversion:
-            String(localized: "error.cross_currency_edit")
-        case .importTooLarge: String(localized: "import.error.too_large")
-        case .ledgerItemInUse: String(localized: "lifecycle.error.in_use")
+            AppLocalization.string("error.cross_currency_edit")
+        case .importTooLarge: AppLocalization.string("import.error.too_large")
+        case .ledgerItemInUse: AppLocalization.string("lifecycle.error.in_use")
         case .incompatibleLedgerItems:
-            String(localized: "lifecycle.error.incompatible")
+            AppLocalization.string("lifecycle.error.incompatible")
         case .systemAccountLifecycleForbidden:
-            String(localized: "lifecycle.error.system_account")
-        case .ledgerItemArchived: String(localized: "lifecycle.error.archived")
-        case .scheduleEntryMismatch: String(localized: "schedule.error.entry_mismatch")
+            AppLocalization.string("lifecycle.error.system_account")
+        case .ledgerItemArchived: AppLocalization.string("lifecycle.error.archived")
+        case .scheduleEntryMismatch: AppLocalization.string("schedule.error.entry_mismatch")
         case .scheduleEntryAlreadyMatched:
-            String(localized: "schedule.error.entry_already_matched")
+            AppLocalization.string("schedule.error.entry_already_matched")
         case .restoreRecoveryFailed:
-            String(localized: "error.restore_recovery_failed")
+            AppLocalization.string("error.restore_recovery_failed")
         case .investmentCurrencyMismatch:
-            String(localized: "holding.error.currency_mismatch")
+            AppLocalization.string("holding.error.currency_mismatch")
         case .investmentNeedsLedgerConnection:
-            String(localized: "holding.error.needs_ledger")
+            AppLocalization.string("holding.error.needs_ledger")
         case .missingInvestmentPrice:
-            String(localized: "holding.error.missing_price")
+            AppLocalization.string("holding.error.missing_price")
         case .investmentHoldingNotEmpty:
-            String(localized: "holding.error.not_empty")
+            AppLocalization.string("holding.error.not_empty")
         case .invalidInvestmentTrade:
-            String(localized: "holding.error.invalid_trade")
+            AppLocalization.string("holding.error.invalid_trade")
         case .insufficientInvestmentQuantity:
-            String(localized: "holding.error.insufficient_quantity")
+            AppLocalization.string("holding.error.insufficient_quantity")
         case .investmentDateOutOfOrder:
-            String(localized: "holding.error.date_out_of_order")
+            AppLocalization.string("holding.error.date_out_of_order")
         case .investmentDateInFuture:
-            String(localized: "holding.error.date_in_future")
+            AppLocalization.string("holding.error.date_in_future")
         case .investmentEntryMutationForbidden:
-            String(localized: "holding.error.linked_entry_protected")
+            AppLocalization.string("holding.error.linked_entry_protected")
         case .legacyInvestmentSnapshotForbidden:
-            String(localized: "holding.error.snapshot_needs_ledger")
-        case .invalidGoal: String(localized: "goal.error.invalid")
+            AppLocalization.string("holding.error.snapshot_needs_ledger")
+        case .invalidGoal: AppLocalization.string("goal.error.invalid")
         case .goalWithdrawalExceedsBalance:
-            String(localized: "goal.error.withdrawal_exceeds_balance")
+            AppLocalization.string("goal.error.withdrawal_exceeds_balance")
         case .pendingLockedCaptures:
-            String(localized: "backup.error.pending_captures")
+            AppLocalization.string("backup.error.pending_captures")
         }
     }
 }

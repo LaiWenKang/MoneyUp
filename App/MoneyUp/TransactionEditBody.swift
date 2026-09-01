@@ -93,10 +93,12 @@ extension TransactionEditView {
                             selection: $occurredAt,
                             displayedComponents: [.date, .hourAndMinute]
                         )
-                        if kind != .transfer {
-                            TextField("transaction.payee", text: $payee)
-                        }
-                        TextField("transaction.note", text: $note, axis: .vertical)
+                        TextField("transaction.title_or_merchant", text: $payee)
+                        TextField(
+                            "transaction.description_or_notes",
+                            text: $note,
+                            axis: .vertical
+                        )
                     }
                 } else {
                     Section {

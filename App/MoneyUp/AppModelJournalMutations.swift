@@ -141,6 +141,7 @@ extension AppModel {
         sourceAccountID: UUID,
         destinationAccountID: UUID,
         occurredAt: Date,
+        payee: String?,
         note: String?
     ) async throws -> UUID? {
         let sourceCurrency = try currency(for: sourceAccountID)
@@ -152,6 +153,7 @@ extension AppModel {
                 from: sourceAccountID,
                 to: destinationAccountID,
                 occurredAt: occurredAt,
+                payee: payee,
                 note: note
             )
             return try await save(entry)
@@ -174,6 +176,7 @@ extension AppModel {
             sourceTradingAccountID: sourceTrading.id,
             destinationTradingAccountID: destinationTrading.id,
             occurredAt: occurredAt,
+            payee: payee,
             note: note
         )
         let writes = try newTradingAccounts.map {

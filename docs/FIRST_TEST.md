@@ -298,6 +298,28 @@ python3 Scripts/generate_release_fixture.py \
   --output MoneyUp-Release-Fixture-10000.csv
 ```
 
+Generate the separate detector-scale profile and its exact expected-result
+manifest. This profile is a normalized QA dataset, not an importer file:
+
+```sh
+python3 Scripts/generate_release_fixture.py \
+  --profile intelligence \
+  --entries 10000 \
+  --output MoneyUp-Intelligence-Fixture-10000.csv \
+  --oracle MoneyUp-Intelligence-Oracle.json
+```
+
+- Confirm the generated oracle is byte-identical to
+  `Tests/MoneyUpIntelligenceTests/Fixtures/MoneyUp-Intelligence-Oracle.json`.
+  The Swift intelligence test consumes that committed manifest directly.
+- Confirm the profile contains exactly three currencies (SGD, USD, and KWD),
+  six expected findings spanning recurrence, lapse, price increase, duplicate,
+  and anomaly rules, plus irregular cadence, different-account near-duplicate,
+  and insufficient-history negative cases.
+- Confirm the planted refund remains eligible only for applicable rules, while
+  transfer and split shapes are excluded from single-category intelligence.
+  None may create an extra finding beyond the oracle.
+
 - Use a separate QA book, never a real financial book. In Settings → Import
   transactions, select the generated CSV, choose one test asset account and one
   test expense category as fallbacks, verify 10,000 accepted and zero rejected

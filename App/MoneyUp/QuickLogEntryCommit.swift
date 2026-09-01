@@ -93,6 +93,7 @@ extension QuickLogEntryView {
                 sourceAccountID: accountID,
                 destinationAccountID: destinationAccountID,
                 occurredAt: occurredAt,
+                payee: payee,
                 note: note
             ))
         }
@@ -144,6 +145,7 @@ extension QuickLogEntryView {
     /// the next routine entry takes only an amount and a tap on Save.
     func completeSuccessfulSave(entryID: UUID?) {
         cancelReceiptProcessing()
+        cancelCaptureSuggestionLookup()
         if let nextCapture = model.quickLogDraft,
            nextCapture.sourceCaptureID != nil,
            !dismissAfterSave {
@@ -184,7 +186,7 @@ extension QuickLogEntryView {
         if isVoiceOverEnabled {
             UIAccessibility.post(
                 notification: .announcement,
-                argument: "\(String(localized: "quick_log.saved")). \(String(localized: "action.undo"))"
+                argument: "\(AppLocalization.string("quick_log.saved")). \(AppLocalization.string("action.undo"))"
             )
         }
 

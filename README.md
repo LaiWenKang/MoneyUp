@@ -8,12 +8,13 @@ on-device charts, accounts and holdings, and spreadsheet-friendly export.
 
 ## Project status
 
-MoneyUp's source-integrated **Founders Beta 0.6.0 (source build 8)** candidate
-unifies the Golden functional scope. Version 0.5.1 is installed by the account
-holder through private TestFlight; 0.6.0 has not yet passed exact-candidate Mac
-CI, physical iPhone validation, TestFlight processing, or App Review.
-Developers can also install the app from source on an iOS 18 device through
-Xcode.
+MoneyUp's source app identity remains **Founders Beta 0.6.0 (source build 8)**.
+The active 0.7.0 workstream builds on the merged W1 Observation/service-boundary
+migration; W2 adds optional deterministic on-device intelligence plus more
+visible language, transaction-detail, and category controls. The W2 branch
+still requires its final exact-SHA CI, physical iPhone validation, TestFlight
+processing, and App Review before it can be described as released. Developers
+can install the app from source on an iOS 18 device through Xcode.
 
 The beta includes:
 
@@ -59,6 +60,9 @@ The beta includes:
   Log retains encrypted draft recovery, configurable smart defaults, success
   feedback, and Undo, while the keyboard provides Done, reachable Save, and a
   draft-preserving route to every other tab;
+- an always-visible title-or-merchant field and multi-line description/notes
+  field in Log, plus category creation from Log and a category manager for
+  rename, archive/restore, merge, reassignment, and deletion;
 - a searchable, filterable, date-indexed History tab with encrypted keyset
   paging, refunds, and atomic transaction editing, including exact N-way
   category splits with live remainder; prior versions are retained in the
@@ -77,7 +81,8 @@ The beta includes:
   exact currencies, and formula-safe user text for Numbers and Excel;
 - dated user-supplied exchange rates with historical estimated conversion and
   explicit unconverted results when no applicable rate exists;
-- English and Simplified Chinese UI and first-run categories;
+- English and Simplified Chinese UI and first-run categories, with an in-app
+  System/English/Simplified Chinese preference shared with the widget;
 - a distinctive soft-green horned-money emblem shared by the app icon,
   first-run surfaces, and privacy-safe widget; original dimensional
   illustrations for atmosphere; exact 2D position, pace, and scenario graphics;
@@ -87,15 +92,21 @@ The beta includes:
 - an App Store privacy manifest, an in-app bilingual privacy and beta guide,
   backup exclusion for non-restorable ciphertext, and confirmations before
   permanent transaction, schedule, or holding deletion;
-- SQLCipher schema-6 normalized journal, receipt, budget-attribution, and exact
-  store-metric indexes; compact balances, monthly rollover checkpoints, a
-  bounded recent-activity cache, and on-demand History/Calendar/export reads so
-  normal unlock does not retain the full journal or healthy attribution history;
+- SQLCipher schema-7 normalized journal, receipt, budget-attribution,
+  intelligence, and exact store-metric indexes; compact balances, monthly
+  rollover checkpoints, a bounded recent-activity cache, and on-demand
+  History/Calendar/export/intelligence reads so normal unlock does not retain
+  the full journal or healthy attribution history;
+- optional local intelligence for payee/category affinity, recurring or lapsed
+  patterns, price changes, exact duplicates, robust spending anomalies,
+  per-currency month-end projections, and reviewable budget-limit proposals;
+  findings show their rule and figures, schedules are never auto-created, and
+  budget changes are never auto-applied;
 - source-configured Swift domain and app-model suites plus an unsigned iOS
   Simulator app/widget build gate in CI.
 
-The unified 0.6.0 candidate still requires exact-commit release validation on
-macOS, physical upgrade/restore and 10,000-entry performance
+The unified W2 candidate still requires final exact-commit release validation
+on macOS, physical upgrade/restore and 10,000-entry performance
 drills, bilingual visual/accessibility/widget checks, the founder/co-tester
 seven-day run, closed beta, and App Store gates. Source implementation is not
 evidence that those gates passed. Keep a separate encrypted backup; CSV and XLSX

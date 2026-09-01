@@ -7,6 +7,7 @@ extension DashboardView {
             ScrollView {
                 LazyVStack(spacing: 16) {
                     safeToSpendHero
+                    IntelligenceSummaryLink()
 
                     MoneyUpCard {
                         VStack(alignment: .leading, spacing: 14) {
@@ -374,14 +375,14 @@ extension DashboardView {
                 case let .available(.needsClassification(count)):
                     setupGuidance(
                         title: String(
-                            format: String(localized: "dashboard.flexible_today.classify_title"),
+                            format: AppLocalization.string("dashboard.flexible_today.classify_title"),
                             count
                         ),
                         detail: "dashboard.flexible_today.classify_detail"
                     )
                 case .available(.needsFlexibleBudget):
                     setupGuidance(
-                        title: String(localized: "dashboard.flexible_today.needs_flexible"),
+                        title: AppLocalization.string("dashboard.flexible_today.needs_flexible"),
                         detail: "dashboard.flexible_today.needs_flexible_detail"
                     )
                 case let .unavailable(issue):

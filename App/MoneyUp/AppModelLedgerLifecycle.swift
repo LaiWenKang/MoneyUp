@@ -47,7 +47,7 @@ extension AppModel {
                 accountID: account.id,
                 equityAccountID: equity.id,
                 accountIsLiability: account.kind == .liability,
-                note: String(localized: "account.opening_balance_note")
+                note: AppLocalization.string("account.opening_balance_note")
             )
             let entry = try appAuthoredEntry(candidate)
             writes.append(
@@ -72,11 +72,12 @@ extension AppModel {
         if openingEntry != nil { await refreshJournalAfterMutation() }
     }
 
+    @discardableResult
     func addCategory(
         name: String,
         kind: LedgerAccountKind,
         parentID: UUID? = nil
-    ) async throws {
+    ) async throws -> UUID {
         try beginJournalMutation()
         defer { endJournalMutation() }
         guard kind == .expense || kind == .income else {
@@ -109,14 +110,15 @@ extension AppModel {
                 try RecordWrite(node, id: node.id.uuidString, in: .budgetNodes),
                 try budgetConfigurationTimelineWrite(candidateTimeline)
             ])
-            guard isCurrentStoreGeneration(generation) else { return }
+            guard isCurrentStoreGeneration(generation) else { return category.id }
             budgetConfigurationTimeline = candidateTimeline
             budgetNodes = candidate
         } else {
             try await store.upsert(category, id: category.id.uuidString, in: .accounts)
-            guard isCurrentStoreGeneration(generation) else { return }
+            guard isCurrentStoreGeneration(generation) else { return category.id }
         }
         accounts.append(category)
+        return category.id
     }
 
     func lifecycleImpact(for id: UUID) -> LedgerItemLifecycleImpact {
@@ -530,7 +532,7 @@ extension AppModel {
             accountID: account.id,
             equityAccountID: equity.id,
             accountIsLiability: account.kind == .liability,
-            note: String(localized: "account.balance_adjustment_note")
+            note: AppLocalization.string("account.balance_adjustment_note")
         )
         let entry = try appAuthoredEntry(candidate)
         var writes = [

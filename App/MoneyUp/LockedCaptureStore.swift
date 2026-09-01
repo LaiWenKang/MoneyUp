@@ -72,11 +72,11 @@ extension LockedCaptureStoreError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .unavailable:
-            String(localized: "capture.error.unavailable")
+            AppLocalization.string("capture.error.unavailable")
         case .keyMissing, .invalidData:
-            String(localized: "capture.error.invalid")
+            AppLocalization.string("capture.error.invalid")
         case .queueFull:
-            String(localized: "capture.error.full")
+            AppLocalization.string("capture.error.full")
         }
     }
 }

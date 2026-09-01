@@ -90,7 +90,7 @@ extension AppModel {
         activityDate: Date
     ) throws -> InvestmentHoldingAddition {
         let positionAccount = LedgerAccount(
-            name: "\(holding.symbol.isEmpty ? holding.name : holding.symbol) · \(String(localized: "holding.position_value"))",
+            name: "\(holding.symbol.isEmpty ? holding.name : holding.symbol) · \(AppLocalization.string("holding.position_value"))",
             kind: .asset,
             currency: currency,
             systemRole: .investmentPosition
@@ -173,7 +173,7 @@ extension AppModel {
                 gainLossAccountID: UUID(),
                 occurredAt: activityDate,
                 payee: holding.name,
-                note: String(localized: "holding.purchase_note"),
+                note: AppLocalization.string("holding.purchase_note"),
                 id: entryID,
                 originContext: investmentOriginContext(for: activityDate)
             )
@@ -197,7 +197,7 @@ extension AppModel {
                 positionAccountID: positionAccountID,
                 equityAccountID: equity.id,
                 occurredAt: activityDate,
-                note: String(localized: "holding.opening_position_note"),
+                note: AppLocalization.string("holding.opening_position_note"),
                 id: entryID,
                 originContext: investmentOriginContext(for: activityDate)
             )
@@ -278,7 +278,7 @@ extension AppModel {
                 positionAccountID: positionID,
                 gainLossAccountID: gain.id,
                 occurredAt: asOf,
-                note: String(localized: "holding.reprice_note"),
+                note: AppLocalization.string("holding.reprice_note"),
                 id: priceEntryID,
                 originContext: investmentOriginContext(for: asOf)
             )
@@ -364,7 +364,7 @@ extension AppModel {
         try requireValidNewWriteAmount(price.amount, currency: currency)
         holding.accountID = funding.id
         let position = LedgerAccount(
-            name: "\(holding.symbol.isEmpty ? holding.name : holding.symbol) · \(String(localized: "holding.position_value"))",
+            name: "\(holding.symbol.isEmpty ? holding.name : holding.symbol) · \(AppLocalization.string("holding.position_value"))",
             kind: .asset,
             currency: currency,
             systemRole: .investmentPosition
@@ -434,7 +434,7 @@ extension AppModel {
                 gainLossAccountID: gain.id,
                 occurredAt: occurredAt,
                 payee: holding.name,
-                note: String(localized: "holding.migration_note"),
+                note: AppLocalization.string("holding.migration_note"),
                 id: entryID,
                 originContext: investmentOriginContext(for: occurredAt)
             )
@@ -446,7 +446,7 @@ extension AppModel {
                 positionAccountID: position.id,
                 equityAccountID: equity.id,
                 occurredAt: occurredAt,
-                note: String(localized: "holding.migration_note"),
+                note: AppLocalization.string("holding.migration_note"),
                 id: entryID,
                 originContext: investmentOriginContext(for: occurredAt)
             )

@@ -135,6 +135,7 @@ public enum TransactionFactory {
         from sourceAccountID: UUID,
         to destinationAccountID: UUID,
         occurredAt: Date = Date(),
+        payee: String? = nil,
         note: String? = nil
     ) throws -> JournalEntry {
         try requirePositive(amount)
@@ -145,6 +146,7 @@ public enum TransactionFactory {
         return try JournalEntry(
             kind: .transfer,
             occurredAt: occurredAt,
+            payee: normalized(payee),
             note: normalized(note),
             postings: [
                 Posting(accountID: sourceAccountID, money: amount.negated),
@@ -161,6 +163,7 @@ public enum TransactionFactory {
         sourceTradingAccountID: UUID,
         destinationTradingAccountID: UUID,
         occurredAt: Date = Date(),
+        payee: String? = nil,
         note: String? = nil
     ) throws -> JournalEntry {
         try requirePositive(sourceAmount)
@@ -172,6 +175,7 @@ public enum TransactionFactory {
         return try JournalEntry(
             kind: .transfer,
             occurredAt: occurredAt,
+            payee: normalized(payee),
             note: normalized(note),
             postings: [
                 Posting(accountID: sourceAccountID, money: sourceAmount.negated),

@@ -62,7 +62,7 @@ extension InsightsView {
         Chart {
             RuleMark(
                 x: .value(
-                    String(localized: "chart.dimension.selected_period_start"),
+                    AppLocalization.string("chart.dimension.selected_period_start"),
                     report.interval.start
                 )
             )
@@ -71,7 +71,7 @@ extension InsightsView {
 
             RuleMark(
                 x: .value(
-                    String(localized: "chart.dimension.selected_period_end"),
+                    AppLocalization.string("chart.dimension.selected_period_end"),
                     report.interval.end.addingTimeInterval(-1)
                 )
             )
@@ -81,24 +81,24 @@ extension InsightsView {
             ForEach(points) { point in
                 BarMark(
                     x: .value(
-                        String(localized: "chart.dimension.month"),
+                        AppLocalization.string("chart.dimension.month"),
                         point.month,
                         unit: .month
                     ),
                     y: .value(
-                        String(localized: "chart.dimension.amount"),
+                        AppLocalization.string("chart.dimension.amount"),
                         point.amount
                     )
                 )
                 .foregroundStyle(
                     by: .value(
-                        String(localized: "chart.dimension.flow"),
+                        AppLocalization.string("chart.dimension.flow"),
                         point.series
                     )
                 )
                 .position(
                     by: .value(
-                        String(localized: "chart.dimension.flow"),
+                        AppLocalization.string("chart.dimension.flow"),
                         point.series
                     )
                 )
@@ -117,8 +117,8 @@ extension InsightsView {
         }
         .frame(height: 240)
         .chartForegroundStyleScale([
-            String(localized: "transaction.income"): Color.green,
-            String(localized: "transaction.expense"): Color.accentColor
+            AppLocalization.string("transaction.income"): Color.green,
+            AppLocalization.string("transaction.expense"): Color.accentColor
         ])
         .chartLegend(.hidden)
         .chartXSelection(value: $selectedFlowMonth)
@@ -255,7 +255,7 @@ extension InsightsView {
                     from: report.categorySpending,
                     visibleCategoryCount: Self.visibleCategoryCount,
                     baseCurrency: report.baseCurrency,
-                    otherName: String(localized: "insights.other_category")
+                    otherName: AppLocalization.string("insights.other_category")
                 )
             )
         } catch {
@@ -298,7 +298,7 @@ extension InsightsView {
                 calendar: model.reportingCalendar
             )
         return String(
-            format: String(localized: "insights.selected_window_format"),
+            format: AppLocalization.string("insights.selected_window_format"),
             start,
             inclusiveEnd
         )
@@ -306,10 +306,10 @@ extension InsightsView {
 
     func categoryChartSummary(_ points: [InsightsCategoryPoint]) -> String {
         guard let largest = points.first else {
-            return String(localized: "insights.no_spending")
+            return AppLocalization.string("insights.no_spending")
         }
         return String(
-            format: String(localized: "insights.category_chart_summary_format"),
+            format: AppLocalization.string("insights.category_chart_summary_format"),
             points.count,
             largest.name,
             formattedMoney(largest.money)
@@ -321,7 +321,7 @@ extension InsightsView {
             return analysisWindowDescription(report)
         }
         return String(
-            format: String(localized: "insights.flow_chart_summary_format"),
+            format: AppLocalization.string("insights.flow_chart_summary_format"),
             report.monthlyFlows.count,
             analysisWindowDescription(report),
             latest.month.formattedForReporting(
@@ -339,7 +339,7 @@ extension InsightsView {
         _ report: PeriodReport
     ) -> (lines: [String], issue: DerivedValueIssue?) {
         guard !report.isEmpty else {
-            return ([String(localized: "insights.no_data")], nil)
+            return ([AppLocalization.string("insights.no_data")], nil)
         }
         var lines: [String] = []
         var issue: DerivedValueIssue?
@@ -347,7 +347,7 @@ extension InsightsView {
         // Suppressed when foreign spending exists: the card above already
         // shows it, and calling the period empty would read as wrong.
         if report.baseFlow.expense.amount <= .zero, !report.holdsUnconvertedActivity {
-            lines.append(String(localized: "insights.no_expense_yet"))
+            lines.append(AppLocalization.string("insights.no_expense_yet"))
         }
 
         appendSavingsReading(report, to: &lines, issue: &issue)
@@ -356,7 +356,7 @@ extension InsightsView {
             if let largest = try report.largestCategory() {
                 lines.append(
                     String(
-                        format: String(localized: "insights.largest_category_format"),
+                        format: AppLocalization.string("insights.largest_category_format"),
                         largest.category.name,
                         formattedPercent(largest.share)
                     )
@@ -392,7 +392,7 @@ extension InsightsView {
         }
 
         return (
-            lines.isEmpty ? [String(localized: "insights.no_data")] : lines,
+            lines.isEmpty ? [AppLocalization.string("insights.no_data")] : lines,
             issue
         )
     }
@@ -407,7 +407,7 @@ extension InsightsView {
                 if rate >= .zero {
                     lines.append(
                         String(
-                            format: String(localized: "insights.savings_rate_format"),
+                            format: AppLocalization.string("insights.savings_rate_format"),
                             formattedPercent(rate)
                         )
                     )
@@ -416,7 +416,7 @@ extension InsightsView {
                         .subtracting(report.baseFlow.income)
                     lines.append(
                         String(
-                            format: String(localized: "insights.overspend_format"),
+                            format: AppLocalization.string("insights.overspend_format"),
                             formattedMoney(gap)
                         )
                     )
@@ -445,7 +445,7 @@ extension InsightsView {
         if delta > threshold {
             return [
                 String(
-                    format: String(localized: "insights.spending_up_format"),
+                    format: AppLocalization.string("insights.spending_up_format"),
                     formattedPercent(delta)
                 )
             ]
@@ -453,11 +453,11 @@ extension InsightsView {
         if delta < -threshold {
             return [
                 String(
-                    format: String(localized: "insights.spending_down_format"),
+                    format: AppLocalization.string("insights.spending_down_format"),
                     formattedPercent(-delta)
                 )
             ]
         }
-        return [String(localized: "insights.spending_flat")]
+        return [AppLocalization.string("insights.spending_flat")]
     }
 }

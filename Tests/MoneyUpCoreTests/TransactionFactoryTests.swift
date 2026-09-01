@@ -34,12 +34,16 @@ final class TransactionFactoryTests: XCTestCase {
             from: UUID(),
             to: UUID(),
             sourceTradingAccountID: UUID(),
-            destinationTradingAccountID: UUID()
+            destinationTradingAccountID: UUID(),
+            payee: "  Savings move  ",
+            note: "  Goal contribution  "
         )
 
         XCTAssertEqual(entry.postings.count, 4)
         XCTAssertEqual(entry.balanceByCurrency[sgd], Decimal.zero)
         XCTAssertEqual(entry.balanceByCurrency[usd], Decimal.zero)
+        XCTAssertEqual(entry.payee, "Savings move")
+        XCTAssertEqual(entry.note, "Goal contribution")
     }
 
     func testTransferRejectsSameAccountAndNonPositiveAmount() throws {

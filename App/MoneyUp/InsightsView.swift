@@ -72,8 +72,8 @@ struct InsightsView: View {
 
         var title: String {
             switch self {
-            case .income: String(localized: "transaction.income")
-            case .expense: String(localized: "transaction.expense")
+            case .income: AppLocalization.string("transaction.income")
+            case .expense: AppLocalization.string("transaction.expense")
             }
         }
 
@@ -107,6 +107,8 @@ struct InsightsView: View {
         ScrollView {
             LazyVStack(spacing: MoneyUpLayout.standardSpacing) {
                 periodCard
+                IntelligenceSummaryLink()
+                IntelligenceProjectionCard()
 
                 switch model.reportResult(for: period) {
                 case let .available(report):
@@ -231,11 +233,11 @@ struct InsightsView: View {
                     Chart(points) { point in
                         BarMark(
                             x: .value(
-                                String(localized: "chart.dimension.amount"),
+                                AppLocalization.string("chart.dimension.amount"),
                                 point.amount
                             ),
                             y: .value(
-                                String(localized: "chart.dimension.category"),
+                                AppLocalization.string("chart.dimension.category"),
                                 point.selectionKey
                             )
                         )

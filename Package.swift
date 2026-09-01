@@ -16,6 +16,10 @@ let package = Package(
         .library(
             name: "MoneyUpPersistence",
             targets: ["MoneyUpPersistence"]
+        ),
+        .library(
+            name: "MoneyUpIntelligence",
+            targets: ["MoneyUpIntelligence"]
         )
     ],
     dependencies: [
@@ -27,9 +31,14 @@ let package = Package(
     targets: [
         .target(name: "MoneyUpCore"),
         .target(
+            name: "MoneyUpIntelligence",
+            dependencies: ["MoneyUpCore"]
+        ),
+        .target(
             name: "MoneyUpPersistence",
             dependencies: [
                 "MoneyUpCore",
+                "MoneyUpIntelligence",
                 .product(name: "SQLCipher", package: "SQLCipher.swift")
             ],
             cSettings: [
@@ -42,7 +51,16 @@ let package = Package(
         ),
         .testTarget(
             name: "MoneyUpPersistenceTests",
-            dependencies: ["MoneyUpCore", "MoneyUpPersistence"]
+            dependencies: [
+                "MoneyUpCore",
+                "MoneyUpIntelligence",
+                "MoneyUpPersistence"
+            ]
+        ),
+        .testTarget(
+            name: "MoneyUpIntelligenceTests",
+            dependencies: ["MoneyUpCore", "MoneyUpIntelligence"],
+            resources: [.process("Fixtures")]
         )
     ]
 )

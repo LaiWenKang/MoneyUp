@@ -139,6 +139,7 @@ extension AppModel {
             recordLockedCaptureStoreIssue(error)
         }
         state = .ready
+        refreshIntelligence()
     }
 
     /// Authentication cancellation is a normal locked-state transition, not

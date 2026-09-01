@@ -17,7 +17,6 @@ struct LockedQuickCaptureView: View {
     @State private var note = ""
     @State private var isSaving = false
     @State private var errorMessage: String?
-    @State private var isShowingOptionalDetails = false
     @State private var didSave = false
     @FocusState private var focusedField: FocusedField?
 
@@ -44,7 +43,7 @@ struct LockedQuickCaptureView: View {
 
     private var pendingCaptureCountText: String {
         String(
-            format: String(localized: "capture.pending_count"),
+            format: AppLocalization.string("capture.pending_count"),
             model.pendingLockedCaptureCount
         )
     }
@@ -126,34 +125,30 @@ struct LockedQuickCaptureView: View {
                             .accessibilityAddTraits(.isStaticText)
                         }
 
-                        DisclosureGroup(
-                            "capture.add_details",
-                            isExpanded: $isShowingOptionalDetails
-                        ) {
-                            if mode != .transfer {
-                                TextField("transaction.payee", text: $payee)
-                                    .focused($focusedField, equals: .payee)
-                                if payee.utf8.count
-                                    > LockedCapture.maximumPayeeByteCount {
-                                    Label(
-                                        "capture.input_too_long",
-                                        systemImage: "exclamationmark.circle.fill"
-                                    )
-                                    .font(.caption)
-                                    .foregroundStyle(.red)
-                                }
-                            }
-                            TextField("quick_log.note", text: $note, axis: .vertical)
-                                .lineLimit(2...4)
-                                .focused($focusedField, equals: .note)
-                            if note.utf8.count > LockedCapture.maximumNoteByteCount {
-                                Label(
-                                    "capture.input_too_long",
-                                    systemImage: "exclamationmark.circle.fill"
-                                )
-                                .font(.caption)
-                                .foregroundStyle(.red)
-                            }
+                        TextField("transaction.title_or_merchant", text: $payee)
+                            .focused($focusedField, equals: .payee)
+                        if payee.utf8.count > LockedCapture.maximumPayeeByteCount {
+                            Label(
+                                "capture.input_too_long",
+                                systemImage: "exclamationmark.circle.fill"
+                            )
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                        }
+                        TextField(
+                            "transaction.description_or_notes",
+                            text: $note,
+                            axis: .vertical
+                        )
+                        .lineLimit(2...4)
+                        .focused($focusedField, equals: .note)
+                        if note.utf8.count > LockedCapture.maximumNoteByteCount {
+                            Label(
+                                "capture.input_too_long",
+                                systemImage: "exclamationmark.circle.fill"
+                            )
+                            .font(.caption)
+                            .foregroundStyle(.red)
                         }
                     } header: {
                         Text(mode.kind.title)
@@ -260,13 +255,12 @@ struct LockedQuickCaptureView: View {
         // model's existing exactly-once path and still requires normal review.
         if hasUnsavedInput, !didSave {
             guard hasValidAmount else {
-                errorMessage = String(localized: "error.invalid_amount")
+                errorMessage = AppLocalization.string("error.invalid_amount")
                 focusedField = .amount
                 return
             }
             guard detailsFitCapture else {
-                errorMessage = String(localized: "capture.input_too_long")
-                isShowingOptionalDetails = true
+                errorMessage = AppLocalization.string("capture.input_too_long")
                 focusedField = payee.utf8.count > LockedCapture.maximumPayeeByteCount
                     ? .payee : .note
                 return

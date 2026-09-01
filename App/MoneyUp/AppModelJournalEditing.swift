@@ -420,6 +420,7 @@ extension AppModel {
                 from: request.accountID,
                 to: destinationID,
                 occurredAt: request.occurredAt,
+                payee: request.payee,
                 note: request.note
             )
             return JournalEntryReplacementCandidate(entry: entry, addedAccounts: [])
@@ -446,6 +447,7 @@ extension AppModel {
             sourceTradingAccountID: sourceTrading.id,
             destinationTradingAccountID: destinationTrading.id,
             occurredAt: request.occurredAt,
+            payee: request.payee,
             note: request.note
         )
         return JournalEntryReplacementCandidate(

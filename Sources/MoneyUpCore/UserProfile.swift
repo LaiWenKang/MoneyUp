@@ -19,6 +19,9 @@ public struct UserProfile: Codable, Equatable, Sendable {
     /// Opt-in gate for publishing a percentage-only snapshot to the shared
     /// widget container. Legacy profiles decode as false.
     public var showsBudgetStatusWidget: Bool
+    /// Deterministic local intelligence is enabled by default. Turning it off
+    /// cancels analysis and removes its encrypted derived indexes.
+    public var intelligenceEnabled: Bool
     /// Fixed Gregorian reporting zone. Legacy profiles decode as GMT so their
     /// day attribution remains deterministic rather than following travel.
     public var reportingTimeZoneIdentifier: String
@@ -32,6 +35,7 @@ public struct UserProfile: Codable, Equatable, Sendable {
         preferredExpenseCategoryID: UUID? = nil,
         preferredIncomeCategoryID: UUID? = nil,
         showsBudgetStatusWidget: Bool = false,
+        intelligenceEnabled: Bool = true,
         reportingTimeZoneIdentifier: String = TimeZone.current.identifier
     ) {
         self.baseCurrency = baseCurrency
@@ -43,6 +47,7 @@ public struct UserProfile: Codable, Equatable, Sendable {
         self.preferredExpenseCategoryID = preferredExpenseCategoryID
         self.preferredIncomeCategoryID = preferredIncomeCategoryID
         self.showsBudgetStatusWidget = showsBudgetStatusWidget
+        self.intelligenceEnabled = intelligenceEnabled
         self.reportingTimeZoneIdentifier = TimeZone(
             identifier: reportingTimeZoneIdentifier
         )?.identifier ?? "GMT"
@@ -57,6 +62,7 @@ public struct UserProfile: Codable, Equatable, Sendable {
         case preferredExpenseCategoryID
         case preferredIncomeCategoryID
         case showsBudgetStatusWidget
+        case intelligenceEnabled
         case reportingTimeZoneIdentifier
     }
 
@@ -116,6 +122,10 @@ public struct UserProfile: Codable, Equatable, Sendable {
             Bool.self,
             forKey: .showsBudgetStatusWidget
         ) ?? false
+        intelligenceEnabled = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .intelligenceEnabled
+        ) ?? true
         if container.contains(.reportingTimeZoneIdentifier) {
             let identifier = try container.decode(
                 String.self,

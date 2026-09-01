@@ -110,12 +110,12 @@ struct CalendarView: View {
                             LabeledContent {
                                 Text(formattedMoney(flow.income))
                             } label: {
-                                Text("\(String(localized: "transaction.income")) (\(flow.currency.value))")
+                                Text("\(AppLocalization.string("transaction.income")) (\(flow.currency.value))")
                             }
                             LabeledContent {
                                 Text(formattedMoney(flow.expense))
                             } label: {
-                                Text("\(String(localized: "transaction.expense")) (\(flow.currency.value))")
+                                Text("\(AppLocalization.string("transaction.expense")) (\(flow.currency.value))")
                             }
                         }
                     }
@@ -272,8 +272,8 @@ struct CalendarView: View {
         for item: ScheduledTransaction
     ) -> String {
         let status = item.isCurrentOccurrenceConfirmed
-            ? String(localized: "schedule.confirmed")
-            : String(localized: "schedule.pending")
+            ? AppLocalization.string("schedule.confirmed")
+            : AppLocalization.string("schedule.pending")
         return "\(formattedMoney(item.amount)), \(status)"
     }
 
@@ -343,8 +343,8 @@ struct CalendarView: View {
         } label: {
             Label(
                 item.isCurrentOccurrenceConfirmed
-                    ? String(localized: "schedule.confirmed")
-                    : String(localized: "schedule.confirm"),
+                    ? AppLocalization.string("schedule.confirmed")
+                    : AppLocalization.string("schedule.confirm"),
                 systemImage: "checkmark.circle"
             )
         }
@@ -557,8 +557,8 @@ private struct AddScheduleSheet: View {
             .background(Color.moneyUpBackground)
             .navigationTitle(
                 schedule == nil
-                    ? String(localized: "schedule.add")
-                    : String(localized: "schedule.edit")
+                    ? AppLocalization.string("schedule.add")
+                    : AppLocalization.string("schedule.edit")
             )
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

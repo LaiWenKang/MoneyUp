@@ -72,8 +72,12 @@ extension SQLCipherConnection {
             try migrateToVersion5()
             currentVersion = 5
         }
-        guard currentVersion < 6 else { return }
-        try migrateToVersion6()
+        if currentVersion < 6 {
+            try migrateToVersion6()
+            currentVersion = 6
+        }
+        guard currentVersion < 7 else { return }
+        try migrateToVersion7()
     }
 
     private func storedSchemaVersion() throws -> Int32 {
@@ -236,6 +240,14 @@ extension SQLCipherConnection {
             try populateBudgetIntegrityFingerprints()
             try populateBudgetAttributionIndexes()
             try execute("PRAGMA user_version = 6;")
+        }
+    }
+
+    private func migrateToVersion7() throws {
+        try performMigration {
+            try createIntelligenceIndexTables()
+            try rebuildAllIntelligenceIndexesFromRecords()
+            try execute("PRAGMA user_version = 7;")
         }
     }
 

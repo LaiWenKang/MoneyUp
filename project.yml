@@ -32,6 +32,8 @@ targets:
         product: MoneyUpCore
       - package: MoneyUpPackage
         product: MoneyUpPersistence
+      - package: MoneyUpPackage
+        product: MoneyUpIntelligence
       - target: MoneyUpWidget
         embed: true
     info:

@@ -165,7 +165,7 @@ struct TransactionEditView: View {
 
     func editorLabel(for item: LedgerAccount) -> String {
         guard item.isArchived else { return item.name }
-        return "\(item.name) (\(String(localized: "lifecycle.archived")))"
+        return "\(item.name) (\(AppLocalization.string("lifecycle.archived")))"
     }
 
     var sourceCurrency: CurrencyCode? {
@@ -261,7 +261,7 @@ struct TransactionEditView: View {
                 .accessibilityLabel(
                     Text(
                         String(
-                            format: String(localized: "quick_log.split_category_numbered"),
+                            format: AppLocalization.string("quick_log.split_category_numbered"),
                             index + 1
                         )
                     )
@@ -284,7 +284,7 @@ struct TransactionEditView: View {
                     .accessibilityLabel(
                         Text(
                             String(
-                                format: String(localized: "quick_log.split_amount_numbered"),
+                                format: AppLocalization.string("quick_log.split_amount_numbered"),
                                 index + 1
                             )
                         )
@@ -302,8 +302,8 @@ struct TransactionEditView: View {
                         .accessibilityLabel(
                             Text(
                                 String(
-                                    format: String(
-                                        localized: "quick_log.split_remove_numbered"
+                                    format: AppLocalization.string(
+                                        "quick_log.split_remove_numbered"
                                     ),
                                     index + 1
                                 )
@@ -327,7 +327,7 @@ struct TransactionEditView: View {
                 .accessibilityLabel(
                     Text(
                         String(
-                            format: String(localized: "quick_log.split_memo_numbered"),
+                            format: AppLocalization.string("quick_log.split_memo_numbered"),
                             index + 1
                         )
                     )

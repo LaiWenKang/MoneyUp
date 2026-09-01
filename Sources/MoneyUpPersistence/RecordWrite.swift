@@ -35,6 +35,8 @@ struct JournalIndexWrite: Sendable {
     let occurredAt: TimeInterval
     let originDayKey: Int
     let sourceFingerprint: String?
+    let normalizedPayeeKey: String?
+    let entryKind: String
     let postings: [JournalPostingIndexWrite]
     let budgetIntegrityFingerprint: Data
 
@@ -43,6 +45,8 @@ struct JournalIndexWrite: Sendable {
         occurredAt = entry.occurredAt.timeIntervalSince1970
         originDayKey = entry.originContext.dayKey
         sourceFingerprint = entry.sourceFingerprint
+        normalizedPayeeKey = PayeeNormalization.boundedIndexKey(entry.payee)
+        entryKind = entry.kind.rawValue
         postings = entry.postings.map {
             JournalPostingIndexWrite(
                 postingID: $0.id.uuidString,
@@ -54,6 +58,22 @@ struct JournalIndexWrite: Sendable {
         }
         budgetIntegrityFingerprint = BudgetAttributionIntegrityFingerprint
             .journal(entry)
+    }
+}
+
+struct LedgerAccountIndexWrite: Sendable {
+    let recordID: String
+    let kind: String
+    let currency: String?
+    let systemRole: String?
+    let isArchived: Bool
+
+    init(account: LedgerAccount, recordID: String) {
+        self.recordID = recordID
+        kind = account.kind.rawValue
+        currency = account.currency?.value
+        systemRole = account.systemRole?.rawValue
+        isArchived = account.isArchived
     }
 }
 
@@ -217,6 +237,11 @@ public struct RecordWrite: Sendable {
     /// Historical category/day projection used by rollover without decoding
     /// every attribution JSON record during startup.
     let budgetAttributionIndex: BudgetAttributionIndexWrite?
+    /// Minimal classification used only by encrypted intelligence queries.
+    let ledgerAccountIndex: LedgerAccountIndexWrite?
+    /// Present only for the primary profile write. SQLCipher uses it to make
+    /// opt-out persistence and derived-index clearing one atomic operation.
+    let profileIntelligenceEnabled: Bool?
 
     public init<Value: Encodable & Sendable>(
         _ value: Value,
@@ -241,6 +266,16 @@ public struct RecordWrite: Sendable {
             id: id,
             collection: collection
         )
+        let accountIndex = try Self.ledgerAccountIndex(
+            payload,
+            id: id,
+            collection: collection
+        )
+        let intelligenceEnabled = Self.profileIntelligenceEnabled(
+            payload,
+            id: id,
+            collection: collection
+        )
         self.collection = collection
         self.id = id
         self.payload = payload
@@ -248,6 +283,8 @@ public struct RecordWrite: Sendable {
         journalIndex = journalEntry.map { JournalIndexWrite(entry: $0, recordID: id) }
         receiptAttachmentIndex = receiptIndex
         budgetAttributionIndex = attributionIndex
+        ledgerAccountIndex = accountIndex
+        profileIntelligenceEnabled = intelligenceEnabled
     }
 
     private static func encodedPayload<Value: Encodable & Sendable>(
@@ -377,6 +414,42 @@ public struct RecordWrite: Sendable {
         }
     }
 
+    private static func ledgerAccountIndex(
+        _ payload: Data,
+        id: String,
+        collection: RecordCollection
+    ) throws -> LedgerAccountIndexWrite? {
+        guard collection == .accounts else { return nil }
+        do {
+            let account = try JSONDecoder().decode(LedgerAccount.self, from: payload)
+            guard account.id.uuidString == id else {
+                throw PersistenceError.invalidStoredRecord(
+                    collection: collection,
+                    recordID: id
+                )
+            }
+            return LedgerAccountIndexWrite(account: account, recordID: id)
+        } catch let error as PersistenceError {
+            throw error
+        } catch {
+            throw PersistenceError.invalidStoredRecord(
+                collection: collection,
+                recordID: id
+            )
+        }
+    }
+
+    private static func profileIntelligenceEnabled(
+        _ payload: Data,
+        id: String,
+        collection: RecordCollection
+    ) -> Bool? {
+        guard collection == .profile,
+              id == UserProfile.primaryRecordID else { return nil }
+        return (try? JSONDecoder().decode(UserProfile.self, from: payload))?
+            .intelligenceEnabled
+    }
+
     init(
         collection: RecordCollection,
         id: String,
@@ -417,6 +490,23 @@ public struct RecordWrite: Sendable {
             )
         } else {
             budgetAttributionIndex = nil
+        }
+        if collection == .accounts,
+           let account = try? JSONDecoder().decode(LedgerAccount.self, from: payload),
+           account.id.uuidString == id {
+            ledgerAccountIndex = LedgerAccountIndexWrite(
+                account: account,
+                recordID: id
+            )
+        } else {
+            ledgerAccountIndex = nil
+        }
+        if collection == .profile,
+           id == UserProfile.primaryRecordID,
+           let decoded = try? JSONDecoder().decode(UserProfile.self, from: payload) {
+            profileIntelligenceEnabled = decoded.intelligenceEnabled
+        } else {
+            profileIntelligenceEnabled = nil
         }
     }
 }

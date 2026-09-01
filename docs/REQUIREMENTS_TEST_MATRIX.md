@@ -1,6 +1,6 @@
-# MoneyUp 0.6.0 / 0.7.0 W1 Requirement Traceability Matrix
+# MoneyUp 0.6.0 / 0.7.0 W1-W2 Requirement Traceability Matrix
 
-Reviewed: 30 August 2026
+Reviewed: 1 September 2026
 
 This matrix traces all 97 requirements in the controlling Golden PRD to source
 and at least one automated or manual acceptance case. The uploaded Word file is
@@ -29,11 +29,26 @@ and **Release blocker**.
 
 | ID | Current problem | Acceptance summary | Source / test cases | Disposition |
 |---|---|---|---|---|
-| W1-OBS | One global `ObservableObject` broadcast invalidated unrelated screens. | App state uses per-property Observation tracking, and a mutation in each service invalidates only a reader of that service. | `AppModel`, `AppModelServices`, Observation environment call sites; `AppModelTests.testObservationInvalidatesOnlyTrackedAppModelProperties`. | Implemented — verification pending. |
-| W1-SVC | A 9,731-line state authority made ownership and safe concurrent review impractical. | Ledger, Planning, Assets, Portability, Capture, and Intelligence protocol seams are injected; the coordinator retains lock, generation, cancellation, quarantine, and cross-service sequencing. All Swift files/types/functions remain within 1,200/600/80 body-line limits. | `AppModelServices`, `AppModelDependencies`, bounded `AppModel*` extensions; `Scripts/validate_swift_structure.py`; release-validator and CI workflow checks. | Implemented — verification pending; final PR/merge CI is a release blocker. |
-| W1-TXN | Extracting service and plan helpers could accidentally split an existing durable transaction. | Save, edit, delete, split, import, reconciliation, schedule post, lifecycle, attachment retain, and goal movement retain one store transaction and rollback semantics. | DAT-09 operation-specific tests and persistence rollback tests below. | Implemented — verification pending. |
-| W1-C12 | Independent async profile writes could finish out of order or restore stale unrelated fields. | FIFO serialization re-reads the latest committed profile; rapid choices converge on the last value and a failed candidate cannot roll back another setting. | `ProfileMutationSerializer`; `AppModelTests.testProfileMutationsSerializeAndPreserveLatestUnrelatedChoices`, `.testFailedProfileMutationDoesNotRollBackUnrelatedSetting`. | Implemented — verification pending. |
+| W1-OBS | One global `ObservableObject` broadcast invalidated unrelated screens. | App state uses per-property Observation tracking, and a mutation in each service invalidates only a reader of that service. | `AppModel`, `AppModelServices`, Observation environment call sites; `AppModelTests.testObservationInvalidatesOnlyTrackedAppModelProperties`. | Merged; exact merged-main CI passed. |
+| W1-SVC | A 9,731-line state authority made ownership and safe concurrent review impractical. | Ledger, Planning, Assets, Portability, Capture, and Intelligence protocol seams are injected; the coordinator retains lock, generation, cancellation, quarantine, and cross-service sequencing. All Swift files/types/functions remain within 1,200/600/80 body-line limits. | `AppModelServices`, `AppModelDependencies`, bounded `AppModel*` extensions; `Scripts/validate_swift_structure.py`; release-validator and CI workflow checks. | Merged; exact merged-main CI passed; physical performance remains deferred. |
+| W1-TXN | Extracting service and plan helpers could accidentally split an existing durable transaction. | Save, edit, delete, split, import, reconciliation, schedule post, lifecycle, attachment retain, and goal movement retain one store transaction and rollback semantics. | DAT-09 operation-specific tests and persistence rollback tests below. | Merged; automated gate passed; physical interruption remains open. |
+| W1-C12 | Independent async profile writes could finish out of order or restore stale unrelated fields. | FIFO serialization re-reads the latest committed profile; rapid choices converge on the last value and a failed candidate cannot roll back another setting. | `ProfileMutationSerializer`; `AppModelTests.testProfileMutationsSerializeAndPreserveLatestUnrelatedChoices`, `.testFailedProfileMutationDoesNotRollBackUnrelatedSetting`. | Merged; exact merged-main CI passed. |
 | W1-UX | Architecture work could drift navigation, strings, accounting, storage, privacy, or brand behavior. | Five tabs, bilingual catalogs, schema 6, transaction construction, offline boundary, palette, widget/App Group payload, and lock/security behavior are unchanged. | Release validator; `RootView`; `DATA_MODEL.md`; `VISUAL_SYSTEM.md`. | Retained. |
+
+## 0.7.0 W2 acceptance overlay
+
+These approved additive rows supplement the same 97 Golden requirements. The
+W2 final branch and merged-main CI gates remain open until their exact SHAs run.
+
+| ID | Acceptance summary | Source / test cases | State |
+|---|---|---|---|
+| W2-PURE | `MoneyUpIntelligence` depends only on Core; exact-Decimal detectors are deterministic across locale and input order, and findings carry stable keys, rules, figures, samples, confidence, and routes. | `Package.swift`; `Sources/MoneyUpIntelligence`; `IntelligenceDetectorTests`. | AUTO-PENDING on final W2 SHA |
+| W2-IDX | Schema 7 backfills missing metadata transactionally without payload drift; routine affinity/observation reads are bounded and payload-free; edit/delete/restore and opt-out stay atomic. | `SQLCipherConnectionIntelligence*`; `IntelligenceIndexTests.testSchema6MigrationPreservesPayloadBytesAndBuildsSchema7Index`, `.testAffinityUsesEntireEncryptedIndexAndTracksEditDelete`, `.testProfileOptOutClearsAndReenableRebuildsDerivedIndexes`, `.testSnapshotRestoreRebuildsAffinityInsideReplacementTransaction`. | AUTO-PENDING on final W2 SHA |
+| W2-REVIEW | Recurrence offers never auto-save, History review is bounded, opt-out clears findings, and detector actions remain advisory. | `AppModelIntelligence`; `IntelligenceScheduleReviewView`; `AppModelIntelligenceTests.testRefreshPublishesThenOptOutClearsDerivedState`. | AUTO-PENDING; physical review open |
+| W2-PROJ | Month-end components remain separate per currency, use confirmed remaining schedules, require at least seven reporting days, and never infer FX or zero. | `MonthEndProjectionDetector`; `AppModelIntelligenceTests.testMonthEndProjectionSeparatesCurrenciesAndConfirmedSchedules`. | AUTO-PENDING; physical review open |
+| W2-BUD | Budget proposals use complete trailing months and median plus two MAD; selected changes apply and undo as one reviewed transaction, and stale proposals fail before persistence. | `BudgetLimitSuggestionDetector`; `AppModelBudgetSuggestions`; `AppModelIntelligenceTests.testBudgetSuggestionsApplyAndUndoAsOneReviewedPatch`. | AUTO-PENDING; physical review open |
+| W2-CFG | Settings offers System/English/Simplified Chinese and full category management; Quick Log exposes title-or-merchant, description/notes, and add-category. | `AppLocalization`, `AppSettingsView`, `QuickLogEntryBody`, `LedgerLifecycleViews`; `AppLocalizationTests`. | AUTO-PENDING; bilingual/device review open |
+| W2-FIX | Default release fixture remains byte-identical; explicit intelligence profile creates 10,000 deterministic rows across KWD/SGD/USD plus an exact planted finding/negative-case oracle. | `generate_release_fixture.py`; `MoneyUp-Intelligence-Oracle.json`; `validate_release_assets.py`; `IntelligenceDetectorTests.testCommittedScaleOracleProducesOnlyPlantedFindings`. | STATIC-PASS locally; AUTO-PENDING on final W2 SHA |
 
 ## Log and transaction capture
 
@@ -203,7 +218,7 @@ and
 | QA-02 | Critical | App target covers lock/save/scan/deep-link/erase/stale generation, capture/lifecycle, startup/authentication privacy, backup/restore/draft, projection/commit, published-state recovery, import/lock races, interrupted validation cleanup, and durable erase resumption. | `MoneyUpAppTests`; `testLockDuringSaveCommitsExactlyOnceWithoutRepopulatingLockedState`, `testLaunchingStateTracksExpiredInactivityAndKeepsAuthenticationCover`, `testCancelledStartupAuthenticationClearsCoverInBothCallbackOrders`, `testFailedStartupCompletesDeferredLockBeforeRemovingCover`, `testExpiredAutoLockKeepsPrivacyCoverWhileRestoreDrains`, `testLockDuringReceiptScanDiscardsTheStaleResult`, `testErasePersistsIntentBeforeDeletingMainKeyAndClearsItLast`, `testStartupCompletesPendingEraseBeforeOpeningReplacementStore`, `testPendingEraseIntentDeniesAndForgetsLockedCaptureRoute`, `testEraseIntentReadFailureFailsClosedForLockedCapture`, `testAcceptedLockedCaptureWriteBlocksEraseUntilAppendFinishes`, `testStaleGenerationWriteDoesNotRepopulateMemoryAfterLock`, `testLockedCaptureRejectsMismatchedAndProtectedRoutes`, `testLockedCaptureDuplicateRetryRemainsIdempotentAtCapacity`, `testLockedCaptureRecoveryNeverDeletesAfterTransientOrStaleFailure`, `testLockWaitsForCapturePromotionAndKeepsOneDurableDraft`, `testRestoreCannotCrossCapturePromotionHandoff`, `testImmediateBackupFlushesLatestQuickLogDraftIntoLiveStoreAndArchive`, `testWrongPasswordRestorePersistsLatestDraftAcrossCloseAndReopen`, `testRestoreScavengesPowerLossValidationArtifacts`, `testCancellationAfterRestoreCommitRecoversJournalIndexesAndBalance`, `testRetainedRestoreFailureRepublishesTheUnchangedJournal`, `testQueuedProjectionCannotAdoptAWriterRevisionBeforeItsTaskStarts`, `testProjectionReadCannotPublishBetweenJournalCommitAndRefresh`, `testPublishedProjectionFailsClosedBeforeJournalCommitAndRecovers`, `testRetainedJournalWriteFailureRepublishesCoherentPrecommitWidget`, `testLockDeferredDuringCSVImportAppliesAfterExactCommit`, `testImportRejectsMaliciousSystemAccountAndCategoryMappings`. | AUTO-PENDING |
 | QA-03 | Critical | Regression suite covers audit D-01..D-23, minor units, locale, FX edits, revisions, caches, BOM, rollback/rollback failure, deep hierarchies, strict nested restore bounds, portable-archive KDF/cancellation/legacy compatibility, import identities, and async/lifecycle/erase-resume races. | Named tests throughout this matrix; STATIC `QA-03-D01-D23-MAP`; exact candidate declaration count is reconciled in Coverage accounting. | AUTO-PENDING |
 | QA-04 | Critical | Required iPhone/language/appearance/Dynamic Type/VoiceOver/Reduce Motion/widget matrix and Golden p95 budgets pass. | `FIRST_TEST.md`; MANUAL `QA-04-PHYSICAL-MATRIX`, 10,000-entry/20-schedule cold-start/monthly-checkpoint/rollover measurement, and v2/v1 archive peak-memory observation. Source scaling remediations are present; measurements remain release-blocking evidence. | BLOCKED-P1; MANUAL-OPEN |
-| QA-05 | Critical | In-place TestFlight upgrade and clean-device v2 plus compatible-v1 archive restore reconcile to pre-upgrade inventory. | `PrivacySafeDataInventory`, `FIRST_TEST.md`; MANUAL `QA-05-UPGRADE-RESTORE`, near-limit v2, compatible-v1, interruption, and power-loss cases. Source remediation is present; physical execution remains release-blocking. | BLOCKED-P1; MANUAL-OPEN |
+| QA-05 | Critical | In-place TestFlight upgrade and clean-device v2 plus compatible-v1 archive restore reconcile to pre-upgrade inventory; deterministic 10,000-row release and intelligence profiles drive scale and planted-finding checks. | `PrivacySafeDataInventory`, `generate_release_fixture.py`, `MoneyUp-Intelligence-Oracle.json`, `FIRST_TEST.md`; MANUAL `QA-05-UPGRADE-RESTORE`, near-limit v2, compatible-v1, interruption, power-loss, and intelligence-scale cases. | STATIC-PASS for fixture/oracle; BLOCKED-P1; MANUAL-OPEN |
 | QA-06 | Critical | No wider test/App Review while required physical/accessibility/recovery/migration/performance box is open. | `LAUNCH_PLAN.md`, `ROADMAP.md`; MANUAL `QA-06-PROMOTION-CHECK` signed by release owner. Current decision is blocked. | BLOCKED-P1 |
 | QA-07 | Critical | Store metadata, screenshots, notes, privacy, language, version/build, archive, widget, and binary capabilities match exact candidate. | `APP_STORE_SUBMISSION.md`, TestFlight workflow, release validator; STATIC `QA-07-SOURCE-CHECK`; MANUAL `QA-07-EXACT-ARCHIVE`. | STATIC-PASS; MANUAL-OPEN |
 
@@ -212,8 +227,8 @@ and
 These rows retain the explainable-capture behavior merged to `main` through PR
 #28. They do not change the controlling count of 97 Golden requirements or
 close any physical-device or exact-binary release gate. Automated source
-coverage is present, but the unified W1 merge candidate still needs its exact
-macOS CI run.
+coverage is present. W1 is merged with green exact-main CI; the additive W2
+candidate still needs its final exact-SHA and merged-main CI runs.
 
 | ID | Risk | Acceptance summary | Source / test cases | State |
 |---|---|---|---|---|
@@ -228,9 +243,9 @@ macOS CI run.
 
 - Requirements traced: **97 / 97**.
 - Requirements with at least one named automated or manual case: **97 / 97**.
-- Declared automated tests in source after this review: **591** (296 core, 49
-  persistence, and 246 app-target declarations; XCTest methods plus Swift
-  Testing `@Test` declarations). Of those declarations, **541** are XCTest
+- Declared automated tests in source after this review: **614** (296 core, 54
+  persistence, 11 intelligence, and 253 app-target declarations; XCTest methods
+  plus Swift Testing `@Test` declarations). Of those declarations, **564** are XCTest
   functions named `test...`; the remaining 50 are Swift Testing `@Test`
   declarations in MoneyUpCore.
 - Tests executed against this exact candidate in this environment: **0**;

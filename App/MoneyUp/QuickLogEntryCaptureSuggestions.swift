@@ -8,6 +8,7 @@ extension QuickLogEntryView {
         preservingCategory: Bool = false,
         restoresDefaults: Bool = true
     ) {
+        cancelCaptureSuggestionLookup()
         var revertedField = false
         if !preservingAccount,
            let autoAppliedAccountSuggestionID,
@@ -32,6 +33,7 @@ extension QuickLogEntryView {
     }
 
     func clearCaptureSuggestionProvenance() {
+        cancelCaptureSuggestionLookup()
         autoAppliedAccountSuggestionID = nil
         autoAppliedCategorySuggestionID = nil
         captureSuggestionResult = nil
@@ -50,8 +52,8 @@ extension QuickLogEntryView {
     }
 
     func refreshCaptureSuggestions(for draft: TransactionDraft) {
-        guard model.journalRecentEntriesAreCurrent,
-              let currency = selectedAccountCurrency else {
+        cancelCaptureSuggestionLookup()
+        guard let currency = selectedAccountCurrency else {
             captureSuggestionResult = nil
             return
         }
@@ -67,14 +69,26 @@ extension QuickLogEntryView {
             currency: currency,
             occurredAt: draft.occurredAt ?? occurredAt
         )
-        let result = CaptureSuggestionEngine.suggestions(
-            for: query,
-            entries: model.entries,
-            accounts: model.accounts
-        )
-        captureSuggestionResult = result
-        applyAccountSuggestion(result.accountSuggestion, draft: draft)
-        applyCategorySuggestion(result.categorySuggestion, draft: draft)
+        let generation = captureSuggestionGeneration
+        let eligibleCategoryIDs = Set(categories.map(\.id))
+        captureSuggestionTask = Task { @MainActor in
+            let result = await model.indexedCaptureSuggestion(
+                for: query,
+                eligibleCategoryIDs: eligibleCategoryIDs
+            )
+            guard !Task.isCancelled,
+                  generation == captureSuggestionGeneration else { return }
+            captureSuggestionResult = result
+            applyAccountSuggestion(result.accountSuggestion, draft: draft)
+            applyCategorySuggestion(result.categorySuggestion, draft: draft)
+            captureSuggestionTask = nil
+        }
+    }
+
+    func cancelCaptureSuggestionLookup() {
+        captureSuggestionGeneration &+= 1
+        captureSuggestionTask?.cancel()
+        captureSuggestionTask = nil
     }
 
     private func applyAccountSuggestion(
@@ -139,12 +153,12 @@ extension QuickLogEntryView {
     @ViewBuilder
     func captureSuggestions(_ result: CaptureSuggestionResult) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label("quick_log.suggestions_from_recent", systemImage: "lightbulb.max")
+            Label("quick_log.suggestions_from_book", systemImage: "lightbulb.max")
                 .font(.subheadline.weight(.semibold))
             if let suggestion = result.accountSuggestion,
                let account = model.accountsByID[suggestion.ledgerAccountID] {
                 captureSuggestionRow(
-                    title: String(localized: "quick_log.suggested_account"),
+                    title: AppLocalization.string("quick_log.suggested_account"),
                     account: account,
                     suggestion: suggestion,
                     isApplied: accountID == account.id
@@ -159,7 +173,7 @@ extension QuickLogEntryView {
                let suggestion = result.categorySuggestion,
                let category = model.accountsByID[suggestion.ledgerAccountID] {
                 captureSuggestionRow(
-                    title: String(localized: "quick_log.suggested_category"),
+                    title: AppLocalization.string("quick_log.suggested_category"),
                     account: category,
                     suggestion: suggestion,
                     isApplied: categoryID == category.id
@@ -170,7 +184,7 @@ extension QuickLogEntryView {
                     persistUserDraftChange { $0.categoryID = category.id }
                 }
             }
-            Text("quick_log.suggestions_recent_scope")
+            Text("quick_log.suggestions_book_scope")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -212,16 +226,16 @@ extension QuickLogEntryView {
 
     func captureConfidenceText(_ confidence: CaptureConfidence) -> String {
         switch confidence {
-        case .low: String(localized: "quick_log.confidence_low")
-        case .medium: String(localized: "quick_log.confidence_medium")
-        case .high: String(localized: "quick_log.confidence_high")
+        case .low: AppLocalization.string("quick_log.confidence_low")
+        case .medium: AppLocalization.string("quick_log.confidence_medium")
+        case .high: AppLocalization.string("quick_log.confidence_high")
         }
     }
 
     private func captureEvidenceText(_ evidence: CaptureSuggestionEvidence) -> String {
         let format = evidence.usedPayeeHistory
-            ? String(localized: "quick_log.suggestion_payee_evidence_format")
-            : String(localized: "quick_log.suggestion_kind_evidence_format")
+            ? AppLocalization.string("quick_log.suggestion_payee_evidence_format")
+            : AppLocalization.string("quick_log.suggestion_kind_evidence_format")
         let count = String(
             format: format,
             evidence.supportingEntryCount,
@@ -232,7 +246,7 @@ extension QuickLogEntryView {
             calendar: model.reportingCalendar
         )
         return String(
-            format: String(localized: "quick_log.suggestion_last_used_format"),
+            format: AppLocalization.string("quick_log.suggestion_last_used_format"),
             count,
             date
         )

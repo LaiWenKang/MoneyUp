@@ -5,6 +5,7 @@ public enum PersistenceError: Error, Equatable, Sendable {
     case databaseClosed
     case databaseFailure(code: Int32, message: String)
     case cipherUnavailable
+    case invalidQuery
     case unsupportedSchema(found: Int32, supported: Int32)
     case invalidStoredRecord(collection: RecordCollection, recordID: String)
     case invalidSnapshot

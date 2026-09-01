@@ -45,6 +45,7 @@ extension AppModel {
             journalRecentEntriesAreCurrent = true
             journalDerivedRefreshWasDeferred = false
             refreshBudgetWidgetSnapshot()
+            refreshIntelligence()
             return
         }
         let mutationGeneration = storeGeneration
@@ -67,6 +68,7 @@ extension AppModel {
             if !recoveryIssues.contains(issue) { recoveryIssues.append(issue) }
             scheduleJournalDerivedRefresh()
         }
+        refreshIntelligence()
     }
 
     func load(

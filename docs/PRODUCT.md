@@ -33,33 +33,38 @@ end-to-end encryption and authorization design is approved.
 | Budget planner | Monthly nested limits classified as Flexible, Bills, Debt, or Goals; roll-up, dated rollover, sinking funds, savings goals, pace, explicit unbudgeted spending, and a read-only what-if simulator |
 | Widgets | Configurable privacy-redacted entry points; locked basic capture; optional budget percentage/state shared through the single reviewed App Group with no financial record fields |
 | Hierarchy | Arbitrary-depth model with group/category/subcategory roll-up |
-| Insights | Category distribution, trailing monthly cash flow, plain-language readings, tap-to-inspect, and History drill-through |
+| Insights | Category distribution, trailing monthly cash flow, plain-language readings, tap-to-inspect, History drill-through, and optional explainable local findings |
 | Today guidance | Flexible Today uses only explicitly flexible allocations and their commitments, plus separate cash, debt, and net-cash position |
 | Finance calendar | Indexed actual flows plus recurring forecasts with edit, pause, end, skip, confirm, match, and exactly-once posting |
 | Assets | Lifecycle-managed accounts/categories; ledger-linked holdings; dated prices; stale warnings; FIFO lots/disposals; currency-separated net-worth history |
 | Portability | Posting-level CSV and native XLSX, mapped CSV/TSV import, metadata-stripped encrypted receipt attachments, dated user FX rates, and file-backed chunk-authenticated `.moneyup` backup/restore |
-| Easy logging | Amount-first center Log, encrypted drafts, smart defaults, refund, exact splits, date-indexed History/edit, and Undo; keyboard Done, Save, and tab navigation remain reachable |
+| Easy logging | Amount-first center Log, encrypted drafts, smart defaults, title-or-merchant, multi-line description/notes, refund, exact splits, date-indexed History/edit, and Undo; keyboard Done, Save, and tab navigation remain reachable |
 | Smart entry | Responsive fast-first on-device receipt and screenshot reading with immediate progress and visible populated suggestions, typed-phrase parsing, and category suggestions learned from the user's own history |
-| Scale architecture | SQLCipher schema-6 journal/posting/receipt/budget indexes, trigger-maintained store metrics, compact balances, monthly rollover checkpoints, bounded recent activity, and on-demand History/Calendar/export loading |
-| State architecture | Per-property Observation tracking with injected Ledger, Planning, Assets, Portability, and Capture state services; `AppModel` retains lock and cross-service transaction coordination |
-| Languages | English and Simplified Chinese with locale-correct dates and amounts |
+| Configurability | Add a category while logging, or use the category manager to rename, archive/restore, merge, reassign, and delete user-owned categories |
+| Intelligence | Optional deterministic recurrence/lapse/price, duplicate, anomaly, per-currency projection, and budget-proposal tools; every result is reviewable and local |
+| Scale architecture | SQLCipher schema-7 journal/posting/receipt/budget/intelligence indexes, trigger-maintained store metrics, compact balances, monthly rollover checkpoints, bounded recent activity, and on-demand History/Calendar/export/intelligence loading |
+| State architecture | Per-property Observation tracking with injected Ledger, Planning, Assets, Portability, Capture, and Intelligence state services; `AppModel` retains lock and cross-service transaction coordination |
+| Languages | English and Simplified Chinese with locale-correct dates and amounts; Settings can follow the iPhone or override the app/widget language |
 
 These rows describe source implementation in the unified candidate. They do
 not close the exact-candidate Mac CI, physical iPhone, TestFlight, closed-beta,
 or App Store gates. See [Golden PRD traceability](GOLDEN_TRACEABILITY.md).
 
-The 0.7.0 W1 state migration is deliberately behavior-neutral. It changes no
-tab, workflow, accounting classification, persistence representation, privacy
-boundary, string, or visual asset. Its product effect is narrower invalidation:
-receipt/capture progress, planning edits, asset changes, and recovery state no
-longer broadcast one global `ObservableObject` change to unrelated screens.
-Settings writes are serialized so rapid choices converge on the latest value
-and one failed candidate cannot restore stale unrelated fields.
+The merged 0.7.0 W1 state migration was deliberately behavior-neutral. W2 uses
+those service seams for optional, local intelligence and answers the approved
+configurability delta: app-language choice, visible transaction title/details,
+category creation from Log, and full category management. The existing
+`JournalEntry.payee` and `note` fields retain compatibility: the UI presents
+them as title-or-merchant and description-or-notes rather than adding a second
+ambiguous transaction-title payload.
 
 ## Product rules
 
 - "Smart" features must be deterministic or on-device, explainable, and
   optional. Raw transactions are never sent to a remote language model.
+- Intelligence findings are advice for review, not autonomous financial
+  actions. Schedule offers remain editable until the user saves them, and a
+  budget proposal changes nothing until the user accepts an explicit diff.
 - Categories answer **why money moved**. Accounts answer **where money lives**.
   Tags capture context and must not replace either hierarchy.
 - A credit card is a liability account. A debit card is a payment instrument

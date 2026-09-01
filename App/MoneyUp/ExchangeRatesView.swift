@@ -87,7 +87,7 @@ struct ExchangeRatesView: View {
                             .font(.subheadline.monospacedDigit())
                             Text(
                                 String(
-                                    format: String(localized: "fx.effective_day_format"),
+                                    format: AppLocalization.string("fx.effective_day_format"),
                                     rate.effectiveContext.dayKey,
                                     rate.effectiveContext.timeZoneIdentifier
                                 )

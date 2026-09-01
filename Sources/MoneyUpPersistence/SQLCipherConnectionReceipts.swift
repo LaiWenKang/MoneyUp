@@ -203,8 +203,13 @@ extension SQLCipherConnection {
         try execute("BEGIN IMMEDIATE;")
         do {
             if collection == RecordCollection.journalEntries.rawValue {
+                try execute("DELETE FROM payee_affinity_index;")
                 try execute("DELETE FROM journal_entry_index;")
                 try execute("DELETE FROM journal_balance;")
+            }
+            if collection == RecordCollection.accounts.rawValue {
+                try execute("DELETE FROM payee_affinity_index;")
+                try execute("DELETE FROM ledger_account_intelligence_index;")
             }
             if collection == RecordCollection.receiptAttachments.rawValue {
                 try execute("DELETE FROM receipt_attachment_index;")
@@ -215,6 +220,9 @@ extension SQLCipherConnection {
             try withStatement("DELETE FROM records WHERE collection = ?;") { statement in
                 try bindText(collection, at: 1, to: statement)
                 try stepExpectingDone(statement)
+            }
+            if collection == RecordCollection.profile.rawValue {
+                try rebuildAllIntelligenceIndexesFromRecords()
             }
             try execute("COMMIT;")
         } catch let operationError {

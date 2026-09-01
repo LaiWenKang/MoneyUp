@@ -295,7 +295,7 @@ struct HoldingManagementSheet: View {
                                     Text(disposal.occurredAt, format: .dateTime.year().month().day())
                                     Text(
                                         String(
-                                            format: String(localized: "holding.realized_format"),
+                                            format: AppLocalization.string("holding.realized_format"),
                                             formattedMoney(disposal.realizedGainLoss)
                                         )
                                     )
@@ -366,7 +366,7 @@ struct HoldingManagementSheet: View {
                     occurredAt: asOf
                 )
                 resultMessage = String(
-                    format: String(localized: "holding.realized_format"),
+                    format: AppLocalization.string("holding.realized_format"),
                     formattedMoney(result.realizedGainLoss)
                 )
             }

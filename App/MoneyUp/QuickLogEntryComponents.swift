@@ -117,7 +117,7 @@ extension QuickLogEntryView {
                 .accessibilityLabel(
                     Text(
                         String(
-                            format: String(localized: "quick_log.split_category_numbered"),
+                            format: AppLocalization.string("quick_log.split_category_numbered"),
                             index + 1
                         )
                     )
@@ -141,7 +141,7 @@ extension QuickLogEntryView {
                     .accessibilityLabel(
                         Text(
                             String(
-                                format: String(localized: "quick_log.split_amount_numbered"),
+                                format: AppLocalization.string("quick_log.split_amount_numbered"),
                                 index + 1
                             )
                         )
@@ -159,8 +159,8 @@ extension QuickLogEntryView {
                         .accessibilityLabel(
                             Text(
                                 String(
-                                    format: String(
-                                        localized: "quick_log.split_remove_numbered"
+                                    format: AppLocalization.string(
+                                        "quick_log.split_remove_numbered"
                                     ),
                                     index + 1
                                 )
@@ -194,7 +194,7 @@ extension QuickLogEntryView {
                 .accessibilityLabel(
                     Text(
                         String(
-                            format: String(localized: "quick_log.split_memo_numbered"),
+                            format: AppLocalization.string("quick_log.split_memo_numbered"),
                             index + 1
                         )
                     )

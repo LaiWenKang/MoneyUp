@@ -268,11 +268,14 @@ struct QuickLogEntryView: View {
     @State var isConfirmingDraftSwitch = false
     @State var pendingLaunchMode: QuickLogLaunchMode?
     @State var isShowingOptionalDetails = false
+    @State var isAddingCategory = false
     @State var receiptScanTask: Task<Void, Never>?
     @State var receiptScanGeneration = 0
     @State var receiptScanBaseline: ReceiptScanBaseline?
     @State var receiptResult: ReceiptParseResult?
     @State var captureSuggestionResult: CaptureSuggestionResult?
+    @State var captureSuggestionTask: Task<Void, Never>?
+    @State var captureSuggestionGeneration = 0
     @State var pendingDuplicateReview: PendingDuplicateReview?
     @State var preservesCaptureSuggestionsAcrossNextKindChange = false
     @State var autoAppliedAccountSuggestionID: UUID?
@@ -299,6 +302,10 @@ struct QuickLogEntryView: View {
 
     var categories: [LedgerAccount] {
         kind == .income ? model.incomeCategories : model.expenseCategories
+    }
+
+    var categoryKind: LedgerAccountKind {
+        kind == .income ? .income : .expense
     }
 
     var selectedAccountCurrency: CurrencyCode? {
@@ -334,7 +341,7 @@ struct QuickLogEntryView: View {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
         guard let value = decimalAmount(from: trimmed), value > .zero else {
-            return String(localized: "error.invalid_amount")
+            return AppLocalization.string("error.invalid_amount")
         }
         guard let currency else { return nil }
         do {
