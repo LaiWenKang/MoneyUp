@@ -14,6 +14,15 @@ final class AppModelTests: XCTestCase {
         return percentUsed
     }
 
+    private func artifactSnapshot(at urls: [URL]) -> [String: Data] {
+        let artifacts: [(String, Data)] = urls.compactMap { url in
+            guard FileManager.default.fileExists(atPath: url.path),
+                  let data = try? Data(contentsOf: url) else { return nil }
+            return (url.lastPathComponent, data)
+        }
+        return Dictionary(uniqueKeysWithValues: artifacts)
+    }
+
     func testDatabaseKeyCreationRequiresEveryCiphertextArtifactToBeAbsent() {
         for bitmask in 0..<8 {
             let databaseExists = bitmask & 0b001 != 0
@@ -1059,13 +1068,7 @@ final class AppModelTests: XCTestCase {
         let artifactURLs = DatabaseKeyCreationPolicy.artifactURLs(
             for: fixture.databaseURL
         )
-        let originalArtifacts = Dictionary(uniqueKeysWithValues:
-            artifactURLs.compactMap { url in
-                guard FileManager.default.fileExists(atPath: url.path),
-                      let data = try? Data(contentsOf: url) else { return nil }
-                return (url.lastPathComponent, data)
-            }
-        )
+        let originalArtifacts = artifactSnapshot(at: artifactURLs)
         model.store = nil
         model.storeGeneration &+= 1
         model.clearDecodedState()
@@ -1093,11 +1096,7 @@ final class AppModelTests: XCTestCase {
             ["generated", "passcode-removed-before-store"]
         )
         XCTAssertEqual(
-            Dictionary(uniqueKeysWithValues: artifactURLs.compactMap { url in
-                guard FileManager.default.fileExists(atPath: url.path),
-                      let data = try? Data(contentsOf: url) else { return nil }
-                return (url.lastPathComponent, data)
-            }),
+            artifactSnapshot(at: artifactURLs),
             originalArtifacts
         )
         XCTAssertFalse(
@@ -2072,13 +2071,7 @@ final class AppModelTests: XCTestCase {
         let artifactURLs = DatabaseKeyCreationPolicy.artifactURLs(
             for: fixture.databaseURL
         )
-        let originalArtifacts = Dictionary(uniqueKeysWithValues:
-            artifactURLs.compactMap { url in
-                guard FileManager.default.fileExists(atPath: url.path),
-                      let data = try? Data(contentsOf: url) else { return nil }
-                return (url.lastPathComponent, data)
-            }
-        )
+        let originalArtifacts = artifactSnapshot(at: artifactURLs)
         model.store = nil
         model.storeGeneration &+= 1
         model.clearDecodedState()
@@ -2107,11 +2100,7 @@ final class AppModelTests: XCTestCase {
         }
         XCTAssertTrue(keyEvents.snapshot().isEmpty)
         XCTAssertEqual(
-            Dictionary(uniqueKeysWithValues: artifactURLs.compactMap { url in
-                guard FileManager.default.fileExists(atPath: url.path),
-                      let data = try? Data(contentsOf: url) else { return nil }
-                return (url.lastPathComponent, data)
-            }),
+            artifactSnapshot(at: artifactURLs),
             originalArtifacts
         )
         XCTAssertFalse(
@@ -2162,11 +2151,7 @@ final class AppModelTests: XCTestCase {
         }
         XCTAssertTrue(keyEvents.snapshot().isEmpty)
         XCTAssertEqual(
-            Dictionary(uniqueKeysWithValues: artifactURLs.compactMap { url in
-                guard FileManager.default.fileExists(atPath: url.path),
-                      let data = try? Data(contentsOf: url) else { return nil }
-                return (url.lastPathComponent, data)
-            }),
+            artifactSnapshot(at: artifactURLs),
             originalArtifacts
         )
 
@@ -2310,13 +2295,7 @@ final class AppModelTests: XCTestCase {
         let artifactURLs = DatabaseKeyCreationPolicy.artifactURLs(
             for: fixture.databaseURL
         )
-        let originalArtifacts = Dictionary(uniqueKeysWithValues:
-            artifactURLs.compactMap { url in
-                guard FileManager.default.fileExists(atPath: url.path),
-                      let data = try? Data(contentsOf: url) else { return nil }
-                return (url.lastPathComponent, data)
-            }
-        )
+        let originalArtifacts = artifactSnapshot(at: artifactURLs)
         model.store = nil
         model.storeGeneration &+= 1
         model.clearDecodedState()
@@ -2342,11 +2321,7 @@ final class AppModelTests: XCTestCase {
             ["generated", "stored", "deleted-rollingBack"]
         )
         XCTAssertEqual(
-            Dictionary(uniqueKeysWithValues: artifactURLs.compactMap { url in
-                guard FileManager.default.fileExists(atPath: url.path),
-                      let data = try? Data(contentsOf: url) else { return nil }
-                return (url.lastPathComponent, data)
-            }),
+            artifactSnapshot(at: artifactURLs),
             originalArtifacts
         )
         XCTAssertEqual(model.startupFailureKind, .missingDeviceBoundKey)
@@ -2432,13 +2407,7 @@ final class AppModelTests: XCTestCase {
         let artifactURLs = DatabaseKeyCreationPolicy.artifactURLs(
             for: fixture.databaseURL
         )
-        let originalArtifacts = Dictionary(uniqueKeysWithValues:
-            artifactURLs.compactMap { url in
-                guard FileManager.default.fileExists(atPath: url.path),
-                      let data = try? Data(contentsOf: url) else { return nil }
-                return (url.lastPathComponent, data)
-            }
-        )
+        let originalArtifacts = artifactSnapshot(at: artifactURLs)
         model.store = nil
         model.storeGeneration &+= 1
         model.clearDecodedState()
@@ -2466,11 +2435,7 @@ final class AppModelTests: XCTestCase {
             ["generated", "stored", "deleted-rollingBack"]
         )
         XCTAssertEqual(
-            Dictionary(uniqueKeysWithValues: artifactURLs.compactMap { url in
-                guard FileManager.default.fileExists(atPath: url.path),
-                      let data = try? Data(contentsOf: url) else { return nil }
-                return (url.lastPathComponent, data)
-            }),
+            artifactSnapshot(at: artifactURLs),
             originalArtifacts
         )
         XCTAssertEqual(
