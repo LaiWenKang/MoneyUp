@@ -7,6 +7,7 @@ struct IntelligenceHistorySelection: Identifiable {
     let entryIDs: [UUID]
     let day: Int?
     let wasTruncated: Bool
+    let logicalBookRevision: UInt64
 
     var id: String { findingID }
 }
@@ -76,7 +77,11 @@ struct IntelligenceHistoryReviewView: View {
                     Button("action.done") { dismiss() }
                 }
             }
-            .task(id: selection.id) { await load() }
+            .task(id: model.logicalBookRevision) { await load() }
+            .onChange(of: model.logicalBookRevision) { _, _ in
+                entries = []
+                editingEntry = nil
+            }
             .sheet(item: $editingEntry) { entry in
                 NavigationStack { TransactionEditView(entry: entry) }
             }
@@ -85,15 +90,26 @@ struct IntelligenceHistoryReviewView: View {
 
     @MainActor
     private func load() async {
+        let revision = selection.logicalBookRevision
+        guard revision == model.logicalBookRevision,
+              !model.isBookReplacementInProgress else {
+            entries = []
+            isLoading = false
+            return
+        }
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
         do {
-            entries = try await model.intelligenceHistoryEntries(
+            let loaded = try await model.intelligenceHistoryEntries(
                 entryIDs: selection.entryIDs
             )
+            guard revision == model.logicalBookRevision,
+                  !model.isBookReplacementInProgress else { return }
+            entries = loaded
             errorMessage = nil
         } catch {
+            guard revision == model.logicalBookRevision else { return }
             entries = []
             errorMessage = safeUserMessage(for: error, context: .read)
         }

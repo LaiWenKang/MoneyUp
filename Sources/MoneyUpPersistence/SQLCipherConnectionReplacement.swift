@@ -7,7 +7,7 @@ extension SQLCipherConnection {
         fromPortableArchive sourceURL: URL,
         password: String,
         observesCancellation: Bool
-    ) throws {
+    ) throws -> PortableArchiveRestoreMetadata {
         let allowedCollections = Set(RecordCollection.allCases.map(\.rawValue))
         var identities = Set<String>()
         var affectedBalances = Set<BalanceKey>()
@@ -58,8 +58,13 @@ extension SQLCipherConnection {
             try rebuildAllIntelligenceIndexesFromRecords()
             if observesCancellation { try Task.checkCancellation() }
             try execute("COMMIT;")
+            return PortableArchiveRestoreMetadata(
+                archiveVersion: metadata.archiveVersion,
+                schemaVersion: metadata.schemaVersion
+            )
         } catch let operationError {
             try rollbackReplacement(orThrowing: operationError)
+            throw operationError
         }
     }
 

@@ -155,6 +155,8 @@ final class IntelligenceService: IntelligenceServicing {
     private(set) var isRefreshing = false
     private(set) var isUnavailable = false
     private(set) var resultsAreLimited = false
+    @ObservationIgnored private(set) var refreshInvocationCount = 0
+    @ObservationIgnored private(set) var cancelInvocationCount = 0
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
     @ObservationIgnored private var revision: UInt64 = 0
 
@@ -164,6 +166,7 @@ final class IntelligenceService: IntelligenceServicing {
         asOfDay: Int,
         enabled: Bool
     ) {
+        refreshInvocationCount += 1
         beginRefresh()
         guard enabled else { return }
         isRefreshing = true
@@ -202,6 +205,7 @@ final class IntelligenceService: IntelligenceServicing {
     }
 
     func cancelPendingWork() {
+        cancelInvocationCount += 1
         revision &+= 1
         refreshTask?.cancel()
         refreshTask = nil

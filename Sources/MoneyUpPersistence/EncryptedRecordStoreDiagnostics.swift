@@ -232,14 +232,15 @@ extension EncryptedRecordStore {
     /// one SQLite transaction. Every version-2 record is decoded and indexed
     /// incrementally; any authentication, validation, cancellation, or write
     /// failure rolls the entire candidate back.
+    @discardableResult
     public func restorePortableArchive(
         from sourceURL: URL,
         password: String,
         observesCancellation: Bool = true
-    ) throws {
+    ) throws -> PortableArchiveRestoreMetadata {
         let performanceInterval = MoneyUpPerformanceSignposts.begin(.archiveRestore)
         defer { MoneyUpPerformanceSignposts.end(performanceInterval) }
-        try connection.replaceAllRecords(
+        return try connection.replaceAllRecords(
             fromPortableArchive: sourceURL,
             password: password,
             observesCancellation: observesCancellation

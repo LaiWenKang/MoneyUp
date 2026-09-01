@@ -472,9 +472,6 @@ struct AssetsView: View {
                     }
                 }
 
-                if let errorMessage {
-                    Section { Text(errorMessage).foregroundStyle(.red) }
-                }
             }
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
@@ -563,6 +560,7 @@ struct AssetsView: View {
                     errorMessage = safeUserMessage(for: error, context: .write)
                 }
             }
+            .moneyUpOperationErrorAlert(message: $errorMessage)
         }
     }
 

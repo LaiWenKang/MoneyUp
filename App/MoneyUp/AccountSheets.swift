@@ -10,6 +10,8 @@ struct AddAccountSheet: View {
     @State private var currencyCode = SupportedCurrencies.regionalDefault
     @State private var startingBalanceText = ""
     @State private var isSaving = false
+    @State private var nameValidationMessage: String?
+    @State private var balanceValidationMessage: String?
     @State private var errorMessage: String?
 
     private var startingBalance: Decimal? {
@@ -21,6 +23,10 @@ struct AddAccountSheet: View {
             Form {
                 Section {
                     TextField("account.name", text: $name)
+                        .moneyUpFieldValidation(nameValidationMessage)
+                    if let nameValidationMessage {
+                        MoneyUpFieldError(message: nameValidationMessage)
+                    }
                     Picker("account.type", selection: $type) {
                         ForEach(FinancialAccountType.allCases, id: \.self) { item in
                             Label(item.localizedTitle, systemImage: item.systemImage)
@@ -44,19 +50,16 @@ struct AddAccountSheet: View {
                             currency: try? CurrencyCode(currencyCode),
                             allowsNegative: !type.isLiabilityAccount
                         )
+                        .moneyUpFieldValidation(balanceValidationMessage)
+                    if let balanceValidationMessage {
+                        MoneyUpFieldError(message: balanceValidationMessage)
+                    }
                 } header: {
                     Text("account.opening_title")
                 } footer: {
                     Text(type.openingBalanceGuidance)
                 }
 
-                if let errorMessage {
-                    Section {
-                        Label(errorMessage, systemImage: "exclamationmark.circle.fill")
-                            .foregroundStyle(.red)
-                            .accessibilityAddTraits(.isStaticText)
-                    }
-                }
             }
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
@@ -76,24 +79,29 @@ struct AddAccountSheet: View {
                 currencyCode = model.profile?.baseCurrency.value ?? "SGD"
             }
             .onChange(of: type) { _, _ in
+                nameValidationMessage = nil
+                balanceValidationMessage = nil
                 errorMessage = nil
             }
+            .moneyUpOperationErrorAlert(message: $errorMessage)
         }
     }
 
     private func save() async {
+        nameValidationMessage = nil
+        balanceValidationMessage = nil
+        errorMessage = nil
         guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            errorMessage = AppLocalization.string("account.name_error")
+            nameValidationMessage = AppLocalization.string("account.name_error")
             return
         }
         guard let startingBalance else {
-            errorMessage = type.isLiabilityAccount
+            balanceValidationMessage = type.isLiabilityAccount
                 ? AppLocalization.string("account.amount_owed_error")
                 : AppLocalization.string("account.current_balance_error")
             return
         }
         isSaving = true
-        errorMessage = nil
         defer { isSaving = false }
         do {
             try await model.addAccount(
@@ -127,6 +135,8 @@ struct AccountManagementSheet: View {
     @State private var targetID: UUID?
     @State private var pendingLifecycleAction: PendingLifecycleAction?
     @State private var isSaving = false
+    @State private var nameValidationMessage: String?
+    @State private var balanceValidationMessage: String?
     @State private var errorMessage: String?
 
     init(account: LedgerAccount) {
@@ -162,6 +172,10 @@ struct AccountManagementSheet: View {
             Form {
                 Section("lifecycle.name") {
                     TextField("account.name", text: $name)
+                        .moneyUpFieldValidation(nameValidationMessage)
+                    if let nameValidationMessage {
+                        MoneyUpFieldError(message: nameValidationMessage)
+                    }
                 }
                 Section {
                     TextField(balanceLabel, text: $balanceText)
@@ -170,6 +184,10 @@ struct AccountManagementSheet: View {
                             allowsNegative: currentAccount.kind != .liability
                         )
                         .disabled(currentAccount.isArchived)
+                        .moneyUpFieldValidation(balanceValidationMessage)
+                    if let balanceValidationMessage {
+                        MoneyUpFieldError(message: balanceValidationMessage)
+                    }
                 } footer: {
                     VStack(alignment: .leading, spacing: 6) {
                         if currentAccount.kind == .liability {
@@ -240,9 +258,6 @@ struct AccountManagementSheet: View {
                 } footer: {
                     Text(impactSummary(impact))
                 }
-                if let errorMessage {
-                    Section { Text(errorMessage).foregroundStyle(.red) }
-                }
             }
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
@@ -285,18 +300,25 @@ struct AccountManagementSheet: View {
             } message: {
                 Text(confirmMessage)
             }
+            .moneyUpOperationErrorAlert(message: $errorMessage)
         }
     }
 
     private func save() async {
+        nameValidationMessage = nil
+        balanceValidationMessage = nil
+        errorMessage = nil
+        guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            nameValidationMessage = AppLocalization.string("account.name_error")
+            return
+        }
         guard let balance = editedBalance else {
-            errorMessage = currentAccount.kind == .liability
+            balanceValidationMessage = currentAccount.kind == .liability
                 ? AppLocalization.string("account.amount_owed_error")
                 : AppLocalization.string("account.current_balance_error")
             return
         }
         isSaving = true
-        errorMessage = nil
         defer { isSaving = false }
         do {
             try await model.renameLedgerItem(id: account.id, name: name)
@@ -352,6 +374,8 @@ struct AccountManagementSheet: View {
         let action = pendingLifecycleAction
         pendingLifecycleAction = nil
         isSaving = true
+        nameValidationMessage = nil
+        balanceValidationMessage = nil
         errorMessage = nil
         defer { isSaving = false }
         do {

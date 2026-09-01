@@ -130,6 +130,12 @@ struct HistoryFilterSheet: View {
     }
 
     var body: some View {
+        let dateValidationMessage = draft.hasValidDateRange(calendar: calendar)
+            ? nil
+            : AppLocalization.string("history.filter.invalid_date_range")
+        let amountValidationMessage = draft.hasValidAmountRange
+            ? nil
+            : AppLocalization.string("history.filter.invalid_range")
         NavigationStack {
             Form {
                 Section {
@@ -169,6 +175,7 @@ struct HistoryFilterSheet: View {
                             selection: $draft.startDate,
                             displayedComponents: .date
                         )
+                        .moneyUpFieldValidation(dateValidationMessage)
                     }
                     Toggle("history.filter.end_date", isOn: $draft.includesEndDate)
                     if draft.includesEndDate {
@@ -177,18 +184,22 @@ struct HistoryFilterSheet: View {
                             selection: $draft.endDate,
                             displayedComponents: .date
                         )
+                        .moneyUpFieldValidation(dateValidationMessage)
+                    }
+                    if let dateValidationMessage {
+                        MoneyUpFieldError(message: dateValidationMessage)
                     }
                 }
 
                 Section {
                     TextField("history.filter.minimum", text: $draft.minimumAmountText)
                         .moneyAmountKeyboard(currency: selectedCurrency)
+                        .moneyUpFieldValidation(amountValidationMessage)
                     TextField("history.filter.maximum", text: $draft.maximumAmountText)
                         .moneyAmountKeyboard(currency: selectedCurrency)
-                    if !draft.isValid(calendar: calendar) {
-                        Text("history.filter.invalid_range")
-                            .font(.caption)
-                            .foregroundStyle(.red)
+                        .moneyUpFieldValidation(amountValidationMessage)
+                    if let amountValidationMessage {
+                        MoneyUpFieldError(message: amountValidationMessage)
                     }
                 } header: {
                     Text("history.filter.amount")

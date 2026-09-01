@@ -255,12 +255,6 @@ struct CategoryManagementSheet: View {
                     Text(impactSummary(impact))
                 }
 
-                if let errorMessage {
-                    Section {
-                        Label(errorMessage, systemImage: "exclamationmark.circle.fill")
-                            .foregroundStyle(.red)
-                    }
-                }
             }
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
@@ -309,6 +303,7 @@ struct CategoryManagementSheet: View {
             } message: {
                 Text(confirmMessage)
             }
+            .moneyUpOperationErrorAlert(message: $errorMessage)
         }
     }
 

@@ -108,7 +108,11 @@ status.
 - [x] Quarantine/recovery that preserves encrypted raw records rather than
   locking out the readable book
 - [x] File-backed version-2 `.moneyup` archive with bounded authenticated chunks,
-  version-1 compatibility, transactional restore, and file-backed rollback
+  version-1 compatibility, validated destructive preview, digest-bound commit,
+  transactional restore, and file-backed rollback
+- [x] Dedicated missing-device-key state plus isolated, crash-resumable keyless
+  `.moneyup` restore with exact old-ciphertext rollback; physical passcode-removal
+  evidence remains open
 - [x] Stable Gregorian reporting calendar, half-open periods, origin time-zone
   context, and stable local-day attribution
 - [x] SQLCipher schema 7 with journal/posting, receipt metadata, exact store
@@ -134,6 +138,9 @@ status.
   per-currency totals, revisions, confirmed deletion, and chart drill-through
 - [x] Account/category rename, archive, merge, unused delete, and atomic
   delete-with-reassignment
+- [x] Associate correctable field validation with its input and present every
+  safe-message context once through an owned native alert or retry summary; the
+  scoped static gate rejects cross-owner, passive, or unassociated regressions
 - [ ] Physical routine-entry timing, receipt timing, large-History scrolling,
   and end-to-end accessibility evidence
 
@@ -232,6 +239,9 @@ installation, and physical evidence are separate gates.
   before the workflow assigns a unique upload build
 - [x] Bilingual in-app 0.7.0 release notes cover W1/W2 user-visible changes
 - [x] W1/W2 implementation passed merged-main CI run 246 on `4159df31`
+- [x] Integrate the validated restore-preview ticket with missing-device-key
+  recovery and the shared accessible operation-result presenter; preserve the
+  private-copy digest authority and read-only pre-confirmation boundary
 - [ ] The final release-truth commit and every later 0.7.0 release candidate
   must repeat exact-SHA CI and signed validation
 

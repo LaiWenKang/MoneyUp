@@ -260,7 +260,10 @@ final class AppModelIntelligenceTests: XCTestCase {
         }
         XCTAssertEqual(suggestions.count, 2)
         XCTAssertEqual(Set(suggestions.map(\.sampleSize)), Set([6]))
-        let patch = try await model.applyBudgetSuggestions(suggestions)
+        let patch = try await model.applyBudgetSuggestions(
+            suggestions,
+            expectedLogicalBookRevision: model.logicalBookRevision
+        )
         XCTAssertEqual(Set(patch.before.map(\.id)), Set(nodes.map(\.id)))
         XCTAssertEqual(Set(model.budgetNodes.compactMap(\.limit?.amount)), [110, 65])
         let persistedAfter = try await fixture.persistedBudgetNodes()
@@ -279,7 +282,10 @@ final class AppModelIntelligenceTests: XCTestCase {
             amount: 41
         )
         do {
-            _ = try await model.applyBudgetSuggestions(suggestions)
+            _ = try await model.applyBudgetSuggestions(
+                suggestions,
+                expectedLogicalBookRevision: model.logicalBookRevision
+            )
             XCTFail("A stale multi-category proposal must be rejected")
         } catch {
             // Preflight rejects the complete patch before its single write.

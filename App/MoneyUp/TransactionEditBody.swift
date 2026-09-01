@@ -162,9 +162,6 @@ extension TransactionEditView {
                     }
                 }
 
-                if let errorMessage {
-                    Section { Text(errorMessage).foregroundStyle(.red) }
-                }
             }
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
@@ -190,6 +187,11 @@ extension TransactionEditView {
                 if state != .ready {
                     invalidateAttachmentPreviews()
                 }
+            }
+            .onChange(of: model.logicalBookRevision) { _, _ in
+                invalidateAttachmentPreviews()
+                pendingAttachmentDeletionID = nil
+                dismiss()
             }
             .onChange(of: kind) { _, newKind in
                 if newKind == .transfer {
@@ -225,6 +227,7 @@ extension TransactionEditView {
             } message: {
                 Text("receipt.delete_detail")
             }
+            .moneyUpOperationErrorAlert(message: $errorMessage)
         }
         .environment(\.calendar, model.reportingCalendar)
         .environment(\.timeZone, model.reportingCalendar.timeZone)
@@ -358,6 +361,7 @@ extension TransactionEditView {
               attachmentLoadTokens[id] == nil,
               attachmentMetadata.contains(where: { $0.id == id }) else { return }
         let loadToken = UUID()
+        let logicalBookRevision = model.logicalBookRevision
         attachmentLoadTokens[id] = loadToken
         defer {
             if attachmentLoadTokens[id] == loadToken {
@@ -369,20 +373,34 @@ extension TransactionEditView {
             try Task.checkCancellation()
             let image = try await ReceiptThumbnailDecoder.image(from: attachment.data)
             try Task.checkCancellation()
-            guard isCurrentAttachmentLoad(id: id, token: loadToken) else { return }
+            guard isCurrentAttachmentLoad(
+                id: id,
+                token: loadToken,
+                logicalBookRevision: logicalBookRevision
+            ) else { return }
             attachmentImages[id] = image
             attachmentLoadFailures.remove(id)
         } catch is CancellationError {
             return
         } catch {
-            guard isCurrentAttachmentLoad(id: id, token: loadToken) else { return }
+            guard isCurrentAttachmentLoad(
+                id: id,
+                token: loadToken,
+                logicalBookRevision: logicalBookRevision
+            ) else { return }
             attachmentLoadFailures.insert(id)
             errorMessage = safeUserMessage(for: error, context: .read)
         }
     }
 
-    func isCurrentAttachmentLoad(id: UUID, token: UUID) -> Bool {
+    func isCurrentAttachmentLoad(
+        id: UUID,
+        token: UUID,
+        logicalBookRevision: UInt64
+    ) -> Bool {
         model.state == .ready
+            && !model.isBookReplacementInProgress
+            && model.logicalBookRevision == logicalBookRevision
             && attachmentLoadTokens[id] == token
             && attachmentMetadata.contains(where: { $0.id == id })
     }

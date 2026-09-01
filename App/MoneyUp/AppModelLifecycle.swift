@@ -39,6 +39,7 @@ extension AppModel {
 
         await closeStoreBeforeStartup()
         state = .launching
+        startupFailureKind = nil
 
         var pendingDataEraseIsIncomplete = false
         do {
@@ -64,6 +65,9 @@ extension AppModel {
                     databaseURL: databaseURL,
                     deleteDatabaseKey: deleteDatabaseKey,
                     lockedCaptureStore: lockedCaptureStore,
+                    removeKeyCliffRecoveryArtifacts: {
+                        try KeyCliffRecoveryTransaction.removeAll(for: databaseURL)
+                    },
                     clearEraseIntent: dataEraseIntent.clear
                 )
                 pendingDataEraseIsIncomplete = false
@@ -73,15 +77,10 @@ extension AppModel {
                 restoreValidationDirectoryURL
             )
             try? Self.removeLegacyRestoreValidationDirectories()
-            let openedDatabase = try await openDatabaseStore(databaseURL)
-            adoptUnlockToFirstUsefulContentInterval(
-                openedDatabase.unlockToFirstUsefulContentInterval
+            scavengeRestorePreviewArtifacts()
+            try await openAndFinishStartupIncludingKeyCliffRecovery(
+                databaseURL: databaseURL
             )
-            let openedStore = openedDatabase.store
-            storeGeneration &+= 1
-            store = openedStore
-            try await load(from: openedStore)
-            try await finishLoadedStartup(in: openedStore)
             if lockAfterStart {
                 lockAfterStart = false
                 isWorking = false
@@ -92,11 +91,14 @@ extension AppModel {
             where error == .authenticationCancelled
                 && !pendingDataEraseIsIncomplete {
             finishCancelledAuthentication()
+        } catch let error as DatabaseKeyStoreError
+            where error == .missingDeviceBoundKey {
+            await enterMissingDeviceBoundKeyRecovery(error)
         } catch {
             // Keep an opened store available to the recovery screen. It can
             // still produce a raw authenticated backup even when a domain
-            // record cannot be decoded. A key/cipher failure happens before
-            // `store` is assigned and therefore exposes no recovery operation.
+            // record cannot be decoded. Other pre-open key/cipher failures
+            // expose no raw backup; missing-key recovery was routed above.
             if store == nil {
                 clearDecodedState()
             }
@@ -116,36 +118,6 @@ extension AppModel {
             store = nil
             storeGeneration &+= 1
         }
-    }
-
-    private func finishLoadedStartup(
-        in openedStore: EncryptedRecordStore
-    ) async throws {
-        guard profile != nil else {
-            // A profile is the root of a valid book. Treat onboarding as a
-            // genuinely empty-store state only; otherwise an unlisted or newly
-            // added collection could be silently overlaid by setup.
-            let hasBookData = try await Self.hasPersistedBookData(
-                in: openedStore
-            )
-            guard !hasBookData else { throw AppModelError.invalidBook }
-            disableBudgetWidgetSnapshot()
-            state = .onboarding
-            finishUnlockToFirstUsefulContentMeasurement(outcome: .cancelled)
-            return
-        }
-
-        try validateLoadedBook()
-        do {
-            try await promoteLockedCaptureIfPossible(
-                to: openedStore,
-                generation: storeGeneration
-            )
-        } catch let error as LockedCaptureStoreError {
-            recordLockedCaptureStoreIssue(error)
-        }
-        state = .ready
-        refreshIntelligence()
     }
 
     /// Authentication cancellation is a normal locked-state transition, not
@@ -384,6 +356,15 @@ extension AppModel {
               let mode = QuickLogLaunchMode(rawValue: components[0].lowercased()) else {
             return false
         }
+        // A request carries old-book intent even when it contains no amount.
+        // Deny it throughout missing-key recovery and every durable install /
+        // rollback phase so it cannot surface against the replacement book.
+        guard !isBookReplacementInProgress,
+              startupFailureKind != .missingDeviceBoundKey,
+              (try? hasPendingKeyCliffRecoveryTransaction()) == false else {
+            requestedQuickLogMode = nil
+            return false
+        }
         requestedQuickLogMode = mode
         _ = routeLockSafeRequestIfPossible()
         return true
@@ -425,16 +406,17 @@ extension AppModel {
             && lockedCaptureIsAllowedByLifecycleAndEraseIntent
     }
 
-    /// The durable erase marker is authoritative even before normal startup.
-    /// A Keychain/protection-state error is not evidence that erase is absent,
-    /// so lock-safe capture fails closed and lets startup resolve the condition.
+    /// Durable erase and key-cliff replacement markers are authoritative even
+    /// before normal startup. Lock-safe capture cannot cross either book
+    /// replacement boundary.
     var lockedCaptureIsAllowedByLifecycleAndEraseIntent: Bool {
         guard !isWorking,
               !isLifecycleMutationInProgress,
               !goalMutationBarrierClosed,
               !lockedCaptureWriteInProgress else { return false }
         do {
-            return try dataEraseIntent.isPending() == false
+            guard try dataEraseIntent.isPending() == false else { return false }
+            return !(try hasPendingKeyCliffRecoveryTransaction())
         } catch {
             return false
         }
@@ -498,7 +480,7 @@ extension AppModel {
         prefersDayFirst: Bool
     ) async throws -> ReceiptParseResult? {
         guard state == .ready else { return nil }
-        let generation = storeGeneration
+        let read = try beginLogicalBookRead()
         let projectionRevision = journalProjectionRevision
         let accountsSnapshot = accounts
         let now = currentDate()
@@ -506,7 +488,7 @@ extension AppModel {
         try Task.checkCancellation()
         let recognition = try await receiptRecognizer(imageData)
         try Task.checkCancellation()
-        guard isCurrentStoreGeneration(generation),
+        guard ownsLogicalBookRead(read.token),
               projectionRevision == journalProjectionRevision else { return nil }
 
         let boundedRecognition = Self.boundedReceiptRecognition(recognition)
@@ -527,9 +509,9 @@ extension AppModel {
             parsingTask.cancel()
         }
         try Task.checkCancellation()
-        guard isCurrentStoreGeneration(generation),
+        guard ownsLogicalBookRead(read.token),
               projectionRevision == journalProjectionRevision else { return nil }
-        return result
+        return try await finishLogicalBookRead(result, token: read.token)
     }
 
     static func boundedReceiptLines(_ lines: [String]) -> [String] {

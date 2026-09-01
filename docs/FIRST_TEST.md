@@ -256,9 +256,13 @@ the app silently resets, or the opening balance is wrong.
   and restore. It must contain no user-authored names, IDs, amounts, currencies,
   notes, balances, or receipt images.
 - Create a password-protected `.moneyup` backup. Add one disposable transaction,
-  restore the backup, and confirm the disposable transaction disappears while
-  the backed-up counts and balances return. Generate another Data inventory and
-  compare its stored and nested counts with the saved baseline.
+  choose the backup, and verify confirmation appears only after the password is
+  accepted and validation completes. Reconcile the displayed archive/schema
+  versions, every collection count, entry date span, currencies, quarantine
+  count, and current-to-backup replacement summary before confirming. Confirm
+  the disposable transaction disappears while the backed-up counts and balances
+  return. Generate another Data inventory and compare its stored and nested
+  counts with the saved baseline; the selected `.moneyup` file must be unchanged.
 - Try the same archive with a wrong password and confirm the current book is
   unchanged. Store the real password separately; MoneyUp cannot recover it.
 - Export a small fictional Qianji or generic CSV, preview it in Settings → Import
@@ -281,6 +285,7 @@ inventory and compare every semantic field; `generatedAt` is expected to differ.
 | `POR-05-CANCEL` | Separately cancel the backup destination picker, restore source picker, and every restore confirmation/password sheet that offers Cancel. | No success state is shown, no partial candidate replaces the live book, and every inventory field except `generatedAt` plus every balance matches. | Which sheet was cancelled; device/OS; before/after inventory files and hashes; semantic comparison; observed UI state. |
 | `POR-05-INTERRUPT` | With the 10,000-entry fixture and large fictional receipt attachments, force-terminate MoneyUp once during backup generation and once during restore validation, before any success acknowledgement. Repeat during a large import. | Relaunch opens either the complete pre-operation book or the complete committed result—never a mixture. A partial backup is not presented as ready and is rejected if selected. Import has zero partial rows or duplicates. | Timestamped screen recording with private values covered; termination point; before/after counts, balances, inventory hashes, and output-file SHA-256. |
 | `POR-05-POWER-LOSS` | On the disposable physical-device book, start the same receipt-heavy restore, then power the device off while processing and restart it. Repeat once during a transaction save or schedule post. | SQLCipher recovery yields exactly the old state or exactly the committed new state. There is no onboarding reset, key mismatch, orphan attachment, unbalanced entry, partial schedule advance, or duplicate. | Device/OS/battery/power state; approximate interruption point; before/after inventory hashes; balance and schedule reconciliation; redacted video. |
+| `SEC-05-KEY-CLIFF` | On a disposable iPhone book only, first export and independently verify a `.moneyup` backup outside MoneyUp. Record its SHA-256 and baseline inventory, then remove the device passcode and reopen the exact candidate. Confirm the dedicated missing-key state, set a new device passcode without deleting MoneyUp, then separately try Cancel, a wrong password, and a tampered copy before restoring the untouched archive. Repeat once with force-termination after validation/installation begins. | MoneyUp explicitly says the device-bound key is missing and never shows onboarding or creates a key beside old ciphertext. Cancel/wrong password/tamper preserve the key-cliff state. The untouched external archive is unchanged. Valid restore yields exactly the archived inventory and balances; interrupted recovery resumes to that complete book or rolls back to the same key-cliff state, never a mixture. | Candidate/version/build/device/OS; backup SHA-256 before/after; baseline/restored inventory and hashes; exact result of every attempt; redacted screenshots/video. Mark this open until physically executed—source tests are not pass evidence. |
 | `POR-04-NEAR-LIMIT` | With an instrumented disposable fixture, create and restore a multi-chunk v2 book near the enforced stored-payload ceiling; separately restore a valid near-limit compatible v1 archive. Record peak resident memory and repeat a wrong-password attempt for each. | V2 completes without whole-book memory growth and every inventory/hash reconciles. Wrong passwords leave the live book unchanged. V1 either completes within the oldest-device safety budget or blocks release; a crash/termination is not an acceptable pass. | Exact fixture generator/commit; v1/v2 file hashes and sizes; Instruments memory trace; before/after inventory hashes; device/OS; elapsed time. |
 
 For each case, mark **pass**, **fail**, or **not reached**; never infer a pass

@@ -112,9 +112,6 @@ struct ExchangeRatesView: View {
                 Text("fx.estimated_detail")
             }
 
-            if let errorMessage {
-                Section { Text(errorMessage).foregroundStyle(.red) }
-            }
         }
         .scrollContentBackground(.hidden)
         .background(Color.moneyUpBackground)
@@ -137,6 +134,7 @@ struct ExchangeRatesView: View {
         } message: {
             Text("fx.delete_detail")
         }
+        .moneyUpOperationErrorAlert(message: $errorMessage)
         .environment(\.calendar, model.reportingCalendar)
         .environment(\.timeZone, model.reportingCalendar.timeZone)
     }

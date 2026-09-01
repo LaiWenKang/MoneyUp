@@ -442,7 +442,9 @@ extension AppModel {
     /// visible while its complete budget projection is being rebuilt. Preserve
     /// only the opt-in bit and current reporting-period boundary.
     func publishUnavailableBudgetWidgetSnapshot() {
-        guard let profile else { return }
+        guard !isBookReplacementInProgress,
+              startupFailureKind != .missingDeviceBoundKey,
+              let profile else { return }
         guard profile.showsBudgetStatusWidget else {
             disableBudgetWidgetSnapshot()
             return

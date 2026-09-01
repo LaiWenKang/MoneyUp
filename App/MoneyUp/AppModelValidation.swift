@@ -13,6 +13,7 @@ private struct LoadedInvestmentValidationContext {
 
 extension AppModel {
     func clearDecodedState() {
+        logicalBookRevision &+= 1
         intelligenceService.cancelPendingWork()
         journalProjectionRevision &+= 1
         journalDerivedRefreshTask?.cancel()
@@ -46,6 +47,7 @@ extension AppModel {
         savingsGoals = []
         quickLogDraft = nil
         recoveryIssues = []
+        pendingRestoreCompletionAnnouncement = nil
     }
 
     func validateLoadedBook() throws {
@@ -283,6 +285,7 @@ extension AppModel {
         databaseURL: URL,
         deleteDatabaseKey: @Sendable () throws -> Void,
         lockedCaptureStore: any LockedCaptureStoring,
+        removeKeyCliffRecoveryArtifacts: @Sendable () throws -> Void = {},
         clearEraseIntent: @Sendable () throws -> Void
     ) async throws {
         try deleteDatabaseKey()
@@ -291,6 +294,7 @@ extension AppModel {
         ) {
             try removeIfPresent(artifactURL)
         }
+        try removeKeyCliffRecoveryArtifacts()
         try await lockedCaptureStore.eraseAll()
         try clearEraseIntent()
     }
@@ -373,6 +377,8 @@ enum AppModelError: Error {
     case scheduleEntryMismatch
     case scheduleEntryAlreadyMatched
     case restoreRecoveryFailed
+    case restorePreviewChanged
+    case restorePreviewRequired
     case investmentCurrencyMismatch
     case investmentNeedsLedgerConnection
     case missingInvestmentPrice
@@ -423,6 +429,10 @@ extension AppModelError: LocalizedError {
             AppLocalization.string("schedule.error.entry_already_matched")
         case .restoreRecoveryFailed:
             AppLocalization.string("error.restore_recovery_failed")
+        case .restorePreviewChanged:
+            AppLocalization.string("restore.error.preview_changed")
+        case .restorePreviewRequired:
+            AppLocalization.string("restore.error.preview_required")
         case .investmentCurrencyMismatch:
             AppLocalization.string("holding.error.currency_mismatch")
         case .investmentNeedsLedgerConnection:

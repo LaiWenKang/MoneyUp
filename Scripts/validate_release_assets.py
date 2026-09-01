@@ -80,6 +80,1393 @@ def fail(message: str) -> None:
     raise SystemExit(1)
 
 
+def swift_without_comments(source: str) -> str:
+    """Remove comments so invariant tokens cannot be satisfied by dead prose."""
+    return re.sub(
+        r"//[^\n]*|/\*.*?\*/",
+        lambda match: "\n" * match.group(0).count("\n"),
+        source,
+        flags=re.DOTALL,
+    )
+
+
+def source_section(
+    source: str,
+    start: str,
+    end: str,
+) -> str:
+    start_index = source.find(start)
+    end_index = source.find(end, start_index + len(start))
+    if start_index < 0 or end_index < 0:
+        return ""
+    return source[start_index:end_index]
+
+
+def ordered_fragments_are_present(
+    source: str,
+    fragments: tuple[str, ...],
+) -> bool:
+    cursor = 0
+    for fragment in fragments:
+        position = source.find(fragment, cursor)
+        if position < 0:
+            return False
+        cursor = position + len(fragment)
+    return True
+
+
+def security_recovery_invariant_violations(
+    sources: dict[str, str],
+) -> list[str]:
+    """Return release-boundary violations for actual and mutated fixtures."""
+    violations: list[str] = []
+    key_cliff = swift_without_comments(sources["key_cliff"])
+    transaction = swift_without_comments(sources["transaction"])
+    restore = swift_without_comments(sources["restore"])
+    data_safety = swift_without_comments(sources["data_safety"])
+    portable = swift_without_comments(sources["portable"])
+    widget_projection = swift_without_comments(sources["widget_projection"])
+    widget_derived = swift_without_comments(sources["widget_derived"])
+    intelligence = swift_without_comments(sources["intelligence"])
+    lifecycle = swift_without_comments(sources["lifecycle"])
+    ledger_validation = swift_without_comments(sources["ledger_validation"])
+    tests = sources["tests"]
+    accessible_tests = sources["accessible_tests"]
+
+    recovery = source_section(
+        key_cliff,
+        "func recoverMissingDeviceBoundKey",
+        "private func buildKeyCliffCandidate",
+    )
+    commit = source_section(
+        key_cliff,
+        "private func commitKeyCliffCandidate",
+        "private func rollbackFailedKeyCliffCommit",
+    )
+    resume = source_section(
+        key_cliff,
+        "func openAndFinishStartupIncludingKeyCliffRecovery",
+        "func recoverMissingDeviceBoundKey",
+    )
+    install = source_section(
+        transaction,
+        "static func installCandidate",
+        "static func restoreOriginal",
+    )
+    completion = source_section(
+        transaction,
+        "static func complete(",
+        "static func removeAll",
+    )
+    markerless_scavenge = source_section(
+        transaction,
+        "static func scavengeUncommittedCandidate",
+        "static func prepareCandidateDirectory",
+    )
+    for label, body in (
+        ("initial key-cliff restore", recovery),
+        ("key-cliff commit", commit),
+        ("key-cliff startup resume", resume),
+        ("key-cliff filesystem install", install),
+    ):
+        if not body:
+            violations.append(f"{label} function boundary is missing")
+
+    if recovery and (
+        recovery.count("requireEmptyLockedCaptureInbox()") != 1
+        or recovery.count("keyCliffHasSurvivingCiphertext(at: databaseURL)") != 1
+        or not ordered_fragments_are_present(
+            recovery,
+            (
+                "requireEmptyLockedCaptureInbox()",
+                "keyCliffHasSurvivingCiphertext(at: databaseURL)",
+                "RestoreArchiveStaging.verifiedCommitCopy",
+                "keyCliffRecoveryKeyAccess.generate()",
+                "prepareCandidateDirectory(",
+                "buildKeyCliffCandidate(",
+                "KeyCliffRecoveryTransaction.publishManifest",
+                "commitKeyCliffCandidate(",
+            ),
+        )
+    ):
+        violations.append(
+            "key-cliff restore must prove empty inbox and surviving ciphertext "
+            "before ticket verification, key generation, and manifest mutation"
+        )
+
+    commit_order = (
+        "keyCliffRecoveryKeyAccess.store",
+        "KeyCliffRecoveryTransaction.installCandidate",
+        "openDatabaseStoreWithKey(",
+        "load(from: openedStore, mode: .restoreValidation)",
+        "validateLoadedStartupBook",
+        "requireEmptyLockedCaptureInbox()",
+        ".afterKeyCliffValidationBeforeCompletion",
+        "KeyCliffRecoveryTransaction.complete",
+        "startupFailureKind = nil",
+        "publishValidatedStartupBookAfterIrreversibleRecovery",
+    )
+    if commit and (
+        commit.count("requireEmptyLockedCaptureInbox()") != 1
+        or not ordered_fragments_are_present(commit, commit_order)
+    ):
+        violations.append(
+            "key-cliff commit must recheck the inbox and complete the marker "
+            "before nonthrowing authoritative publication"
+        )
+
+    resume_order = (
+        "KeyCliffRecoveryTransaction.installCandidate",
+        "openDatabaseStore(databaseURL)",
+        "load(from: openedStore, mode: .restoreValidation)",
+        "validateLoadedStartupBook",
+        "requireEmptyLockedCaptureInbox()",
+        ".afterKeyCliffValidationBeforeCompletion",
+        "KeyCliffRecoveryTransaction.complete",
+        "startupFailureKind = nil",
+        "publishValidatedStartupBookAfterIrreversibleRecovery",
+    )
+    if resume and (
+        resume.count("requireEmptyLockedCaptureInbox()") != 1
+        or not ordered_fragments_are_present(resume, resume_order)
+    ):
+        violations.append(
+            "key-cliff startup must install before opening, recheck the inbox, "
+            "and complete before publication"
+        )
+
+    install_order = (
+        "where manifest.originalArtifactMask",
+        "moveItem(at: live, to: rollback)",
+        "where manifest.candidateArtifactMask",
+        "moveItem(at: candidate, to: live)",
+    )
+    if install and not ordered_fragments_are_present(install, install_order):
+        violations.append(
+            "key-cliff install must move every original artifact aside before "
+            "moving any candidate artifact live"
+        )
+
+    completion_order = (
+        "loadManifest(for: databaseURL)",
+        "manifest.phase == .installing",
+        "try removeCommitMarker(marker)",
+        "try? cleanupMarkerlessDirectory(directory)",
+    )
+    if not completion or not ordered_fragments_are_present(
+        completion,
+        completion_order,
+    ):
+        violations.append(
+            "key-cliff completion must atomically remove the installing marker "
+            "before nonthrowing markerless-directory cleanup"
+        )
+    if completion and (
+        completion.count("try removeCommitMarker(marker)") != 1
+        or completion.count("try? cleanupMarkerlessDirectory(directory)") != 1
+    ):
+        violations.append(
+            "key-cliff completion must have one throwing marker unlink and one "
+            "best-effort post-commit cleanup"
+        )
+
+    if not markerless_scavenge or not ordered_fragments_are_present(
+        markerless_scavenge,
+        (
+            "!hasPendingManifest(for: databaseURL)",
+            "try? cleanupMarkerlessDirectory(directory)",
+        ),
+    ):
+        violations.append(
+            "markerless key-cliff residue cleanup must be exact and best-effort"
+        )
+    if "keyCliffRecoveryResidueScavenger(databaseURL)" not in resume:
+        violations.append(
+            "startup must attempt nonthrowing markerless residue scavenging"
+        )
+
+    for regression in (
+        "testKeyCliffCompletionMarkerFailurePreservesRollbackAuthority",
+        "testMarkerlessCompletionResidueScavengesAfterEveryPartialCleanup",
+        "testStartupPublishesCandidateAfterPersistentMarkerlessCleanupFailure",
+    ):
+        if regression not in tests:
+            violations.append(f"key-cliff completion regression is missing {regression}")
+
+    debug_pattern = re.compile(
+        r"(?ms)^[ \t]*#if[ \t]+DEBUG[ \t]*\n"
+        r"(?P<body>.*?)^[ \t]*#endif[ \t]*$"
+    )
+    debug_blocks = list(debug_pattern.finditer(restore))
+    if len(debug_blocks) != 1:
+        violations.append("raw restore APIs must have one exact #if DEBUG block")
+        production_restore = restore
+    else:
+        debug_body = debug_blocks[0].group("body")
+        if re.search(r"(?m)^[ \t]*#(?:if|elseif|else)\b", debug_body):
+            violations.append("raw restore DEBUG block must not expose another branch")
+        for required in (
+            "func restoreEncryptedBackup(_ data: Data",
+            "func restoreEncryptedBackup(\n        from archiveURL",
+        ):
+            if required not in debug_body:
+                violations.append(f"raw restore DEBUG block is missing {required}")
+        production_restore = (
+            restore[:debug_blocks[0].start()] + restore[debug_blocks[0].end():]
+        )
+
+    production_app = dict(sources["app_sources"])
+    production_app["AppModelBackupRestore.swift"] = production_restore
+    production_text = "\n".join(production_app.values())
+    if len(re.findall(
+        r"\brestoreEncryptedBackupAfterVerifiedTicket\b",
+        production_text,
+    )) != 2:
+        violations.append(
+            "verified restore primitive must have only its definition and "
+            "reviewed-ticket call in production"
+        )
+    if production_text.count("RestorePreviewTicket(") != 1:
+        violations.append("production must construct restore tickets only in preview")
+    if len(re.findall(
+        r"\bmodel\s*\.\s*restoreEncryptedBackup\s*\(\s*ticket\b",
+        production_text,
+    )) != 1:
+        violations.append(
+            "production must commit a restore ticket only from the confirmed UI"
+        )
+
+    refresh_intelligence = source_section(
+        intelligence,
+        "func refreshIntelligence()",
+        "func waitForCurrentIntelligenceRefresh",
+    )
+    for label, source in (
+        ("widget projection", widget_projection),
+        ("unavailable widget projection", widget_derived),
+        ("intelligence refresh", refresh_intelligence),
+    ):
+        if "!isBookReplacementInProgress" not in source:
+            violations.append(f"{label} must reject cross-book publication")
+
+    deep_link = source_section(
+        lifecycle,
+        "func handleDeepLink",
+        "func routeLockSafeRequestIfPossible",
+    )
+    if not ordered_fragments_are_present(
+        deep_link,
+        (
+            "guard !isBookReplacementInProgress",
+            "startupFailureKind != .missingDeviceBoundKey",
+            "hasPendingKeyCliffRecoveryTransaction()",
+            "requestedQuickLogMode = mode",
+        ),
+    ):
+        violations.append(
+            "deep-link intent must be denied before routing across replacement"
+        )
+
+    replacement_finish = source_section(
+        ledger_validation,
+        "func finishBookReplacementMutation",
+        "\n}",
+    )
+    if not ordered_fragments_are_present(
+        replacement_finish,
+        (
+            "isBookReplacementInProgress = false",
+            "case .ready:",
+            "refreshBudgetWidgetSnapshot()",
+            "refreshIntelligence()",
+            "finishExclusiveDataLifecycleMutation()",
+        ),
+    ):
+        violations.append(
+            "replacement finish must clear suppression, publish one ready-book "
+            "widget/intelligence state, then release lifecycle ownership"
+        )
+
+    if (
+        "initialState: model.state" not in data_safety
+        or "wasKeyCliffRecovery:" in data_safety
+        or "testRestoreSuccessRouteFollowsTheSurvivingHierarchy"
+        not in accessible_tests
+    ):
+        violations.append(
+            "restore success routing must follow the surviving root hierarchy"
+        )
+
+    writer_order = (
+        "replaceItemAt(",
+        "options: [.usingNewMetadataOnly]",
+        "try fileManager.setAttributes(",
+        "[.posixPermissions: 0o600]",
+        "committed = true",
+    )
+    if not ordered_fragments_are_present(portable, writer_order):
+        violations.append(
+            "archive replacement must adopt new private metadata and chmod "
+            "the committed destination before success"
+        )
+    private_copy_test = source_section(
+        tests,
+        "func testRestoreArchivePrivateCopiesAreOwnerReadOnly",
+        "func testStartupScavengesEveryDeterministicRestoreArchive",
+    )
+    if not all(token in private_copy_test for token in (
+        "old-broad-destination",
+        ".posixPermissions: 0o644",
+        "posixPermissions(at: exportURL), 0o600",
+        "unownedWritingSibling",
+    )):
+        violations.append(
+            "private archive regression must replace a broad destination while "
+            "preserving an unowned sibling"
+        )
+
+    restore_commit = source_section(
+        restore,
+        "func restoreEncryptedBackupAfterVerifiedTicket",
+        "func beginRestoreMutation",
+    )
+    if not ordered_fragments_are_present(
+        restore_commit,
+        (
+            "makeRestoreRollbackArchive(",
+            "defer {",
+            "removeRestoreTemporaryArchive(",
+            "restoreRollbackDirectoryURL",
+            ".beforeRestoreCommit",
+        ),
+    ):
+        violations.append(
+            "normal restore must own rollback-directory cleanup from creation "
+            "through every success or rollback exit"
+        )
+    for test_name in (
+        "testRestorePreviewReportsExactReplacementSummaryAndCommitsTicket",
+        "testCancellationAfterRestoreCommitRecoversJournalIndexesAndBalance",
+    ):
+        test_body = source_section(tests, f"func {test_name}", "\n    @MainActor")
+        if "restoreRollbackDirectoryURL" not in test_body:
+            violations.append(f"rollback cleanup regression is missing {test_name}")
+
+    for test_name in (
+        "testStartupResumesKeyCliffCandidateBeforePublishingBook",
+        "testStartupRejectsCaptureBeforeCompletingKeyCliffCandidate",
+        "testKeyCliffFinalInboxRecheckRollsBackLateCaptureBeforePublication",
+        "testKeyCliffPostCompletionInboxFailureKeepsAuthoritativeBookRetryable",
+    ):
+        if test_name not in tests:
+            violations.append(f"key-cliff boundary regression is missing {test_name}")
+
+    post_complete = source_section(
+        sources["startup_publication"],
+        "func publishValidatedStartupBookAfterIrreversibleRecovery",
+        "func finishLoadedStartup",
+    )
+    ordinary_startup = sources["startup_publication"].split(
+        "func finishLoadedStartup",
+        1,
+    )[-1]
+    if (
+        "async throws" in post_complete
+        or not all(token in post_complete for token in (
+            "catch",
+            'recordRecoveryIssue("locked_captures/promotion-unavailable")',
+            "state = .ready",
+        ))
+    ):
+        violations.append(
+            "post-complete capture publication must be nonthrowing, ready, "
+            "and expose only the stable redacted retry code"
+        )
+    if (
+        production_text.count(
+            "publishValidatedStartupBookAfterIrreversibleRecovery"
+        ) != 3
+        or "try await publishValidatedStartupBook(" not in ordinary_startup
+        or "publishValidatedStartupBookAfterIrreversibleRecovery"
+        in ordinary_startup
+        or "testOrdinaryStartupDoesNotSwallowUnexpectedCaptureFailure"
+        not in tests
+    ):
+        violations.append(
+            "ordinary startup must retain strict capture failures while only "
+            "the two post-complete key-cliff sites use nonthrowing publication"
+        )
+
+    return violations
+
+
+def replace_in_source_section(
+    source: str,
+    start: str,
+    end: str,
+    old: str,
+    new: str,
+) -> str:
+    start_index = source.find(start)
+    end_index = source.find(end, start_index + len(start))
+    if start_index < 0 or end_index < 0:
+        return source
+    section = source[start_index:end_index]
+    replaced = section.replace(old, new, 1)
+    return source[:start_index] + replaced + source[end_index:]
+
+
+def validate_security_recovery_mutation_gate() -> None:
+    app_root = ROOT / "App" / "MoneyUp"
+    sources = {
+        "key_cliff": (
+            app_root / "AppModelKeyCliffRecovery.swift"
+        ).read_text(encoding="utf-8"),
+        "transaction": (
+            app_root / "KeyCliffRecoveryTransaction.swift"
+        ).read_text(encoding="utf-8"),
+        "restore": (
+            app_root / "AppModelBackupRestore.swift"
+        ).read_text(encoding="utf-8"),
+        "startup_publication": (
+            app_root / "AppModelStartupPublication.swift"
+        ).read_text(encoding="utf-8"),
+        "data_safety": (
+            app_root / "DataSafetyView.swift"
+        ).read_text(encoding="utf-8"),
+        "portable": (
+            ROOT / "Sources/MoneyUpPersistence/PortableArchiveV2Validation.swift"
+        ).read_text(encoding="utf-8"),
+        "widget_projection": (
+            app_root / "AppModelJournalProjection.swift"
+        ).read_text(encoding="utf-8"),
+        "widget_derived": (
+            app_root / "AppModelJournalDerivedState.swift"
+        ).read_text(encoding="utf-8"),
+        "intelligence": (
+            app_root / "AppModelIntelligence.swift"
+        ).read_text(encoding="utf-8"),
+        "lifecycle": (
+            app_root / "AppModelLifecycle.swift"
+        ).read_text(encoding="utf-8"),
+        "ledger_validation": (
+            app_root / "AppModelLedgerValidation.swift"
+        ).read_text(encoding="utf-8"),
+        "tests": (
+            ROOT / "Tests/MoneyUpAppTests/AppModelTests.swift"
+        ).read_text(encoding="utf-8"),
+        "accessible_tests": (
+            ROOT / "Tests/MoneyUpAppTests/AccessibleErrorPresentationTests.swift"
+        ).read_text(encoding="utf-8"),
+        "app_sources": {
+            path.name: path.read_text(encoding="utf-8")
+            for path in app_root.rglob("*.swift")
+        },
+    }
+    actual = security_recovery_invariant_violations(sources)
+    if actual:
+        fail("security recovery invariant: " + "; ".join(actual))
+
+    mutations: list[tuple[str, dict[str, str]]] = []
+
+    def mutated(name: str, key: str, old: str, new: str) -> None:
+        fixture = dict(sources)
+        fixture[key] = sources[key].replace(old, new, 1)
+        if key in {
+            "data_safety",
+            "intelligence",
+            "lifecycle",
+            "ledger_validation",
+            "restore",
+            "startup_publication",
+            "widget_projection",
+        }:
+            app_sources = dict(sources["app_sources"])
+            filename = {
+                "data_safety": "DataSafetyView.swift",
+                "intelligence": "AppModelIntelligence.swift",
+                "lifecycle": "AppModelLifecycle.swift",
+                "ledger_validation": "AppModelLedgerValidation.swift",
+                "restore": "AppModelBackupRestore.swift",
+                "startup_publication": "AppModelStartupPublication.swift",
+                "widget_projection": "AppModelJournalProjection.swift",
+            }[key]
+            app_sources[filename] = fixture[key]
+            fixture["app_sources"] = app_sources
+        mutations.append((name, fixture))
+
+    for name, start, end, token in (
+        (
+            "initial inbox",
+            "func recoverMissingDeviceBoundKey",
+            "private func buildKeyCliffCandidate",
+            "requireEmptyLockedCaptureInbox()",
+        ),
+        (
+            "surviving ciphertext",
+            "func recoverMissingDeviceBoundKey",
+            "private func buildKeyCliffCandidate",
+            "keyCliffHasSurvivingCiphertext(at: databaseURL)",
+        ),
+        (
+            "final commit inbox",
+            "private func commitKeyCliffCandidate",
+            "private func rollbackFailedKeyCliffCommit",
+            "requireEmptyLockedCaptureInbox()",
+        ),
+        (
+            "resume inbox",
+            "func openAndFinishStartupIncludingKeyCliffRecovery",
+            "func recoverMissingDeviceBoundKey",
+            "requireEmptyLockedCaptureInbox()",
+        ),
+    ):
+        fixture = dict(sources)
+        fixture["key_cliff"] = replace_in_source_section(
+            sources["key_cliff"],
+            start,
+            end,
+            token,
+            "removedSecurityBoundary()",
+        )
+        mutations.append((name, fixture))
+
+    fixture = dict(sources)
+    resume = source_section(
+        sources["key_cliff"],
+        "func openAndFinishStartupIncludingKeyCliffRecovery",
+        "func recoverMissingDeviceBoundKey",
+    )
+    swapped = resume.replace(
+        "KeyCliffRecoveryTransaction.installCandidate",
+        "__OPEN_DATABASE__",
+        1,
+    ).replace(
+        "openDatabaseStore(databaseURL)",
+        "KeyCliffRecoveryTransaction.installCandidate",
+        1,
+    ).replace("__OPEN_DATABASE__", "openDatabaseStore(databaseURL)", 1)
+    fixture["key_cliff"] = sources["key_cliff"].replace(resume, swapped, 1)
+    mutations.append(("install before open", fixture))
+
+    fixture = dict(sources)
+    fixture["transaction"] = sources["transaction"].replace(
+        "manifest.originalArtifactMask",
+        "__CANDIDATE_MASK__",
+        1,
+    ).replace(
+        "manifest.candidateArtifactMask",
+        "manifest.originalArtifactMask",
+        1,
+    ).replace("__CANDIDATE_MASK__", "manifest.candidateArtifactMask", 1)
+    mutations.append(("original before candidate", fixture))
+
+    fixture = dict(sources)
+    fixture["transaction"] = replace_in_source_section(
+        sources["transaction"],
+        "static func complete(",
+        "static func removeAll",
+        "try removeCommitMarker(marker)",
+        "try cleanupMarkerlessDirectory(directory)",
+    )
+    mutations.append(("marker-first key-cliff completion", fixture))
+
+    fixture = dict(sources)
+    completion = source_section(
+        sources["transaction"],
+        "static func complete(",
+        "static func removeAll",
+    )
+    swapped = completion.replace(
+        "try removeCommitMarker(marker)",
+        "__REMOVE_MARKER__",
+        1,
+    ).replace(
+        "try? cleanupMarkerlessDirectory(directory)",
+        "try? removeCommitMarker(marker)",
+        1,
+    ).replace(
+        "__REMOVE_MARKER__",
+        "try cleanupMarkerlessDirectory(directory)",
+        1,
+    )
+    fixture["transaction"] = sources["transaction"].replace(
+        completion,
+        swapped,
+        1,
+    )
+    mutations.append(("cleanup before key-cliff marker", fixture))
+
+    fixture = dict(sources)
+    fixture["transaction"] = replace_in_source_section(
+        sources["transaction"],
+        "static func complete(",
+        "static func removeAll",
+        "try? cleanupMarkerlessDirectory(directory)",
+        "try cleanupMarkerlessDirectory(directory)",
+    )
+    mutations.append(("throwing post-marker cleanup", fixture))
+
+    fixture = dict(sources)
+    fixture["transaction"] = replace_in_source_section(
+        sources["transaction"],
+        "static func scavengeUncommittedCandidate",
+        "static func prepareCandidateDirectory",
+        "!hasPendingManifest(for: databaseURL)",
+        "hasPendingManifest(for: databaseURL)",
+    )
+    mutations.append(("markerless completion scavenger", fixture))
+
+    fixture = dict(sources)
+    fixture["transaction"] = replace_in_source_section(
+        sources["transaction"],
+        "static func scavengeUncommittedCandidate",
+        "static func prepareCandidateDirectory",
+        "try? cleanupMarkerlessDirectory(directory)",
+        "try! cleanupMarkerlessDirectory(directory)",
+    )
+    mutations.append(("nonthrowing markerless residue cleanup", fixture))
+
+    fixture = dict(sources)
+    fixture["key_cliff"] = replace_in_source_section(
+        sources["key_cliff"],
+        "func openAndFinishStartupIncludingKeyCliffRecovery",
+        "func recoverMissingDeviceBoundKey",
+        "keyCliffRecoveryResidueScavenger(databaseURL)",
+        "markerlessResidueWasIgnored(databaseURL)",
+    )
+    mutations.append(("startup markerless residue attempt", fixture))
+
+    mutated(
+        "exact DEBUG condition",
+        "restore",
+        "#if DEBUG",
+        "#if DEBUG || !DEBUG",
+    )
+    mutated(
+        "no DEBUG else",
+        "restore",
+        "    #endif",
+        "    #else\n    func releaseBypass() {}\n    #endif",
+    )
+
+    fixture = dict(sources)
+    app_sources = dict(sources["app_sources"])
+    app_sources["DataSafetyView.swift"] += (
+        "\nlet leakedPrimitive = "
+        "AppModel.restoreEncryptedBackupAfterVerifiedTicket\n"
+    )
+    fixture["app_sources"] = app_sources
+    mutations.append(("primitive method reference", fixture))
+
+    fixture = dict(sources)
+    app_sources = dict(sources["app_sources"])
+    app_sources["DataSafetyView.swift"] += "\nlet forged = RestorePreviewTicket(\n"
+    fixture["app_sources"] = app_sources
+    mutations.append(("ticket construction", fixture))
+
+    mutated(
+        "cross-book widget guard",
+        "widget_projection",
+        "!isBookReplacementInProgress",
+        "true",
+    )
+    mutated(
+        "cross-book unavailable widget guard",
+        "widget_derived",
+        "!isBookReplacementInProgress",
+        "true",
+    )
+    mutated(
+        "cross-book intelligence guard",
+        "intelligence",
+        "!isBookReplacementInProgress",
+        "true",
+    )
+    mutated(
+        "cross-book deep-link guard",
+        "lifecycle",
+        "guard !isBookReplacementInProgress",
+        "guard true",
+    )
+    mutated(
+        "replacement finish publication order",
+        "ledger_validation",
+        "isBookReplacementInProgress = false",
+        "replacementSuppressionWasNotCleared = true",
+    )
+    mutated(
+        "generic recovery success route",
+        "data_safety",
+        "initialState: model.state",
+        "wasKeyCliffRecovery: true",
+    )
+    mutated(
+        "replacement metadata",
+        "portable",
+        "options: [.usingNewMetadataOnly]",
+        "options: []",
+    )
+    mutated(
+        "final archive chmod",
+        "portable",
+        "try fileManager.setAttributes(",
+        "try fileManager.attributesOfItem(",
+    )
+    mutated(
+        "rollback defer cleanup",
+        "restore",
+        "restoreRollbackDirectoryURL\n            )\n        }\n\n        await lifecycleHooks",
+        "restoreCommitArchiveURL\n            )\n        }\n\n        await lifecycleHooks",
+    )
+    mutated(
+        "ordinary startup strict publication",
+        "startup_publication",
+        "try await publishValidatedStartupBook(\n            in: openedStore",
+        "await publishValidatedStartupBookAfterIrreversibleRecovery(\n"
+        "            in: openedStore",
+    )
+
+    for name, fixture in mutations:
+        if not security_recovery_invariant_violations(fixture):
+            fail(f"security recovery validator mutation escaped: {name}")
+    print(
+        f"Validated security recovery invariants against {len(mutations)} "
+        "adversarial mutations"
+    )
+
+
+def logical_book_boundary_invariant_violations(
+    sources: dict[str, str],
+) -> list[str]:
+    """Return violations of the same-store logical-book read boundary."""
+    violations: list[str] = []
+    swift = {
+        key: swift_without_comments(value)
+        for key, value in sources.items()
+        if key not in {"tests", "intelligence_tests"}
+    }
+
+    def section(key: str, start: str, end: str) -> str:
+        return source_section(swift[key], start, end)
+
+    token = section(
+        "domain",
+        "struct LogicalBookReadToken",
+        "func beginLogicalBookRead",
+    )
+    begin_read = section(
+        "domain",
+        "func beginLogicalBookRead",
+        "func ownsLogicalBookRead",
+    )
+    owns_read = section(
+        "domain",
+        "func ownsLogicalBookRead",
+        "func requireLogicalBookRead",
+    )
+    finish_read = section(
+        "domain",
+        "func finishLogicalBookRead",
+        "func requireStore",
+    )
+    if not all(fragment in token for fragment in (
+        "let storeGeneration: Int",
+        "let logicalBookRevision: UInt64",
+    )):
+        violations.append(
+            "logical-book token must bind physical store and logical revision"
+        )
+    if not ordered_fragments_are_present(
+        begin_read,
+        (
+            "guard !isBookReplacementInProgress",
+            "let store",
+            "storeGeneration: storeGeneration",
+            "logicalBookRevision: logicalBookRevision",
+        ),
+    ):
+        violations.append(
+            "logical-book read admission must reject replacement and bind one store"
+        )
+    if not all(fragment in owns_read for fragment in (
+        "!isBookReplacementInProgress",
+        "token.storeGeneration == storeGeneration",
+        "token.logicalBookRevision == logicalBookRevision",
+        "store != nil",
+    )):
+        violations.append(
+            "logical-book post-await authority must revalidate both revisions"
+        )
+    if not ordered_fragments_are_present(
+        finish_read,
+        (
+            "lifecycleHooks.checkpoint(.afterBookScopedReadBeforeReturn)",
+            "requireLogicalBookRead(token)",
+        ),
+    ):
+        violations.append(
+            "logical-book return helper must pause then revalidate authority"
+        )
+
+    model = swift["model"]
+    if "var logicalBookRevision: UInt64 = 0" not in model:
+        violations.append("AppModel is missing the monotonic logical-book revision")
+
+    begin_restore = section(
+        "restore",
+        "func beginRestoreMutation()",
+        "private func makeRestoreRollbackArchive",
+    )
+    restore_order = (
+        "isBookReplacementInProgress = true",
+        "logicalBookRevision &+= 1",
+        "isWorking = true",
+        "goalMutationBarrierClosed = true",
+        "await waitForGoalMutationDrain()",
+    )
+    revision_prefix = begin_restore.split("logicalBookRevision &+= 1", 1)[0]
+    if (
+        not ordered_fragments_are_present(begin_restore, restore_order)
+        or "await " in revision_prefix
+    ):
+        violations.append(
+            "normal restore must revoke old reads synchronously before its first await"
+        )
+
+    finish_replacement = section(
+        "ledger_validation",
+        "func finishBookReplacementMutation",
+        "\n}",
+    )
+    if not ordered_fragments_are_present(
+        finish_replacement,
+        (
+            "isBookReplacementInProgress = false",
+            "logicalBookRevision &+= 1",
+            "switch state",
+            "finishExclusiveDataLifecycleMutation()",
+        ),
+    ):
+        violations.append(
+            "replacement finish must publish a new readable revision before release"
+        )
+    clear_decoded = section(
+        "validation",
+        "func clearDecodedState()",
+        "func validateLoadedBook",
+    )
+    if "logicalBookRevision &+= 1" not in clear_decoded:
+        violations.append("clearing decoded state must revoke every retained read")
+
+    def require_read_contract(
+        label: str,
+        key: str,
+        start: str,
+        end: str,
+        direct_checks: int = 1,
+    ) -> None:
+        body = section(key, start, end)
+        if not body:
+            violations.append(f"{label} function boundary is missing")
+            return
+        if "beginLogicalBookRead()" not in body:
+            violations.append(f"{label} must capture logical-book authority at entry")
+        if body.count("requireLogicalBookRead(") < direct_checks:
+            violations.append(
+                f"{label} must revalidate immediately after every result-bearing await"
+            )
+        if "finishLogicalBookRead(" not in body:
+            violations.append(f"{label} must revalidate before returning its result")
+
+    for args in (
+        (
+            "history page",
+            "history",
+            "func historyPage(",
+            "private func historyCursor",
+            2,
+        ),
+        (
+            "history summary",
+            "history",
+            "func historySummary(",
+            "func calendarEntries",
+            2,
+        ),
+        (
+            "calendar entries",
+            "history",
+            "func calendarEntries",
+            "func journalPostingEvents",
+            0,
+        ),
+        (
+            "journal posting events",
+            "history",
+            "func journalPostingEvents",
+            "func matchingEntries",
+            1,
+        ),
+        (
+            "schedule matching entries",
+            "history",
+            "func matchingEntries",
+            "func journalEntries",
+            0,
+        ),
+        (
+            "journal entry paging",
+            "history",
+            "func journalEntries",
+            "func journalSnapshot",
+            1,
+        ),
+        (
+            "journal snapshot",
+            "history",
+            "func journalSnapshot",
+            "func recordHistoryDecodeIssues",
+            1,
+        ),
+        (
+            "capture suggestion",
+            "intelligence",
+            "func indexedCaptureSuggestion",
+            "func intelligenceHistoryEntries",
+            1,
+        ),
+        (
+            "intelligence history",
+            "intelligence",
+            "func intelligenceHistoryEntries",
+            "private func date(fromIntelligenceDay",
+            2,
+        ),
+        (
+            "month-end projection",
+            "projection",
+            "func monthEndProjectionResult",
+            "private func monthEndProjectionContext",
+            1,
+        ),
+        (
+            "budget suggestions",
+            "budget",
+            "func budgetLimitSuggestionsResult",
+            "func applyBudgetSuggestions",
+            1,
+        ),
+        (
+            "receipt attachment",
+            "attachment",
+            "func receiptAttachment",
+            "func deleteReceiptAttachment",
+            1,
+        ),
+    ):
+        require_read_contract(*args)
+
+    receipt_analysis = section(
+        "lifecycle",
+        "func receiptAnalysis",
+        "static func boundedReceiptLines",
+    )
+    if (
+        "beginLogicalBookRead()" not in receipt_analysis
+        or receipt_analysis.count("ownsLogicalBookRead(") < 2
+        or "finishLogicalBookRead(" not in receipt_analysis
+    ):
+        violations.append(
+            "receipt OCR must retain logical authority across recognition and parsing"
+        )
+
+    history_view = swift["history_view"]
+    if not all(fragment in history_view for fragment in (
+        "let logicalBookRevision: UInt64",
+        "logicalBookRevision: model.logicalBookRevision",
+        ".onChange(of: model.logicalBookRevision)",
+        "selectedEntry = nil",
+    )):
+        violations.append("History retained paging state must be revision-scoped")
+
+    calendar_view = swift["calendar_view"]
+    if not all(fragment in calendar_view for fragment in (
+        "let logicalBookRevision: UInt64",
+        "logicalBookRevision: model.logicalBookRevision",
+        ".onChange(of: model.logicalBookRevision)",
+        "let expectedRevision = model.logicalBookRevision",
+        "expectedRevision == model.logicalBookRevision",
+        "scheduleMatchCandidates = [:]",
+    )):
+        violations.append("Calendar actuals and match candidates must be revision-scoped")
+
+    quick_draft = section(
+        "quick_draft",
+        "func reloadDraftForLogicalBookReplacement",
+        "func applyDraft",
+    )
+    if not ordered_fragments_are_present(
+        quick_draft,
+        (
+            "hasRestoredDraft = false",
+            "cancelReceiptProcessing()",
+            "amountText = \"\"",
+            "accountID = nil",
+            "sourceCaptureID = nil",
+            "lastSavedEntryID = nil",
+            "guard !model.isBookReplacementInProgress",
+            "model.state == .ready",
+            "model.quickLogDraft",
+            "hasRestoredDraft = true",
+        ),
+    ):
+        violations.append(
+            "Quick Log must revoke the old form and adopt only the published draft"
+        )
+    if not all(fragment in swift["quick_body"] for fragment in (
+        ".onChange(of: model.logicalBookRevision)",
+        "reloadDraftForLogicalBookReplacement()",
+    )):
+        violations.append("Quick Log must reload its persistent form on revision change")
+    capture_view = section(
+        "quick_capture",
+        "func refreshCaptureSuggestions",
+        "func cancelCaptureSuggestionLookup",
+    )
+    if not all(fragment in capture_view for fragment in (
+        "let logicalBookRevision = model.logicalBookRevision",
+        "logicalBookRevision == model.logicalBookRevision",
+        "!model.isBookReplacementInProgress",
+    )):
+        violations.append("Quick Log capture suggestions must bind their launch revision")
+    receipt_current = section(
+        "quick_receipt",
+        "func receiptScanIsCurrent",
+        "func applyReceipt",
+    )
+    if not all(fragment in receipt_current for fragment in (
+        "logicalBookRevision == model.logicalBookRevision",
+        "!model.isBookReplacementInProgress",
+        "model.state == .ready",
+    )):
+        violations.append("Quick Log receipt callbacks must bind their launch revision")
+
+    attachment_view = swift["transaction_edit"]
+    if not all(fragment in attachment_view for fragment in (
+        ".onChange(of: model.logicalBookRevision)",
+        "let logicalBookRevision = model.logicalBookRevision",
+        "model.logicalBookRevision == logicalBookRevision",
+        "!model.isBookReplacementInProgress",
+    )):
+        violations.append("receipt thumbnail publication must be revision-scoped")
+
+    intelligence_history_view = swift["intelligence_history_view"]
+    intelligence_view = swift["intelligence_view"]
+    intelligence_projection_view = swift["intelligence_projection_view"]
+    if not all(fragment in intelligence_history_view for fragment in (
+        "let logicalBookRevision: UInt64",
+        ".task(id: model.logicalBookRevision)",
+        "revision == model.logicalBookRevision",
+    )) or not all(fragment in intelligence_view for fragment in (
+        ".onChange(of: model.logicalBookRevision)",
+        "historySelection = nil",
+        "scheduleSelection = nil",
+        "logicalBookRevision: model.logicalBookRevision",
+    )):
+        violations.append("intelligence history routes must be revision-scoped")
+    if not all(fragment in intelligence_projection_view for fragment in (
+        ".task(id: model.logicalBookRevision)",
+        "revision == model.logicalBookRevision",
+        "!model.isBookReplacementInProgress",
+    )):
+        violations.append("intelligence projection view must reject stale publication")
+
+    budget_patch = swift["budget"]
+    budget_view = swift["budget_view"]
+    if not all(fragment in budget_patch for fragment in (
+        "let logicalBookRevision: UInt64",
+        "expectedLogicalBookRevision == logicalBookRevision",
+        "patch.logicalBookRevision == logicalBookRevision",
+    )) or not all(fragment in budget_view for fragment in (
+        "@State private var loadedLogicalBookRevision: UInt64?",
+        ".task(id: model.logicalBookRevision)",
+        ".onChange(of: model.logicalBookRevision)",
+        "expectedLogicalBookRevision: loadedLogicalBookRevision",
+    )):
+        violations.append("budget suggestion apply and undo must bind the loaded book")
+
+    data_safety = swift["data_safety"]
+    if not ordered_fragments_are_present(
+        data_safety,
+        (
+            ".onChange(of: model.logicalBookRevision)",
+            "inventory = nil",
+            "inventoryDocument = PrivacySafeDataInventoryDocument()",
+        ),
+    ):
+        violations.append("post-restore Data Safety inventory must discard old counts")
+
+    combined_tests = sources["tests"] + sources["intelligence_tests"]
+    for regression in (
+        "testLogicalBookRevisionRejectsPausedHistoryReadAcrossNormalRestore",
+        "testLogicalBookRevisionRejectsPausedIntelligenceReadsAcrossNormalRestore",
+        "testLogicalBookRevisionRejectsStaleBudgetPatch",
+    ):
+        if regression not in combined_tests:
+            violations.append(f"logical-book regression is missing {regression}")
+
+    return violations
+
+
+def validate_logical_book_boundary_mutation_gate() -> None:
+    app_root = ROOT / "App" / "MoneyUp"
+    source_files = {
+        "model": "AppModel.swift",
+        "restore": "AppModelBackupRestore.swift",
+        "domain": "AppModelDomainValidation.swift",
+        "ledger_validation": "AppModelLedgerValidation.swift",
+        "validation": "AppModelValidation.swift",
+        "history": "AppModelHistoryQueries.swift",
+        "intelligence": "AppModelIntelligence.swift",
+        "projection": "AppModelIntelligenceProjection.swift",
+        "budget": "AppModelBudgetSuggestions.swift",
+        "attachment": "AppModelJournalEditing.swift",
+        "lifecycle": "AppModelLifecycle.swift",
+        "history_view": "HistoryView.swift",
+        "calendar_view": "CalendarView.swift",
+        "quick_draft": "QuickLogEntryDraft.swift",
+        "quick_body": "QuickLogEntryBody.swift",
+        "quick_capture": "QuickLogEntryCaptureSuggestions.swift",
+        "quick_receipt": "QuickLogEntryReceipt.swift",
+        "transaction_edit": "TransactionEditBody.swift",
+        "intelligence_history_view": "IntelligenceHistoryReviewView.swift",
+        "intelligence_view": "IntelligenceView.swift",
+        "intelligence_projection_view": "IntelligenceProjectionView.swift",
+        "budget_view": "BudgetSuggestionReviewView.swift",
+        "data_safety": "DataSafetyView.swift",
+    }
+    sources = {
+        key: (app_root / filename).read_text(encoding="utf-8")
+        for key, filename in source_files.items()
+    }
+    sources["tests"] = (
+        ROOT / "Tests/MoneyUpAppTests/AppModelTests.swift"
+    ).read_text(encoding="utf-8")
+    sources["intelligence_tests"] = (
+        ROOT / "Tests/MoneyUpAppTests/AppModelIntelligenceTests.swift"
+    ).read_text(encoding="utf-8")
+
+    actual = logical_book_boundary_invariant_violations(sources)
+    if actual:
+        fail("logical-book boundary invariant: " + "; ".join(actual))
+
+    mutations: list[tuple[str, dict[str, str]]] = []
+
+    def mutated(name: str, key: str, old: str, new: str) -> None:
+        if old not in sources[key]:
+            fail(f"logical-book mutation fixture is stale: {name}")
+        fixture = dict(sources)
+        fixture[key] = sources[key].replace(old, new, 1)
+        mutations.append((name, fixture))
+
+    mutated(
+        "token logical revision",
+        "domain",
+        "let logicalBookRevision: UInt64",
+        "let unrelatedRevision: UInt64",
+    )
+    mutated(
+        "read admission replacement guard",
+        "domain",
+        "guard !isBookReplacementInProgress,",
+        "guard true,",
+    )
+    mutated(
+        "post-await logical revision",
+        "domain",
+        "token.logicalBookRevision == logicalBookRevision",
+        "true",
+    )
+    mutated(
+        "return helper ordering",
+        "domain",
+        "await lifecycleHooks.checkpoint(.afterBookScopedReadBeforeReturn)\n"
+        "        try requireLogicalBookRead(token)",
+        "try requireLogicalBookRead(token)\n"
+        "        await lifecycleHooks.checkpoint(.afterBookScopedReadBeforeReturn)",
+    )
+    mutated(
+        "restore revocation after suspension",
+        "restore",
+        "logicalBookRevision &+= 1\n"
+        "        isWorking = true\n"
+        "        goalMutationBarrierClosed = true\n"
+        "        await waitForGoalMutationDrain()",
+        "isWorking = true\n"
+        "        goalMutationBarrierClosed = true\n"
+        "        await waitForGoalMutationDrain()\n"
+        "        logicalBookRevision &+= 1",
+    )
+    mutated(
+        "replacement finish revision",
+        "ledger_validation",
+        "logicalBookRevision &+= 1",
+        "replacementRevisionWasNotPublished = true",
+    )
+    mutated(
+        "decoded-state revocation",
+        "validation",
+        "logicalBookRevision &+= 1",
+        "decodedStateRevisionWasNotRevoked = true",
+    )
+    mutated(
+        "history page post-await check",
+        "history",
+        "try requireLogicalBookRead(read.token)",
+        "try Task.checkCancellation()",
+    )
+    history_summary = source_section(
+        sources["history"],
+        "func historySummary(",
+        "func calendarEntries",
+    )
+    if not history_summary:
+        fail("logical-book mutation fixture is stale: history summary")
+    mutated_summary = history_summary.replace(
+        "try requireLogicalBookRead(read.token)",
+        "try Task.checkCancellation()",
+        1,
+    )
+    fixture = dict(sources)
+    fixture["history"] = sources["history"].replace(
+        history_summary,
+        mutated_summary,
+        1,
+    )
+    mutations.append(("history summary post-await check", fixture))
+    mutated(
+        "capture suggestion entry token",
+        "intelligence",
+        "let read = try? beginLogicalBookRead()",
+        "let read = nil as (store: EncryptedRecordStore, "
+        "token: LogicalBookReadToken)?",
+    )
+    intelligence_history = source_section(
+        sources["intelligence"],
+        "func intelligenceHistoryEntries",
+        "private func date(fromIntelligenceDay",
+    )
+    if not intelligence_history:
+        fail("logical-book mutation fixture is stale: intelligence history")
+    fixture = dict(sources)
+    fixture["intelligence"] = sources["intelligence"].replace(
+        intelligence_history,
+        intelligence_history.replace(
+            "try requireLogicalBookRead(read.token)",
+            "try Task.checkCancellation()",
+            1,
+        ),
+        1,
+    )
+    mutations.append(("intelligence history post-await check", fixture))
+    for name, key in (
+        ("month-end projection post-await check", "projection"),
+        ("budget suggestion post-await check", "budget"),
+        ("receipt attachment post-await check", "attachment"),
+    ):
+        mutated(
+            name,
+            key,
+            "try requireLogicalBookRead(read.token)",
+            "try Task.checkCancellation()",
+        )
+    mutated(
+        "Quick Log draft authority reset",
+        "quick_draft",
+        "hasRestoredDraft = false",
+        "hasRestoredDraft = true",
+    )
+    mutated(
+        "Quick Log undo identity reset",
+        "quick_draft",
+        "lastSavedEntryID = nil",
+        "lastSavedEntryID = lastSavedEntryID",
+    )
+    mutated(
+        "capture suggestion launch revision",
+        "quick_capture",
+        "logicalBookRevision == model.logicalBookRevision",
+        "true",
+    )
+    mutated(
+        "receipt callback launch revision",
+        "quick_receipt",
+        "logicalBookRevision == model.logicalBookRevision",
+        "true",
+    )
+    mutated(
+        "receipt thumbnail revision",
+        "transaction_edit",
+        "model.logicalBookRevision == logicalBookRevision",
+        "true",
+    )
+    mutated(
+        "History task identity revision",
+        "history_view",
+        "let logicalBookRevision: UInt64",
+        "let staleBookRevision: UInt64",
+    )
+    mutated(
+        "Calendar task identity revision",
+        "calendar_view",
+        "let logicalBookRevision: UInt64",
+        "let staleBookRevision: UInt64",
+    )
+    mutated(
+        "intelligence history selection revision",
+        "intelligence_history_view",
+        "let logicalBookRevision: UInt64",
+        "let staleBookRevision: UInt64",
+    )
+    mutated(
+        "budget apply revision",
+        "budget",
+        "expectedLogicalBookRevision == logicalBookRevision",
+        "true",
+    )
+    mutated(
+        "Data Safety inventory reset",
+        "data_safety",
+        "inventory = nil",
+        "inventory = inventory",
+    )
+    for regression in (
+        "testLogicalBookRevisionRejectsPausedHistoryReadAcrossNormalRestore",
+        "testLogicalBookRevisionRejectsPausedIntelligenceReadsAcrossNormalRestore",
+        "testLogicalBookRevisionRejectsStaleBudgetPatch",
+    ):
+        key = (
+            "intelligence_tests"
+            if regression in sources["intelligence_tests"]
+            else "tests"
+        )
+        mutated(
+            f"regression declaration {regression}",
+            key,
+            regression,
+            "removedLogicalBookRegression",
+        )
+
+    for name, fixture in mutations:
+        if not logical_book_boundary_invariant_violations(fixture):
+            fail(f"logical-book boundary validator mutation escaped: {name}")
+    print(
+        f"Validated logical-book boundary against {len(mutations)} "
+        "adversarial mutations"
+    )
+
+
 def collect_string_units(
     payload: object, path: tuple[str, ...] = ()
 ) -> dict[tuple[str, ...], dict[str, object]]:
@@ -256,6 +1643,505 @@ def validate_offline_runtime_boundary() -> None:
                     f"runtime boundary: {', '.join(matches)}"
                 )
     print("Validated offline runtime boundary")
+
+
+def validate_key_cliff_recovery_boundary() -> None:
+    key_store = (ROOT / "App/MoneyUp/DatabaseKeyStore.swift").read_text(
+        encoding="utf-8"
+    )
+    lifecycle = (ROOT / "App/MoneyUp/AppModelLifecycle.swift").read_text(
+        encoding="utf-8"
+    )
+    restore = (ROOT / "App/MoneyUp/AppModelBackupRestore.swift").read_text(
+        encoding="utf-8"
+    )
+    key_cliff_restore = (
+        ROOT / "App/MoneyUp/AppModelKeyCliffRecovery.swift"
+    ).read_text(encoding="utf-8")
+    restore_preview = (
+        ROOT / "App/MoneyUp/AppModelRestorePreview.swift"
+    ).read_text(encoding="utf-8")
+    preview_type = (ROOT / "App/MoneyUp/RestorePreview.swift").read_text(
+        encoding="utf-8"
+    )
+    startup_publication = (
+        ROOT / "App/MoneyUp/AppModelStartupPublication.swift"
+    ).read_text(encoding="utf-8")
+    ledger_validation = (
+        ROOT / "App/MoneyUp/AppModelLedgerValidation.swift"
+    ).read_text(encoding="utf-8")
+    widget_projection = (
+        ROOT / "App/MoneyUp/AppModelJournalProjection.swift"
+    ).read_text(encoding="utf-8")
+    intelligence = (
+        ROOT / "App/MoneyUp/AppModelIntelligence.swift"
+    ).read_text(encoding="utf-8")
+    recovery_sources = restore + key_cliff_restore
+    transaction = (
+        ROOT / "App/MoneyUp/KeyCliffRecoveryTransaction.swift"
+    ).read_text(encoding="utf-8")
+
+    for declaration in [
+        "case missingDeviceBoundKey",
+        "DatabaseKeyCreationPolicy.mayCreateKey",
+        "throw DatabaseKeyStoreError.missingDeviceBoundKey",
+        "kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly",
+        "kSecAttrSynchronizable as String] = false",
+        "requireDevicePasscodeForRecovery()",
+        ".deviceOwnerAuthentication",
+        "case errSecPasscodeRequired:",
+        "return .devicePasscodeRequired",
+    ]:
+        if declaration not in key_store:
+            fail(f"device-key lifecycle is missing {declaration}")
+
+    for declaration in [
+        "startupFailureKind = .missingDeviceBoundKey",
+        "KeyCliffRecoveryTransaction.hasPendingManifest",
+        "KeyCliffRecoveryTransaction.installCandidate",
+        "KeyCliffRecoveryTransaction.restoreOriginal",
+    ]:
+        if declaration not in lifecycle + key_cliff_restore:
+            fail(f"key-cliff startup recovery is missing {declaration}")
+
+    required_restore = [
+        "RestoreArchiveStaging.verifiedCommitCopy",
+        "keyCliffRecoveryKeyAccess.generate()",
+        "prepareCandidateDirectory(",
+        "validateRestoreCandidate(",
+        "KeyCliffRecoveryTransaction.publishManifest",
+        "keyCliffRecoveryKeyAccess.store",
+        "KeyCliffRecoveryTransaction.installCandidate",
+        "KeyCliffRecoveryTransaction.beginRollback",
+        "keyCliffRecoveryKeyAccess.delete",
+        "KeyCliffRecoveryTransaction.restoreOriginal",
+    ]
+    for declaration in required_restore:
+        if declaration not in recovery_sources:
+            fail(f"keyless archive recovery is missing {declaration}")
+    recovery_body = key_cliff_restore[
+        key_cliff_restore.find("func recoverMissingDeviceBoundKey") :
+        key_cliff_restore.find("private func buildKeyCliffCandidate")
+    ]
+    commit_body = key_cliff_restore[
+        key_cliff_restore.find("private func commitKeyCliffCandidate") :
+        key_cliff_restore.find("private func rollbackFailedKeyCliffCommit")
+    ]
+    rollback_body = key_cliff_restore[
+        key_cliff_restore.find("private func rollbackFailedKeyCliffCommit") :
+        key_cliff_restore.find("private func keyCliffLiveDatabaseURL")
+    ]
+    recovery_order = [
+        "RestoreArchiveStaging.verifiedCommitCopy",
+        "keyCliffRecoveryKeyAccess.generate()",
+        "prepareCandidateDirectory(",
+        "buildKeyCliffCandidate(",
+        "KeyCliffRecoveryTransaction.publishManifest",
+        "commitKeyCliffCandidate(",
+    ]
+    recovery_positions = [recovery_body.find(item) for item in recovery_order]
+    commit_positions = [
+        commit_body.find("keyCliffRecoveryKeyAccess.store"),
+        commit_body.find("KeyCliffRecoveryTransaction.installCandidate"),
+        commit_body.find("load(from: openedStore, mode: .restoreValidation)"),
+        commit_body.find("validateLoadedStartupBook"),
+        commit_body.find("requireEmptyLockedCaptureInbox()"),
+        commit_body.find(".afterKeyCliffValidationBeforeCompletion"),
+        commit_body.find("KeyCliffRecoveryTransaction.complete"),
+        commit_body.find("startupFailureKind = nil"),
+        commit_body.find(
+            "publishValidatedStartupBookAfterIrreversibleRecovery"
+        ),
+    ]
+    rollback_positions = [
+        rollback_body.find("KeyCliffRecoveryTransaction.beginRollback"),
+        rollback_body.find("keyCliffRecoveryKeyAccess.delete"),
+        rollback_body.find("KeyCliffRecoveryTransaction.restoreOriginal"),
+    ]
+    if any(position < 0 for position in (
+        recovery_positions + commit_positions + rollback_positions
+    )) or not (
+        recovery_positions == sorted(recovery_positions)
+        and commit_positions == sorted(commit_positions)
+        and rollback_positions == sorted(rollback_positions)
+    ):
+        fail("key-cliff recovery must validate before durable key/file mutation")
+
+    startup_body = key_cliff_restore[
+        key_cliff_restore.find(
+            "func openAndFinishStartupIncludingKeyCliffRecovery"
+        ) : key_cliff_restore.find("func recoverMissingDeviceBoundKey")
+    ]
+    resume_order = (
+        "load(from: openedStore, mode: .restoreValidation)",
+        "validateLoadedStartupBook",
+        "requireEmptyLockedCaptureInbox()",
+        ".afterKeyCliffValidationBeforeCompletion",
+        "KeyCliffRecoveryTransaction.complete",
+        "startupFailureKind = nil",
+        "publishValidatedStartupBookAfterIrreversibleRecovery",
+    )
+    resume_positions = [startup_body.find(item) for item in resume_order]
+    if any(position < 0 for position in resume_positions) or (
+        resume_positions != sorted(resume_positions)
+    ):
+        fail("key-cliff resume must publish only after validation and completion")
+    normal_load = "try await load(from: openedStore)"
+    if normal_load not in startup_body or "finishLoadedStartup" not in startup_body:
+        fail("ordinary startup must retain recovering-mode load semantics")
+
+    for declaration, source in (
+        ("UserDefaults.standard.set(", startup_publication),
+        ("locked_captures/promotion-unavailable", startup_publication),
+        ("if !isBookReplacementInProgress", startup_publication),
+        ("func finishBookReplacementMutation", ledger_validation),
+        ("refreshBudgetWidgetSnapshot()", ledger_validation),
+        ("refreshIntelligence()", ledger_validation),
+        ("!isBookReplacementInProgress", widget_projection),
+        ("!isBookReplacementInProgress", intelligence),
+    ):
+        if declaration not in source:
+            fail(f"authoritative post-restore publication is missing {declaration}")
+
+    raw_restore = restore[
+        restore.find("func restoreEncryptedBackup(\n        from archiveURL") :
+        restore.find("private func restoreEncryptedBackupIntoLiveStore")
+    ]
+    ticket_restore = restore_preview[
+        restore_preview.find("func restoreEncryptedBackup(\n        _ ticket") :
+        restore_preview.find("private func restorePreviewCurrentBook")
+    ]
+    for declaration in (
+        "throw AppModelError.restorePreviewRequired",
+        "case inaccessible",
+        "let current: CurrentBook",
+    ):
+        source = raw_restore if declaration.startswith("throw") else preview_type
+        if declaration not in source:
+            fail(f"key-cliff preview boundary is missing {declaration}")
+    if "recoverMissingDeviceBoundKey" in raw_restore:
+        fail("raw archive restore must not bypass key-cliff preview authority")
+    debug_start = restore.find("#if DEBUG")
+    raw_start = restore.find("func restoreEncryptedBackup(_ data: Data")
+    debug_end = restore.find("#endif", raw_start)
+    verified_primitive = restore.find(
+        "func restoreEncryptedBackupAfterVerifiedTicket"
+    )
+    if not (
+        0 <= debug_start < raw_start < debug_end < verified_primitive
+    ):
+        fail("raw restore compatibility APIs must be absent from release builds")
+    for declaration in (
+        "startupFailureKind == .missingDeviceBoundKey",
+        "recoverMissingDeviceBoundKey(",
+        "return",
+        "beginRestoreMutation()",
+    ):
+        if declaration not in ticket_restore:
+            fail(f"ticket restore routing is missing {declaration}")
+    if ticket_restore.find("recoverMissingDeviceBoundKey(") > ticket_restore.find(
+        "beginRestoreMutation()"
+    ):
+        fail("key-cliff ticket must route before normal live-store preparation")
+    app_sources = {
+        path: path.read_text(encoding="utf-8")
+        for path in (ROOT / "App/MoneyUp").rglob("*.swift")
+    }
+    backup_path = ROOT / "App/MoneyUp/AppModelBackupRestore.swift"
+    app_sources[backup_path] = restore[:debug_start] + restore[
+        debug_end + len("#endif"):
+    ]
+    verified_calls = sum(
+        source.count("restoreEncryptedBackupAfterVerifiedTicket(")
+        for source in app_sources.values()
+    )
+    if verified_calls != 2:
+        fail("verified restore primitive must have one definition and one ticket call")
+
+    for declaration in [
+        "originalArtifactMask",
+        "candidateArtifactMask",
+        "phase",
+        "static func installCandidate",
+        "static func beginRollback",
+        "static func restoreOriginal",
+        "static func scavengeUncommittedCandidate",
+    ]:
+        if declaration not in transaction:
+            fail(f"key-cliff filesystem transaction is missing {declaration}")
+    manifest_block = transaction[
+        transaction.find("struct KeyCliffRecoveryManifest") :
+        transaction.find("enum KeyCliffRecoveryTransaction")
+    ]
+    manifest_fields = set(
+        re.findall(r"^\s+let\s+([A-Za-z0-9_]+):", manifest_block, re.MULTILINE)
+    )
+    if manifest_fields != {
+        "version",
+        "originalArtifactMask",
+        "candidateArtifactMask",
+        "phase",
+    }:
+        fail("key-cliff manifest must contain only non-secret artifact masks")
+
+    print("Validated key-cliff recovery and rollback boundary")
+
+
+def validate_restore_preview_boundary() -> None:
+    model_path = ROOT / "App" / "MoneyUp" / "AppModelRestorePreview.swift"
+    preview_path = ROOT / "App" / "MoneyUp" / "RestorePreview.swift"
+    restore_path = ROOT / "App" / "MoneyUp" / "AppModelBackupRestore.swift"
+    lifecycle_path = ROOT / "App" / "MoneyUp" / "AppModelLifecycle.swift"
+    view_path = ROOT / "App" / "MoneyUp" / "RestorePreviewConfirmationView.swift"
+    safety_path = ROOT / "App" / "MoneyUp" / "DataSafetyView.swift"
+    root_path = ROOT / "App" / "MoneyUp" / "RootView.swift"
+    startup_path = ROOT / "App" / "MoneyUp" / "AppModelStartupPublication.swift"
+    ledger_validation_path = (
+        ROOT / "App" / "MoneyUp" / "AppModelLedgerValidation.swift"
+    )
+    journal_projection_path = (
+        ROOT / "App" / "MoneyUp" / "AppModelJournalProjection.swift"
+    )
+    journal_derived_path = (
+        ROOT / "App" / "MoneyUp" / "AppModelJournalDerivedState.swift"
+    )
+    intelligence_path = ROOT / "App" / "MoneyUp" / "AppModelIntelligence.swift"
+    bounded_reader_path = ROOT / "App" / "MoneyUp" / "BoundedFileReader.swift"
+    portable_writer_path = (
+        ROOT / "Sources" / "MoneyUpPersistence"
+        / "PortableArchiveV2Validation.swift"
+    )
+    tests_path = ROOT / "Tests" / "MoneyUpAppTests" / "AppModelTests.swift"
+    accessible_tests_path = (
+        ROOT / "Tests" / "MoneyUpAppTests"
+        / "AccessibleErrorPresentationTests.swift"
+    )
+    model = model_path.read_text(encoding="utf-8")
+    preview = preview_path.read_text(encoding="utf-8")
+    restore = restore_path.read_text(encoding="utf-8")
+    lifecycle = lifecycle_path.read_text(encoding="utf-8")
+    view = view_path.read_text(encoding="utf-8")
+    safety = safety_path.read_text(encoding="utf-8")
+    root_view = root_path.read_text(encoding="utf-8")
+    startup = startup_path.read_text(encoding="utf-8")
+    ledger_validation = ledger_validation_path.read_text(encoding="utf-8")
+    journal_projection = journal_projection_path.read_text(encoding="utf-8")
+    journal_derived = journal_derived_path.read_text(encoding="utf-8")
+    intelligence = intelligence_path.read_text(encoding="utf-8")
+    bounded_reader = bounded_reader_path.read_text(encoding="utf-8")
+    portable_writer = portable_writer_path.read_text(encoding="utf-8")
+    tests = tests_path.read_text(encoding="utf-8")
+    accessible_tests = accessible_tests_path.read_text(encoding="utf-8")
+
+    preview_prepare = model.split(
+        "func prepareEncryptedRestorePreview", 1
+    )[1].split("func restoreEncryptedBackup", 1)[0]
+    for forbidden in (
+        "finishPendingQuickLogDraftWrite",
+        "flushQuickLogDraftForBackup",
+    ):
+        if forbidden in preview_prepare:
+            fail(f"restore preview preparation must remain read-only: {forbidden}")
+
+    restore_prepare = restore.split("private func prepareRestore", 1)[1].split(
+        "private func validateAndPublishRestoredBook", 1
+    )[0]
+    validation_index = restore_prepare.find("validateRestoreCandidateInIsolation")
+    flush_index = restore_prepare.find("flushQuickLogDraftForBackup")
+    if validation_index < 0 or flush_index < 0 or validation_index > flush_index:
+        fail("restore must authenticate and validate before flushing the live draft")
+
+    required_by_source = {
+        preview_path: (
+            "let byteCount: Int",
+            "let sha256: Data",
+            "enum CurrentBook",
+            "case inaccessible",
+            "let current: CurrentBook",
+        ),
+        model_path: (
+            "fingerprint == ticket.archiveFingerprint",
+            "[.posixPermissions: 0o400]",
+            "restorePreviewValidationArchiveURL",
+            "restoreStagedArchiveURL",
+            "restoreCommitArchiveURL",
+            "restoreRollbackArchiveURL",
+            "restoreRollbackDirectoryURL",
+            "return .inaccessible",
+            "guard store == nil, case .failed = state",
+            "defer { finishBookReplacementMutation() }",
+        ),
+        restore_path: (
+            "isBookReplacementInProgress = true",
+            "requestedQuickLogMode = nil",
+            "intelligenceService.cancelPendingWork()",
+            "defer { finishBookReplacementMutation() }",
+            "restoreRollbackArchiveURL",
+            "restoreRollbackDirectoryURL",
+            "[.posixPermissions: 0o700]",
+            "[.posixPermissions: 0o400]",
+        ),
+        lifecycle_path: (
+            "scavengeRestorePreviewArtifacts()",
+            "!isBookReplacementInProgress",
+        ),
+        safety_path: (
+            "[.posixPermissions: 0o400]",
+            ".moneyUpOperationErrorAlert(message: $errorMessage)",
+            "@AccessibilityFocusState private var successMessageIsFocused",
+            ".accessibilityFocused($successMessageIsFocused)",
+            "RestoreCompletionAccessibilityRoute",
+            "queueRestoreCompletionForReadyHierarchy",
+            "clearRestoreCompletionForReadyHierarchy",
+            "restorePresentation.queue(",
+            ".failure(safeUserMessage(",
+            "onDismiss: presentRestoreResultAfterSheetDismissal",
+        ),
+        root_path: (
+            "UIAccessibility.post(",
+            "notification: .announcement",
+            "takeRestoreCompletionForReadyHierarchy",
+            ".onChange(of: model.pendingRestoreCompletionAnnouncement)",
+        ),
+        startup_path: (
+            "pendingRestoreCompletionAnnouncement = completion",
+            "guard state == .ready else { return nil }",
+            "pendingRestoreCompletionAnnouncement = nil",
+        ),
+        ledger_validation_path: (
+            "func finishBookReplacementMutation()",
+            "isBookReplacementInProgress = false",
+            "refreshBudgetWidgetSnapshot()",
+            "refreshIntelligence()",
+        ),
+        journal_projection_path: ("!isBookReplacementInProgress",),
+        journal_derived_path: ("!isBookReplacementInProgress",),
+        intelligence_path: ("!isBookReplacementInProgress",),
+        portable_writer_path: (
+            r'".moneyup-archive-\(UUID().uuidString).tmp"',
+            "attributes: [.posixPermissions: 0o600]",
+            "options: [.usingNewMetadataOnly]",
+            "try fileManager.setAttributes(",
+        ),
+        bounded_reader_path: ("attributes: [.posixPermissions: 0o600]",),
+        view_path: (
+            "ForEach(currencies, id: \\.self)",
+            "book.reportingTimeZoneIdentifier",
+            "preview.current.availableSummary",
+            '"restore.preview.current_inaccessible"',
+            '"recovery.key_cliff.confirm_action"',
+            '"recovery.key_cliff.confirm_detail"',
+        ),
+    }
+    source_text = {
+        model_path: model,
+        preview_path: preview,
+        restore_path: restore,
+        lifecycle_path: lifecycle,
+        safety_path: safety,
+        root_path: root_view,
+        startup_path: startup,
+        ledger_validation_path: ledger_validation,
+        journal_projection_path: journal_projection,
+        journal_derived_path: journal_derived,
+        intelligence_path: intelligence,
+        bounded_reader_path: bounded_reader,
+        portable_writer_path: portable_writer,
+        view_path: view,
+    }
+    for path, declarations in required_by_source.items():
+        for declaration in declarations:
+            if declaration not in source_text[path]:
+                fail(
+                    f"{path.relative_to(ROOT)} is missing restore invariant "
+                    f"{declaration}"
+                )
+    if ".prefix(12)" in view:
+        fail("restore preview must not hide currency identities behind truncation")
+    if "preview.current.storedRecordCount" in view:
+        fail("restore preview must not treat an inaccessible current book as zero")
+
+    for test_name in (
+        "testRestorePreviewCancelWrongPasswordAndTamperNeverFlushInMemoryDraft",
+        "testRestorePreviewSameLengthDigestMismatchCannotReachLiveReplacement",
+        "testRestoreArchivePrivateCopiesAreOwnerReadOnly",
+        "testStartupScavengesEveryDeterministicRestoreArchive",
+        "testRestorePreviewDateSpanUsesEachBookReportingZone",
+        "testKeyCliffRestoreRejectsThenCancelsWithoutMutationAndCommitsValidArchive",
+        "testKeyCliffFinalInboxRecheckRollsBackLateCaptureBeforePublication",
+        "testStartupResumesKeyCliffCandidateBeforePublishingBook",
+        "testStartupRejectsCaptureBeforeCompletingKeyCliffCandidate",
+        "testKeyCliffPostCompletionInboxFailureKeepsAuthoritativeBookRetryable",
+    ):
+        if test_name not in tests:
+            fail(f"restore preview regression is missing {test_name}")
+    if (
+        "testRestoreAnnouncementSurvivesEitherReadyAppearanceOrderingOnce"
+        not in accessible_tests
+    ):
+        fail("restore completion announcement ordering regression is missing")
+    print("Validated read-only, byte-bound, private restore preview boundary")
+
+
+def validate_test_declaration_accounting() -> None:
+    test_root = ROOT / "Tests"
+    suites = (
+        "MoneyUpCoreTests",
+        "MoneyUpPersistenceTests",
+        "MoneyUpIntelligenceTests",
+        "MoneyUpAppTests",
+        "MoneyUpPerformanceTests",
+    )
+    xctest_pattern = re.compile(r"^\s*func\s+test[A-Za-z0-9_]*\s*\(", re.MULTILINE)
+    swift_test_pattern = re.compile(r"^\s*@Test(?:\s|\()", re.MULTILINE)
+    totals: dict[str, int] = {}
+    xctest_total = 0
+    swift_test_total = 0
+    for suite in suites:
+        source = "\n".join(
+            path.read_text(encoding="utf-8")
+            for path in sorted((test_root / suite).rglob("*.swift"))
+        )
+        xctest_count = len(xctest_pattern.findall(source))
+        swift_test_count = len(swift_test_pattern.findall(source))
+        totals[suite] = xctest_count + swift_test_count
+        xctest_total += xctest_count
+        swift_test_total += swift_test_count
+
+    matrix = (ROOT / "docs/REQUIREMENTS_TEST_MATRIX.md").read_text(
+        encoding="utf-8"
+    )
+    accounting = re.search(
+        r"Declared automated tests in source after this review: \*\*(\d+)\*\* "
+        r"\((\d+)\s+core,\s+(\d+)\s+persistence,\s+"
+        r"(\d+)\s+intelligence,\s+(\d+)\s+app-target, and\s+"
+        r"(\d+)\s+performance-target\s+declarations;.*?"
+        r"\*\*(\d+)\*\* are XCTest.*?remaining (\d+) are Swift Testing",
+        matrix,
+        re.DOTALL,
+    )
+    if accounting is None:
+        fail("requirements matrix test accounting is missing or malformed")
+    declared = tuple(int(value) for value in accounting.groups())
+    actual = (
+        sum(totals.values()),
+        totals["MoneyUpCoreTests"],
+        totals["MoneyUpPersistenceTests"],
+        totals["MoneyUpIntelligenceTests"],
+        totals["MoneyUpAppTests"],
+        totals["MoneyUpPerformanceTests"],
+        xctest_total,
+        swift_test_total,
+    )
+    if declared != actual:
+        fail(
+            "requirements matrix test accounting is stale: "
+            f"declared {declared}, actual {actual}"
+        )
+    print(
+        f"Validated dynamic test accounting: {actual[0]} declarations "
+        f"({actual[6]} XCTest, {actual[7]} Swift Testing)"
+    )
 
 
 def validate_privacy_manifest() -> None:
@@ -1355,6 +3241,21 @@ def validate_performance_signposts() -> None:
     print(result.stdout.strip())
 
 
+def validate_accessible_errors() -> None:
+    validator = ROOT / "Scripts" / "validate_accessible_errors.py"
+    result = subprocess.run(
+        [sys.executable, str(validator)],
+        cwd=ROOT,
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip()
+        fail(f"Accessible error validation failed:\n{detail}")
+    print(result.stdout.strip())
+
+
 def workflow_step(workflow: str, name: str) -> str:
     match = re.search(
         rf"(?ms)^      - name: {re.escape(name)}\n"
@@ -1409,6 +3310,8 @@ def validate_ci_workflow() -> None:
         "-p 'test_validate_architecture_fitness.py'",
         "Enforce architecture fitness",
         "python3 Scripts/validate_architecture_fitness.py",
+        "Enforce accessible error presentation",
+        "python3 Scripts/validate_accessible_errors.py",
         "DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer",
         "Verify the exact CI Xcode toolchain",
         "Verify the exact CI Xcode and simulator SDK",
@@ -2019,6 +3922,11 @@ def validate_testflight_owner_command_workflow() -> None:
 def main() -> None:
     validate_localizations()
     validate_offline_runtime_boundary()
+    validate_security_recovery_mutation_gate()
+    validate_logical_book_boundary_mutation_gate()
+    validate_key_cliff_recovery_boundary()
+    validate_restore_preview_boundary()
+    validate_test_declaration_accounting()
     validate_privacy_manifest()
     validate_info_plist_localizations()
     validate_icons()
@@ -2031,6 +3939,7 @@ def main() -> None:
     validate_swift_structure()
     validate_architecture_fitness()
     validate_performance_signposts()
+    validate_accessible_errors()
     validate_ci_workflow()
     validate_testflight_workflow()
     validate_testflight_owner_command_workflow()

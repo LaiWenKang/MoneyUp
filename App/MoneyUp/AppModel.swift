@@ -36,6 +36,10 @@ final class AppModel {
         case failed(String)
     }
 
+    enum StartupFailureKind: Equatable, Sendable {
+        case missingDeviceBoundKey
+    }
+
     struct MonthToDateExpenseComparison: Sendable {
         let previous: Money
         let current: Money
@@ -182,6 +186,13 @@ final class AppModel {
     let services: AppModelServices
 
     var state: State = .launching
+    /// Semantic startup failure used to expose only the recovery operations
+    /// that are safe without a live SQLCipher key.
+    var startupFailureKind: StartupFailureKind?
+    /// One generic, non-financial completion queued when restore replaces a
+    /// recovery hierarchy. The surviving ready hierarchy consumes it once
+    /// after appearance so a root transition cannot preempt it.
+    var pendingRestoreCompletionAnnouncement: String? = nil
     /// Keeps decoded financial UI opaque while an auto-lock request waits for
     /// an atomic mutation to reach its durable boundary. Once the mutation
     /// drains, `lock()` clears decoded state before removing this cover.
@@ -278,6 +289,10 @@ final class AppModel {
         set { services.assets.netWorthSnapshots = newValue }
     }
     var isWorking = false
+    /// True only while an archive may replace the authoritative book. Model
+    /// setters can decode candidate state behind this boundary without
+    /// publishing mixed widget or deep-link state to another process/view.
+    var isBookReplacementInProgress = false
     var requestedQuickLogMode: QuickLogLaunchMode? {
         get { services.capture.requestedQuickLogMode }
         set { services.capture.requestedQuickLogMode = newValue }
@@ -314,6 +329,9 @@ final class AppModel {
     let deleteDatabaseKey: @Sendable () throws -> Void
     let dataEraseIntent: DataEraseIntentAccess
     let openDatabaseStore: DatabaseStoreOpener
+    let openDatabaseStoreWithKey: DatabaseStoreWithKeyOpener
+    let keyCliffRecoveryKeyAccess: KeyCliffRecoveryKeyAccess
+    let keyCliffRecoveryResidueScavenger: @Sendable (URL) -> Void
     let restartAfterErase: Bool
     let budgetWidgetSnapshotStore: BudgetWidgetSnapshotStore
     let currentDate: @Sendable () -> Date
@@ -340,6 +358,13 @@ final class AppModel {
     /// the second transition from silently extending the lock deadline.
     var leftActiveAt: Date?
     var storeGeneration = 0
+    /// Monotonic authority epoch for the logical book held by `store`.
+    ///
+    /// A normal restore replaces the contents of the same store actor, so its
+    /// physical generation alone cannot reject a read that began against the
+    /// old book. Every book-scoped reader captures this revision and validates
+    /// it again after each suspension before returning or publishing data.
+    var logicalBookRevision: UInt64 = 0
     var lockAfterStart = false
     var isLifecycleMutationInProgress = false
     var manualJournalMutationIsActive = false
@@ -399,6 +424,11 @@ final class AppModel {
         deleteDatabaseKey = { try DatabaseKeyStore.deleteKey() }
         self.dataEraseIntent = dataEraseIntent
         openDatabaseStore = DatabaseStoreOpeners.production
+        openDatabaseStoreWithKey = DatabaseStoreOpeners.productionWithKey
+        keyCliffRecoveryKeyAccess = .production
+        keyCliffRecoveryResidueScavenger = {
+            KeyCliffRecoveryTransaction.scavengeUncommittedCandidate(for: $0)
+        }
         restartAfterErase = true
         retainsCompleteJournal = false
         budgetWidgetSnapshotStore = BudgetWidgetSnapshotStore()
@@ -433,6 +463,12 @@ final class AppModel {
         dataEraseIntent: DataEraseIntentAccess = .none,
         openDatabaseStore: @escaping DatabaseStoreOpener =
             DatabaseStoreOpeners.production,
+        openDatabaseStoreWithKey: @escaping DatabaseStoreWithKeyOpener =
+            DatabaseStoreOpeners.productionWithKey,
+        keyCliffRecoveryKeyAccess: KeyCliffRecoveryKeyAccess = .unavailable,
+        keyCliffRecoveryResidueScavenger: @escaping @Sendable (URL) -> Void = {
+            KeyCliffRecoveryTransaction.scavengeUncommittedCandidate(for: $0)
+        },
         restartAfterErase: Bool = false,
         retainsCompleteJournal: Bool = true,
         budgetWidgetSnapshotStore: BudgetWidgetSnapshotStore = BudgetWidgetSnapshotStore(),
@@ -449,6 +485,9 @@ final class AppModel {
         self.deleteDatabaseKey = deleteDatabaseKey
         self.dataEraseIntent = dataEraseIntent
         self.openDatabaseStore = openDatabaseStore
+        self.openDatabaseStoreWithKey = openDatabaseStoreWithKey
+        self.keyCliffRecoveryKeyAccess = keyCliffRecoveryKeyAccess
+        self.keyCliffRecoveryResidueScavenger = keyCliffRecoveryResidueScavenger
         self.restartAfterErase = restartAfterErase
         self.budgetWidgetSnapshotStore = budgetWidgetSnapshotStore
         self.currentDate = currentDate
@@ -509,6 +548,11 @@ final class AppModel {
         deleteDatabaseKey = {}
         dataEraseIntent = .none
         openDatabaseStore = DatabaseStoreOpeners.production
+        openDatabaseStoreWithKey = DatabaseStoreOpeners.productionWithKey
+        keyCliffRecoveryKeyAccess = .unavailable
+        keyCliffRecoveryResidueScavenger = {
+            KeyCliffRecoveryTransaction.scavengeUncommittedCandidate(for: $0)
+        }
         restartAfterErase = false
         budgetWidgetSnapshotStore = BudgetWidgetSnapshotStore(defaults: nil)
         currentDate = Date.init

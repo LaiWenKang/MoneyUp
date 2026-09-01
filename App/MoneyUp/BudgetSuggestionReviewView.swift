@@ -9,6 +9,7 @@ struct BudgetSuggestionReviewView: View {
     @State private var undoPatch: BudgetSuggestionPatch?
     @State private var isSaving = false
     @State private var errorMessage: String?
+    @State private var loadedLogicalBookRevision: UInt64?
 
     var body: some View {
         List {
@@ -43,18 +44,14 @@ struct BudgetSuggestionReviewView: View {
                 .disabled(selectedIDs.isEmpty || undoPatch != nil || isSaving)
             }
         }
-        .task { await load() }
-        .alert(
-            "error.could_not_save",
-            isPresented: Binding(
-                get: { errorMessage != nil },
-                set: { if !$0 { errorMessage = nil } }
-            )
-        ) {
-            Button("action.okay", role: .cancel) {}
-        } message: {
-            Text(errorMessage ?? "")
+        .task(id: model.logicalBookRevision) { await load() }
+        .onChange(of: model.logicalBookRevision) { _, _ in
+            result = nil
+            selectedIDs = []
+            undoPatch = nil
+            loadedLogicalBookRevision = nil
         }
+        .moneyUpOperationErrorAlert(message: $errorMessage)
     }
 
     @ViewBuilder
@@ -147,9 +144,16 @@ struct BudgetSuggestionReviewView: View {
 
     @MainActor
     private func load() async {
+        let revision = model.logicalBookRevision
         result = nil
+        selectedIDs = []
+        undoPatch = nil
+        loadedLogicalBookRevision = nil
         let loaded = await model.budgetLimitSuggestionsResult()
+        guard revision == model.logicalBookRevision,
+              !model.isBookReplacementInProgress else { return }
         result = loaded
+        loadedLogicalBookRevision = revision
         if case let .available(suggestions) = loaded {
             selectedIDs = Set(suggestions.map(\.categoryID))
         }
@@ -157,15 +161,17 @@ struct BudgetSuggestionReviewView: View {
 
     @MainActor
     private func apply() async {
-        guard case let .some(.available(suggestions)) = result else { return }
+        guard case let .some(.available(suggestions)) = result,
+              let loadedLogicalBookRevision else { return }
         isSaving = true
         defer { isSaving = false }
         do {
             undoPatch = try await model.applyBudgetSuggestions(
-                suggestions.filter { selectedIDs.contains($0.categoryID) }
+                suggestions.filter { selectedIDs.contains($0.categoryID) },
+                expectedLogicalBookRevision: loadedLogicalBookRevision
             )
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = safeUserMessage(for: error, context: .save)
         }
     }
 
@@ -179,7 +185,7 @@ struct BudgetSuggestionReviewView: View {
             self.undoPatch = nil
             await load()
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = safeUserMessage(for: error, context: .save)
         }
     }
 }

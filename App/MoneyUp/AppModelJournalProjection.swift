@@ -39,7 +39,9 @@ extension AppModel {
         // opted-in percentage remains available to the Lock/Home widget. Only
         // destructive erase or a confirmed no-book startup calls the explicit
         // disable helper below.
-        guard let profile else { return }
+        guard !isBookReplacementInProgress,
+              startupFailureKind != .missingDeviceBoundKey,
+              let profile else { return }
         guard profile.showsBudgetStatusWidget else {
             disableBudgetWidgetSnapshot()
             return

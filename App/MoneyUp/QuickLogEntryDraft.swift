@@ -82,6 +82,43 @@ extension QuickLogEntryView {
         applyDraft(draft)
     }
 
+    /// Revokes the persistent form's authority while a book is being
+    /// replaced, then adopts only the candidate book's draft after publication.
+    /// This prevents an old visible form from writing itself into the restored
+    /// book through `draftSnapshot` observation.
+    func reloadDraftForLogicalBookReplacement() {
+        hasRestoredDraft = false
+        cancelReceiptProcessing()
+        cancelCaptureSuggestionLookup()
+        clearPerTransactionReviewState()
+        amountText = ""
+        destinationAmountText = ""
+        accountID = nil
+        destinationAccountID = nil
+        categoryID = nil
+        accountWasEdited = false
+        categoryWasEdited = false
+        occurredAt = model.currentDateForUserAction()
+        dateWasEdited = false
+        payee = ""
+        note = ""
+        smartText = ""
+        splitLines = []
+        sourceCaptureID = nil
+        lastSavedEntryID = nil
+        isUndoing = false
+        isShowingOptionalDetails = false
+        pendingLaunchMode = nil
+        isConfirmingDraftSwitch = false
+        guard !model.isBookReplacementInProgress,
+              model.state == .ready else { return }
+        if !dismissAfterSave, let draft = model.quickLogDraft {
+            applyDraft(draft)
+        }
+        selectDefaults()
+        hasRestoredDraft = true
+    }
+
     func applyDraft(_ draft: QuickLogDraft) {
         kind = draft.kind
         amountText = draft.amountText

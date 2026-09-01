@@ -37,7 +37,8 @@ extension AppModel {
     }
 
     func refreshIntelligence() {
-        guard state == .ready,
+        guard !isBookReplacementInProgress,
+              state == .ready,
               let profile,
               let store,
               profile.intelligenceEnabled else {
@@ -77,23 +78,29 @@ extension AppModel {
             categorySuggestion: nil
         )
         guard state == .ready,
+              !isBookReplacementInProgress,
               profile?.intelligenceEnabled == true,
-              let suggestionStore = store else { return empty }
-        let generation = storeGeneration
+              let read = try? beginLogicalBookRead() else { return empty }
+        let suggestionStore = read.store
         do {
             let candidates = try await suggestionStore.payeeAffinityCandidates(
                 payee: query.payee,
                 currency: query.currency
             )
-            guard ownsStoreGeneration(generation),
-                  let ranked = PayeeAffinityRanker.suggestion(
+            try requireLogicalBookRead(read.token)
+            guard let ranked = PayeeAffinityRanker.suggestion(
                       from: candidates,
                       currency: query.currency,
                       eligibleCategoryIDs: eligibleCategoryIDs
                   ),
                   let mostRecentUse = date(
                       fromIntelligenceDay: ranked.lastOccurrenceDay
-                  ) else { return empty }
+                  ) else {
+                return try await finishLogicalBookRead(
+                    empty,
+                    token: read.token
+                )
+            }
             let evidence = CaptureSuggestionEvidence(
                 supportingEntryCount: ranked.supportingEntryCount,
                 eligibleEntryCount: ranked.eligibleEntryCount,
@@ -101,7 +108,7 @@ extension AppModel {
                 mostRecentUse: mostRecentUse,
                 usedPayeeHistory: true
             )
-            return CaptureSuggestionResult(
+            let result = CaptureSuggestionResult(
                 queryFingerprint: query.fingerprint,
                 accountSuggestion: nil,
                 categorySuggestion: CaptureFieldSuggestion(
@@ -110,6 +117,7 @@ extension AppModel {
                     evidence: evidence
                 )
             )
+            return try await finishLogicalBookRead(result, token: read.token)
         } catch {
             return empty
         }
@@ -124,8 +132,8 @@ extension AppModel {
               entryIDs.count <= Self.maximumIntelligenceHistoryReviewCount else {
             throw AppModelError.invalidBook
         }
-        let generation = storeGeneration
-        let historyStore = try requireStore()
+        let read = try beginLogicalBookRead()
+        let historyStore = read.store
         var result: [JournalEntry] = []
         result.reserveCapacity(entryIDs.count)
         for id in entryIDs where !invalidJournalEntryIDs.contains(id) {
@@ -135,11 +143,16 @@ extension AppModel {
                 id: id.uuidString,
                 from: .journalEntries
             ) {
+                try requireLogicalBookRead(read.token)
                 result.append(entry)
+            } else {
+                try requireLogicalBookRead(read.token)
             }
         }
-        guard ownsStoreGeneration(generation) else { throw AppModelError.locked }
-        return result.sorted { $0.occurredAt > $1.occurredAt }
+        return try await finishLogicalBookRead(
+            result.sorted { $0.occurredAt > $1.occurredAt },
+            token: read.token
+        )
     }
 
     private func date(fromIntelligenceDay value: Int) -> Date? {

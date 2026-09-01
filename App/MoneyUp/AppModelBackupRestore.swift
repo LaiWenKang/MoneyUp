@@ -67,10 +67,10 @@ extension AppModel {
         )
     }
 
-    /// Restores only after the candidate has passed the exact encrypted-store
-    /// and domain load used by the app in an isolated temporary database.
-    /// Cancellation and deterministic lifecycle interruption remain entirely
-    /// before the one live replacement transaction.
+    #if DEBUG
+    /// Test-only compatibility entry points. Release UI and release binaries
+    /// can restore only with a `RestorePreviewTicket` whose private commit copy
+    /// is reverified before this transaction primitive is reached.
     func restoreEncryptedBackup(_ data: Data, password: String) async throws {
         guard PortableArchive.isWithinArchiveByteLimit(data.count) else {
             throw PortableArchiveError.archiveTooLarge
@@ -92,9 +92,33 @@ extension AppModel {
         from archiveURL: URL,
         password: String
     ) async throws {
-        try await beginRestoreMutation()
-        defer { finishExclusiveDataLifecycleMutation() }
+        if startupFailureKind == .missingDeviceBoundKey {
+            throw AppModelError.restorePreviewRequired
+        }
+        try await restoreEncryptedBackupIntoLiveStore(
+            from: archiveURL,
+            password: password
+        )
+    }
 
+    private func restoreEncryptedBackupIntoLiveStore(
+        from archiveURL: URL,
+        password: String
+    ) async throws {
+        try await beginRestoreMutation()
+        defer { finishBookReplacementMutation() }
+
+        try await restoreEncryptedBackupAfterVerifiedTicket(
+            from: archiveURL,
+            password: password
+        )
+    }
+    #endif
+
+    func restoreEncryptedBackupAfterVerifiedTicket(
+        from archiveURL: URL,
+        password: String
+    ) async throws {
         let preparation = try await prepareRestore(
             from: archiveURL,
             password: password
@@ -106,7 +130,11 @@ extension AppModel {
             from: restoreStore,
             generation: generation
         )
-        defer { try? FileManager.default.removeItem(at: rollback.url) }
+        defer {
+            try? Self.removeRestoreTemporaryArchive(
+                restoreRollbackDirectoryURL
+            )
+        }
 
         await lifecycleHooks.checkpoint(.beforeRestoreCommit)
         try Task.checkCancellation()
@@ -170,17 +198,24 @@ extension AppModel {
         }
     }
 
-    private func beginRestoreMutation() async throws {
+    func beginRestoreMutation() async throws {
         guard !isWorking,
               !isLifecycleMutationInProgress,
               !goalMutationBarrierClosed,
               !isJournalMutationInProgress else {
             throw AppModelError.transactionInProgress
         }
+        // Close admission before the first suspension. A normal restore keeps
+        // the same store actor, so a distinct logical revision invalidates
+        // every old-book read even if it resumes after replacement finishes.
+        isBookReplacementInProgress = true
+        logicalBookRevision &+= 1
         isWorking = true
         goalMutationBarrierClosed = true
         await waitForGoalMutationDrain()
         isLifecycleMutationInProgress = true
+        requestedQuickLogMode = nil
+        intelligenceService.cancelPendingWork()
         invalidateInFlightJournalProjection()
     }
 
@@ -188,20 +223,28 @@ extension AppModel {
         from store: EncryptedRecordStore,
         generation: Int
     ) async throws -> RestoreRollbackArchive {
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent(
-                "MoneyUp-Rollback-\(UUID().uuidString).moneyup",
-                isDirectory: false
-            )
+        try Self.removeRestoreTemporaryArchive(restoreRollbackDirectoryURL)
+        try FileManager.default.createDirectory(
+            at: restoreRollbackDirectoryURL,
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
+        let url = restoreRollbackArchiveURL
         let password = UUID().uuidString + UUID().uuidString
         do {
             try await store.exportPortableArchive(to: url, password: password)
+            try FileManager.default.setAttributes(
+                [.posixPermissions: 0o400],
+                ofItemAtPath: url.path
+            )
             guard ownsStoreGeneration(generation) else {
                 throw AppModelError.locked
             }
             return RestoreRollbackArchive(url: url, password: password)
         } catch {
-            try? FileManager.default.removeItem(at: url)
+            try? Self.removeRestoreTemporaryArchive(
+                restoreRollbackDirectoryURL
+            )
             throw error
         }
     }
@@ -210,13 +253,7 @@ extension AppModel {
         from archiveURL: URL,
         password: String
     ) async throws -> RestorePreparation {
-        // A cancelled debounce can already be inside its store operation.
-        // Drain it before taking the rollback snapshot so no pre-restore draft
-        // can wake and overwrite the restored logical book afterward.
-        await finishPendingQuickLogDraftWrite()
         let restoreStore = try requireStore()
-        // Persist the newest in-memory draft before parsing untrusted input.
-        try await flushQuickLogDraftForBackup(to: restoreStore)
         // The redacted inbox cannot safely cross book replacement.
         try await requireEmptyLockedCaptureInbox()
         do {
@@ -239,6 +276,14 @@ extension AppModel {
             password: password
         )
         try Task.checkCancellation()
+
+        // Authentication and full isolated validation must finish before this
+        // restore attempt writes any live-store byte. Once accepted, drain a
+        // debounce that may already be inside its store operation, then persist
+        // the newest in-memory draft before creating the rollback checkpoint.
+        await finishPendingQuickLogDraftWrite()
+        try Task.checkCancellation()
+        try await flushQuickLogDraftForBackup(to: restoreStore)
         return preparation
     }
 
@@ -316,10 +361,11 @@ extension AppModel {
     /// A restore candidate is never trial-applied to the live database. The
     /// temporary key exists only long enough to open a disposable SQLCipher
     /// file and is explicitly overwritten on every exit path.
+    @discardableResult
     func validateRestoreCandidateInIsolation(
         from archiveURL: URL,
         password: String
-    ) async throws {
+    ) async throws -> RestoreCandidatePreviewValidation {
         try Task.checkCancellation()
         let directoryURL = restoreValidationDirectoryURL
         let databaseURL = directoryURL.appendingPathComponent(
@@ -336,9 +382,10 @@ extension AppModel {
         )
         validationKey.resetBytes(in: 0..<validationKey.count)
 
+        var validationResult: RestoreCandidatePreviewValidation?
         var validationFailure: (any Error)?
         do {
-            try await validateRestoreCandidate(
+            validationResult = try await validateRestoreCandidate(
                 in: validationStore,
                 archiveURL: archiveURL,
                 password: password
@@ -357,6 +404,8 @@ extension AppModel {
             validationFailure = AppModelError.invalidBook
         }
         if let validationFailure { throw validationFailure }
+        guard let validationResult else { throw AppModelError.invalidBook }
+        return validationResult
     }
 
     private func prepareRestoreValidationDirectory(_ directoryURL: URL) throws {
@@ -391,12 +440,12 @@ extension AppModel {
         }
     }
 
-    private func validateRestoreCandidate(
+    func validateRestoreCandidate(
         in store: EncryptedRecordStore,
         archiveURL: URL,
         password: String
-    ) async throws {
-        try await store.restorePortableArchive(
+    ) async throws -> RestoreCandidatePreviewValidation {
+        let archiveMetadata = try await store.restorePortableArchive(
             from: archiveURL,
             password: password
         )
@@ -423,7 +472,7 @@ extension AppModel {
             throw AppModelError.invalidBook
         }
         try validationModel.validateLoadedBook()
-        try await RestoreCandidateValidator.validateRelationships(
+        let entryMetadata = try await RestoreCandidateValidator.validateRelationships(
             profile: validationModel.profile,
             accounts: validationModel.accounts,
             budgetNodes: validationModel.budgetNodes,
@@ -434,6 +483,19 @@ extension AppModel {
             in: store
         )
         try Task.checkCancellation()
+        let countSnapshot = try await store.recordCountSnapshot()
+        let currencies = validationModel.restorePreviewCurrencyCodes(
+            journalCurrencies: entryMetadata.currencies
+        )
+        return RestoreCandidatePreviewValidation(
+            archiveMetadata: archiveMetadata,
+            countSnapshot: countSnapshot,
+            entryMetadata: entryMetadata,
+            currencies: currencies,
+            quarantinedRecordCount: validationModel.recoveryIssueCount,
+            reportingTimeZoneIdentifier:
+                validationModel.profile?.reportingTimeZoneIdentifier ?? "GMT"
+        )
     }
 
     static func temporaryRestoreValidationKey() -> Data {

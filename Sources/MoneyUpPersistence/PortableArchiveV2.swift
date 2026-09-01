@@ -18,6 +18,7 @@ enum PortableArchiveV2 {
         RecordWrite.maximumReceiptPayloadByteCount
 
     struct Metadata: Equatable, Sendable {
+        let archiveVersion: Int
         let schemaVersion: Int32
         let createdAt: Date
         let recordCount: Int
@@ -190,10 +191,19 @@ enum PortableArchiveV2 {
                 try onRecord(record)
             }
             let metrics = try metrics(for: snapshot.records)
-            return try metadata(
+            let currentMetadata = try metadata(
                 schemaVersion: snapshot.schemaVersion,
                 createdAt: snapshot.createdAt,
                 metrics: metrics
+            )
+            return Metadata(
+                archiveVersion: PortableArchive.legacyVersion,
+                schemaVersion: currentMetadata.schemaVersion,
+                createdAt: currentMetadata.createdAt,
+                recordCount: currentMetadata.recordCount,
+                payloadByteCount: currentMetadata.payloadByteCount,
+                plaintextByteCount: currentMetadata.plaintextByteCount,
+                chunkCount: currentMetadata.chunkCount
             )
         }
         guard discriminator == UInt8(PortableArchive.currentVersion) else {

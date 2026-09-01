@@ -11,6 +11,32 @@ typealias DatabaseStoreOpener = @Sendable (
     _ databaseURL: URL
 ) async throws -> OpenedDatabaseStore
 
+typealias DatabaseStoreWithKeyOpener = @Sendable (
+    _ databaseURL: URL,
+    _ key: Data
+) async throws -> EncryptedRecordStore
+
+/// Explicit key access used only by the missing-device-key recovery
+/// transaction. Keeping it injectable lets tests prove that archive rejection
+/// and cancellation never touch the live Keychain item.
+struct KeyCliffRecoveryKeyAccess: Sendable {
+    let generate: @Sendable () throws -> Data
+    let store: @Sendable (Data) throws -> Void
+    let delete: @Sendable () throws -> Void
+
+    static let production = KeyCliffRecoveryKeyAccess(
+        generate: { try DatabaseKeyStore.generateRecoveryKey() },
+        store: { try DatabaseKeyStore.storeRecoveryKey($0) },
+        delete: { try DatabaseKeyStore.deleteKey() }
+    )
+
+    static let unavailable = KeyCliffRecoveryKeyAccess(
+        generate: { throw DatabaseKeyStoreError.invalidStoredKey },
+        store: { _ in throw DatabaseKeyStoreError.invalidStoredKey },
+        delete: {}
+    )
+}
+
 enum DatabaseStoreOpeners {
     /// Preserves the production boundary exactly: Keychain access and SQLCipher
     /// opening stay off the main actor, and key bytes are overwritten on exit.
@@ -46,6 +72,14 @@ enum DatabaseStoreOpeners {
             )
             transfersUsefulContentInterval = true
             return opened
+        }.value
+    }
+
+    static let productionWithKey: DatabaseStoreWithKeyOpener = {
+        databaseURL,
+        key in
+        try await Task.detached(priority: .userInitiated) {
+            try EncryptedRecordStore(databaseURL: databaseURL, key: key)
         }.value
     }
 }
@@ -101,6 +135,12 @@ enum AppModelLifecycleCheckpoint: Equatable, Sendable {
     /// The candidate replacement is durable, but candidate state has not been
     /// decoded into the live model yet.
     case afterRestoreCommitBeforeCandidateLoad
+    /// A key-cliff candidate has reopened and passed domain validation, while
+    /// its crash-resumption manifest still prevents any external publication.
+    case afterKeyCliffValidationBeforeCompletion
+    /// A deterministic test boundary after a book-scoped read has completed
+    /// its storage work but before its value may escape to a caller.
+    case afterBookScopedReadBeforeReturn
     case afterJournalProjectionReadBeforePublish
     case beforeNetWorthSnapshotCommit
     case beforeInvestmentCorrectionCommit

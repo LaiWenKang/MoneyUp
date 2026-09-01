@@ -23,6 +23,7 @@ struct IntelligenceScheduleReviewView: View {
     @State private var frequency: RecurrenceFrequency
     @State private var didApplyReportingDate = false
     @State private var isSaving = false
+    @State private var amountValidationMessage: String?
     @State private var errorMessage: String?
 
     init(selection: IntelligenceScheduleSelection) {
@@ -50,6 +51,10 @@ struct IntelligenceScheduleReviewView: View {
                     TextField("schedule.name", text: $name)
                     TextField("transaction.amount", text: $amountText)
                         .keyboardType(.decimalPad)
+                        .moneyUpFieldValidation(amountValidationMessage)
+                    if let amountValidationMessage {
+                        MoneyUpFieldError(message: amountValidationMessage)
+                    }
                     Picker("transaction.account", selection: $accountID) {
                         ForEach(eligibleAccounts) { account in
                             Text(account.name).tag(account.id)
@@ -83,9 +88,6 @@ struct IntelligenceScheduleReviewView: View {
                     )
                 }
 
-                if let errorMessage {
-                    Section { Text(errorMessage).foregroundStyle(.red) }
-                }
             }
             .navigationTitle("intelligence.schedule.title")
             .navigationBarTitleDisplayMode(.inline)
@@ -102,6 +104,7 @@ struct IntelligenceScheduleReviewView: View {
                 }
             }
             .onAppear { applyReportingDateOnce() }
+            .moneyUpOperationErrorAlert(message: $errorMessage)
         }
         .interactiveDismissDisabled(isSaving)
     }
@@ -137,8 +140,10 @@ struct IntelligenceScheduleReviewView: View {
 
     @MainActor
     private func save() async {
+        amountValidationMessage = nil
+        errorMessage = nil
         guard let amount = decimalAmount(from: amountText), amount > .zero else {
-            errorMessage = AppLocalization.string("error.invalid_amount")
+            amountValidationMessage = AppLocalization.string("error.invalid_amount")
             return
         }
         isSaving = true

@@ -12,8 +12,8 @@ extension AppModel {
         after cursor: JournalEntryPageCursor? = nil,
         limit: Int = 80
     ) async throws -> HistoryPageResult {
-        let generation = storeGeneration
-        let historyStore = try requireStore()
+        let read = try beginLogicalBookRead()
+        let historyStore = read.store
         let accountSnapshot = accounts
         let calendarSnapshot = reportingCalendar
         let dayKeys = historyDayKeys(for: query, calendar: calendarSnapshot)
@@ -32,9 +32,7 @@ extension AppModel {
                 after: scanCursor,
                 limit: scanLimit
             )
-            guard isCurrentStoreGeneration(generation) else {
-                throw AppModelError.locked
-            }
+            try requireLogicalBookRead(read.token)
             recordHistoryDecodeIssues(rawPage.issues)
             let relationshipIssues = rawPage.entries.filter { entry in
                 entry.postings.contains { !validAccountIDs.contains($0.accountID) }
@@ -57,39 +55,50 @@ extension AppModel {
                     calendar: calendarSnapshot
                 )
             }.value
+            try requireLogicalBookRead(read.token)
             let remaining = boundedLimit - matches.count
             matches.append(contentsOf: filtered.prefix(remaining))
 
             if filtered.count >= remaining {
                 let moreResultsMayExist = filtered.count > remaining
                     || rawPage.nextCursor != nil
-                return HistoryPageResult(
-                    entries: matches,
-                    nextCursor: moreResultsMayExist
-                        ? matches.last.map {
-                            JournalEntryPageCursor(
-                                occurredAt: $0.occurredAt,
-                                recordID: $0.id.uuidString
-                            )
-                        }
-                        : nil
+                return try await finishLogicalBookRead(
+                    HistoryPageResult(
+                        entries: matches,
+                        nextCursor: moreResultsMayExist
+                            ? historyCursor(for: matches.last)
+                            : nil
+                    ),
+                    token: read.token
                 )
             }
             guard let nextCursor = rawPage.nextCursor else {
-                return HistoryPageResult(entries: matches, nextCursor: nil)
+                return try await finishLogicalBookRead(
+                    HistoryPageResult(entries: matches, nextCursor: nil),
+                    token: read.token
+                )
             }
             scanCursor = nextCursor
         }
 
-        return HistoryPageResult(
-            entries: matches,
-            nextCursor: matches.last.map {
-                JournalEntryPageCursor(
-                    occurredAt: $0.occurredAt,
-                    recordID: $0.id.uuidString
-                )
-            }
+        return try await finishLogicalBookRead(
+            HistoryPageResult(
+                entries: matches,
+                nextCursor: historyCursor(for: matches.last)
+            ),
+            token: read.token
         )
+    }
+
+    private func historyCursor(
+        for entry: JournalEntry?
+    ) -> JournalEntryPageCursor? {
+        entry.map {
+            JournalEntryPageCursor(
+                occurredAt: $0.occurredAt,
+                recordID: $0.id.uuidString
+            )
+        }
     }
 
     private func historyDayKeys(
@@ -115,8 +124,8 @@ extension AppModel {
     /// full-journal filter runs on the main thread and no decoded result set is
     /// retained after the summary is returned.
     func historySummary(query: HistoryQuery) async throws -> HistorySummary {
-        let generation = storeGeneration
-        let historyStore = try requireStore()
+        let read = try beginLogicalBookRead()
+        let historyStore = read.store
         let accountSnapshot = accounts
         let calendarSnapshot = reportingCalendar
         let startDayKey = query.startDate.flatMap {
@@ -145,9 +154,7 @@ extension AppModel {
                 after: cursor,
                 limit: 500
             )
-            guard isCurrentStoreGeneration(generation) else {
-                throw AppModelError.locked
-            }
+            try requireLogicalBookRead(read.token)
             recordHistoryDecodeIssues(rawPage.issues)
             let relationshipIssues = rawPage.entries.filter { entry in
                 entry.postings.contains { !validAccountIDs.contains($0.accountID) }
@@ -174,6 +181,7 @@ extension AppModel {
                     accounts: accountSnapshot
                 )
             }.value
+            try requireLogicalBookRead(read.token)
             transactionCount += pageSummary.transactionCount
             for (currency, amount) in pageSummary.amountsByCurrency {
                 amountsByCurrency[currency] = try CheckedDecimal.adding(
@@ -184,9 +192,12 @@ extension AppModel {
             cursor = rawPage.nextCursor
         } while cursor != nil
 
-        return HistorySummary(
-            transactionCount: transactionCount,
-            amountsByCurrency: amountsByCurrency
+        return try await finishLogicalBookRead(
+            HistorySummary(
+                transactionCount: transactionCount,
+                amountsByCurrency: amountsByCurrency
+            ),
+            token: read.token
         )
     }
 
@@ -194,14 +205,16 @@ extension AppModel {
     /// SQLCipher index. The result is never merged into the recent cache and a
     /// date change can cancel the caller's task without leaving partial state.
     func calendarEntries(in interval: DateInterval) async throws -> [JournalEntry] {
+        let read = try beginLogicalBookRead()
         guard let dayKeys = FinancialPeriodBoundary.dayKeyRange(
             for: interval,
             calendar: reportingCalendar
         ) else { throw AppModelError.invalidBook }
-        return try await journalEntries(
+        let entries = try await journalEntries(
             startDayKey: dayKeys.lowerBound,
             endDayKeyExclusive: dayKeys.upperBound
         )
+        return try await finishLogicalBookRead(entries, token: read.token)
     }
 
     /// Complete normalized posting events for a bounded derived-data horizon.
@@ -211,8 +224,8 @@ extension AppModel {
     func journalPostingEvents(
         in interval: DateInterval
     ) async throws -> [LedgerPostingEvent] {
-        let generation = storeGeneration
-        let eventStore = try requireStore()
+        let read = try beginLogicalBookRead()
+        let eventStore = read.store
         guard let dayKeys = FinancialPeriodBoundary.dayKeyRange(
             for: interval,
             calendar: reportingCalendar
@@ -221,8 +234,8 @@ extension AppModel {
             originDayKeyRange: dayKeys,
             excludingEntryIDs: invalidJournalEntryIDs
         )
-        guard ownsStoreGeneration(generation) else { throw AppModelError.locked }
-        return events
+        try requireLogicalBookRead(read.token)
+        return try await finishLogicalBookRead(events, token: read.token)
     }
 
     /// Schedule matching remains exact while bounding the candidate read to a
@@ -231,6 +244,7 @@ extension AppModel {
         for schedule: ScheduledTransaction,
         calendar: Calendar? = nil
     ) async throws -> [JournalEntry] {
+        let read = try beginLogicalBookRead()
         let matchCalendar = calendar ?? reportingCalendar
         guard let start = matchCalendar.date(
             byAdding: .day,
@@ -253,9 +267,10 @@ extension AppModel {
             startDayKey: dayKeys.lowerBound,
             endDayKeyExclusive: dayKeys.upperBound
         )
-        return candidates.filter {
+        let matches = candidates.filter {
             !linkedIDs.contains($0.id) && schedule.matches($0)
         }
+        return try await finishLogicalBookRead(matches, token: read.token)
     }
 
     func journalEntries(
@@ -265,8 +280,8 @@ extension AppModel {
         endDayKeyExclusive: Int? = nil,
         includeInvalidRelationships: Bool = false
     ) async throws -> [JournalEntry] {
-        let generation = storeGeneration
-        let journalStore = try requireStore()
+        let read = try beginLogicalBookRead()
+        let journalStore = read.store
         let validAccountIDs = Set(accounts.map(\.id))
         let quarantinedEntryIDs = invalidJournalEntryIDs
         var cursor: JournalEntryPageCursor?
@@ -281,9 +296,7 @@ extension AppModel {
                 after: cursor,
                 limit: 500
             )
-            guard ownsStoreGeneration(generation) else {
-                throw AppModelError.locked
-            }
+            try requireLogicalBookRead(read.token)
             recordHistoryDecodeIssues(page.issues)
             for entry in page.entries {
                 guard !quarantinedEntryIDs.contains(entry.id) else { continue }
@@ -304,7 +317,7 @@ extension AppModel {
             }
             cursor = page.nextCursor
         } while cursor != nil
-        return result
+        return try await finishLogicalBookRead(result, token: read.token)
     }
 
     /// Explicit export/import/lifecycle operations need one coherent journal
@@ -314,19 +327,19 @@ extension AppModel {
     func journalSnapshot(
         includeInvalidRelationships: Bool
     ) async throws -> [JournalEntry] {
-        let generation = storeGeneration
-        let snapshotStore = try requireStore()
+        let read = try beginLogicalBookRead()
+        let snapshotStore = read.store
         let recovered = try await snapshotStore.fetchAllIdentifiedRecovering(
             JournalEntry.self,
             from: .journalEntries
         )
-        guard ownsStoreGeneration(generation) else { throw AppModelError.locked }
+        try requireLogicalBookRead(read.token)
         recordHistoryDecodeIssues(recovered.issues)
         let validAccountIDs = Set(accounts.map(\.id))
         let quarantinedEntryIDs = invalidJournalEntryIDs.union(
             recovered.issues.compactMap { UUID(uuidString: $0.recordID) }
         )
-        return recovered.values.filter { entry in
+        let entries = recovered.values.filter { entry in
             guard !quarantinedEntryIDs.contains(entry.id) else { return false }
             let valid = entry.postings.allSatisfy {
                 validAccountIDs.contains($0.accountID)
@@ -341,6 +354,7 @@ extension AppModel {
             }
             return valid || includeInvalidRelationships
         }
+        return try await finishLogicalBookRead(entries, token: read.token)
     }
 
     func recordHistoryDecodeIssues(_ issues: [RecordDecodeIssue]) {
