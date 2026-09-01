@@ -587,6 +587,7 @@ final class AppModelTests: XCTestCase {
             profile: oldProfile,
             accounts: [fixture.wallet, fixture.food]
         )
+        await fixture.store.close()
         let recoveryKey = Data(repeating: 0x7d, count: 32)
         try KeyCliffRecoveryTransaction.prepareCandidateDirectory(
             for: fixture.databaseURL
@@ -968,6 +969,10 @@ final class AppModelTests: XCTestCase {
         async throws {
         let fixture = try AppModelFixture()
         defer { fixture.removeFiles() }
+        try await fixture.seed(
+            profile: UserProfile(baseCurrency: fixture.sgd),
+            accounts: [fixture.wallet, fixture.food]
+        )
         let archiveURL = fixture.directoryURL.appendingPathComponent(
             "passcode-preflight.moneyup"
         )
