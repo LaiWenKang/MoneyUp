@@ -6,8 +6,9 @@
 flowchart TD
     Widget["Redacted widget"] --> Capture["Encrypted Quick Capture inbox"]
     App["Authenticated SwiftUI app"] --> Core["MoneyUpCore"]
+    App --> Intel["MoneyUpIntelligence"]
     App --> Store["MoneyUpPersistence"]
-    Store --> Cipher["SQLCipher schema 6"]
+    Store --> Cipher["SQLCipher schema 7"]
     App --> Shared["Percent/state-only App Group"]
     Shared --> Widget
     App --> Files["CSV/XLSX/import/archive"]
@@ -32,6 +33,7 @@ required.
 |---|---|---|
 | MoneyUp app | Observation-tracked state coordinator, locking, bilingual SwiftUI, local guidance and workflows | Implemented — verification pending |
 | MoneyUpCore | Exact money, ledger, hierarchy, recurrence, goals, investments, reports, export rules | Implemented in source; exact-candidate core tests open |
+| MoneyUpIntelligence | Pure deterministic detectors, exact evidence contracts, projections, and budget proposals; depends only on MoneyUpCore | Implemented in source; final W2 exact-SHA gate open |
 | MoneyUpPersistence | SQLCipher schema/migrations, normalized encrypted indexes, atomic writes, snapshots | Implemented in source; Mac test gate open |
 | Widget | Redacted actions plus opt-in percentage/state status | Implemented in source; App Group registration/signing and device matrix open |
 | Portability | CSV/XLSX, mapped local import, sanitized encrypted attachments, file-backed archive lifecycle | Implemented in source; exact-candidate and physical restore/export drills open |
@@ -60,7 +62,7 @@ Mutable screen state is owned by injected, independently observable services:
 | `AssetsService` | Holdings, dated rates, and net-worth snapshots |
 | `PortabilityService` | Recovery and quarantine presentation state |
 | `CaptureService` | Draft, receipt metadata, locked-capture count, and Log routing |
-| `IntelligenceService` | Cancellation seam reserved for the separately reviewed intelligence workstream |
+| `IntelligenceService` | Findings, refresh/cancellation state, indexed capture suggestions, projections, and reviewed budget proposals |
 
 The services do not own SQLCipher connections and cannot open an independent
 transaction. `AppModel` still coordinates locking, generation checks,
@@ -105,7 +107,29 @@ transaction for all affected records. The operation either commits completely
 or rolls back completely. The six-second Undo is offered only after a committed
 save and reverses the same derived effects once.
 
-## Ledger and SQLCipher schema 6
+## Intelligence boundary
+
+`MoneyUpIntelligence` has no SwiftUI, SQLCipher, Keychain, network, logging, or
+locale dependency. Detectors consume normalized `Sendable` values and exact
+`Decimal` money, and emit stable localization keys, rule IDs, sample sizes,
+confidence classes, exact figures, and bounded routes. The app localizes those
+contracts only when rendering, so identical inputs produce byte-stable findings
+across English and Simplified Chinese.
+
+Routine payee affinity and detector reads use schema-7 indexes and decode zero
+journal payloads. Observation queries are capped at 5,000 rows. A user-triggered
+History review decodes only the requested entry IDs and caps the route at 100.
+Recurrence findings can prefill an editable schedule but never save it;
+budget suggestions present a before/after diff and apply selected changes in one
+transaction with one-action atomic undo. Projections keep actuals, confirmed
+remaining schedules, and flexible burn rate separate for each currency and
+never invent FX or substitute zero for missing evidence.
+
+The non-sensitive System/English/Simplified Chinese preference is stored in the
+reviewed App Group defaults so app and widget agree. It is deliberately separate
+from the financial profile, reporting time zone, stored text, and parsing rules.
+
+## Ledger and SQLCipher schema 7
 
 Normal views do not create postings directly. `TransactionFactory` creates
 balanced expense, income, transfer, foreign-exchange, refund, reconciliation,
@@ -113,9 +137,9 @@ split, investment purchase/sale, and valuation entries. `JournalEntry`
 validates each currency independently at initialization and decoding, and
 retains originating calendar/time-zone facts plus a stable local-day key.
 
-Schema 6 retains deterministic encrypted record payloads and the normalized
-encrypted support tables. It adds constant-size store totals and historical
-budget-attribution indexes to the schema-4 ledger and attachment projections:
+Schema 7 retains deterministic encrypted record payloads and the normalized
+encrypted support tables. It extends schema 6 with derived local-intelligence
+facts while retaining constant-size totals and historical budget attribution:
 
 | Table/index | Purpose |
 |---|---|
@@ -126,6 +150,10 @@ budget-attribution indexes to the schema-4 ledger and attachment projections:
 | `store_metrics` | Trigger-maintained exact record/payload/identity totals used to enforce the portable-recovery envelope in O(1) memory |
 | `budget_attribution_entry_index` | Stable historical budget day, entry timestamp, and matching semantic integrity fingerprint without attribution JSON decode |
 | `budget_attribution_posting_index` | Historical category/currency/amount postings used by bounded rollover queries |
+| `intelligence_control` | Transactional enabled/disabled state for derived intelligence maintenance |
+| `ledger_account_intelligence_index` | Minimal account kind/currency/system-role/archive classification |
+| `journal_intelligence_source_index` | Normalized payee key and entry kind linked to the journal index |
+| `payee_affinity_index` | Full-book category frequency/recency aggregates for bounded Quick Log suggestions |
 
 Routine writes apply exact `-old + new` posting deltas to compact balance rows
 inside the same transaction. A full rebuild is reserved for migration,
@@ -137,8 +165,11 @@ recent cache into an accidental full journal.
 Schema-1/2 books migrate by decoding each legacy journal payload once to build
 the normalized indexes without changing the original payload, timestamp, or
 identifier. Later migrations add receipt metadata, exact store metrics, and
-budget-attribution projections without rewriting valid payloads. Raw malformed
-rows remain quarantined instead of blocking the readable book.
+budget-attribution projections without rewriting valid payloads. The 6-to-7
+migration decodes only metadata that schema 6 did not normalize (payee, kind,
+and account classification) inside the migration transaction, then builds the
+derived indexes without changing payload bytes, hashes, IDs, or timestamps.
+Raw malformed rows remain quarantined instead of blocking the readable book.
 
 ## Planning and investment records
 
@@ -188,8 +219,8 @@ bytes, user-authored identifiers, names, amounts, currencies, notes, or balances
 
 ## Evidence boundary
 
-This architecture includes the source-integrated 0.7.0 W1 candidate. It is not
-a claim that Swift/XCTest compiled on the final W1 SHA, that the 10,000-entry
-physical budgets passed, that upgrade/restore succeeded on iPhones, or that
-TestFlight/App Review accepted a binary. Those gates remain tracked in
+W1 is merged and its exact merged-main CI passed. This architecture also
+includes the source-integrated W2 candidate; it is not a claim that final W2
+PR/merged-main CI, 10,000-entry physical budgets, upgrade/restore on iPhones, or
+TestFlight/App Review passed. Those gates remain tracked in
 [Golden PRD traceability](GOLDEN_TRACEABILITY.md).

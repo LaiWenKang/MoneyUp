@@ -9,7 +9,8 @@ from normal logging flows.
 JournalEntry
 ├── identity, kind, occurred time, created time
 ├── origin calendar, time zone, UTC offset, and stable local-day key
-├── optional payee, note, source fingerprint, and revision lineage
+├── optional payee/title-or-merchant, note/description, source fingerprint,
+│   and revision lineage
 └── Posting (two or more)
     ├── ledger account
     └── signed Decimal amount, currency, and optional split note
@@ -111,9 +112,9 @@ than three visible levels and uses tags for orthogonal context.
 
 ## SQLCipher records and normalized indexes
 
-Deterministic encrypted payloads remain the recovery source of truth. Schema 6
-includes normalized ledger, attachment, store-envelope, and historical budget
-projections:
+Deterministic encrypted payloads remain the recovery source of truth. Schema 7
+includes normalized ledger, attachment, store-envelope, historical budget, and
+derived intelligence projections:
 
 | Structure | Contract |
 |---|---|
@@ -124,6 +125,10 @@ projections:
 | `store_metrics` | Trigger-maintained exact record, payload, record-ID, and collection-byte totals |
 | `budget_attribution_entry_index` | Stable historical budget day/timestamp plus a semantic integrity fingerprint per attributed entry |
 | `budget_attribution_posting_index` | Original category/currency/amount postings used after audited lifecycle rewrites |
+| `intelligence_control` | Whether derived intelligence tables are maintained; disabling does not remove journal data |
+| `ledger_account_intelligence_index` | Minimal account classification required by pure intelligence queries |
+| `journal_intelligence_source_index` | Normalized payee and kind metadata tied to the journal entry index |
+| `payee_affinity_index` | Deterministic category occurrence/recency aggregates per normalized payee and currency |
 
 Normal unlock loads compact non-journal state, exact balances/counts, indexed
 budget-attribution health, and a bounded recent page rather than the complete
@@ -133,12 +138,12 @@ the exact attribution/audit validator. Routine mutations update indexes,
 metrics, and balance deltas in the same transaction. Full rebuild is limited to
 migration, restore, or repair.
 
-### 0.7.0 W1 representation compatibility
+### 0.7.0 W1 compatibility and W2 additive representation
 
-The Observation migration and service split change only in-memory ownership.
-They add no collection, column, payload field, identifier, timestamp, or schema
-migration; SQLCipher `user_version` remains 6. The services receive decoded
-state from the `AppModel` coordinator and do not own a store connection.
+The W1 Observation migration and service split changed only in-memory ownership
+and left SQLCipher at schema 6. W2 adds schema 7 support tables and one profile
+preference; it does not change accounting payload shape. Services receive
+decoded state from the `AppModel` coordinator and do not own a store connection.
 
 Save, edit, delete, split, import, reconciliation, schedule posting, lifecycle,
 attachment-retention, and goal-movement paths still construct their complete
@@ -152,11 +157,28 @@ mutation lane re-reads the latest committed profile for each queued change; it
 does not introduce an event log or new representation. A failed candidate is
 discarded without publishing or rewriting unrelated committed fields.
 
+W2 adds `UserProfile.intelligenceEnabled`; legacy profiles decode it as `true`.
+Disabling persists the preference, clears schema-7 derived tables, and cancels
+published findings in the same serialized operation. Re-enabling explicitly
+rebuilds the derived facts. Journal payloads remain the source of truth and are
+not deleted or rewritten by opt-out.
+
+The schema-6-to-7 migration performs the approved one-time decode of payee,
+entry kind, and account metadata that schema 6 did not contain. It runs inside
+the migration transaction and preserves journal payload bytes, hashes,
+identifiers, and timestamps. Routine intelligence lookup is index-only; rebuild
+is limited to migration, restore, repair, or explicit re-enable.
+
+The UI-language preference is non-financial App Group defaults state shared by
+the app and widget. It does not alter stored title/merchant text, notes,
+reporting time zones, currency, detector input, or serialized finding bytes.
+
 Malformed or orphaned rows are quarantined from calculations but their raw
 encrypted records remain in snapshots and archives. Schema-1/2 migration builds
 the ledger indexes without changing valid legacy payloads, identifiers,
 timestamps, or stored decimal precision; later migrations add receipt metadata,
-store metrics, and budget attribution indexes without rewriting valid payloads.
+store metrics, budget attribution, and intelligence indexes without rewriting
+valid payloads.
 
 ## Quick-log draft and receipt attachment
 

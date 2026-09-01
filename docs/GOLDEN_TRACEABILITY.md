@@ -1,18 +1,16 @@
-# Golden PRD Traceability - MoneyUp 0.6.0 / 0.7.0 W1 Candidate
+# Golden PRD Traceability - MoneyUp 0.6.0 / 0.7.0 W1-W2 Candidate
 
-Reconciled: 30 August 2026
+Reconciled: 1 September 2026
 
-This is the requirement-to-evidence map for the source-integrated MoneyUp 0.6.0
-candidate (source build 8) plus the behavior-neutral 0.7.0 W1 architecture
-slice. It prevents "implemented in source" from being misreported as
-"released" or "accepted."
+This is the requirement-to-evidence map for the MoneyUp 0.6.0 baseline, merged
+0.7.0 W1 architecture slice, and source-integrated W2 candidate. It prevents
+"implemented in source" from being misreported as "released" or "accepted."
 
 The approved 0.6.0 baseline was
-`ff272da89de9f4e3cb9c44d4abd27deae7d2b338`. Current `main`
-`ae5a9cb06dae0428921df5d6d0da916eea80b87a` additionally contains the
-reviewed explainable-capture amendment from PR #28. W1 is integrating that
-amendment without changing its accounting, persistence, navigation, or privacy
-semantics. The unified W1 merge SHA and its CI evidence remain open.
+`ff272da89de9f4e3cb9c44d4abd27deae7d2b338`. W1 merged through PR #30 at
+`da88df25ab06e93ec5998a9edbcf0153587a9af2`; its exact merged-main CI passed.
+W2 is additive work on a review branch. Its final branch and merged-main CI,
+physical-device evidence, and release evidence remain open.
 
 The exact 97-row requirement-to-test mapping is in
 [REQUIREMENTS_TEST_MATRIX.md](REQUIREMENTS_TEST_MATRIX.md). The complete source,
@@ -38,11 +36,25 @@ exact-candidate run.
 
 | ID | Implementation and evidence anchor | Current evidence state |
 |---|---|---|
-| W1-OBS | `@Observable AppModel`, `@Environment(AppModel.self)`, the five observable service state owners, and `AppModelTests.testObservationInvalidatesOnlyTrackedAppModelProperties` replace global `ObservableObject` broadcasts with tracked reads. Async persisted settings intentionally retain explicit bindings instead of direct synchronous mutation. | Implemented — verification pending; unified PR-head and merged-SHA CI remain release blockers. |
-| W1-SVC | `AppModelServices`, protocol seams, and bounded `AppModel*` extensions separate Ledger, Planning, Assets, Portability, Capture, and future Intelligence ownership while the coordinator retains lock, generation, cancellation, and cross-service sequencing. | Implemented — verification pending; no physical performance claim. |
-| W1-C12 | `ProfileMutationSerializer`, `testProfileMutationsSerializeAndPreserveLatestUnrelatedChoices`, and `testFailedProfileMutationDoesNotRollBackUnrelatedSetting` enforce FIFO latest-choice convergence and scoped failure isolation without a profile representation change. | Implemented — verification pending. |
-| W1-TXN | The operation-specific AppModel tests mapped under DAT-09 cover save, edit, delete, split/attachment, import, reconciliation, schedule posting, lifecycle, and goal movement; store rollback tests retain the durable boundary. | Implemented — verification pending; physical interruption remains deferred. |
-| W1-STRUCT | `Scripts/validate_swift_structure.py`, its release-validator invocation, and the explicit CI step enforce 1,200-line files, 600-line type/extension bodies, and 80-line function bodies under `App/` and `Sources/`. | Release blocker: the new gate must pass on the final PR and merged SHA. |
+| W1-OBS | `@Observable AppModel`, `@Environment(AppModel.self)`, the five observable service state owners, and `AppModelTests.testObservationInvalidatesOnlyTrackedAppModelProperties` replace global `ObservableObject` broadcasts with tracked reads. Async persisted settings intentionally retain explicit bindings instead of direct synchronous mutation. | Merged; exact PR-head and merged-main CI passed. |
+| W1-SVC | `AppModelServices`, protocol seams, and bounded `AppModel*` extensions separate Ledger, Planning, Assets, Portability, Capture, and Intelligence ownership while the coordinator retains lock, generation, cancellation, and cross-service sequencing. | Merged; automated gate passed; physical performance remains deferred. |
+| W1-C12 | `ProfileMutationSerializer`, `testProfileMutationsSerializeAndPreserveLatestUnrelatedChoices`, and `testFailedProfileMutationDoesNotRollBackUnrelatedSetting` enforce FIFO latest-choice convergence and scoped failure isolation without a profile representation change. | Merged; exact merged-main CI passed. |
+| W1-TXN | The operation-specific AppModel tests mapped under DAT-09 cover save, edit, delete, split/attachment, import, reconciliation, schedule posting, lifecycle, and goal movement; store rollback tests retain the durable boundary. | Merged; automated gate passed; physical interruption remains deferred. |
+| W1-STRUCT | `Scripts/validate_swift_structure.py`, its release-validator invocation, and the explicit CI step enforce 1,200-line files, 600-line type/extension bodies, and 80-line function bodies under `App/` and `Sources/`. | Merged; exact PR-head and merged-main CI passed. |
+
+## 0.7.0 W2 intelligence and configurability traceability
+
+| ID | Implementation and evidence anchor | Current evidence state |
+|---|---|---|
+| W2-MOD | `MoneyUpIntelligence` depends only on `MoneyUpCore`; its exact-Decimal detectors and stable finding contracts have no UI, database, network, logging, or locale dependency. | Source implemented; final W2 exact-SHA CI open. |
+| W2-S7 | Schema 7 adds `intelligence_control`, account/source facts, and `payee_affinity_index`. The approved migration decodes only missing metadata inside one transaction and preserves payload bytes, hashes, IDs, and timestamps. | Source implemented; migration/rollback CI and physical upgrade evidence open. |
+| W2-AFF | Full-book affinity updates with journal/account lifecycle writes; bounded routine reads decode zero journal payloads. History evidence is user-triggered, exact-ID, and capped at 100. | Source implemented; indexed read/edit/delete/restore tests present; final CI open. |
+| W2-DET | Weekly/monthly/yearly recurrence, lapse, price-step, exact duplicate, and category/currency median-MAD anomaly findings remain explainable and advisory. Transfers/splits and required negative cases fail closed. | Source implemented; pure tests and committed oracle present; physical accuracy review open. |
+| W2-PROJ | Month-end actuals, confirmed remaining schedules, and flexible burn rate remain separate per currency; missing evidence produces `DV-009`, never zero or FX. | Source implemented; deterministic app-model tests present; final CI open. |
+| W2-BUD | Suggestions use at least three complete positive months from the trailing six, median plus two MAD, and explicit selected diff. Apply/undo each use one transaction; stale proposals fail before writing. | Source implemented; atomic app-model tests present; final CI open. |
+| W2-OPT | Legacy profiles default intelligence on. Opt-out serially persists, cancels work, clears findings, and clears derived tables without deleting transactions; re-enable explicitly rebuilds. | Source implemented; persistence/app tests present; final CI open. |
+| W2-CFG | Settings offers System/English/Simplified Chinese and category management. Log exposes title-or-merchant, description/notes, and add-category without changing ledger meaning. | Source implemented; compile/localization tests pending final W2 CI; bilingual physical review open. |
+| W2-QA | `--profile intelligence` generates 10,000 deterministic KWD/SGD/USD rows and a committed oracle with six positive findings and three negative cases; default release output stays byte-identical. | Local validator passed; Swift oracle execution pending final W2 CI; physical scale budgets open. |
 
 ## Capture and transactions
 
@@ -182,7 +194,7 @@ exact-candidate run.
 | QA-02 | `MoneyUpAppTests/AppModelTests` covers lock/save/scan/deep-link/erase/stale-generation/capture-promotion and additional lifecycle paths. | Test source implemented; exact-candidate macOS execution open. |
 | QA-03 | Core/persistence/app suites cover audit defects, minor units, locales, currency edits, revisions, caches/indexes, BOM, and rollback. | Test source implemented; exact-candidate execution open. |
 | QA-04 | `FIRST_TEST.md` defines the required iPhone/language/appearance/Dynamic Type/VoiceOver/Reduce Motion/widget matrix plus oldest-device archive/checkpoint measurements. | Physical gate open. |
-| QA-05 | `DataSafetyView` exports a privacy-safe inventory from one payload-free store count snapshot, the fixture generator creates 10,000 deterministic fictional imports, and `FIRST_TEST.md` binds both to in-place upgrade and clean-device v2/compatible-v1 restore reconciliation. | Source tooling implemented; exact-candidate and physical gates open. |
+| QA-05 | `DataSafetyView` exports a privacy-safe inventory from one payload-free store count snapshot. The fixture generator preserves its original 10,000-row release output and adds an explicit three-currency intelligence profile plus committed oracle; `FIRST_TEST.md` binds these to upgrade, restore, scale, and planted-finding checks. | Local fixture/oracle validation passed; final Swift CI and physical gates open. |
 | QA-06 | Roadmap/launch plan prohibit wider testing or App Review while mandatory evidence is open. | Gate enforced in documentation; wider-test/review approval remains open. |
 | QA-07 | Workflow and store checklist bind metadata, screenshots, review notes, privacy, languages, version/build, archive, widget, App Group, and binary capabilities. | Exact-binary/App Store gate open. |
 
@@ -202,11 +214,13 @@ identity, or network capability.
 | PA-CAP-04 | Receipt parsing is bounded to 160 header/footer lines, computed outside the main actor, and checked against store generation plus journal/account projection revision before publication. | Cancellation, lock, or restore suppresses stale publication. The bounded fallback always leaves manual entry available. |
 | PA-CAP-05 | Latin kind/date tokens use Unicode letter/number boundaries while CJK tokens retain intentional substring matching. Impossible explicit civil dates fail closed instead of becoming a normalized day or invented amount. | Pure parsing change with no stored state; identical input, locale, clock, and book state remain deterministic. |
 
-Explicit non-goals are persistent learning state, remote inference, recurring
-pattern discovery, unusual-spend prediction, investment advice, automatic
-schedule creation, receipt line-item splitting, and a new setting. Physical
-latency, accuracy, accessibility, and real-OCR targets remain open for the exact
-release candidate.
+For PA-2026-08-29-r1 itself, explicit non-goals were persistent learning state,
+remote inference, recurring-pattern discovery, unusual-spend prediction,
+investment advice, automatic schedule creation, receipt line-item splitting,
+and a new setting. Approved W2 subsequently adds separate optional indexed
+recurrence/anomaly discovery and an intelligence setting without weakening the
+PA capture rules. Schedule creation remains manual. Physical latency, accuracy,
+accessibility, and real-OCR targets remain open for the exact release candidate.
 
 ## Non-functional promotion gates
 

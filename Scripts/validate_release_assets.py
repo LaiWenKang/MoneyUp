@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import plistlib
 import re
@@ -743,6 +744,11 @@ def validate_release_fixture_generator() -> None:
 
         if first.read_bytes() != second.read_bytes():
             fail("release-scale fixture is not deterministic")
+        expected_release_hash = (
+            "d8525ca07b554e0d8a2d9e23cb24ed8010495148527e95560f3c5b319ce859ea"
+        )
+        if hashlib.sha256(first.read_bytes()).hexdigest() != expected_release_hash:
+            fail("default release fixture bytes drifted")
         if first.stat().st_size >= 10_000_000:
             fail("10,000-entry fixture exceeds the app's 10 MB import limit")
 
@@ -770,12 +776,111 @@ def validate_release_fixture_generator() -> None:
         ):
             fail("release fixture contains an invalid amount")
 
+        intelligence_first = Path(directory) / "intelligence-first.csv"
+        intelligence_second = Path(directory) / "intelligence-second.csv"
+        oracle_first = Path(directory) / "oracle-first.json"
+        oracle_second = Path(directory) / "oracle-second.json"
+        intelligence_command = [
+            sys.executable,
+            str(script),
+            "--profile",
+            "intelligence",
+            "--entries",
+            "10000",
+        ]
+        try:
+            subprocess.run(
+                [
+                    *intelligence_command,
+                    "--output", str(intelligence_first),
+                    "--oracle", str(oracle_first),
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                [
+                    *intelligence_command,
+                    "--output", str(intelligence_second),
+                    "--oracle", str(oracle_second),
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        except (OSError, subprocess.CalledProcessError) as error:
+            fail(f"cannot generate intelligence fixture: {error}")
+        if intelligence_first.read_bytes() != intelligence_second.read_bytes():
+            fail("intelligence fixture is not deterministic")
+        if oracle_first.read_bytes() != oracle_second.read_bytes():
+            fail("intelligence oracle is not deterministic")
+        committed_oracle = (
+            ROOT / "Tests" / "MoneyUpIntelligenceTests" / "Fixtures"
+            / "MoneyUp-Intelligence-Oracle.json"
+        )
+        if not committed_oracle.is_file():
+            fail("committed intelligence oracle is missing")
+        if committed_oracle.read_bytes() != oracle_first.read_bytes():
+            fail("committed intelligence oracle drifted from its generator")
+        with intelligence_first.open(
+            "r", encoding="utf-8", newline=""
+        ) as handle:
+            intelligence_reader = csv.DictReader(handle)
+            intelligence_rows = list(intelligence_reader)
+        expected_intelligence_headers = [
+            "id", "day", "kind", "amount", "currency", "payee_key",
+            "account_id", "category_id", "secondary_category_id",
+            "destination_account_id", "shape", "scenario",
+        ]
+        if intelligence_reader.fieldnames != expected_intelligence_headers:
+            fail("intelligence fixture headers drifted")
+        if len(intelligence_rows) != 10_000:
+            fail("intelligence fixture must contain exactly 10,000 rows")
+        if len({row["id"] for row in intelligence_rows}) != 10_000:
+            fail("intelligence fixture identities must be unique")
+        if {row["currency"] for row in intelligence_rows} != {
+            "KWD", "SGD", "USD"
+        }:
+            fail("intelligence fixture must contain exactly three currencies")
+        if not {"refund", "transfer"}.issubset({
+            row["kind"] for row in intelligence_rows
+        }):
+            fail("intelligence fixture is missing refund or transfer rows")
+        if not {"single", "split", "transfer"}.issubset({
+            row["shape"] for row in intelligence_rows
+        }):
+            fail("intelligence fixture is missing a reviewed transaction shape")
+        oracle = json.loads(oracle_first.read_text(encoding="utf-8"))
+        if oracle.get("profile") != "intelligence-v1":
+            fail("intelligence oracle profile drifted")
+        if oracle.get("profile_entry_count") != 10_000:
+            fail("intelligence oracle count drifted")
+        if len(oracle.get("expected_findings", [])) != 6:
+            fail("intelligence oracle must plant exactly six positive findings")
+        expected_kinds = {
+            "recurrence", "lapsed_subscription", "price_increase",
+            "possible_duplicate", "category_anomaly",
+        }
+        if {
+            item.get("kind") for item in oracle["expected_findings"]
+        } != expected_kinds:
+            fail("intelligence oracle finding kinds drifted")
+        planted = oracle.get("planted_rows", [])
+        if intelligence_rows[:len(planted)] != planted:
+            fail("intelligence fixture no longer begins with its planted oracle")
+        if len(oracle.get("negative_scenarios", [])) != 3:
+            fail("intelligence oracle negative cases drifted")
+
     runbook = (ROOT / "docs" / "FIRST_TEST.md").read_text(encoding="utf-8")
     for declaration in [
         "Scripts/generate_release_fixture.py",
         "10,000",
         "20 long-lived schedules",
         "Data inventory",
+        "--profile intelligence",
+        "MoneyUp-Intelligence-Oracle.json",
+        "three currencies",
     ]:
         if declaration not in runbook:
             fail(f"first-test runbook is missing release-fixture step: {declaration}")

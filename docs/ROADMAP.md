@@ -1,6 +1,6 @@
 # Golden PRD Execution Plan
 
-Last reconciled: 28 August 2026 against the uploaded MoneyUp Golden PRD
+Last reconciled: 1 September 2026 against the uploaded MoneyUp Golden PRD
 (document version 1.0; supplied file label v1.1), the independent 0.4.0 audit,
 and later accepted founder decisions.
 
@@ -31,10 +31,35 @@ status.
   convergence, and scoped-failure isolation tests
 - [x] Enforce 1,200-line files, 600-line type/extension bodies, and 80-line
   function bodies under `App/` and `Sources/` in CI and release validation
-- [ ] Release blocker: the final PR SHA and merged SHA must each pass the pinned
-  macOS 15 / Xcode 16.4 CI before W1 is called done
+- [x] PR #30 head and merge SHA `da88df25ab06e93ec5998a9edbcf0153587a9af2`
+  passed the pinned macOS 15 / Xcode 16.4 CI
 - [ ] Deferred: physical-device, accessibility, and performance evidence is not
   produced by this behavior-neutral architecture slice
+
+## 0.7.0 W2 - configurable, explainable local intelligence
+
+- [x] Add pure `MoneyUpIntelligence`, depending only on `MoneyUpCore`, with
+  exact-Decimal, locale-independent recurrence/lapse/price, exact-duplicate,
+  median/MAD anomaly, projection, and budget-proposal rules
+- [x] Add SQLCipher schema 7 intelligence support tables and transactional
+  schema-6 backfill without rewriting journal payloads, identifiers, or dates
+- [x] Maintain payee/category affinity and observation facts in the same write
+  as save, edit, delete, import, lifecycle changes, restore, and rebuild
+- [x] Replace recent-cache category learning with bounded full-book indexed
+  lookup; routine intelligence queries decode zero journal payloads
+- [x] Add an enabled-by-default legacy preference; disabling intelligence
+  cancels work, clears findings, and clears derived tables transactionally
+- [x] Keep all findings review-only with stable rule/localization identifiers,
+  exact figures, sample size, confidence class, and bounded History routing
+- [x] Add editable schedule offers, currency-separated month-end projections,
+  and atomic review/apply/one-action-undo for selected budget proposals
+- [x] Add Settings language choice, visible Log title/details, category creation
+  from Log, and category rename/archive/restore/merge/reassign/delete management
+- [x] Add the deterministic 10,000-row, three-currency intelligence profile and
+  committed oracle while preserving the original release fixture byte-for-byte
+- [ ] Release blocker: final W2 branch and merged-main SHAs must pass pinned CI
+- [ ] Deferred: exact-candidate physical iPhone, accessibility, migration,
+  restore, and oldest-device performance evidence remains open
 
 ## Foundation
 
@@ -48,9 +73,10 @@ status.
   version-1 compatibility, transactional restore, and file-backed rollback
 - [x] Stable Gregorian reporting calendar, half-open periods, origin time-zone
   context, and stable local-day attribution
-- [x] SQLCipher schema 6 with journal/posting, receipt metadata, exact store
-  metrics, and budget-attribution indexes; compact balances, monthly rollover
-  checkpoints, bounded recent activity, and on-demand paging
+- [x] SQLCipher schema 7 with journal/posting, receipt metadata, exact store
+  metrics, budget-attribution, and derived intelligence indexes; compact
+  balances, monthly rollover checkpoints, bounded recent activity, and
+  on-demand paging
 - [ ] Exact-candidate Mac core/persistence/app tests and app/widget Simulator
   build
 - [ ] Physical migration, restore, and oldest-device scale evidence

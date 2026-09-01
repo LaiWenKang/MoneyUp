@@ -168,6 +168,51 @@ final class IntelligenceDetectorTests: XCTestCase {
         encoder.outputFormatting = [.sortedKeys]
         XCTAssertEqual(try encoder.encode(first), try encoder.encode(second))
     }
+
+    func testCommittedScaleOracleProducesOnlyPlantedFindings() throws {
+        let url = try XCTUnwrap(Bundle.module.url(
+            forResource: "MoneyUp-Intelligence-Oracle",
+            withExtension: "json"
+        ))
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let oracle = try decoder.decode(
+            IntelligenceFixtureOracle.self,
+            from: Data(contentsOf: url)
+        )
+        let observations = try oracle.plantedRows.compactMap(
+            intelligenceObservation
+        )
+        var findings = try RecurrenceDetector.findings(
+            in: observations,
+            asOfDay: oracle.asOfDay
+        )
+        findings += DuplicateDetector.findings(in: observations)
+        findings += try CategoryAnomalyDetector.findings(
+            in: observations,
+            asOfDay: oracle.asOfDay
+        )
+        let actual = findings.map {
+            IntelligenceFixtureExpectedFinding(
+                id: $0.id,
+                kind: $0.kind.rawValue,
+                ruleId: $0.ruleID
+            )
+        }.sorted { $0.id < $1.id }
+        XCTAssertEqual(oracle.profile, "intelligence-v1")
+        XCTAssertEqual(oracle.schemaVersion, 1)
+        XCTAssertEqual(oracle.profileEntryCount, 10_000)
+        XCTAssertEqual(Set(oracle.currencies), Set(["KWD", "SGD", "USD"]))
+        XCTAssertEqual(Set(oracle.negativeScenarios), Set([
+            "different_account_near_duplicate",
+            "insufficient_anomaly_history",
+            "irregular_cadence"
+        ]))
+        XCTAssertEqual(actual, oracle.expectedFindings)
+        XCTAssertTrue(Set(oracle.excludedEntryIds).isDisjoint(
+            with: Set(observations.map { $0.entryID.uuidString.lowercased() })
+        ))
+    }
 }
 
 private extension IntelligenceDetectorTests {
@@ -227,6 +272,63 @@ private struct DeterministicGenerator: RandomNumberGenerator {
         state = state &* 2_862_933_555_777_941_757 &+ 3_037_000_493
         return state
     }
+}
+
+private struct IntelligenceFixtureOracle: Decodable {
+    let asOfDay: Int
+    let currencies: [String]
+    let excludedEntryIds: [String]
+    let expectedFindings: [IntelligenceFixtureExpectedFinding]
+    let negativeScenarios: [String]
+    let plantedRows: [IntelligenceFixtureRow]
+    let profile: String
+    let profileEntryCount: Int
+    let schemaVersion: Int
+}
+
+private struct IntelligenceFixtureExpectedFinding: Codable, Equatable {
+    let id: String
+    let kind: String
+    let ruleId: String
+}
+
+private struct IntelligenceFixtureRow: Decodable {
+    let id: String
+    let day: String
+    let kind: String
+    let amount: String
+    let currency: String
+    let payeeKey: String
+    let accountId: String
+    let categoryId: String
+    let shape: String
+    let scenario: String
+}
+
+private func intelligenceObservation(
+    _ row: IntelligenceFixtureRow
+) throws -> IntelligenceObservation? {
+    guard row.shape == "single" else { return nil }
+    guard let entryID = UUID(uuidString: row.id),
+          let day = Int(row.day),
+          let kind = IntelligenceObservationKind(rawValue: row.kind),
+          let amount = Decimal(
+              string: row.amount,
+              locale: Locale(identifier: "en_US_POSIX")
+          ),
+          let accountID = UUID(uuidString: row.accountId),
+          let categoryID = UUID(uuidString: row.categoryId) else {
+        throw IntelligenceInputError.invalidObservation
+    }
+    return try IntelligenceObservation(
+        entryID: entryID,
+        day: day,
+        payeeKey: row.payeeKey,
+        kind: kind,
+        amount: Money(amount, currency: CurrencyCode(row.currency)),
+        accountID: accountID,
+        categoryID: categoryID
+    )
 }
 
 private func testUUID(_ value: Int) -> UUID {

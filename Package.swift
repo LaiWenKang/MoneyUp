@@ -59,7 +59,8 @@ let package = Package(
         ),
         .testTarget(
             name: "MoneyUpIntelligenceTests",
-            dependencies: ["MoneyUpCore", "MoneyUpIntelligence"]
+            dependencies: ["MoneyUpCore", "MoneyUpIntelligence"],
+            resources: [.process("Fixtures")]
         )
     ]
 )
