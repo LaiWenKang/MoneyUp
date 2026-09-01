@@ -9918,6 +9918,19 @@ extension AppModelTests {
         let assetsChanges = ObservationCounter()
         let captureChanges = ObservationCounter()
         let portabilityChanges = ObservationCounter()
+        let observedAt = Date(timeIntervalSinceReferenceDate: 1_000)
+        let observedGoal = try SavingsGoal(
+            name: "Tracked goal",
+            kind: .savingsGoal,
+            target: try Money(1, currency: fixture.sgd),
+            targetDate: observedAt.addingTimeInterval(86_400),
+            createdAt: observedAt,
+            reportingTimeZoneIdentifier: "UTC"
+        )
+        let observedSnapshot = try NetWorthSnapshot(
+            capturedAt: observedAt,
+            amounts: [try Money(1, currency: fixture.sgd)]
+        )
 
         withObservationTracking {
             _ = model.ledgerService.journalEntryCount
@@ -9952,11 +9965,11 @@ extension AppModelTests {
         XCTAssertEqual(assetsChanges.value, 0)
         XCTAssertEqual(portabilityChanges.value, 0)
 
-        services.planning.savingsGoals = []
+        services.planning.savingsGoals = [observedGoal]
         XCTAssertEqual(planningChanges.value, 1)
         XCTAssertEqual(ledgerChanges.value, 0)
 
-        services.assets.netWorthSnapshots = []
+        services.assets.netWorthSnapshots = [observedSnapshot]
         XCTAssertEqual(assetsChanges.value, 1)
         XCTAssertEqual(ledgerChanges.value, 0)
 
