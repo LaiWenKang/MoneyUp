@@ -106,6 +106,8 @@ public struct HistoryQuery: Equatable, Sendable {
         locale: Locale = .current,
         calendar: Calendar = .current
     ) -> [JournalEntry] {
+        let performanceInterval = MoneyUpPerformanceSignposts.begin(.historyQuery)
+        defer { MoneyUpPerformanceSignposts.end(performanceInterval) }
         let accountsByID = Dictionary(
             accounts.map { ($0.id, $0) },
             uniquingKeysWith: { first, _ in first }

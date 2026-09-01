@@ -284,6 +284,10 @@ public enum ReceiptTextParser {
         ocrConfidence: Float? = nil,
         ocrLineConfidences: [Float]? = nil
     ) -> ReceiptParseResult {
+        let performanceInterval = MoneyUpPerformanceSignposts.begin(
+            .receiptProcessing
+        )
+        defer { MoneyUpPerformanceSignposts.end(performanceInterval) }
         let input = cleanedInput(
             lines: lines,
             ocrConfidence: ocrConfidence,

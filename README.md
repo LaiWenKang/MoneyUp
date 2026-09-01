@@ -102,8 +102,11 @@ The beta includes:
   per-currency month-end projections, and reviewable budget-limit proposals;
   findings show their rule and figures, schedules are never auto-created, and
   budget changes are never auto-applied;
-- source-configured Swift domain and app-model suites plus an unsigned iOS
-  Simulator app/widget build gate in CI.
+- source-configured Swift domain and app-model suites, an unsigned iOS
+  Simulator app/widget build gate, and a serial Release 10,000-entry/20-schedule
+  measurement baseline configured to retain raw and JSON evidence;
+  exact-candidate evidence remains pending until that job completes its first
+  run.
 
 The unified 0.7.0 candidate still requires signed exact-binary validation,
 physical upgrade/restore and 10,000-entry performance drills, bilingual
@@ -206,6 +209,12 @@ xcodebuild \
 
 The generated Xcode project is intentionally ignored. CI repeats both commands
 on every change to `main` and on pull requests.
+
+The separate `MoneyUpPerformance` scheme runs an observational optimized
+baseline on the CI-pinned iPhone 16 Pro/iOS 18.5 Simulator. See
+[Automated performance baseline](docs/PERFORMANCE_BASELINE.md) for the measured
+paths and evidence boundary. Its results never replace the oldest-iPhone p95,
+peak-memory, scrolling, receipt/Vision, or interruption gates.
 
 ## Security
 

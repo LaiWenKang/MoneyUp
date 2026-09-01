@@ -84,6 +84,22 @@ but includes blank and comment lines inside the body. The release validator
 also requires the explicit CI step, so removing or bypassing the gate fails
 release readiness.
 
+`Scripts/validate_architecture_fitness.py` keeps the reviewed dependency and
+safety seams executable: Core imports only Foundation plus the single CSV
+SHA-256 implementation; SwiftUI views cannot call `TransactionFactory`; every
+colorset is registered with exact light/dark values; static UI keys resolve in
+their target catalogs (shared keys resolve in both); and network APIs,
+ambiguous URL-loading constructors, unreviewed force operations, and `print`
+stay out of shipping Swift, including executable string interpolations. Its
+exact safe exceptions are fixed-literal or bounded Foundation initializers and
+one already-bounded local archive read recorded beside the checker. The
+Foundation Models rules remain dormant unless a source imports
+`FoundationModels`; if W3 is added, imports and framework uses must stay inside
+`#if canImport(FoundationModels)` and iOS 26 runtime-availability scopes. Model
+execution must guard on `SystemLanguageModel.default.availability`, while
+generated output stays limited to fixed local enums or literal `0...255`
+range-guided ordinals.
+
 ## State and lock lifecycle
 
 The application moves between launching, locked, onboarding, ready, and failed

@@ -29,6 +29,7 @@ extension AppModel {
 
     func start() async {
         guard !isWorking else { return }
+        finishUnlockToFirstUsefulContentMeasurement(outcome: .cancelled)
         isWorking = true
         isStarting = true
         defer {
@@ -72,7 +73,11 @@ extension AppModel {
                 restoreValidationDirectoryURL
             )
             try? Self.removeLegacyRestoreValidationDirectories()
-            let openedStore = try await openDatabaseStore(databaseURL)
+            let openedDatabase = try await openDatabaseStore(databaseURL)
+            adoptUnlockToFirstUsefulContentInterval(
+                openedDatabase.unlockToFirstUsefulContentInterval
+            )
+            let openedStore = openedDatabase.store
             storeGeneration &+= 1
             store = openedStore
             try await load(from: openedStore)
@@ -126,6 +131,7 @@ extension AppModel {
             guard !hasBookData else { throw AppModelError.invalidBook }
             disableBudgetWidgetSnapshot()
             state = .onboarding
+            finishUnlockToFirstUsefulContentMeasurement(outcome: .cancelled)
             return
         }
 
@@ -146,6 +152,7 @@ extension AppModel {
     /// a startup failure. Kept as one transition so lifecycle tests can cover
     /// the background/foreground race without invoking process Keychain UI.
     func finishCancelledAuthentication() {
+        finishUnlockToFirstUsefulContentMeasurement(outcome: .cancelled)
         autoLockTask?.cancel()
         autoLockTask = nil
         leftActiveAt = nil
@@ -181,6 +188,7 @@ extension AppModel {
         let mustFinishDeferredLock = lockAfterStart
         lockAfterStart = false
         state = .failed(message)
+        finishUnlockToFirstUsefulContentMeasurement(outcome: .failure)
         guard mustFinishDeferredLock else {
             if leftActiveAt == nil {
                 requiresAuthenticationPrivacyCover = false
@@ -230,6 +238,7 @@ extension AppModel {
             canLock = false
         }
         guard canLock else { return }
+        finishUnlockToFirstUsefulContentMeasurement(outcome: .cancelled)
         autoLockTask?.cancel()
         autoLockTask = nil
         leftActiveAt = nil
@@ -303,6 +312,10 @@ extension AppModel {
             tracksInactivity = false
         }
         guard tracksInactivity || isStarting else { return }
+        // A shielded/background interval is not a first-useful-content sample.
+        // End it as a fixed cancellation before any inactive time can pollute
+        // the foreground performance distribution.
+        finishUnlockToFirstUsefulContentMeasurement(outcome: .cancelled)
         // Retain the opaque cover across the inactive -> active transition.
         // SwiftUI can reevaluate `scenePhase` before its `onChange` callback;
         // clearing only after the elapsed-time decision prevents a one-frame

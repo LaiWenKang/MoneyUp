@@ -8,6 +8,8 @@ public enum LedgerCSVExporter {
         _ entries: [JournalEntry],
         accounts: [LedgerAccount] = []
     ) -> String {
+        let performanceInterval = MoneyUpPerformanceSignposts.begin(.csvExport)
+        defer { MoneyUpPerformanceSignposts.end(performanceInterval) }
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         let accountsByID = accounts.reduce(into: [UUID: LedgerAccount]()) {

@@ -15,6 +15,8 @@ import tempfile
 import zlib
 from pathlib import Path
 
+from validate_architecture_fitness import scan_swift, type_declarations
+
 
 ROOT = Path(__file__).resolve().parents[1]
 REQUIRED_LANGUAGES = {"en", "zh-Hans"}
@@ -26,6 +28,30 @@ XCODEGEN_SHA256 = "4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196
 CI_XCODE_VERSION = "16.4"
 CI_XCODE_BUILD = "16F6"
 CI_IPHONESIMULATOR_SDK_VERSION = "18.5"
+CI_PERFORMANCE_DEVICE_NAME = "iPhone 16 Pro"
+CI_PERFORMANCE_RUNTIME_IDENTIFIER = (
+    "com.apple.CoreSimulator.SimRuntime.iOS-18-5"
+)
+SWIFT_TEST_TARGETS = (
+    ("MoneyUpCoreTests", "core"),
+    ("MoneyUpPersistenceTests", "persistence"),
+    ("MoneyUpIntelligenceTests", "intelligence"),
+    ("MoneyUpAppTests", "app-target"),
+    ("MoneyUpPerformanceTests", "performance-target"),
+)
+EXPECTED_PERFORMANCE_XCTESTS = (
+    "testFixtureContract",
+    "testMeasureStoreOpenCloseBaseline",
+    "testMeasureStoreLoadBaseline",
+    "testMeasureSaveBaseline",
+    "testMeasureHistoryPageAndQueryBaseline",
+    "testMeasureExportBaseline",
+    "testMeasureArchiveBaseline",
+    "testMeasureRestoreBaseline",
+    "testMeasureReceiptTextProcessingBaseline",
+    "testMeasureProjectionBaseline",
+    "testMeasureIntelligenceBaseline",
+)
 RELEASE_XCODE_VERSION = "26.6"
 RELEASE_XCODE_BUILD = "17F113"
 RELEASE_IPHONEOS_SDK_VERSION = "26.5"
@@ -815,6 +841,22 @@ def validate_release_fixture_generator() -> None:
             fail("intelligence fixture is not deterministic")
         if oracle_first.read_bytes() != oracle_second.read_bytes():
             fail("intelligence oracle is not deterministic")
+        expected_intelligence_hash = (
+            "92fe646bbcc7e52fc11a340266a194d3d18b1b147ef70ff53ffab1026a495df5"
+        )
+        expected_oracle_hash = (
+            "4c33ed9e0b8082a6c5af936fe7399195c30f4045a01583bad5c6eaccd6945fa5"
+        )
+        if (
+            hashlib.sha256(intelligence_first.read_bytes()).hexdigest()
+            != expected_intelligence_hash
+        ):
+            fail("intelligence logical CSV payload digest drifted")
+        if (
+            hashlib.sha256(oracle_first.read_bytes()).hexdigest()
+            != expected_oracle_hash
+        ):
+            fail("intelligence oracle digest drifted")
         committed_oracle = (
             ROOT / "Tests" / "MoneyUpIntelligenceTests" / "Fixtures"
             / "MoneyUp-Intelligence-Oracle.json"
@@ -974,7 +1016,298 @@ def validate_project_configuration() -> None:
     if package.count(".package(") != 1:
         fail("SQLCipher.swift must remain the only runtime package dependency")
 
-    print("Validated matching app/widget versions and automatic signing")
+    performance_target_match = re.search(
+        r"(?ms)^  MoneyUpPerformanceTests:\n"
+        r"(?P<body>.*?)(?=^  [A-Za-z][A-Za-z0-9]*:\n|^schemes:\n)",
+        spec,
+    )
+    if performance_target_match is None:
+        fail("project.yml must define the MoneyUpPerformanceTests target")
+    performance_target = performance_target_match.group("body")
+    for declaration in [
+        "type: bundle.unit-test",
+        "platform: iOS",
+        "path: Tests/MoneyUpPerformanceTests",
+        (
+            "path: Tests/MoneyUpIntelligenceTests/Fixtures/"
+            "MoneyUp-Intelligence-Oracle.json"
+        ),
+        "buildPhase: resources",
+        "product: MoneyUpCore",
+        "product: MoneyUpPersistence",
+        "product: MoneyUpIntelligence",
+        "TEST_HOST: \"\"",
+        "BUNDLE_LOADER: \"\"",
+    ]:
+        if declaration not in performance_target:
+            fail(f"MoneyUpPerformanceTests is missing {declaration}")
+    if "target: MoneyUp" in performance_target:
+        fail("Release performance tests must not enable app @testable imports")
+
+    performance_scheme_match = re.search(
+        r"(?ms)^  MoneyUpPerformance:\n(?P<body>.*)\Z",
+        spec,
+    )
+    if performance_scheme_match is None:
+        fail("project.yml must define the MoneyUpPerformance scheme")
+    performance_scheme = performance_scheme_match.group("body")
+    for declaration in [
+        "MoneyUpPerformanceTests: [test]",
+        "config: Release",
+        "gatherCoverageData: false",
+        "name: MoneyUpPerformanceTests",
+        "parallelizable: false",
+        "randomExecutionOrder: false",
+    ]:
+        if declaration not in performance_scheme:
+            fail(f"MoneyUpPerformance scheme is missing {declaration}")
+
+    print(
+        "Validated app/widget signing and the serial Release performance target"
+    )
+
+
+def validate_performance_baseline() -> None:
+    root = ROOT / "Tests" / "MoneyUpPerformanceTests"
+    required_files = {
+        "MoneyUpPerformanceTests.swift",
+        "PerformanceAsync.swift",
+        "PerformanceFixture.swift",
+        "PerformanceIntelligenceCorpus.swift",
+        "PerformanceOperations.swift",
+    }
+    discovered = {path.name for path in root.glob("*.swift")}
+    if discovered != required_files:
+        fail(
+            "performance harness files drifted: "
+            f"expected {sorted(required_files)}, found {sorted(discovered)}"
+        )
+    source = "\n".join(
+        (root / name).read_text(encoding="utf-8")
+        for name in sorted(required_files)
+    )
+    for declaration in [
+        "static let journalEntryCount = 10_000",
+        "static let scheduledTransactionCount = 20",
+        "static let measurementIterationCount = 3",
+        "static let measurementInvocationCount = measurementIterationCount + 1",
+        "try ScheduledTransaction(",
+        "BudgetEntryAttribution",
+        "XCTClockMetric()",
+        "XCTCPUMetric()",
+        "XCTMemoryMetric()",
+        "XCTStorageMetric()",
+        "measure(metrics: metrics, options: options)",
+        "testMeasureStoreOpenCloseBaseline",
+        "testMeasureStoreLoadBaseline",
+        "testMeasureSaveBaseline",
+        "testMeasureHistoryPageAndQueryBaseline",
+        "testMeasureExportBaseline",
+        "testMeasureArchiveBaseline",
+        "testMeasureRestoreBaseline",
+        "testMeasureReceiptTextProcessingBaseline",
+        "testMeasureProjectionBaseline",
+        "testMeasureIntelligenceBaseline",
+        "MoneyUpPerformanceFixture.json",
+        'oracle.profile == "intelligence-v1"',
+        "PerformanceIntelligenceCorpus.oracleSHA256",
+        "PerformanceIntelligenceCorpus.logicalCSVPayloadSHA256",
+        "intelligence.findings == corpus.expectedFindingSignatures",
+        "intelligence.excludedEntryCount == 0",
+        "validatePersistedOperationShapes",
+        "preflight.postingEventCount",
+        "preflight.amountCandidates.first",
+    ]:
+        if declaration not in source:
+            fail(f"performance harness is missing {declaration}")
+    for forbidden in [
+        "baselineAverage",
+        "XCTAssertLessThan",
+        "XCTAssertLessThanOrEqual",
+        "maximumMemory",
+        "memoryCeiling",
+    ]:
+        if forbidden in source:
+            fail(
+                "performance baseline must record measurements without an "
+                f"invented ceiling: {forbidden}"
+            )
+
+    tests = (root / "MoneyUpPerformanceTests.swift").read_text(encoding="utf-8")
+    actual_performance_tests = xctest_method_names(source)
+    if actual_performance_tests != EXPECTED_PERFORMANCE_XCTESTS:
+        fail(
+            "performance XCTest inventory drifted: expected "
+            f"{EXPECTED_PERFORMANCE_XCTESTS}, found {actual_performance_tests}"
+        )
+    if re.search(
+        r"(?<![A-Za-z0-9_])@Test\b",
+        scan_swift(source).masked,
+    ):
+        fail("performance target must use only the reviewed XCTest inventory")
+    open_close_match = re.search(
+        r"(?ms)func testMeasureStoreOpenCloseBaseline\(\) throws \{"
+        r"(?P<body>.*?)^    \}",
+        tests,
+    )
+    if open_close_match is None:
+        fail("performance harness is missing the store open+close measurement")
+    open_close = open_close_match.group("body")
+    for declaration in [
+        "let store = try fixture.openStore",
+        "await store.close()",
+    ]:
+        if declaration not in open_close:
+            fail(f"store open+close measurement is missing {declaration}")
+    if "stores.append" in open_close or "var stores:" in open_close:
+        fail("store open+close measurement must not retain prior stores")
+
+    document_path = ROOT / "docs" / "PERFORMANCE_BASELINE.md"
+    if not document_path.is_file():
+        fail("performance baseline evidence guide is missing")
+    document = document_path.read_text(encoding="utf-8")
+    for declaration in [
+        "10,000",
+        "20 schedules",
+        "clock, CPU, memory, and logical storage-write",
+        "iPhone 16 Pro",
+        "iOS 18.5",
+        "physical-device gates remain open",
+        "no absolute memory ceiling",
+        "MoneyUpPerformanceTests.xcresult",
+        "performance-metrics.json",
+        "performance-evidence-manifest.json",
+        "intelligence-v1",
+    ]:
+        if declaration not in document:
+            fail(f"performance baseline guide is missing {declaration}")
+    print(
+        "Validated logical/domain performance fixture and observational "
+        "measurement contract"
+    )
+
+
+def xctest_method_names(source: str) -> tuple[str, ...]:
+    scan = scan_swift(source)
+    declarations = type_declarations(scan)
+    test_case_names = {
+        declaration.name.split(".")[-1]
+        for declaration in declarations
+        if declaration.kind == "class"
+        and re.search(r"\bXCTestCase\b", declaration.header)
+    }
+    owner_declarations = {
+        declaration
+        for declaration in declarations
+        if (
+            declaration.kind == "class"
+            and declaration.name.split(".")[-1] in test_case_names
+        ) or (
+            declaration.kind == "extension"
+            and declaration.name.split(".")[-1] in test_case_names
+        )
+    }
+    method_pattern = re.compile(
+        r"(?m)^[ \t]*"
+        r"(?:@[A-Za-z_][A-Za-z0-9_.]*(?:\([^\n]*\))?[ \t]+)*"
+        r"func[ \t]+(test[A-Za-z0-9_]*)[ \t]*\("
+    )
+    names: list[str] = []
+    for match in method_pattern.finditer(scan.masked):
+        containing = [
+            declaration
+            for declaration in declarations
+            if declaration.opening < match.start() < declaration.closing
+        ]
+        if not containing:
+            continue
+        innermost = min(
+            containing,
+            key=lambda declaration: declaration.closing - declaration.opening,
+        )
+        if innermost in owner_declarations:
+            names.append(match.group(1))
+    return tuple(names)
+
+
+def swift_test_declaration_counts(target: str) -> tuple[int, int]:
+    root = ROOT / "Tests" / target
+    source = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in sorted(root.rglob("*.swift"))
+    )
+    masked = scan_swift(source).masked
+    xctest_count = len(xctest_method_names(source))
+    swift_testing_count = len(re.findall(
+        r"(?<![A-Za-z0-9_])@Test\b",
+        masked,
+    ))
+    return xctest_count, swift_testing_count
+
+
+def validate_test_declaration_inventory() -> None:
+    expected_targets = {target for target, _ in SWIFT_TEST_TARGETS}
+    discovered_targets = {
+        path.name
+        for path in (ROOT / "Tests").iterdir()
+        if path.is_dir() and any(path.rglob("*.swift"))
+    }
+    if discovered_targets != expected_targets:
+        fail(
+            "Swift test-target inventory drifted: expected "
+            f"{sorted(expected_targets)}, found {sorted(discovered_targets)}"
+        )
+    counts = {
+        label: swift_test_declaration_counts(target)
+        for target, label in SWIFT_TEST_TARGETS
+    }
+    target_totals = {
+        label: xctest + swift_testing
+        for label, (xctest, swift_testing) in counts.items()
+    }
+    total = sum(target_totals.values())
+    xctest_total = sum(value[0] for value in counts.values())
+    swift_testing_total = sum(value[1] for value in counts.values())
+
+    document_path = ROOT / "docs" / "REQUIREMENTS_TEST_MATRIX.md"
+    document = document_path.read_text(encoding="utf-8")
+    declared = re.search(
+        r"Declared automated tests in source after this review: \*\*(\d+)\*\* "
+        r"\((\d+)\s+core,\s+(\d+)\s+persistence,\s+"
+        r"(\d+)\s+intelligence,\s+(\d+)\s+app-target, and\s+"
+        r"(\d+)\s+performance-target\s+declarations;",
+        document,
+    )
+    kinds = re.search(
+        r"those declarations, \*\*(\d+)\*\* are XCTest functions named "
+        r"`test\.\.\.`; the\s+remaining (\d+) are Swift Testing `@Test` "
+        r"declarations in MoneyUpCore\.",
+        document,
+    )
+    if declared is None or kinds is None:
+        fail("requirements matrix test-declaration inventory is unreadable")
+    documented = tuple(map(int, (*declared.groups(), *kinds.groups())))
+    actual = (
+        total,
+        target_totals["core"],
+        target_totals["persistence"],
+        target_totals["intelligence"],
+        target_totals["app-target"],
+        target_totals["performance-target"],
+        xctest_total,
+        swift_testing_total,
+    )
+    if documented != actual:
+        fail(
+            "requirements matrix test-declaration inventory drifted: "
+            f"expected {actual}, found {documented}"
+        )
+    if counts["core"][1] != swift_testing_total:
+        fail("Swift Testing declarations must remain confined to MoneyUpCore")
+    print(
+        f"Validated {total} declared Swift tests: {xctest_total} XCTest and "
+        f"{swift_testing_total} Swift Testing declarations"
+    )
 
 
 def validate_swift_structure() -> None:
@@ -989,6 +1322,36 @@ def validate_swift_structure() -> None:
     if result.returncode != 0:
         detail = result.stderr.strip() or result.stdout.strip()
         fail(f"Swift structure validation failed:\n{detail}")
+    print(result.stdout.strip())
+
+
+def validate_architecture_fitness() -> None:
+    validator = ROOT / "Scripts" / "validate_architecture_fitness.py"
+    result = subprocess.run(
+        [sys.executable, str(validator)],
+        cwd=ROOT,
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip()
+        fail(f"Architecture fitness validation failed:\n{detail}")
+    print(result.stdout.strip())
+
+
+def validate_performance_signposts() -> None:
+    validator = ROOT / "Scripts" / "validate_performance_signposts.py"
+    result = subprocess.run(
+        [sys.executable, str(validator)],
+        cwd=ROOT,
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip()
+        fail(f"performance-signpost validation failed:\n{detail}")
     print(result.stdout.strip())
 
 
@@ -1041,6 +1404,11 @@ def validate_ci_workflow() -> None:
         "runs-on: macos-15",
         "Enforce Swift structure limits",
         "python3 Scripts/validate_swift_structure.py",
+        "Test architecture fitness validator",
+        "python3 -m unittest discover -s Scripts/tests",
+        "-p 'test_validate_architecture_fitness.py'",
+        "Enforce architecture fitness",
+        "python3 Scripts/validate_architecture_fitness.py",
         "DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer",
         "Verify the exact CI Xcode toolchain",
         "Verify the exact CI Xcode and simulator SDK",
@@ -1054,18 +1422,42 @@ def validate_ci_workflow() -> None:
         "core-persistence-coverage.json",
         "app-model-coverage.json",
         "${{ runner.temp }}/MoneyUpTests.xcresult",
+        f"PERFORMANCE_DEVICE_NAME: {CI_PERFORMANCE_DEVICE_NAME}",
+        (
+            "PERFORMANCE_RUNTIME_IDENTIFIER: "
+            f"{CI_PERFORMANCE_RUNTIME_IDENTIFIER}"
+        ),
+        "iPhone Simulator performance baseline",
+        "MoneyUpPerformanceTests.xcresult",
+        "performance-environment.json",
+        "performance-evidence-manifest.json",
+        "performance-metrics.json",
+        "performance-summary.json",
+        "iphone-simulator-performance-baseline",
+        '"total_invocation_count": 4',
+        '"corpus_profile": "intelligence-v1"',
+        '"store_open_close"',
+        (
+            '"logical_csv_payload_sha256":\n'
+            '                  "92fe646bbcc7e52fc11a340266a194d3d18b1b147ef70ff53ffab1026a495df5"'
+        ),
+        (
+            '"oracle_sha256":\n'
+            '                  "4c33ed9e0b8082a6c5af936fe7399195c30f4045a01583bad5c6eaccd6945fa5"'
+        ),
+        '"physical_device_gates": "open"',
         "if: ${{ always() }}",
     ]
     for declaration in required:
         if declaration not in workflow:
             fail(f"CI workflow is missing {declaration}")
 
-    if workflow.count("runs-on: macos-15") != 2:
-        fail("both Swift CI jobs must run on the reviewed macos-15 image")
+    if workflow.count("runs-on: macos-15") != 3:
+        fail("all three Swift CI jobs must run on the reviewed macos-15 image")
     if workflow.count(
         "DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer"
-    ) != 2:
-        fail("both Swift CI jobs must select the reviewed Xcode 16.4 bundle")
+    ) != 3:
+        fail("all three Swift CI jobs must select the reviewed Xcode 16.4 bundle")
 
     core_toolchain = workflow_step(workflow, "Verify the exact CI Xcode toolchain")
     for declaration in [
@@ -1096,11 +1488,96 @@ def validate_ci_workflow() -> None:
         if wildcard in workflow:
             fail(f"CI toolchain checks must use exact equality, not {wildcard}")
 
-    if workflow.count("Install checksum-verified XcodeGen") != 1:
-        fail("CI must install checksum-verified XcodeGen exactly once")
+    performance_toolchain = workflow_step(
+        workflow, "Verify the exact performance toolchain and runtime"
+    )
+    for declaration in [
+        'test -x "$DEVELOPER_DIR/usr/bin/xcodebuild"',
+        '"$XCODE_VERSION_LINE" != "Xcode $CI_XCODE_VERSION"',
+        '"$XCODE_BUILD_LINE" != "Build version $CI_XCODE_BUILD"',
+        '"$SDK_VERSION" != "$CI_IPHONESIMULATOR_SDK_VERSION"',
+        "xcrun simctl list runtimes available --json",
+        'runtime.get("identifier") == expected',
+        'matches[0].get("version") != "18.5"',
+    ]:
+        if declaration not in performance_toolchain:
+            fail(f"performance toolchain check is missing {declaration}")
+
+    simulator_selection = workflow_step(
+        workflow, "Select and boot the exact iPhone 16 Pro iOS 18.5 Simulator"
+    )
+    for declaration in [
+        '"$PERFORMANCE_RUNTIME_IDENTIFIER" "$PERFORMANCE_DEVICE_NAME"',
+        'device.get("name") == name',
+        'json.load(source)["devices"].get(runtime, [])',
+        'xcrun simctl erase "$SIMULATOR_UDID"',
+        'xcrun simctl boot "$SIMULATOR_UDID"',
+        'xcrun simctl bootstatus "$SIMULATOR_UDID" -b',
+        "PERFORMANCE_SIMULATOR_UDID=",
+    ]:
+        if declaration not in simulator_selection:
+            fail(f"performance simulator selection is missing {declaration}")
+
+    performance_run = workflow_step(
+        workflow, "Run serial Release performance baseline"
+    )
+    for declaration in [
+        "-scheme MoneyUpPerformance",
+        "-configuration Release",
+        'platform=iOS Simulator,id=$PERFORMANCE_SIMULATOR_UDID',
+        "-only-testing:MoneyUpPerformanceTests",
+        "-parallel-testing-enabled NO",
+        "-maximum-parallel-testing-workers 1",
+        "-enableCodeCoverage NO",
+        '-resultBundlePath "$RESULT_BUNDLE"',
+        "performance-tests.log",
+    ]:
+        if declaration not in performance_run:
+            fail(f"performance test run is missing {declaration}")
+
+    evidence_export = workflow_step(
+        workflow, "Export machine-readable performance evidence"
+    )
+    for declaration in [
+        "if: ${{ always() }}",
+        "xcresulttool get test-results summary",
+        "xcresulttool get test-results metrics",
+        "performance-summary.json",
+        "performance-evidence-manifest.json",
+        "performance-metrics.json",
+        "python3 -m json.tool",
+        "python3 -m json.tool performance-environment.json",
+        "python3 -m json.tool performance-runtimes.json",
+        "python3 -m json.tool performance-evidence-manifest.json",
+        'test -s "$evidence_file"',
+        'result_bundle.is_dir()',
+        "test -s performance-tests.log",
+    ]:
+        if declaration not in evidence_export:
+            fail(f"performance evidence export is missing {declaration}")
+
+    evidence_retention = workflow_step(
+        workflow, "Preserve performance baseline evidence"
+    )
+    for declaration in [
+        "if: ${{ always() }}",
+        "actions/upload-artifact@",
+        "iphone-simulator-performance-baseline",
+        "performance-environment.json",
+        "performance-evidence-manifest.json",
+        "performance-metrics.json",
+        "performance-summary.json",
+        "${{ runner.temp }}/MoneyUpPerformanceTests.xcresult",
+        "if-no-files-found: error",
+    ]:
+        if declaration not in evidence_retention:
+            fail(f"performance evidence retention is missing {declaration}")
+
+    if workflow.count("Install checksum-verified XcodeGen") != 2:
+        fail("both iOS CI jobs must install checksum-verified XcodeGen")
     print(
         "Validated exact CI toolchain, immutable tools, warnings-as-errors, "
-        "and test evidence"
+        "serial performance execution, and test evidence"
     )
 
 
@@ -1549,7 +2026,11 @@ def main() -> None:
     validate_public_documents()
     validate_release_fixture_generator()
     validate_project_configuration()
+    validate_performance_baseline()
+    validate_test_declaration_inventory()
     validate_swift_structure()
+    validate_architecture_fitness()
+    validate_performance_signposts()
     validate_ci_workflow()
     validate_testflight_workflow()
     validate_testflight_owner_command_workflow()

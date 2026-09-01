@@ -220,6 +220,8 @@ extension EncryptedRecordStore {
         to destinationURL: URL,
         password: String
     ) throws {
+        let performanceInterval = MoneyUpPerformanceSignposts.begin(.archiveExport)
+        defer { MoneyUpPerformanceSignposts.end(performanceInterval) }
         try connection.exportPortableArchive(
             to: destinationURL,
             password: password
@@ -235,6 +237,8 @@ extension EncryptedRecordStore {
         password: String,
         observesCancellation: Bool = true
     ) throws {
+        let performanceInterval = MoneyUpPerformanceSignposts.begin(.archiveRestore)
+        defer { MoneyUpPerformanceSignposts.end(performanceInterval) }
         try connection.replaceAllRecords(
             fromPortableArchive: sourceURL,
             password: password,

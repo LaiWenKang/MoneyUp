@@ -65,6 +65,40 @@ status.
 - [ ] Deferred: exact-candidate physical iPhone, accessibility, migration,
   restore, and oldest-device performance evidence remains open
 
+## 0.7.0 W4.1 - automated performance measurement baseline
+
+- [x] Add a direct-module, serial Release XCTest target with a
+  logically/domain-deterministic encrypted 10,000-entry/20-schedule fixture
+  seeded outside measured blocks; bind it to the authoritative W2
+  intelligence-v1 oracle and canonical logical-payload SHA-256
+- [x] Observe isolated store open+close/load, save, bounded History page/query,
+  CSV/XLSX export, archive, restore, receipt parsing, projection, and intelligence with
+  XCTest clock, CPU, memory, and logical storage-write metrics
+- [x] Pin CI to one erased iPhone 16 Pro/iOS 18.5 Simulator and retain the raw
+  `.xcresult`, exported metrics/summary JSON, environment identity,
+  evidence-file manifest, and log
+- [ ] Run the exact candidate remotely and review its observational evidence;
+  do not create timing or memory ceilings from an unreviewed Simulator run
+- [ ] Deferred: all oldest/current physical-iPhone p95, peak-memory,
+  interruption, energy, thermal, Vision/photo, and interaction gates remain open
+
+## 0.7.0 W4.2 - domain-payload-free performance signposts
+
+- [x] Centralize a closed 18-name `OSSignposter` operation inventory with only
+  fixed journey outcomes and no domain/user payload API
+- [x] Instrument store open/unlock, ledger load, save, History page/query,
+  CSV/XLSX export, archive export/restore, receipt processing, projection, and
+  deterministic intelligence at their reviewed production boundaries
+- [x] Add truthful unlock-to-ready-Today-appearance, save-to-state-publication,
+  generation-owned initial/later History publication, and authoritative
+  post-query Calendar-compute journeys while preserving low-level intervals
+- [x] Gate the names, exact source locations, complete interval ownership,
+  global direct/wrapper/signposter primitive allowlist, privacy boundary, Swift
+  mapping, runbook, and release workflows with escaped/C-API mutation tests
+- [ ] Deferred: exact-candidate Instruments collection and log privacy review,
+  oldest/current physical-device p50/p95 evidence, receipt peak memory,
+  archive near-limit behavior, and sustained interaction/jank review
+
 ## Foundation
 
 - [x] Exact Decimal money, currency minor-unit policy, locale-safe parsing, and

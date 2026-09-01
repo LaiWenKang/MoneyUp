@@ -75,6 +75,8 @@ extension AppModel {
         from store: EncryptedRecordStore,
         mode: BookLoadMode = .recovering
     ) async throws {
+        let performanceInterval = MoneyUpPerformanceSignposts.begin(.ledgerLoad)
+        defer { MoneyUpPerformanceSignposts.end(performanceInterval) }
         prepareBookLoadState()
         try await loadRecoveryProfile(from: store, mode: mode)
         let recovered = try await fetchRecoveredBookRecords(

@@ -59,6 +59,12 @@ exact-candidate run.
 | W2-CFG | Settings offers System/English/Simplified Chinese and category management. Log exposes title-or-merchant, description/notes, and add-category without changing ledger meaning. | Compile/localization tests passed; bilingual physical review open. |
 | W2-QA | `--profile intelligence` generates 10,000 deterministic KWD/SGD/USD rows and a committed oracle with six positive findings and three negative cases; default release output stays byte-identical. | Validator and Swift oracle passed; physical scale budgets open. |
 
+## 0.7.0 W5 architecture fitness traceability
+
+| ID | Implementation and evidence anchor | Current evidence state |
+|---|---|---|
+| W5.2-FIT | `Scripts/validate_architecture_fitness.py`, focused Python fixtures, its release-validator invocation, and the explicit CI steps enforce reviewed Core/CryptoKit imports, view/factory separation, declared colorsets, bilingual static keys, the offline boundary, conditional Foundation Models output limits, and the documented shipping-Swift safety exceptions. | Source implemented; local static and fixture gates passed; exact merged-candidate CI remains open. |
+
 ## Capture and transactions
 
 | ID | Implementation and evidence anchor | Current evidence state |
@@ -170,7 +176,7 @@ exact-candidate run.
 | DAT-05 | Shared locale formatting/parsing requires full-string validity and covers comma/zero-decimal/precision/garbage/negative/extreme cases. | Source implemented; exact-candidate suites and bilingual entry open. |
 | DAT-06 | `FinancialPeriodBoundary` provides the single half-open utility used by History, reports, budgets, goals, rollover, and schedules. | Source implemented; final date-path audit open. |
 | DAT-07 | `TransactionOriginContext`, stable day key, reporting time zone, and posting events retain travel/DST attribution. | Source implemented; extreme-zone physical/Simulator regression open. |
-| DAT-08 | `DerivedValue` propagates unavailable/error state; UI shows reason and OSLog receives redacted operation/diagnostic only. | Source implemented; fault-injection/log audit open. |
+| DAT-08 | `DerivedValue` propagates unavailable/error state; UI shows reason and OSLog receives redacted operation/diagnostic only. The separate performance category accepts only 18 static interval names, empty low-level messages, and fixed journey outcomes. | Source implemented with signpost source gate; fault-injection/physical log audit open. |
 | DAT-09 | AppModel/store batches cover setup, edit, lifecycle, import, restore, draft removal, reconciliation, investment, attachment, and goal operations atomically. | Source implemented; exact-candidate rollback/race tests open. |
 | DAT-10 | Store decode issues and relationship validation quarantine/count bad rows without discarding the readable book or raw record. | Source implemented; corrupted fixture/recovery evidence open. |
 
@@ -185,7 +191,7 @@ exact-candidate run.
 | SEC-05 | Data Safety/recovery copy warns about passcode/app-deletion cliffs and prioritizes file-backed `.moneyup` backup/restore before destructive recovery. Current writes cannot outgrow the v2 portable envelope. | Source implemented; exact-candidate and physical warning/recovery drill open. |
 | SEC-06 | Vision processing is on device; receipt sources are transient unless explicitly retained, then orientation-applied pixels are bounded and re-encoded without GPS/EXIF/TIFF device metadata before SQLCipher/archive persistence. They are never exported/read by widgets. | Source implemented with metadata fixture; exact-candidate and physical retention/network observation open. |
 | SEC-07 | Runtime data egress is explicit export only; privacy/security docs require new review before any network integration. | Source implemented; exact-binary network review open. |
-| SEC-08 | Redacted logging/diagnostics, privacy cover, Quick Capture design, and percentage/state-only widget snapshot exclude sensitive values. | Source implemented; physical feedback/widget/log audit open. |
+| SEC-08 | Redacted logging/diagnostics, domain-payload-free performance signposts with fixed outcomes, privacy cover, Quick Capture design, and percentage/state-only widget snapshot exclude sensitive values. | Source implemented with signpost source gate; physical feedback/widget/log audit open. |
 | SEC-09 | `PRIVACY.md`, privacy manifest, store working copy, support/release docs, and workflow define exact-binary reconciliation. | Release gate open; no submitted binary has been reviewed. |
 | SEC-10 | Privacy/security documents state compromised OS, shared credentials, unlocked screen, screenshots, and post-export disclosure as limits. | Source documentation implemented; exact store copy review open. |
 
@@ -200,6 +206,7 @@ exact-candidate run.
 | QA-05 | `DataSafetyView` exports a privacy-safe inventory from one payload-free store count snapshot. The fixture generator preserves its original 10,000-row release output and adds an explicit three-currency intelligence profile plus committed oracle; `FIRST_TEST.md` binds these to upgrade, restore, scale, and planted-finding checks. | Fixture/oracle and merged W2 Swift CI passed; physical gates remain open. |
 | QA-06 | Roadmap/launch plan prohibit wider testing or App Review while mandatory evidence is open. | Gate enforced in documentation; wider-test/review approval remains open. |
 | QA-07 | Workflow and store checklist bind metadata, screenshots, review notes, privacy, languages, version/build, archive, widget, App Group, and binary capabilities. | Exact-binary/App Store gate open. |
+| QA-08 | `MoneyUpPerformanceTests`, the `MoneyUpPerformance` Release scheme, and pinned CI build one logically/domain-deterministic 10,000-entry/20-schedule store outside measured blocks from the SHA-bound W2 intelligence-v1 corpus/oracle; assert exact detector and refund/transfer/split exclusion invariants before observing clock/CPU/memory/logical writes for open+close/load, save, History, export, archive/restore, receipt parsing, projection, and intelligence; and retain `.xcresult` plus JSON environment/metrics/summary/file-manifest evidence. | W4.1 source-configured; exact-candidate Simulator run open. This is not the upcoming W5 QA-v2 lifecycle corpus. No absolute ceiling is asserted and every physical p95/memory/interaction gate remains open. |
 
 ## Proposed amendment PA-2026-08-29-r1 — Explainable capture guardrails
 
@@ -229,6 +236,11 @@ accessibility, and real-OCR targets remain open for the exact release candidate.
 
 The Golden PRD requires physical measurement on the oldest supported iPhone
 with 10,000 entries and 20 schedules:
+
+The separate W4.1 Simulator harness is documented in
+[the automated performance baseline](PERFORMANCE_BASELINE.md). Its optimized,
+serial XCTest measurements are useful regression evidence only; they do not
+change any status in the physical table below.
 
 | Operation | Budget | Status |
 |---|---:|---|

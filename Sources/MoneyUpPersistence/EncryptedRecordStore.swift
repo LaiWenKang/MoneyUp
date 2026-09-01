@@ -310,6 +310,8 @@ public actor EncryptedRecordStore {
     let connection: SQLCipherConnection
 
     public init(databaseURL: URL, key: Data) throws {
+        let performanceInterval = MoneyUpPerformanceSignposts.begin(.storeOpen)
+        defer { MoneyUpPerformanceSignposts.end(performanceInterval) }
         guard key.count == 32 else {
             throw PersistenceError.invalidKeyLength
         }
@@ -355,6 +357,8 @@ public actor EncryptedRecordStore {
         id: String,
         in collection: RecordCollection
     ) throws {
+        let performanceInterval = MoneyUpPerformanceSignposts.begin(.save)
+        defer { MoneyUpPerformanceSignposts.end(performanceInterval) }
         try connection.write(
             [try RecordWrite(value, id: id, in: collection)],
             removing: []
@@ -367,6 +371,8 @@ public actor EncryptedRecordStore {
         removing deletions: [RecordDeletion] = [],
         relinkingReceiptAttachments relink: ReceiptAttachmentRelink? = nil
     ) throws {
+        let performanceInterval = MoneyUpPerformanceSignposts.begin(.save)
+        defer { MoneyUpPerformanceSignposts.end(performanceInterval) }
         try connection.write(
             records,
             removing: deletions,
@@ -577,6 +583,8 @@ public actor EncryptedRecordStore {
         after cursor: JournalEntryPageCursor? = nil,
         limit: Int = 80
     ) throws -> JournalEntryPage {
+        let performanceInterval = MoneyUpPerformanceSignposts.begin(.historyPage)
+        defer { MoneyUpPerformanceSignposts.end(performanceInterval) }
         try Task.checkCancellation()
         let boundedLimit = min(max(limit, 1), 500)
         let rawPage = try connection.fetchJournalEntryPage(

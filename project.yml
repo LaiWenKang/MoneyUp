@@ -85,6 +85,27 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.laiwenkang.MoneyUpTests
         GENERATE_INFOPLIST_FILE: true
 
+  MoneyUpPerformanceTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Tests/MoneyUpPerformanceTests
+      - path: Tests/MoneyUpIntelligenceTests/Fixtures/MoneyUp-Intelligence-Oracle.json
+        buildPhase: resources
+    dependencies:
+      - package: MoneyUpPackage
+        product: MoneyUpCore
+      - package: MoneyUpPackage
+        product: MoneyUpPersistence
+      - package: MoneyUpPackage
+        product: MoneyUpIntelligence
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.laiwenkang.MoneyUpPerformanceTests
+        GENERATE_INFOPLIST_FILE: true
+        TEST_HOST: ""
+        BUNDLE_LOADER: ""
+
   MoneyUpWidget:
     type: app-extension
     platform: iOS
@@ -109,3 +130,16 @@ targets:
         APPLICATION_EXTENSION_API_ONLY: YES
         SKIP_INSTALL: true
         CODE_SIGN_ENTITLEMENTS: App/MoneyUpWidget/MoneyUpWidget.entitlements
+
+schemes:
+  MoneyUpPerformance:
+    build:
+      targets:
+        MoneyUpPerformanceTests: [test]
+    test:
+      config: Release
+      gatherCoverageData: false
+      targets:
+        - name: MoneyUpPerformanceTests
+          parallelizable: false
+          randomExecutionOrder: false

@@ -1,20 +1,51 @@
 import Foundation
+import MoneyUpCore
 import MoneyUpPersistence
+
+struct OpenedDatabaseStore: Sendable {
+    let store: EncryptedRecordStore
+    let unlockToFirstUsefulContentInterval: MoneyUpPerformanceInterval?
+}
 
 typealias DatabaseStoreOpener = @Sendable (
     _ databaseURL: URL
-) async throws -> EncryptedRecordStore
+) async throws -> OpenedDatabaseStore
 
 enum DatabaseStoreOpeners {
     /// Preserves the production boundary exactly: Keychain access and SQLCipher
     /// opening stay off the main actor, and key bytes are overwritten on exit.
     static let production: DatabaseStoreOpener = { databaseURL in
-        try await Task.detached(priority: .userInitiated) {
+        let performanceInterval = MoneyUpPerformanceSignposts.begin(.unlock)
+        defer { MoneyUpPerformanceSignposts.end(performanceInterval) }
+        return try await Task.detached(priority: .userInitiated) {
             var key = try DatabaseKeyStore.loadOrCreateKey(
                 databaseURL: databaseURL
             )
             defer { key.resetBytes(in: 0..<key.count) }
-            return try EncryptedRecordStore(databaseURL: databaseURL, key: key)
+            // Keychain has returned, so user response time is excluded from
+            // the Golden journey while SQLCipher open, validation, model
+            // publication, and the first visible Today content remain inside.
+            let usefulContentInterval = MoneyUpPerformanceSignposts.begin(
+                .unlockToFirstUsefulContent
+            )
+            var transfersUsefulContentInterval = false
+            defer {
+                if !transfersUsefulContentInterval {
+                    MoneyUpPerformanceSignposts.end(
+                        usefulContentInterval,
+                        outcome: .failure
+                    )
+                }
+            }
+            let opened = OpenedDatabaseStore(
+                store: try EncryptedRecordStore(
+                    databaseURL: databaseURL,
+                    key: key
+                ),
+                unlockToFirstUsefulContentInterval: usefulContentInterval
+            )
+            transfersUsefulContentInterval = true
+            return opened
         }.value
     }
 }

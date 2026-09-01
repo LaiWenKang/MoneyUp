@@ -7,6 +7,8 @@ public enum MonthEndProjectionEngine {
     public static func project(
         _ input: MonthEndProjectionInput
     ) throws -> MonthEndProjection {
+        let performanceInterval = MoneyUpPerformanceSignposts.begin(.projection)
+        defer { MoneyUpPerformanceSignposts.end(performanceInterval) }
         guard input.elapsedDayCount >= minimumElapsedDayCount,
               input.remainingDayCount >= 0 else {
             throw IntelligenceInputError.insufficientSamples

@@ -14,6 +14,19 @@ extension QuickLogEntryView {
     func commitSave() async {
         guard !isSaving, canSave else { return }
         guard let amount, let accountID else { return }
+        var performanceInterval = MoneyUpPerformanceSignposts.begin(
+            .transactionSaveToPublication
+        )
+        func finishPerformanceMeasurement(
+            outcome: MoneyUpPerformanceOutcome
+        ) {
+            MoneyUpPerformanceSignposts.end(
+                performanceInterval,
+                outcome: outcome
+            )
+            performanceInterval = nil
+        }
+        defer { finishPerformanceMeasurement(outcome: .cancelled) }
         isSaving = true
         errorMessage = nil
         defer { isSaving = false }
@@ -24,14 +37,24 @@ extension QuickLogEntryView {
                 accountID: accountID,
                 receiptData: retainedReceipt
             )
-            guard case let .saved(savedEntryID) = outcome else { return }
+            guard case let .saved(savedEntryID) = outcome else {
+                finishPerformanceMeasurement(outcome: .failure)
+                return
+            }
 
             completeSuccessfulSave(entryID: savedEntryID)
             if dismissAfterSave {
                 dismiss()
             }
+            // This is the exact SwiftUI state-publication/dismissal-request
+            // boundary. It intentionally makes no pixel-presentation claim.
+            finishPerformanceMeasurement(outcome: .success)
+        } catch is CancellationError {
+            finishPerformanceMeasurement(outcome: .cancelled)
         } catch {
             errorMessage = safeUserMessage(for: error, context: .save)
+            // The failure endpoint is publication of the safe error state.
+            finishPerformanceMeasurement(outcome: .failure)
         }
     }
 
