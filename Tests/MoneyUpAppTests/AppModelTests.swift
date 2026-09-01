@@ -969,12 +969,12 @@ final class AppModelTests: XCTestCase {
         async throws {
         let fixture = try AppModelFixture()
         defer { fixture.removeFiles() }
+        let archiveURL = fixture.directoryURL.appendingPathComponent(
+            "passcode-preflight.moneyup"
+        )
         try await fixture.seed(
             profile: UserProfile(baseCurrency: fixture.sgd),
             accounts: [fixture.wallet, fixture.food]
-        )
-        let archiveURL = fixture.directoryURL.appendingPathComponent(
-            "passcode-preflight.moneyup"
         )
         try await fixture.store.exportPortableArchive(
             to: archiveURL,
