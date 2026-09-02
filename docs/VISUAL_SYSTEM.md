@@ -137,7 +137,7 @@ surface, and elevated canvases; release validation checks every pairing.
 
 ## Widget rule
 
-Quick-action widget timelines remain data-free. The 0.7.0 source candidate
+Quick-action widget timelines remain data-free. The 0.7.1 source candidate
 offers an opt-in budget-status surface backed by a versioned App Group snapshot
 containing only availability/state and an integer percentage. It receives no
 amount, payee, account name, holding, balance, transaction, or ledger

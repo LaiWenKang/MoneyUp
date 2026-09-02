@@ -1,11 +1,11 @@
 # App Store Submission Working Copy
 
-Last reviewed: 1 September 2026 for the 0.7.0 source candidate
+Last reviewed: 2 September 2026 for the 0.7.1 source candidate
 
 This file is the source of truth for App Store Connect entry. Verify every
 claim against the exact archived binary before submission.
 
-Status: working copy for the source-integrated 0.7.0 beta candidate. No 1.0
+Status: working copy for the source-integrated 0.7.1 beta candidate. No 1.0
 binary, screenshots, privacy answers, review notes, App Review approval, or
 public release is represented here as complete.
 

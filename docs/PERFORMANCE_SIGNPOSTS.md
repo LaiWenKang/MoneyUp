@@ -1,7 +1,7 @@
 # MoneyUp performance signpost runbook
 
 MoneyUp exposes a closed set of domain-payload-free `OSSignposter` intervals for
-the 0.7.0 performance review. They never attach a count, domain identifier, file
+the 0.7.1 performance review. They never attach a count, domain identifier, file
 path, error detail, financial value, or user-entered text. The five measured journeys
 end with exactly one fixed `outcome=success`, `outcome=failure`, or
 `outcome=cancelled` label so failed and abandoned samples cannot be mistaken for

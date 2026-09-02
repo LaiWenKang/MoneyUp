@@ -1,20 +1,22 @@
-# Golden PRD Traceability - MoneyUp 0.7.0 Candidate
+# Golden PRD Traceability - MoneyUp 0.7.1 Candidate
 
-Reconciled: 1 September 2026
+Reconciled: 2 September 2026
 
 This is the requirement-to-evidence map for the retained MoneyUp 0.6.0
-migration baseline, merged 0.7.0 W1/W2 work, and source-integrated W3/W6
-candidate. It prevents
+migration baseline, merged 0.7.0 W1-W7 work, and the complete merged 0.7.1
+feedback follow-up. It prevents
 "implemented in source" from being misreported as "released" or "accepted."
 
 The approved 0.6.0 baseline was
 `ff272da89de9f4e3cb9c44d4abd27deae7d2b338`. W1 merged through PR #30 at
 `da88df25ab06e93ec5998a9edbcf0153587a9af2`; its exact merged-main CI passed.
 W2 merged through PR #31 at
-`4159df31b7e0b9489d1ddcd84c261296faaeda39`; CI run 246 passed the release,
-Core/persistence/intelligence, app-model, and app/widget Simulator gates on that
-exact merge SHA. Later candidate commits must repeat those gates. Physical-
-device, signed-binary, TestFlight, and release evidence remain open.
+`4159df31b7e0b9489d1ddcd84c261296faaeda39`; CI run 246 passed its release,
+Core/persistence/intelligence, app-model, and app/widget Simulator gates. The
+0.7.1 feedback follow-up merged through PR #40 as `68eee4f8`; exact PR-head run
+300 and merged-main run 301 passed all four CI jobs. This release-document
+follow-up must repeat exact-head CI before signed promotion. Physical-device,
+signed-binary, TestFlight, and release evidence remain open.
 
 The exact 97-row requirement-to-test mapping is in
 [REQUIREMENTS_TEST_MATRIX.md](REQUIREMENTS_TEST_MATRIX.md). The complete source,
@@ -281,8 +283,8 @@ change any status in the physical table below.
 | Calendar date computation | p95 <= 100 ms | Open |
 | Scrolling/interaction | No sustained jank | Open |
 
-Also open: signed App Group entitlement validation for the final 0.7.0 binary,
-in-place installed-beta-to-0.6.0-to-0.7.0 upgrade continuity, clean-device
+Also open: signed App Group entitlement validation for the final 0.7.1 binary,
+in-place installed-predecessor-to-0.7.1 upgrade continuity, clean-device
 restore, founder/co-tester seven-day run, 14-day invited
 closed beta, exact-binary privacy/store review, App Review, account-holder
 manual release, and first-72-hour monitoring.

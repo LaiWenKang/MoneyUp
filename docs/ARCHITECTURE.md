@@ -8,7 +8,7 @@ flowchart TD
     App["Authenticated SwiftUI app"] --> Core["MoneyUpCore"]
     App --> Intel["MoneyUpIntelligence"]
     App --> Store["MoneyUpPersistence"]
-    Store --> Cipher["SQLCipher schema 7"]
+    Store --> Cipher["SQLCipher schema 8"]
     App --> Shared["Percent/state-only App Group"]
     Shared --> Widget
     App --> Files["CSV/XLSX/import/archive"]
@@ -184,7 +184,7 @@ The non-sensitive System/English/Simplified Chinese preference is stored in the
 reviewed App Group defaults so app and widget agree. It is deliberately separate
 from the financial profile, reporting time zone, stored text, and parsing rules.
 
-## Ledger and SQLCipher schema 7
+## Ledger and SQLCipher schema 8
 
 Normal views do not create postings directly. `TransactionFactory` creates
 balanced expense, income, transfer, foreign-exchange, refund, reconciliation,
@@ -192,9 +192,11 @@ split, investment purchase/sale, and valuation entries. `JournalEntry`
 validates each currency independently at initialization and decoding, and
 retains originating calendar/time-zone facts plus a stable local-day key.
 
-Schema 7 retains deterministic encrypted record payloads and the normalized
-encrypted support tables. It extends schema 6 with derived local-intelligence
-facts while retaining constant-size totals and historical budget attribution:
+Schema 8 retains deterministic encrypted record payloads and the normalized
+encrypted support tables. It includes schema 7's derived local-intelligence
+facts, constant-size totals, and historical budget attribution, while adding
+loan and allowance collections through the existing generic encrypted-record
+representation:
 
 | Table/index | Purpose |
 |---|---|
@@ -224,6 +226,10 @@ budget-attribution projections without rewriting valid payloads. The 6-to-7
 migration decodes only metadata that schema 6 did not normalize (payee, kind,
 and account classification) inside the migration transaction, then builds the
 derived indexes without changing payload bytes, hashes, IDs, or timestamps.
+The 7-to-8 migration is compatibility-only: it recognizes additive `loanPlans`
+and `allowancePlans` records without rewriting journal payloads. Restore
+identity validation, quarantine, bounded inventory, and atomic replacement
+include both collections.
 Raw malformed rows remain quarantined instead of blocking the readable book.
 
 ## Planning and investment records
@@ -310,9 +316,9 @@ bytes, user-authored identifiers, names, amounts, currencies, notes, or balances
 
 ## Evidence boundary
 
-W1 and W2 are merged, and their exact PR-head and merged-main CI gates passed,
-most recently for W2 on `main@4159df31`. This is not evidence that the final
-0.7.0 release candidate repeated those gates or passed signed-binary validation,
-10,000-entry physical budgets, upgrade/restore on iPhones, TestFlight
+The 0.7.1 implementation is merged through PR #40 as `68eee4f8`; exact PR-head
+CI run 300 and merged-main CI run 301 passed. This release-document follow-up
+must repeat exact-head CI. None of that is signed-binary validation,
+10,000-entry physical evidence, upgrade/restore on iPhones, TestFlight
 processing, beta use, or App Review. Those gates remain tracked in
 [Golden PRD traceability](GOLDEN_TRACEABILITY.md).

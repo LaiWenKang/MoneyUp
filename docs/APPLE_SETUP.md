@@ -53,7 +53,7 @@ For each App ID, open **Edit**, enable **App Groups**, choose **Configure**,
 select only `group.com.laiwenkang.MoneyUp`, continue through **Assign**, and
 save. Keep iCloud, Sign in with Apple, push notifications, and every other
 unused capability disabled. Both App IDs must authorize the same group before
-automatic App Store provisioning can sign the current 0.7.0 candidate.
+automatic App Store provisioning can sign the current 0.7.1 candidate.
 
 This capability does not grant the widget access to the SQLCipher database or
 its Keychain key. Source validation restricts both entitlement files to this
@@ -194,7 +194,7 @@ workflow inputs below.
    if either differs; a successful workflow is not evidence that a later copy
    remained intact.
 
-The workflow verifies source version 0.7.0 build 9, then creates a unique upload
+The workflow verifies source version 0.7.1 build 10, then creates a unique upload
 build number for every attempt. It verifies Xcode 26 and the iOS 26 SDK, checks
 the app and widget versions and identifiers, checks both source entitlement
 files, checks privacy and bilingual resources, verifies that both distribution

@@ -1,4 +1,4 @@
-# Install and Use Founders Beta 0.7.0
+# Install and Use Founders Beta 0.7.1
 
 MoneyUp is available to its approved founder and co-tester through private
 TestFlight groups and can also be installed from source. New builds still pass
@@ -6,11 +6,12 @@ through the protected release workflow before they appear in TestFlight.
 
 ## iPhone-only TestFlight installation
 
-Confirm the account holder has installed the accepted 0.6.0 (1020.1) baseline
-from the private Founders Internal TestFlight group without deleting the app.
-The 0.7.0 candidate appears in that same group only after the protected release
-workflow completes for its exact commit, Apple processes the upload, and the
-account holder selects the build.
+Record the exact predecessor build already installed by the account holder. The
+expected predecessor is 0.7.0 (1025.1) once App Store Connect processing and
+Founders Internal availability are confirmed. Do not delete the existing app.
+The 0.7.1 candidate appears in that same private group only after the protected
+release workflow completes for its exact commit, Apple processes the upload,
+and the account holder selects the build.
 The second tester receives a private email invitation to the Founders External
 group after TestFlight Beta App Review. Both testers install through Apple's
 TestFlight app. MoneyUp has no account and the invitation does not require
@@ -80,6 +81,18 @@ Then in Xcode:
 8. Send MoneyUp to the background. The switcher preview should hide data
    immediately; after the default one-minute delay, reopening should require
    device authentication. The delay is configurable in Settings.
+9. Create a child and grandchild category, move the child safely, and confirm
+   Log and History show the complete category path without duplicating budget
+   attribution.
+10. In History, verify Today opens by default, title and notes are visible, the
+    per-currency spending/income/refund/net totals reconcile, and seven-day,
+    month, all-time, filter, and Calendar routes remain available.
+11. Enable daily and weekly guidance on disposable flexible budgets and verify
+    the pace changes without changing the monthly limit or ledger.
+12. Create a daily non-rollover meal allowance and a disposable loan plan.
+    Confirm expired allowance value never becomes income or net worth, and a
+    loan repayment separates principal, interest, and fees in one balanced
+    entry before the loan can finish at zero principal.
 
 ## Add the widget
 
@@ -88,9 +101,12 @@ The horned-money small and Lock Screen widgets can be configured for Expense,
 Income, Transfer, Refund, Smart Entry, Receipt, or the opt-in budget status;
 the medium widget shows illustrated quick actions or status as configured. The
 status contains only a percentage/state and no amount, payee, account, holding,
-balance, transaction, or ledger identifier. Expense,
-income, transfer, and refund can open the encrypted Quick Capture form while the
-book remains locked; full balances and smart/receipt tools still require unlock.
+balance, transaction, or ledger identifier. Expense, income, transfer, and
+refund open the full Quick Log when the protected book is available. While it
+remains locked, the separate encrypted Quick Capture inbox accepts amount plus
+optional title and notes without exposing balances, accounts, categories,
+history, or ledger identifiers; protected account and category selection
+happens only after intentional unlock and review.
 
 ## Export to Numbers or Excel
 
@@ -120,7 +136,7 @@ must use the same `com.laiwenkang.MoneyUp` identity and the app/widget must keep
 the reviewed `group.com.laiwenkang.MoneyUp` capability; run the upgrade drill
 in `FIRST_TEST.md` before release.
 
-The 0.7.0 source candidate is not a public release. Exact-candidate Mac CI,
-physical performance/accessibility, upgrade/restore, founder/co-tester
-seven-day use, closed beta, 0.7.0 TestFlight processing, and App Store gates
-remain open until evidence is recorded.
+The 0.7.1 source candidate is not a public release. Exact-head Mac CI must
+remain green; signed validation, 0.7.1 TestFlight processing, physical
+performance/accessibility, upgrade/restore, founder/co-tester seven-day use,
+closed beta, and App Store gates remain open until evidence is recorded.
