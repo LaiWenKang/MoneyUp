@@ -207,7 +207,7 @@ final class QuickLogOnDeviceAssistanceTests: XCTestCase {
         let sgd = try CurrencyCode("SGD")
         let accounts = try (0..<20).reversed().map { index in
             LedgerAccount(
-                id: XCTUnwrap(UUID(
+                id: try XCTUnwrap(UUID(
                     uuidString: String(
                         format: "00000000-0000-0000-0000-%012d",
                         index + 1
