@@ -295,13 +295,15 @@ final class QuickLogOnDeviceAssistanceTests: XCTestCase {
         let accountChoices = (0..<16).map { index in
             QuickLogAssistanceChoice(
                 id: fixedID(index + 1),
-                label: String(repeating: "🥦", count: 40)
+                label: String(format: "%02d", index)
+                    + String(repeating: "🥦", count: 40)
             )
         }
         let categoryChoices = (0..<16).map { index in
             QuickLogAssistanceChoice(
                 id: fixedID(index + 101),
-                label: String(repeating: "餐", count: 80)
+                label: String(format: "%02d", index)
+                    + String(repeating: "餐", count: 80)
             )
         }
         let boundedPlan = try XCTUnwrap(QuickLogAssistancePlan(
