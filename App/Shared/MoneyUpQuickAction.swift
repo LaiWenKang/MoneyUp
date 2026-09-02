@@ -209,7 +209,7 @@ struct OpenQuickLogIntent: AppIntent {
 
 #if compiler(>=6.2)
     @available(iOS 26.0, *)
-    static var supportedModes: IntentModes = [.foreground(.immediate)]
+    static let supportedModes: IntentModes = [.foreground(.immediate)]
 #endif
 
     @Parameter(title: "platform_intent.open_quick_log.action", default: .expense)
