@@ -1,5 +1,18 @@
 import Foundation
 
+/// The deterministic parse plus a bounded, nonfinancial text fragment that an
+/// optional on-device classifier may use to rank existing local choices.
+/// Monetary and date spans stay only in `draft`; they never enter `context`.
+public struct ParsedNaturalLanguageEntry: Equatable, Sendable {
+    public let draft: TransactionDraft
+    public let context: String?
+
+    public init(draft: TransactionDraft, context: String?) {
+        self.draft = draft
+        self.context = context
+    }
+}
+
 /// Reads a typed phrase such as "lunch 12.50 cash yesterday" into a draft.
 ///
 /// Matching runs against the user's own account and category names, so the
@@ -51,6 +64,29 @@ public enum NaturalLanguageEntryParser {
         prefersDayFirst: Bool = true,
         locale: Locale = .current
     ) -> TransactionDraft {
+        parse(
+            text,
+            accounts: accounts,
+            now: now,
+            calendar: calendar,
+            prefersDayFirst: prefersDayFirst,
+            locale: locale
+        ).draft
+    }
+
+    /// Runs the same deterministic parser while keeping its financial spans
+    /// separate from the optional-assistance context. The context keeps whole
+    /// tokens under 128 scalars and 256 UTF-8 bytes, and removes digits,
+    /// symbols, dates, exact local names, and recognized currency codes before
+    /// any model boundary can see it.
+    public static func parse(
+        _ text: String,
+        accounts: [LedgerAccount],
+        now: Date = Date(),
+        calendar: Calendar = .current,
+        prefersDayFirst: Bool = true,
+        locale: Locale = .current
+    ) -> ParsedNaturalLanguageEntry {
         var remainder = text
         let haystack = TextScanner.normalized(text).lowercased()
         let kind: DraftKind
@@ -83,7 +119,7 @@ public enum NaturalLanguageEntryParser {
             in: accounts.filter { $0.kind == categoryKind && !$0.isArchived }
         )
 
-        return TransactionDraft(
+        let draft = TransactionDraft(
             kind: kind,
             amount: amount,
             occurredAt: dateResult.date,
@@ -92,6 +128,121 @@ public enum NaturalLanguageEntryParser {
             categoryID: category,
             source: .naturalLanguage
         )
+        let currencyCodes = Set(
+            accounts.compactMap { $0.currency?.value.lowercased() }
+        )
+        return ParsedNaturalLanguageEntry(
+            draft: draft,
+            context: assistanceContext(
+                from: remainder,
+                currencyCodes: currencyCodes,
+                localNames: accounts.map(\.name)
+            )
+        )
+    }
+
+    private static func assistanceContext(
+        from remainder: String,
+        currencyCodes: Set<String>,
+        localNames: [String]
+    ) -> String? {
+        let comparableCurrencyCodes = Set(
+            currencyCodes.map(assistanceComparisonKey)
+        )
+        let separators = CharacterSet.decimalDigits
+            .union(.symbols)
+            .union(.punctuationCharacters)
+        var sanitized = ""
+        for scalar in remainder.precomposedStringWithCompatibilityMapping.unicodeScalars {
+            let properties = scalar.properties
+            let category = properties.generalCategory
+            if properties.isDefaultIgnorableCodePoint || category == .format {
+                continue
+            }
+            if separators.contains(scalar)
+                || category == .control {
+                sanitized.append(" ")
+            } else {
+                sanitized.unicodeScalars.append(scalar)
+            }
+        }
+        let trimSet = CharacterSet.punctuationCharacters
+            .union(.symbols)
+            .union(.whitespacesAndNewlines)
+            .union(fillerCharacters)
+        let words = sanitized
+            .components(separatedBy: .whitespacesAndNewlines)
+            .map { $0.trimmingCharacters(in: trimSet) }
+            .filter { word in
+                guard !word.isEmpty else { return false }
+                let lowered = word.lowercased()
+                if fillerWords.contains(lowered) { return false }
+                let comparisonKey = assistanceComparisonKey(word)
+                if comparableCurrencyCodes.contains(comparisonKey) {
+                    return false
+                }
+                let asciiLetters = word.unicodeScalars.allSatisfy {
+                    (65...90).contains($0.value) || (97...122).contains($0.value)
+                }
+                return !(asciiLetters && word.count == 3
+                    && word == word.uppercased())
+            }
+        let fullContext = words.joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !fullContext.isEmpty,
+              fullContext.contains(where: { $0.isLetter }),
+              !containsLocalName(fullContext, localNames: localNames),
+              let boundedContext = boundedAssistanceContext(words),
+              boundedContext.contains(where: { $0.isLetter }),
+              !containsLocalName(boundedContext, localNames: localNames)
+        else { return nil }
+        return boundedContext
+    }
+
+    private static func boundedAssistanceContext(_ words: [String]) -> String? {
+        var context = ""
+        var scalarCount = 0
+        var utf8Count = 0
+        for word in words {
+            let separatorCount = context.isEmpty ? 0 : 1
+            let nextScalarCount = scalarCount + separatorCount
+                + word.unicodeScalars.count
+            let nextUTF8Count = utf8Count + separatorCount + word.utf8.count
+            guard nextScalarCount <= 128, nextUTF8Count <= 256 else { break }
+            if separatorCount == 1 {
+                context.append(" ")
+            }
+            context.append(word)
+            scalarCount = nextScalarCount
+            utf8Count = nextUTF8Count
+        }
+        return context.isEmpty ? nil : context
+    }
+
+    private static func containsLocalName(
+        _ context: String,
+        localNames: [String]
+    ) -> Bool {
+        let projectedContext = searchProjection(of: context).text
+        return localNames.contains { name in
+            let projectedName = searchProjection(
+                of: TextScanner.normalized(name)
+            ).text
+            return firstProjectedTokenRange(
+                of: projectedName,
+                in: projectedContext
+            ) != nil
+        }
+    }
+
+    private static func assistanceComparisonKey(_ value: String) -> String {
+        let locale = Locale(identifier: "en_US_POSIX")
+        return value.precomposedStringWithCompatibilityMapping
+            .folding(
+                options: [.diacriticInsensitive, .widthInsensitive],
+                locale: locale
+            )
+            .lowercased(with: locale)
     }
 
     private static func consumeAmount(
@@ -203,39 +354,45 @@ public enum NaturalLanguageEntryParser {
         from text: inout String,
         in accounts: [LedgerAccount]
     ) -> UUID? {
-        let haystack = TextScanner.normalized(text).lowercased()
-        let matches = accounts
-            .filter { account in
-                let name = TextScanner.normalized(account.name).lowercased()
-                return !name.isEmpty && containsName(name, in: haystack)
+        let matches = accounts.compactMap { account -> NameMatch? in
+            let name = TextScanner.normalized(account.name)
+            guard !name.isEmpty,
+                  let range = firstTokenRange(of: name, in: text) else {
+                return nil
             }
-            .sorted { $0.name.count > $1.name.count }
-
-        guard let best = matches.first else { return nil }
-        remove(best.name, from: &text)
-        return best.id
-    }
-
-    private static func containsName(_ name: String, in haystack: String) -> Bool {
-        let containsCJK = name.unicodeScalars.contains { scalar in
-            (0x3400...0x4DBF).contains(scalar.value)
-                || (0x4E00...0x9FFF).contains(scalar.value)
-                || (0xF900...0xFAFF).contains(scalar.value)
+            return NameMatch(
+                accountID: account.id,
+                normalizedName: name,
+                range: range,
+                location: text.distance(from: text.startIndex, to: range.lowerBound)
+            )
+        }.sorted { first, second in
+            if first.normalizedName.count != second.normalizedName.count {
+                return first.normalizedName.count > second.normalizedName.count
+            }
+            if first.location != second.location {
+                return first.location < second.location
+            }
+            if first.normalizedName != second.normalizedName {
+                return first.normalizedName < second.normalizedName
+            }
+            return first.accountID.uuidString < second.accountID.uuidString
         }
-        if containsCJK { return haystack.contains(name) }
-
-        let escaped = NSRegularExpression.escapedPattern(for: name)
-        guard let regex = try? NSRegularExpression(
-            pattern: "(?<![\\p{L}\\p{N}])\(escaped)(?![\\p{L}\\p{N}])"
-        ) else { return false }
-        let range = NSRange(haystack.startIndex..<haystack.endIndex, in: haystack)
-        return regex.firstMatch(in: haystack, range: range) != nil
+        guard let best = matches.first else { return nil }
+        text.replaceSubrange(best.range, with: " ")
+        return best.accountID
     }
 
-    /// Latin tokens must be complete words. `Character.isLetter` and
-    /// `isNumber` make the boundary check Unicode-aware, so an ASCII keyword
-    /// cannot match inside an accented or non-Latin payee. Chinese tokens keep
-    /// their existing substring behavior because users commonly type them
+    private struct NameMatch {
+        let accountID: UUID
+        let normalizedName: String
+        let range: Range<String.Index>
+        let location: Int
+    }
+
+    /// Latin tokens must be complete Unicode words, looking through combining
+    /// and default-ignorable scalars at each boundary. Chinese tokens keep
+    /// their intentional substring behavior because users commonly type them
     /// without spaces, for example "昨天午餐".
     private static func containsToken(_ token: String, in text: String) -> Bool {
         firstTokenRange(of: token, in: text) != nil
@@ -252,14 +409,30 @@ public enum NaturalLanguageEntryParser {
         of token: String,
         in text: String
     ) -> Range<String.Index>? {
-        guard !token.isEmpty else { return nil }
+        let projectedToken = searchProjection(of: token).text
+        let projectedText = searchProjection(of: text)
+        guard let range = firstProjectedTokenRange(
+            of: projectedToken,
+            in: projectedText.text
+        ) else { return nil }
+        return originalRange(for: range, in: projectedText)
+    }
 
+    private static func firstProjectedTokenRange(
+        of token: String,
+        in text: String
+    ) -> Range<String.Index>? {
+        guard !token.isEmpty, !text.isEmpty else { return nil }
         let containsCJK = token.unicodeScalars.contains { scalar in
             (0x3400...0x4DBF).contains(scalar.value)
                 || (0x4E00...0x9FFF).contains(scalar.value)
                 || (0xF900...0xFAFF).contains(scalar.value)
         }
-        let options: String.CompareOptions = [.caseInsensitive, .diacriticInsensitive]
+        let options: String.CompareOptions = [
+            .caseInsensitive,
+            .diacriticInsensitive,
+            .widthInsensitive
+        ]
         if containsCJK {
             return text.range(of: token, options: options)
         }
@@ -271,10 +444,14 @@ public enum NaturalLanguageEntryParser {
                   options: options,
                   range: searchStart..<text.endIndex
               ) {
-            let touchesLetterOrNumberBefore = range.lowerBound > text.startIndex
-                && isLetterOrNumber(text[text.index(before: range.lowerBound)])
-            let touchesLetterOrNumberAfter = range.upperBound < text.endIndex
-                && isLetterOrNumber(text[range.upperBound])
+            let touchesLetterOrNumberBefore = touchesLetterOrNumber(
+                before: range.lowerBound,
+                in: text
+            )
+            let touchesLetterOrNumberAfter = touchesLetterOrNumber(
+                after: range.upperBound,
+                in: text
+            )
             if !touchesLetterOrNumberBefore && !touchesLetterOrNumberAfter {
                 return range
             }
@@ -283,8 +460,104 @@ public enum NaturalLanguageEntryParser {
         return nil
     }
 
-    private static func isLetterOrNumber(_ character: Character) -> Bool {
-        character.isLetter || character.isNumber
+    private struct SearchProjection {
+        let text: String
+        let originalRanges: [Range<String.Index>]
+    }
+
+    private static func searchProjection(of source: String) -> SearchProjection {
+        var text = ""
+        var originalRanges: [Range<String.Index>] = []
+        var index = source.startIndex
+        while index < source.endIndex {
+            let next = source.index(after: index)
+            let compatible = String(source[index])
+                .precomposedStringWithCompatibilityMapping
+            for projectedScalar in compatible.unicodeScalars
+            where !isDefaultIgnorableOrFormat(projectedScalar) {
+                text.unicodeScalars.append(projectedScalar)
+                originalRanges.append(index..<next)
+            }
+            index = next
+        }
+        return SearchProjection(
+            text: text,
+            originalRanges: originalRanges
+        )
+    }
+
+    private static func originalRange(
+        for range: Range<String.Index>,
+        in projection: SearchProjection
+    ) -> Range<String.Index>? {
+        let scalars = projection.text.unicodeScalars
+        let lowerOffset = scalars.distance(
+            from: scalars.startIndex,
+            to: range.lowerBound
+        )
+        let upperOffset = scalars.distance(
+            from: scalars.startIndex,
+            to: range.upperBound
+        )
+        guard lowerOffset >= 0,
+              upperOffset > lowerOffset,
+              upperOffset <= projection.originalRanges.count else {
+            return nil
+        }
+        return projection.originalRanges[lowerOffset].lowerBound
+            ..<projection.originalRanges[upperOffset - 1].upperBound
+    }
+
+    private static func touchesLetterOrNumber(
+        before index: String.Index,
+        in text: String
+    ) -> Bool {
+        var cursor = index
+        while cursor > text.unicodeScalars.startIndex {
+            let previous = text.unicodeScalars.index(before: cursor)
+            let scalar = text.unicodeScalars[previous]
+            if isIgnoredTokenBoundaryScalar(scalar) {
+                cursor = previous
+                continue
+            }
+            return CharacterSet.alphanumerics.contains(scalar)
+        }
+        return false
+    }
+
+    private static func touchesLetterOrNumber(
+        after index: String.Index,
+        in text: String
+    ) -> Bool {
+        var cursor = index
+        while cursor < text.unicodeScalars.endIndex {
+            let scalar = text.unicodeScalars[cursor]
+            if isIgnoredTokenBoundaryScalar(scalar) {
+                cursor = text.unicodeScalars.index(after: cursor)
+                continue
+            }
+            return CharacterSet.alphanumerics.contains(scalar)
+        }
+        return false
+    }
+
+    private static func isIgnoredTokenBoundaryScalar(
+        _ scalar: Unicode.Scalar
+    ) -> Bool {
+        let properties = scalar.properties
+        switch properties.generalCategory {
+        case .format, .nonspacingMark, .spacingMark, .enclosingMark:
+            return true
+        default:
+            return properties.isDefaultIgnorableCodePoint
+        }
+    }
+
+    private static func isDefaultIgnorableOrFormat(
+        _ scalar: Unicode.Scalar
+    ) -> Bool {
+        scalar.properties.isDefaultIgnorableCodePoint
+            || scalar.properties.generalCategory == .format
     }
 
     private static func remove(_ fragment: String, from text: inout String) {

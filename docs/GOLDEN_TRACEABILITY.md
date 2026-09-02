@@ -3,7 +3,8 @@
 Reconciled: 1 September 2026
 
 This is the requirement-to-evidence map for the retained MoneyUp 0.6.0
-migration baseline and the merged 0.7.0 W1/W2 candidate. It prevents
+migration baseline, merged 0.7.0 W1/W2 work, and source-integrated W3/W6
+candidate. It prevents
 "implemented in source" from being misreported as "released" or "accepted."
 
 The approved 0.6.0 baseline was
@@ -59,11 +60,40 @@ exact-candidate run.
 | W2-CFG | Settings offers System/English/Simplified Chinese and category management. Log exposes title-or-merchant, description/notes, and add-category without changing ledger meaning. | Compile/localization tests passed; bilingual physical review open. |
 | W2-QA | `--profile intelligence` generates 10,000 deterministic KWD/SGD/USD rows and a committed oracle with six positive findings and three negative cases; default release output stays byte-identical. | Validator and Swift oracle passed; physical scale budgets open. |
 
+## 0.7.0 W3 optional Foundation Models traceability
+
+| ID | Implementation and evidence anchor | Current evidence state |
+|---|---|---|
+| W3-OPT | `UserProfile.foundationModelAssistanceEnabled`, its serialized `AppModel` update, and bilingual Settings copy keep Apple on-device matching off by default. `QuickLogAssistanceCoordinator` checks the gate before planning; `testOffGateNeverInvokesInjectedSelector` proves both planner and selector receive zero calls. Migration and profile-persistence tests retain explicit opt-in. | Source implemented; exact-candidate XCTest and physical Settings review open. |
+| W3-BND | `QuickLogPromptBoundary` canonically normalizes while enforcing 128/256 context scalar/UTF-8, 48/96 per-choice, and 3,072/4,096 total prompt ceilings. The sole typed request/call uses only parsed nonfinancial context and numbered existing names. `QuickLogOnDeviceOrdinalModel` uses `SystemLanguageModel.default`, one uncustomized session, availability gating, and two literal `0...15` guided ordinals. The architecture gate pins construction/call/provenance and rejects OCR, money, date, ID, arbitrary, pasteboard, defaults, extra-call, provider/tool/package, and string-output mutations. | Architecture validator and 37 focused Python tests pass locally; Xcode 16 fallback and Xcode 26 compilation remain open. |
+| W3-OWN | `NaturalLanguageEntryParser.parse` retains every financial field. `QuickLogAssistancePublicationPolicy` rechecks kind/profile/splits/candidate membership and exact per-field state; deterministic history filters stale model suggestions in both completion orders. Use snapshots immediate field/provenance state, while Reject restores only if the full model-applied state is still current. | Source and adversarial XCTest cases present; exact-candidate app XCTest and eligible-device behavior remain open. |
+| W3-DRAFT | An accepted choice immediately updates the recoverable SQLCipher draft but creates no transaction until Save. `AppModelTests.testFoundationModelRejectRestoresImmediateHistoryStateInEncryptedDraft` persists the model choice, restores immediate history state, closes/reopens the encrypted store, and rejects both model IDs. | Source implemented; exact-candidate execution and physical lock/relaunch drill open. |
+| W3-A11Y | Optional-model and deterministic-history Use actions own contextual bilingual account/category accessibility labels. The static gate mutation-tests both call sites; bilingual VoiceOver remains a physical gate. | Static gate passed locally; hosted/physical VoiceOver open. |
+| W3-FAL | Injected unavailable, error, cancellation, stale generation, invalid ordinal, multilingual bound, history/model race, and suspended mutation cases fail closed without altering exact financial fields. | Source-complete; exact-candidate app XCTest execution open. |
+
 ## 0.7.0 W5 architecture fitness traceability
 
 | ID | Implementation and evidence anchor | Current evidence state |
 |---|---|---|
 | W5.2-FIT | `Scripts/validate_architecture_fitness.py`, focused Python fixtures, its release-validator invocation, and the explicit CI steps enforce reviewed Core/CryptoKit imports, view/factory separation, declared colorsets, bilingual static keys, the offline boundary, conditional Foundation Models output limits, and the documented shipping-Swift safety exceptions. | Source implemented; local static and fixture gates passed; exact merged-candidate CI remains open. |
+
+## 0.7.0 W6 visual-system traceability
+
+| ID | Implementation and evidence anchor | Current evidence state |
+|---|---|---|
+| W6-PRIM | `MoneyUpTypography`, `MoneyUpCardPolicy`, and their modifiers provide Dynamic Type-relative monospaced financial roles plus opaque flat/raised/floating surfaces. Reduce Transparency selects a solid primary border with no shadow; Increase Contrast widens and strengthens the boundary. `MoneyUpDesignPrimitiveTests` covers every style/environment policy. | Source implemented; local static gate passed; exact-candidate XCTest and physical Dynamic Type/appearance matrix open. |
+| W6-MOTION | `MoneyUpMotion` keeps financial values immediate, removes MoneyUp-owned confirmation/state motion under Reduce Motion, and leaves native navigation/presentation native. Quick Log consumes the shared policy. `MoneyUpFeedback.haptic` requires a trigger transition with simultaneous visible status; its modifier remains structurally attached, Quick Log/locked capture use the governed boundary, and release validation mutation-tests that structure and rejects direct bypasses. | Source implemented; local static gate passed; exact-candidate XCTest and physical Reduce Motion/haptic review open. |
+| W6-KEY | All six retained app colorsets have explicit light/dark normal/high keys. `validate_release_assets.py` freezes the corrected dark-normal action plus every other reviewed hex, tests action contrast against all three semantic canvases, and replays the old failing dark-action mutation. | Source implemented; local static release gate passed; exact-candidate macOS gate open. |
+| W6-CHART | Six ordered `ChartSeries` assets/tokens drive fully opaque cash-flow and category geometry; a primary dashed rule encodes selection without dimming. The release gate composites rendered pixels, requires 3:1 against every canvas, mutation-tests opacity and policy use, directly rejects zero line width plus empty/non-positive dash declarations, applies standard/protan/deutan separation, and retains labels, symbols/shapes, position, amounts, and accessibility values. Tritan is deliberately not claimed by the heuristic. | Source implemented; local static/mutation gate passed; physical high-contrast, grayscale, tritan/blue-yellow-filter, and VoiceOver matrix open. |
+| W6-WIDGET | Widget semantic colors respond to appearance and accessibility contrast while `BudgetWidgetSnapshot` and its privacy boundary remain unchanged. | Source implemented; exact signed widget appearance/tint matrix open. |
+
+## 0.7.0 W7 platform-action traceability
+
+| ID | Implementation and evidence anchor | Current evidence state |
+|---|---|---|
+| W7-URL | `MoneyUpQuickAction.init(exactDeepLink:)` is a base-free, byte-exact six-literal map. `testPersistedActionsMapToExactDataFreeDeepLinks` accepts every canonical route; `testDeepLinkAllowlistRejectsEveryNoncanonicalVariant` rejects case, escape, credential, port, query, fragment, and path variants without creating a request. | Local source/mutation gate passed; exact-candidate Xcode and signed URL-launch matrix open. |
+| W7-FIFO | `MoneyUpApp.routeDeepLink` sends `.onOpenURL` through the same bounded action-only `MoneyUpQuickActionRouteBroker` and disposition router as App Intents. Cold startup, transient work, occupied UI, duplicate order, and capacity are pinned by the W7 action tests. A capacity-rejected invocation never evicts accepted work but still wakes the router to advance or authoritatively discard it. | Local source/mutation gate passed; exact-candidate XCTest and physical shortcut/widget/control routing open. |
+| W7-AUTH | Generation-bound boundary epochs synchronously invalidate queued and occupied old-book work; pending or unreadable erase authority discards the queue before routing. A denial discovered after dequeue or while attempting lock-safe capture also clears the entire tail and leaves no request. Boundary, tombstone, restore, erase, and stale-callback regressions remain named in the W7/AppModel suites. | Source implemented; exact-candidate XCTest plus signed interruption/forensic privacy evidence open. |
 
 ## Capture and transactions
 

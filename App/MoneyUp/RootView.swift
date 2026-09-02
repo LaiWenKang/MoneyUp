@@ -6,22 +6,29 @@ struct RootView: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        switch model.state {
-        case .launching:
+        if model.quickActionRouteBroker.isAuthoritativeBoundaryActive {
             LaunchingView()
-        case .locked:
-            if model.canPresentLockedQuickCapture,
-               let mode = model.requestedQuickLogMode {
-                LockedQuickCaptureView(mode: mode)
-            } else {
-                LockedView()
+                .id(model.quickActionRouteBroker.handoffGeneration)
+        } else {
+            switch model.state {
+            case .launching:
+                LaunchingView()
+            case .locked:
+                if model.canPresentLockedQuickCapture,
+                   let request = model.requestedQuickLogRequest {
+                    LockedQuickCaptureView(request: request)
+                        .id(request.id)
+                } else {
+                    LockedView()
+                }
+            case .onboarding:
+                OnboardingView()
+            case .ready:
+                MainTabView()
+                    .id(model.quickActionRouteBroker.handoffGeneration)
+            case let .failed(message):
+                RecoveryView(message: message)
             }
-        case .onboarding:
-            OnboardingView()
-        case .ready:
-            MainTabView()
-        case let .failed(message):
-            RecoveryView(message: message)
         }
     }
 }
@@ -200,8 +207,6 @@ private struct MainTabView: View {
     @Environment(AppModel.self) private var model
     @State private var selectedSection: MoneyUpSection = .today
     @State private var quickLogKind: QuickLogKind = .expense
-    @State private var quickLogLaunchMode: QuickLogLaunchMode?
-    @State private var logRequestSequence = 0
     @State private var historyReviewDate: Date?
     @State private var historyReviewSequence = 0
     @State private var isShowingWhatsNew = false
@@ -228,10 +233,9 @@ private struct MainTabView: View {
             LogView(
                 kind: $quickLogKind,
                 isActive: selectedSection == .log,
-                launchMode: quickLogLaunchMode,
-                requestSequence: logRequestSequence,
-                onRequestHandled: { mode in
-                    model.consumeQuickLogRequest(mode)
+                launchRequest: model.presentedQuickLogRequest,
+                onRequestHandled: { request in
+                    model.consumeQuickLogRequest(request)
                 },
                 onNavigate: { destination in
                     switch destination {
@@ -271,7 +275,7 @@ private struct MainTabView: View {
             checkForUpdate(suppressPresentation: openRequestedLog())
             announcePendingRestoreCompletionAfterAppearance()
         }
-        .onChange(of: model.requestedQuickLogMode) { _, _ in
+        .onChange(of: model.requestedQuickLogRequest) { _, _ in
             openRequestedLog()
         }
         .onChange(of: model.pendingRestoreCompletionAnnouncement) { _, pending in
@@ -328,10 +332,9 @@ private struct MainTabView: View {
     /// instead of creating a modal on top of whichever screen was open.
     @discardableResult
     private func openRequestedLog() -> Bool {
-        guard let requestedMode = model.requestedQuickLogMode else { return false }
+        guard let request = model.requestedQuickLogRequest else { return false }
+        guard model.presentQuickLogRequest(request) else { return false }
         isShowingWhatsNew = false
-        quickLogLaunchMode = requestedMode
-        logRequestSequence &+= 1
         selectedSection = .log
         return true
     }

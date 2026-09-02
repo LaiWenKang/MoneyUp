@@ -7,12 +7,14 @@ import UniformTypeIdentifiers
 import XCTest
 
 final class ReceiptImageSanitizerTests: XCTestCase {
-    func testQuickLogSavedFeedbackHonorsReduceMotion() {
-        XCTAssertFalse(
-            QuickLogMotionPolicy.animatesSavedFeedback(reduceMotion: true)
+    func testQuickLogSavedFeedbackUsesSharedReduceMotionPolicy() {
+        XCTAssertEqual(
+            MoneyUpMotion.policy(for: .confirmation, reduceMotion: true),
+            .immediate
         )
-        XCTAssertTrue(
-            QuickLogMotionPolicy.animatesSavedFeedback(reduceMotion: false)
+        XCTAssertEqual(
+            MoneyUpMotion.policy(for: .confirmation, reduceMotion: false),
+            .snappy(duration: 0.22)
         )
     }
 

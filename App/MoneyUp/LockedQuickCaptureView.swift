@@ -8,7 +8,9 @@ struct LockedQuickCaptureView: View {
     }
 
     @Environment(AppModel.self) private var model
-    let mode: QuickLogLaunchMode
+    let request: QuickLogRouteRequest
+
+    private var mode: QuickLogLaunchMode { request.mode }
 
     private let unlockMethod = UnlockMethod.current
 
@@ -96,7 +98,7 @@ struct LockedQuickCaptureView: View {
 
                     Section {
                         Button {
-                            model.consumeQuickLogRequest(mode)
+                            model.consumeQuickLogRequest(request)
                         } label: {
                             Label("action.done", systemImage: "checkmark")
                                 .frame(maxWidth: .infinity)
@@ -200,7 +202,7 @@ struct LockedQuickCaptureView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("action.cancel") {
-                        model.consumeQuickLogRequest(mode)
+                        model.consumeQuickLogRequest(request)
                     }
                 }
                 if !didSave {
@@ -219,7 +221,11 @@ struct LockedQuickCaptureView: View {
             await Task.yield()
             focusedField = .amount
         }
-        .sensoryFeedback(.success, trigger: didSave)
+        .moneyUpFeedback(
+            for: .financialCommit,
+            trigger: didSave,
+            visibleStatus: didSave
+        )
         .moneyUpOperationErrorAlert(message: $errorMessage)
     }
 
@@ -230,7 +236,7 @@ struct LockedQuickCaptureView: View {
         defer { isSaving = false }
         do {
             try await model.saveLockedCapture(
-                mode: mode,
+                request: request,
                 amountText: amountText,
                 payee: payee,
                 note: note
@@ -268,7 +274,7 @@ struct LockedQuickCaptureView: View {
         if canSave, !didSave {
             do {
                 try await model.saveLockedCapture(
-                    mode: mode,
+                    request: request,
                     amountText: amountText,
                     payee: payee,
                     note: note
@@ -280,6 +286,7 @@ struct LockedQuickCaptureView: View {
                 return
             }
         }
+        guard model.requestedQuickLogRequest == request else { return }
         await model.start()
     }
 }

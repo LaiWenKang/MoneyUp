@@ -22,6 +22,7 @@ extension AppModel {
         journalDerivedRefreshWasDeferred = false
         quickLogDraftWriteTask?.cancel()
         quickLogDraftWriteTask = nil
+        presentedQuickLogRequest = nil
         profile = nil
         accounts = []
         entries = []

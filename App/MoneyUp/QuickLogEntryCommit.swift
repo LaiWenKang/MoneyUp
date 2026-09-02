@@ -169,6 +169,7 @@ extension QuickLogEntryView {
     func completeSuccessfulSave(entryID: UUID?) {
         cancelReceiptProcessing()
         cancelCaptureSuggestionLookup()
+        cancelOnDeviceAssistance()
         if let nextCapture = model.quickLogDraft,
            nextCapture.sourceCaptureID != nil,
            !dismissAfterSave {
@@ -238,10 +239,11 @@ extension QuickLogEntryView {
     }
 
     func updateSavedEntry(_ entryID: UUID?) {
-        if QuickLogMotionPolicy.animatesSavedFeedback(
+        if let animation = MoneyUpMotion.animation(
+            for: .confirmation,
             reduceMotion: accessibilityReduceMotion
         ) {
-            withAnimation(.snappy(duration: 0.22)) {
+            withAnimation(animation) {
                 lastSavedEntryID = entryID
             }
         } else {

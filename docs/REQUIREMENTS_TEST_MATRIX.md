@@ -53,6 +53,46 @@ Physical-device review and a repeat on the final 0.7.0 candidate remain open.
 | W2-CFG | Settings offers System/English/Simplified Chinese and full category management; Quick Log exposes title-or-merchant, description/notes, and add-category. | `AppLocalization`, `AppSettingsView`, `QuickLogEntryBody`, `LedgerLifecycleViews`; `AppLocalizationTests`. | AUTO-PASS; bilingual/device review open |
 | W2-FIX | Default release fixture remains byte-identical; explicit intelligence profile creates 10,000 deterministic rows across KWD/SGD/USD plus an exact planted finding/negative-case oracle. | `generate_release_fixture.py`; `MoneyUp-Intelligence-Oracle.json`; `validate_release_assets.py`; `IntelligenceDetectorTests.testCommittedScaleOracleProducesOnlyPlantedFindings`. | STATIC-PASS locally and AUTO-PASS in CI; final-candidate repeat pending |
 
+## 0.7.0 W3 acceptance overlay
+
+These optional Foundation Models rows are source-integrated. Local static
+validation is complete; exact-candidate Xcode 16 fallback compilation, Xcode 26
+macro/runtime tests, and eligible-device behavior remain open.
+
+| ID | Acceptance summary | Source / test cases | State |
+|---|---|---|---|
+| W3-OFF | Legacy and new profiles default off. The disabled and already-cancelled paths perform no planning and make no selector call; unavailable, failed, cancelled, or stale work publishes nothing, and a cancelled old request cannot invalidate a newer valid request. | `UserProfile`, `QuickLogAssistanceCoordinator`; `QuickLogOnDeviceAssistanceTests.testOffGateNeverInvokesInjectedSelector`, `.testCancelledBeforeFirstActorTurnDoesNotPlanOrSelect`, `.testCancelledOldRequestCannotInterfereWithFollowingValidRequest`, `.testUnavailableModelSilentlyKeepsDeterministicResult`, `.testStaleGenerationCannotPublishAfterInvalidation`. | STATIC-PASS; AUTO-PENDING; MANUAL-OPEN |
+| W3-IN | The only model seam accepts a normalized typed request. Context, choice, Unicode-scalar, UTF-8, and total prompt ceilings are enforced; only typed context and locally numbered names can enter the sole reviewed call. Output is two literal `0...15` guided ordinals from `SystemLanguageModel.default`. | `QuickLogPromptBoundary`, `QuickLogOnDeviceOrdinalModel`, `validate_architecture_fitness.py`; `QuickLogOnDeviceAssistanceTests.testPromptBoundaryNormalizesAndBoundsCombiningEmojiAndCJK`, `.testMaximumMultilingualPromptStaysInsideBothTotalCeilings`; 37 focused Python validator tests. | STATIC-PASS; AUTO-PENDING |
+| W3-RACE | A deterministic history change filters the affected pending/published model suggestion in either completion order. Receipt and Smart Fill retire one another before new work begins; clearing the old receipt selection cannot cancel the replacement model request. Publication rechecks kind, profile, split state, candidate membership, and exact field provenance. Use records the immediate pre-apply state; Reject restores it only while the entire model-applied state is still current, including when a later explicit receipt choice has the same ID. | `QuickLogInputAuthority`, `QuickLogAssistancePublicationPolicy`, `QuickLogAssistancePresentation`; `QuickLogOnDeviceAssistanceTests.testReceiptStartCancelsSuspendedAssistanceBeforeItCanPublish`, `.testSmartFillCancelsReceiptFirstAndNilTransitionPreservesNewRequest`, `.testSameIDReceiptCategoryInvalidatesAppliedModelProvenanceBeforeReject`, `.testHistoryMutationBeforeModelReturnFiltersOnlyStaleAccount`, `.testModelReturnBeforeHistoryMutationPrunesEachUnappliedField`, `.testSuspendedKindProfileSplitAndMembershipMutationsFailClosed`, `.testUseRejectRestoresImmediateAccountAndCategoryProvenance`. | STATIC-PASS; AUTO-PENDING |
+| W3-DRAFT | Accepting a match immediately updates the recoverable SQLCipher draft; it does not create a transaction. Reject restores the immediate pre-Use account/category and a close/reopen sees no model-selected IDs. Save remains the sole transaction action. | `QuickLogEntryOnDeviceAssistance`, `AppModel.updateQuickLogDraft`; `AppModelTests.testFoundationModelRejectRestoresImmediateHistoryStateInEncryptedDraft`; existing encrypted draft and atomic Save tests under LOG-05/06. | STATIC-PASS; AUTO-PENDING; MANUAL-OPEN |
+| W3-A11Y | Both optional-model and deterministic-history Use buttons expose contextual bilingual account/category VoiceOver labels; visible copy distinguishes immediate encrypted-draft recovery from transaction creation at Save. | Quick Log suggestion rows, `Localizable.xcstrings`, architecture accessibility mutation gate; MANUAL `W3-A11Y-BILINGUAL`. | STATIC-PASS; MANUAL-OPEN |
+
+## 0.7.0 W6 acceptance overlay
+
+These visual-system rows supplement rather than renumber the controlling 97
+Golden requirements. Static policy/asset evidence does not substitute for the
+exact-candidate Xcode or physical accessibility matrix.
+
+| ID | Acceptance summary | Source / test cases | State |
+|---|---|---|---|
+| W6-PRIM | Financial roles consume Dynamic Type-relative, monospaced policy at runtime. Card defaults remain compatible; Reduce Transparency uses a solid border/no shadow, and Increase Contrast strengthens separation. | `MoneyUpTypography`, `MoneyUpTheme`; `MoneyUpDesignPrimitiveTests.testFinancialValuesAreMonospacedAndImmediateAtEveryScale`, `.testRaisedCardPreservesTheLegacyDefaultAppearance`, `.testCardElevationStylesRemainOpaqueAndSemantic`, `.testCardAccessibilityPoliciesReduceEffectsAndIncreaseSeparation`. | STATIC-PASS; AUTO-PENDING; MANUAL-OPEN |
+| W6-MOTION | Financial values update immediately; Reduce Motion removes MoneyUp-owned confirmation/state motion while native tab/sheet transitions remain native. The feedback modifier stays structurally attached to observe trigger changes; a consequential haptic still requires a trigger transition with simultaneous visible status, and app call sites cannot bypass the boundary. | `MoneyUpMotion`, `MoneyUpFeedback`, Quick Log/locked capture, `validate_release_assets.py`; `MoneyUpDesignPrimitiveTests.testReduceMotionRemovesMoneyUpOwnedMotion`, `.testTabAndSheetTransitionsRemainNative`, `.testFeedbackHapticsAreLimitedToConsequentialResults`, `.testFeedbackRequiresATriggerTransitionAndSimultaneousVisibleStatus`; `ReceiptImageSanitizerTests.testQuickLogSavedFeedbackUsesSharedReduceMotionPolicy`. | STATIC-PASS; AUTO-PENDING; MANUAL-OPEN |
+| W6-KEY | Every app semantic color has exact light/dark normal/high keys; the corrected dark-normal action and every other reviewed slot are frozen, action/white and action/all-canvas contrast are governed and mutation-tested, and protan/deutan separation is checked without claiming tritan equivalence. | App colorsets, `MoneyUpTheme`, `validate_release_assets.py`, `VISUAL_SYSTEM.md`. | STATIC-PASS; MANUAL-OPEN |
+| W6-CHART | Cash-flow/category data geometry, including aggregate Other, uses validated palette slots, remains fully opaque, and stays at least 3:1 after compositing against each semantic canvas. Selection is a primary dashed rule whose declaration requires positive line width and non-empty positive dash segments. Static guards plus in-memory opacity/selection/declaration mutations prove regression detection; labels, symbols/shapes, position, amounts, and accessibility remain non-color encodings. | `InsightsAnalysis`, `InsightsView`, `MoneyUpChartSelectionPolicy`, `validate_release_assets.py`; MANUAL `INS-05-A11Y` under grayscale, blue/yellow filtering, high contrast, and VoiceOver. | STATIC-PASS; MANUAL-OPEN |
+| W6-WIDGET | Widget semantic colors follow appearance/high contrast without expanding the bounded data-free snapshot; final tinted/redacted/family review remains physical. | `MoneyUpWidget`, `validate_release_assets.py`; MANUAL `QA-04-PHYSICAL-MATRIX`. | STATIC-PASS; MANUAL-OPEN |
+
+## 0.7.0 W7 acceptance overlay
+
+These platform-action rows supplement the controlling 97 requirements. Local
+source and mutation gates do not close exact-candidate Xcode metadata or signed
+physical-device routing, upgrade, accessibility, and privacy inspection.
+
+| ID | Acceptance summary | Source / test cases | State |
+|---|---|---|---|
+| W7-URL | Only the six byte-exact, base-free `moneyup://quick-log/...` literals map to the closed action enum; case, escape, credential, port, query, fragment, and noncanonical path variants fail before request mutation. | `MoneyUpQuickAction.init(exactDeepLink:)`, `AppModel.handleDeepLink`; `PlatformQuickLogActionTests.testPersistedActionsMapToExactDataFreeDeepLinks`, `.testDeepLinkAllowlistRejectsEveryNoncanonicalVariant`; platform-validator decoder mutations. | STATIC-PASS; AUTO-PENDING; MANUAL-OPEN |
+| W7-FIFO | App Intents and `.onOpenURL` submit only an action to the bounded process-local FIFO. Startup, same-book work, and an occupied request slot defer without loss; accepted duplicates retain FIFO order. The newest item is rejected at 16 without evicting older work, while the failed attempt still wakes the strict router. | `MoneyUpApp.routeDeepLink`, `MoneyUpQuickActionRouteBroker`, `MoneyUpQuickActionRouting`; `PlatformQuickLogActionTests.testColdBasicActionWaitsForStartupWorkThenRoutesOnce`, `.testDirectDeepLinksEnterFIFOAndWaitForTransientAppWork`, `.testTwoIdenticalInvocationsWaitForSequentialUIConsumption`, `.testRouteBrokerRejectsNewestActionAtCapacityWithoutReordering`, `.testCapacityRejectionWakesUnreadableTombstoneDiscard`. | STATIC-PASS; AUTO-PENDING; MANUAL-OPEN |
+| W7-AUTH | Erase, restore, and pending/unreadable tombstones fail closed, clear old-book queued/occupied handoffs, and reject submissions until every exact boundary epoch ends. An authoritative denial discovered after dequeue or during lock-safe handoff synchronously discards the complete FIFO tail and leaves no request. | `AppModel.beginAuthoritativeQuickActionBoundary`, lifecycle/restore/erase gates; `PlatformQuickLogActionTests.testDirectDeepLinkFailsClosedAtBoundaryAndUnreadableTombstone`, `.testTombstoneBecomingPendingAfterDequeueDiscardsWholeQueue`, `.testTombstoneBecomingUnreadableAfterDequeueDiscardsWholeQueue`, `.testLockSafeTombstoneBecomingPendingDiscardsWholeQueue`, `.testLockSafeTombstoneBecomingUnreadableDiscardsWholeQueue`, `.testQueueDeferredByBusyWorkIsDiscardedWhenRestoreBoundaryBegins`, `.testBoundaryEpochsRejectUntilEveryAuthoritativeLifecycleFinishes`; AppModel lifecycle tests. | STATIC-PASS; AUTO-PENDING; MANUAL-OPEN |
+
 ## Log and transaction capture
 
 | ID | Risk | Acceptance summary | Source / test cases | State |
@@ -247,10 +287,10 @@ repeat exact-SHA CI before promotion.
 
 - Requirements traced: **97 / 97**.
 - Requirements with at least one named automated or manual case: **97 / 97**.
-- Declared automated tests in source after this review: **666** (297 core, 54
-  persistence, 11 intelligence, 293 app-target, and 11 performance-target
+- Declared automated tests in source after this review: **734** (305 core, 54
+  persistence, 11 intelligence, 353 app-target, and 11 performance-target
   declarations; XCTest methods plus Swift Testing `@Test` declarations). Of
-  those declarations, **616** are XCTest functions named `test...`; the
+  those declarations, **684** are XCTest functions named `test...`; the
   remaining 50 are Swift Testing `@Test` declarations in MoneyUpCore.
 - Tests executed against this exact candidate in this environment: **0**;
   Swift and Xcode are unavailable here, and the macOS CI run is pending.

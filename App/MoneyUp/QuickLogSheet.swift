@@ -39,9 +39,8 @@ enum QuickLogNavigationDestination: Hashable, Sendable {
 struct LogView: View {
     @Binding var kind: QuickLogKind
     let isActive: Bool
-    let launchMode: QuickLogLaunchMode?
-    let requestSequence: Int
-    let onRequestHandled: @MainActor (QuickLogLaunchMode) -> Void
+    let launchRequest: QuickLogRouteRequest?
+    let onRequestHandled: @MainActor (QuickLogRouteRequest) -> Void
     let onNavigate: @MainActor (QuickLogNavigationDestination) -> Void
 
     var body: some View {
@@ -49,8 +48,7 @@ struct LogView: View {
             kind: $kind,
             dismissAfterSave: false,
             isActive: isActive,
-            launchMode: launchMode,
-            requestSequence: requestSequence,
+            launchRequest: launchRequest,
             onRequestHandled: onRequestHandled,
             onNavigate: onNavigate
         )
@@ -72,8 +70,7 @@ struct QuickLogSheet: View {
             kind: $kind,
             dismissAfterSave: true,
             isActive: true,
-            launchMode: nil,
-            requestSequence: 0,
+            launchRequest: nil,
             onRequestHandled: { _ in },
             onNavigate: { _ in }
         )
@@ -112,9 +109,37 @@ enum QuickLogReceiptPipeline {
     }
 }
 
-enum QuickLogMotionPolicy {
-    static func animatesSavedFeedback(reduceMotion: Bool) -> Bool {
-        !reduceMotion
+/// Serializes the two optional Quick Log input paths. A receipt selection may
+/// invalidate model assistance only when it can actually begin, while Smart
+/// Fill always retires receipt work before starting a new assistance request.
+@MainActor
+enum QuickLogInputAuthority {
+    static func receiptItemThatMayBegin<Item>(
+        _ item: Item?,
+        isActive: Bool,
+        cancelAssistance: () -> Void
+    ) -> Item? {
+        guard let item, isActive else { return nil }
+        cancelAssistance()
+        return item
+    }
+
+    static func beginSmartFill(
+        cancelReceipt: () -> Void,
+        cancelAssistance: () -> Void,
+        start: () -> Void
+    ) {
+        cancelReceipt()
+        cancelAssistance()
+        start()
+    }
+
+    static func applyReceiptCategory(
+        invalidateAssistance: () -> Void,
+        mutation: () -> Void
+    ) {
+        invalidateAssistance()
+        mutation()
     }
 }
 
@@ -236,9 +261,8 @@ struct QuickLogEntryView: View {
     @Binding var kind: QuickLogKind
     let dismissAfterSave: Bool
     let isActive: Bool
-    let launchMode: QuickLogLaunchMode?
-    let requestSequence: Int
-    let onRequestHandled: @MainActor (QuickLogLaunchMode) -> Void
+    let launchRequest: QuickLogRouteRequest?
+    let onRequestHandled: @MainActor (QuickLogRouteRequest) -> Void
     let onNavigate: @MainActor (QuickLogNavigationDestination) -> Void
 
     @State var amountText = ""
@@ -262,11 +286,11 @@ struct QuickLogEntryView: View {
     @State var isUndoing = false
     @State var successFeedback = 0
     @State var hasRestoredDraft = false
-    @State var handledRequestSequence = 0
+    @State var handledRequestID: UInt64 = 0
     @State var isPresentingReceiptPicker = false
     @State var isHandlingFocusedLaunch = false
     @State var isConfirmingDraftSwitch = false
-    @State var pendingLaunchMode: QuickLogLaunchMode?
+    @State var pendingLaunchRequest: QuickLogRouteRequest?
     @State var isShowingOptionalDetails = false
     @State var isAddingCategory = false
     @State var receiptScanTask: Task<Void, Never>?
@@ -276,6 +300,9 @@ struct QuickLogEntryView: View {
     @State var captureSuggestionResult: CaptureSuggestionResult?
     @State var captureSuggestionTask: Task<Void, Never>?
     @State var captureSuggestionGeneration = 0
+    @State var onDeviceAssistanceCoordinator = QuickLogAssistanceCoordinator()
+    @State var onDeviceAssistanceTask: Task<Void, Never>?
+    @State var onDeviceAssistance: QuickLogAssistancePresentation?
     @State var pendingDuplicateReview: PendingDuplicateReview?
     @State var preservesCaptureSuggestionsAcrossNextKindChange = false
     @State var autoAppliedAccountSuggestionID: UUID?

@@ -30,33 +30,35 @@ extension AppModel {
     func start() async {
         guard !isWorking else { return }
         finishUnlockToFirstUsefulContentMeasurement(outcome: .cancelled)
+        var quickActionBoundaryEpoch: UInt64?
         isWorking = true
         isStarting = true
         defer {
             isWorking = false
             isStarting = false
+            if let quickActionBoundaryEpoch {
+                quickActionRouteBroker.endAuthoritativeBoundary(quickActionBoundaryEpoch)
+            }
         }
-
+        let pendingDataEraseResult = inspectDataEraseIntent(
+            startingBoundaryAt: &quickActionBoundaryEpoch
+        )
         await closeStoreBeforeStartup()
         state = .launching
         startupFailureKind = nil
-
         var pendingDataEraseIsIncomplete = false
         do {
             // A prior jetsam, power loss, or process termination can interrupt
             // isolated restore validation before its defer-like cleanup. The
             // production directory is stable, so startup bounds abandoned
             // SQLCipher/WAL artifacts to one owned location.
-            let databaseURL = if let databaseURLForErase {
-                databaseURLForErase
-            } else {
-                try Self.databaseURL()
-            }
+            let databaseURL = try databaseURLForErase ?? Self.databaseURL()
             // A durable erase tombstone always wins over normal startup. Do not
             // read or create the SQLCipher key until every idempotent erase step
             // has converged. Scrub the widget immediately as well: a transient
             // cleanup failure must not keep an old-book projection visible.
-            if try dataEraseIntent.isPending() {
+            let pendingDataErase = try pendingDataEraseResult.get()
+            if pendingDataErase {
                 pendingDataEraseIsIncomplete = true
                 requestedQuickLogMode = nil
                 disableBudgetWidgetSnapshot()
@@ -108,6 +110,23 @@ extension AppModel {
         }
     }
 
+    private func inspectDataEraseIntent(
+        startingBoundaryAt boundaryEpoch: inout UInt64?
+    ) -> Result<Bool, Error> {
+        do {
+            let isPending = try dataEraseIntent.isPending()
+            if isPending {
+                boundaryEpoch = beginAuthoritativeQuickActionBoundary()
+            }
+            return .success(isPending)
+        } catch {
+            boundaryEpoch = beginAuthoritativeQuickActionBoundary()
+            return .failure(error)
+        }
+    }
+}
+
+extension AppModel {
     private func closeStoreBeforeStartup() async {
         if let pendingClose = storeCloseTask {
             await pendingClose.value
@@ -349,11 +368,11 @@ extension AppModel {
 
     @discardableResult
     func handleDeepLink(_ url: URL) -> Bool {
-        guard url.scheme?.lowercased() == "moneyup",
-              url.host?.lowercased() == "quick-log" else { return false }
-        let components = url.pathComponents.filter { $0 != "/" }
-        guard components.count == 1,
-              let mode = QuickLogLaunchMode(rawValue: components[0].lowercased()) else {
+        guard !quickActionRouteBroker.isAuthoritativeBoundaryActive,
+              !goalMutationBarrierClosed else { return false }
+        do {
+            guard try dataEraseIntent.isPending() == false else { return false }
+        } catch {
             return false
         }
         // A request carries old-book intent even when it contains no amount.
@@ -365,6 +384,10 @@ extension AppModel {
             requestedQuickLogMode = nil
             return false
         }
+        guard let action = MoneyUpQuickAction(exactDeepLink: url) else {
+            return false
+        }
+        let mode = QuickLogLaunchMode(action)
         requestedQuickLogMode = mode
         _ = routeLockSafeRequestIfPossible()
         return true
@@ -430,6 +453,23 @@ extension AppModel {
     }
 
     func saveLockedCapture(
+        request: QuickLogRouteRequest,
+        amountText: String,
+        payee: String,
+        note: String
+    ) async throws {
+        guard requestedQuickLogRequest == request else {
+            throw AppModelError.locked
+        }
+        try await saveLockedCapture(
+            mode: request.mode,
+            amountText: amountText,
+            payee: payee,
+            note: note
+        )
+    }
+
+    func saveLockedCapture(
         mode: QuickLogLaunchMode,
         amountText: String,
         payee: String,
@@ -467,9 +507,30 @@ extension AppModel {
         recoveryIssues.removeAll { $0.hasPrefix("locked_captures/") }
     }
 
-    func consumeQuickLogRequest(_ mode: QuickLogLaunchMode) {
-        guard requestedQuickLogMode == mode else { return }
+    func consumeQuickLogRequest(_ request: QuickLogRouteRequest) {
+        guard requestedQuickLogRequest == request else { return }
         requestedQuickLogMode = nil
+    }
+
+    @discardableResult
+    func presentQuickLogRequest(_ request: QuickLogRouteRequest) -> Bool {
+        guard requestedQuickLogRequest == request,
+              request.generation == quickActionRouteBroker.handoffGeneration,
+              !quickActionRouteBroker.isAuthoritativeBoundaryActive else {
+            return false
+        }
+        presentedQuickLogRequest = request
+        return true
+    }
+
+    /// The only AppModel entry point for an erase or book-replacement action
+    /// boundary. The broker generation and occupied UI slot are invalidated in
+    /// the same main-actor turn, before lifecycle code can suspend.
+    func beginAuthoritativeQuickActionBoundary() -> UInt64 {
+        let epoch = quickActionRouteBroker.beginAuthoritativeBoundary()
+        requestedQuickLogMode = nil
+        presentedQuickLogRequest = nil
+        return epoch
     }
 
     /// Runs OCR outside the view and only returns a parsed draft to the same

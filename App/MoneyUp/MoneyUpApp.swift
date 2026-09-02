@@ -6,6 +6,8 @@ import WidgetKit
 @MainActor
 struct MoneyUpApp: App {
     @State private var model = AppModel()
+    @State private var quickActionRouteBroker =
+        MoneyUpQuickActionRouteBroker.shared
     @AppStorage(
         AppLanguagePreference.storageKey,
         store: AppLanguagePreference.defaults
@@ -57,12 +59,27 @@ struct MoneyUpApp: App {
                     .frame(width: 0, height: 0)
                 }
                 .task {
+                    routePendingQuickAction()
                     await model.startAfterInitialRoutingWindow()
                 }
                 .onOpenURL { url in
-                    guard model.handleDeepLink(url), model.state == .locked else { return }
-                    guard !model.canPresentLockedQuickCapture else { return }
-                    Task { await model.start() }
+                    routeDeepLink(url)
+                }
+                .onChange(of: quickActionRouteBroker.revision) { _, _ in
+                    routePendingQuickAction()
+                }
+                .onChange(of: model.isWorking) { _, _ in
+                    routePendingQuickAction()
+                }
+                .onChange(of: model.isLifecycleMutationInProgress) { _, _ in
+                    routePendingQuickAction()
+                }
+                .onChange(of: model.goalMutationBarrierClosed) { _, _ in
+                    routePendingQuickAction()
+                }
+                .onChange(of: model.requestedQuickLogRequest) { _, request in
+                    guard request == nil else { return }
+                    routePendingQuickAction()
                 }
                 .onChange(of: scenePhase) { _, newPhase in
                     switch newPhase {
@@ -80,6 +97,21 @@ struct MoneyUpApp: App {
                     WidgetCenter.shared.reloadAllTimelines()
                 }
         }
+    }
+
+    private func routePendingQuickAction() {
+        let result = MoneyUpQuickActionRouting.routeNext(
+            from: quickActionRouteBroker,
+            into: model
+        )
+        guard result == .requiresStart else { return }
+        Task { await model.start() }
+    }
+
+    private func routeDeepLink(_ url: URL) {
+        guard let action = MoneyUpQuickAction(exactDeepLink: url) else { return }
+        _ = quickActionRouteBroker.submit(action)
+        routePendingQuickAction()
     }
 }
 

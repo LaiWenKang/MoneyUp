@@ -24,12 +24,12 @@ extension InsightsView {
 
                     ViewThatFits(in: .horizontal) {
                         HStack(spacing: 16) {
-                            flowLegend(.income, color: .green)
-                            flowLegend(.expense, color: .accentColor)
+                            flowLegend(.income, color: MoneyUpChartPalette.income)
+                            flowLegend(.expense, color: MoneyUpChartPalette.expense)
                         }
                         VStack(alignment: .leading, spacing: 6) {
-                            flowLegend(.income, color: .green)
-                            flowLegend(.expense, color: .accentColor)
+                            flowLegend(.income, color: MoneyUpChartPalette.income)
+                            flowLegend(.expense, color: MoneyUpChartPalette.expense)
                         }
                     }
 
@@ -103,22 +103,32 @@ extension InsightsView {
                     )
                 )
                 .cornerRadius(point.kind == .income ? 5 : 0)
-                .opacity(
-                    selectedFlowMonth == nil
-                        || model.reportingCalendar.isDate(
-                            point.month,
-                            equalTo: selectedFlowMonth ?? point.month,
-                            toGranularity: .month
-                        ) ? 1 : 0.34
-                )
                 .accessibilityLabel(flowAccessibilityLabel(point))
                 .accessibilityValue(formattedMoney(point.money))
+            }
+
+            if let selectedFlowMonth {
+                RuleMark(
+                    x: .value(
+                        AppLocalization.string("chart.dimension.month"),
+                        selectedFlowMonth,
+                        unit: .month
+                    )
+                )
+                .lineStyle(
+                    StrokeStyle(
+                        lineWidth: MoneyUpChartSelectionPolicy.lineWidth,
+                        dash: MoneyUpChartSelectionPolicy.dash
+                    )
+                )
+                .foregroundStyle(Color.primary)
+                .accessibilityHidden(true)
             }
         }
         .frame(height: 240)
         .chartForegroundStyleScale([
-            AppLocalization.string("transaction.income"): Color.green,
-            AppLocalization.string("transaction.expense"): Color.accentColor
+            AppLocalization.string("transaction.income"): MoneyUpChartPalette.income,
+            AppLocalization.string("transaction.expense"): MoneyUpChartPalette.expense
         ])
         .chartLegend(.hidden)
         .chartXSelection(value: $selectedFlowMonth)
@@ -314,6 +324,16 @@ extension InsightsView {
             largest.name,
             formattedMoney(largest.money)
         )
+    }
+
+    func categoryChartColor(
+        _ point: InsightsCategoryPoint,
+        in points: [InsightsCategoryPoint]
+    ) -> Color {
+        guard let index = points.firstIndex(where: {
+            $0.selectionKey == point.selectionKey
+        }) else { return MoneyUpChartPalette.color(at: 0) }
+        return MoneyUpChartPalette.color(at: index)
     }
 
     func flowChartSummary(_ report: PeriodReport) -> String {

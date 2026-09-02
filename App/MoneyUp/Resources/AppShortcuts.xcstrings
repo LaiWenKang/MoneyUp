@@ -1,0 +1,42 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "Log an expense in \\(.applicationName)" : {
+      "localizations" : {
+        "en" : {"stringUnit" : {"state" : "translated", "value" : "Log an expense in \\(.applicationName)"}},
+        "zh-Hans" : {"stringUnit" : {"state" : "translated", "value" : "在 \\(.applicationName) 中记录支出"}}
+      }
+    },
+    "Log income in \\(.applicationName)" : {
+      "localizations" : {
+        "en" : {"stringUnit" : {"state" : "translated", "value" : "Log income in \\(.applicationName)"}},
+        "zh-Hans" : {"stringUnit" : {"state" : "translated", "value" : "在 \\(.applicationName) 中记录收入"}}
+      }
+    },
+    "Log a transfer in \\(.applicationName)" : {
+      "localizations" : {
+        "en" : {"stringUnit" : {"state" : "translated", "value" : "Log a transfer in \\(.applicationName)"}},
+        "zh-Hans" : {"stringUnit" : {"state" : "translated", "value" : "在 \\(.applicationName) 中记录转账"}}
+      }
+    },
+    "Log a refund in \\(.applicationName)" : {
+      "localizations" : {
+        "en" : {"stringUnit" : {"state" : "translated", "value" : "Log a refund in \\(.applicationName)"}},
+        "zh-Hans" : {"stringUnit" : {"state" : "translated", "value" : "在 \\(.applicationName) 中记录退款"}}
+      }
+    },
+    "Open Smart Entry in \\(.applicationName)" : {
+      "localizations" : {
+        "en" : {"stringUnit" : {"state" : "translated", "value" : "Open Smart Entry in \\(.applicationName)"}},
+        "zh-Hans" : {"stringUnit" : {"state" : "translated", "value" : "在 \\(.applicationName) 中打开智能记账"}}
+      }
+    },
+    "Choose a receipt in \\(.applicationName)" : {
+      "localizations" : {
+        "en" : {"stringUnit" : {"state" : "translated", "value" : "Choose a receipt in \\(.applicationName)"}},
+        "zh-Hans" : {"stringUnit" : {"state" : "translated", "value" : "在 \\(.applicationName) 中选择小票"}}
+      }
+    }
+  },
+  "version" : "1.0"
+}

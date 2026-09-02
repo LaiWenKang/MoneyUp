@@ -169,10 +169,16 @@ extension QuickLogEntryView {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
             Button {
-                self.categoryID = categoryID
-                categoryWasEdited = true
-                autoAppliedCategorySuggestionID = nil
-                persistUserDraftChange { $0.categoryID = categoryID }
+                QuickLogInputAuthority.applyReceiptCategory(
+                    invalidateAssistance: {
+                        invalidateOnDeviceCategoryForDeterministicChange()
+                    }
+                ) {
+                    self.categoryID = categoryID
+                    categoryWasEdited = true
+                    autoAppliedCategorySuggestionID = nil
+                    persistUserDraftChange { $0.categoryID = categoryID }
+                }
             } label: {
                 HStack {
                     Text(category.name)

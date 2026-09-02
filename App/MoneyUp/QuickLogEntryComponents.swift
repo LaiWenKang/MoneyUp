@@ -52,6 +52,10 @@ extension QuickLogEntryView {
                     .foregroundStyle(.secondary)
             }
 
+            if let onDeviceAssistance {
+                onDeviceAssistanceCard(onDeviceAssistance)
+            }
+
             if let receiptResult {
                 receiptSuggestions(receiptResult)
             }
@@ -230,6 +234,7 @@ extension QuickLogEntryView {
         _ lineID: UUID,
         update: (inout QuickLogSplitDraftLine) -> Void
     ) {
+        cancelOnDeviceAssistance()
         guard let index = splitLines.firstIndex(where: { $0.id == lineID }) else {
             return
         }
@@ -238,6 +243,7 @@ extension QuickLogEntryView {
     }
 
     func removeSplitLine(_ lineID: UUID) {
+        cancelOnDeviceAssistance()
         clearSplitFocus(for: lineID)
         splitLines.removeAll { $0.id == lineID }
         persistUserDraftChange { $0.splitLines = splitLines }

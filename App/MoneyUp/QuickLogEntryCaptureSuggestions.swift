@@ -43,6 +43,7 @@ extension QuickLogEntryView {
         smartMessage = nil
         receiptResult = nil
         clearCaptureSuggestionProvenance()
+        cancelOnDeviceAssistance()
         pendingDuplicateReview = nil
         receiptAttachmentData = nil
         retainReceiptAttachment = false
@@ -112,6 +113,7 @@ extension QuickLogEntryView {
               model.userAccounts.contains(where: {
                   $0.id == suggestion.ledgerAccountID
               }) else { return }
+        invalidateOnDeviceAccountForDeterministicChange()
         accountID = suggestion.ledgerAccountID
         autoAppliedAccountSuggestionID = suggestion.ledgerAccountID
     }
@@ -132,6 +134,7 @@ extension QuickLogEntryView {
               categories.contains(where: {
                   $0.id == suggestion.ledgerAccountID
               }) else { return }
+        invalidateOnDeviceCategoryForDeterministicChange()
         categoryID = suggestion.ledgerAccountID
         autoAppliedCategorySuggestionID = suggestion.ledgerAccountID
     }
@@ -164,8 +167,15 @@ extension QuickLogEntryView {
                     title: AppLocalization.string("quick_log.suggested_account"),
                     account: account,
                     suggestion: suggestion,
-                    isApplied: accountID == account.id
+                    isApplied: accountID == account.id,
+                    useAccessibilityLabel: String(
+                        format: AppLocalization.string(
+                            "quick_log.use_account_accessibility_format"
+                        ),
+                        account.name
+                    )
                 ) {
+                    invalidateOnDeviceAccountForDeterministicChange()
                     accountID = account.id
                     accountWasEdited = true
                     autoAppliedAccountSuggestionID = nil
@@ -179,8 +189,15 @@ extension QuickLogEntryView {
                     title: AppLocalization.string("quick_log.suggested_category"),
                     account: category,
                     suggestion: suggestion,
-                    isApplied: categoryID == category.id
+                    isApplied: categoryID == category.id,
+                    useAccessibilityLabel: String(
+                        format: AppLocalization.string(
+                            "quick_log.use_category_accessibility_format"
+                        ),
+                        category.name
+                    )
                 ) {
+                    invalidateOnDeviceCategoryForDeterministicChange()
                     categoryID = category.id
                     categoryWasEdited = true
                     autoAppliedCategorySuggestionID = nil
@@ -199,6 +216,7 @@ extension QuickLogEntryView {
         account: LedgerAccount,
         suggestion: CaptureFieldSuggestion,
         isApplied: Bool,
+        useAccessibilityLabel: String,
         apply: @escaping () -> Void
     ) -> some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -216,6 +234,9 @@ extension QuickLogEntryView {
                 } else {
                     Button("quick_log.use_suggestion", action: apply)
                         .buttonStyle(.borderless)
+                        .accessibilityLabel(
+                            Text(useAccessibilityLabel)
+                        )
                 }
             }
             Text(

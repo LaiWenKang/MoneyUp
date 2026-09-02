@@ -94,11 +94,34 @@ stay out of shipping Swift, including executable string interpolations. Its
 exact safe exceptions are fixed-literal or bounded Foundation initializers and
 one already-bounded local archive read recorded beside the checker. The
 Foundation Models rules remain dormant unless a source imports
-`FoundationModels`; if W3 is added, imports and framework uses must stay inside
+`FoundationModels`; with W3 present, imports and framework uses must stay inside
 `#if canImport(FoundationModels)` and iOS 26 runtime-availability scopes. Model
 execution must guard on `SystemLanguageModel.default.availability`, while
-generated output stays limited to fixed local enums or literal `0...255`
-range-guided ordinals.
+generated output stays limited to fixed local enums or literal `0...15`
+range-guided ordinals. With W3 present, the same gate pins the single typed
+request construction, prompt construction, selector call, model response call,
+and prompt interpolation inventory; ambient pasteboard/defaults, raw OCR,
+money/date/ID, arbitrary string, and extra-call mutations fail validation.
+
+W3's production boundary is narrower still. `NaturalLanguageEntryParser`
+retains sole ownership of every financial field and emits a separate bounded
+context with parsed financial spans removed. The optional, persisted setting
+defaults off, and its disabled path performs neither planning nor selection.
+When enabled, stable existing-name lists are capped at 16. Canonical Unicode
+normalization and scalar/UTF-8 ceilings apply to context, each name, and the
+whole prompt. The only framework implementation accepts that typed request,
+uses `SystemLanguageModel.default`, checks exact availability, creates one
+uncustomized `LanguageModelSession()`, and asks only for `0...15` ordinals. No
+provider, PCC, server, tool, package, dynamic schema, image, or receipt-byte
+path exists.
+
+Publication rechecks the request's kind, profile, split state, candidate
+membership, and exact per-field value/edit/history provenance. A deterministic
+history change filters only its stale model field in either completion order.
+Use captures immediate pre-apply state; Reject restores it only while the full
+model-applied state remains current. Accepted choices update the recoverable
+SQLCipher draft immediately, but only the existing Save action creates a
+transaction.
 
 Operation failures cross one of two owned accessibility boundaries. Transient
 form failures use `AccessibleErrorPresentation`, whose latest-wins reducer

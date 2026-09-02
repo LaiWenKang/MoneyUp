@@ -230,53 +230,7 @@ struct InsightsView: View {
                     Text("insights.no_spending")
                         .foregroundStyle(.secondary)
                 } else if case let .available(points) = pointsResult {
-                    Chart(points) { point in
-                        BarMark(
-                            x: .value(
-                                AppLocalization.string("chart.dimension.amount"),
-                                point.amount
-                            ),
-                            y: .value(
-                                AppLocalization.string("chart.dimension.category"),
-                                point.selectionKey
-                            )
-                        )
-                        .foregroundStyle(
-                            point.isAggregate
-                                ? Color.secondary
-                                : Color.accentColor
-                        )
-                        .opacity(
-                            selectedCategoryKey == nil
-                                || selectedCategoryKey == point.selectionKey ? 1 : 0.34
-                        )
-                        .annotation(position: .trailing) {
-                            Text(formattedMoney(point.money))
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                        .accessibilityLabel(point.name)
-                        .accessibilityValue(formattedMoney(point.money))
-                    }
-                    .chartXAxis(.hidden)
-                    .chartYScale(domain: points.map(\.selectionKey))
-                    .chartYAxis {
-                        AxisMarks(values: points.map(\.selectionKey)) { value in
-                            AxisValueLabel {
-                                if let key = value.as(String.self),
-                                   let point = points.first(where: {
-                                       $0.selectionKey == key
-                                   }) {
-                                    Text(point.name)
-                                }
-                            }
-                        }
-                    }
-                    .chartYSelection(value: $selectedCategoryKey)
-                    .frame(height: max(190, CGFloat(points.count) * 34))
-                    .accessibilityLabel(Text("insights.category_chart"))
-                    .accessibilityValue(Text(categoryChartSummary(points)))
-                    .accessibilityHint(Text("insights.chart_accessibility_hint"))
+                    categoryChart(points)
 
                     Text("insights.tap_chart")
                         .font(.caption)
@@ -292,6 +246,67 @@ struct InsightsView: View {
                 }
             }
         }
+    }
+
+    func categoryChart(_ points: [InsightsCategoryPoint]) -> some View {
+        Chart {
+            ForEach(points) { point in
+                BarMark(
+                    x: .value(
+                        AppLocalization.string("chart.dimension.amount"),
+                        point.amount
+                    ),
+                    y: .value(
+                        AppLocalization.string("chart.dimension.category"),
+                        point.selectionKey
+                    )
+                )
+                .foregroundStyle(categoryChartColor(point, in: points))
+                .annotation(position: .trailing) {
+                    Text(formattedMoney(point.money))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .accessibilityLabel(point.name)
+                .accessibilityValue(formattedMoney(point.money))
+            }
+
+            if let selectedCategoryKey {
+                RuleMark(
+                    y: .value(
+                        AppLocalization.string("chart.dimension.category"),
+                        selectedCategoryKey
+                    )
+                )
+                .lineStyle(
+                    StrokeStyle(
+                        lineWidth: MoneyUpChartSelectionPolicy.lineWidth,
+                        dash: MoneyUpChartSelectionPolicy.dash
+                    )
+                )
+                .foregroundStyle(Color.primary)
+                .accessibilityHidden(true)
+            }
+        }
+        .chartXAxis(.hidden)
+        .chartYScale(domain: points.map(\.selectionKey))
+        .chartYAxis {
+            AxisMarks(values: points.map(\.selectionKey)) { value in
+                AxisValueLabel {
+                    if let key = value.as(String.self),
+                       let point = points.first(where: {
+                           $0.selectionKey == key
+                       }) {
+                        Text(point.name)
+                    }
+                }
+            }
+        }
+        .chartYSelection(value: $selectedCategoryKey)
+        .frame(height: max(190, CGFloat(points.count) * 34))
+        .accessibilityLabel(Text("insights.category_chart"))
+        .accessibilityValue(Text(categoryChartSummary(points)))
+        .accessibilityHint(Text("insights.chart_accessibility_hint"))
     }
 }
 

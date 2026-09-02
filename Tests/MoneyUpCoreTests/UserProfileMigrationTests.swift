@@ -58,4 +58,43 @@ final class UserProfileMigrationTests: XCTestCase {
             ))
         }
     }
+
+    func testLegacyProfileDefaultsFoundationModelAssistanceOff() throws {
+        let profile = UserProfile(
+            baseCurrency: try CurrencyCode("SGD"),
+            foundationModelAssistanceEnabled: true
+        )
+        var object = try XCTUnwrap(
+            JSONSerialization.jsonObject(
+                with: try JSONEncoder().encode(profile)
+            ) as? [String: Any]
+        )
+        object.removeValue(forKey: "foundationModelAssistanceEnabled")
+
+        let decoded = try JSONDecoder().decode(
+            UserProfile.self,
+            from: try JSONSerialization.data(withJSONObject: object)
+        )
+
+        XCTAssertFalse(decoded.foundationModelAssistanceEnabled)
+    }
+
+    func testFoundationModelAssistanceRoundTripsOnlyAfterExplicitOptIn() throws {
+        let currency = try CurrencyCode("SGD")
+        XCTAssertFalse(
+            UserProfile(baseCurrency: currency)
+                .foundationModelAssistanceEnabled
+        )
+
+        let optedIn = UserProfile(
+            baseCurrency: currency,
+            foundationModelAssistanceEnabled: true
+        )
+        let decoded = try JSONDecoder().decode(
+            UserProfile.self,
+            from: JSONEncoder().encode(optedIn)
+        )
+
+        XCTAssertTrue(decoded.foundationModelAssistanceEnabled)
+    }
 }

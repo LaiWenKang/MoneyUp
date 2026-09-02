@@ -495,11 +495,10 @@ extension DashboardView {
                 .font(.headline)
                 .foregroundStyle(.tint)
             Text(formattedMoney(breakdown.amountPerDay))
-                .font(.system(.largeTitle, design: .rounded, weight: .bold))
+                .moneyUpFinancialValue(.hero)
                 .foregroundStyle(
                     breakdown.amountPerDay.amount < .zero ? Color.red : Color.primary
                 )
-                .contentTransition(.numericText())
             Text("dashboard.safe_to_spend.per_day")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
