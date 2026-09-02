@@ -1,6 +1,6 @@
 # Privacy-safe platform actions runbook
 
-Target: MoneyUp 0.7.0 on iOS 18 or later
+Target: MoneyUp 0.7.1 on iOS 18 or later
 
 This runbook verifies the exact installed binary. Source validation proves the
 closed mapping and rejects known payload-bearing APIs, but it cannot prove that
@@ -133,7 +133,10 @@ Lock Screen family beside them.
    basic action and one unlock-required action.
 2. Tap the complete small and Lock Screen controls. Tap all four independent
    buttons in the medium widget. Each must execute `OpenQuickLogIntent` and open
-   the matching existing route.
+   the matching existing route. While the protected book is available, every
+   basic action must expose the same full Quick Log details as the center Log
+   tab, including account, category, title, notes, date/time, and applicable
+   transfer or split fields.
 3. Configure **Budget status** in every supported family. Tap the percentage,
    title, icon, progress view, and surrounding background. Budget status must
    remain passive and must not open MoneyUp or run an intent.
@@ -157,8 +160,10 @@ numbers. Widget configuration preservation remains a physical migration gate.
    foreground-open metadata.
 4. With MoneyUp locked, verify basic actions follow the existing preference:
    when locked Quick Capture is enabled, only the redacted locked-capture form
-   appears; when disabled, normal authentication is required. Smart Entry and
-   Receipt must always require the protected app flow.
+   appears with amount plus optional title and notes, and protected account or
+   category selection is deferred until intentional unlock and review. When
+   locked capture is disabled, normal authentication is required. Smart Entry
+   and Receipt must always require the protected app flow.
 5. Confirm failed or cancelled authentication leaves no new capture, draft,
    notification, Live Activity, Spotlight item, or App Group payload.
 

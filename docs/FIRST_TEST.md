@@ -1,6 +1,6 @@
 # MoneyUp Founder/Co-tester Runbook
 
-Version target: 0.7.0, source build 9 (the GitHub workflow assigns a unique
+Version target: 0.7.1, source build 10 (the GitHub workflow assigns a unique
 TestFlight upload build)
 
 This runbook is for MoneyUp's founder and co-tester on their two iPhones. Use
@@ -9,12 +9,14 @@ place for records that cannot be reconstructed.
 
 ## How installation works
 
-The account holder may still have the signed 0.5.1 beta from the private
-**Founders Internal** TestFlight group. Confirm the accepted 0.6.0 (1020.1)
-baseline is installed in place first, then install the 0.7.0 candidate from that
-same group when it appears. The co-tester is invited by email to the
-private **Founders External** group after Apple's TestFlight Beta App Review
-accepts the selected build.
+Record the exact predecessor currently installed from the private **Founders
+Internal** TestFlight group. The expected predecessor is 0.7.0 (1025.1) once
+App Store Connect processing and group availability are confirmed. If that
+build is not available, record the actual installed version/build and keep the
+0.7.0-to-0.7.1 upgrade cell open rather than inferring a pass. Install 0.7.1
+over the recorded predecessor without deleting MoneyUp. The co-tester is
+invited by email to the private **Founders External** group only after internal
+acceptance and Apple's TestFlight Beta App Review accepts the selected build.
 
 Before the account holder updates the installed beta, pin its existing
 small and medium MoneyUp widgets. Confirm the small widget opens Expense and
@@ -37,8 +39,8 @@ well before the expiry date shown in TestFlight.
 ## Before starting
 
 - Use an iPhone running iOS 18 or later with a device passcode enabled.
-- Confirm TestFlight shows version 0.7.0 and a build newer than the installed
-  0.6.0 build.
+- Confirm TestFlight shows version 0.7.1 and an upload build newer than the
+  recorded predecessor build.
 - Decide who tests English and who tests Simplified Chinese first; switch roles
   on a later day.
 - Prepare fictional sample accounts, merchants, balances, and a receipt image.
@@ -136,13 +138,38 @@ the app silently resets, or the opening balance is wrong.
   Confirm MoneyUp asks whether to resume or discard the encrypted draft and
   never silently changes its transaction type.
 
+### 2A. 0.7.1 capture and History acceptance
+
+- Open a fresh untouched Log sheet and confirm its date/time is the real current
+  instant. Change it manually, leave and return, and confirm the explicit user
+  value is never replaced by a later default refresh.
+- Enter a known merchant with prior local history and confirm any suggested
+  category is an editable active leaf supported by that history. Change the
+  merchant/date and verify stale suggestions disappear; a user-selected or
+  configured default must never be overwritten.
+- With the keyboard visible, focus amount, account, title, multi-line notes,
+  split amount, and split memo in turn. Every focused control and Save must
+  remain reachable; interactive dismissal and Done must preserve the draft.
+- Save distinct title, merchant, notes, and a nested category path. Confirm the
+  History row exposes the meaningful title/merchant, notes, and complete path,
+  and search can find the saved descriptive text.
+- Confirm History opens on Today and its complete per-currency spending,
+  refunds, income, and signed net reconcile independently. Repeat seven-day,
+  month, and all-time scopes, use advanced filters, and open Calendar directly.
+
 ### 3. Budgets and insights
 
-- Add a parent and child expense category.
+- Add a parent, child, and grandchild expense category. Reparent the child and
+  confirm the complete paths update; reject a parent cycle or income/expense
+  kind mismatch without changing the book.
 - Set monthly limits at both levels.
 - Log spending to the child and confirm it rolls up to the parent exactly once.
 - Clear one limit to zero and confirm Plan remains readable without a broken or
   misleading progress bar.
+- Set one flexible budget to Daily and another to Weekly pacing. Reconcile each
+  currency-rounded guidance value from positive remaining monthly budget and
+  remaining civil days; confirm pacing changes no monthly limit, rollover,
+  journal entry, or historical report.
 - Check Today, Plan (including Calendar), and Insights for the same amount and currency.
 - If this book originally came from 0.5.0, confirm every still-unclassified
   limited allocation shows **Choose a purpose** and Today shows no optimistic
@@ -225,6 +252,23 @@ the app silently resets, or the opening balance is wrong.
 - Reduce a disposable holding to zero, then cancel and confirm deletion once.
   A non-zero holding must not be deletable.
 
+### 5A. Loans and expiring allowances
+
+- Create a disposable loan liability and attach one loan plan. Verify remaining
+  principal, total advanced, principal paid, interest, fees, opening date, APR,
+  term, debt-total inclusion, title, and notes without creating a second source
+  of truth for the account balance.
+- Record an additional drawdown and a repayment split into principal, interest,
+  and fees. Reconcile the single balanced journal entry, reject a principal
+  overpayment, and confirm the plan cannot finish until ledger principal is
+  exactly zero.
+- Create a weekday meal allowance with an end date and no rollover. Record
+  category-linked and general use with notes; confirm unused daily value expires
+  at the reporting-day boundary and never appears as cash, income, or net worth.
+- Repeat with weekly/monthly cadence and capped/full rollover using disposable
+  values. Reconcile eligibility, availability, usage history, cap behavior, and
+  archive/restore across a reporting-period boundary.
+
 ### 6. Corrections and export
 
 - Open History, search by payee, filter to its type, and edit the amount, date,
@@ -245,7 +289,7 @@ the app silently resets, or the opening balance is wrong.
 
 - On the account holder's upgraded phone, confirm both previously pinned widgets still
   render, their legacy expense/income links open correctly, they can be resized
-  and edited, and they survive a reboot. Then choose a 0.7.0 preferred action. If
+  and edited, and they survive a reboot. Then choose a 0.7.1 preferred action. If
   migration fails, remove and re-add the widget and report both build numbers.
 - Add small and medium MoneyUp widgets to the Home Screen and one MoneyUp widget
   to the Lock Screen.
@@ -259,21 +303,29 @@ the app silently resets, or the opening balance is wrong.
   never amount, payee, account name, holding, balance, transaction, or ledger
   identifier. Disable it and erase a disposable book to confirm the snapshot is
   scrubbed. Repeat while the book is locked and in redacted mode.
-- Terminate MoneyUp while its book is locked. Configure and test Expense,
-  Income, Transfer, and Refund: each must open with the amount focused, request
-  no Face ID/Touch ID, save in under eight seconds, show a confirmation rather
-  than the lock screen, and display no balance/account/category/history data.
+- While the book is available, open Expense, Income, Transfer, and Refund from
+  the widget and confirm each routes to the full Quick Log with editable
+  account, category, title, notes, date/time, transfer, and split details.
+- Terminate MoneyUp while its book is locked and repeat. The separate encrypted
+  Quick Capture inbox must expose only amount plus optional title and notes,
+  request no Face ID/Touch ID for capture, save in under eight seconds, show a
+  confirmation rather than protected content, and display no balance, protected
+  account/category choice, history, or ledger identifier. **Unlock and review
+  now** must intentionally authenticate before protected assignment.
 - Capture multiple items, intentionally unlock once, and confirm the review
   queue advances through every item exactly once. Smart Entry and Receipt must
   display an unlock cue and authenticate before opening.
 
 ### 8. Upgrade, backup, restore, and import
 
-- Before updating from 0.6.0, record the transaction count and several balances.
+- Before updating from the recorded predecessor, save a password-protected
+  `.moneyup` archive and record its exact version/build, transaction count,
+  several balances, collection counts, settings, and widget configuration.
 - Update in TestFlight without deleting the app. Confirm onboarding does not
   reappear and every prior balance, transaction, budget, schedule, and holding
   remains. Reconcile goals, rates, receipt attachments, investment lots,
-  net-worth snapshots, settings, pending captures, and widget configuration too.
+  net-worth snapshots, settings, pending captures, widget configuration,
+  category hierarchy, pacing choices, loans, allowances, and their activity too.
 - In the upgraded build, open Settings → Backup and recovery → Data inventory.
   Generate and save the metadata-only JSON as the baseline for every later update
   and restore. It must contain no user-authored names, IDs, amounts, currencies,

@@ -9,15 +9,16 @@ on-device charts, accounts and holdings, and spreadsheet-friendly export.
 ## Project status
 
 MoneyUp's source app identity is **Founders Beta 0.7.1 (source build 10)**.
-This source candidate starts from `main@546c00d4` and adds the complete 0.6.0
-feedback follow-up: keyboard-safe Quick Log, real-time and history-informed
-defaults, richer widget-routed capture, daily History, retained Calendar access,
-deeper categories, daily/weekly budget pacing, expiring allowances, and
-ledger-linked loans and repayments. Local release, architecture, recovery, and
-privacy gates pass. Exact-SHA macOS CI, physical iPhone migration, restore,
-accessibility, performance, signed-binary, TestFlight-processing, closed-beta,
-and App Review evidence remain release gates. Developers can install the app
-from source on an iOS 18 device through Xcode.
+The complete 0.6.0 feedback follow-up was merged through pull request #40 as
+`68eee4f8`: keyboard-safe Quick Log, real-time and history-informed defaults,
+richer widget-routed capture, daily History, retained Calendar access, deeper
+categories, daily/weekly budget pacing, expiring allowances, and ledger-linked
+loans and repayments. The exact pull-request head and merged implementation
+both passed release, architecture, recovery, privacy, core/app-model, unsigned
+app/widget Simulator, and serial performance CI. Physical iPhone migration,
+restore, accessibility, performance, signed-binary, TestFlight-processing,
+closed-beta, and App Review evidence remain release gates. Developers can
+install the app from source on an iOS 18 device through Xcode.
 
 The beta includes:
 
@@ -126,8 +127,8 @@ The beta includes:
 - source-configured Swift domain and app-model suites, an unsigned iOS
   Simulator app/widget build gate, and a serial Release 10,000-entry/20-schedule
   measurement baseline configured to retain raw and JSON evidence;
-  exact-candidate evidence remains pending until that job completes its first
-  run.
+  the exact 0.7.1 pull-request head and merged implementation passed all four
+  automated CI jobs in runs 300 and 301.
 
 The unified 0.7.1 candidate still requires signed exact-binary validation,
 physical upgrade/restore and 10,000-entry performance drills, bilingual

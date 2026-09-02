@@ -1,6 +1,6 @@
 # Golden PRD Execution Plan
 
-Last reconciled: 1 September 2026 against the uploaded MoneyUp Golden PRD
+Last reconciled: 2 September 2026 against the uploaded MoneyUp Golden PRD
 (document version 1.0; supplied file label v1.1), the independent 0.4.0 audit,
 and later accepted founder decisions.
 
@@ -9,10 +9,11 @@ invariants remain non-negotiable. The earlier PRD is supporting evidence only
 where it does not conflict. Its StoreKit and CloudKit requirements are
 superseded: the approved first public release is free and local-only.
 
-Checked source items describe the source-integrated 0.7.1 candidate. The 0.7.0
-baseline passed exact-candidate and merged-main CI; checked 0.7.1 source items
-do not close exact-SHA CI, physical-device, signed-binary, TestFlight,
-closed-beta, or App Store gates. See [Golden PRD
+Checked source items describe the merged 0.7.1 candidate. Exact PR-head CI run
+300 and merged implementation CI run 301 passed; this release-document update
+must repeat exact-head CI before signed promotion. Checked source items do not
+close physical-device, signed-binary, TestFlight, closed-beta, or App Store
+gates. See [Golden PRD
 traceability](GOLDEN_TRACEABILITY.md) for every requirement ID and its evidence
 status.
 
@@ -214,12 +215,13 @@ status.
   evidence remains open
 - [x] Stable Gregorian reporting calendar, half-open periods, origin time-zone
   context, and stable local-day attribution
-- [x] SQLCipher schema 7 with journal/posting, receipt metadata, exact store
+- [x] SQLCipher schema 8 with journal/posting, receipt metadata, exact store
   metrics, budget-attribution, and derived intelligence indexes; compact
-  balances, monthly rollover checkpoints, bounded recent activity, and
-  on-demand paging
-- [x] Exact-candidate Mac core/persistence/intelligence/app tests and app/widget
-  Simulator build passed on merged W2 `main@4159df31` in CI run 246
+  balances, monthly rollover checkpoints, bounded recent activity, on-demand
+  paging, and additive loan/allowance recovery coverage
+- [x] Exact 0.7.1 PR-head and merged-implementation release, Core/persistence/
+  intelligence, app-model, app/widget Simulator, and performance jobs passed in
+  CI runs 300 and 301
 - [ ] Physical migration, restore, and oldest-device scale evidence
 
 ## Daily use and correction
@@ -344,8 +346,9 @@ installation, and physical evidence are separate gates.
 - [x] Integrate the validated restore-preview ticket with missing-device-key
   recovery and the shared accessible operation-result presenter; preserve the
   private-copy digest authority and read-only pre-confirmation boundary
-- [ ] The final release-truth commit and every later 0.7.0 release candidate
-  must repeat exact-SHA CI and signed validation
+- [x] The final 0.7.0 release-truth source passed exact-SHA CI and its protected
+  upload was accepted as 0.7.0 (1025.1); processing, installation, and physical
+  evidence remain separate
 
 ## 0.7.1 candidate identity
 
@@ -356,17 +359,22 @@ installation, and physical evidence are separate gates.
 - [x] Bilingual in-app 0.7.1 release notes cover the complete feedback follow-up
 - [x] Local release, architecture, structure, and 55-test adversarial validator
   suites pass with 742 declared Swift tests
-- [ ] Exact source SHA must pass macOS CI before physical or signed distribution
+- [x] Exact PR-head CI run 300 and merged implementation CI run 301 passed all
+  four automated jobs
+- [ ] This release-truth documentation update must pass exact-head and
+  merged-main CI before signed distribution
 
 ## G2 - before wider testers
 
-- [ ] Confirm 0.6.0 (1020.1) is available and installed without deleting the
-  founder's existing beta, then install 0.7.0 over it and reconcile every
-  collection, Keychain state, pending capture, and widget before/after
+- [ ] Confirm 0.7.0 (1025.1) processing and Founders Internal availability,
+  record the exact installed predecessor without deleting MoneyUp, then install
+  0.7.1 over it and reconcile every collection, category hierarchy, budget pace,
+  loan, allowance, Keychain state, pending capture, and widget before/after
 - [ ] Restore `.moneyup` on a clean/fresh install; wrong password, tampering,
   cancellation, and failure leave the current book untouched
-- [ ] Pass keyboard/draft/lock/routing and receipt/screenshot checks on the
-  founder and co-tester iPhones
+- [ ] Pass real-time/smart defaults, keyboard/draft, History/Calendar,
+  category/pacing, loan/allowance, locked/unlocked widget routing, and receipt/
+  screenshot checks on the founder and co-tester iPhones
 - [ ] Measure all Golden p95 budgets with 10,000 entries and 20 schedules on the
   oldest supported iPhone
 - [ ] Pass English/Simplified Chinese, VoiceOver, largest Dynamic Type, Reduce
