@@ -26,7 +26,7 @@ LOCKED_CAPTURE_STORE_SHA256 = (
     "d7f8890fb41b1faf9963961c0ef4039b916d2863a4048d5a023fa650c292b467"
 )
 SHARED_ACTION_SOURCE_SHA256 = (
-    "7c659f61969bd4d91292190e5a099fe48a1177e37fb813ba135bcbd2a36fbfa1"
+    "b9a2bcb8a29dcea02bcacb5414bef6397c0370e525bb8f9401b0b164fc535d38"
 )
 APP_ROUTER_SOURCE_SHA256 = (
     "5a9334fd5bef49c921ffda531ea769864a820c917742509356dbb96c246d2a9e"
@@ -454,7 +454,7 @@ def validate_shared_action_source(source: str) -> list[str]:
         "static var openAppWhenRun: Bool { true }",
         "#if compiler(>=6.2)",
         "@available(iOS 26.0, *)",
-        "static var supportedModes: IntentModes = [.foreground(.immediate)]",
+        "static let supportedModes: IntentModes = [.foreground(.immediate)]",
         "@MainActor\n    func perform() async throws -> some IntentResult",
         "MoneyUpQuickActionRouteBroker.shared.submit(action)",
         "return .result()",

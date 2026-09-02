@@ -210,14 +210,11 @@ class PlatformActionsValidatorTests(unittest.TestCase):
 
         self.assertTrue(any("direct URL intent" in error for error in errors))
 
-    def test_rejects_missing_ios26_foreground_metadata(self) -> None:
+    def test_rejects_mutable_ios26_foreground_metadata(self) -> None:
         source = self.source("App/Shared/MoneyUpQuickAction.swift")
         mutated = source.replace(
-            "#if compiler(>=6.2)\n"
-            "    @available(iOS 26.0, *)\n"
-            "    static var supportedModes: IntentModes = [.foreground(.immediate)]\n"
-            "#endif\n",
-            "",
+            "static let supportedModes: IntentModes = [.foreground(.immediate)]",
+            "static var supportedModes: IntentModes = [.foreground(.immediate)]",
             1,
         )
 
