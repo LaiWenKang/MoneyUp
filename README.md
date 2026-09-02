@@ -8,13 +8,16 @@ on-device charts, accounts and holdings, and spreadsheet-friendly export.
 
 ## Project status
 
-MoneyUp's source app identity is **Founders Beta 0.7.0 (source build 9)**.
-The merged W1 Observation/service-boundary migration and W2 configurable,
-explainable local-intelligence work passed exact-SHA macOS CI on
-`main@4159df31`. Physical iPhone migration, restore, accessibility, performance,
-signed-binary, TestFlight-processing, closed-beta, and App Review evidence
-remain release gates. Developers can install the app from source on an iOS 18
-device through Xcode.
+MoneyUp's source app identity is **Founders Beta 0.7.1 (source build 10)**.
+This source candidate starts from `main@546c00d4` and adds the complete 0.6.0
+feedback follow-up: keyboard-safe Quick Log, real-time and history-informed
+defaults, richer widget-routed capture, daily History, retained Calendar access,
+deeper categories, daily/weekly budget pacing, expiring allowances, and
+ledger-linked loans and repayments. Local release, architecture, recovery, and
+privacy gates pass. Exact-SHA macOS CI, physical iPhone migration, restore,
+accessibility, performance, signed-binary, TestFlight-processing, closed-beta,
+and App Review evidence remain release gates. Developers can install the app
+from source on an iOS 18 device through Xcode.
 
 The beta includes:
 
@@ -29,7 +32,11 @@ The beta includes:
 - account balance reconciliation that does not distort income or spending;
 - arbitrary-depth categories and monthly limits with correct roll-up, dated
   rollover rules, sinking funds, and savings goals with contributions,
-  withdrawals, resets, archive, and deletion;
+  withdrawals, resets, archive, and deletion; parent categories can be changed
+  safely, and flexible budgets can expose exact daily or weekly pacing;
+- planning-only employer allowances with daily, weekday, weekly, or monthly
+  cadence, optional end dates, category eligibility, no/full/capped rollover,
+  and usage history; allowance value never inflates income, cash, or net worth;
 - actual and recurring projected money flow in the finance calendar, including
   schedule editing, pausing, ending, skipping, confirming, matching, and
   exactly-once posting;
@@ -47,6 +54,10 @@ The beta includes:
   listed on its own rather than converted or dropped;
 - bank, cash, e-wallet, card, loan, brokerage, and investment accounts with
   atomic rename, archive, merge, and delete-with-reassignment workflows;
+- loan plans attached to liability accounts with remaining principal, total
+  advanced, principal paid, interest, fees, APR, term, debt-total inclusion,
+  repayments, additional drawdowns, activity notes, and paid-off closure;
+  every money movement remains an atomic balanced journal entry;
 - ledger-linked manually priced holdings with dated price history, stale-price
   warnings, explicit opening-cash treatment, FIFO lots and disposals, and
   frozen net-worth snapshots kept separate by currency;
@@ -67,10 +78,12 @@ The beta includes:
 - an always-visible title-or-merchant field and multi-line description/notes
   field in Log, plus category creation from Log and a category manager for
   rename, archive/restore, merge, reassignment, and deletion;
-- a searchable, filterable, date-indexed History tab with encrypted keyset
-  paging, refunds, and atomic transaction editing, including exact N-way
-  category splits with live remainder; prior versions are retained in the
-  encrypted revision collection;
+- a searchable, filterable, date-indexed History tab with Today, seven-day,
+  month, and all-time scopes; complete per-currency spending, income, refunds,
+  and net summaries; visible title, notes, and hierarchical category paths;
+  direct Calendar access; encrypted keyset paging; refunds; and atomic
+  transaction editing, including exact N-way category splits with live
+  remainder; prior versions are retained in the encrypted revision collection;
 - configurable privacy-redacted Home and Lock Screen widgets for expense,
   income, transfer, refund, smart entry, and receipt scanning; a separate
   encrypted Quick Capture inbox that does not reveal balances while locked;
@@ -100,7 +113,7 @@ The beta includes:
 - an App Store privacy manifest, an in-app bilingual privacy and beta guide,
   backup exclusion for non-restorable ciphertext, and confirmations before
   permanent transaction, schedule, or holding deletion;
-- SQLCipher schema-7 normalized journal, receipt, budget-attribution,
+- SQLCipher schema-8 normalized journal, receipt, budget-attribution,
   intelligence, and exact store-metric indexes; compact balances, monthly
   rollover checkpoints, a bounded recent-activity cache, and on-demand
   History/Calendar/export/intelligence reads so normal unlock does not retain
@@ -116,13 +129,15 @@ The beta includes:
   exact-candidate evidence remains pending until that job completes its first
   run.
 
-The unified 0.7.0 candidate still requires signed exact-binary validation,
+The unified 0.7.1 candidate still requires signed exact-binary validation,
 physical upgrade/restore and 10,000-entry performance drills, bilingual
 visual/accessibility/widget checks, the founder/co-tester seven-day run, closed
 beta, and App Store gates. Source implementation is not evidence that those
 gates passed. Keep a separate encrypted backup; CSV and XLSX snapshots remain
 readable plaintext and should be protected. The complete requirement/evidence split is in
-[Golden PRD traceability](docs/GOLDEN_TRACEABILITY.md).
+[Golden PRD traceability](docs/GOLDEN_TRACEABILITY.md). The complete
+feedback-to-implementation overlay is in
+[0.7.1 release scope](docs/RELEASE_0.7.1.md).
 
 ## Install the beta
 

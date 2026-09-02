@@ -5,11 +5,16 @@ public enum TransactionFactoryError: Error, Equatable, Sendable {
     case amountMustBeNonZero
     case accountsMustDiffer
     case arithmeticOverflow
+    case loanCurrencyMismatch
+    case invalidLoanPayment
 }
 
 /// Creates balanced journal entries for common consumer actions while keeping
 /// accounting details out of the UI layer.
 public enum TransactionFactory {
+    public static let loanDrawdownSource = "moneyup.loan.drawdown"
+    public static let loanPaymentSource = "moneyup.loan.payment"
+
     public static func splitExpense(
         amount: Money,
         paidFrom accountID: UUID,
@@ -152,6 +157,91 @@ public enum TransactionFactory {
                 Posting(accountID: sourceAccountID, money: amount.negated),
                 Posting(accountID: destinationAccountID, money: amount)
             ]
+        )
+    }
+
+    /// Advances additional principal from a liability into a cash account.
+    /// This is debt, never income.
+    public static func loanDrawdown(
+        amount: Money,
+        loanAccountID: UUID,
+        depositedInto cashAccountID: UUID,
+        occurredAt: Date = Date(),
+        note: String? = nil
+    ) throws -> JournalEntry {
+        try requirePositive(amount)
+        guard loanAccountID != cashAccountID else {
+            throw TransactionFactoryError.accountsMustDiffer
+        }
+        return try JournalEntry(
+            kind: .transfer,
+            occurredAt: occurredAt,
+            payee: nil,
+            note: normalized(note),
+            postings: [
+                Posting(accountID: loanAccountID, money: amount.negated),
+                Posting(accountID: cashAccountID, money: amount)
+            ],
+            sourceSystem: loanDrawdownSource
+        )
+    }
+
+    /// Posts one loan installment atomically. Principal reduces the liability;
+    /// interest and fees are ordinary expenses, and the cash side equals their
+    /// exact sum.
+    public static func loanPayment(
+        principal: Money,
+        interest: Money,
+        fees: Money,
+        paidFrom cashAccountID: UUID,
+        loanAccountID: UUID,
+        interestCategoryID: UUID?,
+        feeCategoryID: UUID?,
+        occurredAt: Date = Date(),
+        note: String? = nil
+    ) throws -> JournalEntry {
+        guard principal.currency == interest.currency,
+              principal.currency == fees.currency else {
+            throw TransactionFactoryError.loanCurrencyMismatch
+        }
+        guard principal.amount >= .zero,
+              interest.amount >= .zero,
+              fees.amount >= .zero,
+              principal.amount > .zero || interest.amount > .zero || fees.amount > .zero,
+              cashAccountID != loanAccountID,
+              interest.isZero || interestCategoryID != nil,
+              fees.isZero || feeCategoryID != nil else {
+            throw TransactionFactoryError.invalidLoanPayment
+        }
+        let total: Decimal
+        do {
+            total = try CheckedDecimal.adding(
+                try CheckedDecimal.adding(principal.amount, interest.amount),
+                fees.amount
+            )
+        } catch {
+            throw TransactionFactoryError.arithmeticOverflow
+        }
+        let payment = try Money(total, currency: principal.currency)
+        var postings = [
+            Posting(accountID: cashAccountID, money: payment.negated)
+        ]
+        if !principal.isZero {
+            postings.append(Posting(accountID: loanAccountID, money: principal))
+        }
+        if !interest.isZero, let interestCategoryID {
+            postings.append(Posting(accountID: interestCategoryID, money: interest))
+        }
+        if !fees.isZero, let feeCategoryID {
+            postings.append(Posting(accountID: feeCategoryID, money: fees))
+        }
+        return try JournalEntry(
+            kind: .transfer,
+            occurredAt: occurredAt,
+            payee: nil,
+            note: normalized(note),
+            postings: postings,
+            sourceSystem: loanPaymentSource
         )
     }
 

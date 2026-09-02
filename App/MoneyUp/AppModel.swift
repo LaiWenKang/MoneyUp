@@ -274,6 +274,14 @@ final class AppModel {
         get { services.planning.savingsGoals }
         set { services.planning.savingsGoals = newValue }
     }
+    var loanPlans: [LoanPlan] {
+        get { services.planning.loanPlans }
+        set { services.planning.loanPlans = newValue }
+    }
+    var allowancePlans: [AllowancePlan] {
+        get { services.planning.allowancePlans }
+        set { services.planning.allowancePlans = newValue }
+    }
     /// Blob-free attachment inventory. Image bytes are never retained by the
     /// application model and are fetched only for a selected History row.
     var receiptAttachmentMetadata: [ReceiptAttachmentMetadata] {
@@ -476,6 +484,8 @@ final class AppModel {
         exchangeRates: [DatedExchangeRate] = [],
         netWorthSnapshots: [NetWorthSnapshot] = [],
         savingsGoals: [SavingsGoal] = [],
+        loanPlans: [LoanPlan] = [],
+        allowancePlans: [AllowancePlan] = [],
         quickLogDraft: QuickLogDraft? = nil,
         lockedCaptureStore: any LockedCaptureStoring = LockedCaptureStore(),
         receiptRecognizer: @escaping ReceiptLineRecognizer = { data in
@@ -548,6 +558,8 @@ final class AppModel {
         self.exchangeRates = exchangeRates
         self.netWorthSnapshots = netWorthSnapshots.sorted { $0.capturedAt > $1.capturedAt }
         self.savingsGoals = savingsGoals
+        self.loanPlans = loanPlans
+        self.allowancePlans = allowancePlans
         self.quickLogDraft = quickLogDraft
         if profile == nil {
             state = .onboarding

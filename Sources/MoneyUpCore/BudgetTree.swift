@@ -34,6 +34,8 @@ public struct BudgetNode: Codable, Equatable, Identifiable, Sendable {
     public var name: String
     public var limit: Money?
     public var purpose: BudgetPurpose
+    /// Optional daily/weekly guidance derived from the monthly source of truth.
+    public var pacingCadence: BudgetPacingCadence
     public var rolloverRule: BudgetRolloverRule
     /// The instant at which rollover was explicitly enabled. The reporting
     /// calendar aligns it to a month; earlier history is never backfilled.
@@ -45,6 +47,7 @@ public struct BudgetNode: Codable, Equatable, Identifiable, Sendable {
         name: String,
         limit: Money? = nil,
         purpose: BudgetPurpose = .unclassified,
+        pacingCadence: BudgetPacingCadence = .monthly,
         rolloverRule: BudgetRolloverRule = .none,
         rolloverStartedAt: Date? = nil
     ) {
@@ -53,6 +56,7 @@ public struct BudgetNode: Codable, Equatable, Identifiable, Sendable {
         self.name = name
         self.limit = limit
         self.purpose = purpose
+        self.pacingCadence = pacingCadence
         self.rolloverRule = rolloverRule
         self.rolloverStartedAt = rolloverRule == .none ? nil : rolloverStartedAt
     }
@@ -63,6 +67,7 @@ public struct BudgetNode: Codable, Equatable, Identifiable, Sendable {
         case name
         case limit
         case purpose
+        case pacingCadence
         case rolloverRule
         case rolloverStartedAt
     }
@@ -77,6 +82,10 @@ public struct BudgetNode: Codable, Equatable, Identifiable, Sendable {
             BudgetPurpose.self,
             forKey: .purpose
         ) ?? .unclassified
+        pacingCadence = try container.decodeIfPresent(
+            BudgetPacingCadence.self,
+            forKey: .pacingCadence
+        ) ?? .monthly
         rolloverRule = try container.decodeIfPresent(
             BudgetRolloverRule.self,
             forKey: .rolloverRule

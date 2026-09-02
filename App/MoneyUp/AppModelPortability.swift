@@ -72,6 +72,8 @@ extension AppModel {
             snapshot: snapshot,
             investmentHoldings: investmentHoldings,
             savingsGoals: savingsGoals,
+            loanPlans: loanPlans,
+            allowancePlans: allowancePlans,
             generatedAt: generatedAt,
             appVersion: appVersion,
             buildNumber: buildNumber,

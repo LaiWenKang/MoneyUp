@@ -15,6 +15,8 @@ struct AppModelRecoveredBookRecords: Sendable {
     let rates: RecoveredRecords<DatedExchangeRate>
     let snapshots: RecoveredRecords<NetWorthSnapshot>
     let goals: RecoveredRecords<SavingsGoal>
+    let loans: RecoveredRecords<LoanPlan>
+    let allowances: RecoveredRecords<AllowancePlan>
     let attributionIndex: BudgetAttributionIndexSnapshot
     let budgetAttributions: RecoveredRecords<BudgetEntryAttribution>?
     let loadsCompleteBudgetAttributions: Bool
@@ -25,6 +27,7 @@ struct AppModelRecoveryRelationships: Sendable {
     let scheduledEntryIDs: Set<UUID>
     let budgetAttributionEntryIDs: Set<UUID>?
     let investmentEntriesByID: [UUID: JournalEntry]
+    let planningEntryIDs: Set<UUID>
     let loadsCompleteBudgetAttributions: Bool
 }
 
@@ -173,6 +176,14 @@ extension AppModel {
             SavingsGoal.self,
             from: .savingsGoals
         )
+        let loans = try await store.fetchAllIdentifiedRecovering(
+            LoanPlan.self,
+            from: .loanPlans
+        )
+        let allowances = try await store.fetchAllIdentifiedRecovering(
+            AllowancePlan.self,
+            from: .allowancePlans
+        )
         let attributionIndex = try await store.budgetAttributionIndexSnapshot()
         let loadsCompleteBudgetAttributions =
             mode.loadsCompleteBudgetAttributions
@@ -196,6 +207,8 @@ extension AppModel {
             rates: rates,
             snapshots: snapshots,
             goals: goals,
+            loans: loans,
+            allowances: allowances,
             attributionIndex: attributionIndex,
             budgetAttributions: budgetAttributions,
             loadsCompleteBudgetAttributions: loadsCompleteBudgetAttributions
@@ -287,6 +300,16 @@ extension AppModel {
             in: .savingsGoals,
             observesCancellation: mode.observesCancellationWhileLoading
         ).sorted { $0.targetDate < $1.targetDate }
+        loanPlans = try quarantiningDuplicateLogicalIDs(
+            recovered.loans.values,
+            in: .loanPlans,
+            observesCancellation: mode.observesCancellationWhileLoading
+        ).sorted { $0.openedAt > $1.openedAt }
+        allowancePlans = try quarantiningDuplicateLogicalIDs(
+            recovered.allowances.values,
+            in: .allowancePlans,
+            observesCancellation: mode.observesCancellationWhileLoading
+        ).sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
     func applyRecoveredBudgetAttributions(
@@ -345,6 +368,8 @@ extension AppModel {
         decodeIssues.append(contentsOf: recovered.rates.issues)
         decodeIssues.append(contentsOf: recovered.snapshots.issues)
         decodeIssues.append(contentsOf: recovered.goals.issues)
+        decodeIssues.append(contentsOf: recovered.loans.issues)
+        decodeIssues.append(contentsOf: recovered.allowances.issues)
         decodeIssues.append(contentsOf: recovered.attributionIndex.issues)
         decodeIssues.append(contentsOf: recovered.budgetAttributions?.issues ?? [])
         recoveryIssues.append(contentsOf: decodeIssues.map {
@@ -376,6 +401,13 @@ extension AppModel {
             existingBudgetAttributionEntryIDs = nil
         }
         existingScheduledLinkedEntryIDs = existingScheduledEntryIDs
+        let requestedPlanningEntryIDs = Set(
+            loanPlans.flatMap(\.activities).map(\.journalEntryID)
+                + allowancePlans.flatMap(\.usages).compactMap(\.linkedJournalEntryID)
+        )
+        let existingPlanningEntryIDs = try await store.existingJournalEntryIDs(
+            in: requestedPlanningEntryIDs
+        )
         let investmentEntriesByID = try await loadRecoveryInvestmentEntries(
             from: store,
             observesCancellation: observesCancellation
@@ -386,6 +418,7 @@ extension AppModel {
             scheduledEntryIDs: existingScheduledEntryIDs,
             budgetAttributionEntryIDs: existingBudgetAttributionEntryIDs,
             investmentEntriesByID: investmentEntriesByID,
+            planningEntryIDs: existingPlanningEntryIDs,
             loadsCompleteBudgetAttributions: loadsCompleteBudgetAttributions
         )
     }
@@ -434,6 +467,7 @@ extension AppModel {
             existingBudgetAttributionEntryIDs:
                 relationships.budgetAttributionEntryIDs,
             investmentEntriesByID: relationships.investmentEntriesByID,
+            existingPlanningEntryIDs: relationships.planningEntryIDs,
             observesCancellation: mode.observesCancellationWhileLoading
         )
         if relationships.loadsCompleteBudgetAttributions {

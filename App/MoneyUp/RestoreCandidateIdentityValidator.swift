@@ -15,6 +15,8 @@ extension RestoreCandidateValidator {
         var lifecycleEntryReferenceCount = 0
         var scheduleResolutionCount = 0
         var savingsGoalActivityCount = 0
+        var loanActivityCount = 0
+        var allowanceUsageCount = 0
     }
 
     static func validateSnapshotIdentities(
@@ -158,6 +160,27 @@ extension RestoreCandidateValidator {
             return try decodeExchangeRateIdentity(record, decoder: decoder, state: &state)
         case .savingsGoals:
             return try decodeSavingsGoalIdentity(record, decoder: decoder, state: &state)
+        case .loanPlans:
+            let shape = try decoder.decode(LoanPlanWorkShape.self, from: record.payload)
+            state.loanActivityCount = try boundedAggregateCount(
+                current: state.loanActivityCount,
+                adding: shape.activityCount,
+                perRecordLimit: maximumLoanActivitiesPerPlan,
+                aggregateLimit: maximumLoanActivityCount
+            )
+            return try decoder.decode(LoanPlan.self, from: record.payload).id
+        case .allowancePlans:
+            let shape = try decoder.decode(
+                AllowancePlanWorkShape.self,
+                from: record.payload
+            )
+            state.allowanceUsageCount = try boundedAggregateCount(
+                current: state.allowanceUsageCount,
+                adding: shape.usageCount,
+                perRecordLimit: maximumAllowanceUsagesPerPlan,
+                aggregateLimit: maximumAllowanceUsageCount
+            )
+            return try decoder.decode(AllowancePlan.self, from: record.payload).id
         case .budgetConfigurationTimelines:
             try validateBudgetTimeline(record, decoder: decoder)
             return nil
@@ -592,6 +615,38 @@ extension RestoreCandidateValidator {
             )
             guard !overflow else { throw AppModelError.invalidBook }
             totalCount = total
+        }
+    }
+
+    struct LoanPlanWorkShape: Decodable {
+        let activityCount: Int
+        enum CodingKeys: String, CodingKey { case activities }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            guard container.contains(.activities) else {
+                activityCount = 0
+                return
+            }
+            let values = try container.nestedUnkeyedContainer(forKey: .activities)
+            guard let count = values.count else { throw AppModelError.invalidBook }
+            activityCount = count
+        }
+    }
+
+    struct AllowancePlanWorkShape: Decodable {
+        let usageCount: Int
+        enum CodingKeys: String, CodingKey { case usages }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            guard container.contains(.usages) else {
+                usageCount = 0
+                return
+            }
+            let values = try container.nestedUnkeyedContainer(forKey: .usages)
+            guard let count = values.count else { throw AppModelError.invalidBook }
+            usageCount = count
         }
     }
 

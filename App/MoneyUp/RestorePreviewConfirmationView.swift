@@ -289,6 +289,8 @@ private extension RecordCollection {
         case .receiptAttachments: "restore.collection.receipt_attachments"
         case .exchangeRates: "restore.collection.exchange_rates"
         case .savingsGoals: "restore.collection.savings_goals"
+        case .loanPlans: "restore.collection.loan_plans"
+        case .allowancePlans: "restore.collection.allowance_plans"
         case .budgetConfigurationTimelines:
             "restore.collection.budget_configuration_timelines"
         case .budgetEntryAttributions:

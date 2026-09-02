@@ -66,6 +66,8 @@ func safeUserMessage(
          is ReceiptAttachmentError,
          is ExchangeRateError,
          is SavingsGoalError,
+         is LoanPlanError,
+         is AllowancePlanError,
          is TransactionCSVImportError,
          is CSVImportViewError,
          is DerivedValueIssue:
@@ -193,6 +195,40 @@ extension TransactionFactoryError: @retroactive LocalizedError {
             AppLocalization.string("error.accounts_must_differ")
         case .arithmeticOverflow:
             AppLocalization.string("error.amount_too_large")
+        case .loanCurrencyMismatch:
+            AppLocalization.string("loan.error.currency_mismatch")
+        case .invalidLoanPayment:
+            AppLocalization.string("loan.error.invalid_payment")
+        }
+    }
+}
+
+extension LoanPlanError: @retroactive LocalizedError {
+    public var errorDescription: String? {
+        switch self {
+        case .emptyName: AppLocalization.string("error.empty_name")
+        case .principalMustBePositive:
+            AppLocalization.string("error.amount_must_be_positive")
+        case .invalidAPR: AppLocalization.string("loan.error.invalid_apr")
+        case .invalidTerm: AppLocalization.string("loan.error.invalid_term")
+        case .currencyMismatch: AppLocalization.string("loan.error.currency_mismatch")
+        case .invalidDate, .invalidActivity, .tooManyActivities:
+            AppLocalization.string("loan.error.invalid")
+        }
+    }
+}
+
+extension AllowancePlanError: @retroactive LocalizedError {
+    public var errorDescription: String? {
+        switch self {
+        case .emptyName: AppLocalization.string("error.empty_name")
+        case .amountMustBePositive, .usageAmountMustBePositive:
+            AppLocalization.string("error.amount_must_be_positive")
+        case .currencyMismatch:
+            AppLocalization.string("error.balance_currency_mismatch")
+        case .invalidDate, .invalidTimeZone, .invalidRolloverCap,
+             .tooManyCategories, .tooManyUsages, .usageBeforeStart, .usageAfterEnd:
+            AppLocalization.string("allowance.error.invalid")
         }
     }
 }

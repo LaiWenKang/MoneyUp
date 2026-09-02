@@ -3,6 +3,23 @@ import MoneyUpCore
 import SwiftUI
 
 extension QuickLogEntryView {
+    func refreshTypedPayeeSuggestion() {
+        let normalized = payee.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard kind != .transfer, normalized.utf8.count >= 2 else {
+            invalidateCaptureSuggestions()
+            return
+        }
+        let draftKind: DraftKind = kind == .income
+            ? .income : (kind == .refund ? .refund : .expense)
+        refreshCaptureSuggestions(
+            for: TransactionDraft(
+                kind: draftKind,
+                payee: normalized,
+                source: .naturalLanguage
+            )
+        )
+    }
+
     func invalidateCaptureSuggestions(
         preservingAccount: Bool = false,
         preservingCategory: Bool = false,

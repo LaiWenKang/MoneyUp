@@ -9,12 +9,44 @@ invariants remain non-negotiable. The earlier PRD is supporting evidence only
 where it does not conflict. Its StoreKit and CloudKit requirements are
 superseded: the approved first public release is free and local-only.
 
-Checked source items describe the source-integrated 0.7.0 candidate. W1 and W2
-passed exact-candidate and merged-main CI, most recently in run 246 on
-`main@4159df31`; checked source items do not close physical-device, signed-
-binary, TestFlight, closed-beta, or App Store gates. See [Golden PRD
+Checked source items describe the source-integrated 0.7.1 candidate. The 0.7.0
+baseline passed exact-candidate and merged-main CI; checked 0.7.1 source items
+do not close exact-SHA CI, physical-device, signed-binary, TestFlight,
+closed-beta, or App Store gates. See [Golden PRD
 traceability](GOLDEN_TRACEABILITY.md) for every requirement ID and its evidence
 status.
+
+## 0.7.1 complete feedback follow-up
+
+- [x] Quick Log scrolls the focused amount, account, smart-entry, title,
+  notes, and split fields above the keyboard; its untouched occurrence time
+  refreshes from the injected current clock.
+- [x] Deterministic defaults prefer valid user settings, then matching local
+  payee history, then an active leaf category; every suggestion remains
+  visible and editable.
+- [x] Widget and shortcut routes open the same full Quick Log with account,
+  category, title, notes, date/time, and split details after authentication.
+  The separate locked inbox retains amount/title/notes only and defers protected
+  account/category selection until intentional unlock.
+- [x] History defaults to Today, offers seven-day/month/all scopes, computes
+  complete spending/income/refund/net totals per currency, displays title,
+  notes, and full category paths, and keeps direct Calendar access.
+- [x] Expense and income categories support arbitrary-depth parent selection,
+  full-path labels, safe reparenting, and cycle/kind validation.
+- [x] Flexible category budgets can opt into exact daily or weekly remaining
+  pacing while monthly remains the backward-compatible default.
+- [x] Planning-only allowances support daily/weekday/weekly/monthly cadence,
+  optional expiry, eligible categories, usage history, and no/full/capped
+  rollover without creating fictitious income or net worth.
+- [x] Loan plans attach to loan liability accounts and show remaining/advanced/
+  paid principal, interest, fees, dates, APR, term, debt-total inclusion, notes,
+  repayment history, additional drawdown, and paid-off closure. Financial
+  activity is posted atomically through the balanced ledger.
+- [x] SQLCipher schema 8, recovery preview, restore validation, quarantine,
+  inventory, bilingual strings, accessible errors, tests, version 0.7.1, and
+  source build 10 cover the new records and flows.
+- [ ] Exact-candidate macOS Xcode CI and physical-device verification remain
+  evidence gates; source completion does not close them.
 
 ## 0.7.0 W1 - observation and service boundaries
 
@@ -314,6 +346,17 @@ installation, and physical evidence are separate gates.
   private-copy digest authority and read-only pre-confirmation boundary
 - [ ] The final release-truth commit and every later 0.7.0 release candidate
   must repeat exact-SHA CI and signed validation
+
+## 0.7.1 candidate identity
+
+- [x] Source app and widget marketing version: 0.7.1
+- [x] Source build: 10
+- [x] TestFlight workflow marketing version: 0.7.1; source build 10 is checked
+  before the workflow assigns a unique upload build
+- [x] Bilingual in-app 0.7.1 release notes cover the complete feedback follow-up
+- [x] Local release, architecture, structure, and 55-test adversarial validator
+  suites pass with 742 declared Swift tests
+- [ ] Exact source SHA must pass macOS CI before physical or signed distribution
 
 ## G2 - before wider testers
 

@@ -313,9 +313,14 @@ extension AppModel {
     /// workflows. Generic mutation would either erase reconciliation evidence
     /// or split persisted holding metadata from the authoritative journal.
     func isProtectedJournalEntry(_ entry: JournalEntry) -> Bool {
-        entry.kind == .adjustment || entry.kind == .investment || entry.postings.contains {
-            accountsByID[$0.accountID]?.systemRole == .investmentPosition
-        }
+        entry.kind == .adjustment
+            || entry.kind == .investment
+            || loanPlans.contains { plan in
+                plan.activities.contains { $0.journalEntryID == entry.id }
+            }
+            || entry.postings.contains {
+                accountsByID[$0.accountID]?.systemRole == .investmentPosition
+            }
     }
 
     func isEligibleInvestmentFundingAccount(

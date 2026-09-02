@@ -83,6 +83,7 @@ extension AppModel {
         existingScheduledEntryIDs: Set<UUID>? = nil,
         existingBudgetAttributionEntryIDs: Set<UUID>? = nil,
         investmentEntriesByID: [UUID: JournalEntry] = [:],
+        existingPlanningEntryIDs: Set<UUID> = [],
         observesCancellation: Bool
     ) throws {
         try quarantineInvalidAccountHierarchy(
@@ -111,6 +112,66 @@ extension AppModel {
             existingEntryIDs: existingAttachmentEntryIDs
         )
         quarantineDuplicateSavingsGoals()
+        quarantineInvalidLoanRelationships(
+            retainedAccountByID: retainedAccountByID,
+            existingEntryIDs: existingPlanningEntryIDs
+        )
+        quarantineInvalidAllowanceRelationships(
+            retainedAccountByID: retainedAccountByID,
+            existingEntryIDs: existingPlanningEntryIDs
+        )
+    }
+
+    func quarantineInvalidLoanRelationships(
+        retainedAccountByID: [UUID: LedgerAccount],
+        existingEntryIDs: Set<UUID>
+    ) {
+        let duplicateAccountIDs = Set(
+            Dictionary(grouping: loanPlans, by: \.accountID)
+                .filter { $0.value.count > 1 }.keys
+        )
+        var activityOwners: [UUID: Set<UUID>] = [:]
+        for plan in loanPlans {
+            for activity in plan.activities {
+                activityOwners[activity.journalEntryID, default: []].insert(plan.id)
+            }
+        }
+        let reusedEntries = Set(activityOwners.filter { $0.value.count > 1 }.keys)
+        loanPlans.removeAll { plan in
+            let account = retainedAccountByID[plan.accountID]
+            let activityIDs = Set(plan.activities.map(\.journalEntryID))
+            let invalid = account?.kind != .liability
+                || account?.accountType != .loan
+                || account?.currency != plan.originalPrincipal.currency
+                || duplicateAccountIDs.contains(plan.accountID)
+                || !activityIDs.isDisjoint(with: reusedEntries)
+                || !activityIDs.isSubset(of: existingEntryIDs)
+                || plan.interestExpenseAccountID.map {
+                    retainedAccountByID[$0]?.kind != .expense
+                } == true
+                || plan.feeExpenseAccountID.map {
+                    retainedAccountByID[$0]?.kind != .expense
+                } == true
+            if invalid { recoveryIssues.append("loan_plans/orphan-\(plan.id)") }
+            return invalid
+        }
+    }
+
+    func quarantineInvalidAllowanceRelationships(
+        retainedAccountByID: [UUID: LedgerAccount],
+        existingEntryIDs: Set<UUID>
+    ) {
+        allowancePlans.removeAll { plan in
+            let categoryIDs = plan.eligibleCategoryIDs.union(
+                plan.usages.compactMap(\.categoryID)
+            )
+            let linkedIDs = Set(plan.usages.compactMap(\.linkedJournalEntryID))
+            let invalid = categoryIDs.contains {
+                retainedAccountByID[$0]?.kind != .expense
+            } || !linkedIDs.isSubset(of: existingEntryIDs)
+            if invalid { recoveryIssues.append("allowance_plans/orphan-\(plan.id)") }
+            return invalid
+        }
     }
 
     func quarantineInvalidAccountHierarchy(
@@ -526,6 +587,9 @@ extension AppModel {
         }
         try requireLifecycleEligible(source)
         try requireLifecycleEligible(target)
+        guard planningReferenceCount(to: sourceID) == 0 else {
+            throw AppModelError.ledgerItemInUse
+        }
         guard sourceID != targetID else {
             throw AppModelError.incompatibleLedgerItems
         }

@@ -196,6 +196,22 @@ struct DataSafetyView: View {
                             value: "\(inventory.storedRecordCount(in: .savingsGoals))"
                         )
                         LabeledContent(
+                            "inventory.loans",
+                            value: "\(inventory.storedRecordCount(in: .loanPlans))"
+                        )
+                        LabeledContent(
+                            "inventory.loan_activities",
+                            value: "\(inventory.nestedActivityCounts.loanActivities)"
+                        )
+                        LabeledContent(
+                            "inventory.allowances",
+                            value: "\(inventory.storedRecordCount(in: .allowancePlans))"
+                        )
+                        LabeledContent(
+                            "inventory.allowance_usages",
+                            value: "\(inventory.nestedActivityCounts.allowanceUsages)"
+                        )
+                        LabeledContent(
                             "inventory.goal_movements",
                             value: "\(inventory.nestedActivityCounts.savingsGoalMovements)"
                         )

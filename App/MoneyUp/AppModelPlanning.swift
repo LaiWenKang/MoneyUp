@@ -11,6 +11,7 @@ extension AppModel {
         categoryID: UUID,
         amount: Decimal?,
         purpose: BudgetPurpose? = nil,
+        pacingCadence: BudgetPacingCadence? = nil,
         rolloverRule: BudgetRolloverRule? = nil
     ) async throws {
         try beginJournalMutation()
@@ -23,6 +24,7 @@ extension AppModel {
             budgetNodes[index],
             amount: amount,
             purpose: purpose,
+            pacingCadence: pacingCadence,
             rolloverRule: rolloverRule,
             currency: currency
         )
@@ -48,6 +50,7 @@ extension AppModel {
         _ original: BudgetNode,
         amount: Decimal?,
         purpose: BudgetPurpose?,
+        pacingCadence: BudgetPacingCadence? = nil,
         rolloverRule: BudgetRolloverRule?,
         currency: CurrencyCode
     ) throws -> BudgetNode {
@@ -63,6 +66,7 @@ extension AppModel {
         var updated = original
         updated.limit = try amount.map { try Money($0, currency: currency) }
         if let purpose { updated.purpose = purpose }
+        if let pacingCadence { updated.pacingCadence = pacingCadence }
         if let rolloverRule {
             if rolloverRule == .none {
                 updated.rolloverRule = .none

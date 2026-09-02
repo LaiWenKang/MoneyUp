@@ -3133,7 +3133,7 @@ final class AppModelTests: XCTestCase {
         )
 
         XCTAssertEqual(ticket.preview.archiveFormatVersion, 2)
-        XCTAssertEqual(ticket.preview.archiveSchemaVersion, 7)
+        XCTAssertEqual(ticket.preview.archiveSchemaVersion, 8)
         guard case let .available(currentSummary) = ticket.preview.current else {
             return XCTFail("An open live book must have a readable current summary")
         }

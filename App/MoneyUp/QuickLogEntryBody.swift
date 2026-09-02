@@ -18,6 +18,7 @@ extension QuickLogEntryView {
             currency: selectedDestinationCurrency
         )
         NavigationStack {
+            ScrollViewReader { scrollProxy in
             Form {
                 if dynamicTypeSize.isAccessibilitySize {
                     kindPicker(style: .menu)
@@ -38,6 +39,7 @@ extension QuickLogEntryView {
                         .moneyAmountKeyboard(currency: selectedAccountCurrency)
                         .font(.title2.monospacedDigit())
                         .focused($focusedField, equals: .amount)
+                        .id(QuickLogFieldFocus.amount)
                         .moneyUpFieldValidation(amountValidationMessage)
                         if let currency = selectedAccountCurrency {
                             Text(currency.value)
@@ -92,6 +94,7 @@ extension QuickLogEntryView {
                                 )
                                 .moneyAmountKeyboard(currency: selectedDestinationCurrency)
                                 .focused($focusedField, equals: .destinationAmount)
+                                .id(QuickLogFieldFocus.destinationAmount)
                                 .moneyUpFieldValidation(destinationAmountValidationMessage)
                                 if let currency = selectedDestinationCurrency {
                                     Text(currency.value)
@@ -174,7 +177,8 @@ extension QuickLogEntryView {
                                 )
                             ) {
                                 ForEach(categories) { category in
-                                    Text(category.name).tag(Optional(category.id))
+                                    Text(model.categoryPathName(for: category.id))
+                                        .tag(Optional(category.id))
                                 }
                             }
                         } else {
@@ -201,11 +205,12 @@ extension QuickLogEntryView {
                             \.payee,
                             refreshesOccurrenceDate: true,
                             onUserEdit: {
-                                invalidateCaptureSuggestions()
+                                refreshTypedPayeeSuggestion()
                             }
                         )
                     )
                     .focused($focusedField, equals: .payee)
+                    .id(QuickLogFieldFocus.payee)
 
                     TextField(
                         "transaction.description_or_notes",
@@ -218,36 +223,15 @@ extension QuickLogEntryView {
                     )
                     .lineLimit(2...4)
                     .focused($focusedField, equals: .note)
+                    .id(QuickLogFieldFocus.note)
+                    .accessibilityIdentifier("quick-log-note")
                 } header: {
                     Text("transaction.details")
                 } footer: {
                     Text("transaction.details_help")
                 }
 
-                Section {
-                    DisclosureGroup(
-                        "quick_log.date_and_time",
-                        isExpanded: $isShowingOptionalDetails
-                    ) {
-                        DatePicker(
-                            "quick_log.date",
-                            selection: Binding(
-                                get: { occurredAt },
-                                set: { newDate in
-                                    cancelOnDeviceAssistance()
-                                    occurredAt = newDate
-                                    dateWasEdited = true
-                                    invalidateCaptureSuggestions()
-                                    persistUserDraftChange { snapshot in
-                                        snapshot.occurredAt = newDate
-                                        snapshot.dateWasEdited = true
-                                    }
-                                }
-                            ),
-                            displayedComponents: [.date, .hourAndMinute]
-                        )
-                    }
-                }
+                occurrenceSection
 
                 if model.userAccounts.isEmpty {
                     Section {
@@ -452,6 +436,14 @@ extension QuickLogEntryView {
             ) { _, enabled in
                 if enabled != true { cancelOnDeviceAssistance() }
             }
+            .onChange(of: focusedField) { _, field in
+                guard let field = QuickLogFocusScrollPolicy.target(for: field) else {
+                    return
+                }
+                withAnimation(.easeOut(duration: 0.2)) {
+                    scrollProxy.scrollTo(field, anchor: .center)
+                }
+            }
             .onDisappear {
                 cancelReceiptProcessing()
                 cancelCaptureSuggestionLookup()
@@ -475,6 +467,7 @@ extension QuickLogEntryView {
                         snapshot.categoryID = categoryID
                     }
                 }
+            }
             }
         }
         .safeAreaInset(edge: .bottom) {

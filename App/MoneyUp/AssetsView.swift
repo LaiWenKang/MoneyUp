@@ -232,6 +232,16 @@ struct AssetsView: View {
                     }
                 }
 
+                Section {
+                    NavigationLink {
+                        LoanCenterView()
+                    } label: {
+                        Label("loan.title", systemImage: "car.side.fill")
+                    }
+                } footer: {
+                    Text("loan.assets_detail")
+                }
+
                 if !archivedFinancialAccounts.isEmpty {
                     Section("lifecycle.archived") {
                         ForEach(archivedFinancialAccounts) { account in

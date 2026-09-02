@@ -611,13 +611,13 @@ W3_PATH_TYPE_DIGESTS: tuple[tuple[str, str, str, str], ...] = (
         "App/MoneyUp/QuickLogEntryBody.swift",
         "extension",
         "QuickLogEntryView",
-        "58dc2110d6d842f32391746c4b7352ec55fe8e692a02d5a8ab58b37dd362c6ae",
+        "b8345aa2e27f4ba9ac8284a26d5ad8803bc53a09a45f155de3daae0c3ffb81e3",
     ),
     (
         "App/MoneyUp/QuickLogEntryReceipt.swift",
         "extension",
         "QuickLogEntryView",
-        "dbe4d89116665a44914344752b06870f387f0b068b1cc2a6ad4fff4242c004ff",
+        "d1f2c4224a663db250291443bac6a8d20d7c720923a8eacbdc99c4a1f8a95f1f",
     ),
     (
         W3_REVIEWED_ENTRY_ASSISTANCE_PATH,

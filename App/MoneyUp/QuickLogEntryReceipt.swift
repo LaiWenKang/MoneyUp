@@ -384,8 +384,7 @@ extension QuickLogEntryView {
                     model.profile?.preferredExpenseCategoryID,
                     in: model.expenseCategories
                 ) ?? recentCategoryID(kind: .expense)
-                    ?? model.expenseCategories.first { $0.parentID != nil }?.id
-                    ?? model.expenseCategories.first?.id
+                    ?? smartFallbackCategory(in: model.expenseCategories)
             }
         case .income:
             if !model.incomeCategories.contains(where: { $0.id == categoryID }) {
@@ -394,7 +393,7 @@ extension QuickLogEntryView {
                     model.profile?.preferredIncomeCategoryID,
                     in: model.incomeCategories
                 ) ?? recentCategoryID(kind: .income)
-                    ?? model.incomeCategories.first?.id
+                    ?? smartFallbackCategory(in: model.incomeCategories)
             }
         case .refund:
             if !model.expenseCategories.contains(where: { $0.id == categoryID }) {
@@ -403,8 +402,7 @@ extension QuickLogEntryView {
                     model.profile?.preferredExpenseCategoryID,
                     in: model.expenseCategories
                 ) ?? recentCategoryID(kind: .expense)
-                    ?? model.expenseCategories.first { $0.parentID != nil }?.id
-                    ?? model.expenseCategories.first?.id
+                    ?? smartFallbackCategory(in: model.expenseCategories)
             }
         case .transfer:
             if !model.userAccounts.contains(where: {
@@ -450,7 +448,7 @@ extension QuickLogEntryView {
         let cutoff = model.reportingCalendar.date(
             byAdding: .day,
             value: -30,
-            to: Date()
+            to: model.currentDateForUserAction()
         ) ?? .distantPast
         var counts: [UUID: Int] = [:]
         var firstSeenOrder: [UUID: Int] = [:]
@@ -472,5 +470,18 @@ extension QuickLogEntryView {
             }
             return firstCount < secondCount
         }
+    }
+
+    func smartFallbackCategory(in choices: [LedgerAccount]) -> UUID? {
+        let parentIDs = Set(choices.compactMap(\.parentID))
+        return choices
+            .filter { !parentIDs.contains($0.id) }
+            .sorted {
+                model.categoryPathName(for: $0.id)
+                    .localizedCaseInsensitiveCompare(
+                        model.categoryPathName(for: $1.id)
+                    ) == .orderedAscending
+            }
+            .first?.id ?? choices.first?.id
     }
 }

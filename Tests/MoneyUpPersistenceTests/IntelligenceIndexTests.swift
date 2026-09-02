@@ -124,7 +124,7 @@ final class IntelligenceIndexTests: XCTestCase {
         await store.close()
     }
 
-    func testSchema6MigrationPreservesPayloadBytesAndBuildsSchema7Index() async throws {
+    func testSchema6MigrationPreservesPayloadBytesAndBuildsCurrentIndex() async throws {
         let fixture = try IntelligenceDatabaseFixture()
         let store = try EncryptedRecordStore(
             databaseURL: fixture.databaseURL,
@@ -144,7 +144,7 @@ final class IntelligenceIndexTests: XCTestCase {
         let counts = try await migrated.recordCountSnapshot()
 
         XCTAssertEqual(after, before)
-        XCTAssertEqual(counts.schemaVersion, 7)
+        XCTAssertEqual(counts.schemaVersion, 8)
         let candidates = try await migrated.payeeAffinityCandidates(
             payee: "legacy cafe",
             currency: book.currency

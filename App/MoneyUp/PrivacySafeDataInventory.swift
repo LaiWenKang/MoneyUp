@@ -17,6 +17,8 @@ struct PrivacySafeDataInventory: Codable, Equatable, Sendable {
         let investmentCorrections: Int
         let savingsGoalMovements: Int
         let savingsGoalResets: Int
+        let loanActivities: Int
+        let allowanceUsages: Int
     }
 
     let formatVersion: Int
@@ -35,6 +37,8 @@ struct PrivacySafeDataInventory: Codable, Equatable, Sendable {
         snapshot: DatabaseRecordCountSnapshot,
         investmentHoldings: [InvestmentHolding],
         savingsGoals: [SavingsGoal],
+        loanPlans: [LoanPlan] = [],
+        allowancePlans: [AllowancePlan] = [],
         generatedAt: Date? = nil,
         appVersion: String,
         buildNumber: String,
@@ -57,6 +61,8 @@ struct PrivacySafeDataInventory: Codable, Equatable, Sendable {
         nestedActivityCountsComplete = investmentHoldings.count
             == snapshot.count(in: .investmentHoldings)
             && savingsGoals.count == snapshot.count(in: .savingsGoals)
+            && loanPlans.count == snapshot.count(in: .loanPlans)
+            && allowancePlans.count == snapshot.count(in: .allowancePlans)
         nestedActivityCounts = NestedActivityCounts(
             investmentLots: investmentHoldings.reduce(0) { $0 + $1.lots.count },
             investmentDisposals: investmentHoldings.reduce(0) {
@@ -71,7 +77,9 @@ struct PrivacySafeDataInventory: Codable, Equatable, Sendable {
             savingsGoalMovements: savingsGoals.reduce(0) {
                 $0 + $1.movements.count
             },
-            savingsGoalResets: savingsGoals.reduce(0) { $0 + $1.resets.count }
+            savingsGoalResets: savingsGoals.reduce(0) { $0 + $1.resets.count },
+            loanActivities: loanPlans.reduce(0) { $0 + $1.activities.count },
+            allowanceUsages: allowancePlans.reduce(0) { $0 + $1.usages.count }
         )
     }
 

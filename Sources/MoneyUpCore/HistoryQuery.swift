@@ -16,13 +16,25 @@ public struct HistorySummary: Equatable, Sendable {
     /// Transfers use only asset/liability postings, so same-currency transfers
     /// offset to zero while foreign-currency sides remain separate.
     public let amountsByCurrency: [CurrencyCode: Decimal]
+    /// Positive expense-category postings only.
+    public let spendingByCurrency: [CurrencyCode: Decimal]
+    /// Absolute value of negative income-category postings.
+    public let incomeByCurrency: [CurrencyCode: Decimal]
+    /// Absolute value of negative expense-category postings.
+    public let refundsByCurrency: [CurrencyCode: Decimal]
 
     public init(
         transactionCount: Int,
-        amountsByCurrency: [CurrencyCode: Decimal]
+        amountsByCurrency: [CurrencyCode: Decimal],
+        spendingByCurrency: [CurrencyCode: Decimal] = [:],
+        incomeByCurrency: [CurrencyCode: Decimal] = [:],
+        refundsByCurrency: [CurrencyCode: Decimal] = [:]
     ) {
         self.transactionCount = transactionCount
         self.amountsByCurrency = amountsByCurrency
+        self.spendingByCurrency = spendingByCurrency
+        self.incomeByCurrency = incomeByCurrency
+        self.refundsByCurrency = refundsByCurrency
     }
 }
 
@@ -137,8 +149,33 @@ public struct HistoryQuery: Equatable, Sendable {
             uniquingKeysWith: { first, _ in first }
         )
         var totals: [CurrencyCode: Decimal] = [:]
+        var spending: [CurrencyCode: Decimal] = [:]
+        var income: [CurrencyCode: Decimal] = [:]
+        var refunds: [CurrencyCode: Decimal] = [:]
 
         for entry in entries {
+            for posting in entry.postings {
+                let currency = posting.money.currency
+                switch accountsByID[posting.accountID]?.kind {
+                case .expense where posting.money.amount > .zero:
+                    spending[currency] = try CheckedDecimal.adding(
+                        spending[currency] ?? .zero,
+                        posting.money.amount
+                    )
+                case .expense where posting.money.amount < .zero:
+                    refunds[currency] = try CheckedDecimal.adding(
+                        refunds[currency] ?? .zero,
+                        -posting.money.amount
+                    )
+                case .income where posting.money.amount < .zero:
+                    income[currency] = try CheckedDecimal.adding(
+                        income[currency] ?? .zero,
+                        -posting.money.amount
+                    )
+                default:
+                    break
+                }
+            }
             switch classifiedKind(of: entry, accountsByID: accountsByID) {
             case .expense, .refund:
                 for posting in entry.postings
@@ -175,7 +212,10 @@ public struct HistoryQuery: Equatable, Sendable {
 
         return HistorySummary(
             transactionCount: entries.count,
-            amountsByCurrency: totals
+            amountsByCurrency: totals,
+            spendingByCurrency: spending,
+            incomeByCurrency: income,
+            refundsByCurrency: refunds
         )
     }
 

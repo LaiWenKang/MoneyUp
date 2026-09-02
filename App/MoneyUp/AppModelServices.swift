@@ -42,6 +42,8 @@ protocol PlanningServicing: AnyObject {
     var budgetNodes: [BudgetNode] { get }
     var scheduledTransactions: [ScheduledTransaction] { get }
     var savingsGoals: [SavingsGoal] { get }
+    var loanPlans: [LoanPlan] { get }
+    var allowancePlans: [AllowancePlan] { get }
 }
 
 @MainActor
@@ -50,15 +52,21 @@ final class PlanningService: PlanningServicing {
     var budgetNodes: [BudgetNode]
     var scheduledTransactions: [ScheduledTransaction]
     var savingsGoals: [SavingsGoal]
+    var loanPlans: [LoanPlan]
+    var allowancePlans: [AllowancePlan]
 
     init(
         budgetNodes: [BudgetNode] = [],
         scheduledTransactions: [ScheduledTransaction] = [],
-        savingsGoals: [SavingsGoal] = []
+        savingsGoals: [SavingsGoal] = [],
+        loanPlans: [LoanPlan] = [],
+        allowancePlans: [AllowancePlan] = []
     ) {
         self.budgetNodes = budgetNodes
         self.scheduledTransactions = scheduledTransactions
         self.savingsGoals = savingsGoals
+        self.loanPlans = loanPlans
+        self.allowancePlans = allowancePlans
     }
 }
 
