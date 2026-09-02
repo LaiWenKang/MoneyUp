@@ -58,7 +58,8 @@ public struct AllowanceUsage: Codable, Equatable, Identifiable, Sendable {
         self.occurredAt = occurredAt
         self.categoryID = categoryID
         self.linkedJournalEntryID = linkedJournalEntryID
-        self.note = note?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        let normalizedNote = note?.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.note = normalizedNote?.isEmpty == false ? normalizedNote : nil
     }
 }
 

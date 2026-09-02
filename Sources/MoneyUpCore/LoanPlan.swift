@@ -69,7 +69,8 @@ public struct LoanActivity: Codable, Equatable, Identifiable, Sendable {
         self.interest = interest
         self.fees = fees
         self.journalEntryID = journalEntryID
-        self.note = note?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        let normalizedNote = note?.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.note = normalizedNote?.isEmpty == false ? normalizedNote : nil
     }
 }
 
