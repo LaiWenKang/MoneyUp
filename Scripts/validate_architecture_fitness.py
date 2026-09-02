@@ -375,7 +375,7 @@ W3_TYPE_EXECUTABLE_DIGESTS = {
         "6cf9966b153ca11e1c66bb4fd877d7285f75b73acb7ec1d7c5dd540fc0c9c71a"
     ),
     "NaturalLanguageEntryParser": (
-        "5aebf749b3d030c7809d0435af727408850c008a7b88892a0d5f0a1c5a80cbb6"
+        "26bdbb8806cc592a5be0ff1663a452075fdad08fa59b4ec48d4c72b71cb9ae2b"
     ),
     "QuickLogInputAuthority": (
         "973c735265e2cc2bff6e170ce3d45fcc19655792ce9c0ee4397687fa4c6068b1"

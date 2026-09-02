@@ -504,8 +504,10 @@ public enum NaturalLanguageEntryParser {
               upperOffset <= projection.originalRanges.count else {
             return nil
         }
-        return projection.originalRanges[lowerOffset].lowerBound
-            ..<projection.originalRanges[upperOffset - 1].upperBound
+        return (
+            projection.originalRanges[lowerOffset].lowerBound
+                ..< projection.originalRanges[upperOffset - 1].upperBound
+        )
     }
 
     private static func touchesLetterOrNumber(
