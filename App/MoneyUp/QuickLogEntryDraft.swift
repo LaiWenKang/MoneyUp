@@ -36,6 +36,7 @@ extension QuickLogEntryView {
         Binding(
             get: { binding.wrappedValue },
             set: { newValue in
+                cancelOnDeviceAssistance()
                 if refreshesOccurrenceDate {
                     refreshUntouchedOccurrenceDate(persist: false)
                 }
@@ -108,7 +109,7 @@ extension QuickLogEntryView {
         lastSavedEntryID = nil
         isUndoing = false
         isShowingOptionalDetails = false
-        pendingLaunchMode = nil
+        pendingLaunchRequest = nil
         isConfirmingDraftSwitch = false
         guard !model.isBookReplacementInProgress,
               model.state == .ready else { return }
@@ -143,14 +144,13 @@ extension QuickLogEntryView {
         guard !dismissAfterSave,
               !isSaving,
               !isScanning,
-              requestSequence != 0,
-              requestSequence != handledRequestSequence,
-              let launchMode else { return }
-        handledRequestSequence = requestSequence
+              let launchRequest,
+              launchRequest.id != handledRequestID else { return }
+        handledRequestID = launchRequest.id
         if sourceCaptureID != nil {
             // Unlock promotion itself routes to Log. It is the same durable
             // draft, not a request to discard it and start another entry.
-            onRequestHandled(launchMode)
+            onRequestHandled(launchRequest)
             focusedField = .amount
             return
         }
@@ -158,17 +158,18 @@ extension QuickLogEntryView {
             // Every external action means “start or focus an entry.” Protect
             // even same-kind drafts: Smart Entry and receipt parsing can
             // otherwise overwrite an unfinished expense in place.
-            pendingLaunchMode = launchMode
+            pendingLaunchRequest = launchRequest
             isConfirmingDraftSwitch = true
             return
         }
-        performLaunch(launchMode)
-        onRequestHandled(launchMode)
+        performLaunch(launchRequest.mode)
+        onRequestHandled(launchRequest)
     }
 
-    func discardDraftAndLaunch(_ launchMode: QuickLogLaunchMode) {
+    func discardDraftAndLaunch(_ launchRequest: QuickLogRouteRequest) {
         cancelReceiptProcessing()
         cancelCaptureSuggestionLookup()
+        cancelOnDeviceAssistance()
         accountWasEdited = false
         categoryWasEdited = false
         amountText = ""
@@ -190,7 +191,7 @@ extension QuickLogEntryView {
         retainReceiptAttachment = false
         receiptRetentionMessage = nil
         errorMessage = nil
-        performLaunch(launchMode)
+        performLaunch(launchRequest.mode)
         selectDefaults()
         model.updateQuickLogDraft(draftSnapshot)
     }
@@ -231,19 +232,25 @@ extension QuickLogEntryView {
     }
 
     func applyTypedPhrase() {
-        receiptResult = nil
-        invalidateCaptureSuggestions()
-        pendingDuplicateReview = nil
-        let draft = NaturalLanguageEntryParser.draft(
-            from: smartText,
-            accounts: model.accounts,
-            now: model.currentDateForUserAction(),
-            calendar: model.reportingCalendar,
-            prefersDayFirst: Self.localePrefersDayFirst
-        )
-        if apply(draft) {
-            smartText = ""
-            if !dismissAfterSave { model.updateQuickLogDraft(draftSnapshot) }
+        QuickLogInputAuthority.beginSmartFill(
+            cancelReceipt: { cancelReceiptProcessing() },
+            cancelAssistance: { cancelOnDeviceAssistance() }
+        ) {
+            receiptResult = nil
+            invalidateCaptureSuggestions()
+            pendingDuplicateReview = nil
+            let parsed = NaturalLanguageEntryParser.parse(
+                smartText,
+                accounts: model.accounts,
+                now: model.currentDateForUserAction(),
+                calendar: model.reportingCalendar,
+                prefersDayFirst: Self.localePrefersDayFirst
+            )
+            if apply(parsed.draft) {
+                smartText = ""
+                if !dismissAfterSave { model.updateQuickLogDraft(draftSnapshot) }
+                startOnDeviceAssistance(for: parsed)
+            }
         }
     }
 }

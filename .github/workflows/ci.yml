@@ -45,6 +45,13 @@ jobs:
         run: python3 Scripts/validate_performance_signposts.py
       - name: Enforce accessible error presentation
         run: python3 Scripts/validate_accessible_errors.py
+      - name: Test platform-action source validator
+        run: >-
+          python3 -m unittest discover
+          -s Tests/PlatformActionsValidatorTests
+          -p 'test_*.py'
+      - name: Validate privacy-safe platform actions
+        run: python3 Scripts/validate_platform_actions.py
       - name: Validate privacy, localization, icons, and launch docs
         run: python3 Scripts/validate_release_assets.py
 

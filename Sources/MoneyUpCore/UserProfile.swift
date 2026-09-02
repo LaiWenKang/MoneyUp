@@ -22,6 +22,10 @@ public struct UserProfile: Codable, Equatable, Sendable {
     /// Deterministic local intelligence is enabled by default. Turning it off
     /// cancels analysis and removes its encrypted derived indexes.
     public var intelligenceEnabled: Bool
+    /// Optional Apple on-device assistance for choosing from a closed list of
+    /// existing Quick Log accounts and categories. Legacy profiles and new
+    /// installs remain opted out until the user explicitly enables it.
+    public var foundationModelAssistanceEnabled: Bool
     /// Fixed Gregorian reporting zone. Legacy profiles decode as GMT so their
     /// day attribution remains deterministic rather than following travel.
     public var reportingTimeZoneIdentifier: String
@@ -36,6 +40,7 @@ public struct UserProfile: Codable, Equatable, Sendable {
         preferredIncomeCategoryID: UUID? = nil,
         showsBudgetStatusWidget: Bool = false,
         intelligenceEnabled: Bool = true,
+        foundationModelAssistanceEnabled: Bool = false,
         reportingTimeZoneIdentifier: String = TimeZone.current.identifier
     ) {
         self.baseCurrency = baseCurrency
@@ -48,6 +53,7 @@ public struct UserProfile: Codable, Equatable, Sendable {
         self.preferredIncomeCategoryID = preferredIncomeCategoryID
         self.showsBudgetStatusWidget = showsBudgetStatusWidget
         self.intelligenceEnabled = intelligenceEnabled
+        self.foundationModelAssistanceEnabled = foundationModelAssistanceEnabled
         self.reportingTimeZoneIdentifier = TimeZone(
             identifier: reportingTimeZoneIdentifier
         )?.identifier ?? "GMT"
@@ -63,6 +69,7 @@ public struct UserProfile: Codable, Equatable, Sendable {
         case preferredIncomeCategoryID
         case showsBudgetStatusWidget
         case intelligenceEnabled
+        case foundationModelAssistanceEnabled
         case reportingTimeZoneIdentifier
     }
 
@@ -126,6 +133,10 @@ public struct UserProfile: Codable, Equatable, Sendable {
             Bool.self,
             forKey: .intelligenceEnabled
         ) ?? true
+        foundationModelAssistanceEnabled = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .foundationModelAssistanceEnabled
+        ) ?? false
         if container.contains(.reportingTimeZoneIdentifier) {
             let identifier = try container.decode(
                 String.self,

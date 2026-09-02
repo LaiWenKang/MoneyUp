@@ -105,8 +105,14 @@ extension AppModel {
         from archiveURL: URL,
         password: String
     ) async throws {
-        try await beginRestoreMutation()
-        defer { finishBookReplacementMutation() }
+        let quickActionBoundaryEpoch = try beginRestoreMutation()
+        defer {
+            finishBookReplacementMutation()
+            quickActionRouteBroker.endAuthoritativeBoundary(
+                quickActionBoundaryEpoch
+            )
+        }
+        await finishBeginningRestoreMutation()
 
         try await restoreEncryptedBackupAfterVerifiedTicket(
             from: archiveURL,
@@ -198,7 +204,7 @@ extension AppModel {
         }
     }
 
-    func beginRestoreMutation() async throws {
+    func beginRestoreMutation() throws -> UInt64 {
         guard !isWorking,
               !isLifecycleMutationInProgress,
               !goalMutationBarrierClosed,
@@ -210,8 +216,14 @@ extension AppModel {
         // every old-book read even if it resumes after replacement finishes.
         isBookReplacementInProgress = true
         logicalBookRevision &+= 1
+        let quickActionBoundaryEpoch =
+            beginAuthoritativeQuickActionBoundary()
         isWorking = true
         goalMutationBarrierClosed = true
+        return quickActionBoundaryEpoch
+    }
+
+    func finishBeginningRestoreMutation() async {
         await waitForGoalMutationDrain()
         isLifecycleMutationInProgress = true
         requestedQuickLogMode = nil

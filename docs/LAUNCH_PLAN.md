@@ -150,7 +150,12 @@ appearance, accessibility settings, timings, and screenshots:
    image, sensitive app-switcher content, or duplicate commit may appear after
    unlock. Exercise app, widget, Shortcut/App Intent, and URL launch paths with
    locked capture both enabled and disabled.
-6. Repeat the changed surfaces in both languages, light/dark mode, largest
+6. On an eligible iOS 26 device, verify the separately opted-in Foundation
+   Models path in English and Simplified Chinese: closed existing-name choices
+   only, visible provenance, one-tap rejection, no automatic Save, and silent
+   deterministic fallback for disabled Apple Intelligence, cancellation, and
+   unavailable hardware. Retain network evidence showing no request.
+7. Repeat the changed surfaces in both languages, light/dark mode, largest
    Dynamic Type, VoiceOver, and Reduce Motion. Currency must be announced and
    status meaning must remain available without color. Capture before/after
    screenshots for normal, low-confidence, duplicate-review, and locked states.

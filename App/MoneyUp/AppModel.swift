@@ -293,9 +293,28 @@ final class AppModel {
     /// setters can decode candidate state behind this boundary without
     /// publishing mixed widget or deep-link state to another process/view.
     var isBookReplacementInProgress = false
+    private(set) var requestedQuickLogRequest: QuickLogRouteRequest? = nil
+    var presentedQuickLogRequest: QuickLogRouteRequest? = nil
+    private var nextQuickLogRequestID: UInt64 = 0
     var requestedQuickLogMode: QuickLogLaunchMode? {
         get { services.capture.requestedQuickLogMode }
-        set { services.capture.requestedQuickLogMode = newValue }
+        set {
+            guard newValue == nil
+                    || !quickActionRouteBroker.isAuthoritativeBoundaryActive else {
+                return
+            }
+            services.capture.requestedQuickLogMode = newValue
+            guard let newValue else {
+                requestedQuickLogRequest = nil
+                return
+            }
+            nextQuickLogRequestID &+= 1
+            requestedQuickLogRequest = QuickLogRouteRequest(
+                id: nextQuickLogRequestID,
+                generation: quickActionRouteBroker.handoffGeneration,
+                mode: newValue
+            )
+        }
     }
     var quickLogDraft: QuickLogDraft? {
         get { services.capture.quickLogDraft }
@@ -328,6 +347,7 @@ final class AppModel {
     let databaseURLForErase: URL?
     let deleteDatabaseKey: @Sendable () throws -> Void
     let dataEraseIntent: DataEraseIntentAccess
+    let quickActionRouteBroker: MoneyUpQuickActionRouteBroker
     let openDatabaseStore: DatabaseStoreOpener
     let openDatabaseStoreWithKey: DatabaseStoreWithKeyOpener
     let keyCliffRecoveryKeyAccess: KeyCliffRecoveryKeyAccess
@@ -413,7 +433,10 @@ final class AppModel {
             || standaloneJournalMutationsInProgress > 0
     }
 
-    init(dataEraseIntent: DataEraseIntentAccess = .production) {
+    init(
+        dataEraseIntent: DataEraseIntentAccess = .production,
+        quickActionRouteBroker: MoneyUpQuickActionRouteBroker = .shared
+    ) {
         services = AppModelServices()
         lockedCaptureStore = LockedCaptureStore()
         receiptRecognizer = { data in
@@ -423,6 +446,7 @@ final class AppModel {
         databaseURLForErase = nil
         deleteDatabaseKey = { try DatabaseKeyStore.deleteKey() }
         self.dataEraseIntent = dataEraseIntent
+        self.quickActionRouteBroker = quickActionRouteBroker
         openDatabaseStore = DatabaseStoreOpeners.production
         openDatabaseStoreWithKey = DatabaseStoreOpeners.productionWithKey
         keyCliffRecoveryKeyAccess = .production
@@ -461,6 +485,8 @@ final class AppModel {
         databaseURLForErase: URL? = nil,
         deleteDatabaseKey: @escaping @Sendable () throws -> Void = {},
         dataEraseIntent: DataEraseIntentAccess = .none,
+        quickActionRouteBroker: MoneyUpQuickActionRouteBroker =
+            MoneyUpQuickActionRouteBroker(),
         openDatabaseStore: @escaping DatabaseStoreOpener =
             DatabaseStoreOpeners.production,
         openDatabaseStoreWithKey: @escaping DatabaseStoreWithKeyOpener =
@@ -484,6 +510,7 @@ final class AppModel {
         self.databaseURLForErase = databaseURLForErase
         self.deleteDatabaseKey = deleteDatabaseKey
         self.dataEraseIntent = dataEraseIntent
+        self.quickActionRouteBroker = quickActionRouteBroker
         self.openDatabaseStore = openDatabaseStore
         self.openDatabaseStoreWithKey = openDatabaseStoreWithKey
         self.keyCliffRecoveryKeyAccess = keyCliffRecoveryKeyAccess
@@ -547,6 +574,7 @@ final class AppModel {
         databaseURLForErase = nil
         deleteDatabaseKey = {}
         dataEraseIntent = .none
+        quickActionRouteBroker = MoneyUpQuickActionRouteBroker()
         openDatabaseStore = DatabaseStoreOpeners.production
         openDatabaseStoreWithKey = DatabaseStoreOpeners.productionWithKey
         keyCliffRecoveryKeyAccess = .unavailable
@@ -560,7 +588,9 @@ final class AppModel {
         storeGeneration = 1
         retainsCompleteJournal = false
     }
+}
 
+extension AppModel {
     var userAccounts: [LedgerAccount] {
         accounts.filter {
             ($0.kind == .asset || $0.kind == .liability)

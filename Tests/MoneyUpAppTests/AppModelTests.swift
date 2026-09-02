@@ -662,6 +662,7 @@ final class AppModelTests: XCTestCase {
             periodToken: "2026-08",
             validUntil: .distantFuture
         )
+        let broker = MoneyUpQuickActionRouteBroker()
         let model = fixture.model(
             profile: oldProfile,
             lockedCaptureStore: inbox,
@@ -669,6 +670,7 @@ final class AppModelTests: XCTestCase {
                 pausing: .afterKeyCliffValidationBeforeCompletion,
                 at: publicationGate
             ),
+            quickActionRouteBroker: broker,
             openDatabaseStore: { url in
                 OpenedDatabaseStore(
                     store: try EncryptedRecordStore(
@@ -681,6 +683,11 @@ final class AppModelTests: XCTestCase {
             budgetWidgetSnapshotStore: widgetStore,
             services: services
         )
+        model.requestedQuickLogMode = .refund
+        let oldRequest = try XCTUnwrap(model.requestedQuickLogRequest)
+        XCTAssertTrue(model.presentQuickLogRequest(oldRequest))
+        XCTAssertTrue(broker.submit(.expense))
+        XCTAssertTrue(broker.submit(.income))
 
         let startTask = Task { @MainActor in await model.start() }
         let reachedBoundary = await publicationGate.waitUntilReached(
@@ -706,6 +713,14 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(services.intelligence.refreshInvocationCount, 0)
         XCTAssertNil(model.quickLogDraft)
         XCTAssertNil(model.requestedQuickLogMode)
+        XCTAssertTrue(broker.isAuthoritativeBoundaryActive)
+        XCTAssertEqual(broker.handoffGeneration, oldRequest.generation + 1)
+        XCTAssertEqual(broker.pendingCount, 0)
+        XCTAssertNil(model.requestedQuickLogRequest)
+        XCTAssertNil(model.presentedQuickLogRequest)
+        XCTAssertFalse(model.presentQuickLogRequest(oldRequest))
+        XCTAssertFalse(broker.submit(.refund))
+        XCTAssertFalse(broker.submit(.scanReceipt))
 
         await publicationGate.release()
         await startTask.value
@@ -731,6 +746,9 @@ final class AppModelTests: XCTestCase {
             return XCTFail("Candidate widget must publish only after complete")
         }
         XCTAssertEqual(services.intelligence.refreshInvocationCount, 1)
+        XCTAssertFalse(broker.isAuthoritativeBoundaryActive)
+        XCTAssertEqual(broker.pendingCount, 0)
+        XCTAssertTrue(broker.submit(.transfer))
         await model.store?.close()
     }
 
@@ -969,12 +987,12 @@ final class AppModelTests: XCTestCase {
         async throws {
         let fixture = try AppModelFixture()
         defer { fixture.removeFiles() }
-        let archiveURL = fixture.directoryURL.appendingPathComponent(
-            "passcode-preflight.moneyup"
-        )
         try await fixture.seed(
             profile: UserProfile(baseCurrency: fixture.sgd),
             accounts: [fixture.wallet, fixture.food]
+        )
+        let archiveURL = fixture.directoryURL.appendingPathComponent(
+            "passcode-preflight.moneyup"
         )
         try await fixture.store.exportPortableArchive(
             to: archiveURL,
@@ -2154,6 +2172,9 @@ final class AppModelTests: XCTestCase {
         } catch is CancellationError {
             // Expected.
         }
+        XCTAssertFalse(
+            model.quickActionRouteBroker.isAuthoritativeBoundaryActive
+        )
         XCTAssertTrue(keyEvents.snapshot().isEmpty)
         XCTAssertEqual(
             artifactSnapshot(at: artifactURLs),
@@ -2170,6 +2191,9 @@ final class AppModelTests: XCTestCase {
         let reachedPublicationBoundary = await publicationGate
             .waitUntilReached(timeout: .seconds(5))
         XCTAssertTrue(reachedPublicationBoundary)
+        XCTAssertTrue(
+            model.quickActionRouteBroker.isAuthoritativeBoundaryActive
+        )
         XCTAssertTrue(
             KeyCliffRecoveryTransaction.hasPendingManifest(
                 for: fixture.databaseURL
@@ -2188,6 +2212,9 @@ final class AppModelTests: XCTestCase {
 
         await publicationGate.release()
         try await restoreTask.value
+        XCTAssertFalse(
+            model.quickActionRouteBroker.isAuthoritativeBoundaryActive
+        )
 
         XCTAssertEqual(model.state, .ready)
         XCTAssertNil(model.startupFailureKind)
@@ -3143,6 +3170,9 @@ final class AppModelTests: XCTestCase {
         let reachedReplacementBoundary = await replacementGate
             .waitUntilReached(timeout: .seconds(5))
         XCTAssertTrue(reachedReplacementBoundary)
+        XCTAssertTrue(
+            model.quickActionRouteBroker.isAuthoritativeBoundaryActive
+        )
         XCTAssertEqual(services.intelligence.cancelInvocationCount, 1)
         XCTAssertTrue(model.intelligenceFindings.isEmpty)
         XCTAssertEqual(
@@ -3156,6 +3186,9 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(model.requestedQuickLogMode)
         await replacementGate.release()
         try await restoreTask.value
+        XCTAssertFalse(
+            model.quickActionRouteBroker.isAuthoritativeBoundaryActive
+        )
         XCTAssertEqual(widgetStore.read(now: now), .disabled)
         XCTAssertEqual(services.intelligence.refreshInvocationCount, 2)
         let restored = try await current.store.fetchAll(
@@ -6239,6 +6272,194 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testEraseBoundaryClearsQueueAndRejectsRepeatedSubmissions() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let broker = MoneyUpQuickActionRouteBroker()
+        let gate = AsyncGate()
+        let captureStore = PausingEraseLockedCaptureStore(gate: gate)
+        let model = fixture.model(
+            lockedCaptureStore: captureStore,
+            dataEraseIntent: DataEraseIntentAccess(
+                isPending: { false },
+                markPending: {},
+                clear: {}
+            ),
+            quickActionRouteBroker: broker
+        )
+        model.requestedQuickLogMode = .refund
+        let oldRequest = try XCTUnwrap(model.requestedQuickLogRequest)
+        XCTAssertTrue(model.presentQuickLogRequest(oldRequest))
+        XCTAssertTrue(broker.submit(.expense))
+        XCTAssertTrue(broker.submit(.income))
+
+        let eraseTask = Task { @MainActor in
+            await model.eraseAllDataAndRestart()
+        }
+        await gate.waitUntilReached()
+
+        XCTAssertTrue(broker.isAuthoritativeBoundaryActive)
+        XCTAssertEqual(broker.handoffGeneration, 1)
+        XCTAssertEqual(broker.pendingCount, 0)
+        XCTAssertNil(model.requestedQuickLogRequest)
+        XCTAssertNil(model.presentedQuickLogRequest)
+        XCTAssertFalse(broker.submit(.refund))
+        XCTAssertFalse(broker.submit(.refund))
+        await gate.release()
+        await eraseTask.value
+
+        XCTAssertFalse(broker.isAuthoritativeBoundaryActive)
+        XCTAssertEqual(broker.pendingCount, 0)
+        XCTAssertTrue(broker.submit(.transfer))
+        XCTAssertEqual(
+            MoneyUpQuickActionRouting.routeNext(from: broker, into: model),
+            .routed
+        )
+        let replacementRequest = try XCTUnwrap(model.requestedQuickLogRequest)
+        XCTAssertTrue(model.presentQuickLogRequest(replacementRequest))
+        model.consumeQuickLogRequest(oldRequest)
+        XCTAssertEqual(model.requestedQuickLogRequest, replacementRequest)
+        XCTAssertFalse(model.presentQuickLogRequest(oldRequest))
+        XCTAssertEqual(model.presentedQuickLogRequest, replacementRequest)
+    }
+
+    @MainActor
+    func testRestoreBoundaryClearsQueueWithoutViewCallback() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        try await fixture.seed(
+            profile: UserProfile(baseCurrency: fixture.sgd),
+            accounts: [fixture.wallet, fixture.usAccount, fixture.food]
+        )
+        let broker = MoneyUpQuickActionRouteBroker()
+        let gate = AsyncGate()
+        let model = fixture.model(
+            lifecycleHooks: hooks(pausing: .beforeRestoreCommit, at: gate),
+            quickActionRouteBroker: broker
+        )
+        let archive = try await model.encryptedBackup(password: "boundary-test")
+        model.requestedQuickLogMode = .smartEntry
+        let oldRequest = try XCTUnwrap(model.requestedQuickLogRequest)
+        XCTAssertTrue(model.presentQuickLogRequest(oldRequest))
+        XCTAssertTrue(broker.submit(.smartEntry))
+        XCTAssertTrue(broker.submit(.scanReceipt))
+
+        let restoreTask = Task { @MainActor in
+            try await model.restoreEncryptedBackup(
+                archive,
+                password: "boundary-test"
+            )
+        }
+        await gate.waitUntilReached()
+        XCTAssertTrue(broker.isAuthoritativeBoundaryActive)
+        XCTAssertEqual(broker.handoffGeneration, 1)
+        XCTAssertEqual(broker.pendingCount, 0)
+        XCTAssertNil(model.requestedQuickLogRequest)
+        XCTAssertNil(model.presentedQuickLogRequest)
+        XCTAssertFalse(broker.submit(.expense))
+        await gate.release()
+        try await restoreTask.value
+
+        XCTAssertFalse(broker.isAuthoritativeBoundaryActive)
+        XCTAssertEqual(broker.pendingCount, 0)
+        XCTAssertTrue(broker.submit(.income))
+        XCTAssertEqual(
+            MoneyUpQuickActionRouting.routeNext(from: broker, into: model),
+            .routed
+        )
+        let replacementRequest = try XCTUnwrap(model.requestedQuickLogRequest)
+        XCTAssertTrue(model.presentQuickLogRequest(replacementRequest))
+        model.consumeQuickLogRequest(oldRequest)
+        XCTAssertEqual(model.requestedQuickLogRequest, replacementRequest)
+        XCTAssertFalse(model.presentQuickLogRequest(oldRequest))
+        XCTAssertEqual(model.presentedQuickLogRequest, replacementRequest)
+    }
+
+    @MainActor
+    func testCancelledRestoreBalancesQuickActionBoundary() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        try await fixture.seed(
+            profile: UserProfile(baseCurrency: fixture.sgd),
+            accounts: [fixture.wallet, fixture.usAccount, fixture.food]
+        )
+        let broker = MoneyUpQuickActionRouteBroker()
+        let gate = AsyncGate()
+        let model = fixture.model(
+            lifecycleHooks: hooks(pausing: .beforeRestoreCommit, at: gate),
+            quickActionRouteBroker: broker
+        )
+        let archive = try await model.encryptedBackup(password: "boundary-test")
+        model.requestedQuickLogMode = .scanReceipt
+        let oldRequest = try XCTUnwrap(model.requestedQuickLogRequest)
+        let restoreTask = Task { @MainActor in
+            try await model.restoreEncryptedBackup(
+                archive,
+                password: "boundary-test"
+            )
+        }
+        await gate.waitUntilReached()
+        XCTAssertTrue(broker.isAuthoritativeBoundaryActive)
+        restoreTask.cancel()
+        await gate.release()
+
+        do {
+            try await restoreTask.value
+            XCTFail("Cancelled restore should stop before replacement")
+        } catch is CancellationError {
+            // The defer must reopen the process-local action boundary.
+        }
+        XCTAssertFalse(broker.isAuthoritativeBoundaryActive)
+        XCTAssertNil(model.requestedQuickLogRequest)
+        XCTAssertEqual(broker.handoffGeneration, oldRequest.generation + 1)
+        XCTAssertTrue(broker.submit(.expense))
+    }
+
+    @MainActor
+    func testUnreadableStartupTombstoneClearsQueueAndBalancesBoundary() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let broker = MoneyUpQuickActionRouteBroker()
+        let closeGate = AsyncGate()
+        let model = fixture.model(
+            dataEraseIntent: DataEraseIntentAccess(
+                isPending: {
+                    throw DatabaseKeyStoreError.unexpectedStatus(-31_339)
+                },
+                markPending: {},
+                clear: {}
+            ),
+            quickActionRouteBroker: broker
+        )
+        model.storeCloseTask = Task { await closeGate.suspend() }
+        model.requestedQuickLogMode = .refund
+        let oldRequest = try XCTUnwrap(model.requestedQuickLogRequest)
+        XCTAssertTrue(model.presentQuickLogRequest(oldRequest))
+        XCTAssertTrue(broker.submit(.refund))
+
+        let startTask = Task { @MainActor in await model.start() }
+        await closeGate.waitUntilReached()
+        XCTAssertTrue(broker.isAuthoritativeBoundaryActive)
+        XCTAssertEqual(broker.handoffGeneration, 1)
+        XCTAssertEqual(broker.pendingCount, 0)
+        XCTAssertNil(model.requestedQuickLogRequest)
+        XCTAssertNil(model.presentedQuickLogRequest)
+        XCTAssertFalse(model.presentQuickLogRequest(oldRequest))
+        XCTAssertFalse(broker.submit(.expense))
+        XCTAssertFalse(broker.submit(.expense))
+        await closeGate.release()
+        await startTask.value
+
+        XCTAssertEqual(broker.pendingCount, 0)
+        XCTAssertFalse(broker.isAuthoritativeBoundaryActive)
+        XCTAssertTrue(broker.submit(.expense))
+        guard case .failed = model.state else {
+            XCTFail("Unreadable erase intent must fail startup closed")
+            return
+        }
+    }
+
+    @MainActor
     func testEraseDuringPendingCommitWaitsThenRemovesTheCommittedDatabase() async throws {
         let fixture = try AppModelFixture()
         defer { fixture.removeFiles() }
@@ -6290,6 +6511,7 @@ final class AppModelTests: XCTestCase {
         defer { fixture.removeFiles() }
         let events = EraseEventRecorder()
         let captureStore = EraseRecordingLockedCaptureStore(events: events)
+        let broker = MoneyUpQuickActionRouteBroker()
         let intent = DataEraseIntentAccess(
             isPending: { false },
             markPending: { events.record("intent-marked") },
@@ -6298,8 +6520,13 @@ final class AppModelTests: XCTestCase {
         let model = fixture.model(
             lockedCaptureStore: captureStore,
             deleteDatabaseKey: { events.record("database-key-deleted") },
-            dataEraseIntent: intent
+            dataEraseIntent: intent,
+            quickActionRouteBroker: broker
         )
+        model.requestedQuickLogMode = .expense
+        let oldRequest = try XCTUnwrap(model.requestedQuickLogRequest)
+        XCTAssertTrue(model.presentQuickLogRequest(oldRequest))
+        XCTAssertTrue(broker.submit(.expense))
 
         await model.eraseAllDataAndRestart()
 
@@ -6313,6 +6540,10 @@ final class AppModelTests: XCTestCase {
             ]
         )
         XCTAssertEqual(model.state, .onboarding)
+        XCTAssertEqual(broker.pendingCount, 0)
+        XCTAssertFalse(broker.isAuthoritativeBoundaryActive)
+        XCTAssertNil(model.requestedQuickLogRequest)
+        XCTAssertNil(model.presentedQuickLogRequest)
         XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.databaseURL.path))
     }
 
@@ -6328,6 +6559,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(artifactsBeforeErase.isEmpty)
         let events = EraseEventRecorder()
         let captureStore = EraseRecordingLockedCaptureStore(events: events)
+        let broker = MoneyUpQuickActionRouteBroker()
         let intent = DataEraseIntentAccess(
             isPending: { false },
             markPending: {
@@ -6339,12 +6571,23 @@ final class AppModelTests: XCTestCase {
         let model = fixture.model(
             lockedCaptureStore: captureStore,
             deleteDatabaseKey: { events.record("database-key-deleted") },
-            dataEraseIntent: intent
+            dataEraseIntent: intent,
+            quickActionRouteBroker: broker
         )
+        model.requestedQuickLogMode = .expense
+        let oldRequest = try XCTUnwrap(model.requestedQuickLogRequest)
+        XCTAssertTrue(model.presentQuickLogRequest(oldRequest))
+        XCTAssertTrue(broker.submit(.expense))
 
         await model.eraseAllDataAndRestart()
 
         XCTAssertEqual(events.snapshot(), ["intent-mark-attempted"])
+        XCTAssertEqual(broker.pendingCount, 0)
+        XCTAssertFalse(broker.isAuthoritativeBoundaryActive)
+        XCTAssertEqual(broker.handoffGeneration, 1)
+        XCTAssertNil(model.requestedQuickLogRequest)
+        XCTAssertNil(model.presentedQuickLogRequest)
+        XCTAssertTrue(broker.submit(.income))
         guard case .failed = model.state else {
             XCTFail("A failed durable marker must abort erase")
             await fixture.store.close()
@@ -6414,6 +6657,7 @@ final class AppModelTests: XCTestCase {
         )
         let events = EraseEventRecorder()
         let captureStore = EraseRecordingLockedCaptureStore(events: events)
+        let broker = MoneyUpQuickActionRouteBroker()
         let intent = DataEraseIntentAccess(
             isPending: {
                 events.record("intent-checked")
@@ -6426,6 +6670,7 @@ final class AppModelTests: XCTestCase {
             lockedCaptureStore: captureStore,
             deleteDatabaseKey: { events.record("database-key-deleted") },
             dataEraseIntent: intent,
+            quickActionRouteBroker: broker,
             openDatabaseStore: { _ in
                 events.record("database-opened")
                 return OpenedDatabaseStore(
@@ -6434,8 +6679,21 @@ final class AppModelTests: XCTestCase {
                 )
             }
         )
+        let closeGate = AsyncGate()
+        model.storeCloseTask = Task { await closeGate.suspend() }
+        model.requestedQuickLogMode = .income
+        let oldRequest = try XCTUnwrap(model.requestedQuickLogRequest)
+        XCTAssertTrue(model.presentQuickLogRequest(oldRequest))
+        XCTAssertTrue(broker.submit(.smartEntry))
 
-        await model.start()
+        let startTask = Task { @MainActor in await model.start() }
+        await closeGate.waitUntilReached()
+        XCTAssertTrue(broker.isAuthoritativeBoundaryActive)
+        XCTAssertEqual(broker.handoffGeneration, 1)
+        XCTAssertNil(model.requestedQuickLogRequest)
+        XCTAssertNil(model.presentedQuickLogRequest)
+        await closeGate.release()
+        await startTask.value
 
         XCTAssertEqual(
             events.snapshot(),
@@ -6448,6 +6706,9 @@ final class AppModelTests: XCTestCase {
             ]
         )
         XCTAssertEqual(model.state, .onboarding)
+        XCTAssertEqual(broker.pendingCount, 0)
+        XCTAssertFalse(broker.isAuthoritativeBoundaryActive)
+        XCTAssertFalse(model.presentQuickLogRequest(oldRequest))
         XCTAssertNil(model.profile)
         XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.databaseURL.path))
         await replacementStore.close()
@@ -8693,7 +8954,7 @@ final class AppModelTests: XCTestCase {
             try XCTUnwrap(URL(string: "moneyup://quick-log/expense"))
         )
 
-        XCTAssertTrue(handled)
+        XCTAssertFalse(handled)
         XCTAssertNil(model.requestedQuickLogMode)
         XCTAssertFalse(model.canPresentLockedQuickCapture)
         do {
@@ -13840,6 +14101,136 @@ extension AppModelTests {
     }
 
     @MainActor
+    func testFoundationModelAssistanceOptInPersistsInEncryptedProfile() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let profile = UserProfile(baseCurrency: fixture.sgd)
+        try await fixture.seed(
+            profile: profile,
+            accounts: [fixture.wallet, fixture.usAccount, fixture.food]
+        )
+        let model = fixture.model(profile: profile)
+
+        try await model.updateFoundationModelAssistance(true)
+
+        let stored = try await fixture.store.fetch(
+            UserProfile.self,
+            id: UserProfile.primaryRecordID,
+            from: .profile
+        )
+        XCTAssertTrue(model.profile?.foundationModelAssistanceEnabled == true)
+        XCTAssertTrue(stored?.foundationModelAssistanceEnabled == true)
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testFoundationModelRejectRestoresImmediateHistoryStateInEncryptedDraft() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let profile = UserProfile(
+            baseCurrency: fixture.sgd,
+            foundationModelAssistanceEnabled: true
+        )
+        let historyAccount = LedgerAccount(
+            name: "History account",
+            kind: .asset,
+            currency: fixture.sgd
+        )
+        let modelAccount = LedgerAccount(
+            name: "Model account",
+            kind: .asset,
+            currency: fixture.sgd
+        )
+        let historyCategory = LedgerAccount(
+            name: "History category",
+            kind: .expense
+        )
+        let modelCategory = LedgerAccount(
+            name: "Model category",
+            kind: .expense
+        )
+        let accounts = [
+            historyAccount, modelAccount, historyCategory, modelCategory
+        ]
+        try await fixture.seed(profile: profile, accounts: accounts)
+        let model = fixture.model(profile: profile, accounts: accounts)
+        var presentation = QuickLogAssistancePresentation(
+            resolution: QuickLogAssistanceResolution(
+                suggestedAccountID: modelAccount.id,
+                suggestedCategoryID: modelCategory.id
+            )
+        )
+        let appliedAccount = try XCTUnwrap(presentation.applyAccount(
+            modelAccount.id,
+            current: QuickLogAssistanceFieldState(
+                id: historyAccount.id,
+                wasEdited: false,
+                automaticHistorySuggestionID: historyAccount.id
+            )
+        ))
+        let appliedCategory = try XCTUnwrap(presentation.applyCategory(
+            modelCategory.id,
+            current: QuickLogAssistanceFieldState(
+                id: historyCategory.id,
+                wasEdited: false,
+                automaticHistorySuggestionID: historyCategory.id
+            )
+        ))
+        var draft = QuickLogDraft(
+            kind: .expense,
+            amountText: "12.50",
+            destinationAmountText: "",
+            accountID: appliedAccount.id,
+            destinationAccountID: nil,
+            categoryID: appliedCategory.id,
+            occurredAt: Date(timeIntervalSinceReferenceDate: 900_000_000),
+            dateWasEdited: false,
+            payee: "Supper",
+            note: "",
+            smartText: ""
+        )
+        model.updateQuickLogDraft(draft)
+        await model.waitForPendingQuickLogDraftFlush()
+        let appliedDraft = try await fixture.store.fetch(
+            QuickLogDraft.self,
+            id: QuickLogDraft.primaryRecordID,
+            from: .quickLogDrafts
+        )
+        XCTAssertEqual(appliedDraft?.accountID, modelAccount.id)
+        XCTAssertEqual(appliedDraft?.categoryID, modelCategory.id)
+        let appliedJournalEntryCount = try await fixture.store.count(
+            in: .journalEntries
+        )
+        XCTAssertEqual(appliedJournalEntryCount, 0)
+
+        draft.accountID = presentation.rejectingAccount(
+            current: appliedAccount
+        ).id
+        draft.categoryID = presentation.rejectingCategory(
+            current: appliedCategory
+        ).id
+        model.updateQuickLogDraft(draft)
+        await model.waitForPendingQuickLogDraftFlush()
+        await fixture.store.close()
+
+        let reopened = try fixture.reopenStore()
+        let restoredDraft = try await reopened.fetch(
+            QuickLogDraft.self,
+            id: QuickLogDraft.primaryRecordID,
+            from: .quickLogDrafts
+        )
+        XCTAssertEqual(restoredDraft?.accountID, historyAccount.id)
+        XCTAssertEqual(restoredDraft?.categoryID, historyCategory.id)
+        XCTAssertNotEqual(restoredDraft?.accountID, modelAccount.id)
+        XCTAssertNotEqual(restoredDraft?.categoryID, modelCategory.id)
+        let restoredJournalEntryCount = try await reopened.count(
+            in: .journalEntries
+        )
+        XCTAssertEqual(restoredJournalEntryCount, 0)
+        await reopened.close()
+    }
+
+    @MainActor
     func testInvalidAutoLockChoiceIsNotPersisted() async throws {
         let fixture = try AppModelFixture()
         defer { fixture.removeFiles() }
@@ -13948,6 +14339,8 @@ private struct AppModelFixture {
         lifecycleHooks: AppModelLifecycleHooks = .none,
         deleteDatabaseKey: @escaping @Sendable () throws -> Void = {},
         dataEraseIntent: DataEraseIntentAccess = .none,
+        quickActionRouteBroker: MoneyUpQuickActionRouteBroker =
+            MoneyUpQuickActionRouteBroker(),
         openDatabaseStore: @escaping DatabaseStoreOpener =
             DatabaseStoreOpeners.production,
         openDatabaseStoreWithKey: @escaping DatabaseStoreWithKeyOpener =
@@ -13982,6 +14375,7 @@ private struct AppModelFixture {
             databaseURLForErase: databaseURL,
             deleteDatabaseKey: deleteDatabaseKey,
             dataEraseIntent: dataEraseIntent,
+            quickActionRouteBroker: quickActionRouteBroker,
             openDatabaseStore: openDatabaseStore,
             openDatabaseStoreWithKey: openDatabaseStoreWithKey,
             keyCliffRecoveryKeyAccess: keyCliffRecoveryKeyAccess,
@@ -14365,6 +14759,26 @@ private actor PausingAppendLockedCaptureStore: LockedCaptureStoring {
 
     func eraseAll() async throws {
         captures.removeAll()
+    }
+}
+
+private actor PausingEraseLockedCaptureStore: LockedCaptureStoring {
+    private let gate: AsyncGate
+
+    init(gate: AsyncGate) {
+        self.gate = gate
+    }
+
+    func all() async throws -> [LockedCapture] { [] }
+
+    @discardableResult
+    func append(_ capture: LockedCapture) async throws -> Int { 0 }
+
+    @discardableResult
+    func remove(id: UUID) async throws -> Int { 0 }
+
+    func eraseAll() async throws {
+        await gate.suspend()
     }
 }
 

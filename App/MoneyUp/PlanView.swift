@@ -431,9 +431,8 @@ private struct BudgetSummaryCard: View {
                 .foregroundStyle(.secondary)
 
             Text(formattedMoney(isOverspent ? remaining.negated : remaining))
-                .font(.system(.largeTitle, design: .rounded, weight: .bold))
+                .moneyUpFinancialValue(.hero)
                 .foregroundStyle(isOverspent ? Color.red : Color.primary)
-                .contentTransition(.numericText())
 
             switch ratioResult {
             case let .available(ratio):

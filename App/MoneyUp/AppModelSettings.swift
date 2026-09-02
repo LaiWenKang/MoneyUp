@@ -42,6 +42,12 @@ extension AppModel {
         }
     }
 
+    func updateFoundationModelAssistance(_ enabled: Bool) async throws {
+        try await mutateProfile {
+            $0.foundationModelAssistanceEnabled = enabled
+        }
+    }
+
     func updatePreferredAccount(_ id: UUID?) async throws {
         try await mutateProfile { $0.preferredAccountID = id }
     }
@@ -106,6 +112,11 @@ extension AppModel {
               !manualJournalMutationIsActive || pendingCommit != nil else {
             return
         }
+        let quickActionBoundaryEpoch =
+            beginAuthoritativeQuickActionBoundary()
+        defer {
+            quickActionRouteBroker.endAuthoritativeBoundary(quickActionBoundaryEpoch)
+        }
         isWorking = true
         goalMutationBarrierClosed = true
         isLifecycleMutationInProgress = true
@@ -119,7 +130,6 @@ extension AppModel {
             finishExclusiveDataLifecycleMutation()
             return
         }
-        requestedQuickLogMode = nil
         await waitForGoalMutationDrain()
         invalidateInFlightJournalProjection()
         state = .launching
@@ -144,12 +154,7 @@ extension AppModel {
         await storeToClose?.close()
 
         do {
-            let databaseURL: URL
-            if let databaseURLForErase {
-                databaseURL = databaseURLForErase
-            } else {
-                databaseURL = try Self.databaseURL()
-            }
+            let databaseURL = try databaseURLForErase ?? Self.databaseURL()
             try await Self.completePendingDataErase(
                 databaseURL: databaseURL,
                 deleteDatabaseKey: deleteDatabaseKey,

@@ -140,6 +140,7 @@ extension QuickLogEntryView {
                             isOn: Binding(
                                 get: { !splitLines.isEmpty },
                                 set: { enabled in
+                                    cancelOnDeviceAssistance()
                                     if enabled {
                                         refreshUntouchedOccurrenceDate()
                                     }
@@ -233,6 +234,7 @@ extension QuickLogEntryView {
                             selection: Binding(
                                 get: { occurredAt },
                                 set: { newDate in
+                                    cancelOnDeviceAssistance()
                                     occurredAt = newDate
                                     dateWasEdited = true
                                     invalidateCaptureSuggestions()
@@ -332,6 +334,7 @@ extension QuickLogEntryView {
             .onChange(of: isActive) { _, newValue in
                 if !newValue {
                     cancelReceiptProcessing()
+                    cancelOnDeviceAssistance()
                     pendingDuplicateReview = nil
                     receiptAttachmentData = nil
                     retainReceiptAttachment = false
@@ -356,6 +359,7 @@ extension QuickLogEntryView {
                 if preservesCaptureSuggestionsAcrossNextKindChange {
                     preservesCaptureSuggestionsAcrossNextKindChange = false
                 } else {
+                    cancelOnDeviceAssistance()
                     invalidateCaptureSuggestions(restoresDefaults: false)
                 }
                 pendingDuplicateReview = nil
@@ -378,7 +382,7 @@ extension QuickLogEntryView {
                 }
                 persistUserDraftChange { $0.splitLines = splitLines }
             }
-            .onChange(of: requestSequence) { _, _ in
+            .onChange(of: launchRequest) { _, _ in
                 handleRequestedLaunch()
             }
             .onChange(of: isSaving) { _, newValue in
@@ -391,7 +395,11 @@ extension QuickLogEntryView {
                 receiptScanGeneration &+= 1
                 let generation = receiptScanGeneration
                 receiptScanTask?.cancel()
-                guard let item, isActive else {
+                guard let item = QuickLogInputAuthority.receiptItemThatMayBegin(
+                    item,
+                    isActive: isActive,
+                    cancelAssistance: { cancelOnDeviceAssistance() }
+                ) else {
                     receiptScanTask = nil
                     receiptScanBaseline = nil
                     if !isActive {
@@ -439,9 +447,15 @@ extension QuickLogEntryView {
                 guard hasRestoredDraft, !dismissAfterSave else { return }
                 model.updateQuickLogDraft(snapshot)
             }
+            .onChange(
+                of: model.profile?.foundationModelAssistanceEnabled
+            ) { _, enabled in
+                if enabled != true { cancelOnDeviceAssistance() }
+            }
             .onDisappear {
                 cancelReceiptProcessing()
                 cancelCaptureSuggestionLookup()
+                cancelOnDeviceAssistance()
                 receiptScanTask = nil
                 photoItem = nil
                 pendingDuplicateReview = nil
@@ -453,6 +467,7 @@ extension QuickLogEntryView {
             .scrollDismissesKeyboard(.interactively)
             .sheet(isPresented: $isAddingCategory) {
                 AddCategorySheet(kind: categoryKind) { categoryID in
+                    cancelOnDeviceAssistance()
                     self.categoryID = categoryID
                     categoryWasEdited = true
                     autoAppliedCategorySuggestionID = nil
@@ -489,11 +504,9 @@ extension QuickLogEntryView {
                 .padding(.horizontal, 12)
                 .padding(.bottom, 4)
                 .transition(
-                    QuickLogMotionPolicy.animatesSavedFeedback(
+                    MoneyUpMotion.confirmationTransition(
                         reduceMotion: accessibilityReduceMotion
                     )
-                        ? .move(edge: .bottom).combined(with: .opacity)
-                        : .identity
                 )
             } else {
                 Button {
@@ -511,7 +524,11 @@ extension QuickLogEntryView {
                 .background(.bar)
             }
         }
-        .sensoryFeedback(.success, trigger: successFeedback)
+        .moneyUpFeedback(
+            for: .financialCommit,
+            trigger: successFeedback,
+            visibleStatus: lastSavedEntryID != nil
+        )
         .interactiveDismissDisabled(isSaving)
         .presentationDetents([.large])
         .confirmationDialog(
@@ -520,35 +537,35 @@ extension QuickLogEntryView {
             titleVisibility: .visible
         ) {
             Button("quick_log.resume_draft") {
-                if let mode = pendingLaunchMode {
-                    onRequestHandled(mode)
+                if let request = pendingLaunchRequest {
+                    onRequestHandled(request)
                 }
-                pendingLaunchMode = nil
+                pendingLaunchRequest = nil
                 isHandlingFocusedLaunch = false
                 focusedField = .amount
             }
             Button("quick_log.start_new", role: .destructive) {
-                guard let mode = pendingLaunchMode else { return }
-                pendingLaunchMode = nil
-                discardDraftAndLaunch(mode)
-                onRequestHandled(mode)
+                guard let request = pendingLaunchRequest else { return }
+                pendingLaunchRequest = nil
+                discardDraftAndLaunch(request)
+                onRequestHandled(request)
             }
             Button("action.cancel", role: .cancel) {
-                if let mode = pendingLaunchMode {
-                    onRequestHandled(mode)
+                if let request = pendingLaunchRequest {
+                    onRequestHandled(request)
                 }
-                pendingLaunchMode = nil
+                pendingLaunchRequest = nil
             }
         } message: {
             Text("quick_log.unfinished_detail")
         }
         .onChange(of: isConfirmingDraftSwitch) { wasPresented, isPresented in
             guard wasPresented, !isPresented,
-                  let mode = pendingLaunchMode else { return }
+                  let request = pendingLaunchRequest else { return }
             // Tapping outside the system dialog is also a cancellation. Ack it
             // so the same external request cannot remain stuck indefinitely.
-            pendingLaunchMode = nil
-            onRequestHandled(mode)
+            pendingLaunchRequest = nil
+            onRequestHandled(request)
         }
         .confirmationDialog(
             "quick_log.duplicate_title",

@@ -1,6 +1,6 @@
 # MoneyUp Privacy Policy
 
-Effective: 28 August 2026
+Effective: 1 September 2026
 
 MoneyUp is a local-first personal-finance app. Its core privacy rule is simple:
 financial records are processed on the user's iPhone and are not sent to a
@@ -22,6 +22,17 @@ source GPS, EXIF, camera/device, caption, or edit-history metadata before storin
 it in the encrypted database and password-protected portable backups. It is
 never added to drafts, widgets, readable CSV/XLSX exports, or uploaded. Typed
 smart entry and category suggestions also run on the device.
+
+Optional Smart Entry matching is off by default. On eligible devices, it uses
+only Apple's default on-device system language model. MoneyUp first removes
+parsed monetary, date, currency, and exact-name spans, then supplies a bounded
+context plus at most 16 existing local names per list. The model can return
+only bounded ordinals into those closed lists; it cannot return free text or
+any financial field, and every match remains a visible suggestion until the
+user reviews it.
+If the model is unavailable, cancelled, fails, or returns an invalid ordinal,
+MoneyUp silently keeps the deterministic rule-based result. No custom model
+provider, server, tool, image, or receipt data is used.
 
 If the user explicitly enables budget status for widgets, MoneyUp shares only
 an availability/state value and an integer percentage through its local App
@@ -101,7 +112,7 @@ when available.
 
 # MoneyUp 隐私政策（简体中文）
 
-生效日期：2026 年 8 月 28 日
+生效日期：2026 年 9 月 1 日
 
 MoneyUp 是一款本地优先的个人财务应用。核心隐私原则很简单：财务记录在
 用户的 iPhone 上处理，不会发送到 MoneyUp 服务器。
@@ -117,6 +128,13 @@ MoneyUp 无需注册，也没有接收这些记录的应用后端。
 限制图片尺寸，并仅重新编码像素，不保留源文件中的 GPS、EXIF、相机／设备、说明或
 编辑历史元数据，然后写入加密数据库及受密码保护的便携备份。图片不会进入草稿、
 组件、可读的 CSV／XLSX 导出，也不会上传。文字智能录入和分类建议也完全在设备上运行。
+
+可选的智能记账匹配默认关闭。在符合条件的设备上，它只使用 Apple 默认的本机系统
+语言模型。MoneyUp 会先移除已解析的金额、日期、币种及精确名称片段，再提供有界文字
+上下文，以及每个列表最多 16 个现有本机名称。模型只能返回这些封闭列表中的有界序号，
+不能返回自由文字或任何财务字段；每项匹配都只作为可见建议，需由用户检查。若模型不可用、被取消、失败或
+返回无效序号，MoneyUp 会静默保留确定性规则结果。此功能不使用任何供应商服务、服务器、
+工具、图片、收据数据、自定义模型或自定义模型供应商。
 
 只有用户明确启用小组件预算状态时，MoneyUp 才会通过本机 App Group 共享
 可用性／状态与整数百分比。该快照不含金额、商户、账户名称、持仓、余额、

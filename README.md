@@ -54,8 +54,12 @@ The beta includes:
   on-device text recognition, shows reading progress immediately, populates
   visible amount/payee/date suggestions, parses typed phrases such as "lunch
   12.50 cash yesterday", and suggests a category from the user's own history,
-  with no remote model involved; receipt images remain transient unless the
-  user explicitly keeps one as an encrypted transaction attachment;
+  with no remote model involved; an off-by-default Apple on-device model can
+  optionally propose a reviewed match from at most 16 existing local names,
+  while exact rules retain every financial field and Save; accepting a match
+  immediately updates only the recoverable encrypted draft and creates no
+  transaction until Save; receipt images remain transient unless the user
+  explicitly keeps one as an encrypted transaction attachment;
 - a permanent five-tab layout for Today, History, center Log, Plan, and Assets;
   Log retains encrypted draft recovery, configurable smart defaults, success
   feedback, and Undo, while the keyboard provides Done, reachable Save, and a
@@ -72,6 +76,10 @@ The beta includes:
   encrypted Quick Capture inbox that does not reveal balances while locked;
   and an opt-in App Group snapshot containing only budget percentage/state,
   never amounts, payees, accounts, holdings, balances, or ledger identifiers;
+- six bilingual, action-only App Shortcuts, interactive quick-action widget
+  buttons, and a configurable iOS 18 Control Widget that open only the existing
+  allowlisted routes; Budget status remains passive and no platform action
+  carries or returns transaction details;
 - file-backed password-protected `.moneyup` v2 backup with bounded authenticated
   chunks, v1 compatibility, and transactional restore/rollback;
 - preview-first local import for Qianji-style and generic CSV/TSV exports, with

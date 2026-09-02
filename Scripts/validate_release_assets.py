@@ -1351,18 +1351,24 @@ def validate_logical_book_boundary_mutation_gate() -> None:
         "try requireLogicalBookRead(token)\n"
         "        await lifecycleHooks.checkpoint(.afterBookScopedReadBeforeReturn)",
     )
-    mutated(
-        "restore revocation after suspension",
-        "restore",
-        "logicalBookRevision &+= 1\n"
-        "        isWorking = true\n"
-        "        goalMutationBarrierClosed = true\n"
-        "        await waitForGoalMutationDrain()",
-        "isWorking = true\n"
-        "        goalMutationBarrierClosed = true\n"
-        "        await waitForGoalMutationDrain()\n"
-        "        logicalBookRevision &+= 1",
+    restore_revision = "logicalBookRevision &+= 1"
+    restore_suspension = "await waitForGoalMutationDrain()"
+    if (
+        restore_revision not in sources["restore"]
+        or restore_suspension not in sources["restore"]
+    ):
+        fail("logical-book mutation fixture is stale: restore revocation")
+    fixture = dict(sources)
+    fixture["restore"] = sources["restore"].replace(
+        restore_revision,
+        "logicalBookRevisionWasDeferred = true",
+        1,
+    ).replace(
+        restore_suspension,
+        restore_suspension + "\n        logicalBookRevision &+= 1",
+        1,
     )
+    mutations.append(("restore revocation after suspension", fixture))
     mutated(
         "replacement finish revision",
         "ledger_validation",
@@ -1522,6 +1528,415 @@ def validate_logical_book_boundary_mutation_gate() -> None:
     )
 
 
+def chart_render_guard_errors(
+    analysis_source: str,
+    view_source: str,
+    theme_source: str,
+) -> list[str]:
+    """Return violations that make effective chart contrast uncertifiable.
+
+    The numerical palette checks prove contrast only when the rendered data
+    geometry reaches the canvas at full opacity. Keep the source side closed:
+    both charts must consume the reviewed semantic tokens directly, and no
+    parent, helper, modifier, or alternate color construction may weaken them.
+    """
+    errors: list[str] = []
+
+    def braced_block(
+        source: str,
+        start_token: str,
+        label: str,
+    ) -> str:
+        try:
+            start = source.index(start_token)
+        except ValueError:
+            errors.append(f"cannot locate the {label} declaration")
+            return ""
+
+        opening = source.find("{", start)
+        if opening < 0:
+            errors.append(f"cannot locate the {label} opening brace")
+            return ""
+
+        depth = 0
+        index = opening
+        state = "code"
+        block_comment_depth = 0
+        while index < len(source):
+            current = source[index]
+            following = source[index + 1] if index + 1 < len(source) else ""
+            if state == "line-comment":
+                if current == "\n":
+                    state = "code"
+            elif state == "block-comment":
+                if current == "/" and following == "*":
+                    block_comment_depth += 1
+                    index += 1
+                elif current == "*" and following == "/":
+                    block_comment_depth -= 1
+                    index += 1
+                    if block_comment_depth == 0:
+                        state = "code"
+            elif state == "string":
+                if current == "\\":
+                    index += 1
+                elif current == '"':
+                    state = "code"
+            else:
+                if current == "/" and following == "/":
+                    state = "line-comment"
+                    index += 1
+                elif current == "/" and following == "*":
+                    state = "block-comment"
+                    block_comment_depth = 1
+                    index += 1
+                elif current == '"':
+                    state = "string"
+                elif current == "{":
+                    depth += 1
+                elif current == "}":
+                    depth -= 1
+                    if depth == 0:
+                        return source[start:index + 1]
+            index += 1
+
+        errors.append(f"cannot locate the {label} closing brace")
+        return ""
+
+    def compact(source: str) -> str:
+        source = re.sub(r"//[^\n]*", "", source)
+        source = re.sub(r"/\*.*?\*/", "", source, flags=re.DOTALL)
+        return re.sub(r"\s+", "", source)
+
+    def block_body(source: str) -> str:
+        opening = source.find("{")
+        return source[opening + 1:-1] if opening >= 0 and source.endswith("}") else ""
+
+    flow_chart = braced_block(
+        analysis_source,
+        "private func cashFlowChart(",
+        "cash-flow chart",
+    )
+    category_chart = braced_block(
+        view_source,
+        "func categoryChart(",
+        "category chart",
+    )
+    category_color = braced_block(
+        analysis_source,
+        "func categoryChartColor(",
+        "category color policy",
+    )
+    chart_palette = braced_block(
+        theme_source,
+        "enum MoneyUpChartPalette",
+        "chart palette",
+    )
+    selection_policy = braced_block(
+        theme_source,
+        "enum MoneyUpChartSelectionPolicy",
+        "chart selection policy",
+    )
+    cash_flow_card = braced_block(
+        analysis_source,
+        "func cashFlowCard(",
+        "cash-flow card",
+    )
+    category_card = braced_block(
+        view_source,
+        "func categoryCard(",
+        "category card",
+    )
+    insights_body = braced_block(
+        view_source,
+        "var body: some View",
+        "Insights body",
+    )
+
+    flow_marks = braced_block(
+        flow_chart,
+        "ForEach(points) { point in",
+        "cash-flow marks",
+    )
+    category_marks = braced_block(
+        category_chart,
+        "ForEach(points) { point in",
+        "category marks",
+    )
+    for label, source in (
+        ("cash-flow", flow_marks),
+        ("category", category_marks),
+    ):
+        if ".opacity(" in source:
+            errors.append(
+                f"{label} data geometry must remain fully opaque; "
+                "selection needs a non-opacity encoding"
+            )
+
+    selections = (
+        (
+            "cash-flow",
+            braced_block(
+                flow_chart,
+                "if let selectedFlowMonth {",
+                "cash-flow selection rule",
+            ),
+        ),
+        (
+            "category",
+            braced_block(
+                category_chart,
+                "if let selectedCategoryKey {",
+                "category selection rule",
+            ),
+        ),
+    )
+    for label, source in selections:
+        for policy_member in ("lineWidth", "dash"):
+            snippet = f"MoneyUpChartSelectionPolicy.{policy_member}"
+            if snippet not in source:
+                errors.append(
+                    f"{label} selection must use the shared "
+                    f"{policy_member} policy"
+                )
+        if ".foregroundStyle(Color.primary)" not in source:
+            errors.append(f"{label} selection must retain a primary-color stroke")
+
+    flow_compact = compact(flow_chart)
+    category_compact = compact(category_chart)
+    if not compact(block_body(flow_chart)).startswith("Chart{"):
+        errors.append("cash-flow chart must remain the direct render root")
+    if not compact(block_body(category_chart)).startswith("Chart{"):
+        errors.append("category chart must remain the direct render root")
+
+    expected_flow_data_style = (
+        '.foregroundStyle(by:.value(AppLocalization.string('
+        '"chart.dimension.flow"),point.series))'
+    )
+    expected_flow_scale = (
+        '.chartForegroundStyleScale([AppLocalization.string('
+        '"transaction.income"):MoneyUpChartPalette.income,'
+        'AppLocalization.string("transaction.expense"):'
+        'MoneyUpChartPalette.expense])'
+    )
+    expected_category_style = (
+        ".foregroundStyle(categoryChartColor(point,in:points))"
+    )
+    if flow_compact.count(expected_flow_data_style) != 1:
+        errors.append("cash-flow marks lost their certified palette lookup")
+    if flow_compact.count(expected_flow_scale) != 1:
+        errors.append("cash-flow style scale lost its certified direct mappings")
+    if category_compact.count(expected_category_style) != 1:
+        errors.append("category marks lost their certified color policy")
+    if compact(cash_flow_card).count("cashFlowChart(report,points:points)") != 1:
+        errors.append("cash-flow chart lost its direct card render call")
+    if compact(category_card).count("categoryChart(points)") != 1:
+        errors.append("category chart lost its direct card render call")
+    if compact(insights_body).count("cashFlowCard(report)") != 1:
+        errors.append("cash-flow card lost its direct Insights render call")
+    if compact(insights_body).count("categoryCard(report)") != 1:
+        errors.append("category card lost its direct Insights render call")
+
+    expected_period_style = ".foregroundStyle(Color.primary.opacity(0.45))"
+    expected_selection_style = ".foregroundStyle(Color.primary)"
+    expected_annotation_style = ".foregroundStyle(.secondary)"
+    if flow_compact.count(expected_period_style) != 2:
+        errors.append("cash-flow period rules drifted from their reviewed style")
+    if flow_compact.count(expected_selection_style) != 1:
+        errors.append("cash-flow selection rule drifted from primary")
+    if flow_compact.count(".foregroundStyle(") != 4:
+        errors.append("cash-flow chart contains an uncertified foreground style")
+    if category_compact.count(expected_selection_style) != 1:
+        errors.append("category selection rule drifted from primary")
+    if category_compact.count(expected_annotation_style) != 1:
+        errors.append("category amount annotation drifted from secondary text")
+    if category_compact.count(".foregroundStyle(") != 3:
+        errors.append("category chart contains an uncertified foreground style")
+
+    expected_category_color_body = (
+        "guardletindex=points.firstIndex(where:"
+        "{$0.selectionKey==point.selectionKey})else{"
+        "returnMoneyUpChartPalette.color(at:0)}"
+        "returnMoneyUpChartPalette.color(at:index)"
+    )
+    if compact(block_body(category_color)) != expected_category_color_body:
+        errors.append("category color helper is not the certified direct index mapping")
+
+    palette_compact = compact(chart_palette)
+    expected_order = (
+        "staticletordered:[Color]=[.moneyUpChartSeries1,"
+        ".moneyUpChartSeries2,.moneyUpChartSeries3,.moneyUpChartSeries4,"
+        ".moneyUpChartSeries5,.moneyUpChartSeries6]"
+    )
+    if palette_compact.count(expected_order) != 1:
+        errors.append("chart palette order is not the certified six-token sequence")
+    for declaration in (
+        "staticletincome=Color.moneyUpChartSeries1",
+        "staticletexpense=Color.moneyUpChartSeries2",
+    ):
+        if palette_compact.count(declaration) != 1:
+            errors.append(f"chart palette mapping is missing {declaration}")
+    palette_lookup = braced_block(
+        chart_palette,
+        "static func color(at index: Int)",
+        "chart palette lookup",
+    )
+    if compact(block_body(palette_lookup)) != "ordered[index%ordered.count]":
+        errors.append("chart palette lookup is not the certified direct lookup")
+
+    selection_body = compact(block_body(selection_policy))
+    number_literal = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)"
+    line_width_match = re.search(
+        rf"staticletlineWidth:CGFloat=({number_literal})",
+        selection_body,
+    )
+    dash_match = re.search(
+        r"staticletdash:\[CGFloat\]=\[(.*?)\]",
+        selection_body,
+    )
+    if line_width_match is None:
+        errors.append("chart selection line width must be a numeric CGFloat literal")
+    elif float(line_width_match.group(1)) <= 0:
+        errors.append("chart selection line width must be greater than zero")
+    if dash_match is None:
+        errors.append("chart selection dash must be a literal CGFloat array")
+    else:
+        dash_literals = dash_match.group(1).split(",") if dash_match.group(1) else []
+        if not dash_literals:
+            errors.append("chart selection dash must be non-empty")
+        elif any(
+            re.fullmatch(number_literal, literal) is None
+            or float(literal) <= 0
+            for literal in dash_literals
+        ):
+            errors.append("chart selection dash segments must be positive literals")
+    if (
+        line_width_match is not None
+        and dash_match is not None
+        and selection_body
+        != line_width_match.group(0) + dash_match.group(0)
+    ):
+        errors.append("chart selection policy contains an uncertified declaration")
+    for index in range(1, 7):
+        declaration = re.compile(
+            rf'^\s*static let moneyUpChartSeries{index} = '
+            rf'Color\("ChartSeries{index}"\)\s*$',
+            re.MULTILINE,
+        )
+        if declaration.search(theme_source) is None:
+            errors.append(
+                f"ChartSeries{index} token is not a direct opaque asset color"
+            )
+
+    # The two 45%-opacity period rules are annotations, not data geometry.
+    # Remove only those exact reviewed occurrences before rejecting every
+    # alpha/effect path capable of weakening marks or changing their canvas.
+    reviewed_flow = flow_chart
+    if reviewed_flow.count("Color.primary.opacity(0.45)") == 2:
+        reviewed_flow = reviewed_flow.replace(
+            "Color.primary.opacity(0.45)",
+            "Color.primary",
+        )
+    unsafe_effects = {
+        "opacity modifier": r"\.opacity\s*\(",
+        "alpha-bearing initializer": r"\b(?:alpha|opacity)\s*:",
+        "UIKit alpha conversion": r"\.withAlphaComponent\s*\(",
+        "unreviewed modifier": r"\.modifier\s*\(",
+        "blend mode": r"\.blendMode\s*\(",
+        "mask": r"\.mask\s*[({]",
+        "visual effect": (
+            r"\.(?:blur|brightness|colorEffect|colorMultiply|compositingGroup|"
+            r"contrast|drawingGroup|grayscale|hueRotation|layerEffect|"
+            r"luminanceToAlpha|saturation|visualEffect)\s*\("
+        ),
+        "uncertified canvas": r"\.(?:background|chartBackground|chartPlotStyle)\s*[({]",
+        "covering overlay": r"\.overlay\s*[({]",
+    }
+    for label, source in (
+        ("cash-flow chart", reviewed_flow),
+        ("category chart", category_chart),
+        ("category color helper", category_color),
+        ("chart palette", chart_palette),
+        ("cash-flow card", cash_flow_card),
+        ("category card", category_card),
+        (
+            "Insights parent",
+            insights_body.replace(
+                ".background { MoneyUpBackdrop() }",
+                "",
+            ),
+        ),
+    ):
+        for effect, pattern in unsafe_effects.items():
+            if re.search(pattern, source):
+                errors.append(f"{label} contains an uncertified {effect}")
+
+    allowed_chart_calls = {
+        "accessibilityHidden",
+        "accessibilityHint",
+        "accessibilityLabel",
+        "accessibilityValue",
+        "addingTimeInterval",
+        "annotation",
+        "as",
+        "chartForegroundStyleScale",
+        "chartLegend",
+        "chartXAxis",
+        "chartXSelection",
+        "chartYAxis",
+        "chartYScale",
+        "chartYSelection",
+        "cornerRadius",
+        "first",
+        "font",
+        "foregroundStyle",
+        "frame",
+        "lineStyle",
+        "map",
+        "position",
+        "string",
+        "value",
+    }
+    for label, source in (
+        ("cash-flow", reviewed_flow),
+        ("category", category_chart),
+    ):
+        calls = set(re.findall(r"\.([A-Za-z_]\w*)\s*\(", source))
+        unknown_calls = sorted(calls - allowed_chart_calls)
+        if unknown_calls:
+            errors.append(
+                f"{label} chart contains uncertified helper/modifier calls: "
+                f"{unknown_calls}"
+            )
+    return errors
+
+
+def feedback_primitive_guard_errors(source: str) -> list[str]:
+    """Return violations that can detach or broaden consequential haptics."""
+    compact_source = re.sub(r"//[^\n]*", "", source)
+    compact_source = re.sub(r"/\*.*?\*/", "", compact_source, flags=re.DOTALL)
+    compact_source = re.sub(r"\s+", "", compact_source)
+    errors: list[str] = []
+    required_once = {
+        "structurally attached trigger modifier": (
+            "self.sensoryFeedback(trigger:trigger){oldTrigger,newTriggerin"
+        ),
+        "trigger-transition resolver": (
+            "MoneyUpFeedback.haptic(for:event,previousTrigger:oldTrigger,"
+            "currentTrigger:newTrigger,visibleStatus:visibleStatus)"
+        ),
+        "unchanged-trigger suppression": (
+            "guardpreviousTrigger!=currentTriggerelse{return.none}"
+        ),
+    }
+    for label, declaration in required_once.items():
+        if compact_source.count(declaration) != 1:
+            errors.append(f"feedback lost its {label}")
+    if "@ViewBuilderfuncmoneyUpFeedback" in compact_source:
+        errors.append("feedback modifier must not branch itself out of the view tree")
+    return errors
+
+
 def collect_string_units(
     payload: object, path: tuple[str, ...] = ()
 ) -> dict[tuple[str, ...], dict[str, object]]:
@@ -1566,11 +1981,12 @@ def validate_localizations() -> None:
     app_root = ROOT / "App" / "MoneyUp"
     app_catalogs = sorted(app_root.rglob("*.xcstrings"))
     if [path.relative_to(app_root).as_posix() for path in app_catalogs] != [
-        "Resources/Localizable.xcstrings"
+        "Resources/AppShortcuts.xcstrings",
+        "Resources/Localizable.xcstrings",
     ]:
         fail(
-            "app strings must remain in the default Localizable.xcstrings "
-            "table unless every lookup names a custom table"
+            "app strings must remain in Localizable.xcstrings, with only the "
+            "reviewed AppShortcuts.xcstrings phrase catalog beside it"
         )
 
     widget_root = ROOT / "App" / "MoneyUpWidget"
@@ -2039,13 +2455,19 @@ def validate_restore_preview_boundary() -> None:
             "restoreRollbackDirectoryURL",
             "return .inaccessible",
             "guard store == nil, case .failed = state",
-            "defer { finishBookReplacementMutation() }",
+            "let quickActionBoundaryEpoch = try beginRestoreMutation()",
+            "finishBookReplacementMutation()",
+            "quickActionRouteBroker.endAuthoritativeBoundary(",
+            "await finishBeginningRestoreMutation()",
         ),
         restore_path: (
             "isBookReplacementInProgress = true",
             "requestedQuickLogMode = nil",
             "intelligenceService.cancelPendingWork()",
-            "defer { finishBookReplacementMutation() }",
+            "let quickActionBoundaryEpoch = try beginRestoreMutation()",
+            "finishBookReplacementMutation()",
+            "quickActionRouteBroker.endAuthoritativeBoundary(",
+            "await finishBeginningRestoreMutation()",
             "restoreRollbackArchiveURL",
             "restoreRollbackDirectoryURL",
             "[.posixPermissions: 0o700]",
@@ -2588,47 +3010,139 @@ def validate_icons() -> None:
 
 def validate_brand_palette() -> None:
     assets = ROOT / "App" / "MoneyUp" / "Assets.xcassets"
-    expected = {
-        "AccentColor": ["#34785F", "#82CEAE"],
-        "BrandBackground": ["#F7F9F6", "#101512"],
-        "BrandSurface": ["#EEF4F0", "#18211D"],
-        "BrandSurfaceElevated": ["#FAFBF9", "#202923"],
-        # Filled actions intentionally stay forest green in both appearances.
-        # The brighter dark-mode accent remains available for links and icons,
-        # but is not safe behind the white foreground used by prominent controls.
-        "BrandAction": ["#34785F", "#34785F"],
-        "BrandMist": ["#D4EAD8", "#3C6349"],
+    light_normal = ("light", "normal")
+    dark_normal = ("dark", "normal")
+    light_high = ("light", "high")
+    dark_high = ("dark", "high")
+    slots = (light_normal, dark_normal, light_high, dark_high)
+
+    # Exact reviewed normal slots. The dark action was refined once to clear
+    # every real app canvas while all other normal slots remain byte-stable.
+    approved_normal = {
+        "AccentColor": {light_normal: "#34785F", dark_normal: "#82CEAE"},
+        "BrandAction": {light_normal: "#34785F", dark_normal: "#347F60"},
+        "BrandBackground": {light_normal: "#F7F9F6", dark_normal: "#101512"},
+        "BrandMist": {light_normal: "#D4EAD8", dark_normal: "#3C6349"},
+        "BrandSurface": {light_normal: "#EEF4F0", dark_normal: "#18211D"},
+        "BrandSurfaceElevated": {
+            light_normal: "#FAFBF9",
+            dark_normal: "#202923",
+        },
     }
-    for name, expected_colors in expected.items():
+    high_contrast = {
+        "AccentColor": {light_high: "#1F6047", dark_high: "#A4E7CA"},
+        "BrandAction": {light_high: "#245F49", dark_high: "#377B61"},
+        "BrandBackground": {light_high: "#FCFDFB", dark_high: "#080B09"},
+        "BrandMist": {light_high: "#B8D9C4", dark_high: "#557D64"},
+        "BrandSurface": {light_high: "#E7EDE8", dark_high: "#121A16"},
+        "BrandSurfaceElevated": {
+            light_high: "#F3F6F2",
+            dark_high: "#17201B",
+        },
+    }
+    chart_rows = [
+        ("#117733", "#59C69B", "#075F29", "#7EE0B2"),
+        ("#1F6680", "#68B7D0", "#00536D", "#8AD7EE"),
+        ("#8C6500", "#E0B44C", "#725000", "#FFD071"),
+        ("#7A3E9D", "#C68BE0", "#633080", "#E2A9F5"),
+        ("#A53F5B", "#E7899D", "#8B2947", "#FFA8B8"),
+        ("#332288", "#9A8EE0", "#24126E", "#B9AEFF"),
+    ]
+    expected: dict[str, dict[tuple[str, str], str]] = {}
+    for name in approved_normal:
+        expected[name] = approved_normal[name] | high_contrast[name]
+    for index, row in enumerate(chart_rows, start=1):
+        expected[f"ChartSeries{index}"] = dict(zip(slots, row))
+
+    discovered = {
+        path.parent.stem
+        for path in assets.glob("*.colorset/Contents.json")
+    }
+    if discovered != set(expected):
+        fail(
+            "semantic colorset registry drifted: "
+            f"missing {sorted(set(expected) - discovered)}, "
+            f"unexpected {sorted(discovered - set(expected))}"
+        )
+
+    actual_palette: dict[str, dict[tuple[str, str], str]] = {}
+    for name, expected_slots in expected.items():
         path = assets / f"{name}.colorset" / "Contents.json"
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as error:
             fail(f"cannot parse semantic brand asset {name}: {error}")
-        actual: list[str] = []
+        actual: dict[tuple[str, str], str] = {}
         for item in payload.get("colors", []):
+            if item.get("idiom") != "universal":
+                fail(f"{name} colors must use the universal idiom")
+            appearance = "light"
+            contrast_level = "normal"
+            seen_appearances: set[str] = set()
+            appearances = item.get("appearances", [])
+            if not isinstance(appearances, list):
+                fail(f"{name} appearances must be an array")
+            for entry in appearances:
+                if not isinstance(entry, dict):
+                    fail(f"{name} contains an invalid appearance entry")
+                key = entry.get("appearance")
+                value = entry.get("value")
+                if key in seen_appearances:
+                    fail(f"{name} repeats the {key} appearance")
+                seen_appearances.add(str(key))
+                if (key, value) == ("luminosity", "dark"):
+                    appearance = "dark"
+                elif (key, value) == ("contrast", "high"):
+                    contrast_level = "high"
+                else:
+                    fail(f"{name} contains unsupported appearance {key}={value}")
+            slot = (appearance, contrast_level)
+            if slot in actual:
+                fail(f"{name} repeats the {slot} color slot")
+            color = item.get("color", {})
+            if color.get("color-space") != "srgb":
+                fail(f"{name} must use explicit sRGB colors")
             components = item.get("color", {}).get("components", {})
             try:
-                red = int(components["red"], 16)
-                green = int(components["green"], 16)
-                blue = int(components["blue"], 16)
+                if abs(float(components["alpha"]) - 1) > 0.0001:
+                    raise ValueError("non-opaque alpha")
+                channels = [components[channel] for channel in ("red", "green", "blue")]
+                if any(
+                    not isinstance(value, str)
+                    or re.fullmatch(r"(?:0x)?[0-9A-Fa-f]{2}", value) is None
+                    for value in channels
+                ):
+                    raise ValueError("non-hex channel")
+                red, green, blue = (int(value, 16) for value in channels)
             except (KeyError, TypeError, ValueError):
-                fail(f"{name} must use explicit hexadecimal sRGB components")
-            actual.append(f"#{red:02X}{green:02X}{blue:02X}")
-        if actual != expected_colors:
-            fail(f"{name} drifted from the approved soft-green palette: {actual}")
-        if any(color in {"#FFFFFF", "#000000"} for color in actual):
+                fail(f"{name} must use opaque hexadecimal sRGB components")
+            actual[slot] = f"#{red:02X}{green:02X}{blue:02X}"
+        if actual != expected_slots:
+            fail(f"{name} drifted from its approved keyed palette: {actual}")
+        if name in approved_normal and any(
+            actual[slot] != frozen
+            for slot, frozen in approved_normal[name].items()
+        ):
+            fail(f"{name} changed an approved normal-contrast value")
+        if any(color in {"#FFFFFF", "#000000"} for color in actual.values()):
             fail(f"{name} must not use pure white or pure black")
+        actual_palette[name] = actual
 
-    def relative_luminance(color: str) -> float:
-        components = [int(color[index:index + 2], 16) / 255 for index in (1, 3, 5)]
-        linear = [
+    def linear_rgb(color: str) -> tuple[float, float, float]:
+        components = tuple(
+            int(color[index:index + 2], 16) / 255
+            for index in (1, 3, 5)
+        )
+        return tuple(
             value / 12.92
             if value <= 0.04045
             else ((value + 0.055) / 1.055) ** 2.4
             for value in components
-        ]
-        return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+        )
+
+    def relative_luminance(color: str) -> float:
+        red, green, blue = linear_rgb(color)
+        return 0.2126 * red + 0.7152 * green + 0.0722 * blue
 
     def contrast(first: str, second: str) -> float:
         first_luminance = relative_luminance(first)
@@ -2637,19 +3151,255 @@ def validate_brand_palette() -> None:
         darker = min(first_luminance, second_luminance)
         return (lighter + 0.05) / (darker + 0.05)
 
-    for action in expected["BrandAction"]:
+    for slot in slots:
+        canvases = [
+            actual_palette[name][slot]
+            for name in (
+                "BrandBackground",
+                "BrandSurface",
+                "BrandSurfaceElevated",
+            )
+        ]
+        meaningful = [actual_palette["AccentColor"][slot]] + [
+            actual_palette[f"ChartSeries{index}"][slot]
+            for index in range(1, 7)
+        ]
+        for color in meaningful:
+            for canvas in canvases:
+                if contrast(color, canvas) < 3:
+                    fail(
+                        f"meaningful graphical color {color} is below 3:1 "
+                        f"against {canvas} in {slot}"
+                    )
+        action = actual_palette["BrandAction"][slot]
         if contrast(action, "#FFFFFF") < 4.5:
-            fail(f"BrandAction does not support a white control foreground: {action}")
-    if contrast(expected["BrandAction"][1], expected["BrandBackground"][1]) < 3:
-        fail("dark BrandAction is not distinguishable from BrandBackground")
+            fail(f"BrandAction does not support a white foreground in {slot}: {action}")
+        for canvas_name, canvas in zip(
+            ("BrandBackground", "BrandSurface", "BrandSurfaceElevated"),
+            canvases,
+        ):
+            if contrast(action, canvas) < 3:
+                fail(
+                    f"BrandAction is below 3:1 against {canvas_name} "
+                    f"{canvas} in {slot}"
+                )
+
+    # Replay the pre-fix dark action as an in-memory mutation. It must fail on
+    # the actual elevated canvas or this guard no longer catches the regression.
+    old_dark_action = "#34785F"
+    dark_elevated = actual_palette["BrandSurfaceElevated"][dark_normal]
+    if contrast(old_dark_action, dark_elevated) >= 3:
+        fail("BrandAction dark-canvas mutation self-test no longer fails")
+
+    def composite_srgb(
+        foreground: str,
+        background: str,
+        opacity: float,
+    ) -> str:
+        """Return the final sRGB pixel after source-over alpha compositing."""
+        if not 0 <= opacity <= 1:
+            raise ValueError("opacity must be between zero and one")
+        foreground_channels = [
+            int(foreground[index:index + 2], 16)
+            for index in (1, 3, 5)
+        ]
+        background_channels = [
+            int(background[index:index + 2], 16)
+            for index in (1, 3, 5)
+        ]
+        rendered = [
+            round(front * opacity + back * (1 - opacity))
+            for front, back in zip(foreground_channels, background_channels)
+        ]
+        return "#" + "".join(f"{channel:02X}" for channel in rendered)
+
+    # Source guards below prove that actual BarMark opacity is 1. Validate the
+    # resulting pixels, not only the uncomposited asset colors, against every
+    # chart canvas. The deliberately weakened 0.34 mutation must fail this
+    # same rendered-state threshold or the guardrail is not testing the bug.
+    opacity_mutation_failures = 0
+    for slot in slots:
+        canvases = [
+            actual_palette[name][slot]
+            for name in (
+                "BrandBackground",
+                "BrandSurface",
+                "BrandSurfaceElevated",
+            )
+        ]
+        series = [
+            actual_palette[f"ChartSeries{index}"][slot]
+            for index in range(1, 7)
+        ]
+        for color in series:
+            for canvas in canvases:
+                rendered = composite_srgb(color, canvas, opacity=1)
+                if contrast(rendered, canvas) < 3:
+                    fail(
+                        f"rendered chart geometry {rendered} is below 3:1 "
+                        f"against {canvas} in {slot}"
+                    )
+                weakened = composite_srgb(color, canvas, opacity=0.34)
+                if contrast(weakened, canvas) < 3:
+                    opacity_mutation_failures += 1
+    if opacity_mutation_failures == 0:
+        fail("chart opacity mutation self-test no longer exercises a 3:1 failure")
+
+    def lab(linear: tuple[float, float, float]) -> tuple[float, float, float]:
+        red, green, blue = linear
+        x = (0.4124564 * red + 0.3575761 * green + 0.1804375 * blue) / 0.95047
+        y = 0.2126729 * red + 0.7151522 * green + 0.0721750 * blue
+        z = (0.0193339 * red + 0.1191920 * green + 0.9503041 * blue) / 1.08883
+
+        def pivot(value: float) -> float:
+            return (
+                value ** (1 / 3)
+                if value > 216 / 24389
+                else (24389 / 27 * value + 16) / 116
+            )
+
+        x_value, y_value, z_value = (pivot(value) for value in (x, y, z))
+        return (
+            116 * y_value - 16,
+            500 * (x_value - y_value),
+            200 * (y_value - z_value),
+        )
+
+    def delta_e(first: tuple[float, float, float], second: tuple[float, float, float]) -> float:
+        return sum((left - right) ** 2 for left, right in zip(first, second)) ** 0.5
+
+    simulations = {
+        "protan": (
+            (0.152286, 1.052583, -0.204868),
+            (0.114503, 0.786281, 0.099216),
+            (-0.003882, -0.048116, 1.051998),
+        ),
+        "deutan": (
+            (0.367322, 0.860646, -0.227968),
+            (0.280085, 0.672501, 0.047413),
+            (-0.011820, 0.042940, 0.968881),
+        ),
+    }
+
+    def simulated_lab(
+        color: str,
+        matrix: tuple[tuple[float, float, float], ...] | None,
+    ) -> tuple[float, float, float]:
+        source = linear_rgb(color)
+        if matrix is None:
+            return lab(source)
+        simulated = tuple(
+            min(1.0, max(0.0, sum(row[index] * source[index] for index in range(3))))
+            for row in matrix
+        )
+        return lab(simulated)
+
+    # This is a deliberately conservative automated heuristic, not a claim of
+    # clinical perception equivalence. Labels and geometry remain mandatory.
+    for slot in slots:
+        series = [
+            actual_palette[f"ChartSeries{index}"][slot]
+            for index in range(1, 7)
+        ]
+        for simulation, matrix in {"standard": None, **simulations}.items():
+            values = [simulated_lab(color, matrix) for color in series]
+            for index, first in enumerate(values):
+                difference = delta_e(first, values[(index + 1) % len(values)])
+                if difference < 30:
+                    fail(
+                        f"adjacent chart series {index + 1}/"
+                        f"{(index + 1) % len(values) + 1} are too similar "
+                        f"in {slot} under {simulation} simulation: {difference:.1f}"
+                    )
 
     widget_source = (
         ROOT / "App" / "MoneyUpWidget" / "MoneyUpWidget.swift"
     ).read_text(encoding="utf-8")
     if "colors: [Color.moneyUpAction, Color.moneyUpActionDeep]" not in widget_source:
         fail("widget action gradient must keep every white-bearing stop contrast-safe")
-    if contrast("#255C48", "#FFFFFF") < 4.5:
-        fail("widget deep action stop does not support a white foreground")
+    widget_palette = {
+        "moneyUpSoftGreen": {
+            light_normal: "#34785F",
+            dark_normal: "#82CEAE",
+            light_high: "#1F6047",
+            dark_high: "#A4E7CA",
+        },
+        "moneyUpAction": {
+            light_normal: "#34785F",
+            dark_normal: "#347F60",
+            light_high: "#245F49",
+            dark_high: "#377B61",
+        },
+        "moneyUpActionDeep": {
+            light_normal: "#255C48",
+            dark_normal: "#255C48",
+            light_high: "#174A37",
+            dark_high: "#32765B",
+        },
+        "moneyUpWidgetBackground": {
+            light_normal: "#F7F9F6",
+            dark_normal: "#18211D",
+            light_high: "#FCFDFB",
+            dark_high: "#121A16",
+        },
+    }
+
+    def ui_color_return(color: str) -> str:
+        red, green, blue = (int(color[index:index + 2], 16) for index in (1, 3, 5))
+        return (
+            "returnUIColor("
+            f"red:{red}.0/255.0,"
+            f"green:{green}.0/255.0,"
+            f"blue:{blue}.0/255.0,alpha:1)"
+        )
+
+    token_positions = {
+        name: widget_source.index(f"static let {name}")
+        for name in widget_palette
+    }
+    ordered_tokens = list(widget_palette)
+    for token_index, name in enumerate(ordered_tokens):
+        start = token_positions[name]
+        end = (
+            token_positions[ordered_tokens[token_index + 1]]
+            if token_index + 1 < len(ordered_tokens)
+            else widget_source.index("private struct MoneyUpQuickActionsWidget")
+        )
+        block = widget_source[start:end]
+        compact_block = re.sub(r"\s+", "", block)
+        colors = widget_palette[name]
+        expected_provider = (
+            f"staticlet{name}=Color(uiColor:UIColor{{traitsin"
+            "iftraits.accessibilityContrast==.high{"
+            "iftraits.userInterfaceStyle==.dark{"
+            f"{ui_color_return(colors[dark_high])}}}"
+            f"{ui_color_return(colors[light_high])}}}"
+        )
+        if colors[dark_normal] != colors[light_normal]:
+            expected_provider += (
+                "iftraits.userInterfaceStyle==.dark{"
+                f"{ui_color_return(colors[dark_normal])}}}"
+            )
+        expected_provider += f"{ui_color_return(colors[light_normal])}}})"
+        if expected_provider not in compact_block:
+            fail(
+                f"widget semantic token {name} lost an appearance/contrast-keyed color"
+            )
+
+    widget_slots = {
+        slot: (
+            widget_palette["moneyUpAction"][slot],
+            widget_palette["moneyUpActionDeep"][slot],
+            widget_palette["moneyUpWidgetBackground"][slot],
+        )
+        for slot in slots
+    }
+    for slot, (action, deep_action, background) in widget_slots.items():
+        for stop in (action, deep_action):
+            if contrast(stop, "#FFFFFF") < 4.5:
+                fail(f"widget action stop {stop} is unsafe behind white in {slot}")
+        if contrast(action, background) < 3:
+            fail(f"widget action token is not distinguishable from its canvas in {slot}")
 
     if (assets / "GoldAccent.colorset" / "Contents.json").exists():
         fail("the retired gold accent must not return to the primary palette")
@@ -2662,6 +3412,310 @@ def validate_brand_palette() -> None:
         fail("in-app brand surfaces must use the shared horned-money mark")
     if "MoneyUpGrowthMark" in theme or 'Image(systemName: "arrow.up.right")' in theme:
         fail("the retired three-bar/up-arrow brand mark must not return")
+    for index in range(1, 7):
+        if f'static let moneyUpChartSeries{index} = Color("ChartSeries{index}")' not in theme:
+            fail(f"ChartSeries{index} must have an ordered semantic Color token")
+    if "static let ordered: [Color]" not in theme:
+        fail("chart series tokens must expose a stable order")
+
+    insights_view_source = (
+        ROOT / "App" / "MoneyUp" / "InsightsView.swift"
+    ).read_text(encoding="utf-8")
+    insights_analysis_source = (
+        ROOT / "App" / "MoneyUp" / "InsightsAnalysis.swift"
+    ).read_text(encoding="utf-8")
+    insights_source = insights_view_source + "\n" + insights_analysis_source
+    render_guard_errors = chart_render_guard_errors(
+        insights_analysis_source,
+        insights_view_source,
+        theme,
+    )
+    if render_guard_errors:
+        fail("; ".join(render_guard_errors))
+
+    def mutated(source: str, anchor: str, replacement: str, label: str) -> str:
+        result = source.replace(anchor, replacement, 1)
+        if result == source:
+            fail(f"cannot construct {label} chart mutation self-test")
+        return result
+
+    def require_mutation_rejected(
+        label: str,
+        analysis: str = insights_analysis_source,
+        view: str = insights_view_source,
+        theme_source: str = theme,
+    ) -> None:
+        if not chart_render_guard_errors(analysis, view, theme_source):
+            fail(f"chart render guard accepted {label} mutation")
+
+    flow_opacity_anchor = ".cornerRadius(point.kind == .income ? 5 : 0)"
+    require_mutation_rejected(
+        "cash-flow mark opacity",
+        analysis=mutated(
+            insights_analysis_source,
+            flow_opacity_anchor,
+            flow_opacity_anchor + "\n                .opacity(0.34)",
+            "cash-flow mark opacity",
+        ),
+    )
+    category_style_anchor = ".foregroundStyle(categoryChartColor(point, in: points))"
+    require_mutation_rejected(
+        "category mark opacity",
+        view=mutated(
+            insights_view_source,
+            category_style_anchor,
+            category_style_anchor + "\n                .opacity(0.34)",
+            "category mark opacity",
+        ),
+    )
+
+    category_return_anchor = "return MoneyUpChartPalette.color(at: index)"
+    require_mutation_rejected(
+        "category helper opacity",
+        analysis=mutated(
+            insights_analysis_source,
+            category_return_anchor,
+            category_return_anchor + ".opacity(0.34)",
+            "category helper opacity",
+        ),
+    )
+    require_mutation_rejected(
+        "category helper alternate alpha color",
+        analysis=mutated(
+            insights_analysis_source,
+            category_return_anchor,
+            (
+                "return Color(red: 0.1, green: 0.2, blue: 0.3, "
+                "opacity: 0.34)"
+            ),
+            "category helper alternate alpha color",
+        ),
+    )
+    require_mutation_rejected(
+        "category helper indirection",
+        view=mutated(
+            insights_view_source,
+            "categoryChartColor(point, in: points)",
+            "uncertifiedCategoryChartColor(point, in: points)",
+            "category helper indirection",
+        ),
+    )
+
+    flow_scale_mappings = (
+        (
+            "income",
+            'AppLocalization.string("transaction.income"): '
+            "MoneyUpChartPalette.income,",
+        ),
+        (
+            "expense",
+            'AppLocalization.string("transaction.expense"): '
+            "MoneyUpChartPalette.expense",
+        ),
+    )
+    for label, anchor in flow_scale_mappings:
+        require_mutation_rejected(
+            f"cash-flow {label} style-scale opacity",
+            analysis=mutated(
+                insights_analysis_source,
+                anchor,
+                anchor.replace(
+                    f"MoneyUpChartPalette.{label}",
+                    f"MoneyUpChartPalette.{label}.opacity(0.34)",
+                ),
+                f"cash-flow {label} style-scale opacity",
+            ),
+        )
+
+    flow_frame_anchor = ".frame(height: 240)"
+    category_frame_anchor = ".frame(height: max(190, CGFloat(points.count) * 34))"
+    require_mutation_rejected(
+        "cash-flow parent opacity",
+        analysis=mutated(
+            insights_analysis_source,
+            flow_frame_anchor,
+            ".opacity(0.34)\n        " + flow_frame_anchor,
+            "cash-flow parent opacity",
+        ),
+    )
+    require_mutation_rejected(
+        "category parent opacity",
+        view=mutated(
+            insights_view_source,
+            category_frame_anchor,
+            ".opacity(0.34)\n        " + category_frame_anchor,
+            "category parent opacity",
+        ),
+    )
+    require_mutation_rejected(
+        "cash-flow card-call opacity",
+        analysis=mutated(
+            insights_analysis_source,
+            "cashFlowChart(report, points: points)",
+            "cashFlowChart(report, points: points).opacity(0.34)",
+            "cash-flow card-call opacity",
+        ),
+    )
+    require_mutation_rejected(
+        "category card-call opacity",
+        view=mutated(
+            insights_view_source,
+            "categoryChart(points)",
+            "categoryChart(points).opacity(0.34)",
+            "category card-call opacity",
+        ),
+    )
+    require_mutation_rejected(
+        "cash-flow Insights-parent opacity",
+        view=mutated(
+            insights_view_source,
+            "cashFlowCard(report)",
+            "cashFlowCard(report).opacity(0.34)",
+            "cash-flow Insights-parent opacity",
+        ),
+    )
+    require_mutation_rejected(
+        "category Insights-parent opacity",
+        view=mutated(
+            insights_view_source,
+            "categoryCard(report)",
+            "categoryCard(report).opacity(0.34)",
+            "category Insights-parent opacity",
+        ),
+    )
+    require_mutation_rejected(
+        "cash-flow parent modifier",
+        analysis=mutated(
+            insights_analysis_source,
+            flow_frame_anchor,
+            ".modifier(UncertifiedChartModifier())\n        " + flow_frame_anchor,
+            "cash-flow parent modifier",
+        ),
+    )
+
+    group_mutation = mutated(
+        insights_analysis_source,
+        "        Chart {\n",
+        "        Group {\n            Chart {\n",
+        "cash-flow parent group",
+    )
+    group_mutation = mutated(
+        group_mutation,
+        "        }\n        .frame(height: 240)",
+        "            }\n        }\n        .opacity(0.34)\n        .frame(height: 240)",
+        "cash-flow parent group opacity",
+    )
+    require_mutation_rejected(
+        "cash-flow parent group opacity",
+        analysis=group_mutation,
+    )
+
+    token_anchor = 'static let moneyUpChartSeries1 = Color("ChartSeries1")'
+    require_mutation_rejected(
+        "palette token opacity",
+        theme_source=mutated(
+            theme,
+            token_anchor,
+            token_anchor + ".opacity(0.34)",
+            "palette token opacity",
+        ),
+    )
+
+    for label, source_name, source in (
+        ("cash-flow line width", "analysis", insights_analysis_source),
+        ("category line width", "view", insights_view_source),
+        ("cash-flow dash", "analysis", insights_analysis_source),
+        ("category dash", "view", insights_view_source),
+    ):
+        policy_member = "lineWidth" if "line width" in label else "dash"
+        policy_anchor = f"MoneyUpChartSelectionPolicy.{policy_member}"
+        selection_mutation = mutated(
+            source,
+            policy_anchor,
+            "1" if policy_member == "lineWidth" else "[]",
+            label,
+        )
+        require_mutation_rejected(
+            label,
+            analysis=(
+                selection_mutation
+                if source_name == "analysis"
+                else insights_analysis_source
+            ),
+            view=(
+                selection_mutation
+                if source_name == "view"
+                else insights_view_source
+            ),
+        )
+
+    require_mutation_rejected(
+        "selection policy zero line width",
+        theme_source=mutated(
+            theme,
+            "static let lineWidth: CGFloat = 2",
+            "static let lineWidth: CGFloat = 0",
+            "selection policy zero line width",
+        ),
+    )
+    require_mutation_rejected(
+        "selection policy empty dash",
+        theme_source=mutated(
+            theme,
+            "static let dash: [CGFloat] = [3, 3]",
+            "static let dash: [CGFloat] = []",
+            "selection policy empty dash",
+        ),
+    )
+    require_mutation_rejected(
+        "selection policy zero dash segment",
+        theme_source=mutated(
+            theme,
+            "static let dash: [CGFloat] = [3, 3]",
+            "static let dash: [CGFloat] = [3, 0]",
+            "selection policy zero dash segment",
+        ),
+    )
+
+    non_color_encodings = {
+        "income symbol": 'case .income: "plus.rectangle.fill"',
+        "expense symbol": 'case .expense: "minus.rectangle"',
+        "flow shape": ".cornerRadius(point.kind == .income ? 5 : 0)",
+        "flow grouping": ".position(",
+        "flow accessible value": ".accessibilityValue(formattedMoney(point.money))",
+        "category label": "Text(point.name)",
+        "category amount annotation": ".annotation(position: .trailing)",
+        "ordered category color": "categoryChartColor(point, in: points)",
+        "flow selection rule": "if let selectedFlowMonth {",
+        "category selection rule": "if let selectedCategoryKey {",
+    }
+    for encoding, snippet in non_color_encodings.items():
+        if snippet not in insights_source:
+            fail(f"chart color requires retained non-color {encoding} encoding")
+    if (
+        "MoneyUpChartPalette.income" not in insights_source
+        or "MoneyUpChartPalette.expense" not in insights_source
+    ):
+        fail("cash-flow series must use the ordered semantic chart palette")
+    try:
+        category_color_start = insights_analysis_source.index(
+            "func categoryChartColor("
+        )
+        category_color_end = insights_analysis_source.index(
+            "func flowChartSummary(",
+            category_color_start,
+        )
+    except ValueError:
+        fail("cannot locate the category chart color policy")
+    category_color_source = insights_analysis_source[
+        category_color_start:category_color_end
+    ]
+    if (
+        "point.isAggregate" in category_color_source
+        or "return .secondary" in category_color_source
+        or category_color_source.count("MoneyUpChartPalette.color(at:") != 2
+    ):
+        fail("every category bar, including Other, must use a validated palette slot")
     for path in (ROOT / "App" / "MoneyUp").glob("*.swift"):
         lines = path.read_text(encoding="utf-8").splitlines()
         for index, line in enumerate(lines):
@@ -2673,7 +3727,165 @@ def validate_brand_palette() -> None:
                     f"{path.relative_to(ROOT)}:{index + 1} prominent action "
                     "must use the contrast-safe BrandAction token"
                 )
-    print("Validated adaptive soft-green semantic palette")
+    print("Validated appearance/contrast-keyed semantic and chart palette")
+
+
+def validate_design_primitive_usage() -> None:
+    app_root = ROOT / "App" / "MoneyUp"
+    feedback_path = app_root / "MoneyUpFeedback.swift"
+    for path in app_root.glob("*.swift"):
+        if path == feedback_path:
+            continue
+        if "sensoryFeedback(" in path.read_text(encoding="utf-8"):
+            fail(
+                f"{path.relative_to(ROOT)} bypasses the governed "
+                "MoneyUpFeedback boundary"
+            )
+
+    feedback_source = feedback_path.read_text(encoding="utf-8")
+    feedback_errors = feedback_primitive_guard_errors(feedback_source)
+    if feedback_errors:
+        fail("; ".join(feedback_errors))
+    if "policy.requiresVisibleStatus || visibleStatus" not in feedback_source:
+        fail("feedback visible-status policy guard is missing")
+
+    def require_feedback_mutation_rejected(
+        label: str,
+        anchor: str,
+        replacement: str,
+    ) -> None:
+        mutation = feedback_source.replace(anchor, replacement, 1)
+        if mutation == feedback_source:
+            fail(f"cannot construct {label} feedback mutation self-test")
+        if not feedback_primitive_guard_errors(mutation):
+            fail(f"feedback guard accepted {label} mutation")
+
+    require_feedback_mutation_rejected(
+        "detached modifier",
+        "self.sensoryFeedback(trigger: trigger)",
+        "self",
+    )
+    require_feedback_mutation_rejected(
+        "unobserved old trigger",
+        "previousTrigger: oldTrigger",
+        "previousTrigger: newTrigger",
+    )
+    require_feedback_mutation_rejected(
+        "unconditional visible status",
+        "currentTrigger: newTrigger,\n                visibleStatus: visibleStatus",
+        "currentTrigger: newTrigger,\n                visibleStatus: true",
+    )
+
+    theme_source = (app_root / "MoneyUpTheme.swift").read_text(encoding="utf-8")
+    for declaration in [
+        "if reduceTransparency {",
+        "borderStyle: .solid",
+        "case .solid:",
+        "Color.primary.opacity(appearance.primaryBorderOpacity)",
+    ]:
+        if declaration not in theme_source:
+            fail(f"Reduce Transparency card policy is missing {declaration}")
+
+    typography_source = (app_root / "MoneyUpTypography.swift").read_text(
+        encoding="utf-8"
+    )
+    for declaration in [
+        "for: .financialValue",
+        "if motion == .immediate { transaction.animation = nil }",
+        "usesMonospacedDigits: policy.usesMonospacedDigits",
+    ]:
+        if declaration not in typography_source:
+            fail(f"financial-value runtime policy is missing {declaration}")
+
+    quick_log_source = "\n".join(
+        (app_root / name).read_text(encoding="utf-8")
+        for name in (
+            "QuickLogEntryBody.swift",
+            "QuickLogEntryCommit.swift",
+            "LockedQuickCaptureView.swift",
+        )
+    )
+    for declaration in [
+        ".moneyUpFeedback(",
+        "MoneyUpMotion.confirmationTransition(",
+        "MoneyUpMotion.animation(",
+    ]:
+        if declaration not in quick_log_source:
+            fail(f"Quick Log primitive adoption is missing {declaration}")
+    if "QuickLogMotionPolicy" in quick_log_source:
+        fail("Quick Log must not shadow the governed MoneyUpMotion policy")
+    print("Validated governed visual, motion, and feedback primitive usage")
+
+
+def validate_release_traceability() -> None:
+    targets = (
+        "MoneyUpCoreTests",
+        "MoneyUpPersistenceTests",
+        "MoneyUpIntelligenceTests",
+        "MoneyUpAppTests",
+        "MoneyUpPerformanceTests",
+    )
+    actual: dict[str, tuple[int, int]] = {}
+    for target in targets:
+        source = "\n".join(
+            path.read_text(encoding="utf-8")
+            for path in sorted((ROOT / "Tests" / target).glob("*.swift"))
+        )
+        actual[target] = (
+            len(re.findall(r"^\s*func\s+test\w*\s*\(", source, re.MULTILINE)),
+            len(re.findall(r"^\s*@Test\b", source, re.MULTILINE)),
+        )
+
+    matrix = (ROOT / "docs" / "REQUIREMENTS_TEST_MATRIX.md").read_text(
+        encoding="utf-8"
+    )
+    declared = re.search(
+        r"Declared automated tests in source after this review: \*\*(\d+)\*\* "
+        r"\((\d+) core, (\d+)\s+persistence, (\d+) intelligence, (\d+) "
+        r"app-target, and (\d+) performance-target\s+declarations",
+        matrix,
+    )
+    declaration_kinds = re.search(
+        r"\*\*(\d+)\*\* are XCTest\s+functions named `test\.\.\.`; "
+        r"the\s+remaining (\d+) are Swift Testing `@Test`",
+        matrix,
+    )
+    if declared is None or declaration_kinds is None:
+        fail("test-count traceability format drifted")
+    target_totals = tuple(sum(actual[target]) for target in targets)
+    xctest_total = sum(counts[0] for counts in actual.values())
+    swift_testing_total = sum(counts[1] for counts in actual.values())
+    declared_values = tuple(int(value) for value in declared.groups())
+    expected_values = (sum(target_totals), *target_totals)
+    if declared_values != expected_values:
+        fail(
+            "declared per-target test accounting drifted: "
+            f"document {declared_values}, source {expected_values}"
+        )
+    declared_kinds_values = tuple(
+        int(value) for value in declaration_kinds.groups()
+    )
+    if declared_kinds_values != (xctest_total, swift_testing_total):
+        fail(
+            "declared test-kind accounting drifted: "
+            f"document {declared_kinds_values}, "
+            f"source {(xctest_total, swift_testing_total)}"
+        )
+
+    golden = (ROOT / "docs" / "GOLDEN_TRACEABILITY.md").read_text(
+        encoding="utf-8"
+    )
+    for identifier in (
+        "W6-PRIM",
+        "W6-MOTION",
+        "W6-KEY",
+        "W6-CHART",
+        "W6-WIDGET",
+    ):
+        row = f"| {identifier} |"
+        if row not in matrix or row not in golden:
+            fail(f"W6 acceptance traceability is missing {identifier}")
+    print("Validated exact test accounting and W6 acceptance traceability")
 
 
 def validate_public_documents() -> None:
@@ -3323,6 +4535,21 @@ def validate_accessible_errors() -> None:
     if result.returncode != 0:
         detail = result.stderr.strip() or result.stdout.strip()
         fail(f"Accessible error validation failed:\n{detail}")
+    print(result.stdout.strip())
+
+
+def validate_platform_actions() -> None:
+    validator = ROOT / "Scripts" / "validate_platform_actions.py"
+    result = subprocess.run(
+        [sys.executable, str(validator)],
+        cwd=ROOT,
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip()
+        fail(f"platform-action validation failed:\n{detail}")
     print(result.stdout.strip())
 
 
@@ -4001,6 +5228,8 @@ def main() -> None:
     validate_info_plist_localizations()
     validate_icons()
     validate_brand_palette()
+    validate_design_primitive_usage()
+    validate_release_traceability()
     validate_public_documents()
     validate_release_fixture_generator()
     validate_project_configuration()
@@ -4010,6 +5239,7 @@ def main() -> None:
     validate_architecture_fitness()
     validate_performance_signposts()
     validate_accessible_errors()
+    validate_platform_actions()
     validate_ci_workflow()
     validate_testflight_workflow()
     validate_testflight_owner_command_workflow()

@@ -212,17 +212,33 @@ final class NaturalLanguageEntryParserTests: XCTestCase {
 
     func testChinesePhraseIsParsed() throws {
         let reference = try now()
-        let draft = NaturalLanguageEntryParser.draft(
-            from: "昨天 现金 午餐 12.50",
-            accounts: accounts + [LedgerAccount(name: "现金", kind: .asset, accountType: .cash)],
-            now: reference,
-            calendar: calendar
+        let chineseCash = LedgerAccount(
+            name: "现金",
+            kind: .asset,
+            accountType: .cash
+        )
+        let expected = try XCTUnwrap(
+            calendar.date(byAdding: .day, value: -1, to: reference)
         )
 
-        XCTAssertEqual(draft.amount, Decimal(string: "12.50"))
-        XCTAssertEqual(draft.payee, "午餐")
-        let expected = try XCTUnwrap(calendar.date(byAdding: .day, value: -1, to: reference))
-        XCTAssertEqual(draft.occurredAt, expected)
+        for phrase in [
+            "昨天 现金 午餐 12.50",
+            "昨天 现\u{200B}金 午餐 12.50",
+            "昨天 现\u{FE0F}金 午餐 12.50"
+        ] {
+            let parsed = NaturalLanguageEntryParser.parse(
+                phrase,
+                accounts: accounts + [chineseCash],
+                now: reference,
+                calendar: calendar
+            )
+
+            XCTAssertEqual(parsed.draft.amount, Decimal(string: "12.50"), phrase)
+            XCTAssertEqual(parsed.draft.accountID, chineseCash.id, phrase)
+            XCTAssertEqual(parsed.draft.payee, "午餐", phrase)
+            XCTAssertEqual(parsed.draft.occurredAt, expected, phrase)
+            XCTAssertEqual(parsed.context, "午餐", phrase)
+        }
     }
 
     func testImpossibleCivilDateFailsClosedWithoutInventingAnAmount() throws {
@@ -348,6 +364,93 @@ final class NaturalLanguageEntryParserTests: XCTestCase {
         XCTAssertEqual(draft.payee, "cashew nuts")
     }
 
+    func testAccountRemovalUsesTheExactBoundaryAwareWinningRange() throws {
+        let office = LedgerAccount(name: "Office", kind: .asset)
+        let cafe = LedgerAccount(name: "Café", kind: .asset)
+        let cases = [
+            ("Cashback supper Cash 12", "Cashback supper", cash),
+            ("Cash\u{200B}back supper Cash 12", "Cashback supper", cash),
+            ("back\u{200B}Cash supper Cash 12", "backCash supper", cash),
+            ("supper Ca\u{200B}sh 12", "supper", cash),
+            ("supper Ca\u{FE0F}sh 12", "supper", cash),
+            ("supper Ｃａｓｈ 12", "supper", cash),
+            ("supper Oﬃce 12", "supper", office),
+            ("supper Cafe\u{301} 12", "supper", cafe)
+        ]
+
+        for (phrase, expectedContext, account) in cases {
+            let parsed = NaturalLanguageEntryParser.parse(
+                phrase,
+                accounts: [account],
+                now: try now(),
+                calendar: calendar,
+                locale: Locale(identifier: "en_SG")
+            )
+
+            XCTAssertEqual(parsed.draft.accountID, account.id, phrase)
+            XCTAssertEqual(parsed.context, expectedContext, phrase)
+            if expectedContext == "supper" {
+                XCTAssertEqual(parsed.draft.payee, "supper", phrase)
+            }
+        }
+
+        for phrase in [
+            "a\u{301}Cash supper Cash 12",
+            "Cash\u{301}back supper Cash 12",
+            "a\u{301}\u{200B}\u{20DD}Cash supper Cash 12",
+            "Cash\u{20DD}\u{200B}\u{301}back supper Cash 12"
+        ] {
+            let parsed = NaturalLanguageEntryParser.parse(
+                phrase,
+                accounts: [cash],
+                now: try now(),
+                calendar: calendar,
+                locale: Locale(identifier: "en_SG")
+            )
+
+            XCTAssertEqual(parsed.draft.accountID, cash.id, phrase)
+            XCTAssertEqual(parsed.context?.hasSuffix("supper"), true, phrase)
+            XCTAssertEqual(parsed.context?.hasSuffix("supper Cash"), false, phrase)
+        }
+    }
+
+    func testCategoryRemovalUsesTheExactBoundaryAwareWinningRange() throws {
+        let parsed = NaturalLanguageEntryParser.parse(
+            "Foodie lunch Food 12",
+            accounts: [food],
+            now: try now(),
+            calendar: calendar,
+            locale: Locale(identifier: "en_SG")
+        )
+
+        XCTAssertEqual(parsed.draft.categoryID, food.id)
+        XCTAssertEqual(parsed.draft.payee, "Foodie lunch")
+        XCTAssertEqual(parsed.context, "Foodie lunch")
+    }
+
+    func testEquivalentNameTieUsesStableIdentityAcrossInputOrder() throws {
+        let lowerID = try XCTUnwrap(
+            UUID(uuidString: "00000000-0000-0000-0000-000000000001")
+        )
+        let higherID = try XCTUnwrap(
+            UUID(uuidString: "00000000-0000-0000-0000-000000000002")
+        )
+        let lower = LedgerAccount(id: lowerID, name: "Cash", kind: .asset)
+        let higher = LedgerAccount(id: higherID, name: "cash", kind: .asset)
+
+        for candidates in [[higher, lower], [lower, higher]] {
+            let draft = NaturalLanguageEntryParser.draft(
+                from: "lunch CASH 12",
+                accounts: candidates,
+                now: try now(),
+                calendar: calendar,
+                locale: Locale(identifier: "en_SG")
+            )
+            XCTAssertEqual(draft.accountID, lowerID)
+            XCTAssertEqual(draft.payee, "lunch")
+        }
+    }
+
     func testCommaDecimalAmountUsesTheProvidedLocale() throws {
         let draft = NaturalLanguageEntryParser.draft(
             from: "déjeuner 12,50 cash",
@@ -359,6 +462,159 @@ final class NaturalLanguageEntryParserTests: XCTestCase {
 
         XCTAssertEqual(draft.amount, Decimal(string: "12.50"))
         XCTAssertEqual(draft.accountID, cash.id)
+    }
+
+    func testAssistanceContextSeparatesEveryParsedFinancialSpan() throws {
+        let sgd = try CurrencyCode("SGD")
+        let wallet = LedgerAccount(
+            name: "Green Wallet",
+            kind: .asset,
+            currency: sgd
+        )
+        let dining = LedgerAccount(name: "Dining", kind: .expense)
+        let parsed = NaturalLanguageEntryParser.parse(
+            "Supper SGD $1,234.50 Green Wallet Dining on 15/03/2026",
+            accounts: [wallet, dining],
+            now: try now(),
+            calendar: calendar,
+            prefersDayFirst: true,
+            locale: Locale(identifier: "en_SG")
+        )
+
+        XCTAssertEqual(parsed.draft.amount, Decimal(string: "1234.50"))
+        XCTAssertEqual(parsed.draft.accountID, wallet.id)
+        XCTAssertEqual(parsed.draft.categoryID, dining.id)
+        XCTAssertNotNil(parsed.draft.occurredAt)
+        XCTAssertEqual(parsed.context, "Supper")
+    }
+
+    func testAssistanceContextFailsClosedWhenOnlyFinancialSpansRemain() throws {
+        let usd = try CurrencyCode("USD")
+        let wallet = LedgerAccount(
+            name: "Wallet",
+            kind: .asset,
+            currency: usd
+        )
+        let parsed = NaturalLanguageEntryParser.parse(
+            "USD $42.10 on 2026-03-15 Wallet",
+            accounts: [wallet],
+            now: try now(),
+            calendar: calendar,
+            locale: Locale(identifier: "en_US")
+        )
+
+        XCTAssertNil(parsed.context)
+        XCTAssertEqual(parsed.draft.amount, Decimal(string: "42.10"))
+        XCTAssertEqual(parsed.draft.accountID, wallet.id)
+        XCTAssertNotNil(parsed.draft.occurredAt)
+
+        let archivedCash = LedgerAccount(
+            name: "Cash",
+            kind: .asset,
+            isArchived: true
+        )
+        let crossingBoundary = NaturalLanguageEntryParser.parse(
+            String(repeating: "x", count: 126) + " Ｃａｓｈ 12",
+            accounts: [archivedCash],
+            now: try now(),
+            calendar: calendar,
+            locale: Locale(identifier: "en_SG")
+        )
+        XCTAssertNil(crossingBoundary.draft.accountID)
+        XCTAssertNil(crossingBoundary.context)
+
+        let asciiPrefix = String(repeating: "x", count: 123)
+        let scalarBoundary = NaturalLanguageEntryParser.parse(
+            asciiPrefix + " Cashback 12",
+            accounts: [archivedCash],
+            now: try now(),
+            calendar: calendar,
+            locale: Locale(identifier: "en_SG")
+        )
+        XCTAssertEqual(scalarBoundary.context, asciiPrefix)
+
+        let cjkPrefix = String(repeating: "餐", count: 83)
+        let utf8Boundary = NaturalLanguageEntryParser.parse(
+            cjkPrefix + " xx Cashback 12",
+            accounts: [archivedCash],
+            now: try now(),
+            calendar: calendar,
+            locale: Locale(identifier: "en_SG")
+        )
+        XCTAssertEqual(utf8Boundary.context, cjkPrefix + " xx")
+        XCTAssertEqual(utf8Boundary.context?.utf8.count, 252)
+
+        let nonLetterBoundary = NaturalLanguageEntryParser.parse(
+            String(repeating: "\u{301}", count: 128) + " lunch 12",
+            accounts: [],
+            now: try now(),
+            calendar: calendar,
+            locale: Locale(identifier: "en_SG")
+        )
+        XCTAssertNil(nonLetterBoundary.context)
+    }
+
+    func testAssistanceContextSeparatesPunctuationBeforeRemovingCurrency() throws {
+        let sgd = try CurrencyCode("SGD")
+        let wallet = LedgerAccount(name: "Wallet", kind: .asset, currency: sgd)
+
+        let slash = NaturalLanguageEntryParser.parse(
+            "SGD/lunch 12",
+            accounts: [wallet],
+            now: try now(),
+            calendar: calendar,
+            locale: Locale(identifier: "en_SG")
+        )
+        let cjkPunctuation = NaturalLanguageEntryParser.parse(
+            "午餐，SGD。好友 12",
+            accounts: [wallet],
+            now: try now(),
+            calendar: calendar,
+            locale: Locale(identifier: "en_SG")
+        )
+        let fullwidthSlash = NaturalLanguageEntryParser.parse(
+            "SGD／午餐 12",
+            accounts: [wallet],
+            now: try now(),
+            calendar: calendar,
+            locale: Locale(identifier: "en_SG")
+        )
+        let fullwidthCurrency = NaturalLanguageEntryParser.parse(
+            "ＳＧＤ／午餐 12",
+            accounts: [wallet],
+            now: try now(),
+            calendar: calendar,
+            locale: Locale(identifier: "en_SG")
+        )
+        let zeroWidthSeparator = NaturalLanguageEntryParser.parse(
+            "SGD\u{200B}/lunch 12",
+            accounts: [wallet],
+            now: try now(),
+            calendar: calendar,
+            locale: Locale(identifier: "en_SG")
+        )
+        let embeddedZeroWidth = NaturalLanguageEntryParser.parse(
+            "S\u{200B}GD/lunch 12",
+            accounts: [wallet],
+            now: try now(),
+            calendar: calendar,
+            locale: Locale(identifier: "en_SG")
+        )
+        let embeddedVariationSelector = NaturalLanguageEntryParser.parse(
+            "S\u{FE0F}GD/lunch 12",
+            accounts: [wallet],
+            now: try now(),
+            calendar: calendar,
+            locale: Locale(identifier: "en_SG")
+        )
+
+        XCTAssertEqual(slash.context, "lunch")
+        XCTAssertEqual(cjkPunctuation.context, "午餐 好友")
+        XCTAssertEqual(fullwidthSlash.context, "午餐")
+        XCTAssertEqual(fullwidthCurrency.context, "午餐")
+        XCTAssertEqual(zeroWidthSeparator.context, "lunch")
+        XCTAssertEqual(embeddedZeroWidth.context, "lunch")
+        XCTAssertEqual(embeddedVariationSelector.context, "lunch")
     }
 
     func testUnparseablePhraseProducesAnEmptyDraft() throws {

@@ -7,102 +7,7 @@ import WidgetKit
 struct MoneyUpWidgetBundle: WidgetBundle {
     var body: some Widget {
         MoneyUpQuickActionsWidget()
-    }
-}
-
-enum MoneyUpQuickAction: String, AppEnum, CaseIterable, Identifiable, Sendable {
-    case expense
-    case income
-    case transfer
-    case refund
-    case smartEntry
-    case scanReceipt
-
-    static let typeDisplayRepresentation: TypeDisplayRepresentation =
-        "widget.configuration.action_type"
-
-    static let caseDisplayRepresentations: [MoneyUpQuickAction: DisplayRepresentation] = [
-        .expense: "widget.action.expense",
-        .income: "widget.action.income",
-        .transfer: "widget.action.transfer",
-        .refund: "widget.action.refund",
-        .smartEntry: "widget.action.smart_entry",
-        .scanReceipt: "widget.action.scan_receipt"
-    ]
-
-    static func mediumActions(
-        preferred: MoneyUpQuickAction
-    ) -> [MoneyUpQuickAction] {
-        let fallback: [MoneyUpQuickAction] = [
-            .expense,
-            .income,
-            .transfer,
-            .refund,
-            .scanReceipt,
-            .smartEntry
-        ]
-        return [preferred] + Array(fallback.filter { $0 != preferred }.prefix(3))
-    }
-
-    var id: String { rawValue }
-
-    var titleKey: LocalizedStringKey {
-        switch self {
-        case .expense:
-            "widget.action.expense"
-        case .income:
-            "widget.action.income"
-        case .transfer:
-            "widget.action.transfer"
-        case .refund:
-            "widget.action.refund"
-        case .smartEntry:
-            "widget.action.smart_entry"
-        case .scanReceipt:
-            "widget.action.scan_receipt"
-        }
-    }
-
-    var systemImage: String {
-        switch self {
-        case .expense:
-            "arrow.up.right"
-        case .income:
-            "arrow.down.left"
-        case .transfer:
-            "arrow.left.arrow.right"
-        case .refund:
-            "arrow.uturn.backward.circle"
-        case .smartEntry:
-            "sparkles"
-        case .scanReceipt:
-            "doc.text.viewfinder"
-        }
-    }
-
-    var requiresUnlock: Bool {
-        self == .smartEntry || self == .scanReceipt
-    }
-
-    var accessibilityHintKey: LocalizedStringKey {
-        requiresUnlock ? "widget.unlock_required" : "widget.capture_without_unlock"
-    }
-
-    var deepLink: URL {
-        switch self {
-        case .expense:
-            URL(string: "moneyup://quick-log/expense")!
-        case .income:
-            URL(string: "moneyup://quick-log/income")!
-        case .transfer:
-            URL(string: "moneyup://quick-log/transfer")!
-        case .refund:
-            URL(string: "moneyup://quick-log/refund")!
-        case .smartEntry:
-            URL(string: "moneyup://quick-log/smart-entry")!
-        case .scanReceipt:
-            URL(string: "moneyup://quick-log/scan-receipt")!
-        }
+        MoneyUpQuickLogControl()
     }
 }
 
@@ -229,10 +134,6 @@ private struct MoneyUpWidgetView: View {
         .environment(\.locale, AppLanguagePreference.current.locale)
         .containerBackground(Color.moneyUpWidgetBackground, for: .widget)
         .tint(.moneyUpSoftGreen)
-        .widgetURL(
-            entry.content == .quickAction && family != .systemMedium
-                ? entry.action.deepLink : nil
-        )
     }
 }
 
@@ -382,24 +283,29 @@ private struct SmallQuickActionView: View {
     let action: MoneyUpQuickAction
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            WidgetBrandHeader()
+        Button(intent: OpenQuickLogIntent(action: action)) {
+            VStack(alignment: .leading, spacing: 8) {
+                WidgetBrandHeader()
 
-            Spacer(minLength: 0)
+                Spacer(minLength: 0)
 
-            WidgetActionGlyph(action: action, size: 48)
-                .accessibilityHidden(true)
+                WidgetActionGlyph(action: action, size: 48)
+                    .accessibilityHidden(true)
 
-            Text(action.titleKey)
-                .font(.headline)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-            if action.requiresUnlock {
-                Label("widget.unlock_required", systemImage: "lock.fill")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                Text(action.titleKey)
+                    .font(.headline)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                if action.requiresUnlock {
+                    Label("platform_action.unlock_required", systemImage: "lock.fill")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
         .accessibilityHint(action.accessibilityHintKey)
     }
@@ -422,7 +328,7 @@ private struct MediumQuickActionsView: View {
                 ForEach(
                     MoneyUpQuickAction.mediumActions(preferred: preferredAction)
                 ) { action in
-                    Link(destination: action.deepLink) {
+                    Button(intent: OpenQuickLogIntent(action: action)) {
                         VStack(spacing: 7) {
                             WidgetActionGlyph(action: action, size: 38)
                             Text(action.titleKey)
@@ -455,18 +361,21 @@ private struct AccessoryCircularActionView: View {
     let action: MoneyUpQuickAction
 
     var body: some View {
-        ZStack {
-            AccessoryWidgetBackground()
-            Image("MoneyUpBrandMark")
-                .renderingMode(.template)
-                .resizable()
-                .scaledToFit()
-                .foregroundStyle(Color.secondary.opacity(0.32))
-                .padding(7)
-            Image(systemName: action.systemImage)
-                .font(.title3.weight(.semibold))
-                .widgetAccentable()
+        Button(intent: OpenQuickLogIntent(action: action)) {
+            ZStack {
+                AccessoryWidgetBackground()
+                Image("MoneyUpBrandMark")
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+                    .foregroundStyle(Color.secondary.opacity(0.32))
+                    .padding(7)
+                Image(systemName: action.systemImage)
+                    .font(.title3.weight(.semibold))
+                    .widgetAccentable()
+            }
         }
+        .buttonStyle(.plain)
         .accessibilityLabel(action.titleKey)
         .accessibilityHint(action.accessibilityHintKey)
     }
@@ -476,30 +385,33 @@ private struct AccessoryRectangularActionView: View {
     let action: MoneyUpQuickAction
 
     var body: some View {
-        HStack(spacing: 8) {
-            ZStack {
-                Image("MoneyUpBrandMark")
-                    .renderingMode(.template)
-                    .resizable()
-                    .scaledToFit()
-                    .opacity(0.28)
-                Image(systemName: action.systemImage)
-                    .font(.subheadline.weight(.bold))
-            }
+        Button(intent: OpenQuickLogIntent(action: action)) {
+            HStack(spacing: 8) {
+                ZStack {
+                    Image("MoneyUpBrandMark")
+                        .renderingMode(.template)
+                        .resizable()
+                        .scaledToFit()
+                        .opacity(0.28)
+                    Image(systemName: action.systemImage)
+                        .font(.subheadline.weight(.bold))
+                }
                 .widgetAccentable()
                 .frame(width: 28)
-            VStack(alignment: .leading, spacing: 1) {
-                Text("widget.title")
-                    .font(.caption2.weight(.semibold))
-                Text(action.titleKey)
-                    .font(.headline)
-                    .lineLimit(1)
-                if action.requiresUnlock {
-                    Label("widget.unlock_required", systemImage: "lock.fill")
-                        .font(.caption2)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("widget.title")
+                        .font(.caption2.weight(.semibold))
+                    Text(action.titleKey)
+                        .font(.headline)
+                        .lineLimit(1)
+                    if action.requiresUnlock {
+                        Label("platform_action.unlock_required", systemImage: "lock.fill")
+                            .font(.caption2)
+                    }
                 }
             }
         }
+        .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
         .accessibilityHint(action.accessibilityHintKey)
     }
@@ -603,11 +515,14 @@ private struct AccessoryInlineActionView: View {
     let action: MoneyUpQuickAction
 
     var body: some View {
-        Label {
-            Text(action.titleKey)
-        } icon: {
-            Image(systemName: action.systemImage)
+        Button(intent: OpenQuickLogIntent(action: action)) {
+            Label {
+                Text(action.titleKey)
+            } icon: {
+                Image(systemName: action.systemImage)
+            }
         }
+        .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
         .accessibilityHint(action.accessibilityHintKey)
     }
@@ -618,6 +533,22 @@ private extension Color {
     /// applies the user's system tint; full-colour widgets keep MoneyUp green.
     static let moneyUpSoftGreen = Color(
         uiColor: UIColor { traits in
+            if traits.accessibilityContrast == .high {
+                if traits.userInterfaceStyle == .dark {
+                    return UIColor(
+                        red: 164.0 / 255.0,
+                        green: 231.0 / 255.0,
+                        blue: 202.0 / 255.0,
+                        alpha: 1
+                    )
+                }
+                return UIColor(
+                    red: 31.0 / 255.0,
+                    green: 96.0 / 255.0,
+                    blue: 71.0 / 255.0,
+                    alpha: 1
+                )
+            }
             if traits.userInterfaceStyle == .dark {
                 return UIColor(
                     red: 130.0 / 255.0,
@@ -635,23 +566,89 @@ private extension Color {
         }
     )
 
-    /// Filled glyphs keep a forest-green endpoint in both appearances so the
-    /// white action symbol retains readable contrast. Bright mint remains an
-    /// accent and tint, not a foreground-bearing fill.
+    /// Filled glyphs use contrast-safe forest-green endpoints in each
+    /// appearance so the white action symbol remains readable against every
+    /// widget canvas. Bright mint remains an accent and tint.
     static let moneyUpAction = Color(
-        red: 52.0 / 255.0,
-        green: 120.0 / 255.0,
-        blue: 95.0 / 255.0
+        uiColor: UIColor { traits in
+            if traits.accessibilityContrast == .high {
+                if traits.userInterfaceStyle == .dark {
+                    return UIColor(
+                        red: 55.0 / 255.0,
+                        green: 123.0 / 255.0,
+                        blue: 97.0 / 255.0,
+                        alpha: 1
+                    )
+                }
+                return UIColor(
+                    red: 36.0 / 255.0,
+                    green: 95.0 / 255.0,
+                    blue: 73.0 / 255.0,
+                    alpha: 1
+                )
+            }
+            if traits.userInterfaceStyle == .dark {
+                return UIColor(
+                    red: 52.0 / 255.0,
+                    green: 127.0 / 255.0,
+                    blue: 96.0 / 255.0,
+                    alpha: 1
+                )
+            }
+            return UIColor(
+                red: 52.0 / 255.0,
+                green: 120.0 / 255.0,
+                blue: 95.0 / 255.0,
+                alpha: 1
+            )
+        }
     )
 
     static let moneyUpActionDeep = Color(
-        red: 37.0 / 255.0,
-        green: 92.0 / 255.0,
-        blue: 72.0 / 255.0
+        uiColor: UIColor { traits in
+            if traits.accessibilityContrast == .high {
+                if traits.userInterfaceStyle == .dark {
+                    return UIColor(
+                        red: 50.0 / 255.0,
+                        green: 118.0 / 255.0,
+                        blue: 91.0 / 255.0,
+                        alpha: 1
+                    )
+                }
+                return UIColor(
+                    red: 23.0 / 255.0,
+                    green: 74.0 / 255.0,
+                    blue: 55.0 / 255.0,
+                    alpha: 1
+                )
+            }
+            return UIColor(
+                red: 37.0 / 255.0,
+                green: 92.0 / 255.0,
+                blue: 72.0 / 255.0,
+                alpha: 1
+            )
+        }
     )
 
     static let moneyUpWidgetBackground = Color(
         uiColor: UIColor { traits in
+            if traits.accessibilityContrast == .high {
+                if traits.userInterfaceStyle == .dark {
+                    return UIColor(
+                        red: 18.0 / 255.0,
+                        green: 26.0 / 255.0,
+                        blue: 22.0 / 255.0,
+                        alpha: 1
+                    )
+                }
+                return UIColor(
+                    red: 252.0 / 255.0,
+                    green: 253.0 / 255.0,
+                    blue: 251.0 / 255.0,
+                    alpha: 1
+                )
+            }
             if traits.userInterfaceStyle == .dark {
                 return UIColor(
                     red: 24.0 / 255.0,

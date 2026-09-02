@@ -44,6 +44,11 @@ well before the expiry date shown in TestFlight.
 - Prepare fictional sample accounts, merchants, balances, and a receipt image.
 - Do not paste real account numbers, card numbers, passwords, or recovery codes
   into notes.
+- For the exact iOS 18 App Intent, App Shortcut, interactive widget, Control
+  Center, Lock Screen, and Action button matrix, also complete the
+  [privacy-safe platform actions runbook](PLATFORM_ACTIONS_RUNBOOK.md). Its
+  exact-route, passive Budget status, metadata, App Group, and locked-capture
+  checks are release gates rather than optional discovery testing.
 
 ## Founders smoke and acceptance test
 
@@ -102,6 +107,19 @@ the app silently resets, or the opening balance is wrong.
 - Verify account balances after every action.
 - Record `lunch 12.50 cash yesterday` or the equivalent Chinese phrase with
   smart entry, then correct every field before saving.
+- Confirm **On-device Smart Entry matching** is off on an upgraded and a clean
+  profile. On an eligible iOS 26 device, enable it and enter ambiguous English
+  and Chinese phrases. Every optional match must name only an existing account
+  or category; **Reject on-device match** must dismiss/revert it in one tap;
+  VoiceOver must announce **Use account suggestion: _name_** or **Use category
+  suggestion: _name_** in the active language for both on-device and book-
+  history suggestions. **Use** may change only that picker and must never save;
+  background/reopen once to confirm the accepted choice is in the recoverable
+  encrypted draft, then Reject and confirm the immediate prior choice returns.
+  Disable Apple
+  Intelligence, cancel generation, and repeat on an ineligible device: the
+  exact-rule result must remain with no error or fabricated fallback. Capture
+  network instrumentation proving zero requests and repeat with VoiceOver.
 - Select a clear sample receipt or screenshot. Confirm a reading-progress state
   appears immediately, recognized amount/payee/date values populate without an
   extra tap, and every value remains editable. Repeat with an unreadable crop;
@@ -146,6 +164,11 @@ the app silently resets, or the opening balance is wrong.
 - Tap a category bar and a monthly-flow bar, inspect the selected value, then
   open transactions. Confirm History has the matching category/date filters and
   Back returns to the chart.
+- Repeat both chart selections in grayscale and with the iOS blue/yellow color
+  filter (a tritan proxy, not a clinical equivalence claim). Confirm every bar
+  remains visible, the dashed selection rule remains distinct, and labels,
+  shapes/position, exact amounts, and VoiceOver expose the same meaning without
+  relying on hue.
 - Isolate or delete earlier expense samples, then make total base-currency
   expenses 100 for last month's equivalent period and 120 for this month so
   far. Confirm the month-to-date sentence says up 20%. Replace this month's
@@ -362,7 +385,9 @@ python3 Scripts/generate_release_fixture.py \
   captured origin context and the configured reporting calendar.
 - Complete every common flow in English and Simplified Chinese on the smallest
   supported and a current large iPhone, light/dark/tinted/redacted appearances,
-  largest Dynamic Type, VoiceOver, and Reduce Motion.
+  largest Dynamic Type, VoiceOver, Reduce Motion, Reduce Transparency, and
+  Increase Contrast. Include grayscale and the blue/yellow color filter for
+  Insights and every status-bearing surface.
 
 ## Seven-day use test
 

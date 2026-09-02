@@ -34,6 +34,7 @@ and App Review remain separate release gates.
 | Previewable local CSV/Qianji import with atomic commit | Implemented with test coverage; exact-candidate execution open |
 | SQLCipher schema-7 journal/posting/receipt/budget/intelligence indexes, store metrics, and compact exact balances | Implemented; exact-candidate tests open |
 | Optional explainable local intelligence with review-only actions and derived-data opt-out clearing | Implemented; exact-candidate and physical review open |
+| Off-by-default Foundation Models ordinal matching over at most 16 existing names per list, with no financial/free-text output | Implemented; Xcode 26 compile and eligible-device behavior gates open |
 | Optional end-to-end-encrypted device sync | Explicitly deferred from 1.0 |
 
 ## Privacy guarantee
@@ -50,8 +51,13 @@ bounds the longest edge, and re-encodes new JPEG/PNG pixels without copying GPS,
 EXIF, TIFF device, caption, or edit-history metadata into SQLCipher. The image
 never enters a draft, diagnostic log, widget, CSV, or XLSX export and is never
 transmitted. Typed-phrase parsing and category suggestions are plain arithmetic
-and string matching over the user's own records. No remote model receives a
-receipt, an amount, or a payee.
+and string matching over the user's own records. If separately enabled, Apple's
+default on-device system language model receives only a bounded context after
+parsed financial spans are removed plus at most 16 existing local names per
+list. Its generated shape contains only literal-range ordinals; it receives no
+image or receipt bytes and cannot return any financial field or free text. Unavailability,
+cancellation, error, staleness, or an invalid ordinal preserves the exact-rule
+result. No remote model receives a receipt, an amount, or a payee.
 
 The opt-in budget-status widget does not change the network guarantee. The app
 writes a versioned availability/state plus integer percentage to

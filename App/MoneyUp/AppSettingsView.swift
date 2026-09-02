@@ -117,6 +117,30 @@ struct AppSettingsView: View {
             }
 
             Section {
+                Toggle(
+                    "settings.on_device_assistance",
+                    isOn: Binding(
+                        get: {
+                            bindableModel.profile?
+                                .foundationModelAssistanceEnabled ?? false
+                        },
+                        set: { enabled in
+                            Task {
+                                await update {
+                                    try await bindableModel
+                                        .updateFoundationModelAssistance(enabled)
+                                }
+                            }
+                        }
+                    )
+                )
+            } header: {
+                Text("settings.on_device_assistance_section")
+            } footer: {
+                Text("settings.on_device_assistance_detail")
+            }
+
+            Section {
                 Picker(
                     "settings.auto_lock",
                     selection: Binding(

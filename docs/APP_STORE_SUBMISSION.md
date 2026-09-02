@@ -61,7 +61,10 @@ Description:
 > Smart entry can read a receipt or screenshot and understand a typed phrase.
 > Recognition and suggestions run on your iPhone; images are never uploaded
 > and are retained in encrypted storage only when you explicitly choose to keep
-> one with a transaction. Retained images are re-encoded without source location
+> one with a transaction. An off-by-default Apple on-device model can optionally
+> suggest a reviewed match from existing local account or category names; exact
+> rules keep control of financial fields and saving. Retained images are
+> re-encoded without source location
 > or camera metadata. Privacy-redacted Home and Lock Screen widgets open Expense, Income,
 > Transfer, Refund, Smart Entry, or Receipt actions without displaying financial
 > values. Basic actions can use a separate encrypted capture inbox while the

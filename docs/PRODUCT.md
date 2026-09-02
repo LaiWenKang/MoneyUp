@@ -39,7 +39,7 @@ end-to-end encryption and authorization design is approved.
 | Assets | Lifecycle-managed accounts/categories; ledger-linked holdings; dated prices; stale warnings; FIFO lots/disposals; currency-separated net-worth history |
 | Portability | Posting-level CSV and native XLSX, mapped CSV/TSV import, metadata-stripped encrypted receipt attachments, dated user FX rates, and file-backed chunk-authenticated `.moneyup` backup/restore |
 | Easy logging | Amount-first center Log, encrypted drafts, smart defaults, title-or-merchant, multi-line description/notes, refund, exact splits, date-indexed History/edit, and Undo; keyboard Done, Save, and tab navigation remain reachable |
-| Smart entry | Responsive fast-first on-device receipt and screenshot reading with immediate progress and visible populated suggestions, typed-phrase parsing, and category suggestions learned from the user's own history |
+| Smart entry | Responsive fast-first on-device receipt and screenshot reading, deterministic typed-phrase parsing, history-based suggestions, and optional review-first Apple on-device matching among at most 16 existing local accounts or categories |
 | Configurability | Add a category while logging, or use the category manager to rename, archive/restore, merge, reassign, and delete user-owned categories |
 | Intelligence | Optional deterministic recurrence/lapse/price, duplicate, anomaly, per-currency projection, and budget-proposal tools; every result is reviewable and local |
 | Scale architecture | SQLCipher schema-7 journal/posting/receipt/budget/intelligence indexes, trigger-maintained store metrics, compact balances, monthly rollover checkpoints, bounded recent activity, and on-demand History/Calendar/export/intelligence loading |
@@ -62,6 +62,12 @@ ambiguous transaction-title payload.
 
 - "Smart" features must be deterministic or on-device, explainable, and
   optional. Raw transactions are never sent to a remote language model.
+- Optional Foundation Models assistance is off by default. The deterministic
+  parser alone owns amount, date, currency, merchant text, and save behavior;
+  the default on-device system model may return only a bounded ordinal into a
+  stable list of existing names, and failure leaves the parser result intact.
+  Accepting a match immediately updates the recoverable encrypted draft; no
+  transaction exists until the user taps Save.
 - Intelligence findings are advice for review, not autonomous financial
   actions. Schedule offers remain editable until the user saves them, and a
   budget proposal changes nothing until the user accepts an explicit diff.

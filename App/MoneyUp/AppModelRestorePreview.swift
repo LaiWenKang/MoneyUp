@@ -82,8 +82,14 @@ extension AppModel {
             )
             return
         }
-        try await beginRestoreMutation()
-        defer { finishBookReplacementMutation() }
+        let quickActionBoundaryEpoch = try beginRestoreMutation()
+        defer {
+            finishBookReplacementMutation()
+            quickActionRouteBroker.endAuthoritativeBoundary(
+                quickActionBoundaryEpoch
+            )
+        }
+        await finishBeginningRestoreMutation()
         try Self.removeRestoreTemporaryArchive(restoreCommitArchiveURL)
         let commitURL = try await RestoreArchiveStaging.verifiedCommitCopy(
             for: ticket,

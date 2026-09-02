@@ -65,6 +65,32 @@ status.
 - [ ] Deferred: exact-candidate physical iPhone, accessibility, migration,
   restore, and oldest-device performance evidence remains open
 
+## 0.7.0 W3 - optional bounded on-device matching
+
+- [x] Keep the persisted Foundation Models preference off for legacy and new
+  profiles; gate before planning so disabled execution invokes neither planner
+  nor selector
+- [x] Accept only a normalized typed request at the sole model seam, with
+  scalar/UTF-8 component ceilings, a total prompt ceiling, stable lists of at
+  most 16 existing names, and no raw OCR, money, date, ID, receipt, or ambient
+  string path
+- [x] Retain `SystemLanguageModel.default`, exact availability gating, one
+  uncustomized session, and two literal `0...15` generated ordinals; retain
+  deterministic ownership of every financial field and Save
+- [x] Filter deterministic-history/model races per field in both completion
+  orders; recheck kind, profile, splits, membership, and full field provenance
+  before publication
+- [x] Capture immediate pre-Use state and restore it on Reject only while the
+  exact model-applied state is current; persist the restored recoverable draft
+  through SQLCipher close/reopen without creating a transaction
+- [x] Add contextual bilingual VoiceOver labels to model and deterministic
+  history Use actions, plus truthful encrypted-draft-versus-Save copy
+- [x] Pass local architecture, structure, localization, release, and mutation
+  gates for this source slice
+- [ ] Run exact-candidate Xcode 16 fallback and Xcode 26 macro/app tests, then
+  complete bilingual VoiceOver, Apple Intelligence unavailable/cancelled,
+  lock/relaunch, and eligible-device review
+
 ## 0.7.0 W4.1 - automated performance measurement baseline
 
 - [x] Add a direct-module, serial Release XCTest target with a
@@ -98,6 +124,47 @@ status.
 - [ ] Deferred: exact-candidate Instruments collection and log privacy review,
   oldest/current physical-device p50/p95 evidence, receipt peak memory,
   archive near-limit behavior, and sustained interaction/jank review
+
+## 0.7.0 W6 - design primitives
+
+- [x] Add pure policies for semantic motion, Dynamic Type-relative financial
+  typography, consequential feedback, and flat/raised/floating cards
+- [x] Preserve raised cards as the default; use opaque surfaces, a solid border
+  under Reduce Transparency, and stronger separation under Increase Contrast
+- [x] Make financial-value updates immediate and remove custom motion under
+  Reduce Motion while retaining native tab and sheet transitions; migrate Quick
+  Log confirmation behavior to the same policy
+- [x] Enforce consequential haptics through visible-status policy and reject
+  direct `sensoryFeedback` bypasses in release validation
+- [x] Add exact light/dark normal/high semantic colors and ordered chart roles;
+  retain the shipped normal values
+- [x] Keep chart data geometry fully opaque, encode selection with a dashed
+  rule, and mutation-test rendered 3:1 contrast rather than raw colors alone
+- [x] Add focused hosted-app policy tests and migrate Today/Plan hero financial
+  values as API proofs
+- [ ] Run exact-candidate Xcode CI and the full bilingual visual/accessibility
+  matrix, including grayscale and blue/yellow filtering; source policy tests do
+  not close screenshot, tritan, VoiceOver, or physical-device gates
+
+## 0.7.0 W7 - privacy-safe platform actions
+
+- [x] Extract one shared six-case quick-action type while retaining the exact
+  persisted widget raw values and existing `moneyup://quick-log/<mode>` routes
+- [x] Route the action-only `OpenQuickLogIntent` through a bounded process-local
+  FIFO and generation-bound unique UI request that defers startup/UI-slot
+  contention, preserves duplicate order, and invalidates queued, occupied, and
+  local handoffs synchronously across erase, restore, and tombstone startup,
+  shared by widgets, six bilingual App Shortcuts, and one configurable iOS 18
+  Control Widget
+- [x] Replace quick-action links with interactive intent buttons while keeping
+  percentage-only Budget status completely passive
+- [x] Gate bundle IDs, reviewed App Group entitlements, locked-capture source,
+  global compiled intent/control inventory, action mappings, parameters,
+  mutation/UI generations, and bilingual iOS 18/iOS 26 metadata in CI and
+  protected distribution validation
+- [ ] Deferred: exact-candidate Xcode metadata extraction, App Shortcuts
+  Preview, signed-device Siri/Spotlight, widget-upgrade, Control Center, Lock
+  Screen, Action button, authentication, and forensic privacy evidence
 
 ## Foundation
 
@@ -186,6 +253,9 @@ status.
   and `.moneyup` restore, excluded from readable exports
 - [x] Privacy-redacted widget actions and opt-in percentage/state-only budget
   snapshot using `group.com.laiwenkang.MoneyUp`
+- [x] Action-only App Intents, bilingual App Shortcuts, interactive quick-action
+  widgets, and an iOS 18 Control Widget share one strict URL allowlist; no
+  platform action writes or returns transaction data
 - [x] Source validator limits app/widget entitlements to the reviewed group;
   TestFlight workflow checks both profiles and signed bundles
 - [ ] Account holder registers/enables the App Group on both App IDs
@@ -257,7 +327,8 @@ installation, and physical evidence are separate gates.
 - [ ] Measure all Golden p95 budgets with 10,000 entries and 20 schedules on the
   oldest supported iPhone
 - [ ] Pass English/Simplified Chinese, VoiceOver, largest Dynamic Type, Reduce
-  Motion, light/dark/tinted/redacted, small/large iPhone, and every widget family
+  Motion, Reduce Transparency, Increase Contrast, grayscale/blue-yellow color
+  filters, light/dark/tinted/redacted, small/large iPhone, and every widget family
 - [ ] Prove the same app record, bundle IDs, App Group, Keychain namespace, app
   container, and TestFlight-to-production update path preserve data
 

@@ -39,6 +39,19 @@ extension AppModel {
     ) async throws {
         let isResuming = KeyCliffRecoveryTransaction
             .hasPendingManifest(for: databaseURL)
+        let quickActionBoundaryEpoch: UInt64?
+        if isResuming {
+            quickActionBoundaryEpoch = beginAuthoritativeQuickActionBoundary()
+        } else {
+            quickActionBoundaryEpoch = nil
+        }
+        defer {
+            if let quickActionBoundaryEpoch {
+                quickActionRouteBroker.endAuthoritativeBoundary(
+                    quickActionBoundaryEpoch
+                )
+            }
+        }
         if isResuming {
             // The marker is a hard old-book/new-book boundary. Clear every
             // externally visible request/projection before touching either
@@ -48,14 +61,10 @@ extension AppModel {
             disableBudgetWidgetSnapshot()
             if try KeyCliffRecoveryTransaction.phase(for: databaseURL) == .rollingBack {
                 try keyCliffRecoveryKeyAccess.delete()
-                try KeyCliffRecoveryTransaction.restoreOriginal(
-                    for: databaseURL
-                )
+                try KeyCliffRecoveryTransaction.restoreOriginal(for: databaseURL)
                 throw DatabaseKeyStoreError.missingDeviceBoundKey
             }
-            try KeyCliffRecoveryTransaction.installCandidate(
-                for: databaseURL
-            )
+            try KeyCliffRecoveryTransaction.installCandidate(for: databaseURL)
         } else {
             keyCliffRecoveryResidueScavenger(databaseURL)
         }
@@ -70,22 +79,17 @@ extension AppModel {
                 // validate without publishing the candidate's preferences or
                 // applying normal-startup recovery conveniences before complete.
                 try await load(from: openedStore, mode: .restoreValidation)
-                let hasProfile = try await validateLoadedStartupBook(
-                    in: openedStore
-                )
+                let hasProfile = try await validateLoadedStartupBook(in: openedStore)
                 // Recheck the separately encrypted inbox at the final durable
                 // boundary. A capture that appeared after initial consent can
                 // belong only to the inaccessible book and must never cross
                 // into the archive-restored candidate.
                 try await requireEmptyLockedCaptureInbox()
-                await lifecycleHooks.checkpoint(
-                    .afterKeyCliffValidationBeforeCompletion
-                )
+                await lifecycleHooks.checkpoint(.afterKeyCliffValidationBeforeCompletion)
                 try KeyCliffRecoveryTransaction.complete(for: databaseURL)
                 startupFailureKind = nil
                 await publishValidatedStartupBookAfterIrreversibleRecovery(
-                    in: openedStore,
-                    hasProfile: hasProfile
+                    in: openedStore, hasProfile: hasProfile
                 )
                 refreshBudgetWidgetSnapshot()
             } else {
@@ -105,13 +109,9 @@ extension AppModel {
             clearDecodedState()
             disableBudgetWidgetSnapshot()
             do {
-                try KeyCliffRecoveryTransaction.beginRollback(
-                    for: databaseURL
-                )
+                try KeyCliffRecoveryTransaction.beginRollback(for: databaseURL)
                 try keyCliffRecoveryKeyAccess.delete()
-                try KeyCliffRecoveryTransaction.restoreOriginal(
-                    for: databaseURL
-                )
+                try KeyCliffRecoveryTransaction.restoreOriginal(for: databaseURL)
             } catch {
                 throw AppModelError.restoreRecoveryFailed
             }
@@ -136,7 +136,13 @@ extension AppModel {
         try beginLifecycleMutation(invalidatesJournalProjection: false)
         isWorking = true
         isBookReplacementInProgress = true
-        defer { finishBookReplacementMutation() }
+        let quickActionBoundaryEpoch = beginAuthoritativeQuickActionBoundary()
+        defer {
+            finishBookReplacementMutation()
+            quickActionRouteBroker.endAuthoritativeBoundary(
+                quickActionBoundaryEpoch
+            )
+        }
 
         try await requireEmptyLockedCaptureInbox()
         try Task.checkCancellation()
