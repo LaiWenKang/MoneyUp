@@ -591,7 +591,9 @@ private struct LoanEditSheet: View {
     init(plan: LoanPlan) {
         self.plan = plan
         _name = State(initialValue: plan.name)
-        _apr = State(initialValue: plan.annualPercentageRate.map(editableAmount) ?? "")
+        _apr = State(
+            initialValue: plan.annualPercentageRate.map { editableAmount($0) } ?? ""
+        )
         _term = State(initialValue: plan.termMonths.map(String.init) ?? "")
         _includeInDebt = State(initialValue: plan.includeInTotalDebt)
         _interestCategoryID = State(initialValue: plan.interestExpenseAccountID)
