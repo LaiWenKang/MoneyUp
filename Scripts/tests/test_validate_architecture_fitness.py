@@ -2068,6 +2068,14 @@ func unreviewedPlan(
         amountText = ""''',
             ),
             (
+                draft_relative,
+                '''        isShowingOptionalDetails = false
+        pendingLaunchRequest = nil
+        isConfirmingDraftSwitch = false''',
+                '''        isShowingOptionalDetails = false
+        isConfirmingDraftSwitch = false''',
+            ),
+            (
                 capture_relative,
                 '''        clearCaptureSuggestionProvenance()
         cancelOnDeviceAssistance()

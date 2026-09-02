@@ -109,7 +109,7 @@ extension QuickLogEntryView {
         lastSavedEntryID = nil
         isUndoing = false
         isShowingOptionalDetails = false
-        pendingLaunchMode = nil
+        pendingLaunchRequest = nil
         isConfirmingDraftSwitch = false
         guard !model.isBookReplacementInProgress,
               model.state == .ready else { return }

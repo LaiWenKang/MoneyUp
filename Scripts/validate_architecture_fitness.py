@@ -587,7 +587,7 @@ W3_SOURCE_FUNCTION_DIGESTS: tuple[
         re.compile(
             r"\bfunc\s+reloadDraftForLogicalBookReplacement\s*\(\s*\)\s*\{"
         ),
-        "4ae05872bf46baa561a748e52ae9ee30ae5bccb68189e9440f2618e70e8abb22",
+        "daa02b37a888d29954e12d17b64bd0b4ebf2cfb16345fb8d553755b94d983d0b",
     ),
     (
         "App/MoneyUp/QuickLogEntryCaptureSuggestions.swift",
