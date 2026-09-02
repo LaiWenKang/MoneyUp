@@ -15,6 +15,8 @@ enum RestoreCandidateValidator {
         var lifecycleReferenceCount = 0
         var scheduleResolutionCount = 0
         var savingsGoalActivityCount = 0
+        var loanActivityCount = 0
+        var allowanceUsageCount = 0
         var aggregatePayloadByteCount = 0
     }
 
@@ -60,6 +62,10 @@ enum RestoreCandidateValidator {
     static let maximumSavingsGoalActivitiesPerGoal =
         SavingsGoal.maximumActivityCount
     static let maximumSavingsGoalActivityCount = 25_000
+    static let maximumLoanActivitiesPerPlan = LoanPlan.maximumActivityCount
+    static let maximumLoanActivityCount = 100_000
+    static let maximumAllowanceUsagesPerPlan = AllowancePlan.maximumUsageCount
+    static let maximumAllowanceUsageCount = 100_000
     static let maximumBudgetTimelineRevisionCount =
         BudgetConfigurationTimeline.maximumRevisionCount
     static let maximumBudgetNodesPerRevision =
@@ -236,6 +242,25 @@ enum RestoreCandidateValidator {
             )
         case .savingsGoals:
             try validateSavingsGoalWork(record, decoder: decoder, state: &state)
+        case .loanPlans:
+            let shape = try decoder.decode(LoanPlanWorkShape.self, from: record.payload)
+            state.loanActivityCount = try boundedAggregateCount(
+                current: state.loanActivityCount,
+                adding: shape.activityCount,
+                perRecordLimit: maximumLoanActivitiesPerPlan,
+                aggregateLimit: maximumLoanActivityCount
+            )
+        case .allowancePlans:
+            let shape = try decoder.decode(
+                AllowancePlanWorkShape.self,
+                from: record.payload
+            )
+            state.allowanceUsageCount = try boundedAggregateCount(
+                current: state.allowanceUsageCount,
+                adding: shape.usageCount,
+                perRecordLimit: maximumAllowanceUsagesPerPlan,
+                aggregateLimit: maximumAllowanceUsageCount
+            )
         case .budgetConfigurationTimelines:
             try validateBudgetTimelineWork(record, decoder: decoder)
         case .budgetEntryAttributions:

@@ -51,14 +51,13 @@ extension QuickLogEntryView {
 
     func refreshUntouchedOccurrenceDate(persist: Bool = true) {
         guard hasRestoredDraft,
-              !dismissAfterSave,
               QuickLogOccurrencePolicy.shouldRefresh(
                   hasTransactionContent: draftSnapshot.hasTransactionContent,
                   dateWasEdited: dateWasEdited,
                   sourceCaptureID: sourceCaptureID
               ) else { return }
         occurredAt = model.currentDateForUserAction()
-        if persist {
+        if persist, !dismissAfterSave {
             model.updateQuickLogDraft(draftSnapshot)
         }
     }

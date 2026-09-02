@@ -7,7 +7,12 @@ struct HistorySummaryView: View {
     let summary: HistorySummary
 
     private var currencies: [CurrencyCode] {
-        summary.amountsByCurrency.keys.sorted()
+        Set(
+            Array(summary.amountsByCurrency.keys)
+                + Array(summary.spendingByCurrency.keys)
+                + Array(summary.incomeByCurrency.keys)
+                + Array(summary.refundsByCurrency.keys)
+        ).sorted()
     }
 
     var body: some View {
@@ -22,26 +27,32 @@ struct HistorySummaryView: View {
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(currencies, id: \.self) { currency in
-                    LabeledContent {
-                        if let amount = summary.amountsByCurrency[currency] {
-                            switch DerivedValue<Money>.money(
-                                amount,
-                                currency: currency,
-                                operation: "history-filtered-total"
-                            ) {
-                            case let .available(money):
-                                Text(formattedMoney(money))
-                                    .monospacedDigit()
-                            case let .unavailable(issue):
-                                DerivedValueUnavailableView(issue: issue)
-                            }
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(currency.value)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        summaryAmount(
+                            "history.spent",
+                            amount: summary.spendingByCurrency[currency] ?? .zero,
+                            currency: currency
+                        )
+                        summaryAmount(
+                            "history.income",
+                            amount: summary.incomeByCurrency[currency] ?? .zero,
+                            currency: currency
+                        )
+                        if summary.refundsByCurrency[currency] != nil {
+                            summaryAmount(
+                                "history.refunds",
+                                amount: summary.refundsByCurrency[currency] ?? .zero,
+                                currency: currency
+                            )
                         }
-                    } label: {
-                        HStack(spacing: 4) {
-                            Text("history.filtered_total")
-                            Text(currency.value)
-                                .foregroundStyle(.secondary)
-                        }
+                        summaryAmount(
+                            "history.net_movement",
+                            amount: summary.amountsByCurrency[currency] ?? .zero,
+                            currency: currency
+                        )
                     }
                 }
             }
@@ -51,6 +62,28 @@ struct HistorySummaryView: View {
         }
         .accessibilityElement(children: .contain)
     }
+
+    @ViewBuilder
+    private func summaryAmount(
+        _ key: LocalizedStringKey,
+        amount: Decimal,
+        currency: CurrencyCode
+    ) -> some View {
+        LabeledContent {
+            switch DerivedValue<Money>.money(
+                amount,
+                currency: currency,
+                operation: "history-summary"
+            ) {
+            case let .available(money):
+                Text(formattedMoney(money)).monospacedDigit()
+            case let .unavailable(issue):
+                DerivedValueUnavailableView(issue: issue)
+            }
+        } label: {
+            Text(key)
+        }
+    }
 }
 
 struct HistoryFilterSheet: View {
@@ -58,6 +91,7 @@ struct HistoryFilterSheet: View {
     private static let chartGroupSelection = "history-category:chart-group"
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppModel.self) private var model
     @State private var draft: HistoryFilterDraft
 
     let accounts: [LedgerAccount]
@@ -158,7 +192,7 @@ struct HistoryFilterSheet: View {
                                 .tag(Self.chartGroupSelection)
                         }
                         ForEach(categories) { category in
-                            Text(category.name)
+                            Text(model.categoryPathName(for: category.id))
                                 .tag(Self.selectionKey(for: category.id))
                         }
                     }

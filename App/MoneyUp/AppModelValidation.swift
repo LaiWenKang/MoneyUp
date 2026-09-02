@@ -46,6 +46,8 @@ extension AppModel {
         exchangeRates = []
         netWorthSnapshots = []
         savingsGoals = []
+        loanPlans = []
+        allowancePlans = []
         quickLogDraft = nil
         recoveryIssues = []
         pendingRestoreCompletionAnnouncement = nil
@@ -66,6 +68,37 @@ extension AppModel {
             balances: investmentContext.balances
         )
         try validateLoadedAttachmentsAndGoals()
+        try validateLoadedLoanAndAllowancePlans(accountIDs: accountIDs)
+    }
+
+    private func validateLoadedLoanAndAllowancePlans(
+        accountIDs: Set<UUID>
+    ) throws {
+        let loanAccountIDs = Set(accounts.filter {
+            $0.kind == .liability && $0.accountType == .loan
+        }.map(\.id))
+        let expenseCategoryIDs = Set(accounts.filter { $0.kind == .expense }.map(\.id))
+        guard Set(loanPlans.map(\.id)).count == loanPlans.count,
+              Set(loanPlans.map(\.accountID)).count == loanPlans.count,
+              loanAccountIDs.isSubset(of: accountIDs),
+              loanPlans.allSatisfy({ plan in
+                  loanAccountIDs.contains(plan.accountID)
+                      && (plan.interestExpenseAccountID.map(
+                          expenseCategoryIDs.contains
+                      ) ?? true)
+                      && (plan.feeExpenseAccountID.map(
+                          expenseCategoryIDs.contains
+                      ) ?? true)
+              }),
+              Set(allowancePlans.map(\.id)).count == allowancePlans.count,
+              allowancePlans.allSatisfy({ plan in
+                  plan.eligibleCategoryIDs.isSubset(of: expenseCategoryIDs)
+                      && plan.usages.allSatisfy { usage in
+                          usage.categoryID.map(expenseCategoryIDs.contains) ?? true
+                      }
+              }) else {
+            throw AppModelError.invalidBook
+        }
     }
 
     private func validateLoadedAccountsAndJournal(
@@ -393,6 +426,11 @@ enum AppModelError: Error {
     case invalidGoal
     case goalWithdrawalExceedsBalance
     case pendingLockedCaptures
+    case invalidLoan
+    case loanOverpayment
+    case loanNotPaidOff
+    case invalidAllowance
+    case invalidCategoryParent
 }
 
 extension AppModelError: LocalizedError {
@@ -459,6 +497,12 @@ extension AppModelError: LocalizedError {
             AppLocalization.string("goal.error.withdrawal_exceeds_balance")
         case .pendingLockedCaptures:
             AppLocalization.string("backup.error.pending_captures")
+        case .invalidLoan: AppLocalization.string("loan.error.invalid")
+        case .loanOverpayment: AppLocalization.string("loan.error.overpayment")
+        case .loanNotPaidOff: AppLocalization.string("loan.error.not_paid_off")
+        case .invalidAllowance: AppLocalization.string("allowance.error.invalid")
+        case .invalidCategoryParent:
+            AppLocalization.string("lifecycle.error.invalid_parent")
         }
     }
 }

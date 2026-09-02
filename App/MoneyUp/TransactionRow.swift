@@ -10,7 +10,7 @@ struct TransactionRow: View {
         entry.postings.lazy.compactMap { posting in
             let account = model.accountsByID[posting.accountID]
             return account?.kind == .expense || account?.kind == .income
-                ? account?.name
+                ? model.categoryPathName(for: posting.accountID)
                 : nil
         }.first
     }
@@ -95,6 +95,7 @@ struct TransactionRow: View {
         var components: [String] = []
         if localizedKind != title { components.append(localizedKind) }
         if let categoryName, categoryName != title { components.append(categoryName) }
+        if let note = entry.note { components.append(note) }
         components.append(reportingDateDescription)
         switch displayedAmountsResult {
         case let .available(amounts):
@@ -113,7 +114,7 @@ struct TransactionRow: View {
                         transactionIcon
                         Text(title)
                             .fontWeight(.semibold)
-                            .lineLimit(3)
+                            .lineLimit(2)
                     }
                     transactionMetadata
                     amountContent
@@ -124,7 +125,7 @@ struct TransactionRow: View {
                     transactionIcon
                     VStack(alignment: .leading, spacing: 2) {
                         Text(title)
-                            .lineLimit(1)
+                            .lineLimit(2)
                         transactionMetadata
                     }
                     Spacer()
@@ -147,16 +148,22 @@ struct TransactionRow: View {
     }
 
     private var transactionMetadata: some View {
-        HStack(spacing: 5) {
-            Text(reportingDateDescription)
-            if let categoryName, categoryName != title {
-                Text("•")
-                Text(categoryName)
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 5) {
+                Text(reportingDateDescription)
+                if let categoryName, categoryName != title {
+                    Text("•")
+                    Text(categoryName)
+                }
+            }
+            if let note = entry.note {
+                Text(note)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
             }
         }
         .font(.caption)
         .foregroundStyle(.secondary)
-        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
+        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
     }
 
     @ViewBuilder

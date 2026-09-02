@@ -85,6 +85,14 @@ extension AppModel {
         }
         let normalizedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedName.isEmpty else { throw AppModelError.emptyName }
+        if let parentID {
+            guard let parent = accountsByID[parentID],
+                  parent.kind == kind,
+                  !parent.isArchived,
+                  parent.systemRole == nil else {
+                throw AppModelError.invalidCategoryParent
+            }
+        }
         let category = LedgerAccount(
             name: normalizedName,
             kind: kind,
@@ -143,8 +151,9 @@ extension AppModel {
                 profile.preferredExpenseCategoryID,
                 profile.preferredIncomeCategoryID
             ].compactMap { $0 }.filter { $0 == id }.count
+                + planningReferenceCount(to: id)
         } else {
-            defaultReferenceCount = 0
+            defaultReferenceCount = planningReferenceCount(to: id)
         }
         let draftReferenceCount: Int
         if let quickLogDraft {
@@ -188,6 +197,113 @@ extension AppModel {
                     || isInvestmentFundingAccountShape($0))
         }
     }
+
+    func compatibleCategoryParents(for id: UUID) -> [LedgerAccount] {
+        guard let category = accountsByID[id],
+              category.kind == .expense || category.kind == .income else { return [] }
+        let descendants = descendantCategoryIDs(of: id)
+        return accounts.filter {
+            $0.id != id
+                && !descendants.contains($0.id)
+                && $0.kind == category.kind
+                && !$0.isArchived
+                && $0.systemRole == nil
+        }.sorted { categoryPathName(for: $0.id) < categoryPathName(for: $1.id) }
+    }
+
+    func categoryPathName(for id: UUID) -> String {
+        var names: [String] = []
+        var currentID: UUID? = id
+        var visited = Set<UUID>()
+        while let candidate = currentID,
+              let account = accountsByID[candidate],
+              visited.insert(candidate).inserted {
+            names.append(account.name)
+            currentID = account.parentID
+        }
+        return names.reversed().joined(separator: " › ")
+    }
+
+    func reparentCategory(id: UUID, parentID: UUID?) async throws {
+        try beginLifecycleMutation()
+        defer { endLifecycleMutation() }
+        guard let index = accounts.firstIndex(where: { $0.id == id }) else {
+            throw AppModelError.missingRecord
+        }
+        let original = accounts[index]
+        try requireLifecycleEligible(original)
+        guard original.kind == .expense || original.kind == .income else {
+            throw AppModelError.invalidCategoryKind
+        }
+        if let parentID {
+            guard compatibleCategoryParents(for: id).contains(where: {
+                $0.id == parentID
+            }) else { throw AppModelError.invalidCategoryParent }
+        }
+        guard original.parentID != parentID else { return }
+
+        var updated = original
+        updated.parentID = parentID
+        var candidateBudgets = budgetNodes
+        let beforeBudget = candidateBudgets.first { $0.id == id }
+        if original.kind == .expense {
+            guard let currency = profile?.baseCurrency,
+                  let budgetIndex = candidateBudgets.firstIndex(where: {
+                      $0.id == id
+                  }) else { throw AppModelError.missingRecord }
+            candidateBudgets[budgetIndex].parentID = parentID
+            _ = try BudgetTree(currency: currency, nodes: candidateBudgets)
+        } else {
+            var cursor = parentID
+            var visited = Set([id])
+            while let candidate = cursor {
+                guard visited.insert(candidate).inserted else {
+                    throw AppModelError.invalidCategoryParent
+                }
+                cursor = accountsByID[candidate]?.parentID
+            }
+        }
+        let afterBudget = candidateBudgets.first { $0.id == id }
+        let timeline = original.kind == .expense
+            ? try budgetConfigurationTimelineRecording(nodes: candidateBudgets)
+            : nil
+        let audit = LedgerAccountLifecycleAudit(
+            action: .categoryMetadataUpdated,
+            before: original,
+            after: updated,
+            beforeBudget: beforeBudget,
+            afterBudget: afterBudget
+        )
+        var writes = [
+            try RecordWrite(updated, id: updated.id.uuidString, in: .accounts),
+            try lifecycleAuditWrite(audit)
+        ]
+        if let afterBudget {
+            writes.append(
+                try RecordWrite(afterBudget, id: afterBudget.id.uuidString, in: .budgetNodes)
+            )
+        }
+        if let timeline { writes.append(try budgetConfigurationTimelineWrite(timeline)) }
+        let generation = storeGeneration
+        try await requireStore().write(writes)
+        guard isCurrentStoreGeneration(generation) else { return }
+        accounts[index] = updated
+        if let timeline { budgetConfigurationTimeline = timeline }
+        budgetNodes = candidateBudgets
+    }
+
+    private func descendantCategoryIDs(of id: UUID) -> Set<UUID> {
+        let children = Dictionary(grouping: accounts, by: \.parentID)
+        var result = Set<UUID>()
+        var stack = children[id, default: []].map(\.id)
+        while let next = stack.popLast(), result.insert(next).inserted {
+            stack.append(contentsOf: children[next, default: []].map(\.id))
+        }
+        return result
+    }
+}
+
+extension AppModel {
 
     func renameLedgerItem(id: UUID, name: String) async throws {
         try beginLifecycleMutation()
@@ -252,6 +368,7 @@ extension AppModel {
         name: String,
         amount: Decimal?,
         purpose: BudgetPurpose,
+        pacingCadence: BudgetPacingCadence = .monthly,
         rolloverRule: BudgetRolloverRule
     ) async throws {
         try beginLifecycleMutation()
@@ -284,6 +401,7 @@ extension AppModel {
                 candidateBudgets[budgetIndex],
                 amount: amount,
                 purpose: purpose,
+                pacingCadence: pacingCadence,
                 rolloverRule: rolloverRule,
                 currency: currency
             )
@@ -380,6 +498,9 @@ extension AppModel {
                 !$0.isArchived && $0.accountID == id
             }
             guard !hasScheduleReference, !fundsActiveHolding else {
+                throw AppModelError.ledgerItemInUse
+            }
+            guard planningReferenceCount(to: id) == 0 else {
                 throw AppModelError.ledgerItemInUse
             }
         }
@@ -555,5 +676,20 @@ extension AppModel {
         if shouldAddEquity { accounts.append(equity) }
         if retainsCompleteJournal { entries.insert(entry, at: 0) }
         await refreshJournalAfterMutation()
+    }
+
+    func planningReferenceCount(to id: UUID) -> Int {
+        loanPlans.reduce(into: 0) { count, plan in
+            if plan.accountID == id
+                || plan.interestExpenseAccountID == id
+                || plan.feeExpenseAccountID == id {
+                count += 1
+            }
+        } + allowancePlans.reduce(into: 0) { count, plan in
+            if plan.eligibleCategoryIDs.contains(id)
+                || plan.usages.contains(where: { $0.categoryID == id }) {
+                count += 1
+            }
+        }
     }
 }

@@ -6,6 +6,42 @@ import SwiftUI
 import UIKit
 
 extension QuickLogEntryView {
+    var occurrenceSection: some View {
+        Section {
+            LabeledContent("quick_log.occurred_at") {
+                Text(
+                    occurredAt.formattedForReporting(
+                        .dateTime.month().day().hour().minute(),
+                        calendar: model.reportingCalendar
+                    )
+                )
+                .foregroundStyle(.secondary)
+            }
+            DisclosureGroup(
+                "quick_log.date_and_time",
+                isExpanded: $isShowingOptionalDetails
+            ) {
+                DatePicker(
+                    "quick_log.date",
+                    selection: Binding(
+                        get: { occurredAt },
+                        set: { newDate in
+                            cancelOnDeviceAssistance()
+                            occurredAt = newDate
+                            dateWasEdited = true
+                            invalidateCaptureSuggestions()
+                            persistUserDraftChange { snapshot in
+                                snapshot.occurredAt = newDate
+                                snapshot.dateWasEdited = true
+                            }
+                        }
+                    ),
+                    displayedComponents: [.date, .hourAndMinute]
+                )
+            }
+        }
+    }
+
     var smartEntrySection: some View {
         Section {
             HStack(alignment: .top, spacing: 8) {
@@ -20,6 +56,7 @@ extension QuickLogEntryView {
                 )
                     .lineLimit(1...3)
                     .focused($focusedField, equals: .smartEntry)
+                    .id(QuickLogFieldFocus.smartEntry)
                 Button("quick_log.smart_fill") { applyTypedPhrase() }
                     .buttonStyle(.borderless)
                     .disabled(
@@ -119,7 +156,8 @@ extension QuickLogEntryView {
                     )
                 ) {
                     ForEach(categories) { category in
-                        Text(category.name).tag(Optional(category.id))
+                        Text(model.categoryPathName(for: category.id))
+                            .tag(Optional(category.id))
                     }
                 }
                 .accessibilityLabel(
@@ -146,6 +184,7 @@ extension QuickLogEntryView {
                     )
                     .moneyAmountKeyboard(currency: selectedAccountCurrency)
                     .focused($focusedField, equals: .splitAmount(lineID))
+                    .id(QuickLogFieldFocus.splitAmount(lineID))
                     .moneyUpFieldValidation(lineValidationMessage)
                     .accessibilityLabel(
                         Text(
@@ -194,6 +233,7 @@ extension QuickLogEntryView {
                 )
                 .font(.caption)
                 .focused($focusedField, equals: .splitMemo(lineID))
+                .id(QuickLogFieldFocus.splitMemo(lineID))
                 .accessibilityLabel(
                     Text(
                         String(

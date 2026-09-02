@@ -1,4 +1,4 @@
-# MoneyUp 0.7.0 Requirement Traceability Matrix
+# MoneyUp 0.7.1 Requirement Traceability Matrix
 
 Reviewed: 1 September 2026
 
@@ -20,6 +20,23 @@ the earlier `MoneyUp-PRD-v1.1.pdf` is contextual where it does not conflict.
 
 Test names are exact function names unless prefixed `STATIC` or `MANUAL`.
 Automated source presence is not reported as an execution pass.
+
+## 0.7.1 feedback acceptance overlay
+
+These rows cover every nonblank item in the 0.6.0 feedback list. Local static
+and adversarial validators pass; Swift/Xcode and physical-device states remain
+open until the exact release-truth SHA produces those artifacts.
+
+| ID | Acceptance summary | Source / test cases | State |
+|---|---|---|---|
+| R071-LOG | Every focused Quick Log field remains reachable above the keyboard; untouched time defaults to the real current clock; valid user settings, payee affinity, and active leaf categories drive deterministic editable defaults. | `QuickLogEntryBody`, `QuickLogOccurrencePolicy`, `QuickLogEntryCaptureSuggestions`; `TransactionPresentationTests.testQuickLogFocusScrollPolicyCoversEveryKeyboardField`; existing draft/default tests. | STATIC-PASS; AUTO-PENDING; MANUAL-OPEN |
+| R071-WIDGET | Authenticated widget/shortcut actions route into full Quick Log with account, category, title, notes, time, and splits. Locked capture retains its smaller separately encrypted amount/title/notes contract and explicitly defers protected account/category review until unlock. | `MoneyUpQuickActionRouting`, `QuickLogEntryView`, `LockedQuickCaptureView`, `AppModelLockedCaptureRecovery`; W7 and LOG-09/10 suites. | STATIC-PASS; AUTO-PENDING; MANUAL-OPEN |
+| R071-HISTORY | History defaults to Today; seven-day, month, all, advanced filters, and direct Calendar remain available. Complete-query summaries separate spending, income, refunds, and signed net per currency. Rows expose title, notes, and hierarchical category paths. | `HistoryView`, `HistoryQuery`, `TransactionRow`; `LoanAllowancePacingTests.testHistorySummarySeparatesSpendIncomeAndRefunds`; History paging/filter suites. | STATIC-PASS; AUTO-PENDING; MANUAL-OPEN |
+| R071-CATEGORY | Expense and income categories support arbitrary-depth parents, full-path selection, and safe reparenting with cycle/kind checks; budget history follows expense reparenting atomically. | `LedgerLifecycleViews`, `AppModelLedgerLifecycle`, `AppModelValidation`; existing lifecycle/budget integrity tests. | STATIC-PASS; AUTO-PENDING; MANUAL-OPEN |
+| R071-PACE | Flexible monthly budget remainder can be shown as an exact daily or weekly pace; monthly remains the legacy default and pacing never mutates limits or the ledger. | `BudgetPacing`, `BudgetTree`, `PlanView`; `LoanAllowancePacingTests.testBudgetPacingRoundsOnceToCurrencyMinorUnits`. | STATIC-PASS; AUTO-PENDING; MANUAL-OPEN |
+| R071-ALLOWANCE | Allowances support daily/weekday/weekly/monthly cadence, optional expiry, eligible categories, usage notes/history, and no/full/capped rollover. They remain planning-only and cannot inflate income, cash, or net worth. | `AllowancePlan`, `AppModelLoansAndAllowances`, `AllowanceViews`; daily expiry and capped-rollover tests. | STATIC-PASS; AUTO-PENDING; MANUAL-OPEN |
+| R071-LOAN | A loan liability can show remaining/advanced/paid principal, interest, fees, date, APR, term, debt-total inclusion, notes, repayments, drawdowns, and finish-at-zero. Every money movement is one balanced atomic journal transaction. | `LoanPlan`, `TransactionFactory`, `AppModelLoansAndAllowances`, `LoanViews`; balanced-payment and screenshot-style summary tests. | STATIC-PASS; AUTO-PENDING; MANUAL-OPEN |
+| R071-SAFE | Schema 8 recovery, preview, identity validation, quarantine, privacy inventory, safe errors, bilingual strings, release notes, and build metadata include loan and allowance records. | Persistence/recovery files; release and architecture validators; `AppLocalizationTests.testRelease071NotesAreCompleteAndBilingual`. | STATIC-PASS; AUTO-PENDING; MANUAL-OPEN |
 
 ## 0.7.0 W1 acceptance overlay
 
@@ -287,10 +304,10 @@ repeat exact-SHA CI before promotion.
 
 - Requirements traced: **97 / 97**.
 - Requirements with at least one named automated or manual case: **97 / 97**.
-- Declared automated tests in source after this review: **734** (305 core, 54
-  persistence, 11 intelligence, 353 app-target, and 11 performance-target
+- Declared automated tests in source after this review: **742** (311 core, 54
+  persistence, 11 intelligence, 355 app-target, and 11 performance-target
   declarations; XCTest methods plus Swift Testing `@Test` declarations). Of
-  those declarations, **684** are XCTest functions named `test...`; the
+  those declarations, **692** are XCTest functions named `test...`; the
   remaining 50 are Swift Testing `@Test` declarations in MoneyUpCore.
 - Tests executed against this exact candidate in this environment: **0**;
   Swift and Xcode are unavailable here, and the macOS CI run is pending.

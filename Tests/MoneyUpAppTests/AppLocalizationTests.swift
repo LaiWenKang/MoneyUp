@@ -76,4 +76,28 @@ final class AppLocalizationTests: XCTestCase {
             XCTAssertNotEqual(AppLocalization.string(key), key)
         }
     }
+
+    func testVersion071DeclaresBilingualReleaseHighlights() {
+        XCTAssertEqual(ReleaseNotes.highlights(for: "0.7.1").count, 5)
+
+        for key in [
+            "whats_new.0_7_1.logging",
+            "whats_new.0_7_1.history",
+            "whats_new.0_7_1.loans",
+            "whats_new.0_7_1.planning",
+            "whats_new.0_7_1.categories"
+        ] {
+            AppLanguagePreference.defaults.set(
+                AppLanguagePreference.english.rawValue,
+                forKey: AppLanguagePreference.storageKey
+            )
+            XCTAssertNotEqual(AppLocalization.string(key), key)
+
+            AppLanguagePreference.defaults.set(
+                AppLanguagePreference.simplifiedChinese.rawValue,
+                forKey: AppLanguagePreference.storageKey
+            )
+            XCTAssertNotEqual(AppLocalization.string(key), key)
+        }
+    }
 }

@@ -82,6 +82,24 @@ final class TransactionPresentationTests: XCTestCase {
         XCTAssertNil(QuickLogFieldFocus.note.splitLineID)
     }
 
+    func testQuickLogKeyboardScrollTargetsEveryEditableDetailField() {
+        let lineID = UUID()
+        let fields: [QuickLogFieldFocus] = [
+            .amount,
+            .destinationAmount,
+            .smartEntry,
+            .payee,
+            .note,
+            .splitAmount(lineID),
+            .splitMemo(lineID)
+        ]
+
+        for field in fields {
+            XCTAssertEqual(QuickLogFocusScrollPolicy.target(for: field), field)
+        }
+        XCTAssertNil(QuickLogFocusScrollPolicy.target(for: nil))
+    }
+
     func testOccurrenceDateRefreshesOnlyForAnUntouchedNewDraft() {
         XCTAssertTrue(
             QuickLogOccurrencePolicy.shouldRefresh(

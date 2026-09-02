@@ -228,6 +228,12 @@ enum QuickLogFieldFocus: Hashable {
     }
 }
 
+enum QuickLogFocusScrollPolicy {
+    static func target(for focus: QuickLogFieldFocus?) -> QuickLogFieldFocus? {
+        focus
+    }
+}
+
 struct QuickLogEntryView: View {
     static let receiptSignposter = OSSignposter(
         subsystem: "com.laiwenkang.MoneyUp",

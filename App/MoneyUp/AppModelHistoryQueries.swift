@@ -6,6 +6,44 @@ import SwiftUI
 import UIKit
 import WidgetKit
 
+private struct HistorySummaryAccumulator {
+    var transactionCount = 0
+    var amounts: [CurrencyCode: Decimal] = [:]
+    var spending: [CurrencyCode: Decimal] = [:]
+    var income: [CurrencyCode: Decimal] = [:]
+    var refunds: [CurrencyCode: Decimal] = [:]
+
+    mutating func merge(_ summary: HistorySummary) throws {
+        transactionCount += summary.transactionCount
+        try Self.merge(summary.amountsByCurrency, into: &amounts)
+        try Self.merge(summary.spendingByCurrency, into: &spending)
+        try Self.merge(summary.incomeByCurrency, into: &income)
+        try Self.merge(summary.refundsByCurrency, into: &refunds)
+    }
+
+    var value: HistorySummary {
+        HistorySummary(
+            transactionCount: transactionCount,
+            amountsByCurrency: amounts,
+            spendingByCurrency: spending,
+            incomeByCurrency: income,
+            refundsByCurrency: refunds
+        )
+    }
+
+    private static func merge(
+        _ source: [CurrencyCode: Decimal],
+        into destination: inout [CurrencyCode: Decimal]
+    ) throws {
+        for (currency, amount) in source {
+            destination[currency] = try CheckedDecimal.adding(
+                destination[currency] ?? .zero,
+                amount
+            )
+        }
+    }
+}
+
 extension AppModel {
     func historyPage(
         query: HistoryQuery,
@@ -143,8 +181,7 @@ extension AppModel {
         let validAccountIDs = Set(accountSnapshot.map(\.id))
         let quarantinedEntryIDs = invalidJournalEntryIDs
         var cursor: JournalEntryPageCursor?
-        var transactionCount = 0
-        var amountsByCurrency: [CurrencyCode: Decimal] = [:]
+        var accumulator = HistorySummaryAccumulator()
 
         repeat {
             try Task.checkCancellation()
@@ -182,21 +219,12 @@ extension AppModel {
                 )
             }.value
             try requireLogicalBookRead(read.token)
-            transactionCount += pageSummary.transactionCount
-            for (currency, amount) in pageSummary.amountsByCurrency {
-                amountsByCurrency[currency] = try CheckedDecimal.adding(
-                    amountsByCurrency[currency] ?? .zero,
-                    amount
-                )
-            }
+            try accumulator.merge(pageSummary)
             cursor = rawPage.nextCursor
         } while cursor != nil
 
         return try await finishLogicalBookRead(
-            HistorySummary(
-                transactionCount: transactionCount,
-                amountsByCurrency: amountsByCurrency
-            ),
+            accumulator.value,
             token: read.token
         )
     }

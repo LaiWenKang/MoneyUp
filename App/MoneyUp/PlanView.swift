@@ -6,6 +6,7 @@ struct PlanView: View {
     private enum Section: Hashable {
         case budget
         case goals
+        case allowances
         case calendar
     }
 
@@ -19,6 +20,8 @@ struct PlanView: View {
                 BudgetPlanView()
             case .goals:
                 SavingsGoalsView()
+            case .allowances:
+                AllowanceCenterView()
             case .calendar:
                 CalendarView()
             }
@@ -27,6 +30,7 @@ struct PlanView: View {
             Picker("tab.plan", selection: $selection) {
                 Text("plan.budget").tag(Section.budget)
                 Text("plan.goals").tag(Section.goals)
+                Text("allowance.short_title").tag(Section.allowances)
                 Text("tab.calendar").tag(Section.calendar)
             }
             .pickerStyle(.segmented)
@@ -315,6 +319,7 @@ private struct BudgetPlanView: View {
 }
 
 private struct BudgetRow: View {
+    @Environment(AppModel.self) private var model
     let node: BudgetNode
     let depth: Int
     let progress: BudgetProgress?
@@ -375,6 +380,12 @@ private struct BudgetRow: View {
                             systemImage: "arrow.turn.down.right"
                         )
                     }
+                    if node.pacingCadence != .monthly {
+                        Label(
+                            node.pacingCadence.titleKey,
+                            systemImage: "gauge.with.dots.needle.50percent"
+                        )
+                    }
                 }
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(purpose == .unclassified ? Color.orange : Color.accentColor)
@@ -392,6 +403,24 @@ private struct BudgetRow: View {
                 )
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                if let progress {
+                    switch model.budgetPace(for: progress) {
+                    case let .available(.some(pace)):
+                        Text(
+                            String(
+                                format: AppLocalization.string("plan.pace_available"),
+                                formattedMoney(pace.available),
+                                AppLocalization.string(pace.cadence.titleKeyString)
+                            )
+                        )
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tint)
+                    case let .unavailable(issue):
+                        DerivedValueUnavailableView(issue: issue)
+                    case .available(nil):
+                        EmptyView()
+                    }
+                }
             } else if case let .unavailable(issue) = ratioResult {
                 DerivedValueUnavailableView(issue: issue)
             } else {
@@ -819,6 +848,7 @@ private struct BudgetEditorSheet: View {
 
     @State private var amountText: String
     @State private var purpose: BudgetPurpose
+    @State private var pacingCadence: BudgetPacingCadence
     @State private var isSaving = false
     @State private var errorMessage: String?
 
@@ -830,6 +860,7 @@ private struct BudgetEditorSheet: View {
             } ?? ""
         )
         _purpose = State(initialValue: node.purpose)
+        _pacingCadence = State(initialValue: node.pacingCadence)
     }
 
     var body: some View {
@@ -854,6 +885,17 @@ private struct BudgetEditorSheet: View {
                     Text("plan.purpose")
                 } footer: {
                     Text("plan.purpose_detail")
+                }
+                if purpose == .flexible {
+                    Section {
+                        Picker("plan.pacing", selection: $pacingCadence) {
+                            ForEach(BudgetPacingCadence.allCases, id: \.self) { cadence in
+                                Text(cadence.titleKey).tag(cadence)
+                            }
+                        }
+                    } footer: {
+                        Text("plan.pacing_detail")
+                    }
                 }
             }
             .scrollContentBackground(.hidden)
@@ -888,7 +930,8 @@ private struct BudgetEditorSheet: View {
             try await model.setBudgetLimit(
                 categoryID: node.id,
                 amount: trimmed.isEmpty ? nil : decimalAmount(from: trimmed),
-                purpose: purpose
+                purpose: purpose,
+                pacingCadence: purpose == .flexible ? pacingCadence : .monthly
             )
             dismiss()
         } catch {
@@ -929,6 +972,18 @@ extension BudgetRolloverRule {
     }
 }
 
+extension BudgetPacingCadence {
+    var titleKeyString: String {
+        switch self {
+        case .monthly: "plan.pacing.monthly"
+        case .daily: "plan.pacing.daily"
+        case .weekly: "plan.pacing.weekly"
+        }
+    }
+
+    var titleKey: LocalizedStringKey { LocalizedStringKey(titleKeyString) }
+}
+
 struct AddCategorySheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AppModel.self) private var model
@@ -957,12 +1012,13 @@ struct AddCategorySheet: View {
         NavigationStack {
             Form {
                 TextField("category.name", text: $name)
-                if kind == .expense {
-                    Picker("category.parent", selection: $parentID) {
-                        Text("category.no_parent").tag(UUID?.none)
-                        ForEach(model.expenseCategories) { category in
-                            Text(category.name).tag(Optional(category.id))
-                        }
+                Picker("category.parent", selection: $parentID) {
+                    Text("category.no_parent").tag(UUID?.none)
+                    ForEach(model.accounts.filter {
+                        $0.kind == kind && !$0.isArchived && $0.systemRole == nil
+                    }) { category in
+                        Text(model.categoryPathName(for: category.id))
+                            .tag(Optional(category.id))
                     }
                 }
             }
@@ -991,7 +1047,7 @@ struct AddCategorySheet: View {
             let categoryID = try await model.addCategory(
                 name: name,
                 kind: kind,
-                parentID: kind == .expense ? parentID : nil
+                parentID: parentID
             )
             onAdded(categoryID)
             dismiss()

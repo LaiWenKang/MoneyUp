@@ -71,7 +71,7 @@ four postings.
 ## Budget tree, rollover, and goals
 
 Each budget node has an identifier, optional parent, name, optional limit,
-purpose, rollover rule, and explicit rollover activation time.
+purpose, rollover rule, explicit rollover activation time, and a pacing cadence.
 
 ```text
 Needs (hard cap)
@@ -94,6 +94,30 @@ available goal balance.
 The storage model supports arbitrary category depth. The UI recommends no more
 than three visible levels and uses tags for orthogonal context.
 
+For a flexible node, daily or weekly pacing divides only the positive remaining
+monthly amount across the remaining civil days. It rounds once to the node's
+currency minor units and is guidance only: it never changes the monthly limit,
+ledger, or rollover result. Existing nodes decode with monthly pacing.
+
+## Loans and expiring allowances
+
+`LoanPlan` attaches explanatory metadata to exactly one active loan liability
+account. The ledger account remains the sole principal-balance authority.
+Drawdowns and repayments create balanced journal entries; the plan retains only
+bounded immutable activity links plus the separated principal, interest, fee,
+date, and note needed to explain those entries. Interest and fees post to
+explicit expense categories. A loan can be marked finished only when its ledger
+principal is exactly zero. `includeInTotalDebt` affects the loan-center aggregate,
+not accounting or net worth.
+
+`AllowancePlan` represents a non-cash benefit such as a company meal allowance.
+It has an exact-currency amount, daily/weekday/weekly/monthly cadence, reporting
+time zone, optional end date, eligible expense categories, no/full/capped
+rollover, and bounded usage records. It is planning-only and is never an asset,
+income account, or net-worth input. A linked journal identifier may explain an
+actual out-of-pocket expense, but standalone allowance use never invents a cash
+transaction.
+
 ## Time, recurrence, and reporting calendar
 
 - Absolute instants remain authoritative for ordering.
@@ -112,7 +136,7 @@ than three visible levels and uses tags for orthogonal context.
 
 ## SQLCipher records and normalized indexes
 
-Deterministic encrypted payloads remain the recovery source of truth. Schema 7
+Deterministic encrypted payloads remain the recovery source of truth. Schema 8
 includes normalized ledger, attachment, store-envelope, historical budget, and
 derived intelligence projections:
 
@@ -137,6 +161,15 @@ Calendar/report/budget ranges use posting events. A normalized mismatch invokes
 the exact attribution/audit validator. Routine mutations update indexes,
 metrics, and balance deltas in the same transaction. Full rebuild is limited to
 migration, restore, or repair.
+
+### 0.7.1 schema-8 additive representation
+
+Schema 8 adds `loanPlans` and `allowancePlans` to the existing generic encrypted
+record table. The migration is compatibility-only because the table already
+supports additive collections; it does not decode or rewrite journal payloads.
+Restore shape/identity validation, cross-record quarantine, privacy-safe record
+counts, and atomic replacement all recognize both collections. Invalid account,
+category, currency, usage, or journal links fail closed or are quarantined.
 
 ### 0.7.0 W1 compatibility and W2 additive representation
 

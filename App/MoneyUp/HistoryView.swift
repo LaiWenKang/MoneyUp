@@ -163,6 +163,22 @@ private struct HistoryDayGroup: Identifiable {
     var id: Date { date }
 }
 
+private enum HistoryQuickRange: String, CaseIterable, Hashable {
+    case today
+    case sevenDays
+    case month
+    case all
+
+    var title: LocalizedStringKey {
+        switch self {
+        case .today: "history.scope.today"
+        case .sevenDays: "history.scope.seven_days"
+        case .month: "history.scope.month"
+        case .all: "history.scope.all"
+        }
+    }
+}
+
 struct HistoryView: View {
     private enum InitialPageOutcome: Sendable {
         case available(AppModel.HistoryPageResult)
@@ -199,8 +215,10 @@ struct HistoryView: View {
         HistoryPerformanceMeasurement?
     @State private var paginationPerformanceMeasurement:
         HistoryPerformanceMeasurement?
+    @State private var quickRange: HistoryQuickRange?
     init(preset: HistoryPreset? = nil) {
         _filters = State(initialValue: HistoryFilterDraft(preset: preset))
+        _quickRange = State(initialValue: preset == nil ? .today : nil)
     }
 
     private var query: HistoryQuery {
@@ -217,6 +235,10 @@ struct HistoryView: View {
             refreshGeneration: refreshGeneration,
             logicalBookRevision: model.logicalBookRevision
         )
+    }
+
+    private var hasAdvancedFilters: Bool {
+        quickRange == nil && filters.hasActiveFilters
     }
 
     private var dayGroups: [HistoryDayGroup] {
@@ -242,7 +264,21 @@ struct HistoryView: View {
 
     var body: some View {
         List {
-                if filters.hasActiveFilters {
+                Section {
+                    Picker("history.scope", selection: $quickRange) {
+                        ForEach(HistoryQuickRange.allCases, id: \.self) { range in
+                            Text(range.title).tag(Optional(range))
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .onChange(of: quickRange) { _, range in
+                        if let range { applyQuickRange(range) }
+                    }
+                }
+                .listRowBackground(Color.clear)
+
+                if hasAdvancedFilters {
                     Section {
                         HStack {
                             Label(
@@ -254,6 +290,7 @@ struct HistoryView: View {
                                 filters = HistoryFilterDraft(
                                     calendar: model.reportingCalendar
                                 )
+                                quickRange = .all
                             }
                         }
                     }
@@ -415,6 +452,7 @@ struct HistoryView: View {
                 guard !didInitializeReportingDates else { return }
                 didInitializeReportingDates = true
                 filters.rebaseInactiveDates(calendar: model.reportingCalendar)
+                if let quickRange { applyQuickRange(quickRange) }
             }
             .task(id: searchText) {
                 do {
@@ -461,12 +499,18 @@ struct HistoryView: View {
                 pendingPaginationAfterInitialLoad = false
             }
             .toolbar {
-                ToolbarItem(placement: .primaryAction) {
+                ToolbarItemGroup(placement: .primaryAction) {
+                    NavigationLink {
+                        CalendarView()
+                    } label: {
+                        Image(systemName: "calendar")
+                    }
+                    .accessibilityLabel("history.calendar")
                     Button {
                         showingFilters = true
                     } label: {
                         Image(
-                            systemName: filters.hasActiveFilters
+                            systemName: hasAdvancedFilters
                                 ? "line.3.horizontal.decrease.circle.fill"
                                 : "line.3.horizontal.decrease.circle"
                         )
@@ -488,6 +532,7 @@ struct HistoryView: View {
                 ) { updatedFilters in
                     guard filters != updatedFilters else { return }
                     filters = updatedFilters
+                    quickRange = nil
                 }
             }
             .sheet(item: $selectedEntry, onDismiss: {
@@ -515,6 +560,31 @@ struct HistoryView: View {
             .moneyUpOperationErrorAlert(message: $errorMessage)
             .environment(\.calendar, model.reportingCalendar)
             .environment(\.timeZone, model.reportingCalendar.timeZone)
+    }
+}
+
+extension HistoryView {
+    private func applyQuickRange(_ range: HistoryQuickRange) {
+        let now = model.currentDateForUserAction()
+        let calendar = model.reportingCalendar
+        filters.endDate = now
+        switch range {
+        case .today:
+            filters.includesStartDate = true
+            filters.startDate = now
+            filters.includesEndDate = true
+        case .sevenDays:
+            filters.includesStartDate = true
+            filters.startDate = calendar.date(byAdding: .day, value: -6, to: now) ?? now
+            filters.includesEndDate = true
+        case .month:
+            filters.includesStartDate = true
+            filters.startDate = calendar.dateInterval(of: .month, for: now)?.start ?? now
+            filters.includesEndDate = true
+        case .all:
+            filters.includesStartDate = false
+            filters.includesEndDate = false
+        }
     }
 
     private func delete(_ entry: JournalEntry) async {

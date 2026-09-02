@@ -107,7 +107,7 @@ struct CategoryManagementList: View {
                 } label: {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(category.name)
+                            Text(model.categoryPathName(for: category.id))
                             if category.isArchived {
                                 Text("lifecycle.archived")
                                     .font(.caption)
@@ -149,6 +149,8 @@ struct CategoryManagementSheet: View {
     @State private var amountText = ""
     @State private var purpose: BudgetPurpose = .unclassified
     @State private var rolloverRule: BudgetRolloverRule = .none
+    @State private var pacingCadence: BudgetPacingCadence = .monthly
+    @State private var parentID: UUID?
     @State private var targetID: UUID?
     @State private var pendingLifecycleAction: PendingLifecycleAction?
     @State private var isSaving = false
@@ -175,6 +177,13 @@ struct CategoryManagementSheet: View {
             Form {
                 Section("lifecycle.name") {
                     TextField("category.name", text: $name)
+                    Picker("category.parent", selection: $parentID) {
+                        Text("category.no_parent").tag(UUID?.none)
+                        ForEach(model.compatibleCategoryParents(for: categoryID)) { parent in
+                            Text(model.categoryPathName(for: parent.id))
+                                .tag(Optional(parent.id))
+                        }
+                    }
                 }
 
                 if category?.kind == .expense {
@@ -191,6 +200,13 @@ struct CategoryManagementSheet: View {
                         Picker("plan.rollover", selection: $rolloverRule) {
                             ForEach(BudgetRolloverRule.allCases, id: \.self) { rule in
                                 Text(rule.titleKey).tag(rule)
+                            }
+                        }
+                        if purpose == .flexible {
+                            Picker("plan.pacing", selection: $pacingCadence) {
+                                ForEach(BudgetPacingCadence.allCases, id: \.self) { cadence in
+                                    Text(cadence.titleKey).tag(cadence)
+                                }
                             }
                         }
                     } header: {
@@ -284,6 +300,8 @@ struct CategoryManagementSheet: View {
                 amountText = budgetNode?.limit.map { editableAmount($0.amount) } ?? ""
                 purpose = budgetNode?.purpose ?? .unclassified
                 rolloverRule = budgetNode?.rolloverRule ?? .none
+                pacingCadence = budgetNode?.pacingCadence ?? .monthly
+                parentID = category.parentID
                 targetID = targets.first?.id
             }
             .confirmationDialog(
@@ -320,8 +338,13 @@ struct CategoryManagementSheet: View {
                 amount: category.kind == .expense && !trimmed.isEmpty
                     ? decimalAmount(from: trimmed) : nil,
                 purpose: category.kind == .expense ? purpose : .unclassified,
+                pacingCadence: category.kind == .expense && purpose == .flexible
+                    ? pacingCadence : .monthly,
                 rolloverRule: category.kind == .expense ? rolloverRule : .none
             )
+            if category.parentID != parentID {
+                try await model.reparentCategory(id: categoryID, parentID: parentID)
+            }
             dismiss()
         } catch {
             errorMessage = safeUserMessage(for: error, context: .save)

@@ -76,8 +76,12 @@ extension SQLCipherConnection {
             try migrateToVersion6()
             currentVersion = 6
         }
-        guard currentVersion < 7 else { return }
-        try migrateToVersion7()
+        if currentVersion < 7 {
+            try migrateToVersion7()
+            currentVersion = 7
+        }
+        guard currentVersion < 8 else { return }
+        try migrateToVersion8()
     }
 
     private func storedSchemaVersion() throws -> Int32 {
@@ -248,6 +252,15 @@ extension SQLCipherConnection {
             try createIntelligenceIndexTables()
             try rebuildAllIntelligenceIndexesFromRecords()
             try execute("PRAGMA user_version = 7;")
+        }
+    }
+
+    /// Loan and allowance data use the generic encrypted record table. This
+    /// version still marks the compatibility boundary so older builds reject
+    /// books that may contain planning records they cannot present.
+    private func migrateToVersion8() throws {
+        try performMigration {
+            try execute("PRAGMA user_version = 8;")
         }
     }
 

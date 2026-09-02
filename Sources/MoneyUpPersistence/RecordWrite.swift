@@ -13,7 +13,7 @@ private extension RecordCollection {
              .scheduledTransactions, .investmentHoldings,
              .netWorthSnapshots, .accountLifecycleAudit,
              .receiptAttachments, .exchangeRates, .savingsGoals,
-             .budgetEntryAttributions:
+             .loanPlans, .allowancePlans, .budgetEntryAttributions:
             return true
         case .profile, .journalEntryRevisions, .quickLogDrafts,
              .budgetConfigurationTimelines:

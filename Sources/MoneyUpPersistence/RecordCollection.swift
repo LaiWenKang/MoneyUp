@@ -12,6 +12,8 @@ public enum RecordCollection: String, CaseIterable, Sendable {
     case receiptAttachments = "receipt_attachments"
     case exchangeRates = "exchange_rates"
     case savingsGoals = "savings_goals"
+    case loanPlans = "loan_plans"
+    case allowancePlans = "allowance_plans"
     case budgetConfigurationTimelines = "budget_configuration_timelines"
     case budgetEntryAttributions = "budget_entry_attributions"
 }
