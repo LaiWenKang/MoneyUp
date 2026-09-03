@@ -299,6 +299,7 @@ extension QuickLogEntryView {
                 }
             }
             .onAppear {
+                refreshUserActionTimeContext()
                 restoreDraftIfAvailable()
                 selectDefaults()
                 hasRestoredDraft = true
@@ -312,21 +313,9 @@ extension QuickLogEntryView {
                 }
             }
             .onChange(of: isActive) { _, newValue in
-                if !newValue {
-                    cancelReceiptProcessing()
-                    cancelOnDeviceAssistance()
-                    pendingDuplicateReview = nil
-                    receiptAttachmentData = nil
-                    retainReceiptAttachment = false
-                    receiptRetentionMessage = nil
-                    isPresentingReceiptPicker = false
-                    dismissKeyboard()
-                    isHandlingFocusedLaunch = false
-                } else if amountText.isEmpty {
-                    refreshUntouchedOccurrenceDate()
-                    focusedField = .amount
-                }
+                handleActiveStateChange(newValue)
             }
+            .onUserActionTimeChange(perform: refreshUserActionTimeContext)
             .onChange(of: model.logicalBookRevision) { _, _ in
                 reloadDraftForLogicalBookReplacement()
             }
@@ -602,8 +591,8 @@ extension QuickLogEntryView {
             Text(duplicateReviewMessage)
         }
         .moneyUpOperationErrorAlert(message: $errorMessage)
-        .environment(\.calendar, model.captureCalendar)
-        .environment(\.timeZone, model.captureCalendar.timeZone)
+        .environment(\.calendar, captureCalendar)
+        .environment(\.timeZone, captureCalendar.timeZone)
     }
 
 }

@@ -162,6 +162,19 @@ final class TransactionPresentationTests: XCTestCase {
                 sourceCaptureID: UUID()
             )
         )
+
+        let instant = Date(timeIntervalSince1970: 1_788_406_140) // 2026-09-03 03:29Z
+        let singapore = UserActionTimeContext(
+            timeZone: TimeZone(identifier: "Asia/Singapore")!
+        )
+        let losAngeles = UserActionTimeContext(
+            timeZone: TimeZone(identifier: "America/Los_Angeles")!
+        )
+        XCTAssertEqual(singapore.calendar.timeZone.identifier, "Asia/Singapore")
+        XCTAssertEqual(singapore.calendar.component(.hour, from: instant), 11)
+        XCTAssertEqual(losAngeles.calendar.component(.hour, from: instant), 20)
+        XCTAssertTrue(singapore.displayName(at: instant).hasSuffix("GMT+8"))
+        XCTAssertTrue(losAngeles.displayName(at: instant).hasSuffix("GMT-7"))
     }
 
     func testSuggestionPolicyRequiresReviewForLowConfidenceOrEditedFields() {

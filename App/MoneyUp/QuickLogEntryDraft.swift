@@ -63,6 +63,28 @@ extension QuickLogEntryView {
         }
     }
 
+    func refreshUserActionTimeContext() {
+        userActionTimeContext = UserActionTimeContext(timeZone: .autoupdatingCurrent)
+        refreshUntouchedOccurrenceDate()
+    }
+
+    func handleActiveStateChange(_ isActive: Bool) {
+        guard isActive else {
+            cancelReceiptProcessing()
+            cancelOnDeviceAssistance()
+            pendingDuplicateReview = nil
+            receiptAttachmentData = nil
+            retainReceiptAttachment = false
+            receiptRetentionMessage = nil
+            isPresentingReceiptPicker = false
+            dismissKeyboard()
+            isHandlingFocusedLaunch = false
+            return
+        }
+        refreshUserActionTimeContext()
+        if amountText.isEmpty { focusedField = .amount }
+    }
+
     func persistUserDraftChange(
         _ update: (inout QuickLogDraft) -> Void
     ) {

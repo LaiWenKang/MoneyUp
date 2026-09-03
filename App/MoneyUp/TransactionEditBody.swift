@@ -98,6 +98,11 @@ extension TransactionEditView {
                             selection: $occurredAt,
                             displayedComponents: [.date, .hourAndMinute]
                         )
+                        LabeledContent("quick_log.time_zone") {
+                            Text(verbatim: userActionTimeContext.displayName(at: occurredAt))
+                                .font(.subheadline.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
                         TextField("transaction.title_or_merchant", text: $payee)
                             .focused($focusedField, equals: .payee)
                             .id(TransactionEditView.FieldFocus.payee)
@@ -194,7 +199,17 @@ extension TransactionEditView {
                 }
                 MoneyUpKeyboardDoneToolbar()
             }
-            .task { loadValues() }
+            .task {
+                userActionTimeContext = UserActionTimeContext(
+                    timeZone: .autoupdatingCurrent
+                )
+                loadValues()
+            }
+            .onUserActionTimeChange {
+                userActionTimeContext = UserActionTimeContext(
+                    timeZone: .autoupdatingCurrent
+                )
+            }
             .onDisappear {
                 invalidateAttachmentPreviews()
             }
@@ -260,8 +275,8 @@ extension TransactionEditView {
             .moneyUpOperationErrorAlert(message: $errorMessage)
             }
         }
-        .environment(\.calendar, model.captureCalendar)
-        .environment(\.timeZone, model.captureCalendar.timeZone)
+        .environment(\.calendar, captureCalendar)
+        .environment(\.timeZone, captureCalendar.timeZone)
     }
 
     func kindPicker<Style: PickerStyle>(style: Style) -> some View {
