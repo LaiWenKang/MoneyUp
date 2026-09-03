@@ -159,6 +159,39 @@ extension DashboardView {
         MoneyUpExplainer("dashboard.position_detail")
     }
 
+    /// Money held outside the base currency is listed on its own, with its
+    /// ISO code, rather than folded into the headline figure at a rate
+    /// MoneyUp would have to invent.
+    @ViewBuilder
+    private var otherCurrencies: some View {
+        switch otherCurrencyBalances {
+        case let .available(balances) where !balances.isEmpty:
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Image(systemName: "globe")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+                Text(
+                    balances
+                        .map(formattedMoneyWithCurrencyCode)
+                        .joined(separator: " · ")
+                )
+                .monospacedDigit()
+            }
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("dashboard.other_currencies")
+            .accessibilityValue(
+                balances.map(formattedMoneyWithCurrencyCode).joined(separator: ", ")
+            )
+        case .available:
+            EmptyView()
+        case let .unavailable(issue):
+            DerivedValueUnavailableView(issue: issue)
+        }
+    }
+
     private func cashFigure(_ position: CashDebtPosition) -> some View {
         MoneyUpFigure(
             title: "dashboard.cash_on_hand",
