@@ -18,7 +18,10 @@ Overview widget. A second feedback pass then made every amount name its own
 currency where a symbol would be ambiguous, rebuilt Today around user-pinned
 budget categories with month/week/day remaining, removed the parts of Today
 that another tab already owned, and gave every swapped Plan section an
-explicit way back. The prior merged baseline passed release,
+explicit way back. A density pass then moved routine explanation behind a
+single glyph, gave Today's cards a headline figure with their supporting rows
+one tap away, and replaced captions that named a figure with the symbol for it.
+The prior merged baseline passed release,
 architecture, recovery, privacy, core/app-model, unsigned app/widget Simulator,
 and serial performance CI; build 11 must repeat those exact-head gates. Physical iPhone migration,
 restore, accessibility, performance, signed-binary, TestFlight-processing,
@@ -86,6 +89,13 @@ The beta includes:
   immediately updates only the recoverable encrypted draft and creates no
   transaction until Save; receipt images remain transient unless the user
   explicitly keeps one as an encrypted transaction attachment;
+- progressive disclosure as the default: routine section explanation sits
+  behind one information glyph and stays an immediate VoiceOver hint, Today's
+  position and budget cards lead with a single figure and expand on tap, and
+  the pinned board and budget list each carry one detail switch instead of
+  per-row chrome; guidance shown at a destructive or irreversible decision is
+  deliberately never collapsed, and remembered layout preferences use a closed
+  set of keys that cannot carry book content;
 - a permanent five-tab layout for Today, History, center Log, Plan, and Assets,
   with an optional deliberate left/right swipe shortcut, a Plan overview that
   routes to Budget, Calendar, Goals, and Allowances without repeating them in

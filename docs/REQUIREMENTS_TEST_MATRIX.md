@@ -60,6 +60,7 @@ Swift tests require exact-head macOS execution.
 | R071-PINNED | Up to eight user-chosen budget categories lead Today with month, week, and day remaining resolved from one reporting instant. Pins keep their chosen order, refuse duplicates and unknown categories, and an overspent category reports its overspend instead of a negative pace. | `UserProfile.pinnedBudgetNodeIDs`, `BudgetPaceCalculator.spread`, `AppModel.pinnedBudgetSummariesResult`, `PinnedBudgetBoard`, `PinnedBudgetEditorSheet`; `UserProfileMigrationTests.testLegacyProfileDefaultsAutomaticCurrencyDisplayAndNoPinnedCategories`, `.testPinnedCategoriesKeepChosenOrderWhileDroppingRepeatsAndOverflow`, `.testDecodedPinnedCategoriesAreNormalizedNotTrusted`; `LoanAllowancePacingTests.testPaceSpreadResolvesEveryCadenceFromOneInstant`, `.testPaceSpreadCollapsesToOneDayOnTheFinalReportingDay`; `PinnedBudgetBoardTests.testPinningKeepsChosenOrderAndStopsAtTheBoardLimit`, `.testCategoryOutsideTheBudgetCannotBePinnedAndIsDroppedOnReplace`, `.testPinnedSummarySplitsWhatIsLeftAcrossMonthWeekAndDay`, `.testOverspentPinReportsItsOverspendInsteadOfANegativePace`. | STATIC-PASS; AUTO-PENDING; MANUAL-OPEN |
 | R071-REDUNDANCY | Today no longer repeats what another tab owns: the recent-transaction list, the Assets shortcut, and the static privacy card are gone, safe to spend collapses beside the pinned board, and the Plan chip bar no longer duplicates the overview list. The first-run route and every unavailable state remain. | `DashboardContent`, `DashboardSafeToSpend`, `PlanView`, `AppModel.budgetNodeOutline`; MANUAL `R071-REDUNDANCY-EMPTY-AND-POPULATED` on fresh and populated books. | STATIC-PASS; MANUAL-OPEN |
 | R071-BACK | A swapped Plan section publishes a named top-left route back to the overview, and a pushed Calendar no longer nests a second navigation stack that hid History's system back button. | `MoneyUpSectionBackAction`, `SectionNavigation`, `PlanView`, `CalendarView`, `HistoryView`; MANUAL `R071-BACK-VOICEOVER` covers the announced destination in both languages. | STATIC-PASS; MANUAL-OPEN |
+| R071-DENSITY | Routine explanation is one glyph away instead of permanent screen furniture: 24 always-visible section footers and captions became tap-to-reveal explainers whose text remains an immediate VoiceOver hint. Today's position and budget cards lead with one figure and keep their supporting rows behind a tap; the pinned board and the Plan budget list each carry one detail switch rather than per-row chrome. Safe to spend drops the two lines its arithmetic sheet already states exactly. Data-safety and recovery guidance shown at a destructive or irreversible decision stays visible. Layout preferences persist under a closed set of lowercase, namespaced keys that can never carry book content. | `MoneyUpExplainer`, `MoneyUpDisclosureCard`, `MoneyUpFigure`, `MoneyUpDisclosureSection`, `DashboardContent`, `DashboardSafeToSpend`, `PinnedBudgetBoard`, `PlanView`, `AppSettingsView`, `AssetsView`; `MoneyUpDisclosureTests.testDisclosureKeysAreNamespacedAndCarryNoBookContent`, `.testDisclosureKeysAreUniqueAndDoNotShadowOtherPreferences`, `.testEveryDisclosureSectionIsReachableFromItsRawValue`; MANUAL `R071-DENSITY-VOICEOVER` covers expand/collapse announcement and Reduce Motion in both languages. | STATIC-PASS; AUTO-PENDING; MANUAL-OPEN |
 
 ## App Review launch-watchdog correction
 
@@ -341,16 +342,16 @@ exact-SHA CI before signed promotion.
 
 - Requirements traced: **97 / 97**.
 - Requirements with at least one named automated or manual case: **97 / 97**.
-- Declared automated tests in source after this review: **769** (324 core, 54
-  persistence, 11 intelligence, 369 app-target, and 11 performance-target
+- Declared automated tests in source after this review: **772** (324 core, 54
+  persistence, 11 intelligence, 372 app-target, and 11 performance-target
   declarations; XCTest methods plus Swift Testing `@Test` declarations). Of
-  those declarations, **718** are XCTest functions named `test...`; the
+  those declarations, **721** are XCTest functions named `test...`; the
   remaining 51 are Swift Testing `@Test` declarations in MoneyUpCore.
 - Tests executed on the prior build-10 0.7.1 candidate in GitHub Actions:
   **742 / 742 declared test sites** across the 376 package, 355 app-target, and
   11 performance-target declarations; exact PR-head run 300 and merged
   implementation run 301 passed all four jobs.
-- Build 11 declares 769 test sites; its exact-head macOS run is `AUTO-PENDING`.
+- Build 11 declares 772 test sites; its exact-head macOS run is `AUTO-PENDING`.
 - Local static validation is reported separately in
   `QUALITY_AUDIT_0.6.0.md`; automated success does not convert any
   `MANUAL-OPEN` or exact-binary gate to pass.

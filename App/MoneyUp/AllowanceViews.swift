@@ -289,7 +289,7 @@ private struct AllowanceEditorSheet: View {
                             .moneyAmountKeyboard(currency: currency)
                     }
                 } footer: {
-                    Text("allowance.expiry_detail")
+                    MoneyUpExplainer("allowance.expiry_detail")
                 }
 
                 Section {
@@ -308,7 +308,7 @@ private struct AllowanceEditorSheet: View {
                 } header: {
                     Text("allowance.categories")
                 } footer: {
-                    Text("allowance.categories_detail")
+                    MoneyUpExplainer("allowance.categories_detail")
                 }
 
                 if plan != nil {

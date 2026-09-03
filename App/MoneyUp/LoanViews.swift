@@ -93,7 +93,7 @@ struct LoanCenterView: View {
                         Label("loan.configure", systemImage: "plus.circle")
                     }
                 } footer: {
-                    Text("loan.configure_detail")
+                    MoneyUpExplainer("loan.configure_detail")
                 }
             }
         }

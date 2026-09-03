@@ -223,7 +223,7 @@ private struct GoalEditorSheet: View {
                         }
                     }
                 } footer: {
-                    Text("goal.reset_rule_detail")
+                    MoneyUpExplainer("goal.reset_rule_detail")
                 }
             }
             .scrollContentBackground(.hidden)
@@ -357,7 +357,7 @@ private struct GoalManagementSheet: View {
                 } header: {
                     Text("goal.movements")
                 } footer: {
-                    Text("goal.movements_detail")
+                    MoneyUpExplainer("goal.movements_detail")
                 }
 
                 Section("goal.manage") {

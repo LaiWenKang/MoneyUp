@@ -196,33 +196,6 @@ struct DashboardView: View {
     }
 }
 
-struct PositionMetric: View {
-    let title: LocalizedStringKey
-    let value: String
-    let systemImage: String
-    let color: Color
-
-    var body: some View {
-        HStack(spacing: 10) {
-            MoneyUpSymbolBadge(systemImage: systemImage, color: color)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text(value)
-                    .font(.subheadline.monospacedDigit().weight(.semibold))
-                    .lineLimit(1)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(11)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(color.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .accessibilityElement(children: .combine)
-    }
-}
-
 struct FlexibleTodayBreakdownSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss

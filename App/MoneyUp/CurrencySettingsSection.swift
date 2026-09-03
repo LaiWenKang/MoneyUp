@@ -7,14 +7,18 @@ struct CurrencySettingsSection: View {
     /// A recognisable amount that exercises grouping and the minor units of
     /// whichever currency renders it.
     private static let sampleSignificand = 123_456
-    /// Enough to show a mixed-currency book without turning Settings into
-    /// a currency list.
-    private static let maximumPreviewedCurrencies = 8
+    /// Enough to demonstrate the choice on a mixed-currency book without
+    /// turning Settings into a currency list.
+    private static let maximumPreviewedCurrencies = 4
 
     @Environment(AppModel.self) private var model
     @State private var errorMessage: String?
 
     private var baseCurrency: CurrencyCode? { model.profile?.baseCurrency }
+
+    private var selectedDisplay: MoneyCurrencyDisplay {
+        model.profile?.currencyDisplay ?? .automatic
+    }
 
     private var previewedCurrencies: [CurrencyCode] {
         let base = baseCurrency
@@ -51,7 +55,7 @@ struct CurrencySettingsSection: View {
             Picker(
                 "settings.currency_display",
                 selection: Binding(
-                    get: { model.profile?.currencyDisplay ?? .automatic },
+                    get: { selectedDisplay },
                     set: { display in
                         Task { await apply(display) }
                     }
@@ -61,11 +65,8 @@ struct CurrencySettingsSection: View {
                     Text(display.titleKey).tag(display)
                 }
             }
+            .accessibilityHint(selectedDisplay.detailKey)
             .moneyUpOperationErrorAlert(message: $errorMessage)
-
-            Text((model.profile?.currencyDisplay ?? .automatic).detailKey)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
 
             ForEach(previewedCurrencies, id: \.self) { currency in
                 if let sample = sample(for: currency) {
@@ -85,7 +86,7 @@ struct CurrencySettingsSection: View {
         } header: {
             Text("settings.currency_section")
         } footer: {
-            Text("settings.currency_section_detail")
+            MoneyUpExplainer("settings.currency_section_detail")
         }
     }
 

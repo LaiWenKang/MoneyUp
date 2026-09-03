@@ -9,6 +9,12 @@ import SwiftUI
 /// coming week and the current day.
 struct PinnedBudgetBoard: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// One switch for the whole board rather than one per category: the
+    /// question "how am I doing against the limit" is asked of every pinned
+    /// row at once, or of none.
+    @AppStorage(MoneyUpDisclosureSection.todayPinnedDetail.rawValue)
+    private var showsDetail = false
     let reportingDate: Date
     let monthElapsed: Double
     let onOpenPlan: () -> Void
@@ -26,7 +32,8 @@ struct PinnedBudgetBoard: View {
                     ForEach(summaries) { summary in
                         PinnedBudgetRow(
                             summary: summary,
-                            monthElapsed: monthElapsed
+                            monthElapsed: monthElapsed,
+                            showsDetail: showsDetail
                         )
                         if summary.id != summaries.last?.id { Divider() }
                     }
@@ -43,20 +50,45 @@ struct PinnedBudgetBoard: View {
     }
 
     private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
+        HStack(alignment: .center, spacing: 12) {
             Label("today.pinned.title", systemImage: "pin.fill")
                 .font(.headline)
             Spacer(minLength: 8)
             Button {
-                isEditingPins = true
+                withAnimation(
+                    MoneyUpMotion.animation(
+                        for: .stateChange,
+                        reduceMotion: reduceMotion
+                    )
+                ) {
+                    showsDetail.toggle()
+                }
             } label: {
-                Label("today.pinned.edit", systemImage: "slider.horizontal.3")
-                    .font(.footnote.weight(.semibold))
-                    .labelStyle(.titleAndIcon)
+                Image(
+                    systemName: showsDetail
+                        ? "text.alignleft"
+                        : "line.3.horizontal.decrease"
+                )
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .foregroundStyle(.tint)
+            .accessibilityLabel("today.pinned.toggle_detail")
+            .accessibilityValue(
+                showsDetail ? "state.expanded" : "state.collapsed"
+            )
+
+            Button {
+                isEditingPins = true
+            } label: {
+                Image(systemName: "slider.horizontal.3")
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.tint)
+            .accessibilityLabel("today.pinned.edit")
         }
+        .font(.subheadline)
     }
 
     @ViewBuilder
@@ -95,6 +127,9 @@ struct PinnedBudgetRow: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let summary: PinnedBudgetSummary
     let monthElapsed: Double
+    /// Board-wide: the purpose chip and the spent-against-limit split are a
+    /// periodic check, not part of reading what is left.
+    let showsDetail: Bool
 
     private var ratio: DerivedValue<Double>? {
         guard let limit = summary.effectiveLimit else { return nil }
@@ -118,7 +153,7 @@ struct PinnedBudgetRow: View {
                 DerivedValueUnavailableView(issue: issue)
             }
             cadences
-            footnote
+            if showsDetail { footnote }
         }
         .padding(.vertical, 3)
         .accessibilityElement(children: .combine)

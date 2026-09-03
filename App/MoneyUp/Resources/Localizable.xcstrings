@@ -1288,7 +1288,12 @@
     "today.pinned.editor_count_format" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"%1$d of %2$d pinned"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"已置顶 %1$d 个，最多 %2$d 个"}}}},
     "plan.pin_to_today" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Pin to Today"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"置顶到今天"}}}},
     "plan.unpin_from_today" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Unpin"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"取消置顶"}}}},
-    "dashboard.safe_to_spend.setup_pending" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Finish your budget setup to see safe to spend"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"完成预算设置后即可查看可自由支配金额"}}}}
+    "dashboard.safe_to_spend.setup_pending" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Finish your budget setup to see safe to spend"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"完成预算设置后即可查看可自由支配金额"}}}},
+    "action.explain" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"About this"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"说明"}}}},
+    "state.expanded" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Expanded"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"已展开"}}}},
+    "state.collapsed" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Collapsed"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"已折叠"}}}},
+    "today.pinned.toggle_detail" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Category detail"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"类别明细"}}}},
+    "plan.toggle_row_detail" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Category detail"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"类别明细"}}}}
   },
   "version" : "1.0"
 }

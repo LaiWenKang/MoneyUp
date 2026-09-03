@@ -106,114 +106,111 @@ extension DashboardView {
         )
     }
 
+    /// Net cash is the figure people actually read; how it decomposes into
+    /// cash, debt, and other currencies is a check, not a headline.
     var positionCard: some View {
-        MoneyUpCard {
-            VStack(alignment: .leading, spacing: 14) {
-                Label("dashboard.position_title", systemImage: "scale.3d")
-                    .font(.headline)
+        MoneyUpDisclosureCard(
+            section: .todayPosition,
+            systemImage: "scale.3d",
+            title: "dashboard.position_title"
+        ) {
+            positionSummary
+        } detail: {
+            positionDetail
+        }
+    }
 
-                switch cashDebtPosition {
-                case let .available(position):
-                    positionMetrics(position)
-                    MoneyUpPositionDiagram(
-                        cashAmount: position.cash.amount,
-                        debtAmount: position.debt.amount
-                    )
-                    LabeledContent("dashboard.net_cash") {
-                        Text(formattedMoney(position.netCash))
-                            .font(.subheadline.monospacedDigit().weight(.semibold))
-                    }
-                case let .unavailable(issue):
-                    DerivedValueUnavailableView(issue: issue, prominent: true)
+    @ViewBuilder
+    private var positionSummary: some View {
+        switch cashDebtPosition {
+        case let .available(position):
+            Text(formattedMoney(position.netCash))
+                .font(.title3.monospacedDigit().weight(.semibold))
+                .lineLimit(1)
+        case .unavailable:
+            Text(verbatim: "—")
+                .font(.title3.monospacedDigit().weight(.semibold))
+        }
+    }
+
+    @ViewBuilder
+    private var positionDetail: some View {
+        switch cashDebtPosition {
+        case let .available(position):
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 16) {
+                    cashFigure(position)
+                    debtFigure(position)
+                    Spacer(minLength: 0)
                 }
-
-                otherCurrencies
-                Text("dashboard.position_detail")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 8) {
+                    cashFigure(position)
+                    debtFigure(position)
+                }
             }
+            MoneyUpPositionDiagram(
+                cashAmount: position.cash.amount,
+                debtAmount: position.debt.amount
+            )
+        case let .unavailable(issue):
+            DerivedValueUnavailableView(issue: issue, prominent: true)
         }
+        otherCurrencies
+        MoneyUpExplainer("dashboard.position_detail")
     }
 
-    private func positionMetrics(_ position: CashDebtPosition) -> some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 10) {
-                cashMetric(position)
-                debtMetric(position)
-            }
-            VStack(spacing: 10) {
-                cashMetric(position)
-                debtMetric(position)
-            }
-        }
-    }
-
-    private func cashMetric(_ position: CashDebtPosition) -> some View {
-        PositionMetric(
+    private func cashFigure(_ position: CashDebtPosition) -> some View {
+        MoneyUpFigure(
             title: "dashboard.cash_on_hand",
             value: formattedMoney(position.cash),
-            systemImage: "banknote.fill",
-            color: .accentColor
+            systemImage: "banknote.fill"
         )
     }
 
-    private func debtMetric(_ position: CashDebtPosition) -> some View {
-        PositionMetric(
+    private func debtFigure(_ position: CashDebtPosition) -> some View {
+        MoneyUpFigure(
             title: "dashboard.card_loan_debt",
             value: formattedMoney(position.debt),
             systemImage: "creditcard.fill",
-            color: .orange
+            tint: .orange
         )
     }
 
-    /// Money held outside the base currency is listed on its own, never folded
-    /// into the headline figure, because MoneyUp does not invent a rate.
+    /// What is left this month leads; the pace bar, the split against the
+    /// limit, and the currency exclusions are the working-out behind it.
     @ViewBuilder
-    private var otherCurrencies: some View {
-        switch otherCurrencyBalances {
-        case let .available(balances) where !balances.isEmpty:
-            HStack(alignment: .firstTextBaseline, spacing: 4) {
-                Text("dashboard.other_currencies")
-                Text(
-                    balances
-                        .map(formattedMoneyWithCurrencyCode)
-                        .joined(separator: " · ")
-                )
-                .monospacedDigit()
-            }
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-            .accessibilityElement(children: .combine)
-        case .available:
-            EmptyView()
-        case let .unavailable(issue):
-            DerivedValueUnavailableView(issue: issue)
-        }
-    }
-
     var monthlyBudgetCard: some View {
-        MoneyUpCard {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("dashboard.monthly_budget")
-                    .font(.headline)
-                switch budgetSummary {
-                case let .available(.some(summary)):
-                    budgetProgress(summary)
-                    foreignSpendingNotice
-                case .available(.none):
-                    Text("dashboard.no_budget")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                    Button {
-                        onOpenPlan()
-                    } label: {
-                        Label("dashboard.set_budget", systemImage: "chart.pie.fill")
-                    }
-                    .buttonStyle(.bordered)
-                    .tint(.accentColor)
-                case let .unavailable(issue):
-                    DerivedValueUnavailableView(issue: issue)
+        switch budgetSummary {
+        case let .available(.some(summary)):
+            MoneyUpDisclosureCard(
+                section: .todayBudget,
+                systemImage: "chart.pie.fill",
+                title: "dashboard.monthly_budget"
+            ) {
+                Text(formattedMoney(summary.remaining))
+                    .font(.title3.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(
+                        summary.remaining.amount < .zero ? Color.red : Color.primary
+                    )
+                    .lineLimit(1)
+            } detail: {
+                budgetProgress(summary)
+                foreignSpendingNotice
+            }
+        case .available(.none):
+            MoneyUpCard {
+                Button {
+                    onOpenPlan()
+                } label: {
+                    Label("dashboard.set_budget", systemImage: "chart.pie.fill")
+                        .frame(maxWidth: .infinity)
                 }
+                .buttonStyle(.borderedProminent)
+                .tint(.moneyUpAction)
+            }
+        case let .unavailable(issue):
+            MoneyUpCard {
+                DerivedValueUnavailableView(issue: issue)
             }
         }
     }

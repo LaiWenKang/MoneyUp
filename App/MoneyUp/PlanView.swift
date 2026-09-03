@@ -151,7 +151,7 @@ private struct PlanOverviewView: View {
                 } header: {
                     Text("plan.overview.next")
                 } footer: {
-                    Text("plan.overview.detail")
+                    MoneyUpExplainer("plan.overview.detail")
                 }
             }
             .scrollContentBackground(.hidden)
@@ -198,6 +198,8 @@ private struct BudgetPlanView: View {
     @State private var isManagingCategories = false
     @State private var displayedPacingCadence: BudgetPacingCadence = .daily
     @State private var errorMessage: String?
+    @AppStorage(MoneyUpDisclosureSection.planBudgetDetail.rawValue)
+    private var showsRowDetail = false
 
     /// How far through the month we are, drawn on every bar so a number can be
     /// read as ahead or behind rather than just large.
@@ -271,7 +273,7 @@ private struct BudgetPlanView: View {
                     }
                     .pickerStyle(.segmented)
                 } footer: {
-                    Text("plan.pacing_view_detail")
+                    MoneyUpExplainer("plan.pacing_view_detail")
                 }
 
                 if case let .available(.some(summary)) = summaryResult {
@@ -367,7 +369,7 @@ private struct BudgetPlanView: View {
                             )
                         }
                     } footer: {
-                        Text("plan.foreign_not_counted_detail")
+                        MoneyUpExplainer("plan.foreign_not_counted_detail")
                     }
                 } else if case let .unavailable(issue) = foreignSpendingResult {
                     Section {
@@ -388,7 +390,8 @@ private struct BudgetPlanView: View {
                                     progress: progress[item.node.id],
                                     elapsed: elapsed,
                                     purpose: purposes[item.node.id] ?? .unclassified,
-                                    displayedPacingCadence: displayedPacingCadence
+                                    displayedPacingCadence: displayedPacingCadence,
+                                    showsDetail: showsRowDetail
                                 )
                             }
                             .buttonStyle(.plain)
@@ -418,7 +421,7 @@ private struct BudgetPlanView: View {
                 } header: {
                     Text("plan.this_month")
                 } footer: {
-                    Text("plan.rollup_detail")
+                    MoneyUpExplainer("plan.rollup_detail")
                 }
             }
             .scrollContentBackground(.hidden)
@@ -454,6 +457,21 @@ private struct BudgetPlanView: View {
             .moneyUpSectionBackToolbar(sectionBack)
             .moneyUpOperationErrorAlert(message: $errorMessage)
             .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        showsRowDetail.toggle()
+                    } label: {
+                        Image(
+                            systemName: showsRowDetail
+                                ? "text.alignleft"
+                                : "line.3.horizontal.decrease"
+                        )
+                    }
+                    .accessibilityLabel("plan.toggle_row_detail")
+                    .accessibilityValue(
+                        showsRowDetail ? "state.expanded" : "state.collapsed"
+                    )
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
                         Button {
@@ -499,6 +517,7 @@ private struct BudgetRow: View {
     let elapsed: Double
     let purpose: BudgetPurpose
     let displayedPacingCadence: BudgetPacingCadence
+    let showsDetail: Bool
 
     private var spent: Money? { progress?.spent }
 
@@ -545,7 +564,9 @@ private struct BudgetRow: View {
             }
 
 
-            if node.limit != nil {
+            if node.limit != nil, showsDetail || purpose == .unclassified {
+                // An unclassified limit is a setup gap the user has to see,
+                // so it stays visible whatever the detail switch says.
                 HStack(spacing: 10) {
                     Label(purpose.titleKey, systemImage: purpose.systemImage)
                     if node.rolloverRule != .none {
@@ -568,15 +589,17 @@ private struct BudgetRow: View {
             if case let .available(.some(ratio)) = ratioResult,
                let limit = progress?.effectiveLimit, let spent {
                 MoneyUpPaceBar(ratio: ratio, elapsed: elapsed)
-                Text(
-                    String(
-                        format: AppLocalization.string("plan.spent_of_limit"),
-                        formattedMoney(spent),
-                        formattedMoney(limit)
+                if showsDetail {
+                    Text(
+                        String(
+                            format: AppLocalization.string("plan.spent_of_limit"),
+                            formattedMoney(spent),
+                            formattedMoney(limit)
+                        )
                     )
-                )
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
                 if let progress {
                     switch model.budgetPace(
                         for: progress,
@@ -709,7 +732,7 @@ private struct BudgetEditorSheet: View {
                 } header: {
                     Text("plan.purpose")
                 } footer: {
-                    Text("plan.purpose_detail")
+                    MoneyUpExplainer("plan.purpose_detail")
                 }
                 if purpose == .flexible {
                     Section {
@@ -719,7 +742,7 @@ private struct BudgetEditorSheet: View {
                             }
                         }
                     } footer: {
-                        Text("plan.pacing_detail")
+                        MoneyUpExplainer("plan.pacing_detail")
                     }
                 }
             }

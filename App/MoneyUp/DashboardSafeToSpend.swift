@@ -155,27 +155,6 @@ extension DashboardView {
                 )
                 .font(.footnote.weight(.semibold))
             }
-            Label(
-                String(
-                    format: AppLocalization.string("dashboard.safe_to_spend.remaining_format"),
-                    formattedMoney(breakdown.availableForRemainingPeriod),
-                    breakdown.remainingDayCount
-                ),
-                systemImage: "hourglass.bottomhalf.filled"
-            )
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-            if !breakdown.flexibleCommitments.isZero {
-                Label(
-                    String(
-                        format: AppLocalization.string("dashboard.safe_to_spend.reserved_format"),
-                        formattedMoney(breakdown.flexibleCommitments)
-                    ),
-                    systemImage: "calendar.badge.clock"
-                )
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-            }
             if breakdown.amountPerDay.amount < .zero {
                 Label(
                     "dashboard.safe_to_spend.attention",
