@@ -1,6 +1,6 @@
 # App Store Submission Working Copy
 
-Last reviewed: 2 September 2026 for the 0.7.1 source candidate
+Last reviewed: 3 September 2026 for the 0.7.1 source candidate
 
 This file is the source of truth for App Store Connect entry. Verify every
 claim against the exact archived binary before submission.
@@ -8,6 +8,31 @@ claim against the exact archived binary before submission.
 Status: working copy for the source-integrated 0.7.1 beta candidate. No 1.0
 binary, screenshots, privacy answers, review notes, App Review approval, or
 public release is represented here as complete.
+
+## App Review crash-resolution working note
+
+Do not resubmit the rejected 0.3.0 (1005.1) binary. Apple's attached report for
+that build is a `0x8BADF00D` scene-creation watchdog termination on iPhone 17
+Pro Max / iOS 26.6: the main thread was waiting in
+`SecItemCopyMatching` -> `LAContext.evaluateAccessControl` while opening the
+encrypted book.
+
+Use this note only after the exact replacement build passes CI, signed archive
+validation, installation, and the `LAUNCH-01-WATCHDOG` physical matrix below:
+
+> We identified the launch crash in build 0.3.0 (1005.1) as a scene-creation
+> watchdog termination while the main thread waited for user-presence Keychain
+> authentication. In the replacement build, authenticated Keychain access,
+> the normal protected-book startup erase-intent check, and SQLCipher database
+> construction execute away from the main/UI actor. Device-only user-presence
+> protection is unchanged. We added executable main-thread regression tests and a release
+> gate that also requires dSYM output. We tested cold launch, delayed and
+> cancelled authentication, passcode fallback, background/foreground, and
+> repeated relaunch on the submitted build.
+
+Remove any final sentence whose named physical test has not actually passed,
+and replace “replacement build” with the exact App Store Connect version/build
+before sending the note.
 
 ## Product setup
 

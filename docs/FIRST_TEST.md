@@ -56,6 +56,28 @@ well before the expiry date shown in TestFlight.
 
 ### 1. First launch, guidance, appearance, and lock
 
+Complete `LAUNCH-01-WATCHDOG` on the exact candidate before any App Review
+resubmission. Use an iOS 26.6 iPhone if available and repeat the basic cold
+launch on the oldest supported iPhone/iOS combination:
+
+- Force-quit and cold-launch 20 times with airplane mode enabled. The launch UI
+  must appear promptly, remain responsive, require no network, and never crash,
+  hang, silently reset, or show an indefinite loading/buffering state.
+- On an existing encrypted book, cold-launch and leave the Face ID/Touch ID or
+  passcode prompt unanswered for at least 30 seconds. The process must remain
+  alive; completing authentication must reveal the correct existing book.
+- Repeat with biometric cancellation, retry, and passcode fallback. Each path
+  must resolve to a usable locked/retry or ready state without duplicate
+  prompts, blank content, data loss, or a watchdog termination.
+- Background once while authentication is pending, then return and unlock.
+  Private values must remain covered and the app must recover without a crash
+  or stale loading state.
+- Capture device/OS/build, cold-launch outcomes, one Instruments main-thread
+  trace, and the privacy-safe performance signposts. Confirm there is no
+  `0x8BADF00D` crash report and separately measure the Golden unlock-to-first-
+  useful-content p95; authentication response time is recorded but excluded
+  from that performance budget.
+
 - Without outside instructions, follow the four setup steps. Confirm each page
   explains what the choice means and why it matters, shows progress, and offers
   an obvious Back or Continue action.
@@ -79,7 +101,8 @@ well before the expiry date shown in TestFlight.
   again, wait more than one minute, and reopen it. MoneyUp must now require
   device-owner authentication before showing the book.
 
-Stop and report P0 immediately if another person can see data in the app
+Stop and report P0 immediately if the process is killed or becomes unusable
+during launch/authentication, if another person can see data in the app
 switcher, data appears after the configured timeout without authentication,
 the app silently resets, or the opening balance is wrong.
 

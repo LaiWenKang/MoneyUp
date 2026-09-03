@@ -39,7 +39,12 @@ LOW_LEVEL_SITE_SPECS = [
     (
         "unlock",
         "App/MoneyUp/AppModelDependencies.swift",
-        "static let production: DatabaseStoreOpener =",
+        (
+            "static func make(\n"
+            "        keyLoader: @escaping DatabaseKeyLoader,\n"
+            "        storeFactory: @escaping EncryptedDatabaseStoreFactory\n"
+            "    ) -> DatabaseStoreOpener {"
+        ),
     ),
     (
         "ledgerLoad",
@@ -662,7 +667,10 @@ def validate_journey_boundaries(sources: dict[str, str]) -> list[str]:
     errors: list[str] = []
     required_by_path = {
         "App/MoneyUp/AppModelDependencies.swift": [
-            "return try await Task.detached(priority: .userInitiated)",
+            (
+                "return try await Task.detached(priority: .userInitiated) {\n"
+                "                var key = try keyLoader(databaseURL)"
+            ),
             "unlockToFirstUsefulContentInterval: usefulContentInterval",
             "if !transfersUsefulContentInterval",
             "transfersUsefulContentInterval = true",

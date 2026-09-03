@@ -737,12 +737,12 @@ class PlatformActionsValidatorTests(unittest.TestCase):
         restore = self.source("App/MoneyUp/AppModelBackupRestore.swift")
         mutated_lifecycle = lifecycle.replace(
             "        } catch {\n"
-            "            boundaryEpoch = "
-            "beginAuthoritativeQuickActionBoundary()\n"
-            "            return .failure(error)\n",
+            "            return (\n"
+            "                .failure(error),\n"
+            "                beginAuthoritativeQuickActionBoundary()\n"
+            "            )\n",
             "        } catch {\n"
-            "            boundaryEpoch = nil\n"
-            "            return .failure(error)\n",
+            "            return (.failure(error), nil)\n",
             1,
         )
 
@@ -763,17 +763,15 @@ class PlatformActionsValidatorTests(unittest.TestCase):
         settings = self.source("App/MoneyUp/AppModelSettings.swift")
         restore = self.source("App/MoneyUp/AppModelBackupRestore.swift")
         inspection = (
-            "        let pendingDataEraseResult = inspectDataEraseIntent(\n"
-            "            startingBoundaryAt: &quickActionBoundaryEpoch\n"
-            "        )\n"
+            "        let dataEraseInspection = await inspectDataEraseIntent()\n"
+            "        quickActionBoundaryEpoch = dataEraseInspection.boundaryEpoch\n"
             "        await closeStoreBeforeStartup()\n"
         )
         mutated_lifecycle = lifecycle.replace(
             inspection,
             "        await closeStoreBeforeStartup()\n"
-            "        let pendingDataEraseResult = inspectDataEraseIntent(\n"
-            "            startingBoundaryAt: &quickActionBoundaryEpoch\n"
-            "        )\n",
+            "        let dataEraseInspection = await inspectDataEraseIntent()\n"
+            "        quickActionBoundaryEpoch = dataEraseInspection.boundaryEpoch\n",
             1,
         )
 
@@ -784,7 +782,7 @@ class PlatformActionsValidatorTests(unittest.TestCase):
             restore,
         )
 
-        self.assertTrue(any("first suspension" in error for error in errors))
+        self.assertTrue(any("later suspension" in error for error in errors))
 
     def test_rejects_boundary_that_leaves_occupied_ui_request_alive(self) -> None:
         model = self.source("App/MoneyUp/AppModel.swift")

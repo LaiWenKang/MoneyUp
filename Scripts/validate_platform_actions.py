@@ -1023,27 +1023,35 @@ def validate_boundary_lifecycle_sources(
         "" if inspect_erase is None else " ".join(inspect_erase.split())
     )
     inspect_contract = (
-        "do { let isPending = try dataEraseIntent.isPending() if isPending { "
-        "boundaryEpoch = beginAuthoritativeQuickActionBoundary() } "
-        "return .success(isPending) } catch { boundaryEpoch = "
-        "beginAuthoritativeQuickActionBoundary() return .failure(error) }"
+        "do { let isPending = try await dataEraseIntent "
+        ".isPendingWithoutBlockingLaunch() if isPending { return ( "
+        ".success(true), beginAuthoritativeQuickActionBoundary() ) } return "
+        "(.success(false), nil) } catch { return ( .failure(error), "
+        "beginAuthoritativeQuickActionBoundary() ) }"
     )
-    inspection_before_suspension = (
-        "let pendingDataEraseResult = inspectDataEraseIntent( "
-        "startingBoundaryAt: &quickActionBoundaryEpoch ) await "
-        "closeStoreBeforeStartup()"
+    nonblocking_inspection_sequence = (
+        "let dataEraseInspection = await inspectDataEraseIntent() "
+        "quickActionBoundaryEpoch = dataEraseInspection.boundaryEpoch "
+        "await closeStoreBeforeStartup()"
     )
+    deferral_offset = normalized_start.find(start_defer)
+    inspection_offset = normalized_start.find(nonblocking_inspection_sequence)
     if start is None or start_defer not in normalized_start:
         errors.append("startup must defer-balance its broker boundary")
     if inspect_erase is None or inspect_contract not in normalized_inspect_erase:
         errors.append(
-            "startup must synchronously begin a boundary for pending and "
-            "unreadable tombstones"
+            "startup must begin a boundary for pending and unreadable "
+            "tombstones after its nonblocking read"
         )
-    if start is None or inspection_before_suspension not in normalized_start:
+    if (
+        start is None
+        or inspection_offset < 0
+        or deferral_offset < 0
+        or deferral_offset > inspection_offset
+    ):
         errors.append(
-            "startup must inspect the tombstone and begin any boundary before "
-            "its first suspension"
+            "startup must defer action routing before the nonblocking tombstone "
+            "read and publish its boundary before any later suspension"
         )
     if start is not None and (
         start.count("beginAuthoritativeBoundary()") != 0
@@ -1055,7 +1063,7 @@ def validate_boundary_lifecycle_sources(
         )
     if inspect_erase is not None and (
         inspect_erase.count("beginAuthoritativeQuickActionBoundary()") != 2
-        or "pendingDataEraseResult.get()" not in normalized_start
+        or "dataEraseInspection.result.get()" not in normalized_start
     ):
         errors.append(
             "startup tombstone inspection must cover pending, unreadable, and "
