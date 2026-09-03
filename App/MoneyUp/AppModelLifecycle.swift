@@ -42,6 +42,7 @@ extension AppModel {
         }
         let dataEraseInspection = await inspectDataEraseIntent()
         quickActionBoundaryEpoch = dataEraseInspection.boundaryEpoch
+        await lifecycleHooks.checkpoint(.afterStartupTombstoneInspection)
         await closeStoreBeforeStartup()
         state = .launching
         startupFailureKind = nil

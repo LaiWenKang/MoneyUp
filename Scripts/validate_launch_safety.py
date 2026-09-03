@@ -108,6 +108,7 @@ def validate(root: Path = ROOT) -> list[str]:
         lifecycle,
         (
             "let dataEraseInspection = await inspectDataEraseIntent()",
+            "await lifecycleHooks.checkpoint(.afterStartupTombstoneInspection)",
             ".isPendingWithoutBlockingLaunch()",
             "try await openAndFinishStartupIncludingKeyCliffRecovery(",
         ),

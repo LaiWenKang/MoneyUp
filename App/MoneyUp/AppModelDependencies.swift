@@ -151,6 +151,9 @@ struct DataEraseIntentAccess: Sendable {
 }
 
 enum AppModelLifecycleCheckpoint: Equatable, Sendable {
+    /// Startup has completed its nonblocking tombstone read and installed any
+    /// authoritative quick-action boundary before later suspension or open.
+    case afterStartupTombstoneInspection
     case beforeJournalCommit
     /// Every previously published journal-derived value has been made
     /// unavailable, while the durable store still contains the old journal.

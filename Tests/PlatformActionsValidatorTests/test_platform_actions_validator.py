@@ -765,13 +765,15 @@ class PlatformActionsValidatorTests(unittest.TestCase):
         inspection = (
             "        let dataEraseInspection = await inspectDataEraseIntent()\n"
             "        quickActionBoundaryEpoch = dataEraseInspection.boundaryEpoch\n"
+            "        await lifecycleHooks.checkpoint(.afterStartupTombstoneInspection)\n"
             "        await closeStoreBeforeStartup()\n"
         )
         mutated_lifecycle = lifecycle.replace(
             inspection,
             "        await closeStoreBeforeStartup()\n"
             "        let dataEraseInspection = await inspectDataEraseIntent()\n"
-            "        quickActionBoundaryEpoch = dataEraseInspection.boundaryEpoch\n",
+            "        quickActionBoundaryEpoch = dataEraseInspection.boundaryEpoch\n"
+            "        await lifecycleHooks.checkpoint(.afterStartupTombstoneInspection)\n",
             1,
         )
 

@@ -1032,6 +1032,7 @@ def validate_boundary_lifecycle_sources(
     nonblocking_inspection_sequence = (
         "let dataEraseInspection = await inspectDataEraseIntent() "
         "quickActionBoundaryEpoch = dataEraseInspection.boundaryEpoch "
+        "await lifecycleHooks.checkpoint(.afterStartupTombstoneInspection) "
         "await closeStoreBeforeStartup()"
     )
     deferral_offset = normalized_start.find(start_defer)
