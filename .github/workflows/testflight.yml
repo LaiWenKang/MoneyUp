@@ -47,6 +47,7 @@ jobs:
     timeout-minutes: 45
     outputs:
       toolchain_fingerprint: ${{ steps.release_toolchain.outputs.fingerprint }}
+      runner_image_fingerprint: ${{ steps.release_toolchain.outputs.runner_image }}
     steps:
       - name: Require main and explicit upload confirmation
         shell: bash
@@ -106,8 +107,10 @@ jobs:
             echo "::error::The runner does not contain the reviewed release toolchain."
             exit 1
           fi
-          TOOLCHAIN_FINGERPRINT="${XCODE_VERSION_LINE}|${XCODE_BUILD_LINE}|iphoneos-${SDK_VERSION}|${ImageOS}|${ImageVersion}"
+          TOOLCHAIN_FINGERPRINT="${XCODE_VERSION_LINE}|${XCODE_BUILD_LINE}|iphoneos-${SDK_VERSION}|${ImageOS}"
+          RUNNER_IMAGE_FINGERPRINT="${ImageOS}|${ImageVersion}"
           echo "fingerprint=$TOOLCHAIN_FINGERPRINT" >> "$GITHUB_OUTPUT"
+          echo "runner_image=$RUNNER_IMAGE_FINGERPRINT" >> "$GITHUB_OUTPUT"
           printf '%s\n' "$XCODE_VERSION_LINE" "$XCODE_BUILD_LINE" \
             "iPhoneOS SDK $SDK_VERSION" \
             "Runner image $ImageOS $ImageVersion"
@@ -343,6 +346,7 @@ jobs:
         shell: bash
         env:
           PREFLIGHT_TOOLCHAIN_FINGERPRINT: ${{ needs.preflight.outputs.toolchain_fingerprint }}
+          PREFLIGHT_RUNNER_IMAGE_FINGERPRINT: ${{ needs.preflight.outputs.runner_image_fingerprint }}
         run: |
           set -euo pipefail
           test -x "$DEVELOPER_DIR/usr/bin/xcodebuild"
@@ -357,16 +361,28 @@ jobs:
             echo "::error::The signing runner does not contain the reviewed release toolchain."
             exit 1
           fi
-          TOOLCHAIN_FINGERPRINT="${XCODE_VERSION_LINE}|${XCODE_BUILD_LINE}|iphoneos-${SDK_VERSION}|${ImageOS}|${ImageVersion}"
-          if [[ -z "$PREFLIGHT_TOOLCHAIN_FINGERPRINT" || \
-                "$TOOLCHAIN_FINGERPRINT" != "$PREFLIGHT_TOOLCHAIN_FINGERPRINT" ]]; then
-            echo "::error::Preflight and signing did not use the same exact runner toolchain image."
+          TOOLCHAIN_FINGERPRINT="${XCODE_VERSION_LINE}|${XCODE_BUILD_LINE}|iphoneos-${SDK_VERSION}|${ImageOS}"
+          if [[ -z "$PREFLIGHT_RUNNER_IMAGE_FINGERPRINT" ]]; then
+            echo "::error::Preflight runner-image provenance is unavailable."
             exit 1
           fi
-          echo "RELEASE_TOOLCHAIN_FINGERPRINT=$TOOLCHAIN_FINGERPRINT" >> "$GITHUB_ENV"
+          if [[ -z "$PREFLIGHT_TOOLCHAIN_FINGERPRINT" || \
+                "$TOOLCHAIN_FINGERPRINT" != "$PREFLIGHT_TOOLCHAIN_FINGERPRINT" ]]; then
+            echo "::error::Preflight and signing did not use the same reviewed Xcode, SDK, and macOS runner family."
+            exit 1
+          fi
+          RUNNER_IMAGE_FINGERPRINT="${ImageOS}|${ImageVersion}"
+          RELEASE_TOOLCHAIN_FINGERPRINT="${TOOLCHAIN_FINGERPRINT}|${ImageVersion}"
+          echo "RELEASE_TOOLCHAIN_FINGERPRINT=$RELEASE_TOOLCHAIN_FINGERPRINT" >> "$GITHUB_ENV"
           printf '%s\n' "$XCODE_VERSION_LINE" "$XCODE_BUILD_LINE" \
             "iPhoneOS SDK $SDK_VERSION" \
             "Runner image $ImageOS $ImageVersion"
+          {
+            echo "### Release toolchain provenance"
+            printf -- '- Stable toolchain: `%s`\n' "$TOOLCHAIN_FINGERPRINT"
+            printf -- '- Preflight runner image: `%s`\n' "$PREFLIGHT_RUNNER_IMAGE_FINGERPRINT"
+            printf -- '- Signing runner image: `%s`\n' "$RUNNER_IMAGE_FINGERPRINT"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Install checksum-verified XcodeGen
         shell: bash
