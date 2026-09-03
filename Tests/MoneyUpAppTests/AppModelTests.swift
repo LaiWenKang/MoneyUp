@@ -14292,7 +14292,7 @@ extension AppModelTests {
             currentDate: { occurredAt }
         )
 
-        let entryID = try XCTUnwrap(try await model.logExpense(
+        let savedEntryID = try await model.logExpense(
             amount: 12,
             accountID: fixture.wallet.id,
             categoryID: fixture.food.id,
@@ -14300,7 +14300,8 @@ extension AppModelTests {
             payee: "Lunch",
             note: nil,
             allowancePlanID: plan.id
-        ))
+        )
+        let entryID = try XCTUnwrap(savedEntryID)
 
         XCTAssertEqual(model.allowancePlans.first?.usages.count, 1)
         XCTAssertEqual(
@@ -14313,11 +14314,12 @@ extension AppModelTests {
             from: .allowancePlans
         )
         XCTAssertEqual(storedApplied?.usages.first?.amount.amount, 12)
-        XCTAssertNotNil(try await fixture.store.fetch(
+        let storedEntry = try await fixture.store.fetch(
             JournalEntry.self,
             id: entryID.uuidString,
             from: .journalEntries
-        ))
+        )
+        XCTAssertNotNil(storedEntry)
 
         try await model.deleteEntry(id: entryID)
 
@@ -14328,11 +14330,12 @@ extension AppModelTests {
             from: .allowancePlans
         )
         XCTAssertTrue(try XCTUnwrap(storedDeleted).usages.isEmpty)
-        XCTAssertNil(try await fixture.store.fetch(
+        let deletedEntry = try await fixture.store.fetch(
             JournalEntry.self,
             id: entryID.uuidString,
             from: .journalEntries
-        ))
+        )
+        XCTAssertNil(deletedEntry)
         await fixture.store.close()
     }
 
@@ -14360,7 +14363,7 @@ extension AppModelTests {
             allowancePlans: [plan],
             currentDate: { occurredAt.addingTimeInterval(60) }
         )
-        let originalID = try XCTUnwrap(try await model.logExpense(
+        let savedOriginalID = try await model.logExpense(
             amount: 12,
             accountID: fixture.wallet.id,
             categoryID: fixture.food.id,
@@ -14368,7 +14371,8 @@ extension AppModelTests {
             payee: "Lunch",
             note: nil,
             allowancePlanID: plan.id
-        ))
+        )
+        let originalID = try XCTUnwrap(savedOriginalID)
 
         try await model.replaceEntry(
             id: originalID,
@@ -14396,11 +14400,12 @@ extension AppModelTests {
             from: .allowancePlans
         )
         XCTAssertEqual(stored?.usages.first?.linkedJournalEntryID, replacement.id)
-        XCTAssertNil(try await fixture.store.fetch(
+        let removedOriginal = try await fixture.store.fetch(
             JournalEntry.self,
             id: originalID.uuidString,
             from: .journalEntries
-        ))
+        )
+        XCTAssertNil(removedOriginal)
         await fixture.store.close()
     }
 
@@ -14575,11 +14580,11 @@ private struct AppModelFixture {
             budgetNodes: budgetNodes,
             scheduledTransactions: scheduledTransactions,
             investmentHoldings: investmentHoldings,
-            allowancePlans: allowancePlans,
             receiptAttachments: receiptAttachments,
             exchangeRates: exchangeRates,
             netWorthSnapshots: netWorthSnapshots,
             savingsGoals: savingsGoals,
+            allowancePlans: allowancePlans,
             quickLogDraft: quickLogDraft,
             lockedCaptureStore: lockedCaptureStore,
             receiptRecognizer: receiptRecognizer,
