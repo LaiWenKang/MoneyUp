@@ -6661,6 +6661,7 @@ final class AppModelTests: XCTestCase {
         let events = EraseEventRecorder()
         let captureStore = EraseRecordingLockedCaptureStore(events: events)
         let broker = MoneyUpQuickActionRouteBroker()
+        let inspectionGate = AsyncGate()
         let intent = DataEraseIntentAccess(
             isPending: {
                 events.record("intent-checked")
@@ -6670,6 +6671,10 @@ final class AppModelTests: XCTestCase {
             clear: { events.record("intent-cleared") }
         )
         let model = fixture.model(
+            lifecycleHooks: hooks(
+                pausing: .afterStartupTombstoneInspection,
+                at: inspectionGate
+            ),
             lockedCaptureStore: captureStore,
             deleteDatabaseKey: { events.record("database-key-deleted") },
             dataEraseIntent: intent,
@@ -6690,11 +6695,13 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(broker.submit(.smartEntry))
 
         let startTask = Task { @MainActor in await model.start() }
-        await closeGate.waitUntilReached()
+        await inspectionGate.waitUntilReached()
         XCTAssertTrue(broker.isAuthoritativeBoundaryActive)
         XCTAssertEqual(broker.handoffGeneration, 1)
         XCTAssertNil(model.requestedQuickLogRequest)
         XCTAssertNil(model.presentedQuickLogRequest)
+        await inspectionGate.release()
+        await closeGate.waitUntilReached()
         await closeGate.release()
         await startTask.value
 
