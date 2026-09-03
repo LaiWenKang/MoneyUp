@@ -19,7 +19,7 @@ WIDGET_BUNDLE_ID = "com.laiwenkang.MoneyUp.Widget"
 APP_GROUP_ID = "group.com.laiwenkang.MoneyUp"
 APP_GROUP_PAYLOAD_SHA256 = {
     "App/Shared/BudgetWidgetSnapshot.swift": (
-        "f806810aa1a07959a4c92cba52b8f139ded9dd50e45b6bdd37f54bfb0812595d"
+        "9d923b715a6dfb8e874a87cf0e6e9793166ffc97c7eb2ec7ce5f5239f64c0542"
     ),
 }
 LOCKED_CAPTURE_STORE_SHA256 = (

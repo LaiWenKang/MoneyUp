@@ -82,7 +82,8 @@ extension QuickLogEntryView {
                 occurredAt: occurredAt,
                 payee: payee,
                 note: note,
-                receiptData: receiptData
+                receiptData: receiptData,
+                allowancePlanID: selectedAllowanceID
             ))
         case .income:
             guard let categoryID else { return .skipped }
@@ -142,7 +143,8 @@ extension QuickLogEntryView {
             occurredAt: occurredAt,
             payee: payee,
             note: note,
-            receiptData: receiptData
+            receiptData: receiptData,
+            allowancePlanID: kind == .expense ? selectedAllowanceID : nil
         )
     }
 
@@ -193,6 +195,7 @@ extension QuickLogEntryView {
             autoAppliedCategorySuggestionID = nil
             pendingDuplicateReview = nil
             splitLines = []
+            selectedAllowanceID = nil
             sourceCaptureID = nil
             receiptAttachmentData = nil
             retainReceiptAttachment = false

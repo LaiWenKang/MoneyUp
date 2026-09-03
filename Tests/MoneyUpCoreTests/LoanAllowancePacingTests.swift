@@ -63,6 +63,47 @@ final class LoanAllowancePacingTests: XCTestCase {
         XCTAssertEqual(summary.totalInterestPaid.amount, 30)
     }
 
+    func testLegacyLoanAndAllowanceDecodeWithNeutralPurposes() throws {
+        let currency = try CurrencyCode("SGD")
+        let loan = try LoanPlan(
+            accountID: UUID(),
+            name: "Home",
+            purpose: .home,
+            originalPrincipal: try Money(100, currency: currency),
+            openedAt: Date(timeIntervalSince1970: 100)
+        )
+        var loanObject = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(loan)) as? [String: Any]
+        )
+        loanObject.removeValue(forKey: "purpose")
+        let decodedLoan = try JSONDecoder().decode(
+            LoanPlan.self,
+            from: JSONSerialization.data(withJSONObject: loanObject)
+        )
+        XCTAssertEqual(decodedLoan.purpose, .other)
+
+        let allowance = try AllowancePlan(
+            name: "Meal",
+            amount: try Money(12, currency: currency),
+            cadence: .daily,
+            fundingMode: .prepaidAsset,
+            linkedAccountID: UUID(),
+            startsAt: Date(timeIntervalSince1970: 100)
+        )
+        var allowanceObject = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(allowance))
+                as? [String: Any]
+        )
+        allowanceObject.removeValue(forKey: "fundingMode")
+        allowanceObject.removeValue(forKey: "linkedAccountID")
+        let decodedAllowance = try JSONDecoder().decode(
+            AllowancePlan.self,
+            from: JSONSerialization.data(withJSONObject: allowanceObject)
+        )
+        XCTAssertEqual(decodedAllowance.fundingMode, .benefitLimit)
+        XCTAssertNil(decodedAllowance.linkedAccountID)
+    }
+
     func testDailyAllowanceExpiresInsteadOfRollingOver() throws {
         let currency = try CurrencyCode("SGD")
         let start = try XCTUnwrap(

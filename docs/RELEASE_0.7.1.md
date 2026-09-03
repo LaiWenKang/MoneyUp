@@ -1,6 +1,6 @@
 # MoneyUp 0.7.1 — Complete Feedback Follow-up
 
-Source identity: **Founders Beta 0.7.1, build 10**.
+Source identity: **Founders Beta 0.7.1, build 11**.
 
 This release includes every nonblank item from the 0.6.0 feedback list while
 preserving MoneyUp's local-only, encrypted, exact-Decimal, balanced-ledger, and
@@ -30,16 +30,18 @@ and repeated-launch evidence on iOS 26.6 remains required before resubmission.
 
 | Feedback | 0.7.1 behavior |
 |---|---|
-| Keyboard blocks lower Log fields | Quick Log follows focus inside a scroll reader, keeps amount/account/title/notes/split fields reachable, supports interactive keyboard dismissal and the Done toolbar, and preserves the draft. |
-| Date/time and categories are not smart defaults | A new untouched capture uses the actual injected current time. Defaults prefer a still-valid user setting, then deterministic local payee affinity, then an active leaf category; every field stays editable. |
-| Widget capture needs categories and details | Authenticated widget and shortcut actions open the same full Quick Log, including account, category, title, notes, date/time, transfer, and splits. While the protected book is locked, the separate encrypted inbox accepts amount plus optional title/notes and offers “Unlock and review now”; protected account/category IDs are chosen only after intentional unlock. |
-| Title/description/notes matter in History | History rows show title or merchant, notes, and the complete hierarchical category path. The same values remain searchable and editable. |
-| History should be smarter and retain Calendar | History opens on Today with complete spending, income, refunds, and signed net totals per currency. Seven days, Month, All, advanced filters, paging, and direct Calendar access remain available. |
-| Minimal, advanced, professional | Existing five-tab navigation is unchanged. The new capability lives in compact segmented scopes, inline pace labels, and dedicated Loan/Benefits drill-downs rather than new permanent tabs or dashboards. |
-| Loan and repayment tracking | Loan Center attaches a plan to a loan liability account and shows remaining principal, total advanced, principal paid, interest, fees, opening date, APR, term, debt-total inclusion, repayment/drawdown history, notes, and finish-at-zero. Repayments separate principal, interest, and fees and post one balanced journal entry. |
-| Daily-expiring company allowances | Benefits supports daily, weekdays-only, weekly, or monthly cadence; start/end dates; eligible expense categories; usage notes/history; and no, capped, or full rollover. Daily plus no rollover expires unused value each day. Allowances are planning-only and never create fake income or net worth. |
-| Divide monthly plans into daily/weekly guidance | Each flexible budget node can remain Monthly or expose an exact Daily/Weekly pace from the positive remainder and remaining civil days. The amount is currency-rounded once and never changes the actual monthly budget. |
-| More detailed subcategories | Expense and income categories support arbitrary depth, display full paths, and can be safely reparented. Kind mismatches and parent cycles are rejected; expense budget relationships update atomically. |
+| Smart split calculation | Quick Log and transaction editing offer Equal, Rebalance unlocked, 50/50, 60/40, and 70/30 actions. Exact currency minor units are distributed deterministically, locked rows stay unchanged, and the result always reconciles to the entered total. |
+| Keyboard hides the last row | Both forms react to the keyboard safe area, reserve focused-field space, scroll immediately and again after keyboard layout settles, support interactive swipe-down dismissal, and always expose Done. |
+| Category management and deeper subcategories | Log exposes Add and Manage Categories together. The searchable manager shows full paths and a visible add-subcategory action on every active category; arbitrary depth, safe reparenting, cycle checks, archive, merge, reassignment, and delete remain supported. |
+| On-device intelligence default | Deterministic intelligence and eligible Apple on-device ordinal assistance default on for new and legacy profiles. Users retain an explicit Settings opt-out; unsupported, failed, cancelled, or stale model work changes nothing. |
+| Second History filter row | Today, 7 days, Month, and All remain the time row. A second composable row filters Needs Review, Split, Recurring, Allowance, and Has Notes, intersecting exact entry IDs when multiple filters are selected. |
+| Loans beyond cars | Loan plans now carry a purpose: home, vehicle, education, medical, personal, business, installment, credit line, or other. Purpose changes presentation only; principal and repayments remain ledger-authoritative. |
+| Swipe between tabs | An optional Settings gesture moves one tab left or right after a deliberate horizontal swipe, never wraps at the ends, and never removes the visible tab bar. It defaults off to avoid collisions with charts and horizontal controls. |
+| Configurable expiring allowances | Benefits supports limit-only, prepaid-asset, and reimbursement modes; currency-matched linked asset accounts; daily/weekday/weekly/monthly cadence; start/end dates; eligible categories; notes/history; and no/capped/full rollover. Quick Log can atomically link an eligible expense to its allowance usage. |
+| Daily/weekly budget flexibility | Plan lets the user view an exact flexible remainder as Today, This week, or Rest of month without mutating the underlying monthly limit. Each result uses the selected civil-day cadence and currency rounding. |
+| Useful Flexible Today | Today now shows the current daily amount, next-seven-day capacity, remaining-period capacity and days, plus reserved commitments and a tap-through arithmetic explanation. |
+| Five-tab organization | The five permanent tabs remain Today, History, Log, Plan, and Assets. Plan now opens on a compact overview and offers Budget, Calendar, Goals, and Allowances as clear internal destinations; Log and History keep the highest-frequency tasks one tap away. |
+| Premium widget system | The configurable widget adds Smart Overview beside Quick Actions and Budget Status. Supported Home and Lock Screen families show privacy-safe review counts, allowance remaining percentage, and next-commitment timing with concise branded tiles; no amount, payee, account name, holding, balance, transaction, or ledger ID crosses the App Group. |
 
 ## Accounting and privacy decisions
 
@@ -47,8 +49,11 @@ and repeated-launch evidence on iOS 26.6 remains required before resubmission.
   metadata never becomes a competing balance.
 - Interest and fees are explicit expense postings. A repayment cannot silently
   overpay principal, and a loan cannot close above zero.
-- Allowances are benefits, not money owned by the user. Logging their use alone
-  does not change cash, income, spending, or net worth.
+- Allowance metadata never creates money. Limit-only use remains planning-only;
+  prepaid and reimbursement modes point to a real same-currency asset account
+  whose ledger balance remains authoritative. Linking a saved expense records
+  evidence atomically and deleting or replacing it removes or relinks that
+  evidence in the same transaction.
 - No remote model, analytics SDK, backend, currency conversion, or tracking was
   added. Smart defaults use only deterministic on-device data.
 - Amounts remain exact `Decimal`; all journal entries balance independently by
@@ -58,11 +63,12 @@ and repeated-launch evidence on iOS 26.6 remains required before resubmission.
 
 Locally completed on this source candidate:
 
-- release-asset validation, including 1,258 bilingual strings;
+- release-asset validation, including 1,322 bilingual strings across three catalogs;
 - architecture and Swift structure fitness;
 - offline/privacy/recovery mutation gates;
-- 61 Python adversarial validator tests;
-- 744 declared Swift tests: 694 XCTest and 50 Swift Testing declarations;
+- 112 Python validator tests across the architecture, platform-action, and
+  performance suites;
+- 752 declared Swift tests: 701 XCTest and 51 Swift Testing declarations;
 - clean patch whitespace validation.
 
 Still required on the exact release-truth commit:

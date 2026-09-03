@@ -502,6 +502,44 @@ extension DashboardView {
             Text("dashboard.safe_to_spend.per_day")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
+            if let weekly = try? Money(
+                CheckedDecimal.multiplying(
+                    breakdown.amountPerDay.amount,
+                    Decimal(min(7, breakdown.remainingDayCount))
+                ),
+                currency: breakdown.amountPerDay.currency
+            ) {
+                Label(
+                    String(
+                        format: AppLocalization.string("dashboard.safe_to_spend.weekly_format"),
+                        formattedMoney(weekly),
+                        min(7, breakdown.remainingDayCount)
+                    ),
+                    systemImage: "calendar.day.timeline.left"
+                )
+                .font(.footnote.weight(.semibold))
+            }
+            Label(
+                String(
+                    format: AppLocalization.string("dashboard.safe_to_spend.remaining_format"),
+                    formattedMoney(breakdown.availableForRemainingPeriod),
+                    breakdown.remainingDayCount
+                ),
+                systemImage: "hourglass.bottomhalf.filled"
+            )
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            if !breakdown.flexibleCommitments.isZero {
+                Label(
+                    String(
+                        format: AppLocalization.string("dashboard.safe_to_spend.reserved_format"),
+                        formattedMoney(breakdown.flexibleCommitments)
+                    ),
+                    systemImage: "calendar.badge.clock"
+                )
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            }
             if breakdown.amountPerDay.amount < .zero {
                 Label(
                     "dashboard.safe_to_spend.attention",

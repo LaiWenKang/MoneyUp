@@ -12,7 +12,8 @@ extension AppModel {
         termMonths: Int?,
         includeInTotalDebt: Bool,
         interestExpenseAccountID: UUID?,
-        feeExpenseAccountID: UUID?
+        feeExpenseAccountID: UUID?,
+        purpose: LoanPurpose = .other
     ) async throws -> UUID {
         try beginJournalMutation()
         defer { endJournalMutation() }
@@ -30,6 +31,7 @@ extension AppModel {
         let plan = try LoanPlan(
             accountID: accountID,
             name: name,
+            purpose: purpose,
             originalPrincipal: try Money(originalPrincipal, currency: currency),
             openedAt: openedAt,
             annualPercentageRate: annualPercentageRate,
@@ -57,7 +59,8 @@ extension AppModel {
         termMonths: Int?,
         includeInTotalDebt: Bool,
         interestExpenseAccountID: UUID?,
-        feeExpenseAccountID: UUID?
+        feeExpenseAccountID: UUID?,
+        purpose: LoanPurpose? = nil
     ) async throws {
         try beginJournalMutation()
         defer { endJournalMutation() }
@@ -71,6 +74,7 @@ extension AppModel {
             id: current.id,
             accountID: current.accountID,
             name: name,
+            purpose: purpose ?? current.purpose,
             originalPrincipal: current.originalPrincipal,
             openedAt: current.openedAt,
             annualPercentageRate: annualPercentageRate,
@@ -237,6 +241,7 @@ extension AppModel {
               plan.eligibleCategoryIDs.allSatisfy({ id in
                   accountsByID[id]?.kind == .expense
               }) else { throw AppModelError.invalidAllowance }
+        try validateAllowanceFunding(plan)
         let generation = storeGeneration
         try await requireStore().upsert(
             plan,
@@ -255,6 +260,7 @@ extension AppModel {
               plan.eligibleCategoryIDs.allSatisfy({ id in
                   accountsByID[id]?.kind == .expense
               }) else { throw AppModelError.invalidAllowance }
+        try validateAllowanceFunding(plan)
         let generation = storeGeneration
         try await requireStore().upsert(
             plan,
@@ -309,6 +315,78 @@ extension AppModel {
         allowancePlans[index] = updated
     }
 
+    /// Persists a journal entry and its allowance evidence in one SQLCipher
+    /// transaction. The allowance is capped to eligible spending and the
+    /// current entitlement, so Quick Log can never create phantom value or
+    /// over-consume a daily benefit.
+    func save(
+        _ entry: JournalEntry,
+        applyingAllowance planID: UUID?,
+        receiptData: Data? = nil
+    ) async throws -> UUID? {
+        guard let planID else {
+            return try await save(entry, receiptData: receiptData)
+        }
+        guard entry.kind == .expense,
+              let index = allowancePlans.firstIndex(where: { $0.id == planID }),
+              !allowancePlans[index].isArchived else {
+            throw AppModelError.invalidAllowance
+        }
+        let plan = allowancePlans[index]
+        try validateAllowanceFunding(plan)
+        let eligiblePostings = entry.postings.filter { posting in
+            guard accountsByID[posting.accountID]?.kind == .expense,
+                  posting.money.amount > .zero else { return false }
+            return plan.eligibleCategoryIDs.isEmpty
+                || plan.eligibleCategoryIDs.contains(posting.accountID)
+        }
+        guard !eligiblePostings.isEmpty else {
+            throw AppModelError.invalidAllowance
+        }
+        var eligibleAmount = Decimal.zero
+        for posting in eligiblePostings {
+            guard posting.money.currency == plan.amount.currency else {
+                throw AppModelError.invalidAllowance
+            }
+            eligibleAmount = try CheckedDecimal.adding(
+                eligibleAmount,
+                posting.money.amount
+            )
+        }
+        let summary = try plan.summary(asOf: entry.occurredAt)
+        let appliedAmount = min(eligibleAmount, max(summary.remaining.amount, .zero))
+        guard appliedAmount > .zero else {
+            throw AppModelError.invalidAllowance
+        }
+        let categoryID = eligiblePostings.count == 1
+            ? eligiblePostings[0].accountID
+            : nil
+        let usage = try AllowanceUsage(
+            amount: try Money(appliedAmount, currency: plan.amount.currency),
+            occurredAt: entry.occurredAt,
+            categoryID: categoryID,
+            linkedJournalEntryID: entry.id,
+            note: entry.note
+        )
+        let updated = try plan.addingUsage(usage)
+        let planWrite = try RecordWrite(
+            updated,
+            id: updated.id.uuidString,
+            in: .allowancePlans
+        )
+        let savedID = try await save(
+            entry,
+            additionalWrites: [planWrite],
+            receiptData: receiptData
+        )
+        if savedID == entry.id,
+           let currentIndex = allowancePlans.firstIndex(where: { $0.id == planID }) {
+            allowancePlans[currentIndex] = updated
+            refreshBudgetWidgetSnapshot()
+        }
+        return savedID
+    }
+
     func allowanceSummary(_ plan: AllowancePlan, asOf: Date? = nil)
     -> DerivedValue<AllowanceSummary> {
         do {
@@ -322,15 +400,26 @@ extension AppModel {
         for progress: BudgetProgress,
         asOf: Date? = nil
     ) -> DerivedValue<BudgetPace?> {
-        guard progress.node.pacingCadence != .monthly,
-              progress.node.purpose == .flexible,
+        budgetPace(
+            for: progress,
+            cadence: progress.node.pacingCadence,
+            asOf: asOf
+        )
+    }
+
+    func budgetPace(
+        for progress: BudgetProgress,
+        cadence: BudgetPacingCadence,
+        asOf: Date? = nil
+    ) -> DerivedValue<BudgetPace?> {
+        guard progress.node.purpose == .flexible,
               let remaining = progress.remaining,
               remaining.amount > .zero else { return .available(nil) }
         do {
             return .available(
                 try BudgetPaceCalculator.pace(
                     remaining: remaining,
-                    cadence: progress.node.pacingCadence,
+                    cadence: cadence,
                     asOf: asOf ?? currentDateForUserAction(),
                     calendar: reportingCalendar
                 )
@@ -358,6 +447,23 @@ extension AppModel {
               category.kind == .expense,
               !category.isArchived else {
             throw AppModelError.invalidCategoryKind
+        }
+    }
+
+    private func validateAllowanceFunding(_ plan: AllowancePlan) throws {
+        switch plan.fundingMode {
+        case .benefitLimit:
+            guard plan.linkedAccountID == nil else {
+                throw AppModelError.invalidAllowance
+            }
+        case .prepaidAsset, .reimbursement:
+            guard let accountID = plan.linkedAccountID,
+                  let account = accountsByID[accountID],
+                  account.kind == .asset,
+                  !account.isArchived,
+                  account.currency == plan.amount.currency else {
+                throw AppModelError.invalidAllowance
+            }
         }
     }
 

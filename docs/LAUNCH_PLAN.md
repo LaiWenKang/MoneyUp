@@ -14,11 +14,11 @@ later explicit product, privacy, and threat-model decision.
 
 | Area | Status | Release meaning |
 |---|---|---|
-| Product | Complete 0.7.1 feedback follow-up merged through PR #40 as `68eee4f8`; source build 10 | Keyboard-safe and smarter Log, richer widget capture, daily History, retained Calendar, arbitrary-depth categories, budget pacing, expiring allowances, and ledger-linked loans are integrated; physical acceptance remains open |
-| Scale architecture | SQLCipher schema 8 implemented; merged-main CI passed | Exact store metrics, normalized budget attribution, monthly carry checkpoints, compact balances, bounded recent activity, on-demand reads, payload-free intelligence indexes, and recovery coverage for loan/allowance records are integrated; physical measurements remain open |
-| Privacy | Source and policy aligned | Local processing, no tracking/backend, metadata-stripped optional encrypted receipts, and a percentage/state-only App Group widget snapshot |
-| CI | Exact PR head and merged 0.7.1 implementation passed | Runs [300](https://github.com/LaiWenKang/MoneyUp/actions/runs/33628781671) and [301](https://github.com/LaiWenKang/MoneyUp/actions/runs/33630422384) passed release/structure validation, Core/persistence/intelligence tests, 355 app-model tests, coverage reporting, unsigned app/widget Simulator build, and serial performance baseline; this does not close physical or signed exact-binary gates |
-| Automated scale baseline | Exact 0.7.1 candidate and merged implementation passed | The serial Release XCTest target seeds the SHA-bound intelligence-v1 10,000-entry corpus and 20 schedules outside measured blocks, checks detector/operation invariants, and retains raw/JSON clock, CPU, memory, and logical-write evidence on an exact iPhone 16 Pro/iOS 18.5 Simulator; Simulator measurements do not close physical ceilings |
+| Product | Expanded 0.7.1 feedback candidate; source build 11 | Smart splits, settled keyboard avoidance, direct category hierarchy management, default-on eligible assistance, smart History filters, general loan purposes, allowance-linked logging, richer pacing/Today/Plan, optional gestures, and Smart Overview widgets are integrated; exact-head and physical acceptance remain open |
+| Scale architecture | SQLCipher schema 8 implemented; build-11 CI pending | Exact store metrics, normalized budget attribution, monthly carry checkpoints, compact balances, bounded recent activity, on-demand reads, payload-free intelligence indexes, and recovery coverage for loan/allowance records are integrated; exact-head and physical measurements remain open |
+| Privacy | Source and policy aligned | Local processing, no tracking/backend, metadata-stripped optional encrypted receipts, and a bounded status-only App Group snapshot containing no financial record fields |
+| CI | Build-10 baseline passed; build 11 pending | Runs [300](https://github.com/LaiWenKang/MoneyUp/actions/runs/33628781671) and [301](https://github.com/LaiWenKang/MoneyUp/actions/runs/33630422384) passed the prior release/structure, Core/persistence/intelligence, app-model, unsigned app/widget Simulator, and serial performance gates. Build 11 must repeat all four jobs. |
+| Automated scale baseline | Build-10 baseline passed; build 11 pending | The serial Release XCTest target seeds the SHA-bound intelligence-v1 10,000-entry corpus and 20 schedules outside measured blocks, checks detector/operation invariants, and retains raw/JSON clock, CPU, memory, and logical-write evidence on an exact iPhone 16 Pro/iOS 18.5 Simulator; Simulator measurements do not close physical ceilings |
 | Backup scale | Source remediation and Mac CI passed; physical evidence open | Version 2 streams file-backed 1 MiB authenticated chunks across a 100,000-record/512 MB stored-payload envelope, so current accepted books have a complete export; interruption, near-limit v2, and compatible-v1 physical-memory evidence remain required |
 | Apple capability | 0.7.1 signed validation pending | Earlier signed results cannot be reused for the changed schema-8 binary. TestFlight run 24 stopped in preflight before signing/upload; the corrected 0.7.1 release-truth SHA must repeat the protected validate operation |
 | Distribution | 0.7.0 (1025.1) accepted for processing; 0.7.1 not uploaded | Confirm 0.7.0 processing, Founders Internal availability, and installed predecessor build in App Store Connect; validation or upload alone is not installation evidence |
@@ -30,7 +30,7 @@ and evidence boundary is in [Golden PRD traceability](GOLDEN_TRACEABILITY.md).
 
 ## Stage 0 - exact source candidate
 
-Target: one reviewable 0.7.1 commit whose source version is 0.7.1 build 10 and
+Target: one reviewable 0.7.1 commit whose source version is 0.7.1 build 11 and
 whose app/widget/localization/privacy/release documents agree.
 
 Required:
@@ -71,7 +71,7 @@ The account holder performs these actions without sharing Apple credentials:
 
 The workflow must verify:
 
-- source marketing version 0.7.1 and source build 10 before assigning a unique
+- source marketing version 0.7.1 and source build 11 before assigning a unique
   upload build number;
 - the exact dispatched commit, Xcode/toolchain, immutable dependencies, release
   assets, tests, and app/widget build;

@@ -13,6 +13,17 @@ public enum AllowanceRolloverRule: String, Codable, CaseIterable, Hashable, Send
     case full
 }
 
+/// Describes what the allowance represents economically. The mode determines
+/// whether a linked financial account is relevant; it does not create money.
+public enum AllowanceFundingMode: String, Codable, CaseIterable, Hashable, Sendable {
+    /// A non-cash employer benefit or spending cap. It is planning-only.
+    case benefitLimit = "benefit_limit"
+    /// Value already held in a restricted card or wallet asset account.
+    case prepaidAsset = "prepaid_asset"
+    /// Eligible spending that may later be claimed from an employer.
+    case reimbursement
+}
+
 public enum AllowancePlanError: Error, Equatable, Sendable {
     case emptyName
     case amountMustBePositive
@@ -95,6 +106,10 @@ public struct AllowancePlan: Codable, Equatable, Identifiable, Sendable {
     public var name: String
     public var amount: Money
     public var cadence: AllowanceCadence
+    public var fundingMode: AllowanceFundingMode
+    /// Optional asset account used by prepaid or reimbursement workflows. Its
+    /// ledger balance remains authoritative; the allowance never duplicates it.
+    public var linkedAccountID: UUID?
     public var startsAt: Date
     public var endsAt: Date?
     public var timeZoneIdentifier: String
@@ -109,6 +124,8 @@ public struct AllowancePlan: Codable, Equatable, Identifiable, Sendable {
         name: String,
         amount: Money,
         cadence: AllowanceCadence,
+        fundingMode: AllowanceFundingMode = .benefitLimit,
+        linkedAccountID: UUID? = nil,
         startsAt: Date,
         endsAt: Date? = nil,
         timeZoneIdentifier: String = TimeZone.current.identifier,
@@ -156,6 +173,8 @@ public struct AllowancePlan: Codable, Equatable, Identifiable, Sendable {
         self.name = normalizedName
         self.amount = amount
         self.cadence = cadence
+        self.fundingMode = fundingMode
+        self.linkedAccountID = linkedAccountID
         self.startsAt = startsAt
         self.endsAt = endsAt
         self.timeZoneIdentifier = timeZoneIdentifier
@@ -182,6 +201,31 @@ public struct AllowancePlan: Codable, Equatable, Identifiable, Sendable {
         var copy = self
         copy.usages.append(usage)
         copy.usages.sort { $0.occurredAt < $1.occurredAt }
+        return copy
+    }
+
+    public func removingUsages(linkedTo entryID: UUID) -> AllowancePlan {
+        var copy = self
+        copy.usages.removeAll { $0.linkedJournalEntryID == entryID }
+        return copy
+    }
+
+    public func relinkingUsages(
+        from sourceEntryID: UUID,
+        to destinationEntryID: UUID
+    ) throws -> AllowancePlan {
+        var copy = self
+        copy.usages = try usages.map { usage in
+            guard usage.linkedJournalEntryID == sourceEntryID else { return usage }
+            return try AllowanceUsage(
+                id: usage.id,
+                amount: usage.amount,
+                occurredAt: usage.occurredAt,
+                categoryID: usage.categoryID,
+                linkedJournalEntryID: destinationEntryID,
+                note: usage.note
+            )
+        }
         return copy
     }
 
@@ -218,7 +262,8 @@ public struct AllowancePlan: Codable, Equatable, Identifiable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, amount, cadence, startsAt, endsAt, timeZoneIdentifier
+        case id, name, amount, cadence, fundingMode, linkedAccountID
+        case startsAt, endsAt, timeZoneIdentifier
         case eligibleCategoryIDs, rolloverRule, rolloverCap, usages, isArchived
     }
 
@@ -230,6 +275,14 @@ public struct AllowancePlan: Codable, Equatable, Identifiable, Sendable {
                 name: container.decode(String.self, forKey: .name),
                 amount: container.decode(Money.self, forKey: .amount),
                 cadence: container.decode(AllowanceCadence.self, forKey: .cadence),
+                fundingMode: container.decodeIfPresent(
+                    AllowanceFundingMode.self,
+                    forKey: .fundingMode
+                ) ?? .benefitLimit,
+                linkedAccountID: container.decodeIfPresent(
+                    UUID.self,
+                    forKey: .linkedAccountID
+                ),
                 startsAt: container.decode(Date.self, forKey: .startsAt),
                 endsAt: container.decodeIfPresent(Date.self, forKey: .endsAt),
                 timeZoneIdentifier: container.decode(

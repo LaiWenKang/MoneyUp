@@ -1,10 +1,38 @@
 import Foundation
 
 struct QuickLogSplitDraftLine: Codable, Equatable, Identifiable, Sendable {
-    var id: UUID = UUID()
+    var id: UUID
     var categoryID: UUID?
-    var amountText: String = ""
-    var memo: String = ""
+    var amountText: String
+    var memo: String
+    var isLocked: Bool
+
+    init(
+        id: UUID = UUID(),
+        categoryID: UUID? = nil,
+        amountText: String = "",
+        memo: String = "",
+        isLocked: Bool = false
+    ) {
+        self.id = id
+        self.categoryID = categoryID
+        self.amountText = amountText
+        self.memo = memo
+        self.isLocked = isLocked
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, categoryID, amountText, memo, isLocked
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        categoryID = try container.decodeIfPresent(UUID.self, forKey: .categoryID)
+        amountText = try container.decode(String.self, forKey: .amountText)
+        memo = try container.decode(String.self, forKey: .memo)
+        isLocked = try container.decodeIfPresent(Bool.self, forKey: .isLocked) ?? false
+    }
 }
 
 /// The editable transaction state that may survive an app lock.
@@ -27,6 +55,7 @@ struct QuickLogDraft: Codable, Equatable, Sendable {
     var note: String
     var smartText: String
     var splitLines: [QuickLogSplitDraftLine]
+    var selectedAllowanceID: UUID?
     /// Present only when this draft originated in the no-authentication capture
     /// inbox. Once copied into SQLCipher the inbox copy is deleted.
     var sourceCaptureID: UUID? = nil
@@ -44,6 +73,7 @@ struct QuickLogDraft: Codable, Equatable, Sendable {
         note: String,
         smartText: String,
         splitLines: [QuickLogSplitDraftLine] = [],
+        selectedAllowanceID: UUID? = nil,
         sourceCaptureID: UUID? = nil
     ) {
         self.kind = kind
@@ -58,6 +88,7 @@ struct QuickLogDraft: Codable, Equatable, Sendable {
         self.note = note
         self.smartText = smartText
         self.splitLines = splitLines
+        self.selectedAllowanceID = selectedAllowanceID
         self.sourceCaptureID = sourceCaptureID
     }
 
@@ -72,13 +103,14 @@ struct QuickLogDraft: Codable, Equatable, Sendable {
                     || !$0.amountText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                     || !$0.memo.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             }
+            || selectedAllowanceID != nil
             || dateWasEdited
     }
 
     private enum CodingKeys: String, CodingKey {
         case kind, amountText, destinationAmountText, accountID, destinationAccountID
         case categoryID, occurredAt, dateWasEdited, payee, note, smartText
-        case splitLines, sourceCaptureID
+        case splitLines, selectedAllowanceID, sourceCaptureID
     }
 
     init(from decoder: Decoder) throws {
@@ -105,6 +137,10 @@ struct QuickLogDraft: Codable, Equatable, Sendable {
                 debugDescription: "Quick Log split limit exceeded"
             )
         }
+        selectedAllowanceID = try container.decodeIfPresent(
+            UUID.self,
+            forKey: .selectedAllowanceID
+        )
         sourceCaptureID = try container.decodeIfPresent(UUID.self, forKey: .sourceCaptureID)
     }
 }

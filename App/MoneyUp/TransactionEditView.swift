@@ -93,6 +93,15 @@ struct EditableEntryValues {
 }
 
 struct TransactionEditView: View {
+    enum FieldFocus: Hashable {
+        case amount
+        case destinationAmount
+        case payee
+        case note
+        case splitAmount(UUID)
+        case splitMemo(UUID)
+    }
+
     @Environment(\.dismiss) var dismiss
     @Environment(\.dynamicTypeSize) var dynamicTypeSize
     @Environment(AppModel.self) var model
@@ -117,6 +126,7 @@ struct TransactionEditView: View {
     @State var attachmentImages: [UUID: UIImage] = [:]
     @State var attachmentLoadFailures = Set<UUID>()
     @State var attachmentLoadTokens: [UUID: UUID] = [:]
+    @FocusState var focusedField: FieldFocus?
 
     let isEditable: Bool
 
@@ -239,6 +249,27 @@ struct TransactionEditView: View {
 
     @ViewBuilder
     var splitEditor: some View {
+        Menu {
+            Button {
+                applyEqualSplit()
+            } label: {
+                Label("quick_log.split_equal", systemImage: "equal.circle")
+            }
+            Button {
+                rebalanceUnlockedSplits()
+            } label: {
+                Label("quick_log.split_balance_unlocked", systemImage: "scale.3d")
+            }
+            if splitLines.count == 2 {
+                Button("quick_log.split_50_50") { applyPercentageSplit([50, 50]) }
+                Button("quick_log.split_60_40") { applyPercentageSplit([60, 40]) }
+                Button("quick_log.split_70_30") { applyPercentageSplit([70, 30]) }
+            }
+        } label: {
+            Label("quick_log.split_assistant", systemImage: "wand.and.stars")
+        }
+        .disabled(decimalAmount(from: amountText) == nil || sourceCurrency == nil)
+
         ForEach(Array(splitLines.enumerated()), id: \.element.id) { index, line in
             let lineID = line.id
             VStack(alignment: .leading, spacing: 8) {
@@ -281,6 +312,8 @@ struct TransactionEditView: View {
                         )
                     )
                     .moneyAmountKeyboard(currency: sourceCurrency)
+                    .focused($focusedField, equals: .splitAmount(lineID))
+                    .id(FieldFocus.splitAmount(lineID))
                     .accessibilityLabel(
                         Text(
                             String(
@@ -292,6 +325,19 @@ struct TransactionEditView: View {
                     if let sourceCurrency {
                         Text(sourceCurrency.value).foregroundStyle(.secondary)
                     }
+                    Button {
+                        updateSplitLine(lineID) { $0.isLocked.toggle() }
+                    } label: {
+                        Image(systemName: line.isLocked ? "lock.fill" : "lock.open")
+                            .frame(minWidth: 44, minHeight: 44)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(line.isLocked ? Color.accentColor : Color.secondary)
+                    .accessibilityLabel(
+                        line.isLocked
+                            ? Text("quick_log.split_unlock")
+                            : Text("quick_log.split_lock")
+                    )
                     if splitLines.count > 2 {
                         Button(role: .destructive) {
                             splitLines.removeAll { $0.id == lineID }
@@ -324,6 +370,8 @@ struct TransactionEditView: View {
                     )
                 )
                 .font(.caption)
+                .focused($focusedField, equals: .splitMemo(lineID))
+                .id(FieldFocus.splitMemo(lineID))
                 .accessibilityLabel(
                     Text(
                         String(
@@ -367,5 +415,57 @@ struct TransactionEditView: View {
             return
         }
         update(&splitLines[index])
+    }
+
+    func applyEqualSplit() {
+        guard let value = decimalAmount(from: amountText),
+              let currency = sourceCurrency,
+              let amounts = try? TransactionSplitCalculator.equalAmounts(
+                total: Money(value, currency: currency),
+                count: splitLines.count
+              ) else {
+            errorMessage = AppLocalization.string("split.error.allocation")
+            return
+        }
+        applySplitAllocations(amounts)
+    }
+
+    func rebalanceUnlockedSplits() {
+        guard let value = decimalAmount(from: amountText),
+              let currency = sourceCurrency else { return }
+        let current: [Money?] = splitLines.map { line in
+            guard let value = decimalAmount(from: line.amountText) else { return nil }
+            return try? Money(value, currency: currency)
+        }
+        guard let amounts = try? TransactionSplitCalculator.rebalancedAmounts(
+            total: Money(value, currency: currency),
+            current: current,
+            locked: splitLines.map(\.isLocked)
+        ) else {
+            errorMessage = AppLocalization.string("split.error.allocation")
+            return
+        }
+        applySplitAllocations(amounts)
+    }
+
+    func applyPercentageSplit(_ percentages: [Decimal]) {
+        guard let value = decimalAmount(from: amountText),
+              let currency = sourceCurrency,
+              let amounts = try? TransactionSplitCalculator.percentageAmounts(
+                total: Money(value, currency: currency),
+                percentages: percentages
+              ) else {
+            errorMessage = AppLocalization.string("split.error.allocation")
+            return
+        }
+        applySplitAllocations(amounts)
+    }
+
+    func applySplitAllocations(_ amounts: [Money]) {
+        guard amounts.count == splitLines.count else { return }
+        for index in splitLines.indices {
+            splitLines[index].amountText = editableAmount(amounts[index].amount)
+        }
+        errorMessage = nil
     }
 }

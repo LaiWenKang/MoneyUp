@@ -564,7 +564,7 @@ W3_SOURCE_FUNCTION_DIGESTS: tuple[
             r"[^{};]*\)\s*\{",
             re.DOTALL,
         ),
-        "7b993e418b998dd35f319f3eac95c250c5d11b702d9827d767045ae0738e6f07",
+        "7940a356ccc44ddaf115c4e6c4b02d9379f1002971ea83a5bb0dde56dbd7919c",
     ),
     (
         W3_PRODUCTION_SENTINEL_PATH,
@@ -573,13 +573,13 @@ W3_SOURCE_FUNCTION_DIGESTS: tuple[
             r"\bpublic\s+init\s*\(\s*from\s+decoder\s*:\s*Decoder\s*\)"
             r"\s*throws\s*\{"
         ),
-        "39556b1f6a155d9fcffae5abb9a697e819444ffb1cf214d3d78c417e26c4ab8d",
+        "fd7457f80876332269de8cf2bff246e2af3fd5fcdd410043c4019c69ded23b8e",
     ),
     (
         W3_REVIEWED_ENTRY_PATH,
         "applyTypedPhrase",
         re.compile(r"\bfunc\s+applyTypedPhrase\s*\(\s*\)\s*\{"),
-        "9e3838b664bf4bd5795a7982316929867defdd88e69dac56dd0eab8dc431fbc5",
+        "6f09d5eebaff59a218ad0ecd25324646e4ad4bf3e2abb9479fca29e8df01df4d",
     ),
     (
         "App/MoneyUp/QuickLogEntryDraft.swift",
@@ -587,7 +587,7 @@ W3_SOURCE_FUNCTION_DIGESTS: tuple[
         re.compile(
             r"\bfunc\s+reloadDraftForLogicalBookReplacement\s*\(\s*\)\s*\{"
         ),
-        "daa02b37a888d29954e12d17b64bd0b4ebf2cfb16345fb8d553755b94d983d0b",
+        "fcc2de7cedfb42cc0517d212b6e481436764d6021e24c4830352e4ebbc15bdfc",
     ),
     (
         "App/MoneyUp/QuickLogEntryCaptureSuggestions.swift",
@@ -611,7 +611,7 @@ W3_PATH_TYPE_DIGESTS: tuple[tuple[str, str, str, str], ...] = (
         "App/MoneyUp/QuickLogEntryBody.swift",
         "extension",
         "QuickLogEntryView",
-        "b8345aa2e27f4ba9ac8284a26d5ad8803bc53a09a45f155de3daae0c3ffb81e3",
+        "f7192f6f9e4f876f7011ea2d5552df997766221e4607cd404e59639b6dfe2a0d",
     ),
     (
         "App/MoneyUp/QuickLogEntryReceipt.swift",
@@ -629,7 +629,7 @@ W3_PATH_TYPE_DIGESTS: tuple[tuple[str, str, str, str], ...] = (
         "App/MoneyUp/QuickLogEntryReceiptCandidates.swift",
         "extension",
         "QuickLogEntryView",
-        "f02cd98a90fc8eb4c519643f3212bdf6f0d8aab93126802f413449f893de0c81",
+        "16b6efd7faac06e55c71b397c526717e8e16124e7d28a9f330a6f2e1cde18de0",
     ),
 )
 W3_PATH_TYPE_ATTRIBUTES = {
@@ -3149,7 +3149,7 @@ def _w3_profile_opt_in_inventory(
         len(
             re.findall(
                 r"\bfoundationModelAssistanceEnabled\s*:\s*Bool"
-                r"\s*=\s*false\s*,",
+                r"\s*=\s*true\s*,",
                 scan.masked,
             )
         )
@@ -3164,7 +3164,7 @@ def _w3_profile_opt_in_inventory(
             scan,
             declarations[0].start if declarations else 0,
             "UserProfile Foundation Models assistance must remain a stored, "
-            "explicit opt-in defaulting false",
+            "explicit preference defaulting true",
         )
     ]
 
@@ -3724,7 +3724,7 @@ W3_PRODUCTION_CALLS: tuple[
                 W3_REVIEWED_ENTRY_PATH,
                 "smartText, accounts: model.accounts, "
                 "now: model.currentDateForUserAction(), "
-                "calendar: model.reportingCalendar, "
+                "calendar: model.captureCalendar, "
                 "prefersDayFirst: Self.localePrefersDayFirst",
                 1,
             ),

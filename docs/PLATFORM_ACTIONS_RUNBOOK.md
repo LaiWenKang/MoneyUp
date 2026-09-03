@@ -172,7 +172,7 @@ numbers. Widget configuration preservation remains a physical migration gate.
 Use fictional records and take a before/after snapshot of the reviewed App
 Group defaults. Merely invoking a shortcut, widget button, or control must not
 write a route, pending action, or transaction detail there. Existing language
-preference and opt-in percentage-only budget snapshot keys may already exist;
+preference and opt-in bounded status snapshot keys may already exist;
 their payload must not change solely because an action opened the app.
 
 Search Console and the built metadata for the fictional values used in the

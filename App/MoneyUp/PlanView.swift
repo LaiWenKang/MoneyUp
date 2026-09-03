@@ -3,19 +3,22 @@ import MoneyUpCore
 import SwiftUI
 
 struct PlanView: View {
-    private enum Section: Hashable {
+    fileprivate enum Section: Hashable {
+        case overview
         case budget
         case goals
         case allowances
         case calendar
     }
 
-    @State private var selection: Section = .budget
+    @State private var selection: Section = .overview
     @Environment(AppModel.self) private var model
 
     var body: some View {
         Group {
             switch selection {
+            case .overview:
+                PlanOverviewView { selection = $0 }
             case .budget:
                 BudgetPlanView()
             case .goals:
@@ -27,19 +30,139 @@ struct PlanView: View {
             }
         }
         .safeAreaInset(edge: .top, spacing: 0) {
-            Picker("tab.plan", selection: $selection) {
-                Text("plan.budget").tag(Section.budget)
-                Text("plan.goals").tag(Section.goals)
-                Text("allowance.short_title").tag(Section.allowances)
-                Text("tab.calendar").tag(Section.calendar)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(
+                        [Section.overview, .budget, .calendar, .goals, .allowances],
+                        id: \.self
+                    ) { section in
+                        Button {
+                            selection = section
+                        } label: {
+                            Label(section.title, systemImage: section.systemImage)
+                                .font(.caption.weight(.semibold))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(
+                                    selection == section
+                                        ? Color.accentColor.opacity(0.18)
+                                        : Color.secondary.opacity(0.10),
+                                    in: Capsule()
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(selection == section ? .isSelected : [])
+                    }
+                }
+                .padding(.horizontal, 16)
             }
-            .pickerStyle(.segmented)
-            .padding(.horizontal, 16)
             .padding(.vertical, 8)
             .background(.bar)
         }
         .environment(\.calendar, model.reportingCalendar)
         .environment(\.timeZone, model.reportingCalendar.timeZone)
+    }
+}
+
+private extension PlanView.Section {
+    var title: LocalizedStringKey {
+        switch self {
+        case .overview: "plan.overview"
+        case .budget: "plan.budget"
+        case .goals: "plan.goals"
+        case .allowances: "allowance.short_title"
+        case .calendar: "tab.calendar"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .overview: "square.grid.2x2.fill"
+        case .budget: "chart.pie.fill"
+        case .goals: "target"
+        case .allowances: "giftcard.fill"
+        case .calendar: "calendar"
+        }
+    }
+}
+
+private struct PlanOverviewView: View {
+    @Environment(AppModel.self) private var model
+    let open: (PlanView.Section) -> Void
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    overviewRow(
+                        title: "plan.budget",
+                        detail: String(
+                            format: AppLocalization.string("plan.overview.budget_count"),
+                            model.budgetNodes.count
+                        ),
+                        symbol: "chart.pie.fill",
+                        section: .budget
+                    )
+                    overviewRow(
+                        title: "tab.calendar",
+                        detail: String(
+                            format: AppLocalization.string("plan.overview.schedule_count"),
+                            model.scheduledTransactions.filter(\.isActive).count
+                        ),
+                        symbol: "calendar.badge.clock",
+                        section: .calendar
+                    )
+                    overviewRow(
+                        title: "plan.goals",
+                        detail: String(
+                            format: AppLocalization.string("plan.overview.goal_count"),
+                            model.savingsGoals.filter { !$0.isArchived }.count
+                        ),
+                        symbol: "target",
+                        section: .goals
+                    )
+                    overviewRow(
+                        title: "allowance.short_title",
+                        detail: String(
+                            format: AppLocalization.string("plan.overview.allowance_count"),
+                            model.allowancePlans.filter { !$0.isArchived }.count
+                        ),
+                        symbol: "giftcard.fill",
+                        section: .allowances
+                    )
+                } header: {
+                    Text("plan.overview.next")
+                } footer: {
+                    Text("plan.overview.detail")
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .background(Color.moneyUpBackground)
+            .navigationTitle("tab.plan")
+        }
+    }
+
+    private func overviewRow(
+        title: LocalizedStringKey,
+        detail: String,
+        symbol: String,
+        section: PlanView.Section
+    ) -> some View {
+        Button { open(section) } label: {
+            HStack(spacing: 12) {
+                MoneyUpSymbolBadge(systemImage: symbol, color: .accentColor)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title).font(.headline)
+                    Text(detail).font(.subheadline).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.vertical, 4)
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -55,6 +178,7 @@ private struct BudgetPlanView: View {
     @State private var isAddingCategory = false
     @State private var categoryKindToAdd: LedgerAccountKind = .expense
     @State private var isManagingCategories = false
+    @State private var displayedPacingCadence: BudgetPacingCadence = .daily
 
     /// How far through the month we are, drawn on every bar so a number can be
     /// read as ahead or behind rather than just large.
@@ -107,6 +231,17 @@ private struct BudgetPlanView: View {
 
         return NavigationStack {
             List {
+                Section {
+                    Picker("plan.pacing_view", selection: $displayedPacingCadence) {
+                        Text("plan.pacing.today").tag(BudgetPacingCadence.daily)
+                        Text("plan.pacing.this_week").tag(BudgetPacingCadence.weekly)
+                        Text("plan.pacing.rest_of_month").tag(BudgetPacingCadence.monthly)
+                    }
+                    .pickerStyle(.segmented)
+                } footer: {
+                    Text("plan.pacing_view_detail")
+                }
+
                 if case let .available(.some(summary)) = summaryResult {
                     Section {
                         BudgetSummaryCard(
@@ -220,7 +355,8 @@ private struct BudgetPlanView: View {
                                     depth: item.depth,
                                     progress: progress[item.node.id],
                                     elapsed: elapsed,
-                                    purpose: purposes[item.node.id] ?? .unclassified
+                                    purpose: purposes[item.node.id] ?? .unclassified,
+                                    displayedPacingCadence: displayedPacingCadence
                                 )
                             }
                             .buttonStyle(.plain)
@@ -325,6 +461,7 @@ private struct BudgetRow: View {
     let progress: BudgetProgress?
     let elapsed: Double
     let purpose: BudgetPurpose
+    let displayedPacingCadence: BudgetPacingCadence
 
     private var spent: Money? { progress?.spent }
 
@@ -404,7 +541,10 @@ private struct BudgetRow: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 if let progress {
-                    switch model.budgetPace(for: progress) {
+                    switch model.budgetPace(
+                        for: progress,
+                        cadence: displayedPacingCadence
+                    ) {
                     case let .available(.some(pace)):
                         Text(
                             String(
@@ -996,10 +1136,12 @@ struct AddCategorySheet: View {
 
     init(
         kind: LedgerAccountKind,
+        initialParentID: UUID? = nil,
         onAdded: @escaping @MainActor (UUID) -> Void = { _ in }
     ) {
         self.kind = kind
         self.onAdded = onAdded
+        _parentID = State(initialValue: initialParentID)
     }
 
     private var titleKey: LocalizedStringKey {

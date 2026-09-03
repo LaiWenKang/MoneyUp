@@ -9,9 +9,9 @@ invariants remain non-negotiable. The earlier PRD is supporting evidence only
 where it does not conflict. Its StoreKit and CloudKit requirements are
 superseded: the approved first public release is free and local-only.
 
-Checked source items describe the merged 0.7.1 candidate. Exact PR-head CI run
-300 and merged implementation CI run 301 passed; this release-document update
-must repeat exact-head CI before signed promotion. Checked source items do not
+Checked source items describe the build-11 0.7.1 candidate. Exact PR-head CI
+run 300 and merged implementation CI run 301 cover the prior build-10 baseline;
+this candidate must repeat exact-head CI before signed promotion. Checked source items do not
 close physical-device, signed-binary, TestFlight, closed-beta, or App Store
 gates. See [Golden PRD
 traceability](GOLDEN_TRACEABILITY.md) for every requirement ID and its evidence
@@ -22,6 +22,10 @@ status.
 - [x] Quick Log scrolls the focused amount, account, smart-entry, title,
   notes, and split fields above the keyboard; its untouched occurrence time
   refreshes from the injected current clock.
+- [x] Quick Log and transaction editing provide exact Equal, unlocked
+  Rebalance, 50/50, 60/40, and 70/30 split tools with per-row locks.
+- [x] Both entry forms re-scroll after keyboard layout settles, reserve focused
+  bottom space, support interactive dismissal, and always expose Done.
 - [x] Deterministic defaults prefer valid user settings, then matching local
   payee history, then an active leaf category; every suggestion remains
   visible and editable.
@@ -32,20 +36,36 @@ status.
 - [x] History defaults to Today, offers seven-day/month/all scopes, computes
   complete spending/income/refund/net totals per currency, displays title,
   notes, and full category paths, and keeps direct Calendar access.
+- [x] History adds a second composable smart-filter row for review items,
+  splits, recurring transactions, allowances, and notes.
 - [x] Expense and income categories support arbitrary-depth parent selection,
-  full-path labels, safe reparenting, and cycle/kind validation.
+  full-path search, visible child creation from every active row, safe
+  reparenting, and cycle/kind validation directly from Log.
 - [x] Flexible category budgets can opt into exact daily or weekly remaining
-  pacing while monthly remains the backward-compatible default.
+  pacing, and Plan can view Today, This week, or Rest of month without mutation.
 - [x] Planning-only allowances support daily/weekday/weekly/monthly cadence,
-  optional expiry, eligible categories, usage history, and no/full/capped
-  rollover without creating fictitious income or net worth.
+  optional expiry, eligible categories, limit/prepaid/reimbursement funding,
+  linked same-currency assets, usage history, and no/full/capped rollover.
+  Eligible Quick Log expenses save allowance evidence atomically; edit/delete
+  relink or remove it atomically without creating fictitious income or net worth.
 - [x] Loan plans attach to loan liability accounts and show remaining/advanced/
   paid principal, interest, fees, dates, APR, term, debt-total inclusion, notes,
-  repayment history, additional drawdown, and paid-off closure. Financial
-  activity is posted atomically through the balanced ledger.
+  repayment history, additional drawdown, paid-off closure, and home/vehicle/
+  education/medical/personal/business/installment/credit-line/other purposes.
+  Financial activity is posted atomically through the balanced ledger.
+- [x] Eligible Apple on-device assistance defaults on for new and legacy
+  profiles while explicit opt-out and all fail-closed input boundaries remain.
+- [x] Optional deliberate tab swipes move exactly one adjacent tab without
+  hiding or replacing the permanent tab bar.
+- [x] Flexible Today shows daily, next-seven-day, and remaining-period capacity,
+  remaining days, commitments, and the inspectable arithmetic.
+- [x] Plan opens on an overview for Budget, Calendar, Goals, and Allowances,
+  preserving the five permanent tabs and clarifying ownership.
+- [x] Smart Overview widgets add privacy-safe review counts, allowance
+  percentage, and next-commitment timing across supported Home/Lock families.
 - [x] SQLCipher schema 8, recovery preview, restore validation, quarantine,
   inventory, bilingual strings, accessible errors, tests, version 0.7.1, and
-  source build 10 cover the new records and flows.
+  source build 11 cover the new records and flows.
 - [ ] Exact-candidate macOS Xcode CI and physical-device verification remain
   evidence gates; source completion does not close them.
 
@@ -190,7 +210,7 @@ status.
   shared by widgets, six bilingual App Shortcuts, and one configurable iOS 18
   Control Widget
 - [x] Replace quick-action links with interactive intent buttons while keeping
-  percentage-only Budget status completely passive
+  record-free Budget Status and Smart Overview completely passive
 - [x] Gate bundle IDs, reviewed App Group entitlements, locked-capture source,
   global compiled intent/control inventory, action mappings, parameters,
   mutation/UI generations, and bilingual iOS 18/iOS 26 metadata in CI and
@@ -353,19 +373,18 @@ installation, and physical evidence are separate gates.
 ## 0.7.1 candidate identity
 
 - [x] Source app and widget marketing version: 0.7.1
-- [x] Source build: 10
-- [x] TestFlight workflow marketing version: 0.7.1; source build 10 is checked
+- [x] Source build: 11
+- [x] TestFlight workflow marketing version: 0.7.1; source build 11 is checked
   before the workflow assigns a unique upload build
 - [x] Bilingual in-app 0.7.1 release notes cover the complete feedback follow-up
-- [x] Local release, architecture, structure, launch-safety, and 61-test
-  adversarial validator suites pass with 744 declared Swift tests
+- [x] Local release, architecture, structure, launch-safety, platform-action,
+  performance, and adversarial validator suites pass with 752 declared Swift tests
 - [x] Correct the App Review 0.3.0 launch watchdog by keeping startup
   Keychain/SQLCipher work off the UI actor without weakening encryption, and
   make the boundary mutation-tested in CI and TestFlight preflight
-- [x] Exact PR-head CI run 300 and merged implementation CI run 301 passed all
-  four automated jobs
-- [ ] This release-truth documentation update must pass exact-head and
-  merged-main CI before signed distribution
+- [x] Prior build-10 PR-head CI run 300 and merged implementation CI run 301
+  passed all four automated jobs
+- [ ] Build 11 must pass exact-head and merged-main CI before signed distribution
 
 ## G2 - before wider testers
 

@@ -70,6 +70,11 @@ public struct HistoryQuery: Equatable, Sendable {
     public var endDateExclusive: Date?
     public var minimumAmount: Decimal?
     public var maximumAmount: Decimal?
+    /// Optional exact-entry scope used by local review, recurring, and
+    /// allowance chips. An empty set deliberately matches nothing.
+    public var requiredEntryIDs: Set<UUID>?
+    public var requiresSplitTransaction: Bool
+    public var requiresNote: Bool
 
     /// Source-compatible convenience for callers that filter one category.
     /// Assigning this property replaces any existing multi-category scope and
@@ -94,7 +99,10 @@ public struct HistoryQuery: Equatable, Sendable {
         startDate: Date? = nil,
         endDateExclusive: Date? = nil,
         minimumAmount: Decimal? = nil,
-        maximumAmount: Decimal? = nil
+        maximumAmount: Decimal? = nil,
+        requiredEntryIDs: Set<UUID>? = nil,
+        requiresSplitTransaction: Bool = false,
+        requiresNote: Bool = false
     ) {
         self.searchText = searchText
         self.kind = kind
@@ -110,6 +118,9 @@ public struct HistoryQuery: Equatable, Sendable {
         self.endDateExclusive = endDateExclusive
         self.minimumAmount = minimumAmount
         self.maximumAmount = maximumAmount
+        self.requiredEntryIDs = requiredEntryIDs
+        self.requiresSplitTransaction = requiresSplitTransaction
+        self.requiresNote = requiresNote
     }
 
     public func filteredEntries(
@@ -226,8 +237,23 @@ public struct HistoryQuery: Equatable, Sendable {
         amountFormatter: NumberFormatter,
         calendar: Calendar
     ) -> Bool {
+        if let requiredEntryIDs, !requiredEntryIDs.contains(entry.id) {
+            return false
+        }
         guard kind == .all || classifiedKind(of: entry, accountsByID: accountsByID) == kind
         else { return false }
+        if requiresSplitTransaction {
+            let categoryPostingCount = entry.postings.reduce(into: 0) { count, posting in
+                guard let account = accountsByID[posting.accountID],
+                      account.kind == .expense || account.kind == .income else { return }
+                count += 1
+            }
+            guard categoryPostingCount >= 2 else { return false }
+        }
+        if requiresNote {
+            guard entry.note?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+            else { return false }
+        }
         if let accountID, !entry.postings.contains(where: { $0.accountID == accountID }) {
             return false
         }

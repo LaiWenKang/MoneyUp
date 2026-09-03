@@ -185,11 +185,7 @@ extension QuickLogEntryView {
                             splitEditor
                         }
 
-                        Button {
-                            isAddingCategory = true
-                        } label: {
-                            Label("category.add", systemImage: "plus.circle")
-                        }
+                        categoryAndAllowanceControls
                     }
                 }
 
@@ -356,6 +352,9 @@ extension QuickLogEntryView {
                     clearSplitFocus()
                     splitLines = []
                 }
+                if newKind != .expense {
+                    selectedAllowanceID = nil
+                }
                 selectDefaults()
                 if newKind != .transfer, !splitLines.isEmpty {
                     for index in splitLines.indices where !categories.contains(
@@ -426,6 +425,10 @@ extension QuickLogEntryView {
                 if destinationAccountID == accountID {
                     destinationAccountID = model.userAccounts.first { $0.id != accountID }?.id
                 }
+                if selectedAllowanceID != nil,
+                   selectedAllowanceApplication == nil {
+                    selectedAllowanceID = nil
+                }
             }
             .onChange(of: draftSnapshot) { _, snapshot in
                 guard hasRestoredDraft, !dismissAfterSave else { return }
@@ -443,6 +446,14 @@ extension QuickLogEntryView {
                 withAnimation(.easeOut(duration: 0.2)) {
                     scrollProxy.scrollTo(field, anchor: .center)
                 }
+                Task { @MainActor in
+                    try? await Task.sleep(
+                        nanoseconds: QuickLogFocusScrollPolicy.layoutSettlingNanoseconds)
+                    guard focusedField == field else { return }
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        scrollProxy.scrollTo(field, anchor: .center)
+                    }
+                }
             }
             .onDisappear {
                 cancelReceiptProcessing()
@@ -457,6 +468,7 @@ extension QuickLogEntryView {
                 isPresentingReceiptPicker = false
             }
             .scrollDismissesKeyboard(.interactively)
+            .contentMargins(.bottom, focusedField == nil ? 72 : 200, for: .scrollContent)
             .sheet(isPresented: $isAddingCategory) {
                 AddCategorySheet(kind: categoryKind) { categoryID in
                     cancelOnDeviceAssistance()
@@ -468,6 +480,7 @@ extension QuickLogEntryView {
                     }
                 }
             }
+            .sheet(isPresented: $isManagingCategories) { CategoryManagementList() }
             }
         }
         .safeAreaInset(edge: .bottom) {
@@ -589,7 +602,8 @@ extension QuickLogEntryView {
             Text(duplicateReviewMessage)
         }
         .moneyUpOperationErrorAlert(message: $errorMessage)
-        .environment(\.calendar, model.reportingCalendar)
-        .environment(\.timeZone, model.reportingCalendar.timeZone)
+        .environment(\.calendar, model.captureCalendar)
+        .environment(\.timeZone, model.captureCalendar.timeZone)
     }
+
 }

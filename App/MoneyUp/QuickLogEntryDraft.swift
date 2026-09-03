@@ -20,6 +20,7 @@ extension QuickLogEntryView {
             note: note,
             smartText: smartText,
             splitLines: splitLines,
+            selectedAllowanceID: selectedAllowanceID,
             sourceCaptureID: sourceCaptureID
         )
     }
@@ -104,6 +105,7 @@ extension QuickLogEntryView {
         note = ""
         smartText = ""
         splitLines = []
+        selectedAllowanceID = nil
         sourceCaptureID = nil
         lastSavedEntryID = nil
         isUndoing = false
@@ -135,6 +137,7 @@ extension QuickLogEntryView {
         note = draft.note
         smartText = draft.smartText
         splitLines = draft.splitLines
+        selectedAllowanceID = draft.selectedAllowanceID
         sourceCaptureID = draft.sourceCaptureID
         isShowingOptionalDetails = draft.dateWasEdited
     }
@@ -185,6 +188,7 @@ extension QuickLogEntryView {
         autoAppliedCategorySuggestionID = nil
         pendingDuplicateReview = nil
         splitLines = []
+        selectedAllowanceID = nil
         sourceCaptureID = nil
         receiptAttachmentData = nil
         retainReceiptAttachment = false
@@ -242,7 +246,7 @@ extension QuickLogEntryView {
                 smartText,
                 accounts: model.accounts,
                 now: model.currentDateForUserAction(),
-                calendar: model.reportingCalendar,
+                calendar: model.captureCalendar,
                 prefersDayFirst: Self.localePrefersDayFirst
             )
             if apply(parsed.draft) {

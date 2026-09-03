@@ -40,6 +40,7 @@ private struct JournalEntryReplacementWritePlan: Sendable {
     let writes: [RecordWrite]
     let attachmentMetadata: [ReceiptAttachmentMetadata]
     let schedules: [ScheduledTransaction]
+    let allowances: [AllowancePlan]
 }
 
 extension AppModel {
@@ -573,6 +574,18 @@ extension AppModel {
         writes += try schedules.map {
             try RecordWrite($0, id: $0.id.uuidString, in: .scheduledTransactions)
         }
+        let allowances = try allowancePlans.compactMap { plan -> AllowancePlan? in
+            guard plan.usages.contains(where: {
+                $0.linkedJournalEntryID == original.id
+            }) else { return nil }
+            let updated = replacement.kind == .expense
+                ? try plan.relinkingUsages(from: original.id, to: replacement.id)
+                : plan.removingUsages(linkedTo: original.id)
+            return updated
+        }
+        writes += try allowances.map {
+            try RecordWrite($0, id: $0.id.uuidString, in: .allowancePlans)
+        }
         writes.append(try RecordWrite(
             budgetPlan.attribution,
             id: budgetPlan.attribution.id.uuidString,
@@ -584,7 +597,8 @@ extension AppModel {
         return JournalEntryReplacementWritePlan(
             writes: writes,
             attachmentMetadata: attachmentMetadata,
-            schedules: schedules
+            schedules: schedules,
+            allowances: allowances
         )
     }
 
@@ -619,6 +633,10 @@ extension AppModel {
             existingScheduledLinkedEntryIDs.remove(original.id)
             existingScheduledLinkedEntryIDs.insert(replacement.id)
         }
+        let allowancesByID = Dictionary(
+            uniqueKeysWithValues: writePlan.allowances.map { ($0.id, $0) }
+        )
+        allowancePlans = allowancePlans.map { allowancesByID[$0.id] ?? $0 }
     }
 
     /// A lifecycle merge changes the live category ID without changing the

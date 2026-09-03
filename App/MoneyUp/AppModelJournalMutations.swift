@@ -15,7 +15,8 @@ extension AppModel {
         occurredAt: Date,
         payee: String?,
         note: String?,
-        receiptData: Data? = nil
+        receiptData: Data? = nil,
+        allowancePlanID: UUID? = nil
     ) async throws -> UUID? {
         try requireActiveCategory(categoryID, kind: .expense)
         let currency = try currency(for: accountID)
@@ -28,7 +29,11 @@ extension AppModel {
             payee: payee,
             note: note
         )
-        return try await save(entry, receiptData: receiptData)
+        return try await save(
+            entry,
+            applyingAllowance: allowancePlanID,
+            receiptData: receiptData
+        )
     }
 
     @discardableResult
@@ -88,7 +93,8 @@ extension AppModel {
         occurredAt: Date,
         payee: String?,
         note: String?,
-        receiptData: Data? = nil
+        receiptData: Data? = nil,
+        allowancePlanID: UUID? = nil
     ) async throws -> UUID? {
         guard kind != .transfer else { throw AppModelError.invalidCategoryKind }
         let currency = try currency(for: accountID)
@@ -130,6 +136,16 @@ extension AppModel {
             )
         case .transfer:
             throw AppModelError.invalidCategoryKind
+        }
+        if kind == .expense {
+            return try await save(
+                entry,
+                applyingAllowance: allowancePlanID,
+                receiptData: receiptData
+            )
+        }
+        guard allowancePlanID == nil else {
+            throw AppModelError.invalidAllowance
         }
         return try await save(entry, receiptData: receiptData)
     }
@@ -192,9 +208,7 @@ extension AppModel {
     func deleteEntry(id: UUID) async throws {
         let linkedScheduleIDs = linkedScheduleIDs(forDeletedEntryID: id)
         try beginJournalAndScheduleMutation(scheduleIDs: linkedScheduleIDs)
-        defer {
-            endJournalAndScheduleMutation(scheduleIDs: linkedScheduleIDs)
-        }
+        defer { endJournalAndScheduleMutation(scheduleIDs: linkedScheduleIDs) }
         let generation = storeGeneration
         let entryStore = try requireStore()
         let entry = try await entryForDeletion(id: id, in: entryStore)
@@ -239,6 +253,8 @@ extension AppModel {
         var writes = try updatedSchedules.map {
             try RecordWrite($0, id: $0.id.uuidString, in: .scheduledTransactions)
         }
+        let updatedAllowances = allowancesAfterDeletingLinkedEntry(id)
+        writes += try allowanceWrites(changedTo: updatedAllowances)
         if let candidateTimeline {
             writes.append(try budgetConfigurationTimelineWrite(candidateTimeline))
         }
@@ -268,6 +284,7 @@ extension AppModel {
             candidateEntries: candidateEntries,
             updatedSchedules: updatedSchedules
         )
+        allowancePlans = updatedAllowances
         await refreshJournalAfterMutation()
     }
 
@@ -277,6 +294,25 @@ extension AppModel {
                 ? schedule.id
                 : nil
         })
+    }
+
+    private func allowancesAfterDeletingLinkedEntry(
+        _ entryID: UUID
+    ) -> [AllowancePlan] {
+        allowancePlans.map { $0.removingUsages(linkedTo: entryID) }
+    }
+
+    private func allowanceWrites(
+        changedTo updatedPlans: [AllowancePlan]
+    ) throws -> [RecordWrite] {
+        try zip(allowancePlans, updatedPlans).compactMap { prior, updated in
+            guard prior != updated else { return nil }
+            return try RecordWrite(
+                updated,
+                id: updated.id.uuidString,
+                in: .allowancePlans
+            )
+        }
     }
 
     private func entryForDeletion(

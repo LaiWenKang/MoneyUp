@@ -138,11 +138,12 @@ surface, and elevated canvases; release validation checks every pairing.
 ## Widget rule
 
 Quick-action widget timelines remain data-free. The 0.7.1 source candidate
-offers an opt-in budget-status surface backed by a versioned App Group snapshot
-containing only availability/state and an integer percentage. It receives no
-amount, payee, account name, holding, balance, transaction, or ledger
-identifier. Disabled or unavailable states use honest guidance rather than a
-fake statistic; over-budget status uses text and shape as well as color.
+offers opt-in Budget Status and Smart Overview surfaces backed by a versioned
+App Group snapshot containing only state, bounded percentages/counts, expiry,
+and optional next-commitment timing. It receives no amount, payee, account
+name, holding, balance, transaction, or ledger identifier. Disabled or
+unavailable states use honest guidance rather than a fake statistic;
+over-budget and review states use text and shape as well as color.
 
-The percentage surface still requires the final physical Home/Lock Screen
+The widget surfaces still require the final physical Home/Lock Screen
 family, redacted, light, dark, and tinted matrix on the exact signed candidate.

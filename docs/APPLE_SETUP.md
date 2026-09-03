@@ -194,7 +194,7 @@ workflow inputs below.
    if either differs; a successful workflow is not evidence that a later copy
    remained intact.
 
-The workflow verifies source version 0.7.1 build 10, then creates a unique upload
+The workflow verifies source version 0.7.1 build 11, then creates a unique upload
 build number for every attempt. It verifies Xcode 26 and the iOS 26 SDK, checks
 the app and widget versions and identifiers, checks both source entitlement
 files, checks privacy and bilingual resources, verifies that both distribution

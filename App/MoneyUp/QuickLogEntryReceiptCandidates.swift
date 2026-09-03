@@ -134,7 +134,7 @@ extension QuickLogEntryView {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(candidate.value.formattedForReporting(
                                     .dateTime.year().month(.abbreviated).day(),
-                                    calendar: model.reportingCalendar
+                                    calendar: model.captureCalendar
                                 ))
                                 Text(receiptCandidateDetail(candidate)).font(.caption2)
                             }

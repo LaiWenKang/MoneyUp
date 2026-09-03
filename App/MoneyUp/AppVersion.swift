@@ -43,7 +43,8 @@ enum ReleaseNotes {
                 "whats_new.0_7_1.history",
                 "whats_new.0_7_1.loans",
                 "whats_new.0_7_1.planning",
-                "whats_new.0_7_1.categories"
+                "whats_new.0_7_1.categories",
+                "whats_new.0_7_1.widget"
             ]
         case "0.7.0":
             [

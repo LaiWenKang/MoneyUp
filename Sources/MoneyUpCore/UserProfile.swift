@@ -16,16 +16,19 @@ public struct UserProfile: Codable, Equatable, Sendable {
     public var preferredAccountID: UUID?
     public var preferredExpenseCategoryID: UUID?
     public var preferredIncomeCategoryID: UUID?
-    /// Opt-in gate for publishing a percentage-only snapshot to the shared
-    /// widget container. Legacy profiles decode as false.
+    /// Opt-in gate for publishing a bounded, record-free status snapshot to
+    /// the shared widget container. Legacy profiles decode as false.
     public var showsBudgetStatusWidget: Bool
     /// Deterministic local intelligence is enabled by default. Turning it off
     /// cancels analysis and removes its encrypted derived indexes.
     public var intelligenceEnabled: Bool
     /// Optional Apple on-device assistance for choosing from a closed list of
-    /// existing Quick Log accounts and categories. Legacy profiles and new
-    /// installs remain opted out until the user explicitly enables it.
+    /// existing Quick Log accounts and categories. It is enabled by default;
+    /// unsupported devices fail closed to deterministic parsing.
     public var foundationModelAssistanceEnabled: Bool
+    /// Optional hidden horizontal gesture for experienced users. The visible
+    /// tab bar always remains the primary and accessible navigation control.
+    public var enablesTabSwipeNavigation: Bool
     /// Fixed Gregorian reporting zone. Legacy profiles decode as GMT so their
     /// day attribution remains deterministic rather than following travel.
     public var reportingTimeZoneIdentifier: String
@@ -40,7 +43,8 @@ public struct UserProfile: Codable, Equatable, Sendable {
         preferredIncomeCategoryID: UUID? = nil,
         showsBudgetStatusWidget: Bool = false,
         intelligenceEnabled: Bool = true,
-        foundationModelAssistanceEnabled: Bool = false,
+        foundationModelAssistanceEnabled: Bool = true,
+        enablesTabSwipeNavigation: Bool = false,
         reportingTimeZoneIdentifier: String = TimeZone.current.identifier
     ) {
         self.baseCurrency = baseCurrency
@@ -54,6 +58,7 @@ public struct UserProfile: Codable, Equatable, Sendable {
         self.showsBudgetStatusWidget = showsBudgetStatusWidget
         self.intelligenceEnabled = intelligenceEnabled
         self.foundationModelAssistanceEnabled = foundationModelAssistanceEnabled
+        self.enablesTabSwipeNavigation = enablesTabSwipeNavigation
         self.reportingTimeZoneIdentifier = TimeZone(
             identifier: reportingTimeZoneIdentifier
         )?.identifier ?? "GMT"
@@ -70,6 +75,7 @@ public struct UserProfile: Codable, Equatable, Sendable {
         case showsBudgetStatusWidget
         case intelligenceEnabled
         case foundationModelAssistanceEnabled
+        case enablesTabSwipeNavigation
         case reportingTimeZoneIdentifier
     }
 
@@ -134,9 +140,10 @@ public struct UserProfile: Codable, Equatable, Sendable {
             forKey: .intelligenceEnabled
         ) ?? true
         foundationModelAssistanceEnabled = try container.decodeIfPresent(
-            Bool.self,
-            forKey: .foundationModelAssistanceEnabled
-        ) ?? false
+            Bool.self, forKey: .foundationModelAssistanceEnabled
+        ) ?? true
+        enablesTabSwipeNavigation = try container.decodeIfPresent(
+            Bool.self, forKey: .enablesTabSwipeNavigation) ?? false
         if container.contains(.reportingTimeZoneIdentifier) {
             let identifier = try container.decode(
                 String.self,

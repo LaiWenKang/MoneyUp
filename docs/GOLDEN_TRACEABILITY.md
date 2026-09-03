@@ -1,10 +1,10 @@
 # Golden PRD Traceability - MoneyUp 0.7.1 Candidate
 
-Reconciled: 2 September 2026
+Reconciled: 3 September 2026
 
 This is the requirement-to-evidence map for the retained MoneyUp 0.6.0
-migration baseline, merged 0.7.0 W1-W7 work, and the complete merged 0.7.1
-feedback follow-up. It prevents
+migration baseline, merged 0.7.0 W1-W7 work, the merged build-10 0.7.1
+feedback follow-up, and the expanded build-11 candidate. It prevents
 "implemented in source" from being misreported as "released" or "accepted."
 
 The approved 0.6.0 baseline was
@@ -14,8 +14,8 @@ W2 merged through PR #31 at
 `4159df31b7e0b9489d1ddcd84c261296faaeda39`; CI run 246 passed its release,
 Core/persistence/intelligence, app-model, and app/widget Simulator gates. The
 0.7.1 feedback follow-up merged through PR #40 as `68eee4f8`; exact PR-head run
-300 and merged-main run 301 passed all four CI jobs. This release-document
-follow-up must repeat exact-head CI before signed promotion. Physical-device,
+300 and merged-main run 301 passed all four CI jobs for build 10. The build-11
+candidate must repeat exact-head CI before signed promotion. Physical-device,
 signed-binary, TestFlight, and release evidence remain open.
 
 The exact 97-row requirement-to-test mapping is in
@@ -66,7 +66,7 @@ exact-candidate run.
 
 | ID | Implementation and evidence anchor | Current evidence state |
 |---|---|---|
-| W3-OPT | `UserProfile.foundationModelAssistanceEnabled`, its serialized `AppModel` update, and bilingual Settings copy keep Apple on-device matching off by default. `QuickLogAssistanceCoordinator` checks the gate before planning; `testOffGateNeverInvokesInjectedSelector` proves both planner and selector receive zero calls. Migration and profile-persistence tests retain explicit opt-in. | Source implemented; exact-candidate XCTest and physical Settings review open. |
+| W3-PREF | `UserProfile.foundationModelAssistanceEnabled`, its serialized `AppModel` update, and bilingual Settings copy enable Apple on-device matching by default while preserving an explicit opt-out. Unsupported devices fail closed to deterministic parsing. `QuickLogAssistanceCoordinator` still checks the gate before planning; `testOffGateNeverInvokesInjectedSelector` proves an opt-out invokes neither planner nor selector. | Source implemented; exact-candidate XCTest and physical Settings review open. |
 | W3-BND | `QuickLogPromptBoundary` canonically normalizes while enforcing 128/256 context scalar/UTF-8, 48/96 per-choice, and 3,072/4,096 total prompt ceilings. The sole typed request/call uses only parsed nonfinancial context and numbered existing names. `QuickLogOnDeviceOrdinalModel` uses `SystemLanguageModel.default`, one uncustomized session, availability gating, and two literal `0...15` guided ordinals. The architecture gate pins construction/call/provenance and rejects OCR, money, date, ID, arbitrary, pasteboard, defaults, extra-call, provider/tool/package, and string-output mutations. | Architecture validator and 37 focused Python tests pass locally; Xcode 16 fallback and Xcode 26 compilation remain open. |
 | W3-OWN | `NaturalLanguageEntryParser.parse` retains every financial field. `QuickLogAssistancePublicationPolicy` rechecks kind/profile/splits/candidate membership and exact per-field state; deterministic history filters stale model suggestions in both completion orders. Use snapshots immediate field/provenance state, while Reject restores only if the full model-applied state is still current. | Source and adversarial XCTest cases present; exact-candidate app XCTest and eligible-device behavior remain open. |
 | W3-DRAFT | An accepted choice immediately updates the recoverable SQLCipher draft but creates no transaction until Save. `AppModelTests.testFoundationModelRejectRestoresImmediateHistoryStateInEncryptedDraft` persists the model choice, restores immediate history state, closes/reopens the encrypted store, and rejects both model IDs. | Source implemented; exact-candidate execution and physical lock/relaunch drill open. |

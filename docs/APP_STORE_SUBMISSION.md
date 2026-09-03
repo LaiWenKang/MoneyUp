@@ -86,15 +86,17 @@ Description:
 > Smart entry can read a receipt or screenshot and understand a typed phrase.
 > Recognition and suggestions run on your iPhone; images are never uploaded
 > and are retained in encrypted storage only when you explicitly choose to keep
-> one with a transaction. An off-by-default Apple on-device model can optionally
-> suggest a reviewed match from existing local account or category names; exact
+> one with a transaction. On eligible devices, Apple on-device assistance is
+> enabled by default and can suggest a reviewed match from existing local
+> account or category names, with an explicit Settings opt-out; exact
 > rules keep control of financial fields and saving. Retained images are
 > re-encoded without source location
 > or camera metadata. Privacy-redacted Home and Lock Screen widgets open Expense, Income,
 > Transfer, Refund, Smart Entry, or Receipt actions without displaying financial
 > values. Basic actions can use a separate encrypted capture inbox while the
 > full book remains locked. An optional budget-status configuration receives
-> only a percentage/state - never an amount, payee, account name, holding,
+> only bounded status, percentages, review/allowance/commitment counts, expiry,
+> and next-commitment timing - never an amount, payee, account name, holding,
 > balance, transaction, or ledger identifier.
 >
 > MoneyUp requires no account and contains no ads or tracking. Its local
@@ -192,7 +194,8 @@ What to test:
 > locking, locked capture, expense/income/transfer/refund logging, History/edit,
 > nested budget roll-up, Flexible Today classification/arithmetic, the what-if simulator,
 > schedule edit/post/match, chart inspection/drill-through, rollover/goals,
-> holding purchases/sales/repricing/lots, percentage-only widget status,
+> holding purchases/sales/repricing/lots, privacy-safe Budget Status and Smart
+> Overview widgets,
 > shortcuts, confirmed deletion, language selection, visible merchant/title and
 > multiline notes, category create/rename/archive/restore/merge/reassign/delete,
 > intelligence opt-out and rebuild, evidence-backed recurrence/duplicate/anomaly

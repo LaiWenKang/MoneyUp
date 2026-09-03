@@ -229,6 +229,11 @@ enum QuickLogFieldFocus: Hashable {
 }
 
 enum QuickLogFocusScrollPolicy {
+    /// SwiftUI publishes focus before the keyboard's final safe-area inset is
+    /// stable. Repeating the scroll after the animation keeps the last row and
+    /// split memo above the keyboard on compact devices.
+    static let layoutSettlingNanoseconds: UInt64 = 360_000_000
+
     static func target(for focus: QuickLogFieldFocus?) -> QuickLogFieldFocus? {
         focus
     }
@@ -299,6 +304,7 @@ struct QuickLogEntryView: View {
     @State var pendingLaunchRequest: QuickLogRouteRequest?
     @State var isShowingOptionalDetails = false
     @State var isAddingCategory = false
+    @State var isManagingCategories = false
     @State var receiptScanTask: Task<Void, Never>?
     @State var receiptScanGeneration = 0
     @State var receiptScanBaseline: ReceiptScanBaseline?
@@ -314,6 +320,7 @@ struct QuickLogEntryView: View {
     @State var autoAppliedAccountSuggestionID: UUID?
     @State var autoAppliedCategorySuggestionID: UUID?
     @State var splitLines: [QuickLogSplitDraftLine] = []
+    @State var selectedAllowanceID: UUID?
     /// Provenance for a draft promoted from the lock-safe capture inbox. This
     /// must survive every edit so AppModel can complete the cross-store
     /// exact-once handoff instead of treating the edited draft as unrelated.
@@ -450,9 +457,13 @@ struct QuickLogEntryView: View {
         }
         switch kind {
         case .expense, .income, .refund:
-            return splitLines.isEmpty
+            let transactionIsValid = splitLines.isEmpty
                 ? categories.contains { $0.id == categoryID }
                 : splitLinesAreValid
+            guard transactionIsValid else { return false }
+            return kind != .expense
+                || selectedAllowanceID == nil
+                || selectedAllowanceApplication != nil
         case .transfer:
             return destinationAccountID != nil
                 && destinationAccountID != accountID

@@ -1941,7 +1941,7 @@ func unreviewedPlan(
                 self.assertIn("w3-input-boundary", self.rules(violations))
                 self.write(parser_relative, parser_source)
 
-    def test_w3_opt_in_and_input_authority_are_exact(self) -> None:
+    def test_w3_default_preference_and_input_authority_are_exact(self) -> None:
         sources = self.write_production_w3_fixture()
         profile_relative = "Sources/MoneyUpCore/UserProfile.swift"
         authority_relative = "App/MoneyUp/QuickLogSheet.swift"
@@ -1950,19 +1950,17 @@ func unreviewedPlan(
         mutations = (
             (
                 profile_relative,
-                "foundationModelAssistanceEnabled: Bool = false,",
                 "foundationModelAssistanceEnabled: Bool = true,",
+                "foundationModelAssistanceEnabled: Bool = false,",
             ),
             (
                 profile_relative,
                 """        foundationModelAssistanceEnabled = try container.decodeIfPresent(
-            Bool.self,
-            forKey: .foundationModelAssistanceEnabled
-        ) ?? false""",
-                """        foundationModelAssistanceEnabled = try container.decodeIfPresent(
-            Bool.self,
-            forKey: .foundationModelAssistanceEnabled
+            Bool.self, forKey: .foundationModelAssistanceEnabled
         ) ?? true""",
+                """        foundationModelAssistanceEnabled = try container.decodeIfPresent(
+            Bool.self, forKey: .foundationModelAssistanceEnabled
+        ) ?? false""",
             ),
             (
                 profile_relative,

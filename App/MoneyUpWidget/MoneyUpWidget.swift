@@ -14,12 +14,14 @@ struct MoneyUpWidgetBundle: WidgetBundle {
 enum MoneyUpWidgetContent: String, AppEnum, CaseIterable, Identifiable, Sendable {
     case quickAction
     case budgetStatus
+    case smartOverview
 
     static let typeDisplayRepresentation: TypeDisplayRepresentation =
         "widget.configuration.content_type"
     static let caseDisplayRepresentations: [MoneyUpWidgetContent: DisplayRepresentation] = [
         .quickAction: "widget.content.quick_actions",
-        .budgetStatus: "widget.content.budget_status"
+        .budgetStatus: "widget.content.budget_status",
+        .smartOverview: "widget.content.smart_overview"
     ]
 
     var id: String { rawValue }
@@ -47,6 +49,7 @@ private struct MoneyUpWidgetEntry: TimelineEntry {
     let content: MoneyUpWidgetContent
     let action: MoneyUpQuickAction
     let budgetSnapshot: BudgetWidgetSnapshot
+    let insights: MoneyUpWidgetInsights?
 }
 
 private struct MoneyUpWidgetProvider: AppIntentTimelineProvider {
@@ -55,7 +58,8 @@ private struct MoneyUpWidgetProvider: AppIntentTimelineProvider {
             date: Date(),
             content: .quickAction,
             action: .expense,
-            budgetSnapshot: .disabled
+            budgetSnapshot: .disabled,
+            insights: nil
         )
     }
 
@@ -72,12 +76,17 @@ private struct MoneyUpWidgetProvider: AppIntentTimelineProvider {
     ) async -> Timeline<MoneyUpWidgetEntry> {
         let entry = makeEntry(for: configuration)
         let policy: TimelineReloadPolicy
-        let validUntil: Date?
+        var validUntil: Date?
         switch entry.budgetSnapshot {
         case let .available(_, expiry), let .needsBudget(expiry):
             validUntil = expiry
         case .disabled, .stale:
             validUntil = nil
+        }
+        if entry.content == .smartOverview,
+           let expiry = entry.insights?.validUntil,
+           expiry > entry.date {
+            validUntil = min(validUntil ?? expiry, expiry)
         }
         if let validUntil, validUntil > entry.date {
             policy = .after(validUntil)
@@ -90,11 +99,13 @@ private struct MoneyUpWidgetProvider: AppIntentTimelineProvider {
     private func makeEntry(
         for configuration: MoneyUpWidgetConfigurationIntent
     ) -> MoneyUpWidgetEntry {
-        MoneyUpWidgetEntry(
+        let store = BudgetWidgetSnapshotStore()
+        return MoneyUpWidgetEntry(
             date: Date(),
             content: configuration.content,
             action: configuration.defaultAction,
-            budgetSnapshot: BudgetWidgetSnapshotStore().read()
+            budgetSnapshot: store.read(),
+            insights: store.readInsights()
         )
     }
 }
@@ -110,6 +121,8 @@ private struct MoneyUpWidgetView: View {
                     snapshot: entry.budgetSnapshot,
                     family: family
                 )
+            } else if entry.content == .smartOverview {
+                SmartOverviewWidgetView(insights: entry.insights, family: family)
             } else {
                 switch family {
                 case .systemMedium:
@@ -134,6 +147,123 @@ private struct MoneyUpWidgetView: View {
         .environment(\.locale, AppLanguagePreference.current.locale)
         .containerBackground(Color.moneyUpWidgetBackground, for: .widget)
         .tint(.moneyUpSoftGreen)
+    }
+}
+
+private struct SmartOverviewWidgetView: View {
+    let insights: MoneyUpWidgetInsights?
+    let family: WidgetFamily
+
+    var body: some View {
+        guard let insights else {
+            return AnyView(
+                VStack(alignment: .leading, spacing: 8) {
+                    WidgetBrandHeader()
+                    Spacer()
+                    Label("widget.smart_open_app", systemImage: "arrow.clockwise.circle")
+                        .font(.caption.weight(.semibold))
+                }
+            )
+        }
+        if family == .accessoryInline {
+            return AnyView(
+                Label {
+                    Text(
+                        String(
+                            format: AppLocalization.string("widget.smart_inline"),
+                            insights.reviewCount,
+                            insights.activeCommitmentCount
+                        )
+                    )
+                } icon: {
+                    Image(systemName: "sparkles")
+                }
+            )
+        }
+        if family == .accessoryCircular {
+            return AnyView(
+                VStack(spacing: 1) {
+                    Image(systemName: "sparkles")
+                    Text("\(insights.reviewCount)").font(.caption.bold())
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("widget.smart_review")
+            )
+        }
+        return AnyView(
+            VStack(alignment: .leading, spacing: family == .systemMedium ? 10 : 7) {
+                WidgetBrandHeader()
+                Label("widget.smart_overview", systemImage: "sparkles")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                if family == .systemMedium {
+                    HStack(spacing: 8) {
+                        insightTile(
+                            value: "\(insights.reviewCount)",
+                            label: "widget.smart_review",
+                            symbol: "exclamationmark.magnifyingglass"
+                        )
+                        insightTile(
+                            value: insights.allowancePercentRemaining.map { "\($0)%" } ?? "—",
+                            label: "widget.smart_allowance",
+                            symbol: "giftcard"
+                        )
+                        insightTile(
+                            value: nextCommitmentValue(insights.nextCommitment),
+                            label: "widget.smart_upcoming",
+                            symbol: "calendar.badge.clock"
+                        )
+                    }
+                } else {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text("\(insights.reviewCount)")
+                            .font(.system(.title, design: .rounded, weight: .bold))
+                            .monospacedDigit()
+                        Text("widget.smart_review").font(.caption)
+                    }
+                    Divider()
+                    HStack {
+                        Label(
+                            insights.allowancePercentRemaining.map { "\($0)%" } ?? "—",
+                            systemImage: "giftcard"
+                        )
+                        Spacer()
+                        Label(
+                            nextCommitmentValue(insights.nextCommitment),
+                            systemImage: "calendar.badge.clock"
+                        )
+                    }
+                    .font(.caption.weight(.semibold))
+                }
+            }
+            .accessibilityElement(children: .combine)
+        )
+    }
+
+    private func insightTile(
+        value: String,
+        label: LocalizedStringKey,
+        symbol: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Image(systemName: symbol).foregroundStyle(.tint)
+            Text(value).font(.title3.bold().monospacedDigit())
+            Text(label).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+        }
+        .padding(9)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.moneyUpSoftGreen.opacity(0.09), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func nextCommitmentValue(_ date: Date?) -> String {
+        guard let date else { return "—" }
+        let days = max(Calendar.current.dateComponents(
+            [.day],
+            from: Calendar.current.startOfDay(for: Date()),
+            to: Calendar.current.startOfDay(for: date)
+        ).day ?? 0, 0)
+        if days == 0 { return AppLocalization.string("widget.smart.today") }
+        return String(format: AppLocalization.string("widget.smart.days"), days)
     }
 }
 
