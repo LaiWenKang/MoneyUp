@@ -6671,11 +6671,11 @@ final class AppModelTests: XCTestCase {
             clear: { events.record("intent-cleared") }
         )
         let model = fixture.model(
+            lockedCaptureStore: captureStore,
             lifecycleHooks: hooks(
                 pausing: .afterStartupTombstoneInspection,
                 at: inspectionGate
             ),
-            lockedCaptureStore: captureStore,
             deleteDatabaseKey: { events.record("database-key-deleted") },
             dataEraseIntent: intent,
             quickActionRouteBroker: broker,
