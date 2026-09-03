@@ -5,6 +5,8 @@
     "answer.yes" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Yes"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"是"}}}},
     "category.none" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"None"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"无"}}}},
     "quick_log.occurred_at" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Logging time"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"记账时间"}}}},
+    "quick_log.time_zone" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Device time zone"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"设备时区"}}}},
+    "quick_log.time_zone_detail" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Uses the current time and system time zone from this device; location is not collected."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"使用此设备的当前时间与系统时区；不会收集位置信息。"}}}},
     "history.scope" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"History range"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"明细范围"}}}},
     "history.scope.today" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Today"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"今天"}}}},
     "history.scope.seven_days" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"7 days"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"7 天"}}}},

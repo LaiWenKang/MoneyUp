@@ -116,6 +116,7 @@ struct TransactionEditView: View {
     @State var splitLines: [QuickLogSplitDraftLine]
     @State var isSplitTransaction: Bool
     @State var occurredAt: Date
+    @State var userActionTimeContext = UserActionTimeContext()
     @State var payee: String
     @State var note: String
     @State var isSaving = false
@@ -129,6 +130,10 @@ struct TransactionEditView: View {
     @FocusState var focusedField: FieldFocus?
 
     let isEditable: Bool
+
+    var captureCalendar: Calendar {
+        userActionTimeContext.calendar
+    }
 
     init(entry: JournalEntry) {
         self.entry = entry

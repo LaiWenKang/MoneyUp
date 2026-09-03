@@ -100,10 +100,15 @@ extension QuickLogEntryView {
                 Text(
                     occurredAt.formattedForReporting(
                         .dateTime.month().day().hour().minute(),
-                        calendar: model.captureCalendar
+                        calendar: captureCalendar
                     )
                 )
                 .foregroundStyle(.secondary)
+            }
+            LabeledContent("quick_log.time_zone") {
+                Text(verbatim: userActionTimeContext.displayName(at: occurredAt))
+                    .font(.subheadline.monospacedDigit())
+                    .foregroundStyle(.secondary)
             }
             DisclosureGroup(
                 "quick_log.date_and_time",
@@ -127,6 +132,8 @@ extension QuickLogEntryView {
                     displayedComponents: [.date, .hourAndMinute]
                 )
             }
+        } footer: {
+            Text("quick_log.time_zone_detail")
         }
     }
 

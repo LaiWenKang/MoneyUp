@@ -673,7 +673,7 @@ extension AppModel {
     /// `reportingCalendar`, so travel never rewrites historical instants.
     var captureCalendar: Calendar {
         FinancialPeriodBoundary.gregorianCalendar(
-            timeZoneIdentifier: TimeZone.current.identifier
+            timeZoneIdentifier: TimeZone.autoupdatingCurrent.identifier
         )
     }
 }

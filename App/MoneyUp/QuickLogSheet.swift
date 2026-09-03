@@ -22,6 +22,68 @@ enum QuickLogKind: String, CaseIterable, Codable, Identifiable, Sendable {
     }
 }
 
+/// A snapshot of the device civil-time context used by user-facing timestamp
+/// controls. `Date` remains the stored absolute instant; this context controls
+/// only how that instant is displayed and edited. Refresh it when iOS reports a
+/// clock or time-zone change so automatic time-zone updates follow the user.
+struct UserActionTimeContext: Equatable, Sendable {
+    let timeZone: TimeZone
+
+    init(timeZone: TimeZone = .autoupdatingCurrent) {
+        self.timeZone = timeZone
+    }
+
+    var calendar: Calendar {
+        FinancialPeriodBoundary.gregorianCalendar(
+            timeZoneIdentifier: timeZone.identifier
+        )
+    }
+
+    func displayName(at date: Date) -> String {
+        let offsetSeconds = timeZone.secondsFromGMT(for: date)
+        let sign = offsetSeconds < 0 ? "-" : "+"
+        let totalMinutes = abs(offsetSeconds) / 60
+        let hours = totalMinutes / 60
+        let minutes = totalMinutes % 60
+        let offset = if offsetSeconds == 0 {
+            "GMT"
+        } else if minutes == 0 {
+            "GMT\(sign)\(hours)"
+        } else {
+            String(format: "GMT%@%d:%02d", sign, hours, minutes)
+        }
+        guard let abbreviation = timeZone.abbreviation(for: date),
+              abbreviation != offset else { return offset }
+        return "\(abbreviation) · \(offset)"
+    }
+}
+
+private struct UserActionTimeChangeModifier: ViewModifier {
+    let perform: @MainActor () -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .onReceive(
+                NotificationCenter.default.publisher(
+                    for: UIApplication.significantTimeChangeNotification
+                )
+            ) { _ in perform() }
+            .onReceive(
+                NotificationCenter.default.publisher(
+                    for: NSNotification.Name.NSSystemTimeZoneDidChange
+                )
+            ) { _ in perform() }
+    }
+}
+
+extension View {
+    func onUserActionTimeChange(
+        perform: @escaping @MainActor () -> Void
+    ) -> some View {
+        modifier(UserActionTimeChangeModifier(perform: perform))
+    }
+}
+
 /// Destinations exposed beside the keyboard while the permanent Log tab has
 /// focus. The system tab bar sits behind the iPhone keyboard, so this compact
 /// route keeps all four sibling tabs reachable without abandoning the draft.
@@ -284,6 +346,7 @@ struct QuickLogEntryView: View {
     @State var accountWasEdited = false
     @State var categoryWasEdited = false
     @State var occurredAt = Date()
+    @State var userActionTimeContext = UserActionTimeContext()
     @State var dateWasEdited = false
     @State var payee = ""
     @State var note = ""
@@ -346,6 +409,10 @@ struct QuickLogEntryView: View {
 
     var categoryKind: LedgerAccountKind {
         kind == .income ? .income : .expense
+    }
+
+    var captureCalendar: Calendar {
+        userActionTimeContext.calendar
     }
 
     var selectedAccountCurrency: CurrencyCode? {
