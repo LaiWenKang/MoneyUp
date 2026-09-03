@@ -122,7 +122,7 @@ struct AppSettingsView: View {
                     isOn: Binding(
                         get: {
                             bindableModel.profile?
-                                .foundationModelAssistanceEnabled ?? false
+                                .foundationModelAssistanceEnabled ?? true
                         },
                         set: { enabled in
                             Task {
@@ -138,6 +138,28 @@ struct AppSettingsView: View {
                 Text("settings.on_device_assistance_section")
             } footer: {
                 Text("settings.on_device_assistance_detail")
+            }
+
+            Section {
+                Toggle(
+                    "settings.tab_swipe",
+                    isOn: Binding(
+                        get: {
+                            bindableModel.profile?.enablesTabSwipeNavigation ?? false
+                        },
+                        set: { enabled in
+                            Task {
+                                await update {
+                                    try await bindableModel.updateTabSwipeNavigation(enabled)
+                                }
+                            }
+                        }
+                    )
+                )
+            } header: {
+                Text("settings.navigation")
+            } footer: {
+                Text("settings.tab_swipe_detail")
             }
 
             Section {
@@ -289,6 +311,20 @@ struct AppSettingsView: View {
                     "settings.reporting_time_zone",
                     value: bindableModel.profile?.reportingTimeZoneIdentifier ?? "—"
                 )
+                if bindableModel.profile?.reportingTimeZoneIdentifier
+                    != TimeZone.current.identifier {
+                    Button {
+                        Task {
+                            await update {
+                                try await bindableModel.updateReportingTimeZone(
+                                    TimeZone.current.identifier
+                                )
+                            }
+                        }
+                    } label: {
+                        Label("settings.use_device_time_zone", systemImage: "location.fill")
+                    }
+                }
             } header: {
                 Text("settings.widgets_and_reports")
             } footer: {

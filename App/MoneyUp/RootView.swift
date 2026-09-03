@@ -195,12 +195,29 @@ private struct RecoveryView: View {
     }
 }
 
-private enum MoneyUpSection: Hashable {
+enum MoneyUpSection: Hashable {
     case today
     case history
     case log
     case plan
     case assets
+}
+
+enum TabSwipeNavigationPolicy {
+    static func destination(
+        from current: MoneyUpSection,
+        translation: CGSize
+    ) -> MoneyUpSection? {
+        guard abs(translation.width) >= 72,
+              abs(translation.width) > abs(translation.height) * 1.6 else {
+            return nil
+        }
+        let sections: [MoneyUpSection] = [.today, .history, .log, .plan, .assets]
+        guard let index = sections.firstIndex(of: current) else { return nil }
+        let target = translation.width < 0 ? index + 1 : index - 1
+        guard sections.indices.contains(target) else { return nil }
+        return sections[target]
+    }
 }
 
 private struct MainTabView: View {
@@ -268,6 +285,17 @@ private struct MainTabView: View {
                 .tabItem { Label("tab.assets", systemImage: "wallet.bifold.fill") }
                 .tag(MoneyUpSection.assets)
         }
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 24, coordinateSpace: .local)
+                .onEnded { value in
+                    guard model.profile?.enablesTabSwipeNavigation == true,
+                          let destination = TabSwipeNavigationPolicy.destination(
+                            from: selectedSection,
+                            translation: value.translation
+                          ) else { return }
+                    withAnimation(.snappy) { selectedSection = destination }
+                }
+        )
         .sheet(isPresented: $isShowingWhatsNew) {
             WhatsNewSheet()
         }

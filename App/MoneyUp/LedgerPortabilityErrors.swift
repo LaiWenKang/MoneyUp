@@ -12,6 +12,8 @@ extension TransactionSplitError: @retroactive LocalizedError {
             AppLocalization.string("split.error.currency")
         case .totalMismatch:
             AppLocalization.string("split.error.balance")
+        case .invalidAllocation:
+            AppLocalization.string("split.error.allocation")
         }
     }
 }

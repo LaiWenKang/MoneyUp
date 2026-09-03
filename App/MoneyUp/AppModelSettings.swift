@@ -48,6 +48,17 @@ extension AppModel {
         }
     }
 
+    func updateTabSwipeNavigation(_ enabled: Bool) async throws {
+        try await mutateProfile { $0.enablesTabSwipeNavigation = enabled }
+    }
+
+    func updateReportingTimeZone(_ identifier: String) async throws {
+        guard let zone = TimeZone(identifier: identifier) else {
+            throw AppModelError.invalidBook
+        }
+        try await mutateProfile { $0.reportingTimeZoneIdentifier = zone.identifier }
+    }
+
     func updatePreferredAccount(_ id: UUID?) async throws {
         try await mutateProfile { $0.preferredAccountID = id }
     }

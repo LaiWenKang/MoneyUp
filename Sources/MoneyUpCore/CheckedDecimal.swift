@@ -108,6 +108,30 @@ public enum CheckedDecimal {
         return try roundedForCurrency(raw, currency: currency)
     }
 
+    /// Divides at Decimal's full precision and rounds toward zero to the
+    /// currency scale. Positive allocation algorithms use this to establish a
+    /// base amount that cannot exceed the available total; they then assign
+    /// the exact minor-unit residual deterministically.
+    public static func divideForCurrencyFloor(
+        _ numerator: Decimal,
+        _ denominator: Decimal,
+        currency: CurrencyCode
+    ) throws -> Decimal {
+        let raw = try calculate(
+            numerator,
+            denominator,
+            allowingLossOfPrecision: true,
+            operation: NSDecimalDivide
+        )
+        var source = raw
+        var rounded = Decimal.zero
+        NSDecimalRound(&rounded, &source, currency.minorUnits, .down)
+        guard !rounded.isNaN else {
+            throw DecimalCalculationError.invalidResult
+        }
+        return rounded
+    }
+
     private static func roundedForCurrency(
         _ amount: Decimal,
         currency: CurrencyCode

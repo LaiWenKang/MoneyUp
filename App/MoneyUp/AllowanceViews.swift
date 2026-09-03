@@ -124,6 +124,14 @@ private struct AllowanceDetailView: View {
                     }
                     LabeledContent("allowance.cadence", value: AppLocalization.string(plan.cadence.titleKeyString))
                     LabeledContent("allowance.rollover", value: AppLocalization.string(plan.rolloverRule.titleKeyString))
+                    LabeledContent(
+                        "allowance.funding_mode",
+                        value: AppLocalization.string(plan.fundingMode.titleKeyString)
+                    )
+                    if let accountID = plan.linkedAccountID,
+                       let account = model.accounts.first(where: { $0.id == accountID }) {
+                        LabeledContent("allowance.linked_account", value: account.name)
+                    }
                 }
 
                 Section("allowance.usage_history") {
@@ -191,6 +199,8 @@ private struct AllowanceEditorSheet: View {
     @State private var amountText: String
     @State private var currencyCode: String
     @State private var cadence: AllowanceCadence
+    @State private var fundingMode: AllowanceFundingMode
+    @State private var linkedAccountID: UUID?
     @State private var startsAt: Date
     @State private var hasEndDate: Bool
     @State private var endsAt: Date
@@ -207,6 +217,8 @@ private struct AllowanceEditorSheet: View {
         _amountText = State(initialValue: plan.map { editableAmount($0.amount.amount) } ?? "")
         _currencyCode = State(initialValue: plan?.amount.currency.value ?? "USD")
         _cadence = State(initialValue: plan?.cadence ?? .daily)
+        _fundingMode = State(initialValue: plan?.fundingMode ?? .benefitLimit)
+        _linkedAccountID = State(initialValue: plan?.linkedAccountID)
         _startsAt = State(initialValue: plan?.startsAt ?? Date())
         _hasEndDate = State(initialValue: plan?.endsAt != nil)
         _endsAt = State(initialValue: plan?.endsAt ?? Date().addingTimeInterval(86_400 * 30))
@@ -235,6 +247,19 @@ private struct AllowanceEditorSheet: View {
                     Picker("allowance.cadence", selection: $cadence) {
                         ForEach(AllowanceCadence.allCases, id: \.self) { option in
                             Text(option.titleKey).tag(option)
+                        }
+                    }
+                    Picker("allowance.funding_mode", selection: $fundingMode) {
+                        ForEach(AllowanceFundingMode.allCases, id: \.self) { mode in
+                            Text(mode.titleKey).tag(mode)
+                        }
+                    }
+                    if fundingMode != .benefitLimit {
+                        Picker("allowance.linked_account", selection: $linkedAccountID) {
+                            Text("category.none").tag(UUID?.none)
+                            ForEach(eligibleLinkedAccounts) { account in
+                                Text(account.name).tag(Optional(account.id))
+                            }
                         }
                     }
                     DatePicker("allowance.starts", selection: $startsAt, displayedComponents: .date)
@@ -305,6 +330,19 @@ private struct AllowanceEditorSheet: View {
                     currencyCode = model.profile?.baseCurrency.value ?? currencyCode
                 }
             }
+            .onChange(of: fundingMode) { _, mode in
+                if mode == .benefitLimit {
+                    linkedAccountID = nil
+                } else if !eligibleLinkedAccounts.contains(where: { $0.id == linkedAccountID }) {
+                    linkedAccountID = eligibleLinkedAccounts.first?.id
+                }
+            }
+            .onChange(of: currencyCode) { _, _ in
+                if !eligibleLinkedAccounts.contains(where: { $0.id == linkedAccountID }) {
+                    linkedAccountID = fundingMode == .benefitLimit
+                        ? nil : eligibleLinkedAccounts.first?.id
+                }
+            }
             .moneyUpOperationErrorAlert(message: $errorMessage)
         }
     }
@@ -316,9 +354,16 @@ private struct AllowanceEditorSheet: View {
             && (!hasEndDate || endsAt > startsAt)
             && (rollover != .capped
                 || decimalAmount(from: rolloverCapText).map { $0 >= .zero } == true)
+            && (fundingMode == .benefitLimit || linkedAccountID != nil)
     }
 
     private var currency: CurrencyCode? { try? CurrencyCode(currencyCode) }
+
+    private var eligibleLinkedAccounts: [LedgerAccount] {
+        model.userAccounts.filter {
+            $0.kind == .asset && !$0.isArchived && $0.currency == currency
+        }
+    }
 
     private func save() async {
         guard let amount = decimalAmount(from: amountText), let currency else { return }
@@ -339,6 +384,8 @@ private struct AllowanceEditorSheet: View {
                 name: name,
                 amount: try Money(amount, currency: currency),
                 cadence: cadence,
+                fundingMode: fundingMode,
+                linkedAccountID: fundingMode == .benefitLimit ? nil : linkedAccountID,
                 startsAt: startsAt,
                 endsAt: hasEndDate ? endsAt : nil,
                 timeZoneIdentifier: model.reportingCalendar.timeZone.identifier,
@@ -445,5 +492,17 @@ private extension AllowanceRolloverRule {
         case .full: "allowance.rollover.full"
         }
     }
+    var titleKey: LocalizedStringKey { LocalizedStringKey(titleKeyString) }
+}
+
+private extension AllowanceFundingMode {
+    var titleKeyString: String {
+        switch self {
+        case .benefitLimit: "allowance.funding.benefit"
+        case .prepaidAsset: "allowance.funding.prepaid"
+        case .reimbursement: "allowance.funding.reimbursement"
+        }
+    }
+
     var titleKey: LocalizedStringKey { LocalizedStringKey(titleKeyString) }
 }

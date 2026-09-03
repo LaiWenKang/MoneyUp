@@ -101,8 +101,10 @@ ledger, or rollover result. Existing nodes decode with monthly pacing.
 
 ## Loans and expiring allowances
 
-`LoanPlan` attaches explanatory metadata to exactly one active loan liability
-account. The ledger account remains the sole principal-balance authority.
+`LoanPlan` attaches explanatory metadata and a home, vehicle, education,
+medical, personal, business, installment, credit-line, or other purpose to
+exactly one active loan liability account. The ledger account remains the sole
+principal-balance authority.
 Drawdowns and repayments create balanced journal entries; the plan retains only
 bounded immutable activity links plus the separated principal, interest, fee,
 date, and note needed to explain those entries. Interest and fees post to
@@ -110,13 +112,15 @@ explicit expense categories. A loan can be marked finished only when its ledger
 principal is exactly zero. `includeInTotalDebt` affects the loan-center aggregate,
 not accounting or net worth.
 
-`AllowancePlan` represents a non-cash benefit such as a company meal allowance.
-It has an exact-currency amount, daily/weekday/weekly/monthly cadence, reporting
-time zone, optional end date, eligible expense categories, no/full/capped
-rollover, and bounded usage records. It is planning-only and is never an asset,
-income account, or net-worth input. A linked journal identifier may explain an
-actual out-of-pocket expense, but standalone allowance use never invents a cash
-transaction.
+`AllowancePlan` represents an expiring benefit such as a company meal
+allowance. It has an exact-currency amount, daily/weekday/weekly/monthly cadence,
+reporting time zone, optional end date, eligible expense categories,
+no/full/capped rollover, and bounded usage records. `benefitLimit` is
+planning-only; `prepaidAsset` and `reimbursement` must reference an active
+same-currency asset account whose ledger balance remains authoritative. The
+allowance never becomes income or a second net-worth input. Quick Log can write
+an eligible expense and linked usage atomically; replacing or deleting the
+expense relinks or removes that evidence in the same SQLCipher transaction.
 
 ## Time, recurrence, and reporting calendar
 
@@ -241,12 +245,15 @@ an invented value.
 
 ## Widget snapshot
 
-The app and widget share one App Group only for a versioned redacted snapshot:
-disabled, needs-plan, unavailable, or available with an integer percent used.
-The payload contains no amount, payee, account, holding, balance, transaction,
-book, or ledger identifier. Opt-out, profile removal, and erase scrub the
-snapshot and known legacy prototype keys. Locking may retain an already
-published opt-in percentage because it contains no financial record fields.
+The app and widget share one App Group only for a versioned redacted snapshot.
+Budget status contains state, reporting-period token, expiry, and a bounded
+integer percent used. Smart Overview adds bounded review/allowance/commitment
+counts, an allowance-remaining percentage, daily expiry, and an optional next
+commitment timestamp. The payload contains no amount, payee, account name,
+holding, balance, transaction, book, or ledger identifier. Opt-out, profile
+removal, erase, and unsupported future schemas scrub the snapshot and known
+legacy prototype keys. Locking may retain already-published opt-in derivatives
+because they contain no financial record fields.
 
 ## Export identity and portable recovery
 

@@ -264,7 +264,10 @@ final class AppModel {
     }
     var scheduledTransactions: [ScheduledTransaction] {
         get { services.planning.scheduledTransactions }
-        set { services.planning.scheduledTransactions = newValue }
+        set {
+            services.planning.scheduledTransactions = newValue
+            refreshBudgetWidgetSnapshot()
+        }
     }
     var investmentHoldings: [InvestmentHolding] {
         get { services.assets.investmentHoldings }
@@ -280,7 +283,10 @@ final class AppModel {
     }
     var allowancePlans: [AllowancePlan] {
         get { services.planning.allowancePlans }
-        set { services.planning.allowancePlans = newValue }
+        set {
+            services.planning.allowancePlans = newValue
+            refreshBudgetWidgetSnapshot()
+        }
     }
     /// Blob-free attachment inventory. Image bytes are never retained by the
     /// application model and are fetched only for a selected History row.
@@ -659,6 +665,15 @@ extension AppModel {
         FinancialPeriodBoundary.gregorianCalendar(
             timeZoneIdentifier: profile?.reportingTimeZoneIdentifier
                 ?? TimeZone.current.identifier
+        )
+    }
+
+    /// User-authored timestamps are displayed and edited in the device's
+    /// current civil time. Reporting boundaries remain independently fixed by
+    /// `reportingCalendar`, so travel never rewrites historical instants.
+    var captureCalendar: Calendar {
+        FinancialPeriodBoundary.gregorianCalendar(
+            timeZoneIdentifier: TimeZone.current.identifier
         )
     }
 }

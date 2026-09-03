@@ -289,6 +289,41 @@ final class HistoryQueryTests: XCTestCase {
         )
     }
 
+    func testSmartFiltersMatchExactIDsSplitsAndNotes() throws {
+        let fixture = try Fixture()
+        let ordinary = try fixture.expense(amount: 10)
+        let split = try TransactionFactory.splitExpense(
+            amount: try Money(10, currency: fixture.sgd),
+            paidFrom: fixture.wallet.id,
+            splits: [
+                TransactionSplitLine(
+                    categoryAccountID: fixture.food.id,
+                    amount: try Money(4, currency: fixture.sgd)
+                ),
+                TransactionSplitLine(
+                    categoryAccountID: fixture.transport.id,
+                    amount: try Money(6, currency: fixture.sgd)
+                )
+            ],
+            note: "team lunch"
+        )
+        let query = HistoryQuery(
+            requiredEntryIDs: [split.id],
+            requiresSplitTransaction: true,
+            requiresNote: true
+        )
+
+        XCTAssertEqual(
+            query.filteredEntries([ordinary, split], accounts: fixture.accounts).map(\.id),
+            [split.id]
+        )
+        XCTAssertTrue(
+            HistoryQuery(requiredEntryIDs: [])
+                .filteredEntries([ordinary, split], accounts: fixture.accounts)
+                .isEmpty
+        )
+    }
+
     func testTenThousandEntryHistorySearchHasABoundedRegressionGuard() throws {
         let fixture = try Fixture()
         let entries = try (0..<10_000).map { index in

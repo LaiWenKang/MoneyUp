@@ -78,14 +78,15 @@ final class AppLocalizationTests: XCTestCase {
     }
 
     func testVersion071DeclaresBilingualReleaseHighlights() {
-        XCTAssertEqual(ReleaseNotes.highlights(for: "0.7.1").count, 5)
+        XCTAssertEqual(ReleaseNotes.highlights(for: "0.7.1").count, 6)
 
         for key in [
             "whats_new.0_7_1.logging",
             "whats_new.0_7_1.history",
             "whats_new.0_7_1.loans",
             "whats_new.0_7_1.planning",
-            "whats_new.0_7_1.categories"
+            "whats_new.0_7_1.categories",
+            "whats_new.0_7_1.widget"
         ] {
             AppLanguagePreference.defaults.set(
                 AppLanguagePreference.english.rawValue,

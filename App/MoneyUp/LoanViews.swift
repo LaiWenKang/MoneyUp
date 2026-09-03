@@ -57,9 +57,9 @@ struct LoanCenterView: View {
                 }
             }
             if model.loanPlans.isEmpty {
-                ContentUnavailableView(
-                    "loan.empty",
-                    systemImage: "car.side.fill",
+                    ContentUnavailableView(
+                        "loan.empty",
+                        systemImage: "building.columns.fill",
                     description: Text("loan.empty_detail")
                 )
             } else {
@@ -123,7 +123,7 @@ private struct LoanRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            MoneyUpSymbolBadge(systemImage: "car.side.fill", color: .accentColor)
+            MoneyUpSymbolBadge(systemImage: plan.purpose.systemImage, color: .accentColor)
             VStack(alignment: .leading, spacing: 3) {
                 Text(plan.name).fontWeight(.semibold)
                 Text(
@@ -191,6 +191,10 @@ private struct LoanDetailView: View {
                     LabeledContent("loan.opened") {
                         Text(plan.openedAt, format: .dateTime.year().month().day())
                     }
+                    LabeledContent(
+                        "loan.purpose",
+                        value: AppLocalization.string(plan.purpose.titleKeyString)
+                    )
                     if let apr = plan.annualPercentageRate {
                         LabeledContent("loan.apr") {
                             Text(apr, format: .number.precision(.fractionLength(0...3)))
@@ -301,6 +305,7 @@ private struct AddLoanPlanSheet: View {
     @State private var includeInDebt = true
     @State private var interestCategoryID: UUID?
     @State private var feeCategoryID: UUID?
+    @State private var purpose: LoanPurpose = .other
     @State private var errorMessage: String?
     @State private var isSaving = false
 
@@ -317,6 +322,11 @@ private struct AddLoanPlanSheet: View {
                     }
                 }
                 TextField("loan.name", text: $name)
+                Picker("loan.purpose", selection: $purpose) {
+                    ForEach(LoanPurpose.allCases, id: \.self) { option in
+                        Label(option.titleKey, systemImage: option.systemImage).tag(option)
+                    }
+                }
                 TextField("loan.original_principal", text: $principalText)
                     .moneyAmountKeyboard(currency: selectedAccount?.currency)
                 DatePicker("loan.opened", selection: $openedAt, displayedComponents: .date)
@@ -390,7 +400,8 @@ private struct AddLoanPlanSheet: View {
                 termMonths: termText.isEmpty ? nil : Int(termText),
                 includeInTotalDebt: includeInDebt,
                 interestExpenseAccountID: interestCategoryID,
-                feeExpenseAccountID: feeCategoryID
+                feeExpenseAccountID: feeCategoryID,
+                purpose: purpose
             )
             dismiss()
         } catch {
@@ -586,6 +597,7 @@ private struct LoanEditSheet: View {
     @State private var includeInDebt: Bool
     @State private var interestCategoryID: UUID?
     @State private var feeCategoryID: UUID?
+    @State private var purpose: LoanPurpose
     @State private var errorMessage: String?
 
     init(plan: LoanPlan) {
@@ -598,12 +610,18 @@ private struct LoanEditSheet: View {
         _includeInDebt = State(initialValue: plan.includeInTotalDebt)
         _interestCategoryID = State(initialValue: plan.interestExpenseAccountID)
         _feeCategoryID = State(initialValue: plan.feeExpenseAccountID)
+        _purpose = State(initialValue: plan.purpose)
     }
 
     var body: some View {
         NavigationStack {
             Form {
                 TextField("loan.name", text: $name)
+                Picker("loan.purpose", selection: $purpose) {
+                    ForEach(LoanPurpose.allCases, id: \.self) { option in
+                        Label(option.titleKey, systemImage: option.systemImage).tag(option)
+                    }
+                }
                 TextField("loan.apr_optional", text: $apr).keyboardType(.decimalPad)
                 TextField("loan.term_optional", text: $term).keyboardType(.numberPad)
                 Toggle("loan.include_total_debt", isOn: $includeInDebt)
@@ -646,7 +664,8 @@ private struct LoanEditSheet: View {
                 termMonths: term.isEmpty ? nil : Int(term),
                 includeInTotalDebt: includeInDebt,
                 interestExpenseAccountID: interestCategoryID,
-                feeExpenseAccountID: feeCategoryID
+                feeExpenseAccountID: feeCategoryID,
+                purpose: purpose
             )
             dismiss()
         } catch {
@@ -661,6 +680,38 @@ private extension LoanActivityKind {
         case .drawdown: "loan.drawdown"
         case .repayment: "loan.repayment"
         case .reconciliation: "loan.reconciliation"
+        }
+    }
+}
+
+private extension LoanPurpose {
+    var titleKeyString: String {
+        switch self {
+        case .home: "loan.purpose.home"
+        case .vehicle: "loan.purpose.vehicle"
+        case .education: "loan.purpose.education"
+        case .medical: "loan.purpose.medical"
+        case .personal: "loan.purpose.personal"
+        case .business: "loan.purpose.business"
+        case .installment: "loan.purpose.installment"
+        case .creditLine: "loan.purpose.credit_line"
+        case .other: "loan.purpose.other"
+        }
+    }
+
+    var titleKey: LocalizedStringKey { LocalizedStringKey(titleKeyString) }
+
+    var systemImage: String {
+        switch self {
+        case .home: "house.fill"
+        case .vehicle: "car.side.fill"
+        case .education: "graduationcap.fill"
+        case .medical: "cross.case.fill"
+        case .personal: "person.fill"
+        case .business: "briefcase.fill"
+        case .installment: "cart.fill.badge.clock"
+        case .creditLine: "creditcard.fill"
+        case .other: "building.columns.fill"
         }
     }
 }

@@ -6,6 +6,7 @@ import UIKit
 extension TransactionEditView {
     var body: some View {
         NavigationStack {
+            ScrollViewReader { scrollProxy in
             Form {
                 if isEditable {
                     if dynamicTypeSize.isAccessibilitySize {
@@ -18,6 +19,8 @@ extension TransactionEditView {
                         HStack {
                             TextField("quick_log.amount", text: $amountText)
                                 .moneyAmountKeyboard(currency: sourceCurrency)
+                                .focused($focusedField, equals: .amount)
+                                .id(TransactionEditView.FieldFocus.amount)
                             if let sourceCurrency {
                                 Text(sourceCurrency.value).foregroundStyle(.secondary)
                             }
@@ -50,6 +53,8 @@ extension TransactionEditView {
                                         text: $destinationAmountText
                                     )
                                     .moneyAmountKeyboard(currency: destinationCurrency)
+                                    .focused($focusedField, equals: .destinationAmount)
+                                    .id(TransactionEditView.FieldFocus.destinationAmount)
                                     if let destinationCurrency {
                                         Text(destinationCurrency.value)
                                             .foregroundStyle(.secondary)
@@ -94,11 +99,15 @@ extension TransactionEditView {
                             displayedComponents: [.date, .hourAndMinute]
                         )
                         TextField("transaction.title_or_merchant", text: $payee)
+                            .focused($focusedField, equals: .payee)
+                            .id(TransactionEditView.FieldFocus.payee)
                         TextField(
                             "transaction.description_or_notes",
                             text: $note,
                             axis: .vertical
                         )
+                        .focused($focusedField, equals: .note)
+                        .id(TransactionEditView.FieldFocus.note)
                     }
                 } else {
                     Section {
@@ -165,6 +174,12 @@ extension TransactionEditView {
             }
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
+            .scrollDismissesKeyboard(.interactively)
+            .contentMargins(
+                .bottom,
+                focusedField == nil ? 72 : 200,
+                for: .scrollContent
+            )
             .navigationTitle("history.edit")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -200,6 +215,21 @@ extension TransactionEditView {
                 }
                 selectValidDefaults()
             }
+            .onChange(of: focusedField) { _, field in
+                guard let field else { return }
+                withAnimation(.easeOut(duration: 0.2)) {
+                    scrollProxy.scrollTo(field, anchor: .center)
+                }
+                Task { @MainActor in
+                    try? await Task.sleep(
+                        nanoseconds: QuickLogFocusScrollPolicy.layoutSettlingNanoseconds
+                    )
+                    guard focusedField == field else { return }
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        scrollProxy.scrollTo(field, anchor: .center)
+                    }
+                }
+            }
             .confirmationDialog(
                 "transaction.delete_title",
                 isPresented: $isConfirmingDelete,
@@ -228,9 +258,10 @@ extension TransactionEditView {
                 Text("receipt.delete_detail")
             }
             .moneyUpOperationErrorAlert(message: $errorMessage)
+            }
         }
-        .environment(\.calendar, model.reportingCalendar)
-        .environment(\.timeZone, model.reportingCalendar.timeZone)
+        .environment(\.calendar, model.captureCalendar)
+        .environment(\.timeZone, model.captureCalendar.timeZone)
     }
 
     func kindPicker<Style: PickerStyle>(style: Style) -> some View {

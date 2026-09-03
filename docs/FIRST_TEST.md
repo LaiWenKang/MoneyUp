@@ -1,6 +1,6 @@
 # MoneyUp Founder/Co-tester Runbook
 
-Version target: 0.7.1, source build 10 (the GitHub workflow assigns a unique
+Version target: 0.7.1, source build 11 (the GitHub workflow assigns a unique
 TestFlight upload build)
 
 This runbook is for MoneyUp's founder and co-tester on their two iPhones. Use

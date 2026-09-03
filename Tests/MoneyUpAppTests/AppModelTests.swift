@@ -13972,6 +13972,33 @@ extension AppModelTests {
         )
     }
 
+    func testVersionTwoWidgetStatusSurvivesInsightSchemaMigration() throws {
+        let suiteName = "MoneyUpWidgetV2MigrationTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let expiry = Date().addingTimeInterval(60)
+        defaults.set(2, forKey: "budgetStatus.schemaVersion")
+        defaults.set(true, forKey: "budgetStatus.enabled")
+        defaults.set("available", forKey: "budgetStatus.state")
+        defaults.set(42, forKey: "budgetStatus.percentUsed")
+        defaults.set("2026-09", forKey: "budgetStatus.periodToken")
+        defaults.set(expiry, forKey: "budgetStatus.validUntil")
+        defaults.set("unreviewed", forKey: "budgetStatus.insight.future")
+
+        let store = BudgetWidgetSnapshotStore(defaults: defaults)
+
+        XCTAssertEqual(
+            store.read(now: expiry.addingTimeInterval(-1)),
+            .available(percentUsed: 42, validUntil: expiry)
+        )
+        XCTAssertNil(store.readInsights(now: expiry.addingTimeInterval(-1)))
+        XCTAssertNil(defaults.object(forKey: "budgetStatus.insight.future"))
+        XCTAssertEqual(
+            defaults.integer(forKey: "budgetStatus.schemaVersion"),
+            BudgetWidgetSnapshotStore.currentSchemaVersion
+        )
+    }
+
     func testFutureWidgetSchemaIsDisabledAndUnknownPayloadIsScrubbed() throws {
         let suiteName = "MoneyUpWidgetFutureMigration-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
@@ -14241,6 +14268,184 @@ extension AppModelTests {
     }
 
     @MainActor
+    func testQuickLogAllowanceUsageIsAtomicAndDeletedWithExpense() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let occurredAt = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let plan = try AllowancePlan(
+            name: "Meal benefit",
+            amount: Money(15, currency: fixture.sgd),
+            cadence: .daily,
+            startsAt: occurredAt.addingTimeInterval(-86_400),
+            eligibleCategoryIDs: [fixture.food.id]
+        )
+        let profile = UserProfile(baseCurrency: fixture.sgd)
+        try await fixture.seed(
+            profile: profile,
+            accounts: [fixture.wallet, fixture.food],
+            allowancePlans: [plan]
+        )
+        let model = fixture.model(
+            profile: profile,
+            accounts: [fixture.wallet, fixture.food],
+            allowancePlans: [plan],
+            currentDate: { occurredAt }
+        )
+
+        let savedEntryID = try await model.logExpense(
+            amount: 12,
+            accountID: fixture.wallet.id,
+            categoryID: fixture.food.id,
+            occurredAt: occurredAt,
+            payee: "Lunch",
+            note: nil,
+            allowancePlanID: plan.id
+        )
+        let entryID = try XCTUnwrap(savedEntryID)
+
+        XCTAssertEqual(model.allowancePlans.first?.usages.count, 1)
+        XCTAssertEqual(
+            model.allowancePlans.first?.usages.first?.linkedJournalEntryID,
+            entryID
+        )
+        let storedApplied = try await fixture.store.fetch(
+            AllowancePlan.self,
+            id: plan.id.uuidString,
+            from: .allowancePlans
+        )
+        XCTAssertEqual(storedApplied?.usages.first?.amount.amount, 12)
+        let storedEntry = try await fixture.store.fetch(
+            JournalEntry.self,
+            id: entryID.uuidString,
+            from: .journalEntries
+        )
+        XCTAssertNotNil(storedEntry)
+
+        try await model.deleteEntry(id: entryID)
+
+        XCTAssertTrue(try XCTUnwrap(model.allowancePlans.first).usages.isEmpty)
+        let storedDeleted = try await fixture.store.fetch(
+            AllowancePlan.self,
+            id: plan.id.uuidString,
+            from: .allowancePlans
+        )
+        XCTAssertTrue(try XCTUnwrap(storedDeleted).usages.isEmpty)
+        let deletedEntry = try await fixture.store.fetch(
+            JournalEntry.self,
+            id: entryID.uuidString,
+            from: .journalEntries
+        )
+        XCTAssertNil(deletedEntry)
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testEditingAllowanceExpenseRelinksUsageToReplacement() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let occurredAt = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let plan = try AllowancePlan(
+            name: "Meal benefit",
+            amount: Money(15, currency: fixture.sgd),
+            cadence: .daily,
+            startsAt: occurredAt.addingTimeInterval(-86_400),
+            eligibleCategoryIDs: [fixture.food.id]
+        )
+        let profile = UserProfile(baseCurrency: fixture.sgd)
+        try await fixture.seed(
+            profile: profile,
+            accounts: [fixture.wallet, fixture.food],
+            allowancePlans: [plan]
+        )
+        let model = fixture.model(
+            profile: profile,
+            accounts: [fixture.wallet, fixture.food],
+            allowancePlans: [plan],
+            currentDate: { occurredAt.addingTimeInterval(60) }
+        )
+        let savedOriginalID = try await model.logExpense(
+            amount: 12,
+            accountID: fixture.wallet.id,
+            categoryID: fixture.food.id,
+            occurredAt: occurredAt,
+            payee: "Lunch",
+            note: nil,
+            allowancePlanID: plan.id
+        )
+        let originalID = try XCTUnwrap(savedOriginalID)
+
+        try await model.replaceEntry(
+            id: originalID,
+            kind: .expense,
+            amount: 10,
+            destinationAmount: nil,
+            accountID: fixture.wallet.id,
+            destinationAccountID: nil,
+            categoryID: fixture.food.id,
+            occurredAt: occurredAt,
+            payee: "Lunch",
+            note: "Corrected"
+        )
+
+        let replacement = try XCTUnwrap(
+            model.entries.first(where: { $0.supersedesID == originalID })
+        )
+        XCTAssertEqual(
+            model.allowancePlans.first?.usages.first?.linkedJournalEntryID,
+            replacement.id
+        )
+        let stored = try await fixture.store.fetch(
+            AllowancePlan.self,
+            id: plan.id.uuidString,
+            from: .allowancePlans
+        )
+        XCTAssertEqual(stored?.usages.first?.linkedJournalEntryID, replacement.id)
+        let removedOriginal = try await fixture.store.fetch(
+            JournalEntry.self,
+            id: originalID.uuidString,
+            from: .journalEntries
+        )
+        XCTAssertNil(removedOriginal)
+        await fixture.store.close()
+    }
+
+    func testSmartWidgetInsightsAreBoundedExpireAndScrubWithOptOut() throws {
+        let suiteName = "MoneyUpWidgetInsights-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = BudgetWidgetSnapshotStore(defaults: defaults)
+        let now = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let expiry = now.addingTimeInterval(60)
+        store.publish(
+            enabled: true,
+            percentUsed: nil,
+            periodToken: "2026-05",
+            validUntil: expiry
+        )
+        store.publishInsights(
+            enabled: true,
+            reviewCount: Int.max,
+            activeAllowanceCount: -2,
+            allowancePercentRemaining: 150,
+            activeCommitmentCount: Int.max,
+            nextCommitment: now.addingTimeInterval(30),
+            validUntil: expiry
+        )
+
+        let insights = try XCTUnwrap(store.readInsights(now: now))
+        XCTAssertEqual(insights.reviewCount, 9_999)
+        XCTAssertEqual(insights.activeAllowanceCount, 0)
+        XCTAssertEqual(insights.allowancePercentRemaining, 100)
+        XCTAssertEqual(insights.activeCommitmentCount, 9_999)
+        XCTAssertNil(store.readInsights(now: expiry))
+
+        store.publish(enabled: false, percentUsed: nil)
+        XCTAssertNil(store.readInsights(now: now))
+        let persisted = defaults.persistentDomain(forName: suiteName) ?? [:]
+        XCTAssertFalse(persisted.keys.contains { $0.contains("insight.") })
+    }
+
+    @MainActor
     func testInvalidAutoLockChoiceIsNotPersisted() async throws {
         let fixture = try AppModelFixture()
         defer { fixture.removeFiles() }
@@ -14335,6 +14540,7 @@ private struct AppModelFixture {
         budgetNodes: [BudgetNode] = [],
         scheduledTransactions: [ScheduledTransaction] = [],
         investmentHoldings: [InvestmentHolding] = [],
+        allowancePlans: [AllowancePlan] = [],
         receiptAttachments: [ReceiptAttachment] = [],
         exchangeRates: [DatedExchangeRate] = [],
         netWorthSnapshots: [NetWorthSnapshot] = [],
@@ -14378,6 +14584,7 @@ private struct AppModelFixture {
             exchangeRates: exchangeRates,
             netWorthSnapshots: netWorthSnapshots,
             savingsGoals: savingsGoals,
+            allowancePlans: allowancePlans,
             quickLogDraft: quickLogDraft,
             lockedCaptureStore: lockedCaptureStore,
             receiptRecognizer: receiptRecognizer,
@@ -14409,6 +14616,7 @@ private struct AppModelFixture {
         schedules: [ScheduledTransaction] = [],
         holdings: [InvestmentHolding] = [],
         savingsGoals: [SavingsGoal] = [],
+        allowancePlans: [AllowancePlan] = [],
         quickLogDraft: QuickLogDraft? = nil
     ) async throws {
         var writes: [RecordWrite] = [
@@ -14442,6 +14650,9 @@ private struct AppModelFixture {
         }
         writes += try savingsGoals.map {
             try RecordWrite($0, id: $0.id.uuidString, in: .savingsGoals)
+        }
+        writes += try allowancePlans.map {
+            try RecordWrite($0, id: $0.id.uuidString, in: .allowancePlans)
         }
         if let quickLogDraft {
             writes.append(

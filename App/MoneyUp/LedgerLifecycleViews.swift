@@ -21,6 +21,8 @@ struct CategoryManagementList: View {
     @State private var selectedCategoryID: UUID?
     @State private var categoryKindToAdd: LedgerAccountKind = .expense
     @State private var isAddingCategory = false
+    @State private var parentIDToAdd: UUID?
+    @State private var searchText = ""
 
     private var expenseCategories: [LedgerAccount] {
         model.manageableLedgerItems
@@ -32,6 +34,15 @@ struct CategoryManagementList: View {
         model.manageableLedgerItems
             .filter { $0.kind == .income }
             .sorted(by: lifecycleSort)
+    }
+
+    private func visible(_ categories: [LedgerAccount]) -> [LedgerAccount] {
+        guard !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return categories
+        }
+        return categories.filter {
+            model.categoryPathName(for: $0.id).localizedCaseInsensitiveContains(searchText)
+        }
     }
 
     var body: some View {
@@ -48,6 +59,7 @@ struct CategoryManagementList: View {
             }
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
+            .searchable(text: $searchText, prompt: "lifecycle.search_categories")
             .navigationTitle("lifecycle.manage_categories")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -55,6 +67,7 @@ struct CategoryManagementList: View {
                     Menu {
                         Button {
                             categoryKindToAdd = .expense
+                            parentIDToAdd = nil
                             isAddingCategory = true
                         } label: {
                             Label(
@@ -64,6 +77,7 @@ struct CategoryManagementList: View {
                         }
                         Button {
                             categoryKindToAdd = .income
+                            parentIDToAdd = nil
                             isAddingCategory = true
                         } label: {
                             Label(
@@ -90,7 +104,10 @@ struct CategoryManagementList: View {
                 }
             }
             .sheet(isPresented: $isAddingCategory) {
-                AddCategorySheet(kind: categoryKindToAdd)
+                AddCategorySheet(
+                    kind: categoryKindToAdd,
+                    initialParentID: parentIDToAdd
+                )
             }
         }
     }
@@ -101,11 +118,11 @@ struct CategoryManagementList: View {
         categories: [LedgerAccount]
     ) -> some View {
         Section(title) {
-            ForEach(categories) { category in
-                Button {
-                    selectedCategoryID = category.id
-                } label: {
-                    HStack {
+            ForEach(visible(categories)) { category in
+                HStack {
+                    Button {
+                        selectedCategoryID = category.id
+                    } label: {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(model.categoryPathName(for: category.id))
                             if category.isArchived {
@@ -114,13 +131,55 @@ struct CategoryManagementList: View {
                                     .foregroundStyle(.secondary)
                             }
                         }
-                        Spacer()
-                        Image(systemName: category.isArchived ? "archivebox.fill" : "chevron.right")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    if !category.isArchived {
+                        Button {
+                            categoryKindToAdd = category.kind
+                            parentIDToAdd = category.id
+                            isAddingCategory = true
+                        } label: {
+                            Image(systemName: "plus.circle")
+                                .frame(minWidth: 44, minHeight: 44)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("lifecycle.add_subcategory")
+                    } else {
+                        Image(systemName: "archivebox.fill")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                 }
-                .buttonStyle(.plain)
+                .contextMenu {
+                    if !category.isArchived {
+                        Button {
+                            categoryKindToAdd = category.kind
+                            parentIDToAdd = category.id
+                            isAddingCategory = true
+                        } label: {
+                            Label("lifecycle.add_subcategory", systemImage: "arrow.turn.down.right")
+                        }
+                    }
+                    Button {
+                        selectedCategoryID = category.id
+                    } label: {
+                        Label("lifecycle.manage", systemImage: "slider.horizontal.3")
+                    }
+                }
+                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                    if !category.isArchived {
+                        Button {
+                            categoryKindToAdd = category.kind
+                            parentIDToAdd = category.id
+                            isAddingCategory = true
+                        } label: {
+                            Label("lifecycle.add_subcategory", systemImage: "arrow.turn.down.right")
+                        }
+                        .tint(.accentColor)
+                    }
+                }
             }
         }
     }

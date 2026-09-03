@@ -293,6 +293,15 @@
     "platform_intent.open_quick_log.description" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Open one MoneyUp logging screen without passing transaction details."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"打开一个 MoneyUp 记账界面，不传递交易详情。"}}}},
     "platform_intent.open_quick_log.action" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Quick action"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"快捷操作"}}}},
     "control.quick_log.display_name" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"MoneyUp Quick Log"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"MoneyUp 快捷记账"}}}},
+    "widget.content.smart_overview" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Smart overview"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"智能总览"}}}},
+    "widget.smart_overview" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Today at a glance"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"今日一览"}}}},
+    "widget.smart_open_app" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Open MoneyUp to refresh insights"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"打开 MoneyUp 刷新洞察"}}}},
+    "widget.smart_inline" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"%d to review · %d commitments"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"%d 项待检查 · %d 项承诺"}}}},
+    "widget.smart_review" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"To review"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"待检查"}}}},
+    "widget.smart_allowance" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Allowance left"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"补贴剩余"}}}},
+    "widget.smart_upcoming" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Next due"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"下次到期"}}}},
+    "widget.smart.today" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Today"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"今天"}}}},
+    "widget.smart.days" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"%dd"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"%d天"}}}},
     "control.quick_log.description" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Open a private logging screen without showing financial information."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"打开私密记账界面，不显示财务信息。"}}}}
   },
   "version" : "1.0"

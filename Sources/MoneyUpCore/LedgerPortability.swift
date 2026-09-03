@@ -251,9 +251,153 @@ public enum TransactionSplitError: Error, Equatable, Sendable {
     case nonPositiveAmount(UUID)
     case currencyMismatch(UUID)
     case totalMismatch(expected: Decimal, actual: Decimal)
+    case invalidAllocation
 }
 
 public enum TransactionSplitCalculator {
+    /// Divides a positive total into exact currency-sized buckets. Any
+    /// indivisible minor units are assigned from the first bucket forward, so
+    /// the result is deterministic and always adds back to `total`.
+    public static func equalAmounts(total: Money, count: Int) throws -> [Money] {
+        guard count >= 2, count <= JournalEntry.maximumPostingCount - 1,
+              total.amount > .zero,
+              total.currency.supports(total.amount) else {
+            throw TransactionSplitError.invalidAllocation
+        }
+
+        let divisor = Decimal(count)
+        // Repeating quotients are expected here. The audited allocation path
+        // rounds the positive base down once, then distributes the exact
+        // minor-unit residual rather than treating 10 / 3 as a precision loss.
+        let base = try CheckedDecimal.divideForCurrencyFloor(
+            total.amount,
+            divisor,
+            currency: total.currency
+        )
+        var amounts = Array(repeating: base, count: count)
+        let allocated = try CheckedDecimal.multiplying(base, divisor)
+        var residual = try CheckedDecimal.subtracting(total.amount, allocated)
+        let unit = Decimal(sign: .plus, exponent: -total.currency.minorUnits, significand: 1)
+        var index = 0
+        while residual > .zero {
+            guard index < count else {
+                throw TransactionSplitError.invalidAllocation
+            }
+            amounts[index] = try CheckedDecimal.adding(amounts[index], unit)
+            residual = try CheckedDecimal.subtracting(residual, unit)
+            index += 1
+        }
+        guard residual == .zero else {
+            throw TransactionSplitError.invalidAllocation
+        }
+        return try amounts.map { amount in
+            guard amount > .zero else {
+                throw TransactionSplitError.invalidAllocation
+            }
+            return try Money(amount, currency: total.currency)
+        }
+    }
+
+    /// Rebalances only unlocked rows. Existing locked amounts remain byte-for-
+    /// byte exact and the residual is shared equally by the unlocked rows.
+    public static func rebalancedAmounts(
+        total: Money,
+        current: [Money?],
+        locked: [Bool]
+    ) throws -> [Money] {
+        guard current.count >= 2,
+              current.count == locked.count,
+              current.allSatisfy({ $0 == nil || $0?.currency == total.currency }) else {
+            throw TransactionSplitError.invalidAllocation
+        }
+        var lockedTotal = Decimal.zero
+        var unlockedIndices: [Int] = []
+        for index in current.indices {
+            if locked[index] {
+                guard let amount = current[index], amount.amount > .zero else {
+                    throw TransactionSplitError.invalidAllocation
+                }
+                lockedTotal = try CheckedDecimal.adding(
+                    lockedTotal,
+                    amount.amount
+                )
+            } else {
+                unlockedIndices.append(index)
+            }
+        }
+        guard !unlockedIndices.isEmpty else {
+            throw TransactionSplitError.invalidAllocation
+        }
+        let remaining = try CheckedDecimal.subtracting(total.amount, lockedTotal)
+        guard remaining > .zero else {
+            throw TransactionSplitError.invalidAllocation
+        }
+        // A single unlocked row receives the complete exact remainder; the
+        // public equal-allocation contract otherwise requires two rows.
+        var result = current
+        if unlockedIndices.count == 1 {
+            result[unlockedIndices[0]] = try Money(
+                remaining,
+                currency: total.currency
+            )
+        } else {
+            let shared = try equalAmounts(
+                total: Money(remaining, currency: total.currency),
+                count: unlockedIndices.count
+            )
+            for (offset, index) in unlockedIndices.enumerated() {
+                result[index] = shared[offset]
+            }
+        }
+        let resolved = result.compactMap { $0 }
+        guard resolved.count == result.count else {
+            throw TransactionSplitError.invalidAllocation
+        }
+        return resolved
+    }
+
+    /// Applies explicit percentages while assigning the final minor-unit
+    /// residual to the last row. Percentages must be positive and total 100.
+    public static func percentageAmounts(
+        total: Money,
+        percentages: [Decimal]
+    ) throws -> [Money] {
+        guard percentages.count >= 2,
+              percentages.allSatisfy({ $0 > .zero }) else {
+            throw TransactionSplitError.invalidAllocation
+        }
+        let percentageTotal = try percentages.reduce(Decimal.zero) {
+            try CheckedDecimal.adding($0, $1)
+        }
+        guard percentageTotal == 100 else {
+            throw TransactionSplitError.invalidAllocation
+        }
+        var result: [Money] = []
+        var allocated = Decimal.zero
+        for index in percentages.indices {
+            let amount: Decimal
+            if index == percentages.indices.last {
+                amount = try CheckedDecimal.subtracting(total.amount, allocated)
+            } else {
+                let weighted = try CheckedDecimal.multiplying(
+                    total.amount,
+                    percentages[index]
+                )
+                amount = try CheckedDecimal.divideForCurrencyRounding(
+                    weighted,
+                    100,
+                    currency: total.currency
+                )
+                allocated = try CheckedDecimal.adding(allocated, amount)
+            }
+            guard amount > .zero else {
+                throw TransactionSplitError.invalidAllocation
+            }
+            result.append(try Money(amount, currency: total.currency))
+        }
+        return result
+    }
+
     public static func remainder(total: Money, lines: [TransactionSplitLine]) throws -> Money {
         var allocated = Decimal.zero
         for line in lines {

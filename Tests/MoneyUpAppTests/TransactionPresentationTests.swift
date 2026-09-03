@@ -100,6 +100,39 @@ final class TransactionPresentationTests: XCTestCase {
         XCTAssertNil(QuickLogFocusScrollPolicy.target(for: nil))
     }
 
+    func testTabSwipeRequiresDeliberateHorizontalMovementAndNeverWraps() {
+        XCTAssertEqual(
+            TabSwipeNavigationPolicy.destination(
+                from: .history,
+                translation: CGSize(width: -90, height: 12)
+            ),
+            .log
+        )
+        XCTAssertEqual(
+            TabSwipeNavigationPolicy.destination(
+                from: .plan,
+                translation: CGSize(width: 90, height: 12)
+            ),
+            .log
+        )
+        XCTAssertNil(TabSwipeNavigationPolicy.destination(
+            from: .today,
+            translation: CGSize(width: 90, height: 0)
+        ))
+        XCTAssertNil(TabSwipeNavigationPolicy.destination(
+            from: .assets,
+            translation: CGSize(width: -90, height: 0)
+        ))
+        XCTAssertNil(TabSwipeNavigationPolicy.destination(
+            from: .history,
+            translation: CGSize(width: 60, height: 0)
+        ))
+        XCTAssertNil(TabSwipeNavigationPolicy.destination(
+            from: .history,
+            translation: CGSize(width: 90, height: 70)
+        ))
+    }
+
     func testOccurrenceDateRefreshesOnlyForAnUntouchedNewDraft() {
         XCTAssertTrue(
             QuickLogOccurrencePolicy.shouldRefresh(

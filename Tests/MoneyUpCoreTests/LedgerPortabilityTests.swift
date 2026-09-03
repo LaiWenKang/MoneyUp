@@ -7,6 +7,32 @@ struct LedgerPortabilityTests {
     private let myr = try! CurrencyCode("MYR")
 
     @Test
+    func smartSplitAllocationIsExactAndDeterministic() throws {
+        let total = try Money(10, currency: sgd)
+        let equal = try TransactionSplitCalculator.equalAmounts(total: total, count: 3)
+        #expect(equal.map(\.amount) == [3.34, 3.33, 3.33])
+
+        let residualHeavy = try TransactionSplitCalculator.equalAmounts(
+            total: try Money(1, currency: sgd),
+            count: 6
+        )
+        #expect(residualHeavy.map(\.amount) == [0.17, 0.17, 0.17, 0.17, 0.16, 0.16])
+
+        let percentages = try TransactionSplitCalculator.percentageAmounts(
+            total: total,
+            percentages: [60, 40]
+        )
+        #expect(percentages.map(\.amount) == [6, 4])
+
+        let rebalanced = try TransactionSplitCalculator.rebalancedAmounts(
+            total: total,
+            current: [try Money(7, currency: sgd), nil, nil],
+            locked: [true, false, false]
+        )
+        #expect(rebalanced.map(\.amount) == [7, 1.5, 1.5])
+    }
+
+    @Test
     func splitExpenseRequiresExactPerCurrencyBalance() throws {
         let food = UUID()
         let transport = UUID()

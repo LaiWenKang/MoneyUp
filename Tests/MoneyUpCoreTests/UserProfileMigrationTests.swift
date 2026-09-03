@@ -59,7 +59,7 @@ final class UserProfileMigrationTests: XCTestCase {
         }
     }
 
-    func testLegacyProfileDefaultsFoundationModelAssistanceOff() throws {
+    func testLegacyProfileDefaultsOnDeviceAssistanceOnAndSwipeNavigationOff() throws {
         let profile = UserProfile(
             baseCurrency: try CurrencyCode("SGD"),
             foundationModelAssistanceEnabled: true
@@ -70,31 +70,33 @@ final class UserProfileMigrationTests: XCTestCase {
             ) as? [String: Any]
         )
         object.removeValue(forKey: "foundationModelAssistanceEnabled")
+        object.removeValue(forKey: "enablesTabSwipeNavigation")
 
         let decoded = try JSONDecoder().decode(
             UserProfile.self,
             from: try JSONSerialization.data(withJSONObject: object)
         )
 
-        XCTAssertFalse(decoded.foundationModelAssistanceEnabled)
+        XCTAssertTrue(decoded.foundationModelAssistanceEnabled)
+        XCTAssertFalse(decoded.enablesTabSwipeNavigation)
     }
 
-    func testFoundationModelAssistanceRoundTripsOnlyAfterExplicitOptIn() throws {
+    func testFoundationModelAssistanceDefaultsOnAndExplicitOptOutRoundTrips() throws {
         let currency = try CurrencyCode("SGD")
-        XCTAssertFalse(
+        XCTAssertTrue(
             UserProfile(baseCurrency: currency)
                 .foundationModelAssistanceEnabled
         )
 
-        let optedIn = UserProfile(
+        let optedOut = UserProfile(
             baseCurrency: currency,
-            foundationModelAssistanceEnabled: true
+            foundationModelAssistanceEnabled: false
         )
         let decoded = try JSONDecoder().decode(
             UserProfile.self,
-            from: JSONEncoder().encode(optedIn)
+            from: JSONEncoder().encode(optedOut)
         )
 
-        XCTAssertTrue(decoded.foundationModelAssistanceEnabled)
+        XCTAssertFalse(decoded.foundationModelAssistanceEnabled)
     }
 }

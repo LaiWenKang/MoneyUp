@@ -9,18 +9,18 @@ flowchart TD
     App --> Intel["MoneyUpIntelligence"]
     App --> Store["MoneyUpPersistence"]
     Store --> Cipher["SQLCipher schema 8"]
-    App --> Shared["Percent/state-only App Group"]
+    App --> Shared["Bounded status-only App Group"]
     Shared --> Widget
     App --> Files["CSV/XLSX/import/archive"]
 ```
 
 The widget has two deliberately separate boundaries. Basic actions can route
 to a device-only encrypted Quick Capture inbox without opening the book. The
-opt-in budget-status surface reads a tiny snapshot from
-`group.com.laiwenkang.MoneyUp` containing only availability/state and an
-integer percentage. The shared container never receives amounts, payees,
-account names, holdings, balances, transaction data, ledger identifiers, the
-SQLCipher database, or its Keychain key.
+opt-in Budget Status and Smart Overview surfaces read a tiny snapshot from
+`group.com.laiwenkang.MoneyUp` containing only state, bounded percentages and
+counts, expiry, and an optional next-commitment timestamp. The shared container
+never receives amounts, payees, account names, holdings, balances, transaction
+data, ledger identifiers, the SQLCipher database, or its Keychain key.
 
 `MoneyUpCore` has no UI, database, or network dependency. It uses Foundation
 for domain behavior and CryptoKit only to create local import fingerprints.
@@ -316,9 +316,9 @@ bytes, user-authored identifiers, names, amounts, currencies, notes, or balances
 
 ## Evidence boundary
 
-The 0.7.1 implementation is merged through PR #40 as `68eee4f8`; exact PR-head
-CI run 300 and merged-main CI run 301 passed. This release-document follow-up
-must repeat exact-head CI. None of that is signed-binary validation,
+The build-10 0.7.1 baseline is merged through PR #40 as `68eee4f8`; exact
+PR-head CI run 300 and merged-main CI run 301 passed. The build-11 product-
+feedback candidate must repeat exact-head CI. None of that is signed-binary validation,
 10,000-entry physical evidence, upgrade/restore on iPhones, TestFlight
 processing, beta use, or App Review. Those gates remain tracked in
 [Golden PRD traceability](GOLDEN_TRACEABILITY.md).

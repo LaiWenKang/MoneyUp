@@ -47,6 +47,7 @@ extension AppModel {
             return
         }
         let now = currentDate()
+        refreshWidgetInsights(asOf: now)
         guard let period = reportingCalendar.dateInterval(of: .month, for: now),
               let periodToken = BudgetWidgetSnapshotStore.periodToken(
                   for: period.start,
@@ -94,7 +95,57 @@ extension AppModel {
 
     func disableBudgetWidgetSnapshot() {
         budgetWidgetSnapshotStore.publish(enabled: false, percentUsed: nil)
+        budgetWidgetSnapshotStore.publishInsights(enabled: false)
         WidgetCenter.shared.reloadTimelines(ofKind: "MoneyUpQuickLog")
+    }
+
+    func refreshWidgetInsights(asOf now: Date) {
+        guard let validUntil = reportingCalendar.dateInterval(of: .day, for: now)?.end else {
+            budgetWidgetSnapshotStore.publishInsights(enabled: false)
+            return
+        }
+        let activeAllowances = allowancePlans.compactMap { plan -> AllowanceSummary? in
+            guard !plan.isArchived,
+                  case let .available(summary) = allowanceSummary(plan, asOf: now),
+                  summary.isAvailableToday else { return nil }
+            return summary
+        }
+        var entitlement = Decimal.zero
+        var remaining = Decimal.zero
+        for summary in activeAllowances {
+            guard summary.entitlement.currency == profile?.baseCurrency else { continue }
+            entitlement = (try? CheckedDecimal.adding(
+                entitlement,
+                summary.entitlement.amount
+            )) ?? entitlement
+            remaining = (try? CheckedDecimal.adding(
+                remaining,
+                summary.remaining.amount
+            )) ?? remaining
+        }
+        let allowancePercent: Int?
+        if entitlement > .zero,
+           let ratio = try? CheckedDecimal.ratio(remaining, entitlement),
+           var raw = try? CheckedDecimal.multiplying(ratio, 100) {
+            var rounded = Decimal.zero
+            NSDecimalRound(&rounded, &raw, 0, .plain)
+            allowancePercent = NSDecimalNumber(decimal: rounded).intValue
+        } else {
+            allowancePercent = nil
+        }
+        let activeSchedules = scheduledTransactions.filter(\.isActive)
+        let nextCommitment = activeSchedules.compactMap {
+            $0.occurrence(onOrAfter: now, calendar: reportingCalendar)
+        }.min()
+        budgetWidgetSnapshotStore.publishInsights(
+            enabled: true,
+            reviewCount: intelligenceFindings.count,
+            activeAllowanceCount: activeAllowances.count,
+            allowancePercentRemaining: allowancePercent,
+            activeCommitmentCount: activeSchedules.count,
+            nextCommitment: nextCommitment,
+            validUntil: validUntil
+        )
     }
 
     func accountBalancesResult() -> DerivedValue<[UUID: [CurrencyCode: Money]]> {

@@ -29,20 +29,20 @@ end-to-end encryption and authorization design is approved.
 | Privacy and security | No account or backend; encrypted local database; timed local authentication; redacted locked capture |
 | First-run guidance | Four explicit steps: purpose/privacy, base currency, first financial account, and review; Today then offers visible Log and Plan actions |
 | Visual system | Adaptive soft green, horned-money identity, original decorative 3D illustrations, exact 2D data graphics, guided empty states, and off-white/deep-charcoal canvases |
-| Navigation | Five permanent tabs: Today, History, center Log, Plan, and Assets |
-| Budget planner | Monthly nested limits classified as Flexible, Bills, Debt, or Goals; roll-up, dated rollover, sinking funds, savings goals, pace, explicit unbudgeted spending, and a read-only what-if simulator |
-| Widgets | Configurable privacy-redacted entry points; locked basic capture; optional budget percentage/state shared through the single reviewed App Group with no financial record fields |
+| Navigation | Five permanent tabs: Today, History, center Log, Plan, and Assets; optional deliberate left/right tab swipes retain the visible tab bar |
+| Budget planner | Monthly nested limits classified as Flexible, Bills, Debt, or Goals; roll-up, dated rollover, sinking funds, savings goals, selectable daily/weekly/monthly pace, explicit unbudgeted spending, and a read-only what-if simulator |
+| Widgets | Configurable Quick Actions, Budget Status, and Smart Overview for supported Home/Lock families; the reviewed App Group contains only bounded percentage/state, counts, and next-due time—never financial record fields |
 | Hierarchy | Arbitrary-depth model with group/category/subcategory roll-up |
 | Insights | Category distribution, trailing monthly cash flow, plain-language readings, tap-to-inspect, History drill-through, and optional explainable local findings |
-| Today guidance | Flexible Today uses only explicitly flexible allocations and their commitments, plus separate cash, debt, and net-cash position |
+| Today guidance | Flexible Today shows current-day, next-seven-day, and remaining-period flexibility with days and reserved commitments, plus separate cash, debt, and net-cash position |
 | Finance calendar | Indexed actual flows plus recurring forecasts with edit, pause, end, skip, confirm, match, and exactly-once posting |
 | Assets | Lifecycle-managed accounts/categories; ledger-linked holdings; dated prices; stale warnings; FIFO lots/disposals; currency-separated net-worth history |
 | Portability | Posting-level CSV and native XLSX, mapped CSV/TSV import, metadata-stripped encrypted receipt attachments, dated user FX rates, and file-backed chunk-authenticated `.moneyup` backup/restore |
-| Easy logging | Amount-first center Log, encrypted drafts, smart defaults, title-or-merchant, multi-line description/notes, refund, exact splits, date-indexed History/edit, and Undo; keyboard Done, Save, and tab navigation remain reachable |
+| Easy logging | Amount-first center Log, encrypted drafts, smart defaults, title-or-merchant, multi-line description/notes, refund, exact smart split/rebalance presets, allowance linking, date-indexed History/edit, and Undo; keyboard Done, Save, and tab navigation remain reachable |
 | Smart entry | Responsive fast-first on-device receipt and screenshot reading, deterministic typed-phrase parsing, history-based suggestions, and optional review-first Apple on-device matching among at most 16 existing local accounts or categories |
-| Configurability | Add a category while logging, or use the category manager to rename, archive/restore, merge, reassign, and delete user-owned categories |
+| Configurability | Add or manage categories directly from Log; search full paths, add a child from any active row, and rename, reparent, archive/restore, merge, reassign, or delete arbitrary-depth categories |
 | Intelligence | Optional deterministic recurrence/lapse/price, duplicate, anomaly, per-currency projection, and budget-proposal tools; every result is reviewable and local |
-| Scale architecture | SQLCipher schema-7 journal/posting/receipt/budget/intelligence indexes, trigger-maintained store metrics, compact balances, monthly rollover checkpoints, bounded recent activity, and on-demand History/Calendar/export/intelligence loading |
+| Scale architecture | SQLCipher schema-8 journal/posting/receipt/budget/intelligence indexes plus additive loan/allowance collections, trigger-maintained store metrics, compact balances, monthly rollover checkpoints, bounded recent activity, and on-demand History/Calendar/export/intelligence loading |
 | State architecture | Per-property Observation tracking with injected Ledger, Planning, Assets, Portability, Capture, and Intelligence state services; `AppModel` retains lock and cross-service transaction coordination |
 | Languages | English and Simplified Chinese with locale-correct dates and amounts; Settings can follow the iPhone or override the app/widget language |
 
@@ -62,9 +62,10 @@ ambiguous transaction-title payload.
 
 - "Smart" features must be deterministic or on-device, explainable, and
   optional. Raw transactions are never sent to a remote language model.
-- Optional Foundation Models assistance is off by default. The deterministic
-  parser alone owns amount, date, currency, merchant text, and save behavior;
-  the default on-device system model may return only a bounded ordinal into a
+- Eligible Foundation Models assistance is on by default with an explicit
+  opt-out. The deterministic parser alone owns amount, date, currency,
+  merchant text, and save behavior; the default on-device system model may
+  return only a bounded ordinal into a
   stable list of existing names, and failure leaves the parser result intact.
   Accepting a match immediately updates the recoverable encrypted draft; no
   transaction exists until the user taps Save.

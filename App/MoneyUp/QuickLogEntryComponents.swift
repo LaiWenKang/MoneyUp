@@ -6,13 +6,101 @@ import SwiftUI
 import UIKit
 
 extension QuickLogEntryView {
+    @ViewBuilder
+    var categoryAndAllowanceControls: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack { addCategoryButton; manageCategoriesButton }
+            VStack(alignment: .leading) { addCategoryButton; manageCategoriesButton }
+        }
+        if kind == .expense, !availableAllowances.isEmpty {
+            Picker("allowance.apply", selection: $selectedAllowanceID) {
+                Text("allowance.none").tag(UUID?.none)
+                ForEach(availableAllowances) { plan in
+                    Text(plan.name).tag(Optional(plan.id))
+                }
+            }
+            if let application = selectedAllowanceApplication {
+                Label(
+                    String(
+                        format: AppLocalization.string("allowance.apply_amount"),
+                        formattedMoney(application)
+                    ),
+                    systemImage: "giftcard.fill"
+                )
+                .font(.caption)
+                .foregroundStyle(.tint)
+            }
+        }
+    }
+
+    var addCategoryButton: some View {
+        Button { isAddingCategory = true } label: {
+            Label("category.add", systemImage: "plus.circle")
+        }
+    }
+
+    var manageCategoriesButton: some View {
+        Button { isManagingCategories = true } label: {
+            Label("lifecycle.manage_categories", systemImage: "square.grid.2x2")
+        }
+    }
+
+    var availableAllowances: [AllowancePlan] {
+        guard kind == .expense, let currency = selectedAccountCurrency else { return [] }
+        return model.allowancePlans.filter { plan in
+            guard !plan.isArchived,
+                  plan.amount.currency == currency,
+                  case let .available(summary) = model.allowanceSummary(
+                    plan,
+                    asOf: occurredAt
+                  ) else { return false }
+            return summary.isAvailableToday && summary.remaining.amount > .zero
+        }
+    }
+
+    var selectedAllowanceApplication: Money? {
+        guard let selectedAllowanceID,
+              let plan = availableAllowances.first(where: { $0.id == selectedAllowanceID }),
+              let totalAmount = amount,
+              let currency = selectedAccountCurrency else { return nil }
+        var eligibleAmount = Decimal.zero
+        if splitLines.isEmpty {
+            guard let categoryID,
+                  plan.eligibleCategoryIDs.isEmpty
+                    || plan.eligibleCategoryIDs.contains(categoryID) else { return nil }
+            eligibleAmount = totalAmount
+        } else {
+            for line in splitLines {
+                guard let categoryID = line.categoryID,
+                      plan.eligibleCategoryIDs.isEmpty
+                        || plan.eligibleCategoryIDs.contains(categoryID),
+                      let lineAmount = decimalAmount(from: line.amountText) else { continue }
+                eligibleAmount = (try? CheckedDecimal.adding(
+                    eligibleAmount,
+                    lineAmount
+                )) ?? eligibleAmount
+            }
+        }
+        guard eligibleAmount > .zero,
+              case let .available(summary) = model.allowanceSummary(
+                plan,
+                asOf: occurredAt
+              ),
+              let money = try? Money(
+                min(eligibleAmount, summary.remaining.amount),
+                currency: currency
+              ),
+              money.amount > .zero else { return nil }
+        return money
+    }
+
     var occurrenceSection: some View {
         Section {
             LabeledContent("quick_log.occurred_at") {
                 Text(
                     occurredAt.formattedForReporting(
                         .dateTime.month().day().hour().minute(),
-                        calendar: model.reportingCalendar
+                        calendar: model.captureCalendar
                     )
                 )
                 .foregroundStyle(.secondary)
@@ -137,6 +225,33 @@ extension QuickLogEntryView {
 
     @ViewBuilder
     var splitEditor: some View {
+        Menu {
+            Button {
+                applyEqualSplit()
+            } label: {
+                Label("quick_log.split_equal", systemImage: "equal.circle")
+            }
+            Button {
+                rebalanceUnlockedSplits()
+            } label: {
+                Label("quick_log.split_balance_unlocked", systemImage: "scale.3d")
+            }
+            if splitLines.count == 2 {
+                Button("quick_log.split_50_50") {
+                    applyPercentageSplit([50, 50])
+                }
+                Button("quick_log.split_60_40") {
+                    applyPercentageSplit([60, 40])
+                }
+                Button("quick_log.split_70_30") {
+                    applyPercentageSplit([70, 30])
+                }
+            }
+        } label: {
+            Label("quick_log.split_assistant", systemImage: "wand.and.stars")
+        }
+        .disabled(amount == nil || selectedAccountCurrency == nil)
+
         ForEach(Array(splitLines.enumerated()), id: \.element.id) { index, line in
             let lineID = line.id
             let lineValidationMessage = monetaryInputError(
@@ -197,6 +312,19 @@ extension QuickLogEntryView {
                     if let currency = selectedAccountCurrency {
                         Text(currency.value).foregroundStyle(.secondary)
                     }
+                    Button {
+                        updateSplitLine(lineID) { $0.isLocked.toggle() }
+                    } label: {
+                        Image(systemName: line.isLocked ? "lock.fill" : "lock.open")
+                            .frame(minWidth: 44, minHeight: 44)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(line.isLocked ? Color.accentColor : Color.secondary)
+                    .accessibilityLabel(
+                        line.isLocked
+                            ? Text("quick_log.split_unlock")
+                            : Text("quick_log.split_lock")
+                    )
                     if splitLines.count > 2 {
                         Button(role: .destructive) {
                             removeSplitLine(lineID)
@@ -286,6 +414,59 @@ extension QuickLogEntryView {
         cancelOnDeviceAssistance()
         clearSplitFocus(for: lineID)
         splitLines.removeAll { $0.id == lineID }
+        persistUserDraftChange { $0.splitLines = splitLines }
+    }
+
+    func applyEqualSplit() {
+        guard let amount,
+              let currency = selectedAccountCurrency,
+              let allocations = try? TransactionSplitCalculator.equalAmounts(
+                total: Money(amount, currency: currency),
+                count: splitLines.count
+              ) else {
+            errorMessage = AppLocalization.string("split.error.allocation")
+            return
+        }
+        applySplitAllocations(allocations)
+    }
+
+    func rebalanceUnlockedSplits() {
+        guard let amount,
+              let currency = selectedAccountCurrency else { return }
+        let current: [Money?] = splitLines.map { line in
+            guard let value = decimalAmount(from: line.amountText) else { return nil }
+            return try? Money(value, currency: currency)
+        }
+        guard let allocations = try? TransactionSplitCalculator.rebalancedAmounts(
+            total: Money(amount, currency: currency),
+            current: current,
+            locked: splitLines.map(\.isLocked)
+        ) else {
+            errorMessage = AppLocalization.string("split.error.allocation")
+            return
+        }
+        applySplitAllocations(allocations)
+    }
+
+    func applyPercentageSplit(_ percentages: [Decimal]) {
+        guard let amount,
+              let currency = selectedAccountCurrency,
+              let allocations = try? TransactionSplitCalculator.percentageAmounts(
+                total: Money(amount, currency: currency),
+                percentages: percentages
+              ) else {
+            errorMessage = AppLocalization.string("split.error.allocation")
+            return
+        }
+        applySplitAllocations(allocations)
+    }
+
+    func applySplitAllocations(_ allocations: [Money]) {
+        guard allocations.count == splitLines.count else { return }
+        for index in splitLines.indices {
+            splitLines[index].amountText = editableAmount(allocations[index].amount)
+        }
+        errorMessage = nil
         persistUserDraftChange { $0.splitLines = splitLines }
     }
 }

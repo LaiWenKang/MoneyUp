@@ -6,6 +6,20 @@ public enum LoanActivityKind: String, Codable, Sendable {
     case reconciliation
 }
 
+/// User-facing purpose only. It changes presentation and planning context,
+/// never the authoritative liability balance or repayment postings.
+public enum LoanPurpose: String, Codable, CaseIterable, Hashable, Sendable {
+    case home
+    case vehicle
+    case education
+    case medical
+    case personal
+    case business
+    case installment
+    case creditLine = "credit_line"
+    case other
+}
+
 public enum LoanPlanError: Error, Equatable, Sendable {
     case emptyName
     case principalMustBePositive
@@ -105,6 +119,7 @@ public struct LoanPlan: Codable, Equatable, Identifiable, Sendable {
     public let id: UUID
     public let accountID: UUID
     public var name: String
+    public var purpose: LoanPurpose
     public var originalPrincipal: Money
     public var openedAt: Date
     public var annualPercentageRate: Decimal?
@@ -119,6 +134,7 @@ public struct LoanPlan: Codable, Equatable, Identifiable, Sendable {
         id: UUID = UUID(),
         accountID: UUID,
         name: String,
+        purpose: LoanPurpose = .other,
         originalPrincipal: Money,
         openedAt: Date,
         annualPercentageRate: Decimal? = nil,
@@ -159,6 +175,7 @@ public struct LoanPlan: Codable, Equatable, Identifiable, Sendable {
         self.id = id
         self.accountID = accountID
         self.name = normalizedName
+        self.purpose = purpose
         self.originalPrincipal = originalPrincipal
         self.openedAt = openedAt
         self.annualPercentageRate = annualPercentageRate
@@ -224,7 +241,7 @@ public struct LoanPlan: Codable, Equatable, Identifiable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, accountID, name, originalPrincipal, openedAt
+        case id, accountID, name, purpose, originalPrincipal, openedAt
         case annualPercentageRate, termMonths, includeInTotalDebt
         case interestExpenseAccountID, feeExpenseAccountID, activities, closedAt
     }
@@ -236,6 +253,10 @@ public struct LoanPlan: Codable, Equatable, Identifiable, Sendable {
                 id: container.decode(UUID.self, forKey: .id),
                 accountID: container.decode(UUID.self, forKey: .accountID),
                 name: container.decode(String.self, forKey: .name),
+                purpose: container.decodeIfPresent(
+                    LoanPurpose.self,
+                    forKey: .purpose
+                ) ?? .other,
                 originalPrincipal: container.decode(
                     Money.self,
                     forKey: .originalPrincipal

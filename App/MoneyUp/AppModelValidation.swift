@@ -93,6 +93,19 @@ extension AppModel {
               Set(allowancePlans.map(\.id)).count == allowancePlans.count,
               allowancePlans.allSatisfy({ plan in
                   plan.eligibleCategoryIDs.isSubset(of: expenseCategoryIDs)
+                      && {
+                          switch plan.fundingMode {
+                          case .benefitLimit:
+                              return plan.linkedAccountID == nil
+                          case .prepaidAsset, .reimbursement:
+                              guard let id = plan.linkedAccountID,
+                                    let account = accounts.first(where: { $0.id == id }) else {
+                                  return false
+                              }
+                              return account.kind == .asset
+                                  && account.currency == plan.amount.currency
+                          }
+                      }()
                       && plan.usages.allSatisfy { usage in
                           usage.categoryID.map(expenseCategoryIDs.contains) ?? true
                       }

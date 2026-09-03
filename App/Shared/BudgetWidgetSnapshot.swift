@@ -7,14 +7,24 @@ enum BudgetWidgetSnapshot: Equatable, Sendable {
     case available(percentUsed: Int, validUntil: Date)
 }
 
+struct MoneyUpWidgetInsights: Equatable, Sendable {
+    let reviewCount: Int
+    let activeAllowanceCount: Int
+    let allowancePercentRemaining: Int?
+    let activeCommitmentCount: Int
+    let nextCommitment: Date?
+    let validUntil: Date
+}
+
 /// The only cross-process financial derivative MoneyUp permits.
 ///
-/// This store cannot represent an amount, account, payee, holding, or balance.
-/// The protected app computes one rounded integer percentage and the widget
-/// reads it. All source records remain inside SQLCipher.
+/// This store cannot represent an amount, account/payee name, holding, balance,
+/// or ledger identifier. The protected app publishes bounded counts, rounded
+/// percentages, and an optional next-due time. All source records remain
+/// inside SQLCipher.
 final class BudgetWidgetSnapshotStore {
     static let appGroupIdentifier = "group.com.laiwenkang.MoneyUp"
-    static let currentSchemaVersion = 2
+    static let currentSchemaVersion = 3
 
     private enum Key {
         static let schemaVersion = "budgetStatus.schemaVersion"
@@ -23,6 +33,12 @@ final class BudgetWidgetSnapshotStore {
         static let percentUsed = "budgetStatus.percentUsed"
         static let periodToken = "budgetStatus.periodToken"
         static let validUntil = "budgetStatus.validUntil"
+        static let insightReviewCount = "budgetStatus.insight.reviewCount"
+        static let insightAllowanceCount = "budgetStatus.insight.allowanceCount"
+        static let insightAllowancePercent = "budgetStatus.insight.allowancePercent"
+        static let insightCommitmentCount = "budgetStatus.insight.commitmentCount"
+        static let insightNextCommitment = "budgetStatus.insight.nextCommitment"
+        static let insightValidUntil = "budgetStatus.insight.validUntil"
     }
 
     /// Known early-development keys are removed during migration so a future
@@ -61,6 +77,7 @@ final class BudgetWidgetSnapshotStore {
             defaults.removeObject(forKey: Key.percentUsed)
             defaults.removeObject(forKey: Key.periodToken)
             defaults.removeObject(forKey: Key.validUntil)
+            scrubInsightPayload(defaults)
             return
         }
         guard let periodToken,
@@ -120,6 +137,72 @@ final class BudgetWidgetSnapshotStore {
         }
     }
 
+    func publishInsights(
+        enabled: Bool,
+        reviewCount: Int = 0,
+        activeAllowanceCount: Int = 0,
+        allowancePercentRemaining: Int? = nil,
+        activeCommitmentCount: Int = 0,
+        nextCommitment: Date? = nil,
+        validUntil: Date? = nil
+    ) {
+        guard let defaults else { return }
+        guard enabled,
+              let validUntil,
+              validUntil.timeIntervalSinceReferenceDate.isFinite else {
+            scrubInsightPayload(defaults)
+            return
+        }
+        defaults.set(min(max(reviewCount, 0), 9_999), forKey: Key.insightReviewCount)
+        defaults.set(
+            min(max(activeAllowanceCount, 0), 9_999),
+            forKey: Key.insightAllowanceCount
+        )
+        defaults.set(
+            min(max(activeCommitmentCount, 0), 9_999),
+            forKey: Key.insightCommitmentCount
+        )
+        if let allowancePercentRemaining {
+            defaults.set(
+                min(max(allowancePercentRemaining, 0), 100),
+                forKey: Key.insightAllowancePercent
+            )
+        } else {
+            defaults.removeObject(forKey: Key.insightAllowancePercent)
+        }
+        if let nextCommitment,
+           nextCommitment.timeIntervalSinceReferenceDate.isFinite {
+            defaults.set(nextCommitment, forKey: Key.insightNextCommitment)
+        } else {
+            defaults.removeObject(forKey: Key.insightNextCommitment)
+        }
+        defaults.set(validUntil, forKey: Key.insightValidUntil)
+    }
+
+    func readInsights(now: Date = Date()) -> MoneyUpWidgetInsights? {
+        guard let defaults,
+              defaults.bool(forKey: Key.enabled),
+              let validUntil = defaults.object(forKey: Key.insightValidUntil) as? Date,
+              validUntil.timeIntervalSinceReferenceDate.isFinite,
+              now < validUntil else { return nil }
+        let allowancePercent = (defaults.object(forKey: Key.insightAllowancePercent)
+            as? NSNumber)?.intValue
+        return MoneyUpWidgetInsights(
+            reviewCount: max(defaults.integer(forKey: Key.insightReviewCount), 0),
+            activeAllowanceCount: max(
+                defaults.integer(forKey: Key.insightAllowanceCount),
+                0
+            ),
+            allowancePercentRemaining: allowancePercent.map { min(max($0, 0), 100) },
+            activeCommitmentCount: max(
+                defaults.integer(forKey: Key.insightCommitmentCount),
+                0
+            ),
+            nextCommitment: defaults.object(forKey: Key.insightNextCommitment) as? Date,
+            validUntil: validUntil
+        )
+    }
+
     func migrateIfNeeded() {
         guard let defaults else { return }
         for key in Self.forbiddenLegacyKeys {
@@ -136,6 +219,14 @@ final class BudgetWidgetSnapshotStore {
             return
         }
         guard storedVersion < Self.currentSchemaVersion else {
+            return
+        }
+        if storedVersion == 2 {
+            // Version 2 already bounded the budget status by reporting period.
+            // Keep that safe opt-in while clearing any unreviewed insight keys;
+            // the authenticated app will publish the new record-free summary.
+            scrubInsightPayload(defaults)
+            defaults.set(Self.currentSchemaVersion, forKey: Key.schemaVersion)
             return
         }
         if storedVersion == 1, defaults.bool(forKey: Key.enabled) {
@@ -161,7 +252,13 @@ final class BudgetWidgetSnapshotStore {
             Key.state,
             Key.percentUsed,
             Key.periodToken,
-            Key.validUntil
+            Key.validUntil,
+            Key.insightReviewCount,
+            Key.insightAllowanceCount,
+            Key.insightAllowancePercent,
+            Key.insightCommitmentCount,
+            Key.insightNextCommitment,
+            Key.insightValidUntil
         ]
     }
 
@@ -183,6 +280,13 @@ final class BudgetWidgetSnapshotStore {
     private func scrubExpiredSnapshot(_ defaults: UserDefaults) {
         defaults.set("stale", forKey: Key.state)
         defaults.removeObject(forKey: Key.percentUsed)
+    }
+
+    private func scrubInsightPayload(_ defaults: UserDefaults) {
+        for key in defaults.dictionaryRepresentation().keys
+        where key.hasPrefix("budgetStatus.insight.") {
+            defaults.removeObject(forKey: key)
+        }
     }
 
     private func scrubAllWidgetPayload(_ defaults: UserDefaults) {

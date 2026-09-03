@@ -168,7 +168,17 @@ extension AppModel {
             let linkedIDs = Set(plan.usages.compactMap(\.linkedJournalEntryID))
             let invalid = categoryIDs.contains {
                 retainedAccountByID[$0]?.kind != .expense
-            } || !linkedIDs.isSubset(of: existingEntryIDs)
+            } || !linkedIDs.isSubset(of: existingEntryIDs) || {
+                switch plan.fundingMode {
+                case .benefitLimit:
+                    return plan.linkedAccountID != nil
+                case .prepaidAsset, .reimbursement:
+                    guard let id = plan.linkedAccountID,
+                          let account = retainedAccountByID[id] else { return true }
+                    return account.kind != .asset
+                        || account.currency != plan.amount.currency
+                }
+            }()
             if invalid { recoveryIssues.append("allowance_plans/orphan-\(plan.id)") }
             return invalid
         }

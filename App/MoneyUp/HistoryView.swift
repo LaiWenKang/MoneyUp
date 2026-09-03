@@ -1,4 +1,5 @@
 import MoneyUpCore
+import MoneyUpIntelligence
 import MoneyUpPersistence
 import SwiftUI
 import UIKit
@@ -149,6 +150,8 @@ private struct HistoryLoadIdentifier: Equatable {
     let filters: HistoryFilterDraft
     let refreshGeneration: Int
     let logicalBookRevision: UInt64
+    let smartFilters: Set<HistorySmartFilter>
+    let smartEntryIDs: Set<UUID>?
 }
 
 private struct HistoryPerformanceMeasurement {
@@ -175,6 +178,34 @@ private enum HistoryQuickRange: String, CaseIterable, Hashable {
         case .sevenDays: "history.scope.seven_days"
         case .month: "history.scope.month"
         case .all: "history.scope.all"
+        }
+    }
+}
+
+private enum HistorySmartFilter: String, CaseIterable, Hashable {
+    case needsReview
+    case split
+    case recurring
+    case allowance
+    case notes
+
+    var title: LocalizedStringKey {
+        switch self {
+        case .needsReview: "history.smart.needs_review"
+        case .split: "history.smart.split"
+        case .recurring: "history.smart.recurring"
+        case .allowance: "history.smart.allowance"
+        case .notes: "history.smart.notes"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .needsReview: "exclamationmark.magnifyingglass"
+        case .split: "square.split.2x1"
+        case .recurring: "repeat"
+        case .allowance: "giftcard"
+        case .notes: "note.text"
         }
     }
 }
@@ -216,16 +247,45 @@ struct HistoryView: View {
     @State private var paginationPerformanceMeasurement:
         HistoryPerformanceMeasurement?
     @State private var quickRange: HistoryQuickRange?
+    @State private var smartFilters = Set<HistorySmartFilter>()
     init(preset: HistoryPreset? = nil) {
         _filters = State(initialValue: HistoryFilterDraft(preset: preset))
         _quickRange = State(initialValue: preset == nil ? .today : nil)
     }
 
     private var query: HistoryQuery {
-        filters.query(
+        var result = filters.query(
             searchText: appliedSearchText,
             calendar: model.reportingCalendar
         )
+        result.requiresSplitTransaction = smartFilters.contains(.split)
+        result.requiresNote = smartFilters.contains(.notes)
+
+        var exactScopes: [Set<UUID>] = []
+        if smartFilters.contains(.needsReview) {
+            let ids = model.intelligenceFindings.reduce(into: Set<UUID>()) { result, finding in
+                guard finding.kind == .possibleDuplicate || finding.kind == .categoryAnomaly,
+                      case let .history(entryIDs, _) = finding.route else { return }
+                result.formUnion(entryIDs)
+            }
+            exactScopes.append(ids)
+        }
+        if smartFilters.contains(.recurring) {
+            exactScopes.append(Set(
+                model.scheduledTransactions.flatMap(\.resolutions).compactMap(\.linkedEntryID)
+            ))
+        }
+        if smartFilters.contains(.allowance) {
+            exactScopes.append(Set(
+                model.allowancePlans.flatMap(\.usages).compactMap(\.linkedJournalEntryID)
+            ))
+        }
+        if let first = exactScopes.first {
+            result.requiredEntryIDs = exactScopes.dropFirst().reduce(first) {
+                $0.intersection($1)
+            }
+        }
+        return result
     }
 
     private var loadIdentifier: HistoryLoadIdentifier {
@@ -233,12 +293,14 @@ struct HistoryView: View {
             searchText: appliedSearchText,
             filters: filters,
             refreshGeneration: refreshGeneration,
-            logicalBookRevision: model.logicalBookRevision
+            logicalBookRevision: model.logicalBookRevision,
+            smartFilters: smartFilters,
+            smartEntryIDs: query.requiredEntryIDs
         )
     }
 
     private var hasAdvancedFilters: Bool {
-        quickRange == nil && filters.hasActiveFilters
+        (quickRange == nil && filters.hasActiveFilters) || !smartFilters.isEmpty
     }
 
     private var dayGroups: [HistoryDayGroup] {
@@ -278,6 +340,45 @@ struct HistoryView: View {
                 }
                 .listRowBackground(Color.clear)
 
+                Section {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(HistorySmartFilter.allCases, id: \.self) { filter in
+                                Button {
+                                    if !smartFilters.insert(filter).inserted {
+                                        smartFilters.remove(filter)
+                                    }
+                                } label: {
+                                    Label(filter.title, systemImage: filter.systemImage)
+                                        .font(.caption.weight(.semibold))
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 8)
+                                        .background(
+                                            smartFilters.contains(filter)
+                                                ? Color.accentColor.opacity(0.18)
+                                                : Color.secondary.opacity(0.12),
+                                            in: Capsule()
+                                        )
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityAddTraits(
+                                    smartFilters.contains(filter) ? .isSelected : []
+                                )
+                            }
+                        }
+                    }
+                } header: {
+                    HStack {
+                        Text("history.smart.title")
+                        Spacer()
+                        if !smartFilters.isEmpty {
+                            Button("action.reset") { smartFilters.removeAll() }
+                                .font(.caption)
+                        }
+                    }
+                }
+                .listRowBackground(Color.clear)
+
                 if hasAdvancedFilters {
                     Section {
                         HStack {
@@ -290,6 +391,7 @@ struct HistoryView: View {
                                 filters = HistoryFilterDraft(
                                     calendar: model.reportingCalendar
                                 )
+                                smartFilters.removeAll()
                                 quickRange = .all
                             }
                         }

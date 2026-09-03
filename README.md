@@ -8,14 +8,15 @@ on-device charts, accounts and holdings, and spreadsheet-friendly export.
 
 ## Project status
 
-MoneyUp's source app identity is **Founders Beta 0.7.1 (source build 10)**.
-The complete 0.6.0 feedback follow-up was merged through pull request #40 as
-`68eee4f8`: keyboard-safe Quick Log, real-time and history-informed defaults,
-richer widget-routed capture, daily History, retained Calendar access, deeper
-categories, daily/weekly budget pacing, expiring allowances, and ledger-linked
-loans and repayments. The exact pull-request head and merged implementation
-both passed release, architecture, recovery, privacy, core/app-model, unsigned
-app/widget Simulator, and serial performance CI. Physical iPhone migration,
+MoneyUp's source app identity is **Founders Beta 0.7.1 (source build 11)**.
+This candidate extends the feedback baseline merged through pull request #40
+with exact split assistance, stronger keyboard avoidance, direct hierarchical
+category management, default-on eligible on-device assistance, composable
+History filters, general loan purposes, optional tab gestures, account-aware
+allowances, selectable pacing, richer Today guidance, a Plan overview, and a
+privacy-safe Smart Overview widget. The prior merged baseline passed release,
+architecture, recovery, privacy, core/app-model, unsigned app/widget Simulator,
+and serial performance CI; build 11 must repeat those exact-head gates. Physical iPhone migration,
 restore, accessibility, performance, signed-binary, TestFlight-processing,
 closed-beta, and App Review evidence remain release gates. Developers can
 install the app from source on an iOS 18 device through Xcode.
@@ -66,21 +67,26 @@ The beta includes:
   on-device text recognition, shows reading progress immediately, populates
   visible amount/payee/date suggestions, parses typed phrases such as "lunch
   12.50 cash yesterday", and suggests a category from the user's own history,
-  with no remote model involved; an off-by-default Apple on-device model can
-  optionally propose a reviewed match from at most 16 existing local names,
+  with no remote model involved; an eligible Apple on-device model is enabled
+  by default and can propose a reviewed match from at most 16 existing local
+  names, with an explicit opt-out,
   while exact rules retain every financial field and Save; accepting a match
   immediately updates only the recoverable encrypted draft and creates no
   transaction until Save; receipt images remain transient unless the user
   explicitly keeps one as an encrypted transaction attachment;
-- a permanent five-tab layout for Today, History, center Log, Plan, and Assets;
+- a permanent five-tab layout for Today, History, center Log, Plan, and Assets,
+  with an optional deliberate left/right swipe shortcut and a clear Plan
+  overview for Budget, Calendar, Goals, and Allowances;
   Log retains encrypted draft recovery, configurable smart defaults, success
   feedback, and Undo, while the keyboard provides Done, reachable Save, and a
   draft-preserving route to every other tab;
 - an always-visible title-or-merchant field and multi-line description/notes
-  field in Log, plus category creation from Log and a category manager for
-  rename, archive/restore, merge, reassignment, and deletion;
+  field in Log, exact smart split/rebalance presets, allowance application, and
+  direct searchable category management with visible arbitrary-depth child
+  creation, rename, reparent, archive/restore, merge, reassignment, and deletion;
 - a searchable, filterable, date-indexed History tab with Today, seven-day,
-  month, and all-time scopes; complete per-currency spending, income, refunds,
+  month, and all-time scopes plus composable review, split, recurring,
+  allowance, and notes filters; complete per-currency spending, income, refunds,
   and net summaries; visible title, notes, and hierarchical category paths;
   direct Calendar access; encrypted keyset paging; refunds; and atomic
   transaction editing, including exact N-way category splits with live
@@ -88,7 +94,9 @@ The beta includes:
 - configurable privacy-redacted Home and Lock Screen widgets for expense,
   income, transfer, refund, smart entry, and receipt scanning; a separate
   encrypted Quick Capture inbox that does not reveal balances while locked;
-  and an opt-in App Group snapshot containing only budget percentage/state,
+  and configurable Budget Status or Smart Overview surfaces whose opt-in App
+  Group snapshot contains only budget/allowance percentages, bounded review/
+  allowance/commitment counts, state, expiry, and the next commitment time,
   never amounts, payees, accounts, holdings, balances, or ledger identifiers;
 - six bilingual, action-only App Shortcuts, interactive quick-action widget
   buttons, and a configurable iOS 18 Control Widget that open only the existing
@@ -126,9 +134,9 @@ The beta includes:
   budget changes are never auto-applied;
 - source-configured Swift domain and app-model suites, an unsigned iOS
   Simulator app/widget build gate, and a serial Release 10,000-entry/20-schedule
-  measurement baseline configured to retain raw and JSON evidence;
-  the exact 0.7.1 pull-request head and merged implementation passed all four
-  automated CI jobs in runs 300 and 301.
+  measurement baseline configured to retain raw and JSON evidence; the prior
+  build-10 candidate passed all four automated CI jobs in runs 300 and 301,
+  while build 11 requires its own exact-head result.
 
 The unified 0.7.1 candidate still requires signed exact-binary validation,
 physical upgrade/restore and 10,000-entry performance drills, bilingual
