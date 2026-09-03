@@ -62,7 +62,8 @@ final class DatabaseStoreOpenerTests: XCTestCase {
             clear: {}
         )
 
-        XCTAssertFalse(try await access.isPendingWithoutBlockingLaunch())
+        let isPending = try await access.isPendingWithoutBlockingLaunch()
+        XCTAssertFalse(isPending)
         XCTAssertEqual(execution.snapshot(), [false])
     }
 }
