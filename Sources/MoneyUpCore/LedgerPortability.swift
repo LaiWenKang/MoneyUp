@@ -266,16 +266,13 @@ public enum TransactionSplitCalculator {
         }
 
         let divisor = Decimal(count)
-        let raw = try CheckedDecimal.dividing(total.amount, divisor)
-        var rawCopy = raw
-        var base = Decimal.zero
-        // Splits are positive, so rounding down creates a non-negative residual
-        // smaller than `count` minor units that can be distributed safely.
-        NSDecimalRound(
-            &base,
-            &rawCopy,
-            total.currency.minorUnits,
-            .down
+        // Repeating quotients are expected here. The audited allocation path
+        // rounds the positive base down once, then distributes the exact
+        // minor-unit residual rather than treating 10 / 3 as a precision loss.
+        let base = try CheckedDecimal.divideForCurrencyFloor(
+            total.amount,
+            divisor,
+            currency: total.currency
         )
         var amounts = Array(repeating: base, count: count)
         let allocated = try CheckedDecimal.multiplying(base, divisor)

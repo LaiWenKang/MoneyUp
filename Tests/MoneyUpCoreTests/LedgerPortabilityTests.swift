@@ -12,6 +12,12 @@ struct LedgerPortabilityTests {
         let equal = try TransactionSplitCalculator.equalAmounts(total: total, count: 3)
         #expect(equal.map(\.amount) == [3.34, 3.33, 3.33])
 
+        let residualHeavy = try TransactionSplitCalculator.equalAmounts(
+            total: try Money(1, currency: sgd),
+            count: 6
+        )
+        #expect(residualHeavy.map(\.amount) == [0.17, 0.17, 0.17, 0.17, 0.16, 0.16])
+
         let percentages = try TransactionSplitCalculator.percentageAmounts(
             total: total,
             percentages: [60, 40]
