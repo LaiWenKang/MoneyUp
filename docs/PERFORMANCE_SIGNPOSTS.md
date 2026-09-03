@@ -92,3 +92,10 @@ Source validation and simulator tests do not close a performance release gate.
 The Golden p95 budgets, receipt peak-memory observation, scrolling/jank review,
 archive near-limit behavior, and physical-device gates remain open until the
 exact-candidate evidence above and the rest of `FIRST_TEST.md` are complete.
+
+`Scripts/validate_launch_safety.py` complements these timing checks by making
+the App Review watchdog boundary release-blocking: authenticated database-key
+access, the normal protected-book startup tombstone read, and SQLCipher
+construction must remain detached from the launch/UI actor; their production
+call-site inventory is closed, executable thread assertions must remain
+present, and release dSYM generation cannot be removed.

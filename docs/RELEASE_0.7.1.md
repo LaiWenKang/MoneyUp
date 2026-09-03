@@ -6,6 +6,28 @@ This release includes every nonblank item from the 0.6.0 feedback list while
 preserving MoneyUp's local-only, encrypted, exact-Decimal, balanced-ledger, and
 five-tab product contracts.
 
+## App Review launch correction
+
+Apple's 0.3.0 (1005.1) report is a launch watchdog termination, not an
+accounting failure. Its supplied stack shows the main thread waiting in
+`SecItemCopyMatching` / `LAContext.evaluateAccessControl` until FrontBoard
+terminated scene creation after 19.98 seconds. In this candidate:
+
+- the user-presence-protected database key loads in a user-initiated detached
+  task without weakening its device-only Keychain access control;
+- SQLCipher construction stays in the same detached boundary and temporary key
+  bytes are overwritten on every exit;
+- the normal `AppModel.start()` erase-tombstone Keychain query is also
+  detached, removing its synchronous XPC call from the protected-book startup
+  path;
+- executable iOS tests assert both boundaries run off the main thread; and
+- a mutation-tested launch-safety validator blocks CI, release validation, and
+  TestFlight preflight if these boundaries, the reviewed Keychain inventory,
+  dSYM output, or their regression tests drift.
+
+Physical cold-launch, delayed/cancelled authentication, background/foreground,
+and repeated-launch evidence on iOS 26.6 remains required before resubmission.
+
 | Feedback | 0.7.1 behavior |
 |---|---|
 | Keyboard blocks lower Log fields | Quick Log follows focus inside a scroll reader, keeps amount/account/title/notes/split fields reachable, supports interactive keyboard dismissal and the Done toolbar, and preserves the draft. |
@@ -39,8 +61,8 @@ Locally completed on this source candidate:
 - release-asset validation, including 1,258 bilingual strings;
 - architecture and Swift structure fitness;
 - offline/privacy/recovery mutation gates;
-- 55 Python adversarial validator tests;
-- 742 declared Swift tests: 692 XCTest and 50 Swift Testing declarations;
+- 61 Python adversarial validator tests;
+- 744 declared Swift tests: 694 XCTest and 50 Swift Testing declarations;
 - clean patch whitespace validation.
 
 Still required on the exact release-truth commit:

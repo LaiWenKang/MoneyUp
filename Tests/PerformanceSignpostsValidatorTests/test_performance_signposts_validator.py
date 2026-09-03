@@ -106,8 +106,10 @@ class PerformanceSignpostsValidatorTests(unittest.TestCase):
         sources = self.swift_sources()
         dependencies_path = "App/MoneyUp/AppModelDependencies.swift"
         sources[dependencies_path] = sources[dependencies_path].replace(
-            "return try await Task.detached(priority: .userInitiated)",
-            "try await Task.detached(priority: .userInitiated)",
+            "return try await Task.detached(priority: .userInitiated) {\n"
+            "                var key = try keyLoader(databaseURL)",
+            "try await Task.detached(priority: .userInitiated) {\n"
+            "                var key = try keyLoader(databaseURL)",
             1,
         )
 

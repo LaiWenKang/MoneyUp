@@ -357,8 +357,11 @@ installation, and physical evidence are separate gates.
 - [x] TestFlight workflow marketing version: 0.7.1; source build 10 is checked
   before the workflow assigns a unique upload build
 - [x] Bilingual in-app 0.7.1 release notes cover the complete feedback follow-up
-- [x] Local release, architecture, structure, and 55-test adversarial validator
-  suites pass with 742 declared Swift tests
+- [x] Local release, architecture, structure, launch-safety, and 61-test
+  adversarial validator suites pass with 744 declared Swift tests
+- [x] Correct the App Review 0.3.0 launch watchdog by keeping startup
+  Keychain/SQLCipher work off the UI actor without weakening encryption, and
+  make the boundary mutation-tested in CI and TestFlight preflight
 - [x] Exact PR-head CI run 300 and merged implementation CI run 301 passed all
   four automated jobs
 - [ ] This release-truth documentation update must pass exact-head and

@@ -4523,6 +4523,21 @@ def validate_performance_signposts() -> None:
     print(result.stdout.strip())
 
 
+def validate_launch_safety() -> None:
+    validator = ROOT / "Scripts" / "validate_launch_safety.py"
+    result = subprocess.run(
+        [sys.executable, str(validator)],
+        cwd=ROOT,
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip()
+        fail(f"launch-safety validation failed:\n{detail}")
+    print(result.stdout.strip())
+
+
 def validate_accessible_errors() -> None:
     validator = ROOT / "Scripts" / "validate_accessible_errors.py"
     result = subprocess.run(
@@ -4607,6 +4622,10 @@ def validate_ci_workflow() -> None:
         "-p 'test_validate_architecture_fitness.py'",
         "Enforce architecture fitness",
         "python3 Scripts/validate_architecture_fitness.py",
+        "Test launch-safety validator",
+        "-p 'test_validate_launch_safety.py'",
+        "Enforce launch watchdog safety",
+        "python3 Scripts/validate_launch_safety.py",
         "Enforce accessible error presentation",
         "python3 Scripts/validate_accessible_errors.py",
         "DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer",
@@ -4834,6 +4853,8 @@ def validate_testflight_workflow() -> None:
         "RECOVERY_VERIFY_DIRECTORY",
         "MoneyUp-encrypted-release-recovery-",
         "MoneyUp-Release-Recovery-",
+        "Enforce launch watchdog safety",
+        "python3 Scripts/validate_launch_safety.py",
     ]
     for declaration in required:
         if declaration not in workflow:
@@ -5263,6 +5284,7 @@ def main() -> None:
     validate_test_declaration_inventory()
     validate_swift_structure()
     validate_architecture_fitness()
+    validate_launch_safety()
     validate_performance_signposts()
     validate_accessible_errors()
     validate_platform_actions()

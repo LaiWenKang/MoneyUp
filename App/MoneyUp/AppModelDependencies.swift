@@ -11,6 +11,15 @@ typealias DatabaseStoreOpener = @Sendable (
     _ databaseURL: URL
 ) async throws -> OpenedDatabaseStore
 
+typealias DatabaseKeyLoader = @Sendable (
+    _ databaseURL: URL
+) throws -> Data
+
+typealias EncryptedDatabaseStoreFactory = @Sendable (
+    _ databaseURL: URL,
+    _ key: Data
+) throws -> EncryptedRecordStore
+
 typealias DatabaseStoreWithKeyOpener = @Sendable (
     _ databaseURL: URL,
     _ key: Data
@@ -40,39 +49,51 @@ struct KeyCliffRecoveryKeyAccess: Sendable {
 enum DatabaseStoreOpeners {
     /// Preserves the production boundary exactly: Keychain access and SQLCipher
     /// opening stay off the main actor, and key bytes are overwritten on exit.
-    static let production: DatabaseStoreOpener = { databaseURL in
-        let performanceInterval = MoneyUpPerformanceSignposts.begin(.unlock)
-        defer { MoneyUpPerformanceSignposts.end(performanceInterval) }
-        return try await Task.detached(priority: .userInitiated) {
-            var key = try DatabaseKeyStore.loadOrCreateKey(
-                databaseURL: databaseURL
-            )
-            defer { key.resetBytes(in: 0..<key.count) }
-            // Keychain has returned, so user response time is excluded from
-            // the Golden journey while SQLCipher open, validation, model
-            // publication, and the first visible Today content remain inside.
-            let usefulContentInterval = MoneyUpPerformanceSignposts.begin(
-                .unlockToFirstUsefulContent
-            )
-            var transfersUsefulContentInterval = false
-            defer {
-                if !transfersUsefulContentInterval {
-                    MoneyUpPerformanceSignposts.end(
-                        usefulContentInterval,
-                        outcome: .failure
-                    )
+    static let production: DatabaseStoreOpener = make(
+        keyLoader: { databaseURL in
+            try DatabaseKeyStore.loadOrCreateKey(databaseURL: databaseURL)
+        },
+        storeFactory: { databaseURL, key in
+            try EncryptedRecordStore(databaseURL: databaseURL, key: key)
+        }
+    )
+
+    /// The injectable factory is deliberately internal. App-target tests use
+    /// it to prove that a slow authenticated Keychain call and SQLCipher open
+    /// can never execute on the launch/UI thread.
+    static func make(
+        keyLoader: @escaping DatabaseKeyLoader,
+        storeFactory: @escaping EncryptedDatabaseStoreFactory
+    ) -> DatabaseStoreOpener {
+        { databaseURL in
+            let performanceInterval = MoneyUpPerformanceSignposts.begin(.unlock)
+            defer { MoneyUpPerformanceSignposts.end(performanceInterval) }
+            return try await Task.detached(priority: .userInitiated) {
+                var key = try keyLoader(databaseURL)
+                defer { key.resetBytes(in: 0..<key.count) }
+                // Keychain has returned, so user response time is excluded from
+                // the Golden journey while SQLCipher open, validation, model
+                // publication, and the first visible Today content remain inside.
+                let usefulContentInterval = MoneyUpPerformanceSignposts.begin(
+                    .unlockToFirstUsefulContent
+                )
+                var transfersUsefulContentInterval = false
+                defer {
+                    if !transfersUsefulContentInterval {
+                        MoneyUpPerformanceSignposts.end(
+                            usefulContentInterval,
+                            outcome: .failure
+                        )
+                    }
                 }
-            }
-            let opened = OpenedDatabaseStore(
-                store: try EncryptedRecordStore(
-                    databaseURL: databaseURL,
-                    key: key
-                ),
-                unlockToFirstUsefulContentInterval: usefulContentInterval
-            )
-            transfersUsefulContentInterval = true
-            return opened
-        }.value
+                let opened = OpenedDatabaseStore(
+                    store: try storeFactory(databaseURL, key),
+                    unlockToFirstUsefulContentInterval: usefulContentInterval
+                )
+                transfersUsefulContentInterval = true
+                return opened
+            }.value
+        }
     }
 
     static let productionWithKey: DatabaseStoreWithKeyOpener = {
@@ -106,6 +127,16 @@ struct DataEraseIntentAccess: Sendable {
     let markPending: @Sendable () throws -> Void
     let clear: @Sendable () throws -> Void
 
+    /// Startup is MainActor-isolated, but even an unauthenticated Keychain
+    /// query is a synchronous XPC call. Keep it off the launch/UI thread so a
+    /// slow security service cannot consume the scene-creation watchdog.
+    func isPendingWithoutBlockingLaunch() async throws -> Bool {
+        let read = isPending
+        return try await Task.detached(priority: .userInitiated) {
+            try read()
+        }.value
+    }
+
     static let production = DataEraseIntentAccess(
         isPending: { try DataEraseIntentStore.isPending() },
         markPending: { try DataEraseIntentStore.markPending() },
@@ -120,6 +151,9 @@ struct DataEraseIntentAccess: Sendable {
 }
 
 enum AppModelLifecycleCheckpoint: Equatable, Sendable {
+    /// Startup has completed its nonblocking tombstone read and installed any
+    /// authoritative quick-action boundary before later suspension or open.
+    case afterStartupTombstoneInspection
     case beforeJournalCommit
     /// Every previously published journal-derived value has been made
     /// unavailable, while the durable store still contains the old journal.

@@ -129,6 +129,8 @@ jobs:
 
       - name: Validate domain-payload-free performance signposts
         run: python3 Scripts/validate_performance_signposts.py
+      - name: Enforce launch watchdog safety
+        run: python3 Scripts/validate_launch_safety.py
       - name: Validate privacy-safe platform actions
         run: python3 Scripts/validate_platform_actions.py
 

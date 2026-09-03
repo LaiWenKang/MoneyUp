@@ -36,6 +36,12 @@ jobs:
           -p 'test_validate_architecture_fitness.py'
       - name: Enforce architecture fitness
         run: python3 Scripts/validate_architecture_fitness.py
+      - name: Test launch-safety validator
+        run: >-
+          python3 -m unittest discover -s Scripts/tests
+          -p 'test_validate_launch_safety.py'
+      - name: Enforce launch watchdog safety
+        run: python3 Scripts/validate_launch_safety.py
       - name: Test performance-signpost source validator
         run: >-
           python3 -m unittest discover

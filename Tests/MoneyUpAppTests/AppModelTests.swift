@@ -6420,8 +6420,12 @@ final class AppModelTests: XCTestCase {
         let fixture = try AppModelFixture()
         defer { fixture.removeFiles() }
         let broker = MoneyUpQuickActionRouteBroker()
-        let closeGate = AsyncGate()
+        let inspectionGate = AsyncGate()
         let model = fixture.model(
+            lifecycleHooks: hooks(
+                pausing: .afterStartupTombstoneInspection,
+                at: inspectionGate
+            ),
             dataEraseIntent: DataEraseIntentAccess(
                 isPending: {
                     throw DatabaseKeyStoreError.unexpectedStatus(-31_339)
@@ -6431,14 +6435,13 @@ final class AppModelTests: XCTestCase {
             ),
             quickActionRouteBroker: broker
         )
-        model.storeCloseTask = Task { await closeGate.suspend() }
         model.requestedQuickLogMode = .refund
         let oldRequest = try XCTUnwrap(model.requestedQuickLogRequest)
         XCTAssertTrue(model.presentQuickLogRequest(oldRequest))
         XCTAssertTrue(broker.submit(.refund))
 
         let startTask = Task { @MainActor in await model.start() }
-        await closeGate.waitUntilReached()
+        await inspectionGate.waitUntilReached()
         XCTAssertTrue(broker.isAuthoritativeBoundaryActive)
         XCTAssertEqual(broker.handoffGeneration, 1)
         XCTAssertEqual(broker.pendingCount, 0)
@@ -6447,7 +6450,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(model.presentQuickLogRequest(oldRequest))
         XCTAssertFalse(broker.submit(.expense))
         XCTAssertFalse(broker.submit(.expense))
-        await closeGate.release()
+        await inspectionGate.release()
         await startTask.value
 
         XCTAssertEqual(broker.pendingCount, 0)

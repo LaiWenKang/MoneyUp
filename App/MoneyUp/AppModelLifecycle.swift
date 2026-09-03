@@ -40,9 +40,9 @@ extension AppModel {
                 quickActionRouteBroker.endAuthoritativeBoundary(quickActionBoundaryEpoch)
             }
         }
-        let pendingDataEraseResult = inspectDataEraseIntent(
-            startingBoundaryAt: &quickActionBoundaryEpoch
-        )
+        let dataEraseInspection = await inspectDataEraseIntent()
+        quickActionBoundaryEpoch = dataEraseInspection.boundaryEpoch
+        await lifecycleHooks.checkpoint(.afterStartupTombstoneInspection)
         await closeStoreBeforeStartup()
         state = .launching
         startupFailureKind = nil
@@ -57,7 +57,7 @@ extension AppModel {
             // read or create the SQLCipher key until every idempotent erase step
             // has converged. Scrub the widget immediately as well: a transient
             // cleanup failure must not keep an old-book projection visible.
-            let pendingDataErase = try pendingDataEraseResult.get()
+            let pendingDataErase = try dataEraseInspection.result.get()
             if pendingDataErase {
                 pendingDataEraseIsIncomplete = true
                 requestedQuickLogMode = nil
@@ -110,18 +110,25 @@ extension AppModel {
         }
     }
 
-    private func inspectDataEraseIntent(
-        startingBoundaryAt boundaryEpoch: inout UInt64?
-    ) -> Result<Bool, Error> {
+    private func inspectDataEraseIntent() async -> (
+        result: Result<Bool, Error>,
+        boundaryEpoch: UInt64?
+    ) {
         do {
-            let isPending = try dataEraseIntent.isPending()
+            let isPending = try await dataEraseIntent
+                .isPendingWithoutBlockingLaunch()
             if isPending {
-                boundaryEpoch = beginAuthoritativeQuickActionBoundary()
+                return (
+                    .success(true),
+                    beginAuthoritativeQuickActionBoundary()
+                )
             }
-            return .success(isPending)
+            return (.success(false), nil)
         } catch {
-            boundaryEpoch = beginAuthoritativeQuickActionBoundary()
-            return .failure(error)
+            return (
+                .failure(error),
+                beginAuthoritativeQuickActionBoundary()
+            )
         }
     }
 }

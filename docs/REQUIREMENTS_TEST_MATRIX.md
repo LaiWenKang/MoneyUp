@@ -39,6 +39,19 @@ widget Simulator build; physical-device and signed-binary states remain open.
 | R071-LOAN | A loan liability can show remaining/advanced/paid principal, interest, fees, date, APR, term, debt-total inclusion, notes, repayments, drawdowns, and finish-at-zero. Every money movement is one balanced atomic journal transaction. | `LoanPlan`, `TransactionFactory`, `AppModelLoansAndAllowances`, `LoanViews`; balanced-payment and screenshot-style summary tests. | STATIC-PASS; AUTO-PASS; MANUAL-OPEN |
 | R071-SAFE | Schema 8 recovery, preview, identity validation, quarantine, privacy inventory, safe errors, bilingual strings, release notes, and build metadata include loan and allowance records. | Persistence/recovery files; release and architecture validators; `AppLocalizationTests.testRelease071NotesAreCompleteAndBilingual`. | STATIC-PASS; AUTO-PASS; MANUAL-OPEN |
 
+## App Review launch-watchdog correction
+
+Apple rejected 0.3.0 (1005.1) after a 19.98-second scene-creation watchdog
+termination on iPhone 17 Pro Max / iOS 26.6. The supplied crash stack reaches
+`LAContext.evaluateAccessControl` through `SecItemCopyMatching` while opening
+the protected book. The replacement source keeps user-presence protection and
+moves both startup Keychain reads plus SQLCipher construction away from the
+launch/UI actor.
+
+| ID | Acceptance summary | Source / test cases | State |
+|---|---|---|---|
+| REVIEW-LAUNCH-01 | Normal protected-book startup performs neither authenticated database-key access, erase-tombstone Keychain lookup, nor SQLCipher construction on the launch/UI thread. Key bytes remain device-bound and are overwritten after use; dSYMs remain mandatory. CI and TestFlight preflight reject detached-boundary, call-site-inventory, thread-regression-test, or dSYM drift. | `DatabaseStoreOpeners`, `DataEraseIntentAccess`, `validate_launch_safety.py`; `DatabaseStoreOpenerTests.testAuthenticatedKeyAndSQLCipherOpenNeverRunOnMainThread`, `.testEraseTombstoneReadNeverRunsOnMainThreadDuringLaunch`; MANUAL `LAUNCH-01-WATCHDOG`. | STATIC-PASS; AUTO-PENDING; MANUAL-OPEN |
+
 ## 0.7.0 W1 acceptance overlay
 
 These architecture rows supplement rather than renumber the controlling 97
@@ -276,7 +289,7 @@ and
 
 | ID | Risk | Acceptance summary | Source / test cases | State |
 |---|---|---|---|---|
-| QA-01 | Critical | Swift structure, architecture-fitness, performance-signpost, and accessible-error gates run before the full release validator; core/persistence run warnings-as-errors and app/widget build on every PR/main update. | `.github/workflows/ci.yml`, `Scripts/validate_swift_structure.py`, `Scripts/validate_architecture_fitness.py`, `Scripts/validate_performance_signposts.py`, `Scripts/validate_accessible_errors.py`, focused mutation fixtures, and `Scripts/validate_release_assets.py`; STATIC `QA-01-WORKFLOW` verifies the 1,200/600/80 limits, architecture and signpost boundaries, announced operation failures, associated field validation, immutable action pins, checksummed XcodeGen, exact Xcode 16.4 build 16F6/iOS Simulator SDK 18.5 checks, warning flags, logs/result bundles, and both coverage artifacts; exact-candidate execution remains pending. | BLOCKED-P1 |
+| QA-01 | Critical | Swift structure, architecture-fitness, launch-watchdog, performance-signpost, and accessible-error gates run before the full release validator; core/persistence run warnings-as-errors and app/widget build on every PR/main update. | `.github/workflows/ci.yml`, `Scripts/validate_swift_structure.py`, `Scripts/validate_architecture_fitness.py`, `Scripts/validate_launch_safety.py`, `Scripts/validate_performance_signposts.py`, `Scripts/validate_accessible_errors.py`, focused mutation fixtures, and `Scripts/validate_release_assets.py`; STATIC `QA-01-WORKFLOW` verifies the 1,200/600/80 limits, detached startup Keychain/SQLCipher boundaries, architecture and signpost boundaries, announced operation failures, associated field validation, immutable action pins, checksummed XcodeGen, exact Xcode 16.4 build 16F6/iOS Simulator SDK 18.5 checks, warning flags, logs/result bundles, and both coverage artifacts; exact-candidate execution remains pending. | BLOCKED-P1 |
 | QA-02 | Critical | App target covers lock/save/scan/deep-link/erase/stale generation, capture/lifecycle, startup/authentication privacy, backup/restore/draft, projection/commit, published-state recovery, import/lock races, interrupted validation cleanup, and durable erase resumption. | `MoneyUpAppTests`; `testLockDuringSaveCommitsExactlyOnceWithoutRepopulatingLockedState`, `testLaunchingStateTracksExpiredInactivityAndKeepsAuthenticationCover`, `testCancelledStartupAuthenticationClearsCoverInBothCallbackOrders`, `testFailedStartupCompletesDeferredLockBeforeRemovingCover`, `testExpiredAutoLockKeepsPrivacyCoverWhileRestoreDrains`, `testLockDuringReceiptScanDiscardsTheStaleResult`, `testErasePersistsIntentBeforeDeletingMainKeyAndClearsItLast`, `testStartupCompletesPendingEraseBeforeOpeningReplacementStore`, `testPendingEraseIntentDeniesAndForgetsLockedCaptureRoute`, `testEraseIntentReadFailureFailsClosedForLockedCapture`, `testAcceptedLockedCaptureWriteBlocksEraseUntilAppendFinishes`, `testStaleGenerationWriteDoesNotRepopulateMemoryAfterLock`, `testLockedCaptureRejectsMismatchedAndProtectedRoutes`, `testLockedCaptureDuplicateRetryRemainsIdempotentAtCapacity`, `testLockedCaptureRecoveryNeverDeletesAfterTransientOrStaleFailure`, `testLockWaitsForCapturePromotionAndKeepsOneDurableDraft`, `testRestoreCannotCrossCapturePromotionHandoff`, `testImmediateBackupFlushesLatestQuickLogDraftIntoLiveStoreAndArchive`, `testWrongPasswordRestorePersistsLatestDraftAcrossCloseAndReopen`, `testRestoreScavengesPowerLossValidationArtifacts`, `testCancellationAfterRestoreCommitRecoversJournalIndexesAndBalance`, `testRetainedRestoreFailureRepublishesTheUnchangedJournal`, `testQueuedProjectionCannotAdoptAWriterRevisionBeforeItsTaskStarts`, `testProjectionReadCannotPublishBetweenJournalCommitAndRefresh`, `testPublishedProjectionFailsClosedBeforeJournalCommitAndRecovers`, `testRetainedJournalWriteFailureRepublishesCoherentPrecommitWidget`, `testLockDeferredDuringCSVImportAppliesAfterExactCommit`, `testImportRejectsMaliciousSystemAccountAndCategoryMappings`. | AUTO-PASS |
 | QA-03 | Critical | Regression suite covers audit D-01..D-23, minor units, locale, FX edits, revisions, caches, BOM, rollback/rollback failure, deep hierarchies, strict nested restore bounds, portable-archive KDF/cancellation/legacy compatibility, import identities, and async/lifecycle/erase-resume races. | Named tests throughout this matrix; STATIC `QA-03-D01-D23-MAP`; exact candidate declaration count is reconciled in Coverage accounting. | AUTO-PASS |
 | QA-04 | Critical | Required iPhone/language/appearance/Dynamic Type/VoiceOver/Reduce Motion/widget matrix and Golden p95 budgets pass. | `FIRST_TEST.md`, `PERFORMANCE_SIGNPOSTS.md`, `MoneyUpPerformanceSignposts`, and `validate_performance_signposts.py`; STATIC `QA-04-SIGNPOST-PRIVACY`; MANUAL `QA-04-PHYSICAL-MATRIX`, 10,000-entry/20-schedule cold-start/monthly-checkpoint/rollover measurement, log privacy inspection, and v2/v1 archive peak-memory observation. Source scaling remediations are present; measurements remain release-blocking evidence. | STATIC-PASS; BLOCKED-P1; MANUAL-OPEN |
@@ -306,10 +319,10 @@ exact-SHA CI before signed promotion.
 
 - Requirements traced: **97 / 97**.
 - Requirements with at least one named automated or manual case: **97 / 97**.
-- Declared automated tests in source after this review: **742** (311 core, 54
-  persistence, 11 intelligence, 355 app-target, and 11 performance-target
+- Declared automated tests in source after this review: **744** (311 core, 54
+  persistence, 11 intelligence, 357 app-target, and 11 performance-target
   declarations; XCTest methods plus Swift Testing `@Test` declarations). Of
-  those declarations, **692** are XCTest functions named `test...`; the
+  those declarations, **694** are XCTest functions named `test...`; the
   remaining 50 are Swift Testing `@Test` declarations in MoneyUpCore.
 - Tests executed on the exact 0.7.1 feature candidate in GitHub Actions:
   **742 / 742 declared test sites** across the 376 package, 355 app-target, and
