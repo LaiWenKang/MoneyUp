@@ -4800,8 +4800,12 @@ def validate_testflight_workflow() -> None:
         f"RELEASE_XCODE_BUILD: {RELEASE_XCODE_BUILD}",
         f'RELEASE_IPHONEOS_SDK_VERSION: "{RELEASE_IPHONEOS_SDK_VERSION}"',
         "toolchain_fingerprint: ${{ steps.release_toolchain.outputs.fingerprint }}",
+        "runner_image_fingerprint: "
+        "${{ steps.release_toolchain.outputs.runner_image }}",
         "PREFLIGHT_TOOLCHAIN_FINGERPRINT: "
         "${{ needs.preflight.outputs.toolchain_fingerprint }}",
+        "PREFLIGHT_RUNNER_IMAGE_FINGERPRINT: "
+        "${{ needs.preflight.outputs.runner_image_fingerprint }}",
         "-allowProvisioningUpdates",
         "-authenticationKeyPath",
         "method -string app-store-connect",
@@ -4871,9 +4875,13 @@ def validate_testflight_workflow() -> None:
         '"$SDK_VERSION" != "$RELEASE_IPHONEOS_SDK_VERSION"',
         "xcrun --sdk iphoneos --show-sdk-version",
         "id: release_toolchain",
-        "TOOLCHAIN_FINGERPRINT=",
-        "|${ImageOS}|${ImageVersion}",
+        (
+            'TOOLCHAIN_FINGERPRINT="${XCODE_VERSION_LINE}|${XCODE_BUILD_LINE}'
+            '|iphoneos-${SDK_VERSION}|${ImageOS}"'
+        ),
+        'RUNNER_IMAGE_FINGERPRINT="${ImageOS}|${ImageVersion}"',
         'echo "fingerprint=$TOOLCHAIN_FINGERPRINT" >> "$GITHUB_OUTPUT"',
+        'echo "runner_image=$RUNNER_IMAGE_FINGERPRINT" >> "$GITHUB_OUTPUT"',
     ]:
         if declaration not in release_toolchain:
             fail(f"release preflight toolchain check is missing {declaration}")
@@ -4889,11 +4897,19 @@ def validate_testflight_workflow() -> None:
         '"$XCODE_BUILD_LINE" != "Build version $RELEASE_XCODE_BUILD"',
         '"$SDK_VERSION" != "$RELEASE_IPHONEOS_SDK_VERSION"',
         "xcrun --sdk iphoneos --show-sdk-version",
-        "TOOLCHAIN_FINGERPRINT=",
-        "|${ImageOS}|${ImageVersion}",
+        (
+            'TOOLCHAIN_FINGERPRINT="${XCODE_VERSION_LINE}|${XCODE_BUILD_LINE}'
+            '|iphoneos-${SDK_VERSION}|${ImageOS}"'
+        ),
+        '[[ -z "$PREFLIGHT_RUNNER_IMAGE_FINGERPRINT" ]]',
+        "Preflight runner-image provenance is unavailable.",
         '"$TOOLCHAIN_FINGERPRINT" != "$PREFLIGHT_TOOLCHAIN_FINGERPRINT"',
-        'echo "RELEASE_TOOLCHAIN_FINGERPRINT=$TOOLCHAIN_FINGERPRINT" '
+        'RUNNER_IMAGE_FINGERPRINT="${ImageOS}|${ImageVersion}"',
+        'RELEASE_TOOLCHAIN_FINGERPRINT="${TOOLCHAIN_FINGERPRINT}|${ImageVersion}"',
+        'echo "RELEASE_TOOLCHAIN_FINGERPRINT=$RELEASE_TOOLCHAIN_FINGERPRINT" '
         '>> "$GITHUB_ENV"',
+        'printf -- \'- Preflight runner image: `%s`\\n\'',
+        'printf -- \'- Signing runner image: `%s`\\n\'',
     ]:
         if declaration not in signing_toolchain:
             fail(f"release signing toolchain check is missing {declaration}")
@@ -4906,6 +4922,16 @@ def validate_testflight_workflow() -> None:
     ]:
         if weak_check in workflow:
             fail(f"release toolchain fingerprint must not use weak check {weak_check}")
+
+    volatile_cross_job_fingerprint = (
+        'TOOLCHAIN_FINGERPRINT="${XCODE_VERSION_LINE}|${XCODE_BUILD_LINE}'
+        '|iphoneos-${SDK_VERSION}|${ImageOS}|${ImageVersion}"'
+    )
+    if volatile_cross_job_fingerprint in workflow:
+        fail(
+            "cross-job release toolchain identity must not include GitHub's "
+            "rolling ImageVersion"
+        )
 
     archive_body = workflow_step(workflow, "Create an unsigned release archive")
     for declaration in [
