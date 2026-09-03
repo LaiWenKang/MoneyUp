@@ -181,7 +181,7 @@ struct HistoryFilterSheet: View {
                     Picker("history.filter.account", selection: $draft.accountID) {
                         Text("history.filter.any_account").tag(nil as UUID?)
                         ForEach(accounts) { account in
-                            Text(account.name).tag(Optional(account.id))
+                            Text(accountCurrencyLabel(account)).tag(Optional(account.id))
                         }
                     }
                     Picker("history.filter.category", selection: categorySelection) {

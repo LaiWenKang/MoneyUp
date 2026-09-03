@@ -2,6 +2,14 @@ import MoneyUpCore
 import SwiftUI
 
 struct AllowanceCenterView: View {
+    /// Supplied when Plan swaps this section in; nil when it is pushed and the
+    /// system already draws a back button.
+    let sectionBack: MoneyUpSectionBackAction?
+
+    init(sectionBack: MoneyUpSectionBackAction? = nil) {
+        self.sectionBack = sectionBack
+    }
+
     @Environment(AppModel.self) private var model
     @State private var isAdding = false
 
@@ -41,6 +49,7 @@ struct AllowanceCenterView: View {
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
             .navigationTitle("allowance.title")
+            .moneyUpSectionBackToolbar(sectionBack)
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button {
@@ -258,7 +267,7 @@ private struct AllowanceEditorSheet: View {
                         Picker("allowance.linked_account", selection: $linkedAccountID) {
                             Text("category.none").tag(UUID?.none)
                             ForEach(eligibleLinkedAccounts) { account in
-                                Text(account.name).tag(Optional(account.id))
+                                Text(accountCurrencyLabel(account)).tag(Optional(account.id))
                             }
                         }
                     }

@@ -2,6 +2,14 @@ import MoneyUpCore
 import SwiftUI
 
 struct SavingsGoalsView: View {
+    /// Supplied when Plan swaps this section in; nil when it is pushed and the
+    /// system already draws a back button.
+    let sectionBack: MoneyUpSectionBackAction?
+
+    init(sectionBack: MoneyUpSectionBackAction? = nil) {
+        self.sectionBack = sectionBack
+    }
+
     @Environment(AppModel.self) private var model
     @State private var isAddingGoal = false
     @State private var selectedGoalID: UUID?
@@ -48,6 +56,7 @@ struct SavingsGoalsView: View {
                 }
             }
             .navigationTitle("plan.goals")
+            .moneyUpSectionBackToolbar(sectionBack)
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button {

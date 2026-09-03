@@ -179,8 +179,9 @@ struct TransactionEditView: View {
     }
 
     func editorLabel(for item: LedgerAccount) -> String {
-        guard item.isArchived else { return item.name }
-        return "\(item.name) (\(AppLocalization.string("lifecycle.archived")))"
+        let named = accountCurrencyLabel(item)
+        guard item.isArchived else { return named }
+        return "\(named) (\(AppLocalization.string("lifecycle.archived")))"
     }
 
     var sourceCurrency: CurrencyCode? {

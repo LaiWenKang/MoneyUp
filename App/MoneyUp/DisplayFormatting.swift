@@ -5,16 +5,23 @@ import SwiftUI
 let maximumMoneyAmountTextByteCount = 128
 
 @MainActor
-private final class MoneyFormatterCache {
+final class MoneyFormatterCache {
     static let shared = MoneyFormatterCache()
     private var formatters: [String: NumberFormatter] = [:]
 
-    func currencyFormatter(for currency: CurrencyCode, locale: Locale) -> NumberFormatter {
-        let key = locale.identifier + "|" + currency.value
+    /// - Parameter notation: `.code` renders the ISO code in the locale's own
+    ///   currency position, which is how an ambiguous symbol is disambiguated
+    ///   without hand-assembling a string the locale would place differently.
+    func currencyFormatter(
+        for currency: CurrencyCode,
+        locale: Locale,
+        notation: MoneyCurrencyNotation
+    ) -> NumberFormatter {
+        let key = "\(locale.identifier)|\(currency.value)|\(notation)"
         if let formatter = formatters[key] { return formatter }
 
         let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
+        formatter.numberStyle = notation == .code ? .currencyISOCode : .currency
         formatter.currencyCode = currency.value
         formatter.locale = locale
         formatter.minimumFractionDigits = currency.minorUnits <= 3
@@ -30,7 +37,24 @@ private final class MoneyFormatterCache {
 func formattedMoney(_ money: Money) -> String {
     let formatter = MoneyFormatterCache.shared.currencyFormatter(
         for: money.currency,
-        locale: .current
+        locale: .current,
+        notation: MoneyDisplayPolicy.notation(for: money.currency)
+    )
+    return formatter.string(from: NSDecimalNumber(decimal: money.amount))
+        ?? "\(money.currency.value) \(NSDecimalNumber(decimal: money.amount).stringValue)"
+}
+
+/// An amount written with its ISO code regardless of the book-wide rule.
+///
+/// Used where an amount is read outside the surface that establishes its
+/// currency — a foreign-currency line, an exchange-rate row, or an input field
+/// whose value is about to be committed to a specific account.
+@MainActor
+func formattedMoneyWithCurrencyCode(_ money: Money) -> String {
+    let formatter = MoneyFormatterCache.shared.currencyFormatter(
+        for: money.currency,
+        locale: .current,
+        notation: .code
     )
     return formatter.string(from: NSDecimalNumber(decimal: money.amount))
         ?? "\(money.currency.value) \(NSDecimalNumber(decimal: money.amount).stringValue)"

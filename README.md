@@ -13,8 +13,12 @@ This candidate extends the feedback baseline merged through pull request #40
 with exact split assistance, stronger keyboard avoidance, direct hierarchical
 category management, default-on eligible on-device assistance, composable
 History filters, general loan purposes, optional tab gestures, account-aware
-allowances, selectable pacing, richer Today guidance, a Plan overview, and a
-privacy-safe Smart Overview widget. The prior merged baseline passed release,
+allowances, selectable pacing, a Plan overview, and a privacy-safe Smart
+Overview widget. A second feedback pass then made every amount name its own
+currency where a symbol would be ambiguous, rebuilt Today around user-pinned
+budget categories with month/week/day remaining, removed the parts of Today
+that another tab already owned, and gave every swapped Plan section an
+explicit way back. The prior merged baseline passed release,
 architecture, recovery, privacy, core/app-model, unsigned app/widget Simulator,
 and serial performance CI; build 11 must repeat those exact-head gates. Physical iPhone migration,
 restore, accessibility, performance, signed-binary, TestFlight-processing,
@@ -44,16 +48,24 @@ The beta includes:
   exactly-once posting;
 - selectable report periods with category and monthly cash-flow charts, plus
   deterministic readings, all calculated on device;
-- Flexible Today with purpose-classified allocations, a tap-through arithmetic
-  breakdown, flexible commitments, explicit exclusions, and separate
-  cash-versus-debt positioning; bills, debt, and goals never become
-  discretionary money;
+- a Today board of up to eight pinned budget categories, each showing what is
+  left for the month with the same remainder apportioned across the coming week
+  and the current day, all resolved from one reporting instant; Flexible Today
+  keeps its purpose-classified allocations, tap-through arithmetic breakdown,
+  flexible commitments, and explicit exclusions, and collapses beside the board
+  once categories are pinned; bills, debt, and goals never become discretionary
+  money, and separate cash-versus-debt positioning is unchanged;
 - tappable category and monthly-flow charts that inspect exact values and open
   History with the matching category/date filters;
 - a read-only budget what-if simulator for additional spending and income that
   never mutates the ledger, budget, or reports;
 - explicit reporting of money held or spent outside the base currency, which is
-  listed on its own rather than converted or dropped;
+  listed on its own with its ISO code rather than converted or dropped;
+- amounts that name their own currency: an ISO code is added automatically
+  wherever two currencies the book actually holds would otherwise share one
+  locale symbol, with explicit symbol-only and code-always settings, a live
+  sample of every currency held, and account pickers that name the currency
+  they are about to record money in;
 - bank, cash, e-wallet, card, loan, brokerage, and investment accounts with
   atomic rename, archive, merge, and delete-with-reassignment workflows;
 - loan plans attached to liability accounts with remaining principal, total
@@ -75,8 +87,10 @@ The beta includes:
   transaction until Save; receipt images remain transient unless the user
   explicitly keeps one as an encrypted transaction attachment;
 - a permanent five-tab layout for Today, History, center Log, Plan, and Assets,
-  with an optional deliberate left/right swipe shortcut and a clear Plan
-  overview for Budget, Calendar, Goals, and Allowances;
+  with an optional deliberate left/right swipe shortcut, a Plan overview that
+  routes to Budget, Calendar, Goals, and Allowances without repeating them in
+  the chip bar, and a named top-left route back to that overview from every
+  swapped section; Today shows only what no other tab owns;
   Log retains encrypted draft recovery, configurable smart defaults, success
   feedback, and Undo, while the keyboard provides Done, reachable Save, and a
   draft-preserving route to every other tab;

@@ -207,6 +207,7 @@ final class AppModel {
             }
             invalidateDerivedData()
             budgetTreeCache = nil
+            refreshMoneyDisplayPolicy()
             refreshBudgetWidgetSnapshot()
         }
     }
@@ -223,6 +224,7 @@ final class AppModel {
                 uniquingKeysWith: { first, _ in first }
             )
             invalidateDerivedData()
+            refreshMoneyDisplayPolicy()
         }
     }
     /// Maintained once per account mutation so transaction rows and other hot
@@ -271,7 +273,10 @@ final class AppModel {
     }
     var investmentHoldings: [InvestmentHolding] {
         get { services.assets.investmentHoldings }
-        set { services.assets.investmentHoldings = newValue }
+        set {
+            services.assets.investmentHoldings = newValue
+            refreshMoneyDisplayPolicy()
+        }
     }
     var savingsGoals: [SavingsGoal] {
         get { services.planning.savingsGoals }
@@ -296,7 +301,10 @@ final class AppModel {
     }
     var exchangeRates: [DatedExchangeRate] {
         get { services.assets.exchangeRates }
-        set { services.assets.exchangeRates = newValue }
+        set {
+            services.assets.exchangeRates = newValue
+            refreshMoneyDisplayPolicy()
+        }
     }
     var netWorthSnapshots: [NetWorthSnapshot] {
         get { services.assets.netWorthSnapshots }

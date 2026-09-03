@@ -45,6 +45,22 @@ states remain open.
 | R071-WIDGET | Smart Overview joins Quick Actions and Budget Status across supported Home/Lock families. The shared schema stores only bounded counts, percentages, expiry, and next-due time, with opt-out, future-schema, and erase scrubbing. | `MoneyUpWidget`, `MoneyUpWidgetInsights`, reviewed App Group digest; `AppModelTests.testSmartWidgetInsightsAreBoundedExpireAndScrubWithOptOut`; platform-action validator. | STATIC-PASS; AUTO-PENDING; MANUAL-OPEN |
 | R071-SAFE | Build 11 migrations, recovery validation, quarantine, privacy inventory, bilingual release notes, exact test accounting, and reviewed input/App Group digests cover the additive behavior. | Release, architecture, platform, launch, accessibility, and structure validators; `AppLocalizationTests.testVersion071DeclaresBilingualReleaseHighlights`. | STATIC-PASS; AUTO-PENDING; MANUAL-OPEN |
 
+## 0.7.1 currency, pinned-board, and navigation overlay
+
+These rows cover the second 3 September product-feedback pass: unambiguous
+currency writing across every amount, a pinned-category Today board, the
+redundancy that pass removed, and an explicit way back out of a swapped
+section. Local static and adversarial validators pass; the newly declared
+Swift tests require exact-head macOS execution.
+
+| ID | Acceptance summary | Source / test cases | State |
+|---|---|---|---|
+| R071-CURRENCY | Amounts add their ISO code exactly when the book's own currencies would otherwise share one locale symbol, with explicit symbol/code overrides; a single-currency book is unchanged. Settings names the base currency and samples every currency held. | `MoneyCurrencyDisplay`, `MoneyCurrencyAmbiguity`, `MoneyDisplayPolicy`, `DisplayFormatting`, `CurrencySettingsSection`; `MoneyCurrencyDisplayTests.testCurrenciesSharingOneSymbolAreAllAmbiguous`, `.testSingleCurrencyBookKeepsItsSymbolEvenWhenTheSymbolIsShareable`, `.testSelfIdentifyingSymbolsNeverCollideAndBlankSymbolsAlwaysDo`, `.testAutomaticNotationFollowsAmbiguityAndExplicitChoicesOverrideIt`; `PinnedBudgetBoardTests.testMoneyDisplayPolicyNamesOnlyTheCurrenciesThatCollide`. | STATIC-PASS; AUTO-PENDING; MANUAL-OPEN |
+| R071-ACCOUNT-CURRENCY | Every account picker that decides the currency of money being entered names that currency once the book holds more than one; foreign balances and excluded foreign spending always carry their ISO code. | `accountCurrencyLabel`, `formattedMoneyWithCurrencyCode`, Quick Log, transaction edit, calendar, loan, holding, import, allowance, and filter pickers; `PinnedBudgetBoardTests.testAccountLabelNamesItsCurrencyOnlyInAMultiCurrencyBook`, `.testBookCurrencyInventoryCoversAccountsHoldingsAndSavedRates`. | STATIC-PASS; AUTO-PENDING; MANUAL-OPEN |
+| R071-PINNED | Up to eight user-chosen budget categories lead Today with month, week, and day remaining resolved from one reporting instant. Pins keep their chosen order, refuse duplicates and unknown categories, and an overspent category reports its overspend instead of a negative pace. | `UserProfile.pinnedBudgetNodeIDs`, `BudgetPaceCalculator.spread`, `AppModel.pinnedBudgetSummariesResult`, `PinnedBudgetBoard`, `PinnedBudgetEditorSheet`; `UserProfileMigrationTests.testLegacyProfileDefaultsAutomaticCurrencyDisplayAndNoPinnedCategories`, `.testPinnedCategoriesKeepChosenOrderWhileDroppingRepeatsAndOverflow`, `.testDecodedPinnedCategoriesAreNormalizedNotTrusted`; `LoanAllowancePacingTests.testPaceSpreadResolvesEveryCadenceFromOneInstant`, `.testPaceSpreadCollapsesToOneDayOnTheFinalReportingDay`; `PinnedBudgetBoardTests.testPinningKeepsChosenOrderAndStopsAtTheBoardLimit`, `.testCategoryOutsideTheBudgetCannotBePinnedAndIsDroppedOnReplace`, `.testPinnedSummarySplitsWhatIsLeftAcrossMonthWeekAndDay`, `.testOverspentPinReportsItsOverspendInsteadOfANegativePace`. | STATIC-PASS; AUTO-PENDING; MANUAL-OPEN |
+| R071-REDUNDANCY | Today no longer repeats what another tab owns: the recent-transaction list, the Assets shortcut, and the static privacy card are gone, safe to spend collapses beside the pinned board, and the Plan chip bar no longer duplicates the overview list. The first-run route and every unavailable state remain. | `DashboardContent`, `DashboardSafeToSpend`, `PlanView`, `AppModel.budgetNodeOutline`; MANUAL `R071-REDUNDANCY-EMPTY-AND-POPULATED` on fresh and populated books. | STATIC-PASS; MANUAL-OPEN |
+| R071-BACK | A swapped Plan section publishes a named top-left route back to the overview, and a pushed Calendar no longer nests a second navigation stack that hid History's system back button. | `MoneyUpSectionBackAction`, `SectionNavigation`, `PlanView`, `CalendarView`, `HistoryView`; MANUAL `R071-BACK-VOICEOVER` covers the announced destination in both languages. | STATIC-PASS; MANUAL-OPEN |
+
 ## App Review launch-watchdog correction
 
 Apple rejected 0.3.0 (1005.1) after a 19.98-second scene-creation watchdog
@@ -325,16 +341,16 @@ exact-SHA CI before signed promotion.
 
 - Requirements traced: **97 / 97**.
 - Requirements with at least one named automated or manual case: **97 / 97**.
-- Declared automated tests in source after this review: **752** (314 core, 54
-  persistence, 11 intelligence, 362 app-target, and 11 performance-target
+- Declared automated tests in source after this review: **769** (324 core, 54
+  persistence, 11 intelligence, 369 app-target, and 11 performance-target
   declarations; XCTest methods plus Swift Testing `@Test` declarations). Of
-  those declarations, **701** are XCTest functions named `test...`; the
+  those declarations, **718** are XCTest functions named `test...`; the
   remaining 51 are Swift Testing `@Test` declarations in MoneyUpCore.
 - Tests executed on the prior build-10 0.7.1 candidate in GitHub Actions:
   **742 / 742 declared test sites** across the 376 package, 355 app-target, and
   11 performance-target declarations; exact PR-head run 300 and merged
   implementation run 301 passed all four jobs.
-- Build 11 declares 752 test sites; its exact-head macOS run is `AUTO-PENDING`.
+- Build 11 declares 769 test sites; its exact-head macOS run is `AUTO-PENDING`.
 - Local static validation is reported separately in
   `QUALITY_AUDIT_0.6.0.md`; automated success does not convert any
   `MANUAL-OPEN` or exact-binary gate to pass.

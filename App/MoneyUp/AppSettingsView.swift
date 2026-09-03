@@ -93,6 +93,8 @@ struct AppSettingsView: View {
                 Text("settings.customization_detail")
             }
 
+            CurrencySettingsSection()
+
             Section {
                 Toggle(
                     "settings.intelligence",
@@ -235,7 +237,7 @@ struct AppSettingsView: View {
                 ) {
                     Text("settings.smart_default").tag(Optional<UUID>.none)
                     ForEach(bindableModel.userAccounts) { account in
-                        Text(account.name).tag(Optional(account.id))
+                        Text(accountCurrencyLabel(account)).tag(Optional(account.id))
                     }
                 }
 
@@ -355,12 +357,6 @@ struct AppSettingsView: View {
                     ImportTransactionsView()
                 } label: {
                     Label("import.title", systemImage: "square.and.arrow.down.on.square")
-                }
-
-                NavigationLink {
-                    ExchangeRatesView()
-                } label: {
-                    Label("fx.title", systemImage: "arrow.left.arrow.right.circle")
                 }
 
                 NavigationLink {

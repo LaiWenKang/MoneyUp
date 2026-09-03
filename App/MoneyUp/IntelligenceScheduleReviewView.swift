@@ -57,7 +57,7 @@ struct IntelligenceScheduleReviewView: View {
                     }
                     Picker("transaction.account", selection: $accountID) {
                         ForEach(eligibleAccounts) { account in
-                            Text(account.name).tag(account.id)
+                            Text(accountCurrencyLabel(account)).tag(account.id)
                         }
                     }
                     Picker("transaction.category", selection: $categoryID) {

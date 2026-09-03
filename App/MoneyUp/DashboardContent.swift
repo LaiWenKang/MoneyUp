@@ -2,274 +2,22 @@ import MoneyUpCore
 import SwiftUI
 
 extension DashboardView {
+    /// Today answers one question: what is left, in the categories this person
+    /// steers by. Anything another tab already owns — the transaction list,
+    /// the account list, the static privacy explainer — is deliberately not
+    /// repeated here.
     var body: some View {
         NavigationStack {
             ScrollView {
                 LazyVStack(spacing: 16) {
-                    safeToSpendHero
+                    headline
+                    MoneyUpCard { quickActions }
                     IntelligenceSummaryLink()
-
-                    MoneyUpCard {
-                        VStack(alignment: .leading, spacing: 14) {
-                            Label("dashboard.position_title", systemImage: "scale.3d")
-                                .font(.headline)
-
-                            switch cashDebtPosition {
-                            case let .available(position):
-                                ViewThatFits(in: .horizontal) {
-                                    HStack(spacing: 10) {
-                                        PositionMetric(
-                                            title: "dashboard.cash_on_hand",
-                                            value: formattedMoney(position.cash),
-                                            systemImage: "banknote.fill",
-                                            color: .accentColor
-                                        )
-                                        PositionMetric(
-                                            title: "dashboard.card_loan_debt",
-                                            value: formattedMoney(position.debt),
-                                            systemImage: "creditcard.fill",
-                                            color: .orange
-                                        )
-                                    }
-                                    VStack(spacing: 10) {
-                                        PositionMetric(
-                                            title: "dashboard.cash_on_hand",
-                                            value: formattedMoney(position.cash),
-                                            systemImage: "banknote.fill",
-                                            color: .accentColor
-                                        )
-                                        PositionMetric(
-                                            title: "dashboard.card_loan_debt",
-                                            value: formattedMoney(position.debt),
-                                            systemImage: "creditcard.fill",
-                                            color: .orange
-                                        )
-                                    }
-                                }
-
-                                MoneyUpPositionDiagram(
-                                    cashAmount: position.cash.amount,
-                                    debtAmount: position.debt.amount
-                                )
-
-                                LabeledContent("dashboard.net_cash") {
-                                    Text(formattedMoney(position.netCash))
-                                        .font(.subheadline.monospacedDigit().weight(.semibold))
-                                }
-                            case let .unavailable(issue):
-                                DerivedValueUnavailableView(issue: issue, prominent: true)
-                            }
-
-                            if case let .available(balances) = otherCurrencyBalances,
-                               !balances.isEmpty {
-                                HStack(alignment: .firstTextBaseline, spacing: 4) {
-                                    Text("dashboard.other_currencies")
-                                    Text(balances.map(formattedMoney).joined(separator: " · "))
-                                        .monospacedDigit()
-                                }
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                                .accessibilityElement(children: .combine)
-                            } else if case let .unavailable(issue) = otherCurrencyBalances {
-                                DerivedValueUnavailableView(issue: issue)
-                            }
-
-                            Text("dashboard.position_detail")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-
-                    MoneyUpCard {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("dashboard.monthly_budget")
-                                .font(.headline)
-                            switch budgetSummary {
-                            case let .available(.some(summary)):
-                                let ratioResult = budgetRatio(summary)
-                                if case let .available(ratio) = ratioResult {
-                                    MoneyUpPaceBar(
-                                        ratio: ratio,
-                                        elapsed: monthElapsed,
-                                        announcesStatus: false
-                                    )
-                                } else if case let .unavailable(issue) = ratioResult {
-                                    DerivedValueUnavailableView(issue: issue)
-                                }
-                                Text(
-                                    "\(formattedMoney(summary.spent)) / \(formattedMoney(summary.limit))"
-                                )
-                                .font(.subheadline.monospacedDigit())
-                                .foregroundStyle(.secondary)
-
-                                if case let .available(ratio) = ratioResult {
-                                    Label(
-                                        budgetPaceKey(ratio: ratio),
-                                        systemImage: budgetPaceSymbol(ratio: ratio)
-                                    )
-                                    .font(.footnote.weight(.semibold))
-                                    .foregroundStyle(ratio > 1 ? Color.red : Color.secondary)
-                                }
-
-                                if summary.unbudgetedSpent.amount > .zero {
-                                    HStack {
-                                        Text("dashboard.unbudgeted_spending")
-                                        Spacer()
-                                        Text(formattedMoney(summary.unbudgetedSpent))
-                                            .monospacedDigit()
-                                    }
-                                    .font(.footnote)
-                                    .foregroundStyle(.secondary)
-                                    .accessibilityElement(children: .combine)
-                                }
-                            switch model.excludedForeignSpendingThisMonthResult(
-                                asOf: reportingDate
-                            ) {
-                                case let .available(foreignSpending):
-                                    ForEach(foreignSpending, id: \.currency) { money in
-                                        HStack {
-                                            Text("plan.foreign_not_counted")
-                                            Spacer()
-                                            Text(formattedMoney(money))
-                                                .monospacedDigit()
-                                        }
-                                        .font(.footnote)
-                                        .foregroundStyle(.orange)
-                                        .accessibilityElement(children: .combine)
-                                    }
-                                case let .unavailable(issue):
-                                    DerivedValueUnavailableView(issue: issue)
-                                }
-                            case .available(.none):
-                                Text("dashboard.no_budget")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                                Button {
-                                    onOpenPlan()
-                                } label: {
-                                    Label("dashboard.set_budget", systemImage: "chart.pie.fill")
-                                }
-                                .buttonStyle(.bordered)
-                                .tint(.accentColor)
-                            case let .unavailable(issue):
-                                DerivedValueUnavailableView(issue: issue)
-                            }
-                        }
-                    }
-
-                    if let upcoming = nextScheduledTransaction {
-                        MoneyUpCard {
-                            VStack(alignment: .leading, spacing: 12) {
-                                Label(
-                                    "dashboard.upcoming",
-                                    systemImage: "calendar.badge.clock"
-                                )
-                                .font(.headline)
-
-                                HStack(alignment: .firstTextBaseline, spacing: 12) {
-                                    VStack(alignment: .leading, spacing: 3) {
-                                        Text(upcoming.transaction.name)
-                                            .fontWeight(.semibold)
-                                            .lineLimit(1)
-                                        Text(
-                                            upcoming.occurrence,
-                                            format: .dateTime.month().day().year()
-                                        )
-                                        .font(.subheadline)
-                                        .foregroundStyle(.secondary)
-                                    }
-                                    Spacer(minLength: 8)
-                                    Text(upcoming.signedAmount)
-                                        .font(.subheadline.monospacedDigit().weight(.semibold))
-                                        .foregroundStyle(
-                                            upcoming.transaction.kind == .income
-                                                ? Color.green
-                                                : Color.primary
-                                        )
-                                }
-                            }
-                            .accessibilityElement(children: .combine)
-                        }
-                    }
-
-                    MoneyUpCard {
-                        VStack(spacing: 0) {
-                            NavigationLink {
-                                InsightsView()
-                            } label: {
-                                Label("dashboard.open_insights", systemImage: "chart.bar.fill")
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                            .buttonStyle(.plain)
-                            .padding(.vertical, 6)
-
-                            Divider()
-
-                            Button {
-                                onOpenAssets()
-                            } label: {
-                                Label("dashboard.open_assets", systemImage: "wallet.bifold.fill")
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                            .buttonStyle(.plain)
-                            .padding(.vertical, 6)
-                        }
-                    }
-
-                    MoneyUpCard {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("dashboard.recent")
-                                .font(.headline)
-                            if !model.journalRecentEntriesAreCurrent {
-                                DerivedValueUnavailableView(issue: .appNotReady)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                Button("action.retry") {
-                                    model.retryUnavailableJournalProjection()
-                                }
-                                .buttonStyle(.bordered)
-                            } else if !model.hasJournalEntries {
-                                MoneyUpIllustration("MoneyUpMoneyWorld", role: .empty)
-                                Text("dashboard.no_transactions")
-                                    .font(.title3.weight(.semibold))
-                                    .frame(maxWidth: .infinity, alignment: .center)
-                                Text("dashboard.no_transactions_detail")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                                    .multilineTextAlignment(.center)
-                                    .frame(maxWidth: .infinity)
-                                Button {
-                                    onOpenLog()
-                                } label: {
-                                    Label("dashboard.log_first", systemImage: "plus.circle.fill")
-                                }
-                                .buttonStyle(.borderedProminent)
-                                .tint(.moneyUpAction)
-                                .frame(maxWidth: .infinity)
-                            } else {
-                                ForEach(Array(model.entries.prefix(5))) { entry in
-                                    TransactionRow(entry: entry)
-                                    if entry.id != model.entries.prefix(5).last?.id {
-                                        Divider()
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    MoneyUpCard {
-                        HStack(alignment: .top, spacing: 12) {
-                            Image(systemName: "lock.shield.fill")
-                                .font(.title2)
-                                .foregroundStyle(.tint)
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("dashboard.private_by_design")
-                                    .font(.headline)
-                                Text("dashboard.privacy_detail")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
+                    positionCard
+                    monthlyBudgetCard
+                    upcomingCard
+                    insightsCard
+                    firstRunCard
                 }
                 .padding()
             }
@@ -291,6 +39,11 @@ extension DashboardView {
                     }
                 }
             }
+        }
+        // Anchored outside the stack so it never competes with the Today
+        // arithmetic sheet presented from within it.
+        .sheet(isPresented: $isEditingPins) {
+            PinnedBudgetEditorSheet()
         }
         .environment(\.calendar, model.reportingCalendar)
         .environment(\.timeZone, model.reportingCalendar.timeZone)
@@ -330,56 +83,125 @@ extension DashboardView {
         }
     }
 
-    var safeToSpendHero: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 26, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color.accentColor.opacity(0.22),
-                            Color.moneyUpMist.opacity(0.40),
-                            Color.moneyUpSurfaceElevated
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
+    /// Pinned categories lead once the user has chosen any; until then the
+    /// whole-book discretionary figure keeps the top of the screen so a new
+    /// book is not a blank board.
+    @ViewBuilder
+    var headline: some View {
+        if model.pinnedBudgetNodes.isEmpty {
+            safeToSpendHero
+            pinnedBoard
+        } else {
+            pinnedBoard
+            safeToSpendSummary
+        }
+    }
 
+    var pinnedBoard: some View {
+        PinnedBudgetBoard(
+            reportingDate: reportingDate,
+            monthElapsed: monthElapsed,
+            onOpenPlan: onOpenPlan,
+            isEditingPins: $isEditingPins
+        )
+    }
+
+    var positionCard: some View {
+        MoneyUpCard {
             VStack(alignment: .leading, spacing: 14) {
-                switch model.flexibleTodayResult(asOf: reportingDate) {
-                case let .available(.available(breakdown)):
-                    Group {
-                        if dynamicTypeSize.isAccessibilitySize {
-                            VStack(alignment: .leading, spacing: 12) {
-                                heroIllustration
-                                flexibleTodayCopy(breakdown)
-                            }
-                        } else {
-                            HStack(alignment: .center, spacing: 12) {
-                                flexibleTodayCopy(breakdown)
-                                heroIllustration
-                            }
-                        }
-                    }
+                Label("dashboard.position_title", systemImage: "scale.3d")
+                    .font(.headline)
 
-                    Button {
-                        isShowingFlexibleTodayBreakdown = true
-                    } label: {
-                        Label(
-                            "dashboard.safe_to_spend.show_math",
-                            systemImage: "function"
-                        )
+                switch cashDebtPosition {
+                case let .available(position):
+                    positionMetrics(position)
+                    MoneyUpPositionDiagram(
+                        cashAmount: position.cash.amount,
+                        debtAmount: position.debt.amount
+                    )
+                    LabeledContent("dashboard.net_cash") {
+                        Text(formattedMoney(position.netCash))
+                            .font(.subheadline.monospacedDigit().weight(.semibold))
                     }
-                    .buttonStyle(.bordered)
-                    .tint(.accentColor)
-                case .available(.needsBudget):
-                    heroIllustration
-                    Label("dashboard.safe_to_spend", systemImage: "sun.max.fill")
-                        .font(.headline)
-                        .foregroundStyle(.tint)
-                    Text("dashboard.safe_to_spend.needs_budget")
-                        .font(.title3.weight(.semibold))
-                    Text("dashboard.safe_to_spend.needs_budget_detail")
+                case let .unavailable(issue):
+                    DerivedValueUnavailableView(issue: issue, prominent: true)
+                }
+
+                otherCurrencies
+                Text("dashboard.position_detail")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func positionMetrics(_ position: CashDebtPosition) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 10) {
+                cashMetric(position)
+                debtMetric(position)
+            }
+            VStack(spacing: 10) {
+                cashMetric(position)
+                debtMetric(position)
+            }
+        }
+    }
+
+    private func cashMetric(_ position: CashDebtPosition) -> some View {
+        PositionMetric(
+            title: "dashboard.cash_on_hand",
+            value: formattedMoney(position.cash),
+            systemImage: "banknote.fill",
+            color: .accentColor
+        )
+    }
+
+    private func debtMetric(_ position: CashDebtPosition) -> some View {
+        PositionMetric(
+            title: "dashboard.card_loan_debt",
+            value: formattedMoney(position.debt),
+            systemImage: "creditcard.fill",
+            color: .orange
+        )
+    }
+
+    /// Money held outside the base currency is listed on its own, never folded
+    /// into the headline figure, because MoneyUp does not invent a rate.
+    @ViewBuilder
+    private var otherCurrencies: some View {
+        switch otherCurrencyBalances {
+        case let .available(balances) where !balances.isEmpty:
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Text("dashboard.other_currencies")
+                Text(
+                    balances
+                        .map(formattedMoneyWithCurrencyCode)
+                        .joined(separator: " · ")
+                )
+                .monospacedDigit()
+            }
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .accessibilityElement(children: .combine)
+        case .available:
+            EmptyView()
+        case let .unavailable(issue):
+            DerivedValueUnavailableView(issue: issue)
+        }
+    }
+
+    var monthlyBudgetCard: some View {
+        MoneyUpCard {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("dashboard.monthly_budget")
+                    .font(.headline)
+                switch budgetSummary {
+                case let .available(.some(summary)):
+                    budgetProgress(summary)
+                    foreignSpendingNotice
+                case .available(.none):
+                    Text("dashboard.no_budget")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                     Button {
@@ -389,37 +211,159 @@ extension DashboardView {
                     }
                     .buttonStyle(.bordered)
                     .tint(.accentColor)
-                case let .available(.needsClassification(count)):
-                    setupGuidance(
-                        title: String(
-                            format: AppLocalization.string("dashboard.flexible_today.classify_title"),
-                            count
-                        ),
-                        detail: "dashboard.flexible_today.classify_detail"
-                    )
-                case .available(.needsFlexibleBudget):
-                    setupGuidance(
-                        title: AppLocalization.string("dashboard.flexible_today.needs_flexible"),
-                        detail: "dashboard.flexible_today.needs_flexible_detail"
-                    )
                 case let .unavailable(issue):
-                    Label("dashboard.safe_to_spend", systemImage: "sun.max.fill")
-                        .font(.headline)
-                        .foregroundStyle(.tint)
-                    DerivedValueUnavailableView(issue: issue, prominent: true)
+                    DerivedValueUnavailableView(issue: issue)
                 }
-
-                Divider()
-                quickActions
             }
-            .padding(20)
         }
-        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 26, style: .continuous)
-                .stroke(Color.accentColor.opacity(0.18), lineWidth: 1)
+    }
+
+    @ViewBuilder
+    private func budgetProgress(_ summary: BudgetPlanSummary) -> some View {
+        let ratioResult = budgetRatio(summary)
+        if case let .available(ratio) = ratioResult {
+            MoneyUpPaceBar(
+                ratio: ratio,
+                elapsed: monthElapsed,
+                announcesStatus: false
+            )
+        } else if case let .unavailable(issue) = ratioResult {
+            DerivedValueUnavailableView(issue: issue)
         }
-        .accessibilityElement(children: .contain)
+        Text("\(formattedMoney(summary.spent)) / \(formattedMoney(summary.limit))")
+            .font(.subheadline.monospacedDigit())
+            .foregroundStyle(.secondary)
+        if case let .available(ratio) = ratioResult {
+            Label(
+                budgetPaceKey(ratio: ratio),
+                systemImage: budgetPaceSymbol(ratio: ratio)
+            )
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(ratio > 1 ? Color.red : Color.secondary)
+        }
+        if summary.unbudgetedSpent.amount > .zero {
+            HStack {
+                Text("dashboard.unbudgeted_spending")
+                Spacer()
+                Text(formattedMoney(summary.unbudgetedSpent))
+                    .monospacedDigit()
+            }
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .accessibilityElement(children: .combine)
+        }
+    }
+
+    /// Spending in another currency is never converted into the budget, so it
+    /// is named here rather than silently missing from the bar above.
+    @ViewBuilder
+    private var foreignSpendingNotice: some View {
+        switch model.excludedForeignSpendingThisMonthResult(asOf: reportingDate) {
+        case let .available(foreignSpending):
+            ForEach(foreignSpending, id: \.currency) { money in
+                HStack {
+                    Text("plan.foreign_not_counted")
+                    Spacer()
+                    Text(formattedMoneyWithCurrencyCode(money))
+                        .monospacedDigit()
+                }
+                .font(.footnote)
+                .foregroundStyle(.orange)
+                .accessibilityElement(children: .combine)
+            }
+        case let .unavailable(issue):
+            DerivedValueUnavailableView(issue: issue)
+        }
+    }
+
+    @ViewBuilder
+    var upcomingCard: some View {
+        if let upcoming = nextScheduledTransaction {
+            MoneyUpCard {
+                VStack(alignment: .leading, spacing: 12) {
+                    Label("dashboard.upcoming", systemImage: "calendar.badge.clock")
+                        .font(.headline)
+                    HStack(alignment: .firstTextBaseline, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(upcoming.transaction.name)
+                                .fontWeight(.semibold)
+                                .lineLimit(1)
+                            Text(
+                                upcoming.occurrence,
+                                format: .dateTime.month().day().year()
+                            )
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 8)
+                        Text(upcoming.signedAmount)
+                            .font(.subheadline.monospacedDigit().weight(.semibold))
+                            .foregroundStyle(
+                                upcoming.transaction.kind == .income
+                                    ? Color.green
+                                    : Color.primary
+                            )
+                    }
+                }
+                .accessibilityElement(children: .combine)
+            }
+        }
+    }
+
+    /// Insights has no tab of its own; Assets and History do, so neither is
+    /// duplicated here as a shortcut.
+    var insightsCard: some View {
+        MoneyUpCard {
+            NavigationLink {
+                InsightsView()
+            } label: {
+                Label("dashboard.open_insights", systemImage: "chart.bar.fill")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+            .padding(.vertical, 6)
+        }
+    }
+
+    /// The one place Today still speaks about transactions: a book with none
+    /// yet has nothing to steer, so it gets the first-run route instead of an
+    /// empty copy of History.
+    @ViewBuilder
+    var firstRunCard: some View {
+        if !model.journalRecentEntriesAreCurrent {
+            MoneyUpCard {
+                VStack(alignment: .leading, spacing: 12) {
+                    DerivedValueUnavailableView(issue: .appNotReady)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Button("action.retry") {
+                        model.retryUnavailableJournalProjection()
+                    }
+                    .buttonStyle(.bordered)
+                }
+            }
+        } else if !model.hasJournalEntries {
+            MoneyUpCard {
+                VStack(alignment: .leading, spacing: 12) {
+                    MoneyUpIllustration("MoneyUpMoneyWorld", role: .empty)
+                    Text("dashboard.no_transactions")
+                        .font(.title3.weight(.semibold))
+                        .frame(maxWidth: .infinity, alignment: .center)
+                    Text("dashboard.no_transactions_detail")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity)
+                    Button {
+                        onOpenLog()
+                    } label: {
+                        Label("dashboard.log_first", systemImage: "plus.circle.fill")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.moneyUpAction)
+                    .frame(maxWidth: .infinity)
+                }
+            }
+        }
     }
 
     var reportingDate: Date {
@@ -458,99 +402,6 @@ extension DashboardView {
                 return
             }
         }
-    }
-
-    var heroIllustration: some View {
-        MoneyUpIllustration("MoneyUpMoneyWorld", role: .hero)
-            .frame(maxWidth: dynamicTypeSize.isAccessibilitySize ? .infinity : nil)
-    }
-
-    @ViewBuilder
-    func setupGuidance(
-        title: String,
-        detail: LocalizedStringKey
-    ) -> some View {
-        Label("dashboard.safe_to_spend", systemImage: "rectangle.3.group.fill")
-            .font(.headline)
-            .foregroundStyle(.tint)
-        Text(title)
-            .font(.title3.weight(.semibold))
-        Text(detail)
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
-        Button {
-            onOpenPlan()
-        } label: {
-            Label("dashboard.flexible_today.review_plan", systemImage: "checklist")
-        }
-        .buttonStyle(.borderedProminent)
-        .tint(.moneyUpAction)
-    }
-
-    func flexibleTodayCopy(
-        _ breakdown: FlexibleTodayBreakdown
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Label("dashboard.safe_to_spend", systemImage: "sun.max.fill")
-                .font(.headline)
-                .foregroundStyle(.tint)
-            Text(formattedMoney(breakdown.amountPerDay))
-                .moneyUpFinancialValue(.hero)
-                .foregroundStyle(
-                    breakdown.amountPerDay.amount < .zero ? Color.red : Color.primary
-                )
-            Text("dashboard.safe_to_spend.per_day")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            if let weekly = try? Money(
-                CheckedDecimal.multiplying(
-                    breakdown.amountPerDay.amount,
-                    Decimal(min(7, breakdown.remainingDayCount))
-                ),
-                currency: breakdown.amountPerDay.currency
-            ) {
-                Label(
-                    String(
-                        format: AppLocalization.string("dashboard.safe_to_spend.weekly_format"),
-                        formattedMoney(weekly),
-                        min(7, breakdown.remainingDayCount)
-                    ),
-                    systemImage: "calendar.day.timeline.left"
-                )
-                .font(.footnote.weight(.semibold))
-            }
-            Label(
-                String(
-                    format: AppLocalization.string("dashboard.safe_to_spend.remaining_format"),
-                    formattedMoney(breakdown.availableForRemainingPeriod),
-                    breakdown.remainingDayCount
-                ),
-                systemImage: "hourglass.bottomhalf.filled"
-            )
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-            if !breakdown.flexibleCommitments.isZero {
-                Label(
-                    String(
-                        format: AppLocalization.string("dashboard.safe_to_spend.reserved_format"),
-                        formattedMoney(breakdown.flexibleCommitments)
-                    ),
-                    systemImage: "calendar.badge.clock"
-                )
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-            }
-            if breakdown.amountPerDay.amount < .zero {
-                Label(
-                    "dashboard.safe_to_spend.attention",
-                    systemImage: "exclamationmark.triangle.fill"
-                )
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(.red)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .combine)
     }
 
     func budgetPaceKey(ratio: Double) -> LocalizedStringKey {

@@ -111,7 +111,7 @@ struct ImportTransactionsView: View {
                     )
                     Picker("settings.default_account", selection: $fallbackAccountID) {
                         ForEach(model.userAccounts) { account in
-                            Text(account.name).tag(Optional(account.id))
+                            Text(accountCurrencyLabel(account)).tag(Optional(account.id))
                         }
                     }
                     Picker(
@@ -150,7 +150,7 @@ struct ImportTransactionsView: View {
                                 )
                             ) {
                                 ForEach(model.userAccounts) { account in
-                                    Text(account.name).tag(Optional(account.id))
+                                    Text(accountCurrencyLabel(account)).tag(Optional(account.id))
                                 }
                             }
                         }
