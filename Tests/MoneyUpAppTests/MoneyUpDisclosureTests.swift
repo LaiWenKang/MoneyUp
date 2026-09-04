@@ -30,12 +30,16 @@ final class MoneyUpDisclosureTests: XCTestCase {
         }
     }
 
+    /// `AppModel` is `@MainActor`, and `XCTAssertFalse` evaluates its argument
+    /// in a nonisolated autoclosure, so reading its key needs the actor.
+    @MainActor
     func testDisclosureKeysAreUniqueAndDoNotShadowOtherPreferences() {
         let keys = MoneyUpDisclosureSection.allCases.map(\.rawValue)
+        let quickCaptureKey = AppModel.lockedQuickCapturePreferenceKey
 
         XCTAssertEqual(Set(keys).count, keys.count, "duplicate layout key")
         XCTAssertFalse(keys.contains(AppLanguagePreference.storageKey))
-        XCTAssertFalse(keys.contains(AppModel.lockedQuickCapturePreferenceKey))
+        XCTAssertFalse(keys.contains(quickCaptureKey))
     }
 
     func testEveryDisclosureSectionIsReachableFromItsRawValue() {
