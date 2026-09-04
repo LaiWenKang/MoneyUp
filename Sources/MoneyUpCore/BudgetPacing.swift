@@ -107,3 +107,50 @@ public enum BudgetPaceCalculator {
         )
     }
 }
+
+/// Every cadence for one remaining balance, resolved from a single instant.
+///
+/// A board that shows month, week, and day side by side must not compute them
+/// from three different "now" values; a reporting-day boundary crossed between
+/// two of the calls would otherwise publish an inconsistent set.
+public struct BudgetPaceSpread: Equatable, Sendable {
+    public let monthly: BudgetPace
+    public let weekly: BudgetPace
+    public let daily: BudgetPace
+
+    public init(monthly: BudgetPace, weekly: BudgetPace, daily: BudgetPace) {
+        self.monthly = monthly
+        self.weekly = weekly
+        self.daily = daily
+    }
+}
+
+extension BudgetPaceCalculator {
+    /// Apportions one remaining balance across all three cadences at once.
+    public static func spread(
+        remaining: Money,
+        asOf: Date,
+        calendar: Calendar
+    ) throws -> BudgetPaceSpread {
+        BudgetPaceSpread(
+            monthly: try pace(
+                remaining: remaining,
+                cadence: .monthly,
+                asOf: asOf,
+                calendar: calendar
+            ),
+            weekly: try pace(
+                remaining: remaining,
+                cadence: .weekly,
+                asOf: asOf,
+                calendar: calendar
+            ),
+            daily: try pace(
+                remaining: remaining,
+                cadence: .daily,
+                asOf: asOf,
+                calendar: calendar
+            )
+        )
+    }
+}

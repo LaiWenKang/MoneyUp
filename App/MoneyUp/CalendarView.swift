@@ -15,6 +15,22 @@ private struct CalendarDateComputation {
 }
 
 struct CalendarView: View {
+    /// History pushes this screen onto its own stack, where the system draws
+    /// the back button; Plan swaps it in as a section and must supply both the
+    /// container and the way back itself. A nested stack in the pushed case
+    /// would silently remove History's back button.
+    let providesNavigationStack: Bool
+    /// Supplied when Plan swaps this section in; nil when History pushes it.
+    let sectionBack: MoneyUpSectionBackAction?
+
+    init(
+        providesNavigationStack: Bool = true,
+        sectionBack: MoneyUpSectionBackAction? = nil
+    ) {
+        self.providesNavigationStack = providesNavigationStack
+        self.sectionBack = sectionBack
+    }
+
     @Environment(AppModel.self) private var model
     @State private var selectedDate = Date()
     @State private var isAddingSchedule = false
@@ -58,8 +74,12 @@ struct CalendarView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            presentedCalendarList
+        Group {
+            if providesNavigationStack {
+                NavigationStack { presentedCalendarList }
+            } else {
+                presentedCalendarList
+            }
         }
         .environment(\.calendar, model.reportingCalendar)
         .environment(\.timeZone, model.reportingCalendar.timeZone)
@@ -101,6 +121,7 @@ struct CalendarView: View {
         .scrollContentBackground(.hidden)
         .background(Color.moneyUpBackground)
         .navigationTitle("tab.calendar")
+        .moneyUpSectionBackToolbar(sectionBack)
     }
 
     private var loadingCalendarList: some View {
@@ -731,7 +752,7 @@ private struct AddScheduleSheet: View {
                         .moneyAmountKeyboard(currency: selectedCurrency)
                     Picker("transaction.account", selection: $accountID) {
                         ForEach(model.userAccounts) { account in
-                            Text(account.name).tag(Optional(account.id))
+                            Text(accountCurrencyLabel(account)).tag(Optional(account.id))
                         }
                     }
                     Picker("transaction.category", selection: $categoryID) {

@@ -6,6 +6,8 @@ public struct UserProfile: Codable, Equatable, Sendable {
         0, 60, 300, 900, 3_600
     ]
     public static let allowedAutoLockDelays = supportedAutoLockDelays
+    /// One screen of pins. The board is a focus tool, not a second budget list.
+    public static let maximumPinnedBudgetNodes = 8
 
     public var baseCurrency: CurrencyCode
     public var createdAt: Date
@@ -32,6 +34,14 @@ public struct UserProfile: Codable, Equatable, Sendable {
     /// Fixed Gregorian reporting zone. Legacy profiles decode as GMT so their
     /// day attribution remains deterministic rather than following travel.
     public var reportingTimeZoneIdentifier: String
+    /// How money is written wherever an amount is shown. Legacy profiles decode
+    /// as `.automatic`, which adds the ISO code only when the book's own
+    /// currencies would otherwise share one locale symbol.
+    public var currencyDisplay: MoneyCurrencyDisplay
+    /// Budget categories the user promoted to the Today board, in the order
+    /// they chose. Duplicates are removed and the list is bounded so the board
+    /// and the profile record both stay small.
+    public var pinnedBudgetNodeIDs: [UUID]
 
     public init(
         baseCurrency: CurrencyCode,
@@ -45,7 +55,9 @@ public struct UserProfile: Codable, Equatable, Sendable {
         intelligenceEnabled: Bool = true,
         foundationModelAssistanceEnabled: Bool = true,
         enablesTabSwipeNavigation: Bool = false,
-        reportingTimeZoneIdentifier: String = TimeZone.current.identifier
+        reportingTimeZoneIdentifier: String = TimeZone.current.identifier,
+        currencyDisplay: MoneyCurrencyDisplay = .automatic,
+        pinnedBudgetNodeIDs: [UUID] = []
     ) {
         self.baseCurrency = baseCurrency
         self.createdAt = createdAt
@@ -62,6 +74,20 @@ public struct UserProfile: Codable, Equatable, Sendable {
         self.reportingTimeZoneIdentifier = TimeZone(
             identifier: reportingTimeZoneIdentifier
         )?.identifier ?? "GMT"
+        self.currencyDisplay = currencyDisplay
+        self.pinnedBudgetNodeIDs = Self.normalizedPins(pinnedBudgetNodeIDs)
+    }
+
+    /// Keeps the stored order the user chose while removing repeats and
+    /// capping the board so one screen can always show every pin.
+    public static func normalizedPins(_ candidates: [UUID]) -> [UUID] {
+        var seen = Set<UUID>()
+        var ordered: [UUID] = []
+        for candidate in candidates where seen.insert(candidate).inserted {
+            ordered.append(candidate)
+            if ordered.count == maximumPinnedBudgetNodes { break }
+        }
+        return ordered
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -77,6 +103,8 @@ public struct UserProfile: Codable, Equatable, Sendable {
         case foundationModelAssistanceEnabled
         case enablesTabSwipeNavigation
         case reportingTimeZoneIdentifier
+        case currencyDisplay
+        case pinnedBudgetNodeIDs
     }
 
     public init(from decoder: Decoder) throws {
@@ -90,27 +118,7 @@ public struct UserProfile: Codable, Equatable, Sendable {
                 debugDescription: "Invalid profile creation date."
             )
         }
-        if container.contains(.autoLockDelay) {
-            let decodedDelay = try container.decode(
-                TimeInterval.self,
-                forKey: .autoLockDelay
-            )
-            // Older builds persisted additional whole-minute choices. Keep
-            // those books readable, while rejecting fractional-minute or
-            // negative values that no released settings UI could create.
-            guard decodedDelay.isFinite,
-                  decodedDelay >= 0,
-                  decodedDelay.truncatingRemainder(dividingBy: 60) == 0 else {
-                throw DecodingError.dataCorruptedError(
-                    forKey: .autoLockDelay,
-                    in: container,
-                    debugDescription: "Invalid auto-lock delay."
-                )
-            }
-            autoLockDelay = decodedDelay
-        } else {
-            autoLockDelay = 60
-        }
+        autoLockDelay = try Self.decodedAutoLockDelay(from: container)
         if container.contains(.allowLockedQuickCapture) {
             allowLockedQuickCapture = try container.decode(
                 Bool.self,
@@ -144,21 +152,64 @@ public struct UserProfile: Codable, Equatable, Sendable {
         ) ?? true
         enablesTabSwipeNavigation = try container.decodeIfPresent(
             Bool.self, forKey: .enablesTabSwipeNavigation) ?? false
-        if container.contains(.reportingTimeZoneIdentifier) {
-            let identifier = try container.decode(
-                String.self,
-                forKey: .reportingTimeZoneIdentifier
+        reportingTimeZoneIdentifier = try Self.decodedReportingTimeZone(
+            from: container
+        )
+        currencyDisplay = try container.decodeIfPresent(
+            MoneyCurrencyDisplay.self,
+            forKey: .currencyDisplay
+        ) ?? .automatic
+        pinnedBudgetNodeIDs = Self.normalizedPins(
+            try container.decodeIfPresent(
+                [UUID].self,
+                forKey: .pinnedBudgetNodeIDs
+            ) ?? []
+        )
+    }
+
+    /// Older builds persisted additional whole-minute choices. Keep those books
+    /// readable, while rejecting fractional-minute or negative values that no
+    /// released settings UI could create.
+    private static func decodedAutoLockDelay(
+        from container: KeyedDecodingContainer<CodingKeys>
+    ) throws -> TimeInterval {
+        guard container.contains(.autoLockDelay) else { return 60 }
+        let decoded = try container.decode(
+            TimeInterval.self,
+            forKey: .autoLockDelay
+        )
+        guard decoded.isFinite,
+              decoded >= 0,
+              decoded.truncatingRemainder(dividingBy: 60) == 0 else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .autoLockDelay,
+                in: container,
+                debugDescription: "Invalid auto-lock delay."
             )
-            guard let timeZone = TimeZone(identifier: identifier) else {
-                throw DecodingError.dataCorruptedError(
-                    forKey: .reportingTimeZoneIdentifier,
-                    in: container,
-                    debugDescription: "Invalid reporting time zone."
-                )
-            }
-            reportingTimeZoneIdentifier = timeZone.identifier
-        } else {
-            reportingTimeZoneIdentifier = "GMT"
         }
+        return decoded
+    }
+
+    /// Profiles written before the fixed reporting zone existed decode as GMT
+    /// so their day attribution stays deterministic rather than following the
+    /// device the book is opened on.
+    private static func decodedReportingTimeZone(
+        from container: KeyedDecodingContainer<CodingKeys>
+    ) throws -> String {
+        guard container.contains(.reportingTimeZoneIdentifier) else {
+            return "GMT"
+        }
+        let identifier = try container.decode(
+            String.self,
+            forKey: .reportingTimeZoneIdentifier
+        )
+        guard let timeZone = TimeZone(identifier: identifier) else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .reportingTimeZoneIdentifier,
+                in: container,
+                debugDescription: "Invalid reporting time zone."
+            )
+        }
+        return timeZone.identifier
     }
 }

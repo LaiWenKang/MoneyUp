@@ -90,8 +90,10 @@ struct AppSettingsView: View {
             } header: {
                 Text("settings.customization")
             } footer: {
-                Text("settings.customization_detail")
+                MoneyUpExplainer("settings.customization_detail")
             }
+
+            CurrencySettingsSection()
 
             Section {
                 Toggle(
@@ -113,7 +115,7 @@ struct AppSettingsView: View {
             } header: {
                 Text("settings.intelligence_section")
             } footer: {
-                Text("settings.intelligence_detail")
+                MoneyUpExplainer("settings.intelligence_detail")
             }
 
             Section {
@@ -137,7 +139,7 @@ struct AppSettingsView: View {
             } header: {
                 Text("settings.on_device_assistance_section")
             } footer: {
-                Text("settings.on_device_assistance_detail")
+                MoneyUpExplainer("settings.on_device_assistance_detail")
             }
 
             Section {
@@ -159,7 +161,7 @@ struct AppSettingsView: View {
             } header: {
                 Text("settings.navigation")
             } footer: {
-                Text("settings.tab_swipe_detail")
+                MoneyUpExplainer("settings.tab_swipe_detail")
             }
 
             Section {
@@ -216,7 +218,7 @@ struct AppSettingsView: View {
             } header: {
                 Text("settings.security")
             } footer: {
-                Text("settings.auto_lock_detail")
+                MoneyUpExplainer("settings.auto_lock_detail")
             }
 
             Section {
@@ -235,7 +237,7 @@ struct AppSettingsView: View {
                 ) {
                     Text("settings.smart_default").tag(Optional<UUID>.none)
                     ForEach(bindableModel.userAccounts) { account in
-                        Text(account.name).tag(Optional(account.id))
+                        Text(accountCurrencyLabel(account)).tag(Optional(account.id))
                     }
                 }
 
@@ -285,7 +287,7 @@ struct AppSettingsView: View {
             } header: {
                 Text("settings.quick_log")
             } footer: {
-                Text("settings.smart_default_detail")
+                MoneyUpExplainer("settings.smart_default_detail")
             }
 
             Section {
@@ -328,7 +330,7 @@ struct AppSettingsView: View {
             } header: {
                 Text("settings.widgets_and_reports")
             } footer: {
-                Text("settings.widget.budget_status_detail")
+                MoneyUpExplainer("settings.widget.budget_status_detail")
             }
 
             Section {
@@ -355,12 +357,6 @@ struct AppSettingsView: View {
                     ImportTransactionsView()
                 } label: {
                     Label("import.title", systemImage: "square.and.arrow.down.on.square")
-                }
-
-                NavigationLink {
-                    ExchangeRatesView()
-                } label: {
-                    Label("fx.title", systemImage: "arrow.left.arrow.right.circle")
                 }
 
                 NavigationLink {

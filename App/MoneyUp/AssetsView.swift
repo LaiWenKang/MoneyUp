@@ -186,7 +186,7 @@ struct AssetsView: View {
                     }
                     .padding(.vertical, 8)
                 } footer: {
-                    Text("assets.account_net_worth_note")
+                    MoneyUpExplainer("assets.account_net_worth_note")
                 }
 
                 Section("assets.accounts") {
@@ -239,7 +239,7 @@ struct AssetsView: View {
                         Label("loan.title", systemImage: "car.side.fill")
                     }
                 } footer: {
-                    Text("loan.assets_detail")
+                    MoneyUpExplainer("loan.assets_detail")
                 }
 
                 if !archivedFinancialAccounts.isEmpty {

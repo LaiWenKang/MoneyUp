@@ -171,6 +171,67 @@ final class LoanAllowancePacingTests: XCTestCase {
         XCTAssertEqual(weekly.available.amount, Decimal(string: "74.83"))
     }
 
+    func testPaceSpreadResolvesEveryCadenceFromOneInstant() throws {
+        let currency = try CurrencyCode("SGD")
+        let asOf = try XCTUnwrap(
+            utcCalendar.date(from: DateComponents(year: 2026, month: 9, day: 2, hour: 12))
+        )
+        let remaining = try Money(310, currency: currency)
+        let spread = try BudgetPaceCalculator.spread(
+            remaining: remaining,
+            asOf: asOf,
+            calendar: utcCalendar
+        )
+
+        // The month bucket is the whole remainder; the shorter buckets are the
+        // same figures the single-cadence calculator already produces.
+        XCTAssertEqual(spread.monthly.available, remaining)
+        XCTAssertEqual(spread.monthly.cadence, .monthly)
+        XCTAssertEqual(
+            spread.weekly.available,
+            try BudgetPaceCalculator.pace(
+                remaining: remaining,
+                cadence: .weekly,
+                asOf: asOf,
+                calendar: utcCalendar
+            ).available
+        )
+        XCTAssertEqual(
+            spread.daily.available,
+            try BudgetPaceCalculator.pace(
+                remaining: remaining,
+                cadence: .daily,
+                asOf: asOf,
+                calendar: utcCalendar
+            ).available
+        )
+        for pace in [spread.monthly, spread.weekly, spread.daily] {
+            XCTAssertEqual(pace.remainingDayCount, 29)
+        }
+        XCTAssertLessThanOrEqual(spread.daily.available.amount, spread.weekly.available.amount)
+        XCTAssertLessThanOrEqual(spread.weekly.available.amount, spread.monthly.available.amount)
+    }
+
+    func testPaceSpreadCollapsesToOneDayOnTheFinalReportingDay() throws {
+        let currency = try CurrencyCode("SGD")
+        let asOf = try XCTUnwrap(
+            utcCalendar.date(from: DateComponents(year: 2026, month: 9, day: 30, hour: 9))
+        )
+        let remaining = try Money(45, currency: currency)
+        let spread = try BudgetPaceCalculator.spread(
+            remaining: remaining,
+            asOf: asOf,
+            calendar: utcCalendar
+        )
+
+        // One day left means every horizon is the same money; a week bucket
+        // must never reach past the month it belongs to.
+        XCTAssertEqual(spread.monthly.available, remaining)
+        XCTAssertEqual(spread.weekly.available, remaining)
+        XCTAssertEqual(spread.daily.available, remaining)
+        XCTAssertEqual(spread.daily.remainingDayCount, 1)
+    }
+
     func testHistorySummarySeparatesSpendIncomeAndRefunds() throws {
         let currency = try CurrencyCode("SGD")
         let cash = LedgerAccount(name: "Cash", kind: .asset, currency: currency)

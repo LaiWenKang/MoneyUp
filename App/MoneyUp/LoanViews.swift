@@ -93,7 +93,7 @@ struct LoanCenterView: View {
                         Label("loan.configure", systemImage: "plus.circle")
                     }
                 } footer: {
-                    Text("loan.configure_detail")
+                    MoneyUpExplainer("loan.configure_detail")
                 }
             }
         }
@@ -318,7 +318,7 @@ private struct AddLoanPlanSheet: View {
             Form {
                 Picker("loan.account", selection: $accountID) {
                     ForEach(accounts) { account in
-                        Text(account.name).tag(Optional(account.id))
+                        Text(accountCurrencyLabel(account)).tag(Optional(account.id))
                     }
                 }
                 TextField("loan.name", text: $name)

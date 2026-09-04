@@ -234,8 +234,7 @@ private struct MainTabView: View {
             DashboardView(
                 initialReportingDate: model.currentDateForUserAction(),
                 onOpenLog: { selectedSection = .log },
-                onOpenPlan: { selectedSection = .plan },
-                onOpenAssets: { selectedSection = .assets }
+                onOpenPlan: { selectedSection = .plan }
             )
                 .tabItem { Label("tab.today", systemImage: "house.fill") }
                 .tag(MoneyUpSection.today)

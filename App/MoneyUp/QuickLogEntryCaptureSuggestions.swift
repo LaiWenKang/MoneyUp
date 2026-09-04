@@ -241,7 +241,7 @@ extension QuickLogEntryView {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(account.name)
+                Text(accountCurrencyLabel(account))
                     .font(.body.weight(.medium))
                 Spacer(minLength: 8)
                 if isApplied {

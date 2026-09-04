@@ -45,22 +45,20 @@ struct DashboardView: View {
     @Environment(\.scenePhase) var scenePhase
     @Environment(\.dynamicTypeSize) var dynamicTypeSize
     @State var isShowingFlexibleTodayBreakdown = false
+    @State var isEditingPins = false
     @State var reportingNow: Date?
     @State var reportingClockGeneration = 0
     let onOpenLog: () -> Void
     let onOpenPlan: () -> Void
-    let onOpenAssets: () -> Void
 
     init(
         initialReportingDate: Date? = nil,
         onOpenLog: @escaping () -> Void = {},
-        onOpenPlan: @escaping () -> Void = {},
-        onOpenAssets: @escaping () -> Void = {}
+        onOpenPlan: @escaping () -> Void = {}
     ) {
         _reportingNow = State(initialValue: initialReportingDate)
         self.onOpenLog = onOpenLog
         self.onOpenPlan = onOpenPlan
-        self.onOpenAssets = onOpenAssets
     }
 
     var spendableAccounts: [LedgerAccount] {
@@ -110,9 +108,10 @@ struct DashboardView: View {
         }
     }
 
-    /// Liquid positions outside the base currency. MoneyUp stores no exchange
-    /// rates, so these balances are shown beside the headline figure instead
-    /// of being folded into it.
+    /// Liquid positions outside the base currency. A saved rate estimates net
+    /// worth only where the user supplied one, so these balances are listed
+    /// beside the headline figure rather than folded into it at an invented
+    /// rate.
     var otherCurrencyBalances: DerivedValue<[Money]> {
         guard let base = model.profile?.baseCurrency else {
             return .unavailable(.appNotReady)
@@ -194,33 +193,6 @@ struct DashboardView: View {
             limit: summary.limit.amount,
             operation: "dashboard-budget-ratio"
         )
-    }
-}
-
-struct PositionMetric: View {
-    let title: LocalizedStringKey
-    let value: String
-    let systemImage: String
-    let color: Color
-
-    var body: some View {
-        HStack(spacing: 10) {
-            MoneyUpSymbolBadge(systemImage: systemImage, color: color)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text(value)
-                    .font(.subheadline.monospacedDigit().weight(.semibold))
-                    .lineLimit(1)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(11)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(color.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .accessibilityElement(children: .combine)
     }
 }
 

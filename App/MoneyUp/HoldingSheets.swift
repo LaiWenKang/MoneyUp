@@ -30,7 +30,7 @@ struct AddHoldingSheet: View {
             Form {
                 Picker("transaction.account", selection: $accountID) {
                     ForEach(accounts) { account in
-                        Text(account.name).tag(Optional(account.id))
+                        Text(accountCurrencyLabel(account)).tag(Optional(account.id))
                     }
                 }
                 TextField("holding.symbol", text: $symbol)
@@ -232,7 +232,7 @@ struct HoldingManagementSheet: View {
                             if !migrationAccounts.isEmpty {
                                 Picker("holding.cash_account", selection: $migrationAccountID) {
                                     ForEach(migrationAccounts) { account in
-                                        Text(account.name).tag(Optional(account.id))
+                                        Text(accountCurrencyLabel(account)).tag(Optional(account.id))
                                     }
                                 }
                             } else {

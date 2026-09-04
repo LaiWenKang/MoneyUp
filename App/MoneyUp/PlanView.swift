@@ -1,4 +1,3 @@
-import Charts
 import MoneyUpCore
 import SwiftUI
 
@@ -11,8 +10,23 @@ struct PlanView: View {
         case calendar
     }
 
+    /// The overview is the tab's root rather than a chip, so the chip bar and
+    /// the overview list stop offering the same four destinations twice.
+    fileprivate static let switchableSections: [Section] = [
+        .budget, .calendar, .goals, .allowances
+    ]
+
     @State private var selection: Section = .overview
     @Environment(AppModel.self) private var model
+
+    /// Sections are swapped, not pushed, so the way back to the overview has
+    /// to be published explicitly for each section to place.
+    private var sectionBack: MoneyUpSectionBackAction? {
+        guard selection != .overview else { return nil }
+        return MoneyUpSectionBackAction(titleKey: "plan.overview") {
+            withAnimation(.snappy) { selection = .overview }
+        }
+    }
 
     var body: some View {
         Group {
@@ -20,47 +34,51 @@ struct PlanView: View {
             case .overview:
                 PlanOverviewView { selection = $0 }
             case .budget:
-                BudgetPlanView()
+                BudgetPlanView(sectionBack: sectionBack)
             case .goals:
-                SavingsGoalsView()
+                SavingsGoalsView(sectionBack: sectionBack)
             case .allowances:
-                AllowanceCenterView()
+                AllowanceCenterView(sectionBack: sectionBack)
             case .calendar:
-                CalendarView()
+                CalendarView(
+                    providesNavigationStack: true,
+                    sectionBack: sectionBack
+                )
             }
         }
         .safeAreaInset(edge: .top, spacing: 0) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(
-                        [Section.overview, .budget, .calendar, .goals, .allowances],
-                        id: \.self
-                    ) { section in
-                        Button {
-                            selection = section
-                        } label: {
-                            Label(section.title, systemImage: section.systemImage)
-                                .font(.caption.weight(.semibold))
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
-                                .background(
-                                    selection == section
-                                        ? Color.accentColor.opacity(0.18)
-                                        : Color.secondary.opacity(0.10),
-                                    in: Capsule()
-                                )
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityAddTraits(selection == section ? .isSelected : [])
-                    }
-                }
-                .padding(.horizontal, 16)
-            }
-            .padding(.vertical, 8)
-            .background(.bar)
+            sectionSwitcher
         }
         .environment(\.calendar, model.reportingCalendar)
         .environment(\.timeZone, model.reportingCalendar.timeZone)
+    }
+
+    private var sectionSwitcher: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(Self.switchableSections, id: \.self) { section in
+                    Button {
+                        withAnimation(.snappy) { selection = section }
+                    } label: {
+                        Label(section.title, systemImage: section.systemImage)
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(
+                                selection == section
+                                    ? Color.accentColor.opacity(0.18)
+                                    : Color.secondary.opacity(0.10),
+                                in: Capsule()
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(selection == section ? .isSelected : [])
+                }
+            }
+            .padding(.horizontal, 16)
+        }
+        .padding(.vertical, 8)
+        .background(.bar)
     }
 }
 
@@ -133,7 +151,7 @@ private struct PlanOverviewView: View {
                 } header: {
                     Text("plan.overview.next")
                 } footer: {
-                    Text("plan.overview.detail")
+                    MoneyUpExplainer("plan.overview.detail")
                 }
             }
             .scrollContentBackground(.hidden)
@@ -167,10 +185,10 @@ private struct PlanOverviewView: View {
 }
 
 private struct BudgetPlanView: View {
-    private struct IndentedNode: Identifiable {
-        let node: BudgetNode
-        let depth: Int
-        var id: UUID { node.id }
+    let sectionBack: MoneyUpSectionBackAction?
+
+    init(sectionBack: MoneyUpSectionBackAction? = nil) {
+        self.sectionBack = sectionBack
     }
 
     @Environment(AppModel.self) private var model
@@ -179,6 +197,9 @@ private struct BudgetPlanView: View {
     @State private var categoryKindToAdd: LedgerAccountKind = .expense
     @State private var isManagingCategories = false
     @State private var displayedPacingCadence: BudgetPacingCadence = .daily
+    @State private var errorMessage: String?
+    @AppStorage(MoneyUpDisclosureSection.planBudgetDetail.rawValue)
+    private var showsRowDetail = false
 
     /// How far through the month we are, drawn on every bar so a number can be
     /// read as ahead or behind rather than just large.
@@ -191,18 +212,31 @@ private struct BudgetPlanView: View {
         return min(max(now.timeIntervalSince(month.start) / span, 0), 1)
     }
 
-    private var orderedNodes: [IndentedNode] {
-        var result: [IndentedNode] = []
-        let children = Dictionary(grouping: model.budgetNodes, by: \.parentID)
-
-        func appendChildren(of parentID: UUID?, depth: Int) {
-            for node in (children[parentID] ?? []).sorted(by: { $0.name < $1.name }) {
-                result.append(IndentedNode(node: node, depth: depth))
-                appendChildren(of: node.id, depth: depth + 1)
+    /// Pinning from the budget list keeps the choice next to the category it
+    /// concerns, rather than only inside the Today board's editor.
+    @ViewBuilder
+    private func pinAction(for node: BudgetNode) -> some View {
+        let isPinned = model.isBudgetNodePinned(node.id)
+        if isPinned || model.canPinAnotherBudgetNode {
+            Button {
+                Task { await togglePin(node, isPinned: isPinned) }
+            } label: {
+                Label(
+                    isPinned ? "plan.unpin_from_today" : "plan.pin_to_today",
+                    systemImage: isPinned ? "pin.slash" : "pin"
+                )
             }
+            .tint(.accentColor)
         }
-        appendChildren(of: nil, depth: 0)
-        return result
+    }
+
+    private func togglePin(_ node: BudgetNode, isPinned: Bool) async {
+        do {
+            try await model.setBudgetNodePinned(node.id, isPinned: !isPinned)
+            errorMessage = nil
+        } catch {
+            errorMessage = safeUserMessage(for: error, context: .save)
+        }
     }
 
     private func progressByIDResult() -> DerivedValue<[UUID: BudgetProgress]> {
@@ -239,7 +273,7 @@ private struct BudgetPlanView: View {
                     }
                     .pickerStyle(.segmented)
                 } footer: {
-                    Text("plan.pacing_view_detail")
+                    MoneyUpExplainer("plan.pacing_view_detail")
                 }
 
                 if case let .available(.some(summary)) = summaryResult {
@@ -335,7 +369,7 @@ private struct BudgetPlanView: View {
                             )
                         }
                     } footer: {
-                        Text("plan.foreign_not_counted_detail")
+                        MoneyUpExplainer("plan.foreign_not_counted_detail")
                     }
                 } else if case let .unavailable(issue) = foreignSpendingResult {
                     Section {
@@ -346,7 +380,7 @@ private struct BudgetPlanView: View {
                 Section {
                     switch progressResult {
                     case let .available(progress):
-                        ForEach(orderedNodes) { item in
+                        ForEach(model.budgetNodeOutline) { item in
                             Button {
                                 editingNode = item.node
                             } label: {
@@ -356,13 +390,17 @@ private struct BudgetPlanView: View {
                                     progress: progress[item.node.id],
                                     elapsed: elapsed,
                                     purpose: purposes[item.node.id] ?? .unclassified,
-                                    displayedPacingCadence: displayedPacingCadence
+                                    displayedPacingCadence: displayedPacingCadence,
+                                    showsDetail: showsRowDetail
                                 )
                             }
                             .buttonStyle(.plain)
+                            .swipeActions(edge: .leading) {
+                                pinAction(for: item.node)
+                            }
                         }
                     case let .unavailable(issue):
-                        ForEach(orderedNodes) { item in
+                        ForEach(model.budgetNodeOutline) { item in
                             Button {
                                 editingNode = item.node
                             } label: {
@@ -383,7 +421,7 @@ private struct BudgetPlanView: View {
                 } header: {
                     Text("plan.this_month")
                 } footer: {
-                    Text("plan.rollup_detail")
+                    MoneyUpExplainer("plan.rollup_detail")
                 }
             }
             .scrollContentBackground(.hidden)
@@ -415,8 +453,25 @@ private struct BudgetPlanView: View {
                     .padding()
                 }
             }
-            .navigationTitle("tab.plan")
+            .navigationTitle("plan.budget")
+            .moneyUpSectionBackToolbar(sectionBack)
+            .moneyUpOperationErrorAlert(message: $errorMessage)
             .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        showsRowDetail.toggle()
+                    } label: {
+                        Image(
+                            systemName: showsRowDetail
+                                ? "text.alignleft"
+                                : "line.3.horizontal.decrease"
+                        )
+                    }
+                    .accessibilityLabel("plan.toggle_row_detail")
+                    .accessibilityValue(
+                        showsRowDetail ? "state.expanded" : "state.collapsed"
+                    )
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
                         Button {
@@ -462,6 +517,7 @@ private struct BudgetRow: View {
     let elapsed: Double
     let purpose: BudgetPurpose
     let displayedPacingCadence: BudgetPacingCadence
+    let showsDetail: Bool
 
     private var spent: Money? { progress?.spent }
 
@@ -508,7 +564,9 @@ private struct BudgetRow: View {
             }
 
 
-            if node.limit != nil {
+            if node.limit != nil, showsDetail || purpose == .unclassified {
+                // An unclassified limit is a setup gap the user has to see,
+                // so it stays visible whatever the detail switch says.
                 HStack(spacing: 10) {
                     Label(purpose.titleKey, systemImage: purpose.systemImage)
                     if node.rolloverRule != .none {
@@ -531,15 +589,17 @@ private struct BudgetRow: View {
             if case let .available(.some(ratio)) = ratioResult,
                let limit = progress?.effectiveLimit, let spent {
                 MoneyUpPaceBar(ratio: ratio, elapsed: elapsed)
-                Text(
-                    String(
-                        format: AppLocalization.string("plan.spent_of_limit"),
-                        formattedMoney(spent),
-                        formattedMoney(limit)
+                if showsDetail {
+                    Text(
+                        String(
+                            format: AppLocalization.string("plan.spent_of_limit"),
+                            formattedMoney(spent),
+                            formattedMoney(limit)
+                        )
                     )
-                )
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
                 if let progress {
                     switch model.budgetPace(
                         for: progress,
@@ -629,358 +689,6 @@ private struct BudgetSummaryCard: View {
     }
 }
 
-private struct BudgetSimulatorView: View {
-    private struct ChartPoint: Identifiable {
-        let id: String
-        let label: String
-        let money: Money
-
-        var amount: Double {
-            NSDecimalNumber(decimal: money.amount).doubleValue
-        }
-    }
-
-    @Environment(AppModel.self) private var model
-    @State private var additionalSpendingText = ""
-    @State private var additionalIncomeText = ""
-
-    private var monthElapsed: Double {
-        let calendar = model.reportingCalendar
-        let now = Date()
-        guard let month = calendar.dateInterval(of: .month, for: now) else { return 0 }
-        let span = month.end.timeIntervalSince(month.start)
-        guard span > 0 else { return 0 }
-        return min(max(now.timeIntervalSince(month.start) / span, 0), 1)
-    }
-
-    var body: some View {
-        ScrollView {
-            LazyVStack(spacing: 16) {
-                MoneyUpCard {
-                    ViewThatFits(in: .horizontal) {
-                        HStack(spacing: 16) {
-                            simulatorIntroduction
-                            MoneyUpIllustration("MoneyUpScenarioStudio", role: .inline)
-                        }
-                        VStack(spacing: 12) {
-                            MoneyUpIllustration("MoneyUpScenarioStudio", role: .empty)
-                            simulatorIntroduction
-                        }
-                    }
-                }
-
-                switch (
-                    model.budgetPlanSummaryThisMonthResult(),
-                    model.reportResult(for: .thisMonth)
-                ) {
-                case let (.available(.some(summary)), .available(report)):
-                    simulator(summary: summary, report: report)
-                case (.available(.none), _):
-                    MoneyUpCard {
-                        ContentUnavailableView(
-                            "simulator.needs_budget",
-                            systemImage: "chart.pie",
-                            description: Text("simulator.needs_budget_detail")
-                        )
-                    }
-                case let (.unavailable(issue), _), let (_, .unavailable(issue)):
-                    MoneyUpCard {
-                        DerivedValueUnavailableView(issue: issue, prominent: true)
-                    }
-                }
-            }
-            .padding()
-        }
-        .background { MoneyUpBackdrop() }
-        .navigationTitle("simulator.title")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar { MoneyUpKeyboardDoneToolbar() }
-    }
-
-    private var simulatorIntroduction: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label("simulator.preview_only", systemImage: "eye.fill")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.tint)
-            Text("simulator.title")
-                .font(.title2.bold())
-            Text("simulator.detail")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    @ViewBuilder
-    private func simulator(
-        summary: BudgetPlanSummary,
-        report: PeriodReport
-    ) -> some View {
-        let currency = summary.limit.currency
-        let additionalSpending = parsedAmount(
-            additionalSpendingText,
-            currency: currency
-        )
-        let additionalIncome = parsedAmount(
-            additionalIncomeText,
-            currency: currency
-        )
-
-        MoneyUpCard {
-            VStack(alignment: .leading, spacing: 14) {
-                Label("simulator.adjust", systemImage: "slider.horizontal.3")
-                    .font(.headline)
-
-                scenarioField(
-                    "simulator.additional_spending",
-                    text: $additionalSpendingText,
-                    currency: currency,
-                    validationMessage: additionalSpending == nil
-                        ? AppLocalization.string("simulator.invalid_amount")
-                        : nil
-                )
-
-                Divider()
-
-                scenarioField(
-                    "simulator.additional_income",
-                    text: $additionalIncomeText,
-                    currency: currency,
-                    validationMessage: additionalIncome == nil
-                        ? AppLocalization.string("simulator.invalid_amount")
-                        : nil
-                )
-
-                Button("simulator.reset") {
-                    additionalSpendingText = ""
-                    additionalIncomeText = ""
-                }
-                .font(.subheadline.weight(.semibold))
-                .disabled(additionalSpendingText.isEmpty && additionalIncomeText.isEmpty)
-            }
-        }
-
-        if let additionalSpending, let additionalIncome {
-            if let forecast = try? FinanceCalculator.budgetScenario(
-                currentSpent: summary.spent,
-                budgetLimit: summary.limit,
-                currentIncome: report.baseFlow.income,
-                additionalSpending: additionalSpending,
-                additionalIncome: additionalIncome
-            ) {
-                forecastCards(forecast)
-            } else {
-                MoneyUpCard {
-                    Text("simulator.unavailable")
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
-    }
-
-    private func scenarioField(
-        _ title: LocalizedStringKey,
-        text: Binding<String>,
-        currency: CurrencyCode,
-        validationMessage: String?
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 7) {
-            HStack {
-                Text(title)
-                    .font(.subheadline.weight(.semibold))
-                Spacer()
-                Text(currency.value)
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
-            }
-            TextField("simulator.amount_placeholder", text: text)
-                .moneyAmountKeyboard(currency: currency)
-                .textFieldStyle(.roundedBorder)
-                .moneyUpFieldValidation(validationMessage)
-            if let validationMessage {
-                MoneyUpFieldError(message: validationMessage)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func forecastCards(_ forecast: BudgetScenarioForecast) -> some View {
-        let points = [
-            ChartPoint(
-                id: "current",
-                label: AppLocalization.string("simulator.current"),
-                money: forecast.currentSpent
-            ),
-            ChartPoint(
-                id: "projected",
-                label: AppLocalization.string("simulator.projected"),
-                money: forecast.projectedSpent
-            )
-        ]
-        let limit = NSDecimalNumber(decimal: forecast.budgetLimit.amount).doubleValue
-        let isOver = forecast.projectedRemaining.amount < .zero
-        let budgetUsage = budgetUsageResult(forecast)
-
-        forecastSpendingCard(
-            forecast,
-            points: points,
-            limit: limit,
-            isOver: isOver,
-            budgetUsage: budgetUsage
-        )
-        forecastSummaryCard(forecast, isOver: isOver)
-    }
-
-    private func forecastSpendingCard(
-        _ forecast: BudgetScenarioForecast,
-        points: [ChartPoint],
-        limit: Double,
-        isOver: Bool,
-        budgetUsage: DerivedValue<Decimal?>
-    ) -> some View {
-        MoneyUpCard {
-            VStack(alignment: .leading, spacing: 14) {
-                Label("simulator.spending_chart", systemImage: "chart.bar.xaxis")
-                    .font(.headline)
-
-                Chart {
-                    ForEach(points) { point in
-                        BarMark(
-                            x: .value(
-                                AppLocalization.string("chart.dimension.scenario"),
-                                point.label
-                            ),
-                            y: .value(
-                                AppLocalization.string("chart.dimension.amount"),
-                                point.amount
-                            )
-                        )
-                        .foregroundStyle(
-                            point.id == "current"
-                                ? Color.secondary
-                                : (isOver ? Color.red : Color.accentColor)
-                        )
-                        .annotation(position: .top) {
-                            Text(formattedMoney(point.money))
-                                .font(.caption2.monospacedDigit())
-                        }
-                        .accessibilityLabel(point.label)
-                        .accessibilityValue(formattedMoney(point.money))
-                    }
-
-                    RuleMark(
-                        y: .value(
-                            AppLocalization.string("chart.dimension.budget"),
-                            limit
-                        )
-                    )
-                        .lineStyle(StrokeStyle(lineWidth: 2, dash: [5, 4]))
-                        .foregroundStyle(Color.primary.opacity(0.55))
-                        .annotation(position: .top, alignment: .trailing) {
-                            Text("simulator.budget_line")
-                                .font(.caption2.weight(.semibold))
-                        }
-                        .accessibilityLabel("simulator.budget_line")
-                        .accessibilityValue(formattedMoney(forecast.budgetLimit))
-                }
-                .frame(height: 240)
-                .chartLegend(.hidden)
-                .accessibilityLabel(Text("simulator.chart_accessibility"))
-
-                if case let .available(.some(ratio)) = budgetUsage {
-                    MoneyUpPaceBar(
-                        ratio: NSDecimalNumber(decimal: ratio).doubleValue,
-                        elapsed: monthElapsed
-                    )
-                } else if case let .unavailable(issue) = budgetUsage {
-                    DerivedValueUnavailableView(issue: issue)
-                }
-            }
-        }
-    }
-
-    private func forecastSummaryCard(
-        _ forecast: BudgetScenarioForecast,
-        isOver: Bool
-    ) -> some View {
-        MoneyUpCard {
-            VStack(alignment: .leading, spacing: 14) {
-                Label {
-                    Text(
-                        isOver
-                            ? LocalizedStringKey("simulator.projected_over")
-                            : LocalizedStringKey("simulator.projected_left")
-                    )
-                } icon: {
-                    Image(
-                        systemName: isOver
-                            ? "exclamationmark.triangle.fill"
-                            : "checkmark.circle.fill"
-                    )
-                }
-                .font(.headline)
-                .foregroundStyle(isOver ? Color.red : Color.primary)
-
-                Text(
-                    formattedMoney(
-                        isOver
-                            ? forecast.projectedRemaining.negated
-                            : forecast.projectedRemaining
-                    )
-                )
-                .font(.system(.largeTitle, design: .rounded, weight: .bold))
-                .monospacedDigit()
-
-                Divider()
-
-                LabeledContent("simulator.projected_income") {
-                    Text(formattedMoney(forecast.projectedIncome))
-                        .monospacedDigit()
-                }
-                LabeledContent("simulator.projected_spending") {
-                    Text(formattedMoney(forecast.projectedSpent))
-                        .monospacedDigit()
-                }
-                LabeledContent("simulator.projected_net") {
-                    Text(formattedMoney(forecast.projectedNet))
-                        .monospacedDigit()
-                }
-
-                Text("simulator.no_changes_saved")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    private func budgetUsageResult(
-        _ forecast: BudgetScenarioForecast
-    ) -> DerivedValue<Decimal?> {
-        do {
-            return .available(try forecast.budgetUsage())
-        } catch {
-            DerivedValueDiagnostics.record(
-                .amountCalculationFailed,
-                operation: "budget-scenario-usage",
-                error: error
-            )
-            return .unavailable(.amountCalculationFailed)
-        }
-    }
-
-    private func parsedAmount(
-        _ text: String,
-        currency: CurrencyCode
-    ) -> Decimal? {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return .zero }
-        guard let amount = decimalAmount(from: trimmed),
-              amount >= .zero,
-              currency.supports(amount) else { return nil }
-        return amount
-    }
-}
-
 private struct BudgetEditorSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AppModel.self) private var model
@@ -1024,7 +732,7 @@ private struct BudgetEditorSheet: View {
                 } header: {
                     Text("plan.purpose")
                 } footer: {
-                    Text("plan.purpose_detail")
+                    MoneyUpExplainer("plan.purpose_detail")
                 }
                 if purpose == .flexible {
                     Section {
@@ -1034,7 +742,7 @@ private struct BudgetEditorSheet: View {
                             }
                         }
                     } footer: {
-                        Text("plan.pacing_detail")
+                        MoneyUpExplainer("plan.pacing_detail")
                     }
                 }
             }

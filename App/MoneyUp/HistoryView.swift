@@ -603,7 +603,9 @@ struct HistoryView: View {
             .toolbar {
                 ToolbarItemGroup(placement: .primaryAction) {
                     NavigationLink {
-                        CalendarView()
+                        // Pushed onto History's stack, so it must not create a
+                        // second one that would hide the system back button.
+                        CalendarView(providesNavigationStack: false)
                     } label: {
                         Image(systemName: "calendar")
                     }

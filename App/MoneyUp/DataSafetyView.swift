@@ -274,7 +274,7 @@ struct DataSafetyView: View {
                 } header: {
                     Text("inventory.title")
                 } footer: {
-                    Text("inventory.detail")
+                    MoneyUpExplainer("inventory.detail")
                 }
 
                 Section {

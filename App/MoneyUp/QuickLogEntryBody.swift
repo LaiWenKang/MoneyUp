@@ -66,7 +66,7 @@ extension QuickLogEntryView {
                         )
                     ) {
                         ForEach(model.userAccounts) { account in
-                            Text(account.name).tag(Optional(account.id))
+                            Text(accountCurrencyLabel(account)).tag(Optional(account.id))
                         }
                     }
 
@@ -79,7 +79,7 @@ extension QuickLogEntryView {
                             )
                         ) {
                             ForEach(model.userAccounts.filter { $0.id != accountID }) { account in
-                                Text(account.name).tag(Optional(account.id))
+                                Text(accountCurrencyLabel(account)).tag(Optional(account.id))
                             }
                         }
                         if isForeignCurrencyTransfer {

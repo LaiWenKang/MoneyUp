@@ -14502,7 +14502,8 @@ private final class MutableTestDate: @unchecked Sendable {
     }
 }
 
-private struct AppModelFixture {
+/// Shared by every app-target suite that needs a real encrypted store.
+struct AppModelFixture {
     let directoryURL: URL
     let databaseURL: URL
     let store: EncryptedRecordStore

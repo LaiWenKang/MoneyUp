@@ -66,7 +66,7 @@ struct ExchangeRatesView: View {
             } header: {
                 Text("fx.add_rate")
             } footer: {
-                Text("fx.rate_detail")
+                MoneyUpExplainer("fx.rate_detail")
             }
 
             Section {
@@ -109,7 +109,7 @@ struct ExchangeRatesView: View {
             } header: {
                 Text("fx.saved_rates")
             } footer: {
-                Text("fx.estimated_detail")
+                MoneyUpExplainer("fx.estimated_detail")
             }
 
         }
