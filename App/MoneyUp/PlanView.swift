@@ -40,7 +40,7 @@ struct PlanView: View {
 
     var body: some View {
         let _ = hidesAmounts
-        Group {
+        return Group {
             switch selection {
             case .overview:
                 PlanOverviewView { selection = $0 }

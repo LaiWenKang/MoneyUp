@@ -108,7 +108,7 @@ struct InsightsView: View {
 
     var body: some View {
         let _ = hidesAmounts
-        ScrollView {
+        return ScrollView {
             LazyVStack(spacing: MoneyUpLayout.standardSpacing) {
                 periodCard
                 IntelligenceSummaryLink()

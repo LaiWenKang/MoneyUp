@@ -6,7 +6,7 @@ import UIKit
 extension TransactionEditView {
     var body: some View {
         let _ = hidesAmounts
-        NavigationStack {
+        return NavigationStack {
             ScrollViewReader { scrollProxy in
             Form {
                 if isEditable {

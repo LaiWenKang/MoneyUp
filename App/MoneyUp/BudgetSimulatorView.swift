@@ -40,7 +40,7 @@ struct BudgetSimulatorView: View {
 
     var body: some View {
         let _ = hidesAmounts
-        ScrollView {
+        return ScrollView {
             LazyVStack(spacing: 16) {
                 MoneyUpCard {
                     ViewThatFits(in: .horizontal) {

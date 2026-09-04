@@ -9,7 +9,7 @@ extension DashboardView {
     /// repeated here.
     var body: some View {
         let _ = hidesAmounts
-        NavigationStack {
+        return NavigationStack {
             ScrollView {
                 LazyVStack(spacing: 16) {
                     headline

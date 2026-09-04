@@ -333,7 +333,7 @@ struct HistoryView: View {
 
     var body: some View {
         let _ = hidesAmounts
-        List {
+        return List {
             Section {
                 Picker("history.scope", selection: $quickRange) {
                     ForEach(HistoryQuickRange.allCases, id: \.self) { range in

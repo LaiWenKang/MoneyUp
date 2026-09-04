@@ -105,7 +105,7 @@ struct AssetsView: View {
 
     var body: some View {
         let _ = hidesAmounts
-        NavigationStack {
+        return NavigationStack {
             List {
                 Section {
                     VStack(alignment: .leading, spacing: 5) {
