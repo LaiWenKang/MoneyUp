@@ -1,6 +1,7 @@
 import Foundation
 import MoneyUpCore
 import PhotosUI
+import SwiftUI
 
 extension QuickLogEntryView {
     func addEvidencePhotos(_ items: [PhotosPickerItem]) async {

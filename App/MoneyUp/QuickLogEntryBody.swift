@@ -6,12 +6,22 @@ import SwiftUI
 import UIKit
 
 extension QuickLogEntryView {
-    @ViewBuilder
     var body: some View {
-        let historicalFXConversionResult = historicalFXConversion
+        quickLogPresentation
+    }
+
+    private var quickLogNavigation: some View {
         NavigationStack {
             ScrollViewReader { scrollProxy in
-            Form {
+                quickLogForm(scrollProxy: scrollProxy)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var quickLogFormContent: some View {
+        let historicalFXConversionResult = historicalFXConversion
+        Form {
                 if dynamicTypeSize.isAccessibilitySize {
                     kindPicker(style: .menu)
                 } else {
@@ -193,7 +203,15 @@ extension QuickLogEntryView {
                     }
                 }
 
-            }
+        }
+    }
+
+    private func quickLogForm(scrollProxy: ScrollViewProxy) -> some View {
+        quickLogFinalForm(scrollProxy: scrollProxy)
+    }
+
+    private var quickLogFormChrome: some View {
+        quickLogFormContent
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
             .disabled(isSaving || isUndoing)
@@ -253,6 +271,10 @@ extension QuickLogEntryView {
                     .fontWeight(.semibold)
                 }
             }
+    }
+
+    private var quickLogPrimaryLifecycle: some View {
+        quickLogFormChrome
             .onAppear {
                 refreshUserActionTimeContext()
                 restoreDraftIfAvailable()
@@ -309,6 +331,10 @@ extension QuickLogEntryView {
                 }
                 persistUserDraftChange { $0.splitLines = splitLines }
             }
+    }
+
+    private var quickLogReceiptLifecycle: some View {
+        quickLogPrimaryLifecycle
             .onChange(of: launchRequest) { _, _ in
                 handleRequestedLaunch()
             }
@@ -365,6 +391,10 @@ extension QuickLogEntryView {
                     )
                 }
             }
+    }
+
+    private func quickLogFocusLifecycle(scrollProxy: ScrollViewProxy) -> some View {
+        quickLogReceiptLifecycle
             .onChange(of: evidencePhotoItems) { _, items in
                 guard !items.isEmpty else { return }
                 evidencePreparationTask?.cancel()
@@ -406,6 +436,10 @@ extension QuickLogEntryView {
                     }
                 }
             }
+    }
+
+    private func quickLogFinalForm(scrollProxy: ScrollViewProxy) -> some View {
+        quickLogFocusLifecycle(scrollProxy: scrollProxy)
             .onDisappear {
                 cancelReceiptProcessing()
                 cancelCaptureSuggestionLookup()
@@ -436,8 +470,10 @@ extension QuickLogEntryView {
                 }
             }
             .sheet(isPresented: $isManagingCategories) { CategoryManagementList() }
-            }
-        }
+    }
+
+    private var quickLogBase: some View {
+        quickLogNavigation
         .safeAreaInset(edge: .bottom) {
             if let lastSavedEntryID {
                 HStack(spacing: 12) {
@@ -492,6 +528,10 @@ extension QuickLogEntryView {
         )
         .interactiveDismissDisabled(isSaving)
         .presentationDetents([.large])
+    }
+
+    private var quickLogDialogs: some View {
+        quickLogBase
         .confirmationDialog(
             "quick_log.unfinished_title",
             isPresented: $isConfirmingDraftSwitch,
@@ -556,6 +596,10 @@ extension QuickLogEntryView {
         } message: {
             Text(duplicateReviewMessage)
         }
+    }
+
+    private var quickLogPresentation: some View {
+        quickLogDialogs
         .moneyUpOperationErrorAlert(message: $errorMessage)
         .environment(\.calendar, captureCalendar)
         .environment(\.timeZone, captureCalendar.timeZone)
