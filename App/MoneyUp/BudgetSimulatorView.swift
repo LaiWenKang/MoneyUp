@@ -6,6 +6,11 @@ import SwiftUI
 /// any report; every figure is recomputed from the live plan plus the
 /// amounts typed here.
 struct BudgetSimulatorView: View {
+    private enum Field: Hashable {
+        case spending
+        case income
+    }
+
     private struct ChartPoint: Identifiable {
         let id: String
         let label: String
@@ -17,8 +22,12 @@ struct BudgetSimulatorView: View {
     }
 
     @Environment(AppModel.self) private var model
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AppStorage(MoneyAmountPrivacy.storageKey)
+    private var hidesAmounts = MoneyAmountPrivacy.defaultHidesAmounts
     @State private var additionalSpendingText = ""
     @State private var additionalIncomeText = ""
+    @FocusState private var focusedField: Field?
 
     private var monthElapsed: Double {
         let calendar = model.reportingCalendar
@@ -30,6 +39,7 @@ struct BudgetSimulatorView: View {
     }
 
     var body: some View {
+        let _ = hidesAmounts
         ScrollView {
             LazyVStack(spacing: 16) {
                 MoneyUpCard {
@@ -70,7 +80,12 @@ struct BudgetSimulatorView: View {
         .background { MoneyUpBackdrop() }
         .navigationTitle("simulator.title")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar { MoneyUpKeyboardDoneToolbar() }
+        .toolbar {
+            MoneyUpKeyboardDoneToolbar()
+            ToolbarItem(placement: .primaryAction) {
+                MoneyUpAmountPrivacyButton()
+            }
+        }
     }
 
     private var simulatorIntroduction: some View {
@@ -111,6 +126,7 @@ struct BudgetSimulatorView: View {
                     "simulator.additional_spending",
                     text: $additionalSpendingText,
                     currency: currency,
+                    field: .spending,
                     validationMessage: additionalSpending == nil
                         ? AppLocalization.string("simulator.invalid_amount")
                         : nil
@@ -122,6 +138,7 @@ struct BudgetSimulatorView: View {
                     "simulator.additional_income",
                     text: $additionalIncomeText,
                     currency: currency,
+                    field: .income,
                     validationMessage: additionalIncome == nil
                         ? AppLocalization.string("simulator.invalid_amount")
                         : nil
@@ -158,6 +175,7 @@ struct BudgetSimulatorView: View {
         _ title: LocalizedStringKey,
         text: Binding<String>,
         currency: CurrencyCode,
+        field: Field,
         validationMessage: String?
     ) -> some View {
         VStack(alignment: .leading, spacing: 7) {
@@ -171,8 +189,17 @@ struct BudgetSimulatorView: View {
             }
             TextField("simulator.amount_placeholder", text: text)
                 .moneyAmountKeyboard(currency: currency)
+                .focused($focusedField, equals: field)
                 .textFieldStyle(.roundedBorder)
                 .moneyUpFieldValidation(validationMessage)
+                .moneyUpPrivateAmountInput(
+                    masked: hidesAmounts
+                        && focusedField != field
+                        && !text.wrappedValue.isEmpty,
+                    accessibilityLabel: Text(title)
+                ) {
+                    focusedField = field
+                }
             if let validationMessage {
                 MoneyUpFieldError(message: validationMessage)
             }
@@ -241,7 +268,7 @@ struct BudgetSimulatorView: View {
                                 .font(.caption2.monospacedDigit())
                         }
                         .accessibilityLabel(point.label)
-                        .accessibilityValue(formattedMoney(point.money))
+                        .accessibilityValue(accessibleFormattedMoney(point.money))
                     }
 
                     RuleMark(
@@ -257,11 +284,20 @@ struct BudgetSimulatorView: View {
                                 .font(.caption2.weight(.semibold))
                         }
                         .accessibilityLabel("simulator.budget_line")
-                        .accessibilityValue(formattedMoney(forecast.budgetLimit))
+                        .accessibilityValue(
+                            accessibleFormattedMoney(forecast.budgetLimit)
+                        )
                 }
                 .frame(height: 240)
                 .chartLegend(.hidden)
                 .accessibilityLabel(Text("simulator.chart_accessibility"))
+                .animation(
+                    MoneyUpMotion.animation(
+                        for: .stateChange,
+                        reduceMotion: reduceMotion
+                    ),
+                    value: forecast.projectedSpent.amount
+                )
 
                 if case let .available(.some(ratio)) = budgetUsage {
                     MoneyUpPaceBar(

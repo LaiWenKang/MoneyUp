@@ -11,8 +11,8 @@ on-device charts, accounts and holdings, and spreadsheet-friendly export.
 MoneyUp's source app identity is **Founders Beta 0.7.1 (source build 11)**.
 This candidate extends the feedback baseline merged through pull request #40
 with exact split assistance, stronger keyboard avoidance, direct hierarchical
-category management, default-on eligible on-device assistance, composable
-History filters, general loan purposes, optional tab gestures, account-aware
+category management, default-on eligible on-device assistance, useful
+History shortcuts, general loan purposes, optional tab gestures, account-aware
 allowances, selectable pacing, a Plan overview, and a privacy-safe Smart
 Overview widget. A second feedback pass then made every amount name its own
 currency where a symbol would be ambiguous, rebuilt Today around user-pinned
@@ -21,6 +21,10 @@ that another tab already owned, and gave every swapped Plan section an
 explicit way back. A density pass then moved routine explanation behind a
 single glyph, gave Today's cards a headline figure with their supporting rows
 one tap away, and replaced captions that named a figure with the symbol for it.
+The current feedback pass defaults exact amounts to glance-private masking,
+replaces generic History chips with actual hot categories, surfaces the budget
+simulator and interactive chart preview, removes duplicate navigation, and adds
+Reduce-Motion-safe spring, selection, and press feedback.
 The prior merged baseline passed release,
 architecture, recovery, privacy, core/app-model, unsigned app/widget Simulator,
 and serial performance CI; build 11 must repeat those exact-head gates. Physical iPhone migration,
@@ -59,7 +63,8 @@ The beta includes:
   once categories are pinned; bills, debt, and goals never become discretionary
   money, and separate cash-versus-debt positioning is unchanged;
 - tappable category and monthly-flow charts that inspect exact values and open
-  History with the matching category/date filters;
+  History with the matching category/date filters, plus a six-month net-flow
+  preview on Today;
 - a read-only budget what-if simulator for additional spending and income that
   never mutates the ledger, budget, or reports;
 - explicit reporting of money held or spent outside the base currency, which is
@@ -69,6 +74,10 @@ The beta includes:
   locale symbol, with explicit symbol-only and code-always settings, a live
   sample of every currency held, and account pickers that name the currency
   they are about to record money in;
+- a default-on glance-privacy preference that renders exact amounts as `*****`
+  across amount-heavy surfaces, is available from every primary money screen
+  and Settings, and reveals a populated Log amount only when the user taps it
+  to edit before remasking on blur;
 - bank, cash, e-wallet, card, loan, brokerage, and investment accounts with
   atomic rename, archive, merge, and delete-with-reassignment workflows;
 - loan plans attached to liability accounts with remaining principal, total
@@ -109,10 +118,11 @@ The beta includes:
   direct searchable category management with visible arbitrary-depth child
   creation, rename, reparent, archive/restore, merge, reassignment, and deletion;
 - a searchable, filterable, date-indexed History tab with Today, seven-day,
-  month, and all-time scopes plus composable review, split, recurring,
-  allowance, and notes filters; complete per-currency spending, income, refunds,
+  month, and all-time scopes plus hot-category shortcuts derived from bounded
+  recent frequency and recency; complete advanced account/category/kind/date/amount
+  filters; complete per-currency spending, income, refunds,
   and net summaries; visible title, notes, and hierarchical category paths;
-  direct Calendar access; encrypted keyset paging; refunds; and atomic
+  encrypted keyset paging; refunds; and atomic
   transaction editing, including exact N-way category splits with live
   remainder; prior versions are retained in the encrypted revision collection;
 - configurable privacy-redacted Home and Lock Screen widgets for expense,

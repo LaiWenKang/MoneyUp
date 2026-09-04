@@ -4,6 +4,8 @@ import UniformTypeIdentifiers
 
 struct AssetsView: View {
     @Environment(AppModel.self) private var model
+    @AppStorage(MoneyAmountPrivacy.storageKey)
+    private var hidesAmounts = MoneyAmountPrivacy.defaultHidesAmounts
     @State private var isAddingAccount = false
     @State private var isAddingHolding = false
     @State private var editingAccount: LedgerAccount?
@@ -102,6 +104,7 @@ struct AssetsView: View {
     }
 
     var body: some View {
+        let _ = hidesAmounts
         NavigationStack {
             List {
                 Section {
@@ -486,6 +489,11 @@ struct AssetsView: View {
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
             .navigationTitle("tab.assets")
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    MoneyUpAmountPrivacyButton()
+                }
+            }
             .sheet(isPresented: $isAddingAccount) {
                 AddAccountSheet()
             }

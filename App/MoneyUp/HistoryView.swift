@@ -1,5 +1,4 @@
 import MoneyUpCore
-import MoneyUpIntelligence
 import MoneyUpPersistence
 import SwiftUI
 import UIKit
@@ -150,8 +149,6 @@ private struct HistoryLoadIdentifier: Equatable {
     let filters: HistoryFilterDraft
     let refreshGeneration: Int
     let logicalBookRevision: UInt64
-    let smartFilters: Set<HistorySmartFilter>
-    let smartEntryIDs: Set<UUID>?
 }
 
 private struct HistoryPerformanceMeasurement {
@@ -182,31 +179,61 @@ private enum HistoryQuickRange: String, CaseIterable, Hashable {
     }
 }
 
-private enum HistorySmartFilter: String, CaseIterable, Hashable {
-    case needsReview
-    case split
-    case recurring
-    case allowance
-    case notes
+struct HistoryHotCategory: Equatable, Identifiable {
+    let id: UUID
+    let occurrenceCount: Int
+    let mostRecentOccurrence: Date
+}
 
-    var title: LocalizedStringKey {
-        switch self {
-        case .needsReview: "history.smart.needs_review"
-        case .split: "history.smart.split"
-        case .recurring: "history.smart.recurring"
-        case .allowance: "history.smart.allowance"
-        case .notes: "history.smart.notes"
-        }
-    }
+/// Ranks categories from the bounded recent-activity cache, not feature-shaped
+/// filters that are often empty. Frequency leads; recency and UUID provide
+/// stable deterministic tie-breaks. One split entry counts once per category.
+enum HistoryHotCategoryRanker {
+    static func ranked(
+        entries: some Sequence<JournalEntry>,
+        accounts: some Sequence<LedgerAccount>,
+        limit: Int = 5
+    ) -> [HistoryHotCategory] {
+        guard limit > 0 else { return [] }
+        let eligibleIDs = Set(accounts.lazy.filter {
+            !$0.isArchived
+                && $0.systemRole == nil
+                && ($0.kind == .expense || $0.kind == .income)
+        }.map(\.id))
+        var counts: [UUID: Int] = [:]
+        var recency: [UUID: Date] = [:]
 
-    var systemImage: String {
-        switch self {
-        case .needsReview: "exclamationmark.magnifyingglass"
-        case .split: "square.split.2x1"
-        case .recurring: "repeat"
-        case .allowance: "giftcard"
-        case .notes: "note.text"
+        for entry in entries {
+            let categoryIDs = Set(entry.postings.lazy.compactMap { posting in
+                eligibleIDs.contains(posting.accountID) ? posting.accountID : nil
+            })
+            for categoryID in categoryIDs {
+                counts[categoryID, default: 0] += 1
+                recency[categoryID] = max(
+                    recency[categoryID] ?? .distantPast,
+                    entry.occurredAt
+                )
+            }
         }
+
+        return counts.map { categoryID, count in
+            HistoryHotCategory(
+                id: categoryID,
+                occurrenceCount: count,
+                mostRecentOccurrence: recency[categoryID] ?? .distantPast
+            )
+        }
+        .sorted { lhs, rhs in
+            if lhs.occurrenceCount != rhs.occurrenceCount {
+                return lhs.occurrenceCount > rhs.occurrenceCount
+            }
+            if lhs.mostRecentOccurrence != rhs.mostRecentOccurrence {
+                return lhs.mostRecentOccurrence > rhs.mostRecentOccurrence
+            }
+            return lhs.id.uuidString < rhs.id.uuidString
+        }
+        .prefix(limit)
+        .map { $0 }
     }
 }
 
@@ -224,6 +251,9 @@ struct HistoryView: View {
     }
 
     @Environment(AppModel.self) private var model
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AppStorage(MoneyAmountPrivacy.storageKey)
+    private var hidesAmounts = MoneyAmountPrivacy.defaultHidesAmounts
     @State private var searchText = ""
     @State private var appliedSearchText = ""
     @State private var filters: HistoryFilterDraft
@@ -247,45 +277,16 @@ struct HistoryView: View {
     @State private var paginationPerformanceMeasurement:
         HistoryPerformanceMeasurement?
     @State private var quickRange: HistoryQuickRange?
-    @State private var smartFilters = Set<HistorySmartFilter>()
     init(preset: HistoryPreset? = nil) {
         _filters = State(initialValue: HistoryFilterDraft(preset: preset))
         _quickRange = State(initialValue: preset == nil ? .today : nil)
     }
 
     private var query: HistoryQuery {
-        var result = filters.query(
+        filters.query(
             searchText: appliedSearchText,
             calendar: model.reportingCalendar
         )
-        result.requiresSplitTransaction = smartFilters.contains(.split)
-        result.requiresNote = smartFilters.contains(.notes)
-
-        var exactScopes: [Set<UUID>] = []
-        if smartFilters.contains(.needsReview) {
-            let ids = model.intelligenceFindings.reduce(into: Set<UUID>()) { result, finding in
-                guard finding.kind == .possibleDuplicate || finding.kind == .categoryAnomaly,
-                      case let .history(entryIDs, _) = finding.route else { return }
-                result.formUnion(entryIDs)
-            }
-            exactScopes.append(ids)
-        }
-        if smartFilters.contains(.recurring) {
-            exactScopes.append(Set(
-                model.scheduledTransactions.flatMap(\.resolutions).compactMap(\.linkedEntryID)
-            ))
-        }
-        if smartFilters.contains(.allowance) {
-            exactScopes.append(Set(
-                model.allowancePlans.flatMap(\.usages).compactMap(\.linkedJournalEntryID)
-            ))
-        }
-        if let first = exactScopes.first {
-            result.requiredEntryIDs = exactScopes.dropFirst().reduce(first) {
-                $0.intersection($1)
-            }
-        }
-        return result
     }
 
     private var loadIdentifier: HistoryLoadIdentifier {
@@ -293,14 +294,20 @@ struct HistoryView: View {
             searchText: appliedSearchText,
             filters: filters,
             refreshGeneration: refreshGeneration,
-            logicalBookRevision: model.logicalBookRevision,
-            smartFilters: smartFilters,
-            smartEntryIDs: query.requiredEntryIDs
+            logicalBookRevision: model.logicalBookRevision
         )
     }
 
     private var hasAdvancedFilters: Bool {
-        (quickRange == nil && filters.hasActiveFilters) || !smartFilters.isEmpty
+        filters.categoryIDs != nil
+            || (quickRange == nil && filters.hasActiveFilters)
+    }
+
+    private var hotCategories: [HistoryHotCategory] {
+        HistoryHotCategoryRanker.ranked(
+            entries: model.entries,
+            accounts: model.accounts
+        )
     }
 
     private var dayGroups: [HistoryDayGroup] {
@@ -325,61 +332,82 @@ struct HistoryView: View {
     }
 
     var body: some View {
+        let _ = hidesAmounts
         List {
-                Section {
-                    Picker("history.scope", selection: $quickRange) {
-                        ForEach(HistoryQuickRange.allCases, id: \.self) { range in
-                            Text(range.title).tag(Optional(range))
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .onChange(of: quickRange) { _, range in
-                        if let range { applyQuickRange(range) }
+            Section {
+                Picker("history.scope", selection: $quickRange) {
+                    ForEach(HistoryQuickRange.allCases, id: \.self) { range in
+                        Text(range.title).tag(Optional(range))
                     }
                 }
-                .listRowBackground(Color.clear)
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .onChange(of: quickRange) { _, range in
+                    if let range { applyQuickRange(range) }
+                }
+            }
+            .listRowBackground(Color.clear)
 
+            if !hotCategories.isEmpty {
                 Section {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
-                            ForEach(HistorySmartFilter.allCases, id: \.self) { filter in
+                            ForEach(hotCategories) { hotCategory in
+                                let selectedIDs = Set([hotCategory.id])
+                                let isSelected = filters.categoryIDs == selectedIDs
                                 Button {
-                                    if !smartFilters.insert(filter).inserted {
-                                        smartFilters.remove(filter)
+                                    withAnimation(
+                                        MoneyUpMotion.animation(
+                                            for: .selection,
+                                            reduceMotion: reduceMotion
+                                        )
+                                    ) {
+                                        filters.categoryIDs = isSelected
+                                            ? nil
+                                            : selectedIDs
+                                        filters.categoryPostingCurrency = nil
                                     }
                                 } label: {
-                                    Label(filter.title, systemImage: filter.systemImage)
+                                    Label(
+                                        model.categoryPathName(for: hotCategory.id),
+                                        systemImage: isSelected
+                                            ? "checkmark.circle.fill"
+                                            : "circle"
+                                    )
                                         .font(.caption.weight(.semibold))
                                         .padding(.horizontal, 12)
                                         .padding(.vertical, 8)
                                         .background(
-                                            smartFilters.contains(filter)
+                                            isSelected
                                                 ? Color.accentColor.opacity(0.18)
                                                 : Color.secondary.opacity(0.12),
                                             in: Capsule()
                                         )
+                                        .overlay {
+                                            Capsule()
+                                                .stroke(
+                                                    isSelected
+                                                        ? Color.accentColor.opacity(0.50)
+                                                        : Color.clear,
+                                                    lineWidth: 1
+                                                )
+                                        }
                                 }
-                                .buttonStyle(.plain)
+                                .buttonStyle(MoneyUpPressableButtonStyle())
                                 .accessibilityAddTraits(
-                                    smartFilters.contains(filter) ? .isSelected : []
+                                    isSelected ? .isSelected : []
                                 )
+                                .accessibilityHint("history.hot_categories_hint")
                             }
                         }
                     }
                 } header: {
-                    HStack {
-                        Text("history.smart.title")
-                        Spacer()
-                        if !smartFilters.isEmpty {
-                            Button("action.reset") { smartFilters.removeAll() }
-                                .font(.caption)
-                        }
-                    }
+                    Text("history.hot_categories")
                 }
                 .listRowBackground(Color.clear)
+            }
 
-                if hasAdvancedFilters {
+            if hasAdvancedFilters {
                     Section {
                         HStack {
                             Label(
@@ -391,12 +419,11 @@ struct HistoryView: View {
                                 filters = HistoryFilterDraft(
                                     calendar: model.reportingCalendar
                                 )
-                                smartFilters.removeAll()
                                 quickRange = .all
                             }
                         }
                     }
-                }
+            }
 
                 if !model.journalRecentEntriesAreCurrent {
                     Section {
@@ -602,14 +629,7 @@ struct HistoryView: View {
             }
             .toolbar {
                 ToolbarItemGroup(placement: .primaryAction) {
-                    NavigationLink {
-                        // Pushed onto History's stack, so it must not create a
-                        // second one that would hide the system back button.
-                        CalendarView(providesNavigationStack: false)
-                    } label: {
-                        Image(systemName: "calendar")
-                    }
-                    .accessibilityLabel("history.calendar")
+                    MoneyUpAmountPrivacyButton()
                     Button {
                         showingFilters = true
                     } label: {

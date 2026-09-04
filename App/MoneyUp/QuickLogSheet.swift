@@ -329,6 +329,8 @@ struct QuickLogEntryView: View {
     @Environment(\.accessibilityVoiceOverEnabled) var isVoiceOverEnabled
     @Environment(\.dynamicTypeSize) var dynamicTypeSize
     @Environment(AppModel.self) var model
+    @AppStorage(MoneyAmountPrivacy.storageKey)
+    var hidesAmounts = MoneyAmountPrivacy.defaultHidesAmounts
     @FocusState var focusedField: QuickLogFieldFocus?
 
     @Binding var kind: QuickLogKind
@@ -401,6 +403,16 @@ struct QuickLogEntryView: View {
             return nil
         }
         return value
+    }
+
+    var masksPrimaryAmount: Bool {
+        hidesAmounts && focusedField != .amount && !amountText.isEmpty
+    }
+
+    var masksDestinationAmount: Bool {
+        hidesAmounts
+            && focusedField != .destinationAmount
+            && !destinationAmountText.isEmpty
     }
 
     var categories: [LedgerAccount] {

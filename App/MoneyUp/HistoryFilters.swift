@@ -76,7 +76,9 @@ struct HistorySummaryView: View {
                 operation: "history-summary"
             ) {
             case let .available(money):
-                Text(formattedMoney(money)).monospacedDigit()
+                Text(formattedMoney(money))
+                    .monospacedDigit()
+                    .accessibilityValue(accessibleFormattedMoney(money))
             case let .unavailable(issue):
                 DerivedValueUnavailableView(issue: issue)
             }

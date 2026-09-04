@@ -9,14 +9,6 @@ extension QuickLogEntryView {
     @ViewBuilder
     var body: some View {
         let historicalFXConversionResult = historicalFXConversion
-        let amountValidationMessage = monetaryInputError(
-            text: amountText,
-            currency: selectedAccountCurrency
-        )
-        let destinationAmountValidationMessage = monetaryInputError(
-            text: destinationAmountText,
-            currency: selectedDestinationCurrency
-        )
         NavigationStack {
             ScrollViewReader { scrollProxy in
             Form {
@@ -27,31 +19,7 @@ extension QuickLogEntryView {
                 }
 
                 Section {
-                    HStack {
-                        TextField(
-                            "quick_log.amount",
-                            text: trackedBinding(
-                                $amountText,
-                                \.amountText,
-                                refreshesOccurrenceDate: true
-                            )
-                        )
-                        .moneyAmountKeyboard(currency: selectedAccountCurrency)
-                        .font(.title2.monospacedDigit())
-                        .focused($focusedField, equals: .amount)
-                        .id(QuickLogFieldFocus.amount)
-                        .moneyUpFieldValidation(amountValidationMessage)
-                        if let currency = selectedAccountCurrency {
-                            Text(currency.value)
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                                .accessibilityLabel("transaction.currency")
-                                .accessibilityValue(Text(currency.value))
-                        }
-                    }
-                    if let amountValidationMessage {
-                        MoneyUpFieldError(message: amountValidationMessage)
-                    }
+                    primaryAmountControl
 
                     Picker(
                         kind == .transfer ? "transaction.from_account" : "transaction.account",
@@ -83,27 +51,7 @@ extension QuickLogEntryView {
                             }
                         }
                         if isForeignCurrencyTransfer {
-                            HStack {
-                                TextField(
-                                    "transaction.received_amount",
-                                    text: trackedBinding(
-                                        $destinationAmountText,
-                                        \.destinationAmountText,
-                                        refreshesOccurrenceDate: true
-                                    )
-                                )
-                                .moneyAmountKeyboard(currency: selectedDestinationCurrency)
-                                .focused($focusedField, equals: .destinationAmount)
-                                .id(QuickLogFieldFocus.destinationAmount)
-                                .moneyUpFieldValidation(destinationAmountValidationMessage)
-                                if let currency = selectedDestinationCurrency {
-                                    Text(currency.value)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                            if let destinationAmountValidationMessage {
-                                MoneyUpFieldError(message: destinationAmountValidationMessage)
-                            }
+                            destinationAmountControl
 
                             if case let .available(.some(conversion)) =
                                 historicalFXConversionResult {
@@ -119,9 +67,11 @@ extension QuickLogEntryView {
                                         String(
                                             format: AppLocalization.string("fx.use_estimate_format"),
                                             conversion.converted.currency.value,
-                                            NSDecimalNumber(
-                                                decimal: conversion.converted.amount
-                                            ).stringValue,
+                                            MoneyAmountPrivacy.protected(
+                                                NSDecimalNumber(
+                                                    decimal: conversion.converted.amount
+                                                ).stringValue
+                                            ),
                                             conversion.effectiveDayKey
                                         ),
                                         systemImage: "function"
@@ -248,6 +198,9 @@ extension QuickLogEntryView {
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    MoneyUpAmountPrivacyButton()
+                }
                 if dismissAfterSave {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("action.cancel") { dismiss() }

@@ -148,6 +148,20 @@ physical-device routing, upgrade, accessibility, and privacy inspection.
 | W7-FIFO | App Intents and `.onOpenURL` submit only an action to the bounded process-local FIFO. Startup, same-book work, and an occupied request slot defer without loss; accepted duplicates retain FIFO order. The newest item is rejected at 16 without evicting older work, while the failed attempt still wakes the strict router. | `MoneyUpApp.routeDeepLink`, `MoneyUpQuickActionRouteBroker`, `MoneyUpQuickActionRouting`; `PlatformQuickLogActionTests.testColdBasicActionWaitsForStartupWorkThenRoutesOnce`, `.testDirectDeepLinksEnterFIFOAndWaitForTransientAppWork`, `.testTwoIdenticalInvocationsWaitForSequentialUIConsumption`, `.testRouteBrokerRejectsNewestActionAtCapacityWithoutReordering`, `.testCapacityRejectionWakesUnreadableTombstoneDiscard`. | STATIC-PASS; AUTO-PASS; MANUAL-OPEN |
 | W7-AUTH | Erase, restore, and pending/unreadable tombstones fail closed, clear old-book queued/occupied handoffs, and reject submissions until every exact boundary epoch ends. An authoritative denial discovered after dequeue or during lock-safe handoff synchronously discards the complete FIFO tail and leaves no request. | `AppModel.beginAuthoritativeQuickActionBoundary`, lifecycle/restore/erase gates; `PlatformQuickLogActionTests.testDirectDeepLinkFailsClosedAtBoundaryAndUnreadableTombstone`, `.testTombstoneBecomingPendingAfterDequeueDiscardsWholeQueue`, `.testTombstoneBecomingUnreadableAfterDequeueDiscardsWholeQueue`, `.testLockSafeTombstoneBecomingPendingDiscardsWholeQueue`, `.testLockSafeTombstoneBecomingUnreadableDiscardsWholeQueue`, `.testQueueDeferredByBusyWorkIsDiscardedWhenRestoreBoundaryBegins`, `.testBoundaryEpochsRejectUntilEveryAuthoritativeLifecycleFinishes`; AppModel lifecycle tests. | STATIC-PASS; AUTO-PASS; MANUAL-OPEN |
 
+## 0.7.1 privacy and premium-experience overlay
+
+These rows capture the build-1034.1 experience feedback without changing the
+ledger, storage, navigation-tab, or local-only contracts. Exact-candidate Xcode
+and physical accessibility review remain release evidence.
+
+| ID | Acceptance summary | Source / test cases | State |
+|---|---|---|---|
+| W8-PRIV | Exact amounts fail private as `*****` when the preference is absent. One device UI preference and eye control cover primary amount screens; populated Log, transaction-edit, and simulator fields reveal only on deliberate editing and remask on blur. Masking is synchronous, carries no book content in defaults, retains currency context, and gives interactive inputs, rows, and charts a localized VoiceOver hidden-state value instead of the amount. | `MoneyAmountPrivacy`, `MoneyUpAmountPrivacyButton`, `moneyUpPrivateAmountInput`, `DisplayFormatting`, top-level money views; `MoneyUpDesignPrimitiveTests.testAmountPrivacyFailsPrivateUntilExplicitlyChanged`; MANUAL `W8-PRIV-REVEAL` across Today/History/Log/Plan/Assets/Insights/simulator in both languages. | AUTO-PENDING; MANUAL-OPEN |
+| W8-HOT | History's second row is at most five active, non-system expense/income categories from the bounded recent-activity cache. Entry frequency leads, recency breaks ties, UUID ordering is deterministic, and one split entry counts once per category. Advanced filters remain complete. | `HistoryHotCategoryRanker`, `HistoryView`; `HistoryHotCategoryRankerTests.testFrequencyLeadsAndRecencyBreaksTies`; MANUAL `W8-HOT-CHIPS` for selection/reset, hierarchy labels, empty books, and 10,000-entry responsiveness. | AUTO-PENDING; MANUAL-OPEN |
+| W8-DENSITY | Today does not duplicate permanent Log/Plan actions; History does not duplicate Plan's Calendar; Plan overview is the sole root menu and the section switcher appears only within a section. Every swapped Plan section retains its explicit way back. | `DashboardContent`, `HistoryView`, `PlanView`; MANUAL `W8-NAV-DENSITY` on all five tabs and every Plan destination. | MANUAL-OPEN |
+| W8-VISUAL | Today exposes exact cash/debt composition and budget-progress orbit graphics plus a six-month net-flow preview opening selectable Insights. Plan exposes the read-only budget simulator directly. Graphics retain adjacent exact text, VoiceOver meaning, and non-color states. | `MoneyUpPositionOrbit`, `MoneyUpBudgetOrbit`, `DashboardContent`, `InsightsView`, `BudgetSimulatorView`; MANUAL `W8-VISUAL-A11Y` in light/dark, contrast, grayscale, Dynamic Type, VoiceOver, and both languages. | MANUAL-OPEN |
+| W8-MOTION | Disclosure springs, selection changes, press depth, symbols, chart selections, and simulator projections use the shared motion boundary. Exact financial text and privacy replacement remain immediate; Reduce Motion collapses all MoneyUp-owned motion while native tab/sheet transitions remain native. | `MoneyUpMotion`, `MoneyUpPressableButtonStyle`, disclosure/chart/simulator views; `MoneyUpDesignPrimitiveTests.testPremiumInteractionMotionFallsBackToImmediateUpdates`, existing W6 motion tests; MANUAL `W8-MOTION-DEVICE`. | AUTO-PENDING; MANUAL-OPEN |
+
 ## Log and transaction capture
 
 | ID | Risk | Acceptance summary | Source / test cases | State |
@@ -342,16 +356,16 @@ exact-SHA CI before signed promotion.
 
 - Requirements traced: **97 / 97**.
 - Requirements with at least one named automated or manual case: **97 / 97**.
-- Declared automated tests in source after this review: **772** (324 core, 54
-  persistence, 11 intelligence, 372 app-target, and 11 performance-target
+- Declared automated tests in source after this review: **775** (324 core, 54
+  persistence, 11 intelligence, 375 app-target, and 11 performance-target
   declarations; XCTest methods plus Swift Testing `@Test` declarations). Of
-  those declarations, **721** are XCTest functions named `test...`; the
+  those declarations, **724** are XCTest functions named `test...`; the
   remaining 51 are Swift Testing `@Test` declarations in MoneyUpCore.
 - Tests executed on the prior build-10 0.7.1 candidate in GitHub Actions:
   **742 / 742 declared test sites** across the 376 package, 355 app-target, and
   11 performance-target declarations; exact PR-head run 300 and merged
   implementation run 301 passed all four jobs.
-- Build 11 declares 772 test sites; its exact-head macOS run is `AUTO-PENDING`.
+- Build 11 declares 775 test sites; its exact-head macOS run is `AUTO-PENDING`.
 - Local static validation is reported separately in
   `QUALITY_AUDIT_0.6.0.md`; automated success does not convert any
   `MANUAL-OPEN` or exact-binary gate to pass.

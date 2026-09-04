@@ -7,6 +7,80 @@ import UIKit
 
 extension QuickLogEntryView {
     @ViewBuilder
+    var primaryAmountControl: some View {
+        let amountValidationMessage = monetaryInputError(
+            text: amountText,
+            currency: selectedAccountCurrency
+        )
+        HStack {
+            TextField(
+                "quick_log.amount",
+                text: trackedBinding(
+                    $amountText,
+                    \.amountText,
+                    refreshesOccurrenceDate: true
+                )
+            )
+            .moneyAmountKeyboard(currency: selectedAccountCurrency)
+            .font(.title2.monospacedDigit())
+            .focused($focusedField, equals: .amount)
+            .id(QuickLogFieldFocus.amount)
+            .moneyUpFieldValidation(amountValidationMessage)
+            .moneyUpPrivateAmountInput(
+                masked: masksPrimaryAmount,
+                accessibilityLabel: Text("quick_log.amount"),
+                placeholderFont: .title2.monospacedDigit()
+            ) {
+                focusedField = .amount
+            }
+            if let currency = selectedAccountCurrency {
+                Text(currency.value)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("transaction.currency")
+                    .accessibilityValue(Text(currency.value))
+            }
+        }
+        if let amountValidationMessage {
+            MoneyUpFieldError(message: amountValidationMessage)
+        }
+    }
+
+    @ViewBuilder
+    var destinationAmountControl: some View {
+        let destinationAmountValidationMessage = monetaryInputError(
+            text: destinationAmountText,
+            currency: selectedDestinationCurrency
+        )
+        HStack {
+            TextField(
+                "transaction.received_amount",
+                text: trackedBinding(
+                    $destinationAmountText,
+                    \.destinationAmountText,
+                    refreshesOccurrenceDate: true
+                )
+            )
+            .moneyAmountKeyboard(currency: selectedDestinationCurrency)
+            .focused($focusedField, equals: .destinationAmount)
+            .id(QuickLogFieldFocus.destinationAmount)
+            .moneyUpFieldValidation(destinationAmountValidationMessage)
+            .moneyUpPrivateAmountInput(
+                masked: masksDestinationAmount,
+                accessibilityLabel: Text("transaction.received_amount")
+            ) {
+                focusedField = .destinationAmount
+            }
+            if let currency = selectedDestinationCurrency {
+                Text(currency.value).foregroundStyle(.secondary)
+            }
+        }
+        if let destinationAmountValidationMessage {
+            MoneyUpFieldError(message: destinationAmountValidationMessage)
+        }
+    }
+
+    @ViewBuilder
     var categoryAndAllowanceControls: some View {
         ViewThatFits(in: .horizontal) {
             HStack { addCategoryButton; manageCategoriesButton }
@@ -265,6 +339,13 @@ extension QuickLogEntryView {
                 text: line.amountText,
                 currency: selectedAccountCurrency
             )
+            let masksLineAmount = hidesAmounts
+                && focusedField != .splitAmount(lineID)
+                && !line.amountText.isEmpty
+            let amountAccessibilityLabel = String(
+                format: AppLocalization.string("quick_log.split_amount_numbered"),
+                index + 1
+            )
             VStack(alignment: .leading, spacing: 8) {
                 Picker(
                     "quick_log.split_category",
@@ -296,8 +377,8 @@ extension QuickLogEntryView {
                         "quick_log.split_amount",
                         text: Binding(
                             get: {
-                                splitLines.first(where: { $0.id == lineID })?.amountText
-                                    ?? ""
+                                splitLines.first(where: { $0.id == lineID })?
+                                    .amountText ?? ""
                             },
                             set: { value in
                                 updateSplitLine(lineID) { $0.amountText = value }
@@ -308,14 +389,13 @@ extension QuickLogEntryView {
                     .focused($focusedField, equals: .splitAmount(lineID))
                     .id(QuickLogFieldFocus.splitAmount(lineID))
                     .moneyUpFieldValidation(lineValidationMessage)
-                    .accessibilityLabel(
-                        Text(
-                            String(
-                                format: AppLocalization.string("quick_log.split_amount_numbered"),
-                                index + 1
-                            )
-                        )
-                    )
+                    .accessibilityLabel(Text(amountAccessibilityLabel))
+                    .moneyUpPrivateAmountInput(
+                        masked: masksLineAmount,
+                        accessibilityLabel: Text(amountAccessibilityLabel)
+                    ) {
+                        focusedField = .splitAmount(lineID)
+                    }
                     if let currency = selectedAccountCurrency {
                         Text(currency.value).foregroundStyle(.secondary)
                     }
@@ -393,7 +473,10 @@ extension QuickLogEntryView {
 
         if let remainder = splitRemainder, let currency = selectedAccountCurrency {
             LabeledContent("quick_log.split_remainder") {
-                Text("\(editableAmount(remainder)) \(currency.value)")
+                Text(
+                    "\(MoneyAmountPrivacy.protected(editableAmount(remainder))) "
+                        + currency.value
+                )
                     .font(.subheadline.monospacedDigit().weight(.semibold))
                     .foregroundStyle(remainder == .zero ? Color.green : Color.red)
             }

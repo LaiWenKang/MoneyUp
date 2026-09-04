@@ -5,6 +5,7 @@ import UIKit
 
 extension TransactionEditView {
     var body: some View {
+        let _ = hidesAmounts
         NavigationStack {
             ScrollViewReader { scrollProxy in
             Form {
@@ -21,6 +22,14 @@ extension TransactionEditView {
                                 .moneyAmountKeyboard(currency: sourceCurrency)
                                 .focused($focusedField, equals: .amount)
                                 .id(TransactionEditView.FieldFocus.amount)
+                                .moneyUpPrivateAmountInput(
+                                    masked: hidesAmounts
+                                        && focusedField != .amount
+                                        && !amountText.isEmpty,
+                                    accessibilityLabel: Text("quick_log.amount")
+                                ) {
+                                    focusedField = .amount
+                                }
                             if let sourceCurrency {
                                 Text(sourceCurrency.value).foregroundStyle(.secondary)
                             }
@@ -55,6 +64,16 @@ extension TransactionEditView {
                                     .moneyAmountKeyboard(currency: destinationCurrency)
                                     .focused($focusedField, equals: .destinationAmount)
                                     .id(TransactionEditView.FieldFocus.destinationAmount)
+                                    .moneyUpPrivateAmountInput(
+                                        masked: hidesAmounts
+                                            && focusedField != .destinationAmount
+                                            && !destinationAmountText.isEmpty,
+                                        accessibilityLabel: Text(
+                                            "transaction.received_amount"
+                                        )
+                                    ) {
+                                        focusedField = .destinationAmount
+                                    }
                                     if let destinationCurrency {
                                         Text(destinationCurrency.value)
                                             .foregroundStyle(.secondary)
@@ -196,6 +215,9 @@ extension TransactionEditView {
                         Button("action.save") { Task { await save() } }
                             .disabled(!canSave || isSaving)
                     }
+                }
+                ToolbarItem(placement: .secondaryAction) {
+                    MoneyUpAmountPrivacyButton()
                 }
                 MoneyUpKeyboardDoneToolbar()
             }

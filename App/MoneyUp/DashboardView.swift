@@ -30,6 +30,9 @@ struct DashboardView: View {
         let occurrence: Date
 
         var signedAmount: String {
+            guard !MoneyAmountPrivacy.hidesAmounts else {
+                return MoneyAmountPrivacy.placeholder
+            }
             let sign = transaction.kind == .expense ? "−" : "+"
             return sign + formattedMoney(transaction.amount)
         }
@@ -44,6 +47,8 @@ struct DashboardView: View {
     @Environment(AppModel.self) var model
     @Environment(\.scenePhase) var scenePhase
     @Environment(\.dynamicTypeSize) var dynamicTypeSize
+    @AppStorage(MoneyAmountPrivacy.storageKey)
+    var hidesAmounts = MoneyAmountPrivacy.defaultHidesAmounts
     @State var isShowingFlexibleTodayBreakdown = false
     @State var isEditingPins = false
     @State var reportingNow: Date?

@@ -27,6 +27,8 @@ struct AppSettingsView: View {
         store: AppLanguagePreference.defaults
     )
     private var appLanguageRawValue = AppLanguagePreference.system.rawValue
+    @AppStorage(MoneyAmountPrivacy.storageKey)
+    private var hidesAmounts = MoneyAmountPrivacy.defaultHidesAmounts
     @State private var errorMessage: String?
     @State private var isManagingCategories = false
 
@@ -165,6 +167,9 @@ struct AppSettingsView: View {
             }
 
             Section {
+                Toggle("settings.hide_amounts", isOn: $hidesAmounts)
+                    .accessibilityHint("settings.hide_amounts_detail")
+
                 Picker(
                     "settings.auto_lock",
                     selection: Binding(
