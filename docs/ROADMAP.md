@@ -55,15 +55,18 @@ status.
   Financial activity is posted atomically through the balanced ledger.
 - [x] Eligible Apple on-device assistance defaults on for new and legacy
   profiles while explicit opt-out and all fail-closed input boundaries remain.
-- [x] Optional deliberate tab swipes move exactly one adjacent tab without
-  hiding or replacing the permanent tab bar.
+- [x] Optional deliberate tab swipes on passive space move exactly one adjacent
+  tab without taking horizontal gestures from filters, charts, or carousels.
 - [x] Flexible Today shows daily, next-seven-day, and remaining-period capacity,
   remaining days, commitments, and the inspectable arithmetic.
-- [x] Plan opens on an overview for Budget, Calendar, Goals, and Allowances,
-  preserving the five permanent tabs and clarifying ownership.
+- [x] Plan opens directly on Budget and uses one larger section control for
+  Budget, Calendar, Goals, and Allowances; History hot categories match it.
+- [x] Log and edit accept bounded encrypted images/PDFs; metadata stripping,
+  OCR, PDF text extraction, visual classification, and explainable History
+  matching stay on device and cannot modify ledger facts.
 - [x] Smart Overview widgets add privacy-safe review counts, allowance
   percentage, and next-commitment timing across supported Home/Lock families.
-- [x] SQLCipher schema 8, recovery preview, restore validation, quarantine,
+- [x] SQLCipher schema 9, recovery preview, restore validation, quarantine,
   inventory, bilingual strings, accessible errors, tests, version 0.7.1, and
   source build 11 cover the new records and flows.
 - [ ] Exact-candidate macOS Xcode CI and physical-device verification remain
@@ -235,7 +238,7 @@ status.
   evidence remains open
 - [x] Stable Gregorian reporting calendar, half-open periods, origin time-zone
   context, and stable local-day attribution
-- [x] SQLCipher schema 8 with journal/posting, receipt metadata, exact store
+- [x] SQLCipher schema 9 with journal/posting, searchable receipt metadata, exact store
   metrics, budget-attribution, and derived intelligence indexes; compact
   balances, monthly rollover checkpoints, bounded recent activity, on-demand
   paging, and additive loan/allowance recovery coverage
@@ -303,8 +306,9 @@ status.
   stable IDs, exact decimals, currencies, origin day, and account metadata
 - [x] Local preview-first Qianji/generic CSV/TSV import with manual column
   mapping, reviewed targets, duplicate detection, row issues, and atomic commit
-- [x] Optional encrypted receipt attachment lifecycle included in raw snapshot
-  and `.moneyup` restore, excluded from readable exports
+- [x] Optional bounded encrypted image/PDF evidence lifecycle and local search
+  projection included in raw snapshot and `.moneyup` restore, excluded from
+  readable exports, widgets, logs, and diagnostics
 - [x] Privacy-redacted widget actions and opt-in percentage/state-only budget
   snapshot using `group.com.laiwenkang.MoneyUp`
 - [x] Action-only App Intents, bilingual App Shortcuts, interactive quick-action
@@ -378,7 +382,7 @@ installation, and physical evidence are separate gates.
   before the workflow assigns a unique upload build
 - [x] Bilingual in-app 0.7.1 release notes cover the complete feedback follow-up
 - [x] Local release, architecture, structure, launch-safety, platform-action,
-  performance, and adversarial validator suites pass with 752 declared Swift tests
+  performance, and adversarial validator suites pass with 779 declared Swift tests
 - [x] Correct the App Review 0.3.0 launch watchdog by keeping startup
   Keychain/SQLCipher work off the UI actor without weakening encryption, and
   make the boundary mutation-tested in CI and TestFlight preflight

@@ -143,6 +143,8 @@ extension QuickLogEntryView {
                     smartEntrySection
                 }
 
+                evidenceSection
+
                 Section {
                     TextField(
                         "transaction.title_or_merchant",
@@ -240,7 +242,7 @@ extension QuickLogEntryView {
                     } label: {
                         Label("action.save", systemImage: "checkmark.circle.fill")
                     }
-                    .disabled(!canSave || isSaving || isUndoing)
+                    .disabled(!canSave || isSaving || isUndoing || isPreparingEvidence)
 
                     Spacer()
                     Button {
@@ -363,6 +365,13 @@ extension QuickLogEntryView {
                     )
                 }
             }
+            .onChange(of: evidencePhotoItems) { _, items in
+                guard !items.isEmpty else { return }
+                evidencePreparationTask?.cancel()
+                evidencePreparationTask = Task { @MainActor in
+                    await addEvidencePhotos(items)
+                }
+            }
             .onChange(of: accountID) { _, _ in
                 if destinationAccountID == accountID {
                     destinationAccountID = model.userAccounts.first { $0.id != accountID }?.id
@@ -402,12 +411,16 @@ extension QuickLogEntryView {
                 cancelCaptureSuggestionLookup()
                 cancelOnDeviceAssistance()
                 receiptScanTask = nil
+                evidencePreparationTask?.cancel()
+                evidencePreparationTask = nil
                 photoItem = nil
                 pendingDuplicateReview = nil
                 receiptAttachmentData = nil
                 retainReceiptAttachment = false
                 receiptRetentionMessage = nil
                 isPresentingReceiptPicker = false
+                isPresentingEvidencePhotoPicker = false
+                isPresentingEvidencePDFPicker = false
             }
             .scrollDismissesKeyboard(.interactively)
             .contentMargins(.bottom, focusedField == nil ? 72 : 200, for: .scrollContent)
@@ -466,7 +479,7 @@ extension QuickLogEntryView {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
                 .tint(.moneyUpAction)
-                .disabled(!canSave || isSaving || isUndoing)
+                .disabled(!canSave || isSaving || isUndoing || isPreparingEvidence)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
                 .background(.bar)

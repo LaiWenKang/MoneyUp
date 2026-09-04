@@ -73,6 +73,15 @@ private struct MoneyUpPrivateAmountInputModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         ZStack(alignment: .leading) {
+            // A focused TextField must remain mounted for its entire editing
+            // session. Replacing it with the privacy button can make SwiftUI
+            // resign first responder between the first and second keystroke
+            // (most visibly for `0` and decimal separators).
+            content
+                .opacity(isMasked ? 0 : 1)
+                .allowsHitTesting(!isMasked)
+                .accessibilityHidden(isMasked)
+
             if isMasked {
                 Button(action: reveal) {
                     Text(verbatim: MoneyAmountPrivacy.placeholder)
@@ -84,8 +93,6 @@ private struct MoneyUpPrivateAmountInputModifier: ViewModifier {
                 .accessibilityLabel(accessibilityLabel)
                 .accessibilityValue("privacy.amounts_hidden")
                 .accessibilityHint("privacy.tap_to_edit_amount")
-            } else {
-                content
             }
         }
         // Privacy changes replace the exact amount synchronously. In

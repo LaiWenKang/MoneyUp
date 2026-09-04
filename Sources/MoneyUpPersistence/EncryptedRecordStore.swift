@@ -114,6 +114,25 @@ public struct ReceiptAttachmentReadDiagnostics: Equatable, Sendable {
     }
 }
 
+public struct ReceiptAttachmentSearchMatch: Equatable, Sendable {
+    public let entryID: UUID
+    public let attachmentID: UUID
+    public let mediaType: ReceiptAttachmentMediaType
+    public let displayName: String?
+
+    init(
+        entryID: UUID,
+        attachmentID: UUID,
+        mediaType: ReceiptAttachmentMediaType,
+        displayName: String?
+    ) {
+        self.entryID = entryID
+        self.attachmentID = attachmentID
+        self.mediaType = mediaType
+        self.displayName = displayName
+    }
+}
+
 /// Blob-free health summary for the normalized historical budget projection.
 /// Healthy startup work is constant-size; only exceptional record identities
 /// are returned for quarantine presentation.
@@ -319,7 +338,7 @@ struct IndexedReferenceCountRow {
 /// encrypted SQLite database. Journal entries therefore remain atomic, while
 /// migrations can evolve collections without rewriting an entire user book.
 public actor EncryptedRecordStore {
-    public static let currentSchemaVersion: Int32 = 8
+    public static let currentSchemaVersion: Int32 = 9
 
     let connection: SQLCipherConnection
 
@@ -411,6 +430,14 @@ public actor EncryptedRecordStore {
     /// receipt bytes.
     public func receiptAttachmentIDs(entryID: UUID) throws -> [UUID] {
         try connection.receiptAttachmentIDs(entryID: entryID)
+    }
+
+    /// Searches only the compact encrypted evidence index. Attachment blobs are
+    /// never decoded for History search.
+    public func receiptAttachmentSearchMatches(
+        query: String
+    ) throws -> [ReceiptAttachmentSearchMatch] {
+        try connection.receiptAttachmentSearchMatches(query: query)
     }
 
     public func lastReceiptAttachmentReadDiagnostics()

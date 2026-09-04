@@ -83,6 +83,8 @@ struct ReceiptAttachmentIndexWrite: Sendable {
     let mediaType: String
     let byteCount: Int
     let createdAt: TimeInterval
+    let displayName: String?
+    let searchIndexText: String?
 
     init(attachment: ReceiptAttachment, recordID: String) {
         self.recordID = recordID
@@ -90,6 +92,25 @@ struct ReceiptAttachmentIndexWrite: Sendable {
         mediaType = attachment.mediaType.rawValue
         byteCount = attachment.data.count
         createdAt = attachment.createdAt.timeIntervalSince1970
+        displayName = attachment.displayName
+        // Preserve concise identity and visual vocabulary before the longer
+        // OCR/PDF body when the bounded encrypted projection is truncated.
+        let combined = ([attachment.displayName].compactMap { $0 }
+            + attachment.classificationLabels
+            + [attachment.searchText].compactMap { $0 }).joined(separator: " ")
+        searchIndexText = Self.boundedSearchIndexText(combined)
+    }
+
+    private static func boundedSearchIndexText(_ text: String) -> String? {
+        guard let normalized = PayeeNormalization.key(text) else { return nil }
+        var bytes = Array(
+            normalized.utf8.prefix(ReceiptAttachment.maximumSearchTextUTF8Count)
+        )
+        while !bytes.isEmpty, String(bytes: bytes, encoding: .utf8) == nil {
+            bytes.removeLast()
+        }
+        let value = String(decoding: bytes, as: UTF8.self)
+        return value.isEmpty ? nil : value
     }
 }
 

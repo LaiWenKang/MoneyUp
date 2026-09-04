@@ -3,69 +3,38 @@ import SwiftUI
 
 struct PlanView: View {
     fileprivate enum Section: Hashable {
-        case overview
         case budget
         case goals
         case allowances
         case calendar
     }
 
-    /// The overview is the tab's root rather than a chip, so the chip bar and
-    /// the overview list stop offering the same four destinations twice.
     fileprivate static let switchableSections: [Section] = [
         .budget, .calendar, .goals, .allowances
     ]
 
-    @State private var selection: Section = .overview
+    @State private var selection: Section = .budget
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(MoneyAmountPrivacy.storageKey)
     private var hidesAmounts = MoneyAmountPrivacy.defaultHidesAmounts
 
-    /// Sections are swapped, not pushed, so the way back to the overview has
-    /// to be published explicitly for each section to place.
-    private var sectionBack: MoneyUpSectionBackAction? {
-        guard selection != .overview else { return nil }
-        return MoneyUpSectionBackAction(titleKey: "plan.overview") {
-            withAnimation(
-                MoneyUpMotion.animation(
-                    for: .selection,
-                    reduceMotion: reduceMotion
-                )
-            ) {
-                selection = .overview
-            }
-        }
-    }
-
     var body: some View {
         let _ = hidesAmounts
         return Group {
             switch selection {
-            case .overview:
-                PlanOverviewView { selection = $0 }
             case .budget:
-                BudgetPlanView(sectionBack: sectionBack)
+                BudgetPlanView()
             case .goals:
-                SavingsGoalsView(sectionBack: sectionBack)
+                SavingsGoalsView()
             case .allowances:
-                AllowanceCenterView(sectionBack: sectionBack)
+                AllowanceCenterView()
             case .calendar:
-                CalendarView(
-                    providesNavigationStack: true,
-                    sectionBack: sectionBack
-                )
+                CalendarView(providesNavigationStack: true)
             }
         }
         .safeAreaInset(edge: .top, spacing: 0) {
-            if selection != .overview {
-                sectionSwitcher
-                    .transition(
-                        MoneyUpMotion.disclosureTransition(
-                            reduceMotion: reduceMotion
-                        )
-                    )
-            }
+            sectionSwitcher
         }
         .environment(\.calendar, model.reportingCalendar)
         .environment(\.timeZone, model.reportingCalendar.timeZone)
@@ -87,9 +56,9 @@ struct PlanView: View {
                             }
                         } label: {
                             Label(section.title, systemImage: section.systemImage)
-                                .font(.caption.weight(.semibold))
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
+                                .font(.subheadline.weight(.semibold))
+                                .padding(.horizontal, 14)
+                                .frame(minHeight: 44)
                                 .background(
                                     selection == section
                                         ? Color.accentColor.opacity(0.18)
@@ -114,7 +83,6 @@ struct PlanView: View {
 private extension PlanView.Section {
     var title: LocalizedStringKey {
         switch self {
-        case .overview: "plan.overview"
         case .budget: "plan.budget"
         case .goals: "plan.goals"
         case .allowances: "allowance.short_title"
@@ -124,114 +92,11 @@ private extension PlanView.Section {
 
     var systemImage: String {
         switch self {
-        case .overview: "square.grid.2x2.fill"
         case .budget: "chart.pie.fill"
         case .goals: "target"
         case .allowances: "giftcard.fill"
         case .calendar: "calendar"
         }
-    }
-}
-
-private struct PlanOverviewView: View {
-    @Environment(AppModel.self) private var model
-    let open: (PlanView.Section) -> Void
-
-    var body: some View {
-        NavigationStack {
-            List {
-                Section {
-                    overviewRow(
-                        title: "plan.budget",
-                        detail: String(
-                            format: AppLocalization.string("plan.overview.budget_count"),
-                            model.budgetNodes.count
-                        ),
-                        symbol: "chart.pie.fill",
-                        section: .budget
-                    )
-                    overviewRow(
-                        title: "tab.calendar",
-                        detail: String(
-                            format: AppLocalization.string("plan.overview.schedule_count"),
-                            model.scheduledTransactions.filter(\.isActive).count
-                        ),
-                        symbol: "calendar.badge.clock",
-                        section: .calendar
-                    )
-                    overviewRow(
-                        title: "plan.goals",
-                        detail: String(
-                            format: AppLocalization.string("plan.overview.goal_count"),
-                            model.savingsGoals.filter { !$0.isArchived }.count
-                        ),
-                        symbol: "target",
-                        section: .goals
-                    )
-                    overviewRow(
-                        title: "allowance.short_title",
-                        detail: String(
-                            format: AppLocalization.string("plan.overview.allowance_count"),
-                            model.allowancePlans.filter { !$0.isArchived }.count
-                        ),
-                        symbol: "giftcard.fill",
-                        section: .allowances
-                    )
-                    NavigationLink {
-                        BudgetSimulatorView()
-                    } label: {
-                        HStack(spacing: 12) {
-                            MoneyUpSymbolBadge(
-                                systemImage: "slider.horizontal.3",
-                                color: .accentColor
-                            )
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text("simulator.title").font(.headline)
-                                Text("simulator.row_detail")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .padding(.vertical, 4)
-                    }
-                } header: {
-                    Text("plan.overview.next")
-                } footer: {
-                    MoneyUpExplainer("plan.overview.detail")
-                }
-            }
-            .scrollContentBackground(.hidden)
-            .background(Color.moneyUpBackground)
-            .navigationTitle("tab.plan")
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    MoneyUpAmountPrivacyButton()
-                }
-            }
-        }
-    }
-
-    private func overviewRow(
-        title: LocalizedStringKey,
-        detail: String,
-        symbol: String,
-        section: PlanView.Section
-    ) -> some View {
-        Button { open(section) } label: {
-            HStack(spacing: 12) {
-                MoneyUpSymbolBadge(systemImage: symbol, color: .accentColor)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(title).font(.headline)
-                    Text(detail).font(.subheadline).foregroundStyle(.secondary)
-                }
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-            }
-            .padding(.vertical, 4)
-        }
-        .buttonStyle(MoneyUpPressableButtonStyle())
     }
 }
 
@@ -386,6 +251,35 @@ private struct BudgetPlanView: View {
                                 }
                             }
                             .padding(.vertical, 4)
+                        }
+                        NavigationLink {
+                            BudgetSimulatorView()
+                        } label: {
+                            HStack(spacing: 12) {
+                                MoneyUpSymbolBadge(
+                                    systemImage: "slider.horizontal.3",
+                                    color: .accentColor
+                                )
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text("simulator.title").font(.headline)
+                                    Text("simulator.row_detail")
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .padding(.vertical, 4)
+                        }
+                    } header: {
+                        Text("simulator.explore")
+                    }
+                } else {
+                    Section {
+                        NavigationLink {
+                            BudgetSimulatorView()
+                        } label: {
+                            Label("simulator.title", systemImage: "slider.horizontal.3")
+                                .font(.headline)
+                                .padding(.vertical, 4)
                         }
                     } header: {
                         Text("simulator.explore")

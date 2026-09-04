@@ -262,6 +262,8 @@ struct HistoryView: View {
     @State private var entryPendingDeletion: JournalEntry?
     @State private var errorMessage: String?
     @State private var loadedEntries: [JournalEntry] = []
+    @State private var attachmentMatchesByEntryID:
+        [UUID: ReceiptAttachmentSearchMatch] = [:]
     @State private var summary: HistorySummary?
     @State private var nextCursor: JournalEntryPageCursor?
     @State private var isLoadingPage = false
@@ -374,9 +376,9 @@ struct HistoryView: View {
                                             ? "checkmark.circle.fill"
                                             : "circle"
                                     )
-                                        .font(.caption.weight(.semibold))
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 8)
+                                        .font(.subheadline.weight(.semibold))
+                                        .padding(.horizontal, 14)
+                                        .frame(minHeight: 44)
                                         .background(
                                             isSelected
                                                 ? Color.accentColor.opacity(0.18)
@@ -517,7 +519,12 @@ struct HistoryView: View {
                                     Button {
                                         selectedEntry = entry
                                     } label: {
-                                        TransactionRow(entry: entry)
+                                        TransactionRow(
+                                            entry: entry,
+                                            searchMatchLabel: attachmentMatchLabel(
+                                                attachmentMatchesByEntryID[entry.id]
+                                            )
+                                        )
                                             .contentShape(Rectangle())
                                     }
                                     .buttonStyle(.plain)
@@ -597,6 +604,7 @@ struct HistoryView: View {
             }
             .onChange(of: model.journalRecentEntriesAreCurrent) { _, isCurrent in
                 loadedEntries = []
+                attachmentMatchesByEntryID = [:]
                 nextCursor = nil
                 summary = nil
                 isLoadingPage = false
@@ -615,6 +623,7 @@ struct HistoryView: View {
             }
             .onChange(of: model.logicalBookRevision) { _, _ in
                 loadedEntries = []
+                attachmentMatchesByEntryID = [:]
                 nextCursor = nil
                 summary = nil
                 isLoadingPage = false
@@ -720,10 +729,24 @@ extension HistoryView {
         }
     }
 
+    private func attachmentMatchLabel(
+        _ match: ReceiptAttachmentSearchMatch?
+    ) -> String? {
+        guard let match else { return nil }
+        let fallbackKey = match.mediaType == .pdf
+            ? "evidence.pdf" : "evidence.photo"
+        let name = match.displayName ?? AppLocalization.string(fallbackKey)
+        return String(
+            format: AppLocalization.string("history.found_in_attachment"),
+            name
+        )
+    }
+
     @MainActor
     private func reloadHistory() async {
         guard model.journalRecentEntriesAreCurrent else {
             loadedEntries = []
+            attachmentMatchesByEntryID = [:]
             nextCursor = nil
             summary = nil
             isLoadingPage = false
@@ -751,6 +774,7 @@ extension HistoryView {
         }
         let querySnapshot = query
         loadedEntries = []
+        attachmentMatchesByEntryID = [:]
         nextCursor = nil
         summary = nil
         initialPageErrorMessage = nil
@@ -770,6 +794,7 @@ extension HistoryView {
         case let .available(page):
             loadedEntries = page.entries
             nextCursor = page.nextCursor
+            attachmentMatchesByEntryID = page.attachmentMatchesByEntryID
         case let .unavailable(message):
             initialPageErrorMessage = message
             didFail = true
@@ -897,6 +922,10 @@ extension HistoryView {
             loadedEntries.append(contentsOf: page.entries.filter {
                 !knownIDs.contains($0.id)
             })
+            attachmentMatchesByEntryID.merge(
+                page.attachmentMatchesByEntryID,
+                uniquingKeysWith: { current, _ in current }
+            )
             nextCursor = page.nextCursor
             isLoadingPage = false
             // Appended rows and cursor now share one generation-owned state

@@ -1910,6 +1910,84 @@ final class EncryptedRecordStoreTests: XCTestCase {
         await reopened.close()
     }
 
+    func testEncryptedAttachmentSearchReturnsExplainableIdentityWithoutBlobDecode()
+        async throws {
+        let fixture = try TemporaryDatabaseFixture()
+        let store = try EncryptedRecordStore(
+            databaseURL: fixture.databaseURL,
+            key: fixture.key
+        )
+        let entryID = UUID()
+        let attachment = try ReceiptAttachment(
+            entryID: entryID,
+            mediaType: .pdf,
+            data: Data("%PDF-1.7 test".utf8),
+            displayName: "IKEA-receipt.pdf",
+            searchText: "IKEA Alexandra SGD 129.90",
+            classificationLabels: ["furniture", "document"]
+        )
+        try await store.upsert(
+            attachment,
+            id: attachment.id.uuidString,
+            in: .receiptAttachments
+        )
+
+        let textMatches = try await store.receiptAttachmentSearchMatches(
+            query: "ikea alexandra"
+        )
+        let visualMatches = try await store.receiptAttachmentSearchMatches(
+            query: "furniture"
+        )
+        let misses = try await store.receiptAttachmentSearchMatches(query: "groceries")
+
+        XCTAssertEqual(textMatches.first?.entryID, entryID)
+        XCTAssertEqual(textMatches.first?.attachmentID, attachment.id)
+        XCTAssertEqual(textMatches.first?.displayName, "IKEA-receipt.pdf")
+        XCTAssertEqual(visualMatches.map(\.entryID), [entryID])
+        XCTAssertTrue(misses.isEmpty)
+        let diagnostics = await store.lastReceiptAttachmentReadDiagnostics()
+        XCTAssertEqual(diagnostics.blobPayloadsDecoded, 0)
+        let revisedAttachment = try ReceiptAttachment(
+            id: attachment.id,
+            entryID: entryID,
+            mediaType: .pdf,
+            data: attachment.data,
+            displayName: attachment.displayName,
+            searchText: attachment.searchText,
+            classificationLabels: ["groceries"]
+        )
+        try await store.upsert(
+            revisedAttachment,
+            id: revisedAttachment.id.uuidString,
+            in: .receiptAttachments
+        )
+        let staleMatches = try await store.receiptAttachmentSearchMatches(
+            query: "furniture"
+        )
+        let revisedMatches = try await store.receiptAttachmentSearchMatches(
+            query: "groceries"
+        )
+        XCTAssertTrue(staleMatches.isEmpty)
+        XCTAssertEqual(revisedMatches.map(\.attachmentID), [attachment.id])
+        try await store.installSchema8EvidenceStateForTesting()
+        await store.close()
+
+        let migrated = try EncryptedRecordStore(
+            databaseURL: fixture.databaseURL,
+            key: fixture.key
+        )
+        let migratedMatches = try await migrated.receiptAttachmentSearchMatches(
+            query: "groceries"
+        )
+        let migratedCounts = try await migrated.recordCountSnapshot()
+        XCTAssertEqual(migratedMatches.map(\.attachmentID), [attachment.id])
+        XCTAssertEqual(
+            migratedCounts.schemaVersion,
+            EncryptedRecordStore.currentSchemaVersion
+        )
+        await migrated.close()
+    }
+
     func testReceiptAttachmentSurvivesSnapshotRestoreAndRemainsSeparate() async throws {
         let fixture = try TemporaryDatabaseFixture()
         let store = try EncryptedRecordStore(

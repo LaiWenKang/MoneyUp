@@ -80,6 +80,9 @@ public struct ReceiptParseResult: Equatable, Sendable {
     public let merchantCandidateDetails: [ReceiptCandidate<String>]
     public let dateCandidateDetails: [ReceiptCandidate<Date>]
     public let categoryCandidateDetails: [ReceiptCandidate<ReceiptCategoryHint>]
+    /// Bounded OCR text for an explicitly retained attachment search index.
+    /// Callers must discard it unless the user chooses encrypted retention.
+    public let recognizedText: String?
 
     public init(
         draft: TransactionDraft,
@@ -93,7 +96,8 @@ public struct ReceiptParseResult: Equatable, Sendable {
         amountCandidateDetails: [ReceiptCandidate<Decimal>]? = nil,
         merchantCandidateDetails: [ReceiptCandidate<String>]? = nil,
         dateCandidateDetails: [ReceiptCandidate<Date>]? = nil,
-        categoryCandidateDetails: [ReceiptCandidate<ReceiptCategoryHint>]? = nil
+        categoryCandidateDetails: [ReceiptCandidate<ReceiptCategoryHint>]? = nil,
+        recognizedText: String? = nil
     ) {
         self.draft = draft
         self.amountCandidates = amountCandidates
@@ -119,6 +123,7 @@ public struct ReceiptParseResult: Equatable, Sendable {
         } else {
             self.categoryCandidateDetails = []
         }
+        self.recognizedText = recognizedText
     }
 
     private static func compatibilityCandidate<Value: Equatable & Sendable>(
@@ -343,7 +348,8 @@ public enum ReceiptTextParser {
             amountCandidateDetails: details.amounts,
             merchantCandidateDetails: details.merchants,
             dateCandidateDetails: details.dates,
-            categoryCandidateDetails: details.categories
+            categoryCandidateDetails: details.categories,
+            recognizedText: input.lines.joined(separator: "\n")
         )
     }
 

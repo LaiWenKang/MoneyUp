@@ -284,7 +284,11 @@ private struct MainTabView: View {
                 .tabItem { Label("tab.assets", systemImage: "wallet.bifold.fill") }
                 .tag(MoneyUpSection.assets)
         }
-        .simultaneousGesture(
+        // The tab gesture deliberately does not recognize simultaneously with
+        // child controls. Horizontal filter bars, charts, carousels, fields,
+        // and other interactive regions own their drags; this fallback only
+        // wins on passive space in the selected tab.
+        .gesture(
             DragGesture(minimumDistance: 24, coordinateSpace: .local)
                 .onEnded { value in
                     guard model.profile?.enablesTabSwipeNavigation == true,
@@ -293,7 +297,8 @@ private struct MainTabView: View {
                             translation: value.translation
                           ) else { return }
                     withAnimation(.snappy) { selectedSection = destination }
-                }
+                },
+            including: .gesture
         )
         .sheet(isPresented: $isShowingWhatsNew) {
             WhatsNewSheet()

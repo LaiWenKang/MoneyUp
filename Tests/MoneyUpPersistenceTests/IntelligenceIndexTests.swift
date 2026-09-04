@@ -144,7 +144,7 @@ final class IntelligenceIndexTests: XCTestCase {
         let counts = try await migrated.recordCountSnapshot()
 
         XCTAssertEqual(after, before)
-        XCTAssertEqual(counts.schemaVersion, 8)
+        XCTAssertEqual(counts.schemaVersion, EncryptedRecordStore.currentSchemaVersion)
         let candidates = try await migrated.payeeAffinityCandidates(
             payee: "legacy cafe",
             currency: book.currency

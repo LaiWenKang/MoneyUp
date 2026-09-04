@@ -73,6 +73,9 @@ public struct HistoryQuery: Equatable, Sendable {
     /// Optional exact-entry scope used by local review, recurring, and
     /// allowance chips. An empty set deliberately matches nothing.
     public var requiredEntryIDs: Set<UUID>?
+    /// Entry identities whose encrypted attachment index matched `searchText`.
+    /// This supplements structured transaction fields; it never replaces them.
+    public var attachmentMatchedEntryIDs: Set<UUID>?
     public var requiresSplitTransaction: Bool
     public var requiresNote: Bool
 
@@ -101,6 +104,7 @@ public struct HistoryQuery: Equatable, Sendable {
         minimumAmount: Decimal? = nil,
         maximumAmount: Decimal? = nil,
         requiredEntryIDs: Set<UUID>? = nil,
+        attachmentMatchedEntryIDs: Set<UUID>? = nil,
         requiresSplitTransaction: Bool = false,
         requiresNote: Bool = false
     ) {
@@ -119,6 +123,7 @@ public struct HistoryQuery: Equatable, Sendable {
         self.minimumAmount = minimumAmount
         self.maximumAmount = maximumAmount
         self.requiredEntryIDs = requiredEntryIDs
+        self.attachmentMatchedEntryIDs = attachmentMatchedEntryIDs
         self.requiresSplitTransaction = requiresSplitTransaction
         self.requiresNote = requiresNote
     }
@@ -297,13 +302,14 @@ public struct HistoryQuery: Equatable, Sendable {
                     formattedAmount + " " + posting.money.currency.value
                 }
             }
-        return values.contains {
+        let structuredMatch = values.contains {
             $0.range(
                 of: query,
                 options: [.caseInsensitive, .diacriticInsensitive],
                 locale: locale
             ) != nil
         }
+        return structuredMatch || attachmentMatchedEntryIDs?.contains(entry.id) == true
     }
 
     private func classifiedKind(

@@ -593,7 +593,7 @@ W3_SOURCE_FUNCTION_DIGESTS: tuple[
         "App/MoneyUp/QuickLogEntryCaptureSuggestions.swift",
         "clearPerTransactionReviewState",
         re.compile(r"\bfunc\s+clearPerTransactionReviewState\s*\(\s*\)\s*\{"),
-        "93d66884bdf84c7b3c9ee5d570076d5a3ed27410ddf8d7ce0b56cc613db2bfde",
+        "e8aa4177d15fec2a1f9625aba87760b7f28e6bf82ee932c520921dd31a3f32b6",
     ),
     (
         W3_REVIEWED_ENTRY_ASSISTANCE_PATH,
@@ -611,7 +611,7 @@ W3_PATH_TYPE_DIGESTS: tuple[tuple[str, str, str, str], ...] = (
         "App/MoneyUp/QuickLogEntryBody.swift",
         "extension",
         "QuickLogEntryView",
-        "b7d962c6b5db00c05bd6487bdaf69a6072eb14530e4b213a548ed204b3990e83",
+        "d652ffa71883a8d10fda05f14e0cf0b309ce3c836e55fe9590961ba9e4396039",
     ),
     (
         "App/MoneyUp/QuickLogEntryReceipt.swift",
@@ -827,9 +827,9 @@ SAFE_EXCEPTIONS = (
     ),
 )
 
-# Version-one archive compatibility is reached only after FileHandle has
-# opened and bounded the same source URL. Keep this one legacy mapped read an
-# exact, counted exception; all new contentsOf: URL loads fail closed.
+# Every approved local URL read is exact and counted. New evidence imports use
+# a byte-bounded FileHandle read instead of this whole-file API; the remaining
+# recovery/archive URLs are owned and bounded by their reviewed workflows.
 REVIEWED_LOCAL_URL_LOADS = (
     SafeException(
         path="App/MoneyUp/KeyCliffRecoveryTransaction.swift",

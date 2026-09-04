@@ -31,11 +31,20 @@ extension QuickLogEntryView {
         errorMessage = nil
         defer { isSaving = false }
         do {
-            let retainedReceipt = retainReceiptAttachment ? receiptAttachmentData : nil
+            var evidence = attachmentDrafts
+            if retainReceiptAttachment, let receiptAttachmentData {
+                evidence.append(try ReceiptAttachmentDraft(
+                    mediaType: .detected(from: receiptAttachmentData),
+                    data: receiptAttachmentData,
+                    displayName: AppLocalization.string("evidence.scanned_receipt"),
+                    searchText: receiptResult?.recognizedText
+                ))
+            }
+            try ReceiptAttachment.validateEntryLimits(adding: evidence)
             let outcome = try await saveEntry(
                 amount: amount,
                 accountID: accountID,
-                receiptData: retainedReceipt
+                attachmentDrafts: evidence
             )
             guard case let .saved(savedEntryID) = outcome else {
                 finishPerformanceMeasurement(outcome: .failure)
@@ -61,14 +70,14 @@ extension QuickLogEntryView {
     private func saveEntry(
         amount: Decimal,
         accountID: UUID,
-        receiptData: Data?
+        attachmentDrafts: [ReceiptAttachmentDraft]
     ) async throws -> QuickLogSaveOutcome {
         if !splitLines.isEmpty, kind != .transfer {
             return .saved(try await saveSplit(
                 kind: kind,
                 amount: amount,
                 accountID: accountID,
-                receiptData: receiptData
+                attachmentDrafts: attachmentDrafts
             ))
         }
 
@@ -82,7 +91,7 @@ extension QuickLogEntryView {
                 occurredAt: occurredAt,
                 payee: payee,
                 note: note,
-                receiptData: receiptData,
+                attachmentDrafts: attachmentDrafts,
                 allowancePlanID: selectedAllowanceID
             ))
         case .income:
@@ -94,7 +103,7 @@ extension QuickLogEntryView {
                 occurredAt: occurredAt,
                 payee: payee,
                 note: note,
-                receiptData: receiptData
+                attachmentDrafts: attachmentDrafts
             ))
         case .refund:
             guard let categoryID else { return .skipped }
@@ -105,7 +114,7 @@ extension QuickLogEntryView {
                 occurredAt: occurredAt,
                 payee: payee,
                 note: note,
-                receiptData: receiptData
+                attachmentDrafts: attachmentDrafts
             ))
         case .transfer:
             guard let destinationAccountID else { return .skipped }
@@ -118,7 +127,8 @@ extension QuickLogEntryView {
                 destinationAccountID: destinationAccountID,
                 occurredAt: occurredAt,
                 payee: payee,
-                note: note
+                note: note,
+                attachmentDrafts: attachmentDrafts
             ))
         }
     }
@@ -127,7 +137,7 @@ extension QuickLogEntryView {
         kind: QuickLogKind,
         amount: Decimal,
         accountID: UUID,
-        receiptData: Data?
+        attachmentDrafts: [ReceiptAttachmentDraft]
     ) async throws -> UUID? {
         guard let currency = selectedAccountCurrency else {
             throw AppModelError.accountHasNoCurrency
@@ -143,7 +153,7 @@ extension QuickLogEntryView {
             occurredAt: occurredAt,
             payee: payee,
             note: note,
-            receiptData: receiptData,
+            attachmentDrafts: attachmentDrafts,
             allowancePlanID: kind == .expense ? selectedAllowanceID : nil
         )
     }
@@ -200,6 +210,9 @@ extension QuickLogEntryView {
             receiptAttachmentData = nil
             retainReceiptAttachment = false
             receiptRetentionMessage = nil
+            attachmentDrafts = []
+            evidencePhotoItems = []
+            evidenceMessage = nil
             photoItem = nil
             errorMessage = nil
             isShowingOptionalDetails = false

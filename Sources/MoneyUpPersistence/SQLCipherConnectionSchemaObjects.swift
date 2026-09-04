@@ -35,7 +35,9 @@ extension SQLCipherConnection {
                 entry_id TEXT NOT NULL,
                 media_type TEXT NOT NULL,
                 byte_count INTEGER NOT NULL CHECK(byte_count > 0),
-                created_at REAL NOT NULL
+                created_at REAL NOT NULL,
+                display_name TEXT,
+                search_index_text TEXT
             ) WITHOUT ROWID;
             """
         )

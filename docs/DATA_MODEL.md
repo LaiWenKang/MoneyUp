@@ -217,22 +217,25 @@ timestamps, or stored decimal precision; later migrations add receipt metadata,
 store metrics, budget attribution, and intelligence indexes without rewriting
 valid payloads.
 
-## Quick-log draft and receipt attachment
+## Quick-log draft and evidence attachments
 
 One optional in-progress Log draft is stored separately in SQLCipher. It
 contains editable form values and stable selections, not receipt bytes. A
 successful save atomically writes the entry, any explicitly retained encrypted
-receipt attachment, and draft deletion. The cleared form can retain only a new
+images or PDFs, and draft deletion. The cleared form can retain only a new
 encrypted preference snapshot without reviving the old amount.
 
-Receipt attachments are optional entry-keyed records. The selected source is
-transient for OCR; explicit retention decodes orientation, bounds the longest
-edge to 4,096 pixels, and re-encodes new JPEG/PNG pixels without copying the
-source metadata dictionary. GPS, EXIF, TIFF device identifiers, captions, and
-edit history therefore do not cross the persistence boundary. Entry replacement
-relinks attachments atomically; confirmed attachment or entry deletion removes
-them. Password-protected portable backup preserves the sanitized bytes.
-CSV/XLSX, drafts, widgets, logs, and diagnostics never receive them.
+Evidence attachments are optional entry-keyed records: up to five, 15 MB each
+and 30 MB total. Retained images are decoded with orientation, bounded to 4,096
+pixels, and re-encoded as new JPEG/PNG pixels without source metadata. GPS,
+EXIF, TIFF device identifiers, captions, and edit history therefore do not
+cross the persistence boundary. PDFs retain their original bytes. Vision OCR,
+embedded PDF text extraction, and visual classification run on device; bounded
+names, extracted text, and labels are indexed only inside SQLCipher and cannot
+change ledger facts. Entry replacement relinks attachments atomically;
+confirmed attachment or entry deletion removes them. Password-protected
+portable backup preserves the encrypted records. CSV/XLSX, drafts, widgets,
+logs, and diagnostics never receive attachment bytes or search text.
 
 ## Dated exchange rates
 

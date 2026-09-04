@@ -322,10 +322,15 @@ extension AppModel {
     func save(
         _ entry: JournalEntry,
         applyingAllowance planID: UUID?,
-        receiptData: Data? = nil
+        receiptData: Data? = nil,
+        attachmentDrafts: [ReceiptAttachmentDraft] = []
     ) async throws -> UUID? {
         guard let planID else {
-            return try await save(entry, receiptData: receiptData)
+            return try await save(
+                entry,
+                receiptData: receiptData,
+                attachmentDrafts: attachmentDrafts
+            )
         }
         guard entry.kind == .expense,
               let index = allowancePlans.firstIndex(where: { $0.id == planID }),
@@ -377,7 +382,8 @@ extension AppModel {
         let savedID = try await save(
             entry,
             additionalWrites: [planWrite],
-            receiptData: receiptData
+            receiptData: receiptData,
+            attachmentDrafts: attachmentDrafts
         )
         if savedID == entry.id,
            let currentIndex = allowancePlans.firstIndex(where: { $0.id == planID }) {

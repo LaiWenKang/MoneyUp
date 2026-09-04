@@ -24,6 +24,8 @@ extension ReceiptAttachmentError: @retroactive LocalizedError {
         case .emptyData: AppLocalization.string("receipt.error.empty")
         case .tooLarge: AppLocalization.string("receipt.error.too_large")
         case .invalidMetadata: AppLocalization.string("receipt.error.empty")
+        case .tooManyAttachments: AppLocalization.string("evidence.error_count")
+        case .totalTooLarge: AppLocalization.string("evidence.error_total_size")
         }
     }
 }

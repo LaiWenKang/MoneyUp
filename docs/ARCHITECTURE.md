@@ -8,7 +8,7 @@ flowchart TD
     App["Authenticated SwiftUI app"] --> Core["MoneyUpCore"]
     App --> Intel["MoneyUpIntelligence"]
     App --> Store["MoneyUpPersistence"]
-    Store --> Cipher["SQLCipher schema 8"]
+    Store --> Cipher["SQLCipher schema 9"]
     App --> Shared["Bounded status-only App Group"]
     Shared --> Widget
     App --> Files["CSV/XLSX/import/archive"]
@@ -184,7 +184,7 @@ The non-sensitive System/English/Simplified Chinese preference is stored in the
 reviewed App Group defaults so app and widget agree. It is deliberately separate
 from the financial profile, reporting time zone, stored text, and parsing rules.
 
-## Ledger and SQLCipher schema 8
+## Ledger and SQLCipher schema 9
 
 Normal views do not create postings directly. `TransactionFactory` creates
 balanced expense, income, transfer, foreign-exchange, refund, reconciliation,
@@ -192,18 +192,18 @@ split, investment purchase/sale, and valuation entries. `JournalEntry`
 validates each currency independently at initialization and decoding, and
 retains originating calendar/time-zone facts plus a stable local-day key.
 
-Schema 8 retains deterministic encrypted record payloads and the normalized
+Schema 9 retains deterministic encrypted record payloads and the normalized
 encrypted support tables. It includes schema 7's derived local-intelligence
-facts, constant-size totals, and historical budget attribution, while adding
-loan and allowance collections through the existing generic encrypted-record
-representation:
+facts, constant-size totals, and historical budget attribution; schema 8's loan
+and allowance collections; and a blob-free evidence-search projection for
+encrypted image/PDF names, on-device text, and local classification labels:
 
 | Table/index | Purpose |
 |---|---|
 | `journal_entry_index` | Chronological identity, source fingerprint, stable day/range lookup, and a semantic budget-integrity fingerprint without decoding every payload |
 | `journal_posting_index` | Account/category/currency posting events for reports, Calendar, lifecycle counts, and bounded scans |
 | `journal_balance` | Exact materialized balance per account/currency |
-| `receipt_attachment_index` | Entry relationship, MIME type, byte count, and creation time without loading the encrypted image payload |
+| `receipt_attachment_index` | Entry relationship, MIME type, byte count, creation time, display name, and bounded evidence-search text without loading an encrypted image/PDF payload |
 | `store_metrics` | Trigger-maintained exact record/payload/identity totals used to enforce the portable-recovery envelope in O(1) memory |
 | `budget_attribution_entry_index` | Stable historical budget day, entry timestamp, and matching semantic integrity fingerprint without attribution JSON decode |
 | `budget_attribution_posting_index` | Historical category/currency/amount postings used by bounded rollover queries |
@@ -222,7 +222,9 @@ recent cache into an accidental full journal.
 Schema-1/2 books migrate by decoding each legacy journal payload once to build
 the normalized indexes without changing the original payload, timestamp, or
 identifier. Later migrations add receipt metadata, exact store metrics, and
-budget-attribution projections without rewriting valid payloads. The 6-to-7
+budget-attribution projections without rewriting valid payloads. Schema 9 adds
+bounded evidence-search columns and rebuilds them from encrypted attachment
+records without changing attachment bytes. The 6-to-7
 migration decodes only metadata that schema 6 did not normalize (payee, kind,
 and account classification) inside the migration transaction, then builds the
 derived indexes without changing payload bytes, hashes, IDs, or timestamps.
