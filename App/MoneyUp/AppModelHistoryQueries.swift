@@ -44,7 +44,29 @@ private struct HistorySummaryAccumulator {
     }
 }
 
+private struct HistoryAttachmentSearchContext: Sendable {
+    let query: HistoryQuery
+    let matchesByEntryID: [UUID: ReceiptAttachmentSearchMatch]
+}
+
 extension AppModel {
+    private func historyAttachmentSearchContext(
+        query: HistoryQuery,
+        store: EncryptedRecordStore
+    ) async throws -> HistoryAttachmentSearchContext {
+        let matches = try await store.receiptAttachmentSearchMatches(
+            query: query.searchText
+        )
+        var resolvedQuery = query
+        resolvedQuery.attachmentMatchedEntryIDs = Set(matches.map(\.entryID))
+        return HistoryAttachmentSearchContext(
+            query: resolvedQuery,
+            matchesByEntryID: Dictionary(
+                uniqueKeysWithValues: matches.map { ($0.entryID, $0) }
+            )
+        )
+    }
+
     func historyPage(
         query: HistoryQuery,
         after cursor: JournalEntryPageCursor? = nil,
@@ -52,6 +74,11 @@ extension AppModel {
     ) async throws -> HistoryPageResult {
         let read = try beginLogicalBookRead()
         let historyStore = read.store
+        let attachmentSearch = try await historyAttachmentSearchContext(
+            query: query,
+            store: historyStore
+        )
+        try requireLogicalBookRead(read.token)
         let accountSnapshot = accounts
         let calendarSnapshot = reportingCalendar
         let dayKeys = historyDayKeys(for: query, calendar: calendarSnapshot)
@@ -72,17 +99,10 @@ extension AppModel {
             )
             try requireLogicalBookRead(read.token)
             recordHistoryDecodeIssues(rawPage.issues)
-            let relationshipIssues = rawPage.entries.filter { entry in
-                entry.postings.contains { !validAccountIDs.contains($0.accountID) }
-            }.map {
-                RecordDecodeIssue(
-                    collection: .journalEntries,
-                    recordID: $0.id.uuidString
-                )
-            }
-            recordHistoryDecodeIssues(relationshipIssues)
+            recordHistoryRelationshipIssues(
+                in: rawPage.entries, validAccountIDs: validAccountIDs)
             let filtered = await Task.detached(priority: .userInitiated) {
-                query.filteredEntries(
+                attachmentSearch.query.filteredEntries(
                     rawPage.entries.filter { entry in
                         !quarantinedEntryIDs.contains(entry.id)
                             && entry.postings.allSatisfy {
@@ -105,14 +125,19 @@ extension AppModel {
                         entries: matches,
                         nextCursor: moreResultsMayExist
                             ? historyCursor(for: matches.last)
-                            : nil
+                            : nil,
+                        attachmentMatchesByEntryID: attachmentSearch.matchesByEntryID
                     ),
                     token: read.token
                 )
             }
             guard let nextCursor = rawPage.nextCursor else {
                 return try await finishLogicalBookRead(
-                    HistoryPageResult(entries: matches, nextCursor: nil),
+                    HistoryPageResult(
+                        entries: matches,
+                        nextCursor: nil,
+                        attachmentMatchesByEntryID: attachmentSearch.matchesByEntryID
+                    ),
                     token: read.token
                 )
             }
@@ -122,7 +147,8 @@ extension AppModel {
         return try await finishLogicalBookRead(
             HistoryPageResult(
                 entries: matches,
-                nextCursor: historyCursor(for: matches.last)
+                nextCursor: historyCursor(for: matches.last),
+                attachmentMatchesByEntryID: attachmentSearch.matchesByEntryID
             ),
             token: read.token
         )
@@ -137,6 +163,32 @@ extension AppModel {
                 recordID: $0.id.uuidString
             )
         }
+    }
+
+    private func historyRelationshipIssues(
+        in entries: [JournalEntry],
+        validAccountIDs: Set<UUID>
+    ) -> [RecordDecodeIssue] {
+        entries.filter { entry in
+            entry.postings.contains { !validAccountIDs.contains($0.accountID) }
+        }.map {
+            RecordDecodeIssue(
+                collection: .journalEntries,
+                recordID: $0.id.uuidString
+            )
+        }
+    }
+
+    private func recordHistoryRelationshipIssues(
+        in entries: [JournalEntry],
+        validAccountIDs: Set<UUID>
+    ) {
+        recordHistoryDecodeIssues(
+            historyRelationshipIssues(
+                in: entries,
+                validAccountIDs: validAccountIDs
+            )
+        )
     }
 
     private func historyDayKeys(
@@ -164,6 +216,11 @@ extension AppModel {
     func historySummary(query: HistoryQuery) async throws -> HistorySummary {
         let read = try beginLogicalBookRead()
         let historyStore = read.store
+        let attachmentSearch = try await historyAttachmentSearchContext(
+            query: query,
+            store: historyStore
+        )
+        try requireLogicalBookRead(read.token)
         let accountSnapshot = accounts
         let calendarSnapshot = reportingCalendar
         let startDayKey = query.startDate.flatMap {
@@ -203,7 +260,7 @@ extension AppModel {
             }
             recordHistoryDecodeIssues(relationshipIssues)
             let pageSummary = try await Task.detached(priority: .userInitiated) {
-                let filtered = query.filteredEntries(
+                let filtered = attachmentSearch.query.filteredEntries(
                     rawPage.entries.filter { entry in
                         !quarantinedEntryIDs.contains(entry.id)
                             && entry.postings.allSatisfy {

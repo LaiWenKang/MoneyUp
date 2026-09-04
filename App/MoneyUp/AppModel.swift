@@ -63,6 +63,17 @@ final class AppModel {
     struct HistoryPageResult: Sendable {
         let entries: [JournalEntry]
         let nextCursor: JournalEntryPageCursor?
+        let attachmentMatchesByEntryID: [UUID: ReceiptAttachmentSearchMatch]
+
+        init(
+            entries: [JournalEntry],
+            nextCursor: JournalEntryPageCursor?,
+            attachmentMatchesByEntryID: [UUID: ReceiptAttachmentSearchMatch] = [:]
+        ) {
+            self.entries = entries
+            self.nextCursor = nextCursor
+            self.attachmentMatchesByEntryID = attachmentMatchesByEntryID
+        }
     }
 
     struct LedgerItemLifecycleImpact: Equatable {

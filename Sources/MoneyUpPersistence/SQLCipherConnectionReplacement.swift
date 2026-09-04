@@ -114,6 +114,7 @@ extension SQLCipherConnection {
     }
 
     func clearRecordsForReplacement() throws {
+        receiptAttachmentSearchCache = nil
         try clearIntelligenceDerivedTables()
         try execute("DELETE FROM journal_entry_index;")
         try execute("DELETE FROM journal_balance;")

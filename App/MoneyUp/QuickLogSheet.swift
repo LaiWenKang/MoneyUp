@@ -364,6 +364,8 @@ struct QuickLogEntryView: View {
     @State var hasRestoredDraft = false
     @State var handledRequestID: UInt64 = 0
     @State var isPresentingReceiptPicker = false
+    @State var isPresentingEvidencePhotoPicker = false
+    @State var isPresentingEvidencePDFPicker = false
     @State var isHandlingFocusedLaunch = false
     @State var isConfirmingDraftSwitch = false
     @State var pendingLaunchRequest: QuickLogRouteRequest?
@@ -395,6 +397,11 @@ struct QuickLogEntryView: View {
     @State var receiptAttachmentData: Data?
     @State var retainReceiptAttachment = false
     @State var receiptRetentionMessage: String?
+    @State var evidencePhotoItems: [PhotosPickerItem] = []
+    @State var attachmentDrafts: [ReceiptAttachmentDraft] = []
+    @State var isPreparingEvidence = false
+    @State var evidenceMessage: String?
+    @State var evidencePreparationTask: Task<Void, Never>?
 
     var amount: Decimal? {
         guard let value = decimalAmount(from: amountText), value > .zero else { return nil }

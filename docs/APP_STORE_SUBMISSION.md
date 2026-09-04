@@ -234,10 +234,13 @@ beta but is not a replacement for a public support contact.
 > import; open Assets to export CSV and XLSX after the plaintext warning; and add
 > privacy-redacted Home and Lock Screen widgets.
 >
-> The receipt reader uses PhotosPicker and Apple's on-device Vision framework.
-> The image is never uploaded and is stored in SQLCipher only after the user
-> explicitly chooses encrypted receipt retention; it never enters drafts,
-> widgets, readable exports, or diagnostics. The app has no advertising, analytics,
+> Evidence capture uses PhotosPicker, the system PDF picker, and Apple's
+> on-device Vision/PDF frameworks. Files are never uploaded and are stored in
+> SQLCipher only after the user explicitly saves the transaction. Image
+> metadata is removed; bounded OCR, PDF text, filenames, and visual labels are
+> searchable only inside the encrypted book and never change financial facts.
+> Attachment bytes and search text never enter drafts, widgets, readable
+> exports, logs, or diagnostics. The app has no advertising, analytics,
 > remote AI, or financial-data backend. The widget contains no financial
 > amounts in quick-action timelines. Its basic actions can open a separate
 > encrypted Quick Capture form; this contains no balances or database key and

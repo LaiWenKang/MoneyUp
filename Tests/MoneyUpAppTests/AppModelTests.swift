@@ -3133,7 +3133,10 @@ final class AppModelTests: XCTestCase {
         )
 
         XCTAssertEqual(ticket.preview.archiveFormatVersion, 2)
-        XCTAssertEqual(ticket.preview.archiveSchemaVersion, 8)
+        XCTAssertEqual(
+            ticket.preview.archiveSchemaVersion,
+            EncryptedRecordStore.currentSchemaVersion
+        )
         guard case let .available(currentSummary) = ticket.preview.current else {
             return XCTFail("An open live book must have a readable current summary")
         }
@@ -9667,6 +9670,12 @@ final class AppModelTests: XCTestCase {
                 memo: "Bus"
             )
         ]
+        let invoiceDraft = try ReceiptAttachmentDraft(
+            mediaType: .pdf,
+            data: Data("%PDF-1.7 invoice".utf8),
+            displayName: "invoice.pdf",
+            searchText: "Alexandra furniture"
+        )
 
         let savedEntryID = try await model.logSplitTransaction(
             kind: .expense,
@@ -9676,20 +9685,23 @@ final class AppModelTests: XCTestCase {
             occurredAt: Date(),
             payee: "Cafe and bus",
             note: nil,
-            receiptData: Data([0xff, 0xd8, 0xff, 0x01])
+            receiptData: Data([0xff, 0xd8, 0xff, 0x01]),
+            attachmentDrafts: [invoiceDraft]
         )
         let entryID = try XCTUnwrap(savedEntryID)
 
         XCTAssertEqual(model.entries.first?.postings.count, 3)
-        XCTAssertEqual(model.receiptAttachments.count, 1)
-        XCTAssertEqual(model.receiptAttachments.first?.entryID, entryID)
-        let attachmentID = try XCTUnwrap(model.receiptAttachments.first?.id)
+        XCTAssertEqual(model.receiptAttachments.count, 2)
+        XCTAssertTrue(model.receiptAttachments.allSatisfy { $0.entryID == entryID })
+        let attachmentID = try XCTUnwrap(
+            model.receiptAttachments.first { $0.mediaType == .jpeg }?.id
+        )
         let selectedAttachment = try await model.receiptAttachment(id: attachmentID)
         XCTAssertEqual(selectedAttachment.data, Data([0xff, 0xd8, 0xff, 0x01]))
         let savedEntryCount = try await fixture.store.count(in: .journalEntries)
         let savedAttachmentCount = try await fixture.store.count(in: .receiptAttachments)
         XCTAssertEqual(savedEntryCount, 1)
-        XCTAssertEqual(savedAttachmentCount, 1)
+        XCTAssertEqual(savedAttachmentCount, 2)
         let originalOrigin = model.entries[0].originContext
 
         let revisedLines = [
@@ -9715,7 +9727,15 @@ final class AppModelTests: XCTestCase {
             splitLines: revisedLines,
             occurredAt: model.entries[0].occurredAt,
             payee: "Cafe and bus",
-            note: "Rebalanced"
+            note: "Rebalanced",
+            attachmentDrafts: [
+                try ReceiptAttachmentDraft(
+                    mediaType: .jpeg,
+                    data: Data([0xff, 0xd8, 0xff, 0x02]),
+                    displayName: "menu.jpg",
+                    classificationLabels: ["menu"]
+                )
+            ]
         )
 
         let replacement = try XCTUnwrap(model.entries.first)
@@ -9725,9 +9745,19 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(categoryPostings.count, 2)
         XCTAssertEqual(Set(categoryPostings.map(\.accountID)), Set([fixture.food.id, transport.id]))
         XCTAssertEqual(Set(categoryPostings.compactMap(\.memo)), Set(["Meal revised", "Ride revised"]))
-        XCTAssertEqual(model.receiptAttachments.first?.entryID, replacement.id)
+        XCTAssertEqual(model.receiptAttachments.count, 3)
+        XCTAssertTrue(
+            model.receiptAttachments.allSatisfy { $0.entryID == replacement.id }
+        )
         let relinkedAttachment = try await model.receiptAttachment(id: attachmentID)
         XCTAssertEqual(relinkedAttachment.entryID, replacement.id)
+        let addedAttachment = try XCTUnwrap(
+            model.receiptAttachments.first { $0.displayName == "menu.jpg" }
+        )
+        let loadedAddedAttachment = try await model.receiptAttachment(
+            id: addedAttachment.id
+        )
+        XCTAssertEqual(loadedAddedAttachment.classificationLabels, ["menu"])
         XCTAssertNotEqual(replacement.id, entryID)
         XCTAssertEqual(replacement.originContext, originalOrigin)
 

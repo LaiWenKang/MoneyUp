@@ -91,7 +91,8 @@ extension AppModel {
         splitLines: [TransactionSplitLine]? = nil,
         occurredAt: Date,
         payee: String?,
-        note: String?
+        note: String?,
+        attachmentDrafts: [ReceiptAttachmentDraft] = []
     ) async throws {
         let request = JournalEntryReplacementRequest(
             kind: kind,
@@ -119,6 +120,10 @@ extension AppModel {
         guard !isProtectedJournalEntry(original) else {
             throw AppModelError.investmentEntryMutationForbidden
         }
+        try validateReplacementAttachmentDrafts(
+            attachmentDrafts,
+            originalEntryID: original.id
+        )
         let candidate = try makeReplacementCandidate(request, original: original)
         let replacement = try makeReplacementEntry(
             from: candidate.entry,
@@ -134,7 +139,8 @@ extension AppModel {
             replacement: replacement,
             addedAccounts: candidate.addedAccounts,
             budgetPlan: budgetPlan,
-            linkedScheduleIDs: linkedScheduleIDs
+            linkedScheduleIDs: linkedScheduleIDs,
+            attachmentDrafts: attachmentDrafts
         )
         let generation = storeGeneration
         let transactionStore = try requireStore()
@@ -172,6 +178,19 @@ extension AppModel {
 }
 
 extension AppModel {
+    private func validateReplacementAttachmentDrafts(
+        _ drafts: [ReceiptAttachmentDraft],
+        originalEntryID: UUID
+    ) throws {
+        let existingByteCounts = receiptAttachmentMetadata
+            .filter { $0.entryID == originalEntryID }
+            .map(\.byteCount)
+        try ReceiptAttachment.validateEntryLimits(
+            existingByteCounts: existingByteCounts,
+            adding: drafts
+        )
+    }
+
     private func replacementOriginalEntry(
         id: UUID,
         in store: EncryptedRecordStore
@@ -547,7 +566,8 @@ extension AppModel {
         replacement: JournalEntry,
         addedAccounts: [LedgerAccount],
         budgetPlan: JournalEntryReplacementBudgetPlan,
-        linkedScheduleIDs: Set<UUID>
+        linkedScheduleIDs: Set<UUID>,
+        attachmentDrafts: [ReceiptAttachmentDraft]
     ) throws -> JournalEntryReplacementWritePlan {
         var writes = try addedAccounts.map {
             try RecordWrite($0, id: $0.id.uuidString, in: .accounts)
@@ -562,9 +582,16 @@ extension AppModel {
             id: replacement.id.uuidString,
             in: .journalEntries
         ))
-        let attachmentMetadata = try receiptAttachmentMetadata
+        var attachmentMetadata = try receiptAttachmentMetadata
             .filter { $0.entryID == original.id }
             .map { try $0.relinked(to: replacement.id) }
+        let addedAttachments = try attachmentDrafts.map {
+            try $0.attached(to: replacement.id)
+        }
+        writes += try addedAttachments.map {
+            try RecordWrite($0, id: $0.id.uuidString, in: .receiptAttachments)
+        }
+        attachmentMetadata += addedAttachments.map(ReceiptAttachmentMetadata.init)
         var schedules: [ScheduledTransaction] = []
         for schedule in scheduledTransactions where linkedScheduleIDs.contains(schedule.id) {
             var updated = schedule

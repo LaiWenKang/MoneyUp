@@ -318,6 +318,10 @@ extension EncryptedRecordStore {
     func installSchema6IntelligenceStateForTesting() throws {
         try connection.installSchema6IntelligenceStateForTesting()
     }
+
+    func installSchema8EvidenceStateForTesting() throws {
+        try connection.installSchema8EvidenceStateForTesting()
+    }
     #endif
 
     public func close() {

@@ -80,8 +80,12 @@ extension SQLCipherConnection {
             try migrateToVersion7()
             currentVersion = 7
         }
-        guard currentVersion < 8 else { return }
-        try migrateToVersion8()
+        if currentVersion < 8 {
+            try migrateToVersion8()
+            currentVersion = 8
+        }
+        guard currentVersion < 9 else { return }
+        try migrateToVersion9()
     }
 
     private func storedSchemaVersion() throws -> Int32 {
@@ -264,6 +268,58 @@ extension SQLCipherConnection {
         }
     }
 
+    /// Adds a blob-free, SQLCipher-protected evidence search projection. Older
+    /// receipt records remain valid and are rebuilt with an empty search value.
+    private func migrateToVersion9() throws {
+        try performMigration {
+            if try !receiptAttachmentIndexHasColumn("display_name") {
+                try execute(
+                    "ALTER TABLE receipt_attachment_index ADD COLUMN display_name TEXT;"
+                )
+            }
+            if try !receiptAttachmentIndexHasColumn("search_index_text") {
+                try execute(
+                    "ALTER TABLE receipt_attachment_index ADD COLUMN search_index_text TEXT;"
+                )
+            }
+            for recordID in try recordIDs(
+                collection: RecordCollection.receiptAttachments.rawValue
+            ) {
+                guard let payload = try fetch(
+                    collection: RecordCollection.receiptAttachments.rawValue,
+                    recordID: recordID
+                ), let index = receiptAttachmentIndexWrite(
+                    collection: RecordCollection.receiptAttachments.rawValue,
+                    recordID: recordID,
+                    payload: payload
+                ) else { continue }
+                try replaceReceiptAttachmentIndex(
+                    attachmentID: recordID,
+                    with: index
+                )
+            }
+            try execute("PRAGMA user_version = 9;")
+        }
+    }
+
+    private func receiptAttachmentIndexHasColumn(_ expectedName: String) throws
+        -> Bool {
+        try withStatement("PRAGMA table_info(receipt_attachment_index);") {
+            statement in
+            while true {
+                let result = sqlite3_step(statement)
+                if result == SQLITE_DONE { return false }
+                guard result == SQLITE_ROW,
+                      let rawName = sqlite3_column_text(statement, 1) else {
+                    throw makeError(
+                        code: result == SQLITE_ROW ? SQLITE_CORRUPT : result
+                    )
+                }
+                if String(cString: rawName) == expectedName { return true }
+            }
+        }
+    }
+
     private func addBudgetIntegrityFingerprintIfNeeded() throws {
         guard try !journalEntryIndexHasBudgetIntegrityFingerprint() else { return }
         try execute(
@@ -428,4 +484,50 @@ extension SQLCipherConnection {
             """
         )
     }
+
+    #if DEBUG
+    func installSchema8EvidenceStateForTesting() throws {
+        try execute("BEGIN IMMEDIATE;")
+        do {
+            try execute("DROP INDEX receipt_attachment_index_entry;")
+            try execute(
+                "ALTER TABLE receipt_attachment_index RENAME TO receipt_attachment_index_v9;"
+            )
+            try execute(
+                """
+                CREATE TABLE receipt_attachment_index (
+                    attachment_id TEXT NOT NULL PRIMARY KEY,
+                    entry_id TEXT NOT NULL,
+                    media_type TEXT NOT NULL,
+                    byte_count INTEGER NOT NULL CHECK(byte_count > 0),
+                    created_at REAL NOT NULL
+                ) WITHOUT ROWID;
+                """
+            )
+            try execute(
+                """
+                INSERT INTO receipt_attachment_index (
+                    attachment_id, entry_id, media_type, byte_count, created_at
+                )
+                SELECT attachment_id, entry_id, media_type, byte_count, created_at
+                FROM receipt_attachment_index_v9;
+                """
+            )
+            try execute(
+                """
+                CREATE INDEX receipt_attachment_index_entry
+                ON receipt_attachment_index(
+                    entry_id, created_at ASC, attachment_id ASC
+                );
+                """
+            )
+            try execute("DROP TABLE receipt_attachment_index_v9;")
+            try execute("PRAGMA user_version = 8;")
+            try execute("COMMIT;")
+        } catch {
+            try? execute("ROLLBACK;")
+            throw error
+        }
+    }
+    #endif
 }

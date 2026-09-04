@@ -7,6 +7,12 @@ struct TransactionRow: View {
     @AppStorage(MoneyAmountPrivacy.storageKey)
     private var hidesAmounts = MoneyAmountPrivacy.defaultHidesAmounts
     let entry: JournalEntry
+    let searchMatchLabel: String?
+
+    init(entry: JournalEntry, searchMatchLabel: String? = nil) {
+        self.entry = entry
+        self.searchMatchLabel = searchMatchLabel
+    }
 
     private var categoryName: String? {
         entry.postings.lazy.compactMap { posting in
@@ -98,6 +104,7 @@ struct TransactionRow: View {
         if localizedKind != title { components.append(localizedKind) }
         if let categoryName, categoryName != title { components.append(categoryName) }
         if let note = entry.note { components.append(note) }
+        if let searchMatchLabel { components.append(searchMatchLabel) }
         components.append(reportingDateDescription)
         switch displayedAmountsResult {
         case let .available(amounts):
@@ -164,6 +171,11 @@ struct TransactionRow: View {
             if let note = entry.note {
                 Text(note)
                     .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
+            }
+            if let searchMatchLabel {
+                Label(searchMatchLabel, systemImage: "doc.text.magnifyingglass")
+                    .foregroundStyle(.tint)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
             }
         }
         .font(.caption)

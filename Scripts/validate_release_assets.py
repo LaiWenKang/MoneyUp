@@ -1040,14 +1040,14 @@ def logical_book_boundary_invariant_violations(
             "history",
             "func historyPage(",
             "private func historyCursor",
-            2,
+            3,
         ),
         (
             "history summary",
             "history",
             "func historySummary(",
             "func calendarEntries",
-            2,
+            3,
         ),
         (
             "calendar entries",

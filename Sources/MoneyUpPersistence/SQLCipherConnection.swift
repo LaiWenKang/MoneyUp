@@ -40,6 +40,8 @@ final class SQLCipherConnection: @unchecked Sendable {
     )
     var lastReceiptAttachmentReadDiagnostics =
         ReceiptAttachmentReadDiagnostics(metadataRowsRead: 0, blobPayloadsDecoded: 0)
+    var receiptAttachmentSearchCache:
+        (query: String, matches: [ReceiptAttachmentSearchMatch])?
     var lastIntelligenceReadDiagnostics = IntelligenceReadDiagnostics(
         affinityRowsRead: 0,
         observationRowsRead: 0,
@@ -402,7 +404,10 @@ final class SQLCipherConnection: @unchecked Sendable {
                 entryID: destinationEntryID,
                 mediaType: original.mediaType,
                 data: original.data,
-                createdAt: original.createdAt
+                createdAt: original.createdAt,
+                displayName: original.displayName,
+                searchText: original.searchText,
+                classificationLabels: original.classificationLabels
             )
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.sortedKeys]
@@ -444,6 +449,7 @@ final class SQLCipherConnection: @unchecked Sendable {
             attachmentID: attachmentID,
             index: index
         )
+        receiptAttachmentSearchCache = nil
     }
 
     func upsertReceiptAttachmentIndex(
@@ -453,13 +459,16 @@ final class SQLCipherConnection: @unchecked Sendable {
         try withStatement(
             """
             INSERT INTO receipt_attachment_index (
-                attachment_id, entry_id, media_type, byte_count, created_at
-            ) VALUES (?, ?, ?, ?, ?)
+                attachment_id, entry_id, media_type, byte_count, created_at,
+                display_name, search_index_text
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(attachment_id) DO UPDATE SET
                 entry_id = excluded.entry_id,
                 media_type = excluded.media_type,
                 byte_count = excluded.byte_count,
-                created_at = excluded.created_at;
+                created_at = excluded.created_at,
+                display_name = excluded.display_name,
+                search_index_text = excluded.search_index_text;
             """
         ) { statement in
             try bindText(attachmentID, at: 1, to: statement)
@@ -469,6 +478,8 @@ final class SQLCipherConnection: @unchecked Sendable {
                   sqlite3_bind_double(statement, 5, index.createdAt) == SQLITE_OK else {
                 throw makeError()
             }
+            try bindOptionalText(index.displayName, at: 6, to: statement)
+            try bindOptionalText(index.searchIndexText, at: 7, to: statement)
             try stepExpectingDone(statement)
         }
     }
@@ -480,6 +491,7 @@ final class SQLCipherConnection: @unchecked Sendable {
             try bindText(attachmentID, at: 1, to: statement)
             try stepExpectingDone(statement)
         }
+        receiptAttachmentSearchCache = nil
     }
 
     func replaceBudgetAttributionIndex(

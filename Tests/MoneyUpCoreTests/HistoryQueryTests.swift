@@ -88,6 +88,27 @@ final class HistoryQueryTests: XCTestCase {
         )
     }
 
+    func testAttachmentMatchSupplementsButDoesNotBypassOtherFilters() throws {
+        let fixture = try Fixture()
+        let matching = try fixture.expense(amount: 28.80, payee: "Structured title")
+        let outsideAmount = try fixture.expense(amount: 90, payee: "Other title")
+        let query = HistoryQuery(
+            searchText: "IKEA Alexandra",
+            kind: .expense,
+            minimumAmount: 20,
+            maximumAmount: 40,
+            attachmentMatchedEntryIDs: [matching.id, outsideAmount.id]
+        )
+
+        XCTAssertEqual(
+            query.filteredEntries(
+                [matching, outsideAmount],
+                accounts: fixture.accounts
+            ).map(\.id),
+            [matching.id]
+        )
+    }
+
     func testForeignTransferAmountRangeMatchesEitherUserAccountSide() throws {
         let fixture = try Fixture()
         let transfer = try TransactionFactory.foreignCurrencyTransfer(

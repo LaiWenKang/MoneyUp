@@ -65,6 +65,11 @@ extension QuickLogEntryView {
         receiptAttachmentData = nil
         retainReceiptAttachment = false
         receiptRetentionMessage = nil
+        evidencePreparationTask?.cancel()
+        evidencePreparationTask = nil
+        evidencePhotoItems = []
+        attachmentDrafts = []
+        evidenceMessage = nil
         photoItem = nil
         errorMessage = nil
     }

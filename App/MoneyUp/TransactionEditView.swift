@@ -1,5 +1,6 @@
 import MoneyUpCore
 import MoneyUpPersistence
+import PhotosUI
 import SwiftUI
 import UIKit
 
@@ -127,6 +128,13 @@ struct TransactionEditView: View {
     @State var attachmentImages: [UUID: UIImage] = [:]
     @State var attachmentLoadFailures = Set<UUID>()
     @State var attachmentLoadTokens: [UUID: UUID] = [:]
+    @State var evidencePhotoItems: [PhotosPickerItem] = []
+    @State var pendingEvidence: [ReceiptAttachmentDraft] = []
+    @State var isPreparingEvidence = false
+    @State var isPresentingEvidencePhotoPicker = false
+    @State var isPresentingEvidencePDFPicker = false
+    @State var evidencePreparationTask: Task<Void, Never>?
+    @State var evidenceMessage: String?
     @AppStorage(MoneyAmountPrivacy.storageKey)
     var hidesAmounts = MoneyAmountPrivacy.defaultHidesAmounts
     @FocusState var focusedField: FieldFocus?

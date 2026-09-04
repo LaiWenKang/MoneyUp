@@ -11,10 +11,12 @@ struct ReceiptAttachmentTests {
             + Data("ftypheic".utf8)
             + Data([0, 0, 0, 0])
             + Data("mif1heic".utf8)
+        let pdf = Data("%PDF-1.7\n".utf8)
 
         #expect(ReceiptAttachmentMediaType.detected(from: jpeg) == .jpeg)
         #expect(ReceiptAttachmentMediaType.detected(from: png) == .png)
         #expect(ReceiptAttachmentMediaType.detected(from: heic) == .heic)
+        #expect(ReceiptAttachmentMediaType.detected(from: pdf) == .pdf)
     }
 
     @Test
@@ -38,5 +40,52 @@ struct ReceiptAttachmentTests {
             ReceiptAttachmentMediaType.detected(from: Data("not an image".utf8))
                 == .unknown
         )
+    }
+
+    @Test
+    func enforcesPerTransactionEvidenceLimits() throws {
+        let draft = try ReceiptAttachmentDraft(
+            mediaType: .pdf,
+            data: Data("%PDF-1.7".utf8),
+            displayName: "invoice.pdf",
+            searchText: "IKEA Alexandra SGD 129.90"
+        )
+
+        #expect(throws: ReceiptAttachmentError.tooManyAttachments) {
+            try ReceiptAttachment.validateEntryLimits(
+                existingByteCounts: Array(repeating: 1, count: 5),
+                adding: [draft]
+            )
+        }
+        #expect(throws: ReceiptAttachmentError.totalTooLarge) {
+            try ReceiptAttachment.validateEntryLimits(
+                existingByteCounts: [ReceiptAttachment.maximumTotalByteCountPerEntry],
+                adding: [draft]
+            )
+        }
+        #expect(throws: ReceiptAttachmentError.invalidMetadata) {
+            try ReceiptAttachmentDraft(
+                mediaType: .jpeg,
+                data: Data("%PDF-1.7".utf8)
+            )
+        }
+    }
+
+    @Test
+    func draftRetainsOnlyBoundedSearchMetadata() throws {
+        let longName = String(repeating: "é", count: 500)
+        let draft = try ReceiptAttachmentDraft(
+            mediaType: .pdf,
+            data: Data("%PDF-1.7".utf8),
+            displayName: longName,
+            searchText: String(repeating: "receipt ", count: 5_000),
+            classificationLabels: Array(repeating: "document", count: 30)
+        )
+
+        #expect((draft.displayName?.utf8.count ?? 0)
+            <= ReceiptAttachment.maximumDisplayNameUTF8Count)
+        #expect((draft.searchText?.utf8.count ?? 0)
+            <= ReceiptAttachment.maximumSearchTextUTF8Count)
+        #expect(draft.classificationLabels == ["document"])
     }
 }

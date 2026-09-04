@@ -1,7 +1,9 @@
 import MoneyUpCore
 import MoneyUpPersistence
+import PhotosUI
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 extension TransactionEditView {
     var body: some View {
@@ -158,11 +160,72 @@ extension TransactionEditView {
                 }
 
 
-                if !attachmentMetadata.isEmpty {
-                    Section {
+                Section {
+                    if isEditable {
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: 16) {
+                                editEvidencePhotoButton
+                                editEvidencePDFButton
+                            }
+                            VStack(alignment: .leading, spacing: 12) {
+                                editEvidencePhotoButton
+                                editEvidencePDFButton
+                            }
+                        }
+                    }
+
+                    if isPreparingEvidence {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                            Text("evidence.preparing").foregroundStyle(.secondary)
+                        }
+                    }
+
+                    ForEach(pendingEvidence) { attachment in
+                        HStack(spacing: 12) {
+                            Image(systemName: attachment.mediaType == .pdf
+                                ? "doc.richtext.fill" : "photo.fill")
+                                .foregroundStyle(.tint)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(attachment.displayName ?? AppLocalization.string(
+                                    attachment.mediaType == .pdf
+                                        ? "evidence.pdf" : "evidence.photo"
+                                ))
+                                    .font(.subheadline.weight(.semibold))
+                                    .lineLimit(1)
+                                Text("evidence.pending_save")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Button(role: .destructive) {
+                                pendingEvidence.removeAll { $0.id == attachment.id }
+                            } label: {
+                                Image(systemName: "trash")
+                            }
+                            .buttonStyle(.borderless)
+                            .accessibilityLabel("evidence.remove")
+                        }
+                    }
+
+                    if let evidenceMessage {
+                        Text(evidenceMessage)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    if !attachmentMetadata.isEmpty {
                         ForEach(attachmentMetadata) { attachment in
                             VStack(alignment: .leading, spacing: 8) {
-                                if let image = attachmentImages[attachment.id] {
+                                if attachment.mediaType == .pdf {
+                                    Label(
+                                        attachment.displayName
+                                            ?? AppLocalization.string("evidence.pdf"),
+                                        systemImage: "doc.richtext.fill"
+                                    )
+                                    .font(.headline)
+                                    .frame(maxWidth: .infinity, minHeight: 64)
+                                } else if let image = attachmentImages[attachment.id] {
                                     Image(uiImage: image)
                                         .resizable()
                                         .scaledToFit()
@@ -188,11 +251,11 @@ extension TransactionEditView {
                                 .accessibilityHint("receipt.delete_attachment_hint")
                             }
                         }
-                    } header: {
-                        Text("receipt.attachments")
-                    } footer: {
-                        Text("receipt.attachment_encrypted_detail")
                     }
+                } header: {
+                    Text("evidence.title")
+                } footer: {
+                    Text("evidence.encrypted_detail")
                 }
 
             }
@@ -213,7 +276,7 @@ extension TransactionEditView {
                 if isEditable {
                     ToolbarItem(placement: .confirmationAction) {
                         Button("action.save") { Task { await save() } }
-                            .disabled(!canSave || isSaving)
+                            .disabled(!canSave || isSaving || isPreparingEvidence)
                     }
                 }
                 ToolbarItem(placement: .secondaryAction) {
@@ -234,6 +297,14 @@ extension TransactionEditView {
             }
             .onDisappear {
                 invalidateAttachmentPreviews()
+                evidencePreparationTask?.cancel()
+            }
+            .onChange(of: evidencePhotoItems) { _, items in
+                guard !items.isEmpty else { return }
+                evidencePreparationTask?.cancel()
+                evidencePreparationTask = Task { @MainActor in
+                    await addEditEvidencePhotos(items)
+                }
             }
             .onChange(of: model.state) { _, state in
                 if state != .ready {
@@ -363,7 +434,8 @@ extension TransactionEditView {
                 splitLines: revisedSplits,
                 occurredAt: occurredAt,
                 payee: payee,
-                note: note
+                note: note,
+                attachmentDrafts: pendingEvidence
             )
             dismiss()
         } catch {

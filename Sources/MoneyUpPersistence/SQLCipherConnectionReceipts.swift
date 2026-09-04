@@ -9,7 +9,8 @@ extension SQLCipherConnection {
         var canonicalIndexedRecordIDs = Set<String>()
         try withStatement(
             """
-            SELECT attachment_id, entry_id, media_type, byte_count, created_at
+            SELECT attachment_id, entry_id, media_type, byte_count, created_at,
+                   display_name
             FROM receipt_attachment_index
             ORDER BY created_at ASC, attachment_id ASC;
             """
@@ -17,32 +18,12 @@ extension SQLCipherConnection {
             while true {
                 let result = sqlite3_step(statement)
                 if result == SQLITE_DONE { break }
-                guard result == SQLITE_ROW,
-                      let rawAttachmentID = sqlite3_column_text(statement, 0),
-                      let rawEntryID = sqlite3_column_text(statement, 1),
-                      let rawMediaType = sqlite3_column_text(statement, 2)
-                else {
+                guard result == SQLITE_ROW else {
                     throw makeError(code: result == SQLITE_ROW ? SQLITE_CORRUPT : result)
                 }
-                let attachmentRecordID = String(cString: rawAttachmentID)
-                guard let attachmentID = UUID(uuidString: attachmentRecordID),
-                      attachmentID.uuidString == attachmentRecordID,
-                      let entryID = UUID(uuidString: String(cString: rawEntryID)),
-                      let mediaType = ReceiptAttachmentMediaType(
-                        rawValue: String(cString: rawMediaType)
-                      ) else { continue }
-                canonicalIndexedRecordIDs.insert(attachmentRecordID)
-                metadata.append(
-                    try ReceiptAttachmentMetadata(
-                        id: attachmentID,
-                        entryID: entryID,
-                        mediaType: mediaType,
-                        byteCount: Int(sqlite3_column_int64(statement, 3)),
-                        createdAt: Date(
-                            timeIntervalSince1970: sqlite3_column_double(statement, 4)
-                        )
-                    )
-                )
+                guard let row = try receiptAttachmentMetadataRow(statement) else { continue }
+                canonicalIndexedRecordIDs.insert(row.recordID)
+                metadata.append(row.metadata)
             }
         }
 
@@ -84,6 +65,38 @@ extension SQLCipherConnection {
             blobPayloadsDecoded: 0
         )
         return ReceiptAttachmentIndexSnapshot(metadata: metadata, issues: issues)
+    }
+
+    private func receiptAttachmentMetadataRow(
+        _ statement: OpaquePointer
+    ) throws -> (recordID: String, metadata: ReceiptAttachmentMetadata)? {
+        guard let rawAttachmentID = sqlite3_column_text(statement, 0),
+              let rawEntryID = sqlite3_column_text(statement, 1),
+              let rawMediaType = sqlite3_column_text(statement, 2) else {
+            throw makeError(code: SQLITE_CORRUPT)
+        }
+        let recordID = String(cString: rawAttachmentID)
+        guard let attachmentID = UUID(uuidString: recordID),
+              attachmentID.uuidString == recordID,
+              let entryID = UUID(uuidString: String(cString: rawEntryID)),
+              let mediaType = ReceiptAttachmentMediaType(
+                rawValue: String(cString: rawMediaType)
+              ) else { return nil }
+        return (
+            recordID,
+            try ReceiptAttachmentMetadata(
+                id: attachmentID,
+                entryID: entryID,
+                mediaType: mediaType,
+                byteCount: Int(sqlite3_column_int64(statement, 3)),
+                createdAt: Date(
+                    timeIntervalSince1970: sqlite3_column_double(statement, 4)
+                ),
+                displayName: sqlite3_column_text(statement, 5).map {
+                    String(cString: $0)
+                }
+            )
+        )
     }
 
     func receiptAttachment(id: UUID) throws -> ReceiptAttachment? {
@@ -189,6 +202,61 @@ extension SQLCipherConnection {
         }
     }
 
+    func receiptAttachmentSearchMatches(
+        query: String
+    ) throws -> [ReceiptAttachmentSearchMatch] {
+        guard let normalizedQuery = PayeeNormalization.boundedIndexKey(query),
+              PayeeNormalization.isMeaningful(normalizedQuery) else { return [] }
+        if receiptAttachmentSearchCache?.query == normalizedQuery {
+            return receiptAttachmentSearchCache?.matches ?? []
+        }
+        let matches = try withStatement(
+            """
+            SELECT entry_id, attachment_id, media_type, display_name
+            FROM receipt_attachment_index
+            WHERE search_index_text IS NOT NULL
+              AND instr(search_index_text, ?) > 0
+            ORDER BY created_at DESC, attachment_id DESC;
+            """
+        ) { statement in
+            try bindText(normalizedQuery, at: 1, to: statement)
+            var matches: [ReceiptAttachmentSearchMatch] = []
+            var seenEntryIDs = Set<UUID>()
+            while true {
+                let result = sqlite3_step(statement)
+                if result == SQLITE_DONE { break }
+                guard result == SQLITE_ROW,
+                      let rawEntryID = sqlite3_column_text(statement, 0),
+                      let rawAttachmentID = sqlite3_column_text(statement, 1),
+                      let rawMediaType = sqlite3_column_text(statement, 2),
+                      let entryID = UUID(uuidString: String(cString: rawEntryID)),
+                      entryID.uuidString == String(cString: rawEntryID),
+                      let attachmentID = UUID(uuidString: String(cString: rawAttachmentID)),
+                      attachmentID.uuidString == String(cString: rawAttachmentID),
+                      let mediaType = ReceiptAttachmentMediaType(
+                        rawValue: String(cString: rawMediaType)
+                      ) else {
+                    throw makeError(code: result == SQLITE_ROW ? SQLITE_CORRUPT : result)
+                }
+                // One concise reason per transaction is enough for History.
+                guard seenEntryIDs.insert(entryID).inserted else { continue }
+                matches.append(
+                    ReceiptAttachmentSearchMatch(
+                        entryID: entryID,
+                        attachmentID: attachmentID,
+                        mediaType: mediaType,
+                        displayName: sqlite3_column_text(statement, 3).map {
+                            String(cString: $0)
+                        }
+                    )
+                )
+            }
+            return matches
+        }
+        receiptAttachmentSearchCache = (normalizedQuery, matches)
+        return matches
+    }
+
     func remove(collection: String, recordID: String) throws {
         try withStatement(
             "DELETE FROM records WHERE collection = ? AND record_id = ?;"
@@ -225,6 +293,9 @@ extension SQLCipherConnection {
                 try rebuildAllIntelligenceIndexesFromRecords()
             }
             try execute("COMMIT;")
+            if collection == RecordCollection.receiptAttachments.rawValue {
+                receiptAttachmentSearchCache = nil
+            }
         } catch let operationError {
             do {
                 try execute("ROLLBACK;")

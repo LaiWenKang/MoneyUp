@@ -16,6 +16,7 @@ extension AppModel {
         payee: String?,
         note: String?,
         receiptData: Data? = nil,
+        attachmentDrafts: [ReceiptAttachmentDraft] = [],
         allowancePlanID: UUID? = nil
     ) async throws -> UUID? {
         try requireActiveCategory(categoryID, kind: .expense)
@@ -32,7 +33,8 @@ extension AppModel {
         return try await save(
             entry,
             applyingAllowance: allowancePlanID,
-            receiptData: receiptData
+            receiptData: receiptData,
+            attachmentDrafts: attachmentDrafts
         )
     }
 
@@ -44,7 +46,8 @@ extension AppModel {
         occurredAt: Date,
         payee: String?,
         note: String?,
-        receiptData: Data? = nil
+        receiptData: Data? = nil,
+        attachmentDrafts: [ReceiptAttachmentDraft] = []
     ) async throws -> UUID? {
         try requireActiveCategory(categoryID, kind: .income)
         let currency = try currency(for: accountID)
@@ -57,7 +60,11 @@ extension AppModel {
             payee: payee,
             note: note
         )
-        return try await save(entry, receiptData: receiptData)
+        return try await save(
+            entry,
+            receiptData: receiptData,
+            attachmentDrafts: attachmentDrafts
+        )
     }
 
     @discardableResult
@@ -68,7 +75,8 @@ extension AppModel {
         occurredAt: Date,
         payee: String?,
         note: String?,
-        receiptData: Data? = nil
+        receiptData: Data? = nil,
+        attachmentDrafts: [ReceiptAttachmentDraft] = []
     ) async throws -> UUID? {
         try requireActiveCategory(categoryID, kind: .expense)
         let currency = try currency(for: accountID)
@@ -81,7 +89,11 @@ extension AppModel {
             payee: payee,
             note: note
         )
-        return try await save(entry, receiptData: receiptData)
+        return try await save(
+            entry,
+            receiptData: receiptData,
+            attachmentDrafts: attachmentDrafts
+        )
     }
 
     @discardableResult
@@ -94,6 +106,7 @@ extension AppModel {
         payee: String?,
         note: String?,
         receiptData: Data? = nil,
+        attachmentDrafts: [ReceiptAttachmentDraft] = [],
         allowancePlanID: UUID? = nil
     ) async throws -> UUID? {
         guard kind != .transfer else { throw AppModelError.invalidCategoryKind }
@@ -141,13 +154,18 @@ extension AppModel {
             return try await save(
                 entry,
                 applyingAllowance: allowancePlanID,
-                receiptData: receiptData
+                receiptData: receiptData,
+                attachmentDrafts: attachmentDrafts
             )
         }
         guard allowancePlanID == nil else {
             throw AppModelError.invalidAllowance
         }
-        return try await save(entry, receiptData: receiptData)
+        return try await save(
+            entry,
+            receiptData: receiptData,
+            attachmentDrafts: attachmentDrafts
+        )
     }
 
     @discardableResult
@@ -158,7 +176,8 @@ extension AppModel {
         destinationAccountID: UUID,
         occurredAt: Date,
         payee: String?,
-        note: String?
+        note: String?,
+        attachmentDrafts: [ReceiptAttachmentDraft] = []
     ) async throws -> UUID? {
         let sourceCurrency = try currency(for: sourceAccountID)
         let destinationCurrency = try currency(for: destinationAccountID)
@@ -172,7 +191,7 @@ extension AppModel {
                 payee: payee,
                 note: note
             )
-            return try await save(entry)
+            return try await save(entry, attachmentDrafts: attachmentDrafts)
         }
 
         guard let destinationAmount, destinationAmount > .zero else {
@@ -201,7 +220,8 @@ extension AppModel {
         return try await save(
             entry,
             additionalWrites: writes,
-            additionalAccounts: newTradingAccounts
+            additionalAccounts: newTradingAccounts,
+            attachmentDrafts: attachmentDrafts
         )
     }
 

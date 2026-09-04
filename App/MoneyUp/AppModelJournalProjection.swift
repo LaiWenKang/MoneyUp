@@ -23,7 +23,7 @@ private struct JournalSaveBudgetCandidate {
 
 private struct JournalSaveWriteCandidate {
     let writes: [RecordWrite]
-    let receiptAttachment: ReceiptAttachment?
+    let receiptAttachments: [ReceiptAttachment]
 }
 
 extension AppModel {
@@ -176,7 +176,8 @@ extension AppModel {
         _ entry: JournalEntry,
         additionalWrites: [RecordWrite] = [],
         additionalAccounts: [LedgerAccount] = [],
-        receiptData: Data? = nil
+        receiptData: Data? = nil,
+        attachmentDrafts: [ReceiptAttachmentDraft] = []
     ) async throws -> UUID? {
         try beginJournalMutation()
         defer { endJournalMutation() }
@@ -196,6 +197,7 @@ extension AppModel {
             attribution: attribution,
             additionalWrites: additionalWrites,
             receiptData: receiptData,
+            attachmentDrafts: attachmentDrafts,
             timeline: budgetCandidate.timeline
         )
         if let completedLockedCaptureID = context.completedLockedCaptureID {
@@ -231,7 +233,7 @@ extension AppModel {
         await publishSavedJournalEntry(
             context: context,
             budgetCandidate: budgetCandidate,
-            receiptAttachment: writeCandidate.receiptAttachment,
+            receiptAttachments: writeCandidate.receiptAttachments,
             additionalAccounts: additionalAccounts
         )
         return context.entry.id
@@ -318,17 +320,22 @@ extension AppModel {
         attribution: BudgetEntryAttribution,
         additionalWrites: [RecordWrite],
         receiptData: Data?,
+        attachmentDrafts: [ReceiptAttachmentDraft],
         timeline: BudgetConfigurationTimeline?
     ) throws -> JournalSaveWriteCandidate {
         var pendingWrites = additionalWrites
-        let receiptAttachment: ReceiptAttachment?
+        var drafts = attachmentDrafts
         if let receiptData {
-            let createdAttachment = try ReceiptAttachment(
-                entryID: entry.id,
+            drafts.append(try ReceiptAttachmentDraft(
                 mediaType: .detected(from: receiptData),
                 data: receiptData
-            )
-            receiptAttachment = createdAttachment
+            ))
+        }
+        try ReceiptAttachment.validateEntryLimits(adding: drafts)
+        let receiptAttachments = try drafts.map {
+            try $0.attached(to: entry.id)
+        }
+        for createdAttachment in receiptAttachments {
             pendingWrites.append(
                 try RecordWrite(
                     createdAttachment,
@@ -336,8 +343,6 @@ extension AppModel {
                     in: .receiptAttachments
                 )
             )
-        } else {
-            receiptAttachment = nil
         }
         pendingWrites.append(
             try RecordWrite(entry, id: entry.id.uuidString, in: .journalEntries)
@@ -354,7 +359,7 @@ extension AppModel {
         }
         return JournalSaveWriteCandidate(
             writes: pendingWrites,
-            receiptAttachment: receiptAttachment
+            receiptAttachments: receiptAttachments
         )
     }
 
@@ -410,18 +415,16 @@ extension AppModel {
     private func publishSavedJournalEntry(
         context: JournalSaveContext,
         budgetCandidate: JournalSaveBudgetCandidate,
-        receiptAttachment: ReceiptAttachment?,
+        receiptAttachments: [ReceiptAttachment],
         additionalAccounts: [LedgerAccount]
     ) async {
         quickLogDraft = nil
         if !additionalAccounts.isEmpty {
             accounts.append(contentsOf: additionalAccounts)
         }
-        if let receiptAttachment {
-            receiptAttachmentMetadata.append(
-                ReceiptAttachmentMetadata(receiptAttachment)
-            )
-        }
+        receiptAttachmentMetadata.append(
+            contentsOf: receiptAttachments.map(ReceiptAttachmentMetadata.init)
+        )
         if let timeline = budgetCandidate.timeline {
             budgetConfigurationTimeline = timeline
         }
