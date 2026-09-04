@@ -35,7 +35,7 @@ struct MoneyUpExplainer: View {
             Button {
                 withAnimation(
                     MoneyUpMotion.animation(
-                        for: .stateChange,
+                        for: .disclosure,
                         reduceMotion: reduceMotion
                     )
                 ) {
@@ -56,6 +56,11 @@ struct MoneyUpExplainer: View {
 
             if isExpanded {
                 Text(explanation)
+                    .transition(
+                        MoneyUpMotion.disclosureTransition(
+                            reduceMotion: reduceMotion
+                        )
+                    )
             }
         }
     }
@@ -99,8 +104,15 @@ struct MoneyUpDisclosureCard<Summary: View, Detail: View>: View {
             VStack(alignment: .leading, spacing: 12) {
                 header
                 if isExpanded {
-                    Divider()
-                    detail
+                    Group {
+                        Divider()
+                        detail
+                    }
+                    .transition(
+                        MoneyUpMotion.disclosureTransition(
+                            reduceMotion: reduceMotion
+                        )
+                    )
                 }
             }
         }
@@ -110,7 +122,7 @@ struct MoneyUpDisclosureCard<Summary: View, Detail: View>: View {
         Button {
             withAnimation(
                 MoneyUpMotion.animation(
-                    for: .stateChange,
+                    for: .disclosure,
                     reduceMotion: reduceMotion
                 )
             ) {
@@ -125,11 +137,12 @@ struct MoneyUpDisclosureCard<Summary: View, Detail: View>: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.tertiary)
                     .rotationEffect(.degrees(isExpanded ? 0 : -90))
+                    .contentTransition(.symbolEffect(.replace))
                     .accessibilityHidden(true)
             }
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(MoneyUpPressableButtonStyle())
         .accessibilityElement(children: .combine)
         .accessibilityLabel(title)
         .accessibilityValue(isExpanded ? "state.expanded" : "state.collapsed")

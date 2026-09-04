@@ -4,6 +4,8 @@ import SwiftUI
 struct TransactionRow: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @AppStorage(MoneyAmountPrivacy.storageKey)
+    private var hidesAmounts = MoneyAmountPrivacy.defaultHidesAmounts
     let entry: JournalEntry
 
     private var categoryName: String? {
@@ -99,7 +101,9 @@ struct TransactionRow: View {
         components.append(reportingDateDescription)
         switch displayedAmountsResult {
         case let .available(amounts):
-            components.append(contentsOf: amounts.map(formattedTransactionAmount))
+            components.append(
+                contentsOf: amounts.map(accessibleFormattedTransactionAmount)
+            )
         case let .unavailable(issue):
             components.append(issue.localizedDescription)
         }
@@ -107,6 +111,7 @@ struct TransactionRow: View {
     }
 
     var body: some View {
+        let _ = hidesAmounts
         Group {
             if dynamicTypeSize.isAccessibilitySize {
                 VStack(alignment: .leading, spacing: 9) {

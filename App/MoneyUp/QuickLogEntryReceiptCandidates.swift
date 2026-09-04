@@ -59,12 +59,15 @@ extension QuickLogEntryView {
     ) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             if let currency = selectedAccountCurrency {
-                Text("\(editableAmount(candidate.value)) \(currency.value)")
+                Text(
+                    "\(MoneyAmountPrivacy.protected(editableAmount(candidate.value))) "
+                        + currency.value
+                )
                     .font(.body.monospacedDigit())
                 Text("quick_log.scan_amount_account_currency")
                     .font(.caption2)
             } else {
-                Text(editableAmount(candidate.value))
+                Text(MoneyAmountPrivacy.protected(editableAmount(candidate.value)))
                     .font(.body.monospacedDigit())
             }
             Text(receiptCandidateDetail(candidate))

@@ -127,6 +127,8 @@ struct TransactionEditView: View {
     @State var attachmentImages: [UUID: UIImage] = [:]
     @State var attachmentLoadFailures = Set<UUID>()
     @State var attachmentLoadTokens: [UUID: UUID] = [:]
+    @AppStorage(MoneyAmountPrivacy.storageKey)
+    var hidesAmounts = MoneyAmountPrivacy.defaultHidesAmounts
     @FocusState var focusedField: FieldFocus?
 
     let isEditable: Bool
@@ -278,6 +280,13 @@ struct TransactionEditView: View {
 
         ForEach(Array(splitLines.enumerated()), id: \.element.id) { index, line in
             let lineID = line.id
+            let masksLineAmount = hidesAmounts
+                && focusedField != .splitAmount(lineID)
+                && !line.amountText.isEmpty
+            let amountAccessibilityLabel = String(
+                format: AppLocalization.string("quick_log.split_amount_numbered"),
+                index + 1
+            )
             VStack(alignment: .leading, spacing: 8) {
                 Picker(
                     "quick_log.split_category",
@@ -320,14 +329,13 @@ struct TransactionEditView: View {
                     .moneyAmountKeyboard(currency: sourceCurrency)
                     .focused($focusedField, equals: .splitAmount(lineID))
                     .id(FieldFocus.splitAmount(lineID))
-                    .accessibilityLabel(
-                        Text(
-                            String(
-                                format: AppLocalization.string("quick_log.split_amount_numbered"),
-                                index + 1
-                            )
-                        )
-                    )
+                    .accessibilityLabel(Text(amountAccessibilityLabel))
+                    .moneyUpPrivateAmountInput(
+                        masked: masksLineAmount,
+                        accessibilityLabel: Text(amountAccessibilityLabel)
+                    ) {
+                        focusedField = .splitAmount(lineID)
+                    }
                     if let sourceCurrency {
                         Text(sourceCurrency.value).foregroundStyle(.secondary)
                     }
@@ -401,7 +409,10 @@ struct TransactionEditView: View {
 
         if let remainder = splitRemainder, let sourceCurrency {
             LabeledContent("quick_log.split_remainder") {
-                Text("\(editableAmount(remainder)) \(sourceCurrency.value)")
+                Text(
+                    "\(MoneyAmountPrivacy.protected(editableAmount(remainder))) "
+                        + sourceCurrency.value
+                )
                     .font(.subheadline.monospacedDigit().weight(.semibold))
                     .foregroundStyle(remainder == .zero ? Color.green : Color.red)
             }

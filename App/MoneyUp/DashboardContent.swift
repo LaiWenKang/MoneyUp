@@ -1,3 +1,4 @@
+import Charts
 import MoneyUpCore
 import SwiftUI
 
@@ -7,11 +8,11 @@ extension DashboardView {
     /// the account list, the static privacy explainer — is deliberately not
     /// repeated here.
     var body: some View {
-        NavigationStack {
+        let _ = hidesAmounts
+        return NavigationStack {
             ScrollView {
                 LazyVStack(spacing: 16) {
                     headline
-                    MoneyUpCard { quickActions }
                     IntelligenceSummaryLink()
                     positionCard
                     monthlyBudgetCard
@@ -31,7 +32,8 @@ extension DashboardView {
                 }
             }
             .toolbar {
-                ToolbarItem(placement: .primaryAction) {
+                ToolbarItemGroup(placement: .primaryAction) {
+                    MoneyUpAmountPrivacyButton()
                     NavigationLink {
                         AppSettingsView()
                     } label: {
@@ -124,9 +126,15 @@ extension DashboardView {
     private var positionSummary: some View {
         switch cashDebtPosition {
         case let .available(position):
-            Text(formattedMoney(position.netCash))
-                .font(.title3.monospacedDigit().weight(.semibold))
-                .lineLimit(1)
+            HStack(spacing: 12) {
+                Text(formattedMoney(position.netCash))
+                    .font(.title3.monospacedDigit().weight(.semibold))
+                    .lineLimit(1)
+                MoneyUpPositionOrbit(
+                    cashAmount: position.cash.amount,
+                    debtAmount: position.debt.amount
+                )
+            }
         case .unavailable:
             Text(verbatim: "—")
                 .font(.title3.monospacedDigit().weight(.semibold))
@@ -220,12 +228,22 @@ extension DashboardView {
                 systemImage: "chart.pie.fill",
                 title: "dashboard.monthly_budget"
             ) {
-                Text(formattedMoney(summary.remaining))
-                    .font(.title3.monospacedDigit().weight(.semibold))
-                    .foregroundStyle(
-                        summary.remaining.amount < .zero ? Color.red : Color.primary
-                    )
-                    .lineLimit(1)
+                HStack(spacing: 12) {
+                    Text(formattedMoney(summary.remaining))
+                        .font(.title3.monospacedDigit().weight(.semibold))
+                        .foregroundStyle(
+                            summary.remaining.amount < .zero
+                                ? Color.red
+                                : Color.primary
+                        )
+                        .lineLimit(1)
+                    if case let .available(ratio) = budgetRatio(summary) {
+                        MoneyUpBudgetOrbit(
+                            ratio: ratio,
+                            elapsed: monthElapsed
+                        )
+                    }
+                }
             } detail: {
                 budgetProgress(summary)
                 foreignSpendingNotice
@@ -342,16 +360,121 @@ extension DashboardView {
 
     /// Insights has no tab of its own; Assets and History do, so neither is
     /// duplicated here as a shortcut.
+    @ViewBuilder
     var insightsCard: some View {
-        MoneyUpCard {
-            NavigationLink {
-                InsightsView()
-            } label: {
-                Label("dashboard.open_insights", systemImage: "chart.bar.fill")
-                    .frame(maxWidth: .infinity, alignment: .leading)
+        switch model.reportResult(for: .thisMonth) {
+        case let .available(report) where report.monthlyFlows.contains(
+            where: { !$0.net.isZero }
+        ):
+            MoneyUpCard(style: .floating) {
+                NavigationLink {
+                    InsightsView()
+                } label: {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Label(
+                                "dashboard.open_insights",
+                                systemImage: "chart.xyaxis.line"
+                            )
+                            .font(.headline)
+                            Spacer()
+                            Image(systemName: "arrow.up.right")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.tertiary)
+                                .accessibilityHidden(true)
+                        }
+
+                        Chart(Array(report.monthlyFlows.suffix(6)), id: \.month) { flow in
+                            AreaMark(
+                                x: .value(
+                                    AppLocalization.string("chart.dimension.month"),
+                                    flow.month,
+                                    unit: .month
+                                ),
+                                yStart: .value(
+                                    AppLocalization.string("insights.net"),
+                                    0
+                                ),
+                                yEnd: .value(
+                                    AppLocalization.string("insights.net"),
+                                    NSDecimalNumber(
+                                        decimal: flow.net.amount
+                                    ).doubleValue
+                                )
+                            )
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: [
+                                        Color.accentColor.opacity(0.30),
+                                        Color.accentColor.opacity(0.02)
+                                    ],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            )
+                            .interpolationMethod(.catmullRom)
+
+                            LineMark(
+                                x: .value(
+                                    AppLocalization.string("chart.dimension.month"),
+                                    flow.month,
+                                    unit: .month
+                                ),
+                                y: .value(
+                                    AppLocalization.string("insights.net"),
+                                    NSDecimalNumber(
+                                        decimal: flow.net.amount
+                                    ).doubleValue
+                                )
+                            )
+                            .foregroundStyle(Color.accentColor)
+                            .lineStyle(
+                                StrokeStyle(
+                                    lineWidth: 2.5,
+                                    lineCap: .round,
+                                    lineJoin: .round
+                                )
+                            )
+                            .interpolationMethod(.catmullRom)
+
+                            PointMark(
+                                x: .value(
+                                    AppLocalization.string("chart.dimension.month"),
+                                    flow.month,
+                                    unit: .month
+                                ),
+                                y: .value(
+                                    AppLocalization.string("insights.net"),
+                                    NSDecimalNumber(
+                                        decimal: flow.net.amount
+                                    ).doubleValue
+                                )
+                            )
+                            .foregroundStyle(Color.accentColor)
+                            .symbolSize(24)
+                        }
+                        .chartXAxis(.hidden)
+                        .chartYAxis(.hidden)
+                        .frame(height: 96)
+                        .accessibilityHidden(true)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(MoneyUpPressableButtonStyle())
+                .accessibilityLabel("dashboard.open_insights")
+                .accessibilityHint("insights.chart_accessibility_hint")
             }
-            .buttonStyle(.plain)
-            .padding(.vertical, 6)
+        default:
+            MoneyUpCard {
+                NavigationLink {
+                    InsightsView()
+                } label: {
+                    Label("dashboard.open_insights", systemImage: "chart.bar.fill")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(MoneyUpPressableButtonStyle())
+                .padding(.vertical, 6)
+            }
         }
     }
 
@@ -446,38 +569,4 @@ extension DashboardView {
         return "checkmark.circle.fill"
     }
 
-    var quickActions: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 10) {
-                logButton
-                planButton
-            }
-            VStack(spacing: 10) {
-                logButton
-                planButton
-            }
-        }
-    }
-
-    var logButton: some View {
-        Button {
-            onOpenLog()
-        } label: {
-            Label("dashboard.log_money", systemImage: "plus.circle.fill")
-                .frame(maxWidth: .infinity)
-        }
-        .buttonStyle(.borderedProminent)
-        .tint(.moneyUpAction)
-    }
-
-    var planButton: some View {
-        Button {
-            onOpenPlan()
-        } label: {
-            Label("dashboard.plan_money", systemImage: "chart.pie.fill")
-                .frame(maxWidth: .infinity)
-        }
-        .buttonStyle(.bordered)
-        .tint(.accentColor)
-    }
 }

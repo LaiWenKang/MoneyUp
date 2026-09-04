@@ -115,7 +115,15 @@ struct MoneyUpPaceBar: View {
                     .fill(Color(.tertiarySystemFill))
 
                 Capsule()
-                    .fill(ratio > 1 ? Color.red : Color.accentColor)
+                    .fill(
+                        LinearGradient(
+                            colors: ratio > 1
+                                ? [Color.red.opacity(0.72), Color.red]
+                                : [Color.accentColor.opacity(0.62), Color.accentColor],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
                     .frame(width: width * clampedRatio)
 
                 Rectangle()
@@ -138,6 +146,116 @@ struct MoneyUpPaceBar: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(statusKey)
         .accessibilityHidden(!announcesStatus)
+    }
+}
+
+/// A compact, exact composition diagram for the Today position headline.
+/// The figure remains immediate text; this orbit adds a glanceable cash/debt
+/// relationship without inventing a consolidated currency or another label.
+struct MoneyUpPositionOrbit: View {
+    let cashAmount: Decimal
+    let debtAmount: Decimal
+
+    private var cashShare: DerivedValue<Double?> {
+        do {
+            let cash = abs(cashAmount)
+            let debt = abs(debtAmount)
+            let total = try CheckedDecimal.adding(cash, debt)
+            guard total > .zero else { return .available(nil) }
+            return .available(
+                NSDecimalNumber(
+                    decimal: try CheckedDecimal.ratio(cash, total)
+                ).doubleValue
+            )
+        } catch {
+            DerivedValueDiagnostics.record(
+                .amountCalculationFailed,
+                operation: "position-orbit-ratio",
+                error: error
+            )
+            return .unavailable(.amountCalculationFailed)
+        }
+    }
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(Color(.tertiarySystemFill), lineWidth: 6)
+
+            if case let .available(.some(value)) = cashShare {
+                Circle()
+                    .trim(from: 0, to: min(max(value, 0), 1))
+                    .stroke(
+                        AngularGradient(
+                            colors: [Color.accentColor.opacity(0.64), .accentColor],
+                            center: .center
+                        ),
+                        style: StrokeStyle(lineWidth: 6, lineCap: .round)
+                    )
+                    .rotationEffect(.degrees(-90))
+
+                Circle()
+                    .trim(from: min(max(value + 0.025, 0), 1), to: 1)
+                    .stroke(
+                        Color.orange.opacity(0.86),
+                        style: StrokeStyle(lineWidth: 6, lineCap: .round)
+                    )
+                    .rotationEffect(.degrees(-90))
+            }
+
+            Image(systemName: "scale.3d")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.secondary)
+        }
+        .frame(width: 48, height: 48)
+        .accessibilityHidden(true)
+    }
+}
+
+/// The monthly budget headline uses the same visual grammar as its detailed
+/// pace bar: the arc is spending/limit and the small marker is elapsed month.
+/// Overspend retains a warning glyph, so status is never color-only.
+struct MoneyUpBudgetOrbit: View {
+    let ratio: Double
+    let elapsed: Double
+
+    var body: some View {
+        GeometryReader { proxy in
+            let size = min(proxy.size.width, proxy.size.height)
+            let radius = max(0, size / 2 - 3)
+            let clampedRatio = min(max(ratio, 0), 1)
+            let clampedElapsed = min(max(elapsed, 0), 1)
+
+            ZStack {
+                Circle()
+                    .stroke(Color(.tertiarySystemFill), lineWidth: 6)
+                Circle()
+                    .trim(from: 0, to: clampedRatio)
+                    .stroke(
+                        ratio > 1
+                            ? Color.red
+                            : Color.accentColor,
+                        style: StrokeStyle(lineWidth: 6, lineCap: .round)
+                    )
+                    .rotationEffect(.degrees(-90))
+
+                Circle()
+                    .fill(Color.primary)
+                    .frame(width: 5, height: 5)
+                    .offset(y: -radius)
+                    .rotationEffect(.degrees(clampedElapsed * 360))
+
+                Image(
+                    systemName: ratio > 1
+                        ? "exclamationmark"
+                        : "gauge.with.dots.needle.50percent"
+                )
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(ratio > 1 ? Color.red : Color.secondary)
+            }
+        }
+        .frame(width: 48, height: 48)
+        .accessibilityHidden(true)
     }
 }
 

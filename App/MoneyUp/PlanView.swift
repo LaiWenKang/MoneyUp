@@ -18,18 +18,29 @@ struct PlanView: View {
 
     @State private var selection: Section = .overview
     @Environment(AppModel.self) private var model
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AppStorage(MoneyAmountPrivacy.storageKey)
+    private var hidesAmounts = MoneyAmountPrivacy.defaultHidesAmounts
 
     /// Sections are swapped, not pushed, so the way back to the overview has
     /// to be published explicitly for each section to place.
     private var sectionBack: MoneyUpSectionBackAction? {
         guard selection != .overview else { return nil }
         return MoneyUpSectionBackAction(titleKey: "plan.overview") {
-            withAnimation(.snappy) { selection = .overview }
+            withAnimation(
+                MoneyUpMotion.animation(
+                    for: .selection,
+                    reduceMotion: reduceMotion
+                )
+            ) {
+                selection = .overview
+            }
         }
     }
 
     var body: some View {
-        Group {
+        let _ = hidesAmounts
+        return Group {
             switch selection {
             case .overview:
                 PlanOverviewView { selection = $0 }
@@ -47,35 +58,53 @@ struct PlanView: View {
             }
         }
         .safeAreaInset(edge: .top, spacing: 0) {
-            sectionSwitcher
+            if selection != .overview {
+                sectionSwitcher
+                    .transition(
+                        MoneyUpMotion.disclosureTransition(
+                            reduceMotion: reduceMotion
+                        )
+                    )
+            }
         }
         .environment(\.calendar, model.reportingCalendar)
         .environment(\.timeZone, model.reportingCalendar.timeZone)
     }
 
     private var sectionSwitcher: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(Self.switchableSections, id: \.self) { section in
-                    Button {
-                        withAnimation(.snappy) { selection = section }
-                    } label: {
-                        Label(section.title, systemImage: section.systemImage)
-                            .font(.caption.weight(.semibold))
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(
-                                selection == section
-                                    ? Color.accentColor.opacity(0.18)
-                                    : Color.secondary.opacity(0.10),
-                                in: Capsule()
-                            )
+        HStack(spacing: 8) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(Self.switchableSections, id: \.self) { section in
+                        Button {
+                            withAnimation(
+                                MoneyUpMotion.animation(
+                                    for: .selection,
+                                    reduceMotion: reduceMotion
+                                )
+                            ) {
+                                selection = section
+                            }
+                        } label: {
+                            Label(section.title, systemImage: section.systemImage)
+                                .font(.caption.weight(.semibold))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(
+                                    selection == section
+                                        ? Color.accentColor.opacity(0.18)
+                                        : Color.secondary.opacity(0.10),
+                                    in: Capsule()
+                                )
+                        }
+                        .buttonStyle(MoneyUpPressableButtonStyle())
+                        .accessibilityAddTraits(selection == section ? .isSelected : [])
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityAddTraits(selection == section ? .isSelected : [])
                 }
+                .padding(.leading, 16)
             }
-            .padding(.horizontal, 16)
+            MoneyUpAmountPrivacyButton()
+                .padding(.trailing, 16)
         }
         .padding(.vertical, 8)
         .background(.bar)
@@ -148,6 +177,23 @@ private struct PlanOverviewView: View {
                         symbol: "giftcard.fill",
                         section: .allowances
                     )
+                    NavigationLink {
+                        BudgetSimulatorView()
+                    } label: {
+                        HStack(spacing: 12) {
+                            MoneyUpSymbolBadge(
+                                systemImage: "slider.horizontal.3",
+                                color: .accentColor
+                            )
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("simulator.title").font(.headline)
+                                Text("simulator.row_detail")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
                 } header: {
                     Text("plan.overview.next")
                 } footer: {
@@ -157,6 +203,11 @@ private struct PlanOverviewView: View {
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
             .navigationTitle("tab.plan")
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    MoneyUpAmountPrivacyButton()
+                }
+            }
         }
     }
 
@@ -180,7 +231,7 @@ private struct PlanOverviewView: View {
             }
             .padding(.vertical, 4)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(MoneyUpPressableButtonStyle())
     }
 }
 
@@ -316,8 +367,8 @@ private struct BudgetPlanView: View {
                     }
                 }
 
-                Section {
-                    if model.profile?.intelligenceEnabled == true {
+                if model.profile?.intelligenceEnabled == true {
+                    Section {
                         NavigationLink {
                             BudgetSuggestionReviewView()
                         } label: {
@@ -336,27 +387,9 @@ private struct BudgetPlanView: View {
                             }
                             .padding(.vertical, 4)
                         }
+                    } header: {
+                        Text("simulator.explore")
                     }
-                    NavigationLink {
-                        BudgetSimulatorView()
-                    } label: {
-                        HStack(spacing: 12) {
-                            MoneyUpSymbolBadge(
-                                systemImage: "slider.horizontal.3",
-                                color: .accentColor
-                            )
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text("simulator.title")
-                                    .font(.headline)
-                                Text("simulator.row_detail")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .padding(.vertical, 4)
-                    }
-                } header: {
-                    Text("simulator.explore")
                 }
 
                 if case let .available(foreignSpending) = foreignSpendingResult,

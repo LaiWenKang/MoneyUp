@@ -35,10 +35,37 @@ final class MoneyFormatterCache {
 
 @MainActor
 func formattedMoney(_ money: Money) -> String {
+    MoneyAmountPrivacy.protected(
+        unprotectedFormattedMoney(
+            money,
+            notation: MoneyDisplayPolicy.notation(for: money.currency)
+        )
+    )
+}
+
+/// VoiceOver should announce the privacy state instead of reading five star
+/// characters. Call sites that provide a custom accessibility value use this
+/// alongside the visually masked `formattedMoney(_:)` result.
+@MainActor
+func accessibleFormattedMoney(_ money: Money) -> String {
+    guard !MoneyAmountPrivacy.hidesAmounts else {
+        return AppLocalization.string("privacy.amounts_hidden")
+    }
+    return unprotectedFormattedMoney(
+        money,
+        notation: MoneyDisplayPolicy.notation(for: money.currency)
+    )
+}
+
+@MainActor
+private func unprotectedFormattedMoney(
+    _ money: Money,
+    notation: MoneyCurrencyNotation
+) -> String {
     let formatter = MoneyFormatterCache.shared.currencyFormatter(
         for: money.currency,
         locale: .current,
-        notation: MoneyDisplayPolicy.notation(for: money.currency)
+        notation: notation
     )
     return formatter.string(from: NSDecimalNumber(decimal: money.amount))
         ?? "\(money.currency.value) \(NSDecimalNumber(decimal: money.amount).stringValue)"
@@ -51,13 +78,9 @@ func formattedMoney(_ money: Money) -> String {
 /// whose value is about to be committed to a specific account.
 @MainActor
 func formattedMoneyWithCurrencyCode(_ money: Money) -> String {
-    let formatter = MoneyFormatterCache.shared.currencyFormatter(
-        for: money.currency,
-        locale: .current,
-        notation: .code
+    MoneyAmountPrivacy.protected(
+        unprotectedFormattedMoney(money, notation: .code)
     )
-    return formatter.string(from: NSDecimalNumber(decimal: money.amount))
-        ?? "\(money.currency.value) \(NSDecimalNumber(decimal: money.amount).stringValue)"
 }
 
 /// Formats a fraction such as `0.32` as a locale-aware percentage.
@@ -257,6 +280,9 @@ private func unavailableTransactionAmounts() -> DerivedValue<[TransactionDisplay
 
 @MainActor
 func formattedTransactionAmount(_ amount: TransactionDisplayAmount) -> String {
+    guard !MoneyAmountPrivacy.hidesAmounts else {
+        return MoneyAmountPrivacy.placeholder
+    }
     let absoluteMoney = amount.money.amount < .zero ? amount.money.negated : amount.money
     let value = formattedMoney(absoluteMoney)
     switch amount.role {
@@ -269,6 +295,16 @@ func formattedTransactionAmount(_ amount: TransactionDisplayAmount) -> String {
     case .expense, .income, .refund:
         return value
     }
+}
+
+@MainActor
+func accessibleFormattedTransactionAmount(
+    _ amount: TransactionDisplayAmount
+) -> String {
+    guard !MoneyAmountPrivacy.hidesAmounts else {
+        return AppLocalization.string("privacy.amounts_hidden")
+    }
+    return formattedTransactionAmount(amount)
 }
 
 extension FinancialAccountType {

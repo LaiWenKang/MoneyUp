@@ -1,4 +1,5 @@
 @testable import MoneyUp
+import Foundation
 import XCTest
 
 final class MoneyUpDesignPrimitiveTests: XCTestCase {
@@ -40,6 +41,51 @@ final class MoneyUpDesignPrimitiveTests: XCTestCase {
             MoneyUpMotion.policy(for: .stateChange, reduceMotion: true),
             .immediate
         )
+    }
+
+    func testPremiumInteractionMotionFallsBackToImmediateUpdates() {
+        XCTAssertEqual(
+            MoneyUpMotion.policy(for: .selection, reduceMotion: false),
+            .snappy(duration: 0.24)
+        )
+        XCTAssertEqual(
+            MoneyUpMotion.policy(for: .disclosure, reduceMotion: false),
+            .spring(response: 0.42, dampingFraction: 0.88, blendDuration: 0.08)
+        )
+        XCTAssertEqual(
+            MoneyUpMotion.policy(for: .press, reduceMotion: false),
+            .snappy(duration: 0.14)
+        )
+
+        for context in [
+            MoneyUpMotion.Context.selection,
+            .disclosure,
+            .press,
+        ] {
+            XCTAssertEqual(
+                MoneyUpMotion.policy(for: context, reduceMotion: true),
+                .immediate
+            )
+        }
+    }
+
+    func testAmountPrivacyFailsPrivateUntilExplicitlyChanged() throws {
+        let suiteName = "MoneyUpTests.AmountPrivacy.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        XCTAssertTrue(MoneyAmountPrivacy.hidesAmounts(in: defaults))
+        XCTAssertEqual(
+            MoneyAmountPrivacy.protected("SGD 1,034.10", hidesAmounts: true),
+            "*****"
+        )
+        XCTAssertEqual(
+            MoneyAmountPrivacy.protected("SGD 1,034.10", hidesAmounts: false),
+            "SGD 1,034.10"
+        )
+
+        defaults.set(false, forKey: MoneyAmountPrivacy.storageKey)
+        XCTAssertFalse(MoneyAmountPrivacy.hidesAmounts(in: defaults))
     }
 
     func testTabAndSheetTransitionsRemainNative() {

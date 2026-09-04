@@ -99,12 +99,16 @@ struct InsightsView: View {
 
     @Environment(AppModel.self) var model
     @Environment(\.dynamicTypeSize) var dynamicTypeSize
+    @Environment(\.accessibilityReduceMotion) var reduceMotion
+    @AppStorage(MoneyAmountPrivacy.storageKey)
+    var hidesAmounts = MoneyAmountPrivacy.defaultHidesAmounts
     @State var period: ReportPeriod = .thisMonth
     @State var selectedCategoryKey: String?
     @State var selectedFlowMonth: Date?
 
     var body: some View {
-        ScrollView {
+        let _ = hidesAmounts
+        return ScrollView {
             LazyVStack(spacing: MoneyUpLayout.standardSpacing) {
                 periodCard
                 IntelligenceSummaryLink()
@@ -134,6 +138,25 @@ struct InsightsView: View {
         }
         .background { MoneyUpBackdrop() }
         .navigationTitle("tab.insights")
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                MoneyUpAmountPrivacyButton()
+            }
+        }
+        .animation(
+            MoneyUpMotion.animation(
+                for: .selection,
+                reduceMotion: reduceMotion
+            ),
+            value: selectedCategoryKey
+        )
+        .animation(
+            MoneyUpMotion.animation(
+                for: .selection,
+                reduceMotion: reduceMotion
+            ),
+            value: selectedFlowMonth
+        )
         .onChange(of: period) { _, _ in
             selectedCategoryKey = nil
             selectedFlowMonth = nil
@@ -268,7 +291,7 @@ struct InsightsView: View {
                         .foregroundStyle(.secondary)
                 }
                 .accessibilityLabel(point.name)
-                .accessibilityValue(formattedMoney(point.money))
+                .accessibilityValue(accessibleFormattedMoney(point.money))
             }
 
             if let selectedCategoryKey {

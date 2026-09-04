@@ -2,6 +2,117 @@ import Foundation
 import MoneyUpCore
 import SwiftUI
 
+/// A glance-privacy preference for exact financial amounts.
+///
+/// This is intentionally a device UI preference in `UserDefaults`, not book
+/// content: the key stores one Boolean and can never contain an amount,
+/// account, category, or transaction identifier. A missing preference fails
+/// private so existing installs upgrading from an older build start masked.
+enum MoneyAmountPrivacy {
+    static let storageKey = "moneyup.privacy.hide-amounts"
+    static let placeholder = "*****"
+    static let defaultHidesAmounts = true
+
+    static var hidesAmounts: Bool {
+        hidesAmounts(in: .standard)
+    }
+
+    static func hidesAmounts(in defaults: UserDefaults) -> Bool {
+        guard defaults.object(forKey: storageKey) != nil else {
+            return defaultHidesAmounts
+        }
+        return defaults.bool(forKey: storageKey)
+    }
+
+    static func protected(_ value: String, hidesAmounts: Bool) -> String {
+        hidesAmounts ? placeholder : value
+    }
+
+    static func protected(_ value: String) -> String {
+        protected(value, hidesAmounts: hidesAmounts)
+    }
+}
+
+/// The same one-tap privacy control on every amount-heavy top-level screen.
+/// Its label describes the action while its value announces the current state.
+struct MoneyUpAmountPrivacyButton: View {
+    @AppStorage(MoneyAmountPrivacy.storageKey)
+    private var hidesAmounts = MoneyAmountPrivacy.defaultHidesAmounts
+
+    var body: some View {
+        Button {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                hidesAmounts.toggle()
+            }
+        } label: {
+            Image(systemName: hidesAmounts ? "eye.slash.fill" : "eye.fill")
+                .contentTransition(.symbolEffect(.replace))
+        }
+        .accessibilityLabel(
+            hidesAmounts
+                ? LocalizedStringKey("privacy.show_amounts")
+                : LocalizedStringKey("privacy.hide_amounts")
+        )
+        .accessibilityValue(
+            hidesAmounts
+                ? LocalizedStringKey("privacy.amounts_hidden")
+                : LocalizedStringKey("privacy.amounts_visible")
+        )
+        .accessibilityHint("privacy.amount_visibility_hint")
+        .buttonStyle(MoneyUpPressableButtonStyle())
+    }
+}
+
+private struct MoneyUpPrivateAmountInputModifier: ViewModifier {
+    let isMasked: Bool
+    let accessibilityLabel: Text
+    let placeholderFont: Font?
+    let reveal: () -> Void
+
+    func body(content: Content) -> some View {
+        ZStack(alignment: .leading) {
+            if isMasked {
+                Button(action: reveal) {
+                    Text(verbatim: MoneyAmountPrivacy.placeholder)
+                        .font(placeholderFont)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(MoneyUpPressableButtonStyle())
+                .accessibilityLabel(accessibilityLabel)
+                .accessibilityValue("privacy.amounts_hidden")
+                .accessibilityHint("privacy.tap_to_edit_amount")
+            } else {
+                content
+            }
+        }
+        // Privacy changes replace the exact amount synchronously. In
+        // particular, masking never cross-fades a readable value through the
+        // placeholder while the rest of the screen transitions.
+        .transaction { $0.animation = nil }
+    }
+}
+
+extension View {
+    func moneyUpPrivateAmountInput(
+        masked: Bool,
+        accessibilityLabel: Text,
+        placeholderFont: Font? = nil,
+        reveal: @escaping () -> Void
+    ) -> some View {
+        modifier(
+            MoneyUpPrivateAmountInputModifier(
+                isMasked: masked,
+                accessibilityLabel: accessibilityLabel,
+                placeholderFont: placeholderFont,
+                reveal: reveal
+            )
+        )
+    }
+}
+
 /// The resolved currency-writing rule shared by every money label in the app.
 ///
 /// The rule is book-wide state — it depends on which currencies the user's own

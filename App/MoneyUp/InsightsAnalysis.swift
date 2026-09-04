@@ -104,7 +104,7 @@ extension InsightsView {
                 )
                 .cornerRadius(point.kind == .income ? 5 : 0)
                 .accessibilityLabel(flowAccessibilityLabel(point))
-                .accessibilityValue(formattedMoney(point.money))
+                .accessibilityValue(accessibleFormattedMoney(point.money))
             }
 
             if let selectedFlowMonth {
@@ -175,6 +175,9 @@ extension InsightsView {
             }
         }
         .accessibilityElement(children: .contain)
+        .transition(
+            MoneyUpMotion.disclosureTransition(reduceMotion: reduceMotion)
+        )
     }
 
     func selectedFlowCard(_ flow: MonthlyFlow) -> some View {
@@ -211,6 +214,9 @@ extension InsightsView {
             }
         }
         .accessibilityElement(children: .contain)
+        .transition(
+            MoneyUpMotion.disclosureTransition(reduceMotion: reduceMotion)
+        )
     }
 
     func flowValue(
@@ -322,7 +328,7 @@ extension InsightsView {
             format: AppLocalization.string("insights.category_chart_summary_format"),
             points.count,
             largest.name,
-            formattedMoney(largest.money)
+            accessibleFormattedMoney(largest.money)
         )
     }
 
@@ -348,8 +354,8 @@ extension InsightsView {
                 .dateTime.month(.wide).year(),
                 calendar: model.reportingCalendar
             ),
-            formattedMoney(latest.income),
-            formattedMoney(latest.expense)
+            accessibleFormattedMoney(latest.income),
+            accessibleFormattedMoney(latest.expense)
         )
     }
 

@@ -3682,7 +3682,7 @@ def validate_brand_palette() -> None:
         "expense symbol": 'case .expense: "minus.rectangle"',
         "flow shape": ".cornerRadius(point.kind == .income ? 5 : 0)",
         "flow grouping": ".position(",
-        "flow accessible value": ".accessibilityValue(formattedMoney(point.money))",
+        "flow accessible value": ".accessibilityValue(accessibleFormattedMoney(point.money))",
         "category label": "Text(point.name)",
         "category amount annotation": ".annotation(position: .trailing)",
         "ordered category color": "categoryChartColor(point, in: points)",
