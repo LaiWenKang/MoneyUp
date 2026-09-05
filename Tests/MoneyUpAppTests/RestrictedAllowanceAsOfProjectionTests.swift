@@ -92,11 +92,12 @@ final class RestrictedAllowanceAsOfProjectionTests: XCTestCase {
             model.journalDerivedRefreshTask,
             "A current-time refresh cannot satisfy arbitrary as-of presentation"
         )
+        let futureSpendable = try await model.prepaidAllowanceSpendable(
+            planID: plan.id,
+            asOf: context.future.addingTimeInterval(60)
+        )
         XCTAssertEqual(
-            try await model.prepaidAllowanceSpendable(
-                planID: plan.id,
-                asOf: context.future.addingTimeInterval(60)
-            ).amount,
+            futureSpendable.amount,
             50,
             "Quick Log keeps exact asynchronous transaction-time authority"
         )

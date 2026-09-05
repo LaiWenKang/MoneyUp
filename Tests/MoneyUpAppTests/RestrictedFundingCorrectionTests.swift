@@ -10,7 +10,7 @@ final class RestrictedFundingCorrectionTests: XCTestCase {
         let record = RestrictedAllowanceFundingRecord(
             entryID: UUID(),
             accountID: UUID(),
-            amount: Money(20, currency: currency),
+            amount: try Money(20, currency: currency),
             occurredAt: Date(timeIntervalSince1970: 1_780_000_000),
             note: "Employer top-up"
         )

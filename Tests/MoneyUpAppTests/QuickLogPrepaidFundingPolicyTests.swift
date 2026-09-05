@@ -35,7 +35,7 @@ final class QuickLogPrepaidFundingPolicyTests: XCTestCase {
             logicalBookRevision: 11
         )
         let expected = AllowanceRemainingAvailability.available(
-            Money(15, currency: currency)
+            try Money(15, currency: currency)
         )
         let load = QuickLogPrepaidFundingLoad(
             request: request,
@@ -117,7 +117,7 @@ final class QuickLogPrepaidFundingPolicyTests: XCTestCase {
             startsAt: Date(timeIntervalSince1970: 1_780_000_000),
             timeZoneIdentifier: "UTC"
         )
-        let total = Money(20, currency: currency)
+        let total = try Money(20, currency: currency)
 
         XCTAssertTrue(QuickLogAllowanceSourcePolicy.canCommitExpense(
             sourceAccount: ordinary,
@@ -138,7 +138,7 @@ final class QuickLogPrepaidFundingPolicyTests: XCTestCase {
             hasAllowanceSelection: true,
             selectedPlan: plan,
             total: total,
-            application: Money(19, currency: currency)
+            application: try Money(19, currency: currency)
         ))
         XCTAssertTrue(QuickLogAllowanceSourcePolicy.canCommitExpense(
             sourceAccount: restricted,

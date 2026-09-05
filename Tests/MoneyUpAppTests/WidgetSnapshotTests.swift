@@ -4,7 +4,7 @@ import MoneyUpCore
 import XCTest
 
 final class WidgetSnapshotTests: XCTestCase {
-    func testSmartOverviewMapsEveryBudgetStateWithoutInventingZero() {
+    func testSmartOverviewMapsEveryBudgetStateWithoutInventingZero() throws {
         let expiry = Date(timeIntervalSinceReferenceDate: 800_003_600)
         let expectedComponents: [
             SmartOverviewWidgetPresentation.Family:
@@ -67,7 +67,7 @@ final class WidgetSnapshotTests: XCTestCase {
                     presentation.components,
                     refreshesOnOpen || requiresSettings
                         ? [.budget]
-                        : expectedComponents[family]
+                        : try XCTUnwrap(expectedComponents[family])
                 )
             }
         }
