@@ -991,7 +991,7 @@ final class AllowanceJournalIntegrityTests: XCTestCase {
             asOf: fixture.spendAt
         )
 
-        XCTAssertEqual(spendable, Money(20, currency: fixture.sgd))
+        XCTAssertEqual(spendable, try Money(20, currency: fixture.sgd))
         await storeFixture.store.close()
     }
 

@@ -779,7 +779,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(broker.submit(.scanReceipt))
 
         await publicationGate.release()
-        await startTask.value
+        _ = await startTask.value
 
         XCTAssertEqual(model.state, .ready)
         XCTAssertNil(model.startupFailureKind)
@@ -6572,7 +6572,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(broker.submit(.expense))
         XCTAssertFalse(broker.submit(.expense))
         await inspectionGate.release()
-        await startTask.value
+        _ = await startTask.value
 
         XCTAssertEqual(broker.pendingCount, 0)
         XCTAssertTrue(broker.isAuthoritativeBoundaryActive)
@@ -6826,7 +6826,7 @@ final class AppModelTests: XCTestCase {
         await inspectionGate.release()
         await closeGate.waitUntilReached()
         await closeGate.release()
-        await startTask.value
+        _ = await startTask.value
 
         XCTAssertEqual(
             events.snapshot(),
@@ -14992,6 +14992,8 @@ extension AppModelTests {
             accountID: fixture.wallet.id,
             categoryID: fixture.food.id,
             occurredAt: spendAt,
+            payee: nil,
+            note: nil,
             allowancePlanID: plan.id
         ))
         XCTAssertTrue(model.allowancePlans[0].usages.isEmpty)
@@ -15052,6 +15054,8 @@ extension AppModelTests {
             accountID: fixture.wallet.id,
             categoryID: fixture.food.id,
             occurredAt: first.addingTimeInterval(3_600),
+            payee: nil,
+            note: nil,
             allowancePlanID: plan.id
         )
 
@@ -15634,7 +15638,7 @@ extension AppModelTests {
             accountID: restricted.id,
             categoryAccountID: fixture.food.id,
             nextOccurrence: Date(timeIntervalSinceReferenceDate: 800_000_000),
-            frequency: .daily
+            frequency: .weekly
         )
         let accounts = [fixture.wallet, restricted, fixture.food]
         try await fixture.seed(
@@ -16515,6 +16519,8 @@ extension AppModelTests {
             accountID: fixture.wallet.id,
             categoryID: fixture.food.id,
             occurredAt: day.addingTimeInterval(3_600),
+            payee: nil,
+            note: nil,
             allowancePlanID: plan.id
         )
         let entryID = try XCTUnwrap(loggedEntryID)
@@ -16534,6 +16540,8 @@ extension AppModelTests {
             accountID: fixture.wallet.id,
             categoryID: fixture.food.id,
             occurredAt: day.addingTimeInterval(7_200),
+            payee: nil,
+            note: nil,
             allowancePlanID: plan.id
         ))
         await fixture.store.close()
@@ -16601,7 +16609,7 @@ extension AppModelTests {
 }
 
 @MainActor
-private func assertThrowsAsync<T>(
+private func assertThrowsAsync<T: Sendable>(
     _ expression: @autoclosure () async throws -> T,
     file: StaticString = #filePath,
     line: UInt = #line
