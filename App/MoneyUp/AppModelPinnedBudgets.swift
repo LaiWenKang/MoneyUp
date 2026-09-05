@@ -38,19 +38,9 @@ extension AppModel {
     /// A corrupt parent cycle is bounded by the visited set rather than
     /// recursing until the stack is exhausted.
     var budgetNodeOutline: [OutlinedBudgetNode] {
-        let children = Dictionary(grouping: budgetNodes, by: \.parentID)
-        var outline: [OutlinedBudgetNode] = []
-        var visited = Set<UUID>()
-
-        func appendChildren(of parentID: UUID?, depth: Int) {
-            for node in (children[parentID] ?? []).sorted(by: { $0.name < $1.name })
-            where visited.insert(node.id).inserted {
-                outline.append(OutlinedBudgetNode(node: node, depth: depth))
-                appendChildren(of: node.id, depth: depth + 1)
-            }
+        BudgetOutline.items(budgetNodes).map {
+            OutlinedBudgetNode(node: $0.node, depth: $0.depth)
         }
-        appendChildren(of: nil, depth: 0)
-        return outline
     }
 
     /// Pinned categories that still exist in the budget, in the user's order.

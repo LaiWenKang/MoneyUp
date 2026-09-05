@@ -38,6 +38,7 @@ struct HistoryFilterDraft: Hashable {
     var accountID: UUID?
     var categoryIDs: Set<UUID>?
     var categoryPostingCurrency: CurrencyCode?
+    var includesSubcategories = true
     var includesStartDate = false
     var startDate: Date
     var includesEndDate = false
@@ -55,6 +56,7 @@ struct HistoryFilterDraft: Hashable {
 
         categoryIDs = preset?.categoryIDs
         categoryPostingCurrency = preset?.categoryPostingCurrency
+        includesSubcategories = preset == nil
         if let interval = preset?.interval {
             includesStartDate = true
             startDate = interval.start
@@ -64,7 +66,7 @@ struct HistoryFilterDraft: Hashable {
     }
 
     var hasActiveFilters: Bool {
-        kind != .all || accountID != nil || categoryIDs != nil
+        kind != .all || accountID != nil || categoryIDs != nil || categoryPostingCurrency != nil
             || includesStartDate || includesEndDate
             || !minimumAmountText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             || !maximumAmountText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -130,7 +132,8 @@ struct HistoryFilterDraft: Hashable {
 
     func query(
         searchText: String,
-        calendar: Calendar = Calendar(identifier: .gregorian)
+        calendar: Calendar = Calendar(identifier: .gregorian),
+        accounts: [LedgerAccount] = []
     ) -> HistoryQuery {
         let start = includesStartDate
             ? FinancialPeriodBoundary.startOfDay(
@@ -148,7 +151,8 @@ struct HistoryFilterDraft: Hashable {
             searchText: searchText,
             kind: kind,
             accountID: accountID,
-            categoryIDs: categoryIDs,
+            categoryIDs: includesSubcategories
+                ? categoryIDs.map { HistoryCategoryScope.expanded($0, in: accounts) } : categoryIDs,
             categoryPostingCurrency: categoryPostingCurrency,
             startDate: start,
             endDateExclusive: end,
@@ -267,7 +271,7 @@ struct HistoryView: View {
     }
 
     @Environment(AppModel.self) private var model
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.moneyUpReduceMotion) private var reduceMotion
     @Environment(\.appReportingSnapshot) private var sharedReportingSnapshot
     @AppStorage(MoneyAmountPrivacy.storageKey)
     private var hidesAmounts = MoneyAmountPrivacy.defaultHidesAmounts
@@ -314,7 +318,8 @@ struct HistoryView: View {
     private var query: HistoryQuery {
         filters.query(
             searchText: appliedSearchText,
-            calendar: model.reportingCalendar
+            calendar: model.reportingCalendar,
+            accounts: model.accounts
         )
     }
 
@@ -475,24 +480,26 @@ struct HistoryView: View {
                 }
             }
 
-            if hasAdvancedFilters {
-                    Section {
-                        HStack {
-                            Label(
-                                "history.filters_active",
-                                systemImage: "line.3.horizontal.decrease.circle.fill"
-                            )
-                            Spacer()
-                            Button("action.reset") {
-                                let snapshot = reportingSnapshot
-                                filters = HistoryFilterDraft(
-                                    now: snapshot.instant,
-                                    calendar: snapshot.calendar
-                                )
-                                quickRange = .all
-                            }
-                        }
+            Section {
+                HStack(spacing: 12) {
+                    Button { showingFilters = true } label: {
+                        Label {
+                            Text(filters.activeFilterCount == 0
+                                ? AppLocalization.string("history.filter")
+                                : String(format: AppLocalization.string("history.filter_count"), filters.activeFilterCount))
+                        } icon: { Image(systemName: "line.3.horizontal.decrease.circle") }
                     }
+                    .labelStyle(.titleAndIcon)
+                    Spacer(minLength: 8)
+                    Button("history.clear_filters") {
+                        let snapshot = reportingSnapshot
+                        filters = HistoryFilterDraft(now: snapshot.instant, calendar: snapshot.calendar)
+                        quickRange = .all
+                    }.disabled(!filters.hasActiveFilters)
+                }
+                if !searchText.isEmpty {
+                    Button("history.clear_search") { searchText = ""; appliedSearchText = "" }
+                }
             }
 
                 if !model.journalRecentEntriesAreCurrent {
@@ -736,16 +743,7 @@ struct HistoryView: View {
                 }
                 ToolbarItemGroup(placement: .primaryAction) {
                     MoneyUpAmountPrivacyButton()
-                    Button {
-                        showingFilters = true
-                    } label: {
-                        Image(
-                            systemName: hasAdvancedFilters
-                                ? "line.3.horizontal.decrease.circle.fill"
-                                : "line.3.horizontal.decrease.circle"
-                        )
-                    }
-                    .accessibilityLabel("history.filter")
+
                 }
             }
             .sheet(isPresented: $showingFilters) {
@@ -803,6 +801,7 @@ extension HistoryView {
         ) {
             filters.categoryIDs = categoryIDs
             filters.categoryPostingCurrency = nil
+            filters.includesSubcategories = true
         }
     }
 

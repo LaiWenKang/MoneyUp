@@ -23,7 +23,7 @@ struct BudgetSimulatorView: View {
 
     @Environment(AppModel.self) private var model
     @Environment(\.appReportingSnapshot) private var sharedReportingSnapshot
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.moneyUpReduceMotion) private var reduceMotion
     @AppStorage(MoneyAmountPrivacy.storageKey)
     private var hidesAmounts = MoneyAmountPrivacy.defaultHidesAmounts
     @State private var additionalSpendingText = ""
@@ -306,7 +306,9 @@ struct BudgetSimulatorView: View {
                 }
                 .frame(height: 240)
                 .chartLegend(.hidden)
+                .chartYAxis(hidesAmounts ? .hidden : .automatic)
                 .accessibilityLabel(Text("simulator.chart_accessibility"))
+                .accessibilityHidden(hidesAmounts)
                 .animation(
                     MoneyUpMotion.animation(
                         for: .stateChange,

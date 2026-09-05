@@ -107,7 +107,7 @@ enum MoneyUpMotion {
 /// buttons keep their own system feedback; this style is only for controls
 /// whose `.plain` style would otherwise feel inert.
 struct MoneyUpPressableButtonStyle: ButtonStyle {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.moneyUpReduceMotion) private var reduceMotion
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label

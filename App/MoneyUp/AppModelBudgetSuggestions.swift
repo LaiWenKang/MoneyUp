@@ -135,6 +135,7 @@ extension AppModel {
             categoryIDs: nodeIDs,
             currency: currency
         )
+        let currentMonth = try BudgetMonth(containing: context.interval.end, calendar: reportingCalendar)
         return try budgetNodes.compactMap { node in
             guard nodeIDs.contains(node.id) else { return nil }
             var values: [Money] = []
@@ -156,7 +157,7 @@ extension AppModel {
             }
             return CategoryLimitHistory(
                 categoryID: node.id,
-                currentLimit: node.limit,
+                currentLimit: node.resolved(for: currentMonth, currency: currency).limit,
                 completeMonthlySpending: values
             )
         }
@@ -193,6 +194,7 @@ extension AppModel {
               Set(suggestions.map(\.categoryID)).count == suggestions.count else {
             throw AppModelError.invalidBook
         }
+        let month = try BudgetMonth(containing: currentDate(), calendar: reportingCalendar)
         var candidate = budgetNodes
         var before: [BudgetNode] = []
         var after: [BudgetNode] = []
@@ -200,16 +202,12 @@ extension AppModel {
             guard suggestion.proposedLimit.currency == currency,
                   let index = candidate.firstIndex(where: {
                       $0.id == suggestion.categoryID
-                  }), candidate[index].limit == suggestion.currentLimit else {
+                  }), candidate[index].resolved(for: month, currency: currency).limit == suggestion.currentLimit else {
                 throw AppModelError.invalidBook
             }
             before.append(candidate[index])
-            candidate[index] = try budgetNodeUpdating(
-                candidate[index],
-                amount: suggestion.proposedLimit.amount,
-                purpose: nil,
-                rolloverRule: nil,
-                currency: currency
+            candidate[index] = try nodeApplyingBudgetSuggestion(
+                suggestion, to: candidate[index], month: month, currency: currency
             )
             after.append(candidate[index])
         }
@@ -273,4 +271,32 @@ private struct BudgetSuggestionUpdate {
     let nodes: [BudgetNode]
     let changedBefore: [BudgetNode]
     let changedAfter: [BudgetNode]
+}
+
+extension AppModel {
+    func nodeApplyingBudgetSuggestion(
+        _ suggestion: BudgetLimitSuggestion,
+        to node: BudgetNode,
+        month: BudgetMonth,
+        currency: CurrencyCode
+    ) throws -> BudgetNode {
+        guard suggestion.proposedLimit.currency == currency else { throw AppModelError.invalidBook }
+        try requireValidNewWriteAmount(
+            suggestion.proposedLimit.amount, currency: currency,
+            preserving: node.resolved(for: month, currency: currency).limit?.amount
+        )
+        if node.monthlyAllocations.contains(where: { $0.month == month && $0.currency == currency }) {
+            let resolved = node.resolved(for: month, currency: currency)
+            var updated = node
+            try updated.setMonthlyAllocation(MonthlyBudgetAllocation(
+                month: month, currency: currency, limit: suggestion.proposedLimit,
+                mode: resolved.allocationMode, purpose: resolved.purpose
+            ))
+            return updated
+        }
+        return try budgetNodeUpdating(
+            node, amount: suggestion.proposedLimit.amount,
+            purpose: nil, rolloverRule: nil, currency: currency
+        )
+    }
 }

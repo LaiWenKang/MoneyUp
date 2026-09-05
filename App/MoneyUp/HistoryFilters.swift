@@ -126,6 +126,7 @@ struct HistoryFilterSheet: View {
                 } else if let categoryID = Self.categoryID(from: selection) {
                     draft.categoryIDs = [categoryID]
                     draft.categoryPostingCurrency = nil
+                    draft.includesSubcategories = true
                 } else {
                     // Unknown tags fail closed instead of silently broadening
                     // a chart drill-through to every category.
@@ -201,6 +202,10 @@ struct HistoryFilterSheet: View {
                     if let currency = draft.categoryPostingCurrency {
                         LabeledContent("transaction.currency", value: currency.value)
                     }
+                    if let selected = draft.categoryIDs, selected.count == 1,
+                       categories.contains(where: { $0.parentID.map(selected.contains) == true }) {
+                        Toggle("history.include_subcategories", isOn: $draft.includesSubcategories)
+                    }
                 }
 
                 Section("history.filter.date") {
@@ -244,7 +249,7 @@ struct HistoryFilterSheet: View {
                 }
 
                 Section {
-                    Button("action.reset", role: .destructive) {
+                    Button("history.clear_filters") {
                         draft = HistoryFilterDraft(calendar: calendar)
                     }
                 }

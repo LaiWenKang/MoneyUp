@@ -99,7 +99,7 @@ struct InsightsView: View {
 
     @Environment(AppModel.self) var model
     @Environment(\.dynamicTypeSize) var dynamicTypeSize
-    @Environment(\.accessibilityReduceMotion) var reduceMotion
+    @Environment(\.moneyUpReduceMotion) var reduceMotion
     @AppStorage(MoneyAmountPrivacy.storageKey)
     var hidesAmounts = MoneyAmountPrivacy.defaultHidesAmounts
     @State var period: ReportPeriod = .thisMonth
@@ -328,6 +328,7 @@ struct InsightsView: View {
         .chartYSelection(value: $selectedCategoryKey)
         .frame(height: max(190, CGFloat(points.count) * 34))
         .accessibilityLabel(Text("insights.category_chart"))
+        .accessibilityHidden(hidesAmounts)
         .accessibilityValue(Text(categoryChartSummary(points)))
         .accessibilityHint(Text("insights.chart_accessibility_hint"))
     }

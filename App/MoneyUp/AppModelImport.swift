@@ -416,7 +416,7 @@ extension AppModel {
         state.newAccounts.append(created)
         if kind == .expense {
             state.newBudgetNodes.append(
-                BudgetNode(id: created.id, name: created.name)
+                BudgetNode(id: created.id, name: created.name, allocationMode: .automatic)
             )
         }
         return created

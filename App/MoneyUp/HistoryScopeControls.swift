@@ -98,7 +98,7 @@ extension HistoryFilterDraft {
 
 struct HistoryScopeSelector: View {
     @Binding private var selection: HistoryQuickRange?
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.moneyUpReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     init(selection: Binding<HistoryQuickRange?>) {

@@ -21,7 +21,7 @@ enum MoneyUpDisclosureSection: String, CaseIterable, Sendable {
 /// glyph, and remain immediately available to VoiceOver as a hint, so nothing
 /// is hidden from the people most likely to need it.
 struct MoneyUpExplainer: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.moneyUpReduceMotion) private var reduceMotion
     @State private var isExpanded = false
 
     private let explanation: LocalizedStringKey
@@ -73,7 +73,7 @@ struct MoneyUpExplainer: View {
 /// occasionally. Collapsing the second by default is what lets a screen show
 /// several subjects at once without any of them becoming a paragraph.
 struct MoneyUpDisclosureCard<Summary: View, Detail: View>: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.moneyUpReduceMotion) private var reduceMotion
     @AppStorage private var isExpanded: Bool
 
     private let systemImage: String

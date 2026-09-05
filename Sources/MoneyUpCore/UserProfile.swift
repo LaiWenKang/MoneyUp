@@ -42,6 +42,7 @@ public struct UserProfile: Codable, Equatable, Sendable {
     /// they chose. Duplicates are removed and the list is bounded so the board
     /// and the profile record both stay small.
     public var pinnedBudgetNodeIDs: [UUID]
+    public var displayPreferences: MoneyUpDisplayPreferences
 
     public init(
         baseCurrency: CurrencyCode,
@@ -57,7 +58,8 @@ public struct UserProfile: Codable, Equatable, Sendable {
         enablesTabSwipeNavigation: Bool = false,
         reportingTimeZoneIdentifier: String = TimeZone.current.identifier,
         currencyDisplay: MoneyCurrencyDisplay = .automatic,
-        pinnedBudgetNodeIDs: [UUID] = []
+        pinnedBudgetNodeIDs: [UUID] = [],
+        displayPreferences: MoneyUpDisplayPreferences = .init()
     ) {
         self.baseCurrency = baseCurrency
         self.createdAt = createdAt
@@ -76,6 +78,7 @@ public struct UserProfile: Codable, Equatable, Sendable {
         )?.identifier ?? "GMT"
         self.currencyDisplay = currencyDisplay
         self.pinnedBudgetNodeIDs = Self.normalizedPins(pinnedBudgetNodeIDs)
+        self.displayPreferences = displayPreferences
     }
 
     /// Keeps the stored order the user chose while removing repeats and
@@ -105,6 +108,7 @@ public struct UserProfile: Codable, Equatable, Sendable {
         case reportingTimeZoneIdentifier
         case currencyDisplay
         case pinnedBudgetNodeIDs
+        case displayPreferences
     }
 
     public init(from decoder: Decoder) throws {
@@ -170,6 +174,9 @@ public struct UserProfile: Codable, Equatable, Sendable {
                 forKey: .pinnedBudgetNodeIDs
             ) ?? []
         )
+        displayPreferences = try container.decodeIfPresent(
+            MoneyUpDisplayPreferences.self, forKey: .displayPreferences
+        ) ?? .init()
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -208,6 +215,7 @@ public struct UserProfile: Codable, Equatable, Sendable {
         )
         try container.encode(currencyDisplay, forKey: .currencyDisplay)
         try container.encode(pinnedBudgetNodeIDs, forKey: .pinnedBudgetNodeIDs)
+        try container.encode(displayPreferences, forKey: .displayPreferences)
     }
 
     /// Older builds persisted additional whole-minute choices. Keep those books

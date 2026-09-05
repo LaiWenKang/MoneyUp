@@ -24,6 +24,7 @@ enum DerivedValueIssue: String, Equatable, Error, Identifiable, Sendable {
     case goalCalculationFailed = "DV-008"
     case intelligenceProjectionUnavailable = "DV-009"
     case intelligenceBudgetUnavailable = "DV-010"
+    case budgetHistoryUnavailable = "DV-011"
 
     var id: String { rawValue }
 
@@ -49,6 +50,8 @@ enum DerivedValueIssue: String, Equatable, Error, Identifiable, Sendable {
             AppLocalization.string("derived.reason.intelligence_projection")
         case .intelligenceBudgetUnavailable:
             AppLocalization.string("derived.reason.intelligence_budget")
+        case .budgetHistoryUnavailable:
+            AppLocalization.string("budget.history_unavailable")
         }
     }
 }

@@ -13,6 +13,11 @@ private struct LoadedInvestmentValidationContext {
 
 extension AppModel {
     func clearDecodedState() {
+        pendingDisplayPreferences = nil
+        displayPreferenceWriteTask?.cancel()
+        displayPreferenceWriteTask = nil
+        displayPreferenceRequest &+= 1
+        displayPreferenceFailure = nil
         logicalBookRevision &+= 1
         invalidateWidgetIntelligencePublication()
         intelligenceService.cancelPendingWork()
@@ -452,7 +457,7 @@ extension AppModel {
             lifestyle, shopping, entertainment
         ]
         let nodes = expenseAccounts.map {
-            BudgetNode(id: $0.id, parentID: $0.parentID, name: $0.name)
+            BudgetNode(id: $0.id, parentID: $0.parentID, name: $0.name, allocationMode: .automatic)
         }
         return (
             [mainAccount, openingBalances] + expenseAccounts + [salary, otherIncome],
@@ -462,6 +467,7 @@ extension AppModel {
 }
 
 enum AppModelError: Error {
+    case closedBudgetPeriod
     case locked
     case emptyName
     case invalidCategoryKind
@@ -517,6 +523,7 @@ extension AppModelError: LocalizedError {
         case .foreignCurrencyTransferRequiresExchangeRate:
             AppLocalization.string("error.fx_transfer_not_supported")
         case .invalidBook: AppLocalization.string("error.invalid_book")
+        case .closedBudgetPeriod: AppLocalization.string("budget.closed_period")
         case .transactionInProgress: AppLocalization.string("error.transaction_in_progress")
         case let .unsupportedPrecision(currency):
             String(

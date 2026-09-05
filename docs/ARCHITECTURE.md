@@ -8,7 +8,7 @@ flowchart TD
     App["Authenticated SwiftUI app"] --> Core["MoneyUpCore"]
     App --> Intel["MoneyUpIntelligence"]
     App --> Store["MoneyUpPersistence"]
-    Store --> Cipher["SQLCipher schema 9"]
+    Store --> Cipher["SQLCipher schema 10"]
     App --> Shared["Three-artifact App Group"]
     Shared --> Widget
     App --> Files["CSV/XLSX/import/archive"]
@@ -191,7 +191,7 @@ The non-sensitive System/English/Simplified Chinese preference is stored in the
 reviewed App Group defaults so app and widget agree. It is deliberately separate
 from the financial profile, reporting time zone, stored text, and parsing rules.
 
-## Ledger and SQLCipher schema 9
+## Ledger and SQLCipher schema 10
 
 Normal views do not create postings directly. `TransactionFactory` creates
 balanced expense, income, transfer, foreign-exchange, refund, reconciliation,

@@ -1,5 +1,17 @@
 # Data Model and Invariants
 
+## Automatic budgets and schema 10
+
+`BudgetNode.allocationMode` distinguishes fixed envelopes from general allocations
+added to children. Legacy payloads decode as fixed envelopes; uncapped groups migrate
+only in the current revision. `monthlyAllocations` contains validated month/currency
+overrides. Ancestor totals are derived, never stored as extra allocations.
+
+Schema 10 rejects older readers that would apply the former cap-only interpretation.
+The generic encrypted table layout is unchanged. Earlier schemas and recorded history
+remain supported by the new reader. Encrypted profile display preferences do not
+alter the ledger or budget calculations. See `BUDGET_REDESIGN_2026-09-05.md`.
+
 ## Ledger
 
 MoneyUp uses double-entry accounting internally while hiding accounting jargon

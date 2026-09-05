@@ -342,6 +342,9 @@ private struct MainTabView: View {
                 .tag(MoneyUpSection.assets)
         }
         .environment(\.appReportingSnapshot, reportingClock.snapshot)
+        .environment(\.moneyUpReduceMotion, model.displayPreferences.reducesMotion)
+        .environment(\.moneyUpShowsIllustrations, model.displayPreferences.showsIllustrations)
+        .background { DisplayPreferenceFailurePresenter() }
         .sheet(isPresented: $isShowingWhatsNew) {
             WhatsNewSheet()
         }

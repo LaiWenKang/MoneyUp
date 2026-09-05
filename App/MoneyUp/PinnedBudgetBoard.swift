@@ -9,7 +9,7 @@ import SwiftUI
 /// coming week and the current day.
 struct PinnedBudgetBoard: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.moneyUpReduceMotion) private var reduceMotion
     /// One switch for the whole board rather than one per category: the
     /// question "how am I doing against the limit" is asked of every pinned
     /// row at once, or of none.
@@ -64,11 +64,7 @@ struct PinnedBudgetBoard: View {
                     showsDetail.toggle()
                 }
             } label: {
-                Image(
-                    systemName: showsDetail
-                        ? "text.alignleft"
-                        : "line.3.horizontal.decrease"
-                )
+                Label("display.details", systemImage: "text.alignleft")
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -124,6 +120,7 @@ struct PinnedBudgetBoard: View {
 /// One pinned category: what is left this month, and how that divides across
 /// the shorter horizons, in a deliberately quieter type size.
 struct PinnedBudgetRow: View {
+    @Environment(AppModel.self) private var model
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let summary: PinnedBudgetSummary
     let monthElapsed: Double
@@ -152,7 +149,7 @@ struct PinnedBudgetRow: View {
             } else if case let .unavailable(issue)? = ratio {
                 DerivedValueUnavailableView(issue: issue)
             }
-            cadences
+            if model.displayPreferences.showsGuidance(for: summary.id) { cadences }
             if showsDetail { footnote }
         }
         .padding(.vertical, 3)

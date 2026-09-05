@@ -93,7 +93,7 @@ enum MoneyUpTypography {
 }
 
 private struct MoneyUpFinancialValueModifier: ViewModifier {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.moneyUpReduceMotion) private var reduceMotion
     let style: MoneyUpTypography.FinancialValueStyle
 
     func body(content: Content) -> some View {

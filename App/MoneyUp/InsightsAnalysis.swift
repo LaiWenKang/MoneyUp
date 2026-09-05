@@ -131,8 +131,10 @@ extension InsightsView {
             AppLocalization.string("transaction.expense"): MoneyUpChartPalette.expense
         ])
         .chartLegend(.hidden)
+        .chartYAxis(hidesAmounts ? .hidden : .automatic)
         .chartXSelection(value: $selectedFlowMonth)
         .accessibilityLabel(Text("insights.flow_chart"))
+        .accessibilityHidden(hidesAmounts)
         .accessibilityValue(Text(flowChartSummary(report)))
         .accessibilityHint(Text("insights.chart_accessibility_hint"))
     }

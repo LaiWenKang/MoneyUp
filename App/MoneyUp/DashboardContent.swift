@@ -21,7 +21,7 @@ extension DashboardView {
                     positionCard
                     monthlyBudgetCard
                     upcomingCard
-                    insightsCard
+                    if model.displayPreferences.showsTodayTrend { insightsCard }
                     firstRunCard
                 }
                 .padding()
@@ -78,11 +78,11 @@ extension DashboardView {
     @ViewBuilder
     var headline: some View {
         if model.pinnedBudgetNodes.isEmpty {
-            safeToSpendHero
+            if model.displayPreferences.showsDailyGuidance { safeToSpendHero }
             pinnedBoard
         } else {
             pinnedBoard
-            safeToSpendSummary
+            if model.displayPreferences.showsDailyGuidance { safeToSpendSummary }
         }
     }
 

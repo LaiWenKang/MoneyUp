@@ -425,14 +425,14 @@ extension QuickLogEntryView {
                 guard let field = QuickLogFocusScrollPolicy.target(for: field) else {
                     return
                 }
-                withAnimation(.easeOut(duration: 0.2)) {
+                withAnimation(MoneyUpMotion.animation(for: .stateChange, reduceMotion: accessibilityReduceMotion)) {
                     scrollProxy.scrollTo(field, anchor: .center)
                 }
                 Task { @MainActor in
                     try? await Task.sleep(
                         nanoseconds: QuickLogFocusScrollPolicy.layoutSettlingNanoseconds)
                     guard focusedField == field else { return }
-                    withAnimation(.easeOut(duration: 0.2)) {
+                    withAnimation(MoneyUpMotion.animation(for: .stateChange, reduceMotion: accessibilityReduceMotion)) {
                         scrollProxy.scrollTo(field, anchor: .center)
                     }
                 }

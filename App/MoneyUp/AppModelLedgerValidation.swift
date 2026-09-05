@@ -118,60 +118,29 @@ extension AppModel {
     ) throws -> [BudgetNode] {
         guard source.kind == .expense else { return budgetNodes }
         guard let currency = profile?.baseCurrency else { throw AppModelError.invalidBook }
-
-        let sourceNode = budgetNodes.first { $0.id == source.id }
-        var candidate = budgetNodes.filter { $0.id != source.id }
-        let accountByID = Dictionary(
-            uniqueKeysWithValues: candidateAccounts.map { ($0.id, $0) }
-        )
-
-        if let sourceNode {
-            if let targetIndex = candidate.firstIndex(where: { $0.id == target.id }) {
-                if let sourceLimit = sourceNode.limit {
-                    if let targetLimit = candidate[targetIndex].limit {
-                        candidate[targetIndex].limit = try targetLimit.adding(sourceLimit)
-                    } else {
-                        candidate[targetIndex].limit = sourceLimit
-                    }
+        var nodes = budgetNodes
+        var known = Set(nodes.map(\.id))
+        for endpoint in [source, target] {
+            var cursor: LedgerAccount? = endpoint
+            var visited = Set<UUID>()
+            while let account = cursor, visited.insert(account.id).inserted {
+                if known.insert(account.id).inserted {
+                    nodes.append(BudgetNode(
+                        id: account.id, parentID: account.parentID, name: account.name,
+                        allocationMode: .automatic
+                    ))
                 }
-                if candidate[targetIndex].purpose == .unclassified {
-                    candidate[targetIndex].purpose = sourceNode.purpose
-                }
-                if candidate[targetIndex].rolloverRule == .none,
-                   sourceNode.rolloverRule != .none {
-                    candidate[targetIndex].rolloverRule = sourceNode.rolloverRule
-                    candidate[targetIndex].rolloverStartedAt = sourceNode.rolloverStartedAt
-                }
-            } else {
-                candidate.append(
-                    BudgetNode(
-                        id: target.id,
-                        parentID: accountByID[target.id]?.parentID,
-                        name: target.name,
-                        limit: sourceNode.limit,
-                        purpose: sourceNode.purpose,
-                        rolloverRule: sourceNode.rolloverRule,
-                        rolloverStartedAt: sourceNode.rolloverStartedAt
-                    )
-                )
+                cursor = account.parentID.flatMap { accountsByID[$0] }
             }
         }
-
-        let directlyAffectedIDs = Set(
-            [target.id] + budgetNodes.filter { $0.parentID == source.id }.map(\.id)
+        let result = try BudgetMergePlanner.merging(
+            sourceID: source.id, targetID: target.id, nodes: nodes, currency: currency
         )
-        for index in candidate.indices where directlyAffectedIDs.contains(candidate[index].id) {
-            guard let account = accountByID[candidate[index].id] else {
-                throw AppModelError.invalidBook
-            }
-            candidate[index].parentID = account.parentID
-            if candidate[index].id == target.id {
-                candidate[index].name = account.name
-            }
-        }
-
-        _ = try BudgetTree(currency: currency, nodes: candidate)
-        return candidate
+        let accountByID = Dictionary(uniqueKeysWithValues: candidateAccounts.map { ($0.id, $0) })
+        guard result.allSatisfy({ node in
+            accountByID[node.id].map { $0.parentID == node.parentID } == true
+        }) else { throw AppModelError.invalidBook }
+        return result
     }
 
     func repoint(
@@ -283,6 +252,9 @@ extension AppModel {
         if updated.accountID == id { updated.accountID = nil }
         if updated.destinationAccountID == id { updated.destinationAccountID = nil }
         if updated.categoryID == id { updated.categoryID = nil }
+        for index in updated.splitLines.indices where updated.splitLines[index].categoryID == id {
+            updated.splitLines[index].categoryID = nil
+        }
         draft = updated
     }
 
@@ -299,6 +271,10 @@ extension AppModel {
         if updated.preferredIncomeCategoryID == sourceID {
             updated.preferredIncomeCategoryID = targetID
         }
+        updated.pinnedBudgetNodeIDs = UserProfile.normalizedPins(
+            updated.pinnedBudgetNodeIDs.map { $0 == sourceID ? targetID : $0 }
+        )
+        updated.displayPreferences.mergeCategory(sourceID, into: targetID)
         profile = updated
     }
 
@@ -313,6 +289,9 @@ extension AppModel {
             updated.destinationAccountID = targetID
         }
         if updated.categoryID == sourceID { updated.categoryID = targetID }
+        for index in updated.splitLines.indices where updated.splitLines[index].categoryID == sourceID {
+            updated.splitLines[index].categoryID = targetID
+        }
         if updated.accountID == updated.destinationAccountID {
             updated.destinationAccountID = nil
         }
