@@ -454,7 +454,7 @@ extension AppModel {
         excludingEntryIDs: Set<UUID>,
         observesCancellation: Bool
     ) async throws {
-        let restrictedCurrencies = Dictionary(
+        let restrictedCurrencies: [UUID: CurrencyCode] = Dictionary(
             uniqueKeysWithValues: accounts.compactMap { account in
                 guard account.accountType == .restrictedAllowance,
                       let currency = account.currency else { return nil }
@@ -496,7 +496,7 @@ extension AppModel {
         adding replacement: JournalEntry?,
         in store: EncryptedRecordStore
     ) async throws {
-        let restrictedByID = Dictionary(
+        let restrictedByID: [UUID: CurrencyCode] = Dictionary(
             uniqueKeysWithValues: accounts.compactMap { account in
                 guard account.accountType == .restrictedAllowance,
                       let currency = account.currency else { return nil }
@@ -513,7 +513,7 @@ extension AppModel {
                 }
         )
         guard !touchedAccountIDs.isEmpty else { return }
-        let expectedRestrictedCurrencies = Dictionary(
+        let expectedRestrictedCurrencies: [UUID: CurrencyCode] = Dictionary(
             uniqueKeysWithValues: touchedAccountIDs.compactMap { accountID in
                 restrictedByID[accountID].map { (accountID, $0) }
             }

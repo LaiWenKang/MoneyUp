@@ -238,42 +238,7 @@ struct AccountManagementSheet: View {
                     }
                 }
 
-                if currentAccount.accountType == .restrictedAllowance {
-                    Section("account.restricted_funding_history") {
-                        if isLoadingRestrictedFunding {
-                            ProgressView()
-                        } else if restrictedFundingRecords.isEmpty {
-                            Text("account.restricted_funding_empty")
-                                .foregroundStyle(.secondary)
-                        } else {
-                            ForEach(restrictedFundingRecords) { record in
-                                Button {
-                                    fundingCorrection = record
-                                } label: {
-                                    HStack {
-                                        VStack(alignment: .leading) {
-                                            Text(record.occurredAt.formattedForReporting(
-                                                .dateTime.year().month().day(),
-                                                calendar: model.reportingCalendar
-                                            ))
-                                            if let note = record.note {
-                                                Text(note)
-                                                    .font(.caption)
-                                                    .foregroundStyle(.secondary)
-                                            }
-                                        }
-                                        Spacer()
-                                        Text(formattedMoney(record.amount))
-                                            .monospacedDigit()
-                                    }
-                                }
-                                .disabled(currentAccount.isArchived)
-                            }
-                        }
-                    } footer: {
-                        Text("account.restricted_funding_history_detail")
-                    }
-                }
+                restrictedFundingSection
 
                 Section {
                     Button {
@@ -386,6 +351,48 @@ struct AccountManagementSheet: View {
                 Text(confirmMessage)
             }
             .moneyUpOperationErrorAlert(message: $errorMessage)
+        }
+    }
+
+    @ViewBuilder
+    private var restrictedFundingSection: some View {
+        if currentAccount.accountType == .restrictedAllowance {
+            Section {
+                if isLoadingRestrictedFunding {
+                    ProgressView()
+                } else if restrictedFundingRecords.isEmpty {
+                    Text("account.restricted_funding_empty")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(restrictedFundingRecords) { record in
+                        Button {
+                            fundingCorrection = record
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading) {
+                                    Text(record.occurredAt.formattedForReporting(
+                                        .dateTime.year().month().day(),
+                                        calendar: model.reportingCalendar
+                                    ))
+                                    if let note = record.note {
+                                        Text(note)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                Spacer()
+                                Text(formattedMoney(record.amount))
+                                    .monospacedDigit()
+                            }
+                        }
+                        .disabled(currentAccount.isArchived)
+                    }
+                }
+            } header: {
+                Text("account.restricted_funding_history")
+            } footer: {
+                Text("account.restricted_funding_history_detail")
+            }
         }
     }
 

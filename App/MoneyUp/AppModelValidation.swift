@@ -159,7 +159,7 @@ extension AppModel {
     }
 
     private func validateLoadedRestrictedAllowanceLedgers() throws {
-        let restrictedCurrencies = Dictionary(
+        let restrictedCurrencies: [UUID: CurrencyCode] = Dictionary(
             uniqueKeysWithValues: accounts.compactMap { account in
                 guard account.accountType == .restrictedAllowance,
                       let currency = account.currency else { return nil }

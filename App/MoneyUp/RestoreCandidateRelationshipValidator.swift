@@ -162,7 +162,7 @@ extension RestoreCandidateValidator {
         accounts: [LedgerAccount],
         journalEntries: [JournalEntry]
     ) throws {
-        let expectedCurrencies = Dictionary(
+        let expectedCurrencies: [UUID: CurrencyCode] = Dictionary(
             uniqueKeysWithValues: accounts.compactMap { account in
                 guard account.accountType == .restrictedAllowance,
                       let currency = account.currency else { return nil }

@@ -1014,7 +1014,7 @@ enum AllowanceEditorAccountPolicy {
         editingPlanID: UUID?,
         currency: CurrencyCode?
     ) -> [LedgerAccount] {
-        let accountsClaimedByAnotherPlan = Set(plans.compactMap { plan in
+        let accountsClaimedByAnotherPlan = Set<UUID>(plans.compactMap { plan in
             guard plan.id != editingPlanID,
                   !plan.isArchived,
                   plan.fundingMode == .prepaidAsset else { return nil }

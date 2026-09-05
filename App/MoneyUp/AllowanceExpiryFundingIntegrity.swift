@@ -55,7 +55,7 @@ enum AllowanceExpiryFundingIntegrity {
                   !excludingEntryIDs.contains(event.entryID) else { continue }
             eventsByAccount[event.posting.accountID, default: []].append(event)
         }
-        return try invalidPlanIDs(
+        return try Self.invalidPlanIDs(
             claims: claims,
             eventsByAccount: eventsByAccount,
             observesCancellation: observesCancellation
