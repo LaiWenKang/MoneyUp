@@ -600,7 +600,9 @@ final class LoanAllowancePacingTests: XCTestCase {
 
     func testLegacyArchivedReconciliationKeepsItsPeriodActiveThroughEnd() throws {
         let currency = try CurrencyCode("SGD")
-        let start = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let start = utcCalendar.startOfDay(
+            for: Date(timeIntervalSinceReferenceDate: 800_000_000)
+        )
         let periodEnd = start.addingTimeInterval(86_400)
         var plan = try AllowancePlan(
             name: "Legacy meal card",
@@ -642,7 +644,9 @@ final class LoanAllowancePacingTests: XCTestCase {
 
     func testRecordingReconciliationRejectsWhollyArchivedPeriodInMemory() throws {
         let currency = try CurrencyCode("SGD")
-        let start = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let start = utcCalendar.startOfDay(
+            for: Date(timeIntervalSinceReferenceDate: 800_000_000)
+        )
         let periodEnd = start.addingTimeInterval(86_400)
         let archived = try AllowancePlan(
             name: "Paused meal card",
@@ -720,7 +724,9 @@ final class LoanAllowancePacingTests: XCTestCase {
 
     func testTamperedArchiveTimelineCannotReinterpretUsageOrReconciliation() throws {
         let currency = try CurrencyCode("SGD")
-        let start = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let start = utcCalendar.startOfDay(
+            for: Date(timeIntervalSinceReferenceDate: 800_000_000)
+        )
 
         func payload(
             for plan: AllowancePlan,
@@ -809,7 +815,7 @@ final class LoanAllowancePacingTests: XCTestCase {
             isArchived: false
         )
 
-        for transitions in [[second, first], [first, redundant]] {
+        for transitions in [[second, first], [first, second, redundant]] {
             XCTAssertThrowsError(try AllowancePlan(
                 name: "Meals",
                 amount: try Money(10, currency: currency),
