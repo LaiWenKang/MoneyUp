@@ -14449,7 +14449,7 @@ extension AppModelTests {
         let suiteName = "MoneyUpWidgetV2MigrationTests-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
-        let expiry = Date().addingTimeInterval(60)
+        let expiry = Date(timeIntervalSinceReferenceDate: 800_000_060)
         defaults.set(2, forKey: "budgetStatus.schemaVersion")
         defaults.set(true, forKey: "budgetStatus.enabled")
         defaults.set("available", forKey: "budgetStatus.state")
