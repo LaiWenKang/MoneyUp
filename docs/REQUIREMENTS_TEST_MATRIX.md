@@ -415,8 +415,10 @@ exact-SHA CI before signed promotion.
   **742 / 742 declared test sites** across the 376 package, 355 app-target, and
   11 performance-target declarations; exact PR-head run 300 and merged
   implementation run 301 passed all four jobs.
-- The budget-redesign branch declares 1078 test sites; its exact-head macOS run
-  is `AUTO-PENDING`.
+- The budget-redesign branch declares 1078 test sites. Exact candidate `58d40e1`
+  passed all four macOS/iOS CI jobs in run `33972868141`, including 588 app-target
+  tests with zero failures and the serial Simulator performance gate. Manual and
+  exact signed-binary gates remain open.
 - Local static validation is reported separately in
   `QUALITY_AUDIT_0.6.0.md`; automated success does not convert any
   `MANUAL-OPEN` or exact-binary gate to pass.

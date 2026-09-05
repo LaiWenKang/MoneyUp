@@ -70,16 +70,19 @@ and financial/planning references require reassignment or dependency review.
 - A standalone Swift harness passed **540 merges and 519 moves**, checking
   independently constructed SGD 275 / USD 25 allocations in mixed hierarchies.
 - The local validator suite executed 65 tests successfully during development.
-- Initial commit `797497f` passed the iOS build and 582 app-target tests, plus the
-  simulator performance job, in CI run `33962599596`. Package-test literal errors
-  from that run were subsequently fixed. An alert-owner issue found locally was
-  also corrected. The historical audit source listing is retained as documentation,
-  outside the production Swift source inventory.
+- Exact candidate `58d40e1` passed all four CI jobs in run `33972868141`: release
+  validation, the core/persistence/intelligence suite, **588 app-target tests with
+  zero failures**, and the serial iPhone Simulator performance baseline.
+- The exact run exported native iPhone 16 Pro images for Budget in light/dark,
+  category management, accessibility-size Display & guidance, and the expanded
+  composition graphic. Visual review found no clipping or overlap in those states.
+  The compact scope row, disclosed chart, labeled section selector, hierarchy,
+  empty Income action, masking, and large-text reflow match the reviewed design.
 - The expanded candidate adds domain, migration, persistence, preference, hierarchy
   and filter regressions. CI exports native SwiftUI render attachments for visual QA.
 
-Latest-candidate CI and native visual review remain pending during validation.
-No main merge, signing, TestFlight upload or physical-device acceptance is claimed.
+Physical-device interaction, signing, TestFlight upload, and beta acceptance remain
+separate release gates. CI and screenshots do not claim VoiceOver or device evidence.
 
 The architecture validator's exact inventories were refreshed only for UserProfile's
 two initializers (encrypted display defaults) and Quick Log's view body (motion
