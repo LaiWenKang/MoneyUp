@@ -133,9 +133,7 @@ final class RestrictedAssetVisibilityTests: XCTestCase {
     func testRestrictedStoredValueRejectsDecimalOverflow() throws {
         let fixture = try AppModelFixture()
         defer { fixture.removeFiles() }
-        let huge = try XCTUnwrap(
-            Decimal(string: "3e165", locale: Locale(identifier: "en_US_POSIX"))
-        )
+        let huge = Decimal.greatestFiniteMagnitude
         let first = LedgerAccount(
             name: "First card",
             kind: .asset,
