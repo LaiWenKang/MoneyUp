@@ -133,7 +133,12 @@ final class RestrictedAssetVisibilityTests: XCTestCase {
     func testRestrictedStoredValueRejectsDecimalOverflow() throws {
         let fixture = try AppModelFixture()
         defer { fixture.removeFiles() }
-        let huge = Decimal.greatestFiniteMagnitude
+        // Each posting stays within CheckedDecimal's audited 9e127 envelope;
+        // only the combined restricted subtotal exceeds it.
+        let huge = try XCTUnwrap(
+            Decimal(string: "9e127", locale: Locale(identifier: "en_US_POSIX"))
+        )
+        XCTAssertThrowsError(try CheckedDecimal.adding(huge, huge))
         let first = LedgerAccount(
             name: "First card",
             kind: .asset,
