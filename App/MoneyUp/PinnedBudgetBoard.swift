@@ -64,11 +64,7 @@ struct PinnedBudgetBoard: View {
                     showsDetail.toggle()
                 }
             } label: {
-                Image(
-                    systemName: showsDetail
-                        ? "text.alignleft"
-                        : "line.3.horizontal.decrease"
-                )
+                Label("display.details", systemImage: "text.alignleft")
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)

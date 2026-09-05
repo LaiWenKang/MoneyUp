@@ -47,11 +47,12 @@ extension AppModel {
         let holdingCount: Int
         let childCount: Int
         let defaultReferenceCount: Int
+        let planningReferenceCount: Int
         let draftReferenceCount: Int
         let hasConfiguredBudget: Bool
 
         var isUnused: Bool {
-            canDeleteWithoutReassignment && !hasConfiguredBudget
+            canDeleteWithoutReassignment && !hasConfiguredBudget && defaultReferenceCount == 0
         }
 
         /// A standalone budget is removable with the category after an explicit
@@ -62,7 +63,7 @@ extension AppModel {
                 && scheduleCount == 0
                 && holdingCount == 0
                 && childCount == 0
-                && defaultReferenceCount == 0
+                && planningReferenceCount == 0
                 && draftReferenceCount == 0
         }
 

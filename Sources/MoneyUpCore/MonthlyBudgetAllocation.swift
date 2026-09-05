@@ -106,14 +106,16 @@ extension BudgetNode {
     }
 
     public mutating func setMonthlyAllocation(_ allocation: MonthlyBudgetAllocation) throws {
-        monthlyAllocations.removeAll {
+        var candidate = self
+        candidate.monthlyAllocations.removeAll {
             $0.month == allocation.month && $0.currency == allocation.currency
         }
-        monthlyAllocations.append(allocation)
-        monthlyAllocations.sort {
+        candidate.monthlyAllocations.append(allocation)
+        candidate.monthlyAllocations.sort {
             $0.month == $1.month ? $0.currency < $1.currency : $0.month < $1.month
         }
-        try validateMonthlyAllocations()
+        try candidate.validateMonthlyAllocations()
+        self = candidate
     }
 
     func validateMonthlyAllocations() throws {

@@ -194,7 +194,7 @@ extension AppModel {
             ) != nil else {
                 return .available(.needsBudget)
             }
-            let unclassifiedCount = tree.limitedNodesNeedingPurpose.count
+            let unclassifiedCount = tree.nodesNeedingPurpose(directSpending: representedSpending).count
             guard unclassifiedCount == 0 else {
                 return .available(.needsClassification(count: unclassifiedCount))
             }

@@ -38,6 +38,7 @@ struct HistoryFilterDraft: Hashable {
     var accountID: UUID?
     var categoryIDs: Set<UUID>?
     var categoryPostingCurrency: CurrencyCode?
+    var includesSubcategories = true
     var includesStartDate = false
     var startDate: Date
     var includesEndDate = false
@@ -55,6 +56,7 @@ struct HistoryFilterDraft: Hashable {
 
         categoryIDs = preset?.categoryIDs
         categoryPostingCurrency = preset?.categoryPostingCurrency
+        includesSubcategories = preset == nil
         if let interval = preset?.interval {
             includesStartDate = true
             startDate = interval.start
@@ -130,7 +132,8 @@ struct HistoryFilterDraft: Hashable {
 
     func query(
         searchText: String,
-        calendar: Calendar = Calendar(identifier: .gregorian)
+        calendar: Calendar = Calendar(identifier: .gregorian),
+        accounts: [LedgerAccount] = []
     ) -> HistoryQuery {
         let start = includesStartDate
             ? FinancialPeriodBoundary.startOfDay(
@@ -148,7 +151,8 @@ struct HistoryFilterDraft: Hashable {
             searchText: searchText,
             kind: kind,
             accountID: accountID,
-            categoryIDs: categoryIDs,
+            categoryIDs: includesSubcategories
+                ? categoryIDs.map { HistoryCategoryScope.expanded($0, in: accounts) } : categoryIDs,
             categoryPostingCurrency: categoryPostingCurrency,
             startDate: start,
             endDateExclusive: end,
@@ -314,7 +318,8 @@ struct HistoryView: View {
     private var query: HistoryQuery {
         filters.query(
             searchText: appliedSearchText,
-            calendar: model.reportingCalendar
+            calendar: model.reportingCalendar,
+            accounts: model.accounts
         )
     }
 
@@ -796,6 +801,7 @@ extension HistoryView {
         ) {
             filters.categoryIDs = categoryIDs
             filters.categoryPostingCurrency = nil
+            filters.includesSubcategories = true
         }
     }
 

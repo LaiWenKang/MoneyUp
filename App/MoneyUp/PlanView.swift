@@ -41,7 +41,7 @@ enum PlanSectionSelectorPolicy {
         for section: PlanSection,
         selection: PlanSection
     ) -> Bool {
-        section == selection
+        true
     }
 }
 
@@ -297,6 +297,7 @@ struct BudgetRow: View {
                     switch model.budgetPace(
                         for: progress,
                         cadence: displayedPacingCadence,
+                        purpose: purpose,
                         asOf: reportingDate
                     ) {
                     case let .available(.some(pace)):

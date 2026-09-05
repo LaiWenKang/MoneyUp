@@ -3,6 +3,26 @@ import MoneyUpCore
 import XCTest
 
 final class AutomaticBudgetTests: XCTestCase {
+    func testDirectUnallocatedSpendingReducesFlexibleGuidance() throws {
+        let sgd = try CurrencyCode("SGD")
+        let parent = BudgetNode(name: "Food", purpose: .flexible, allocationMode: .automatic)
+        let child = BudgetNode(parentID: parent.id, name: "Dining", limit: try Money(300, currency: sgd), purpose: .flexible, allocationMode: .automatic)
+        let tree = try BudgetTree(currency: sgd, nodes: [parent, child])
+        let spending = [parent.id: try Money(10, currency: sgd), child.id: try Money(120, currency: sgd)]
+        let summary = try XCTUnwrap(tree.planSummary(directSpending: spending, purpose: .flexible))
+        XCTAssertEqual(summary.remaining.amount, 170)
+        XCTAssertTrue(tree.categoryIDs(governedBy: .flexible).contains(parent.id))
+        XCTAssertTrue(tree.nodesNeedingPurpose(directSpending: spending).isEmpty)
+    }
+
+    func testUnclassifiedDirectSpendingRequiresReviewBeforeGuidance() throws {
+        let sgd = try CurrencyCode("SGD")
+        let parent = BudgetNode(name: "Food", allocationMode: .automatic)
+        let child = BudgetNode(parentID: parent.id, name: "Dining", limit: try Money(300, currency: sgd), purpose: .flexible, allocationMode: .automatic)
+        let tree = try BudgetTree(currency: sgd, nodes: [parent, child])
+        XCTAssertEqual(tree.nodesNeedingPurpose(directSpending: [parent.id: try Money(10, currency: sgd)]), [parent.id])
+    }
+
     func testDirectParentAndChildrenRecalculateWithoutDuplicatingTotals() throws {
         let sgd = try CurrencyCode("SGD")
         let parent = BudgetNode(name: "Food", limit: try Money(100, currency: sgd), allocationMode: .automatic)
@@ -31,10 +51,11 @@ final class AutomaticBudgetTests: XCTestCase {
         var parent = BudgetNode(name: "Food")
         let child = BudgetNode(parentID: parent.id, name: "Groceries", limit: try Money(200, currency: sgd))
         let uncapped = try BudgetTree(currency: sgd, nodes: [parent, child])
-        XCTAssertEqual(try uncapped.progress(directSpending: [])[0].effectiveLimit?.amount, 200)
+        XCTAssertEqual(try uncapped.progress(directSpending: [:])[0].effectiveLimit?.amount, 200)
         parent.limit = try Money(500, currency: sgd)
         let capped = try BudgetTree(currency: sgd, nodes: [parent, child])
         XCTAssertEqual(try capped.planSummary(directSpending: [:])?.limit.amount, 500)
+        XCTAssertEqual(try BudgetModeConversion.limit(parent.limit, children: child.limit, from: .fixedTotal, to: .automatic)?.amount, 300)
     }
 
     func testMonthAndCurrencyOverridesAreIndependentAndRoundTrip() throws {
@@ -119,6 +140,21 @@ final class AutomaticBudgetTests: XCTestCase {
         XCTAssertEqual(carry.carryIn[parent.id]?.amount, 90)
         XCTAssertEqual(carry.carryIn[child.id]?.amount, 150)
         XCTAssertEqual(try tree.progress(directSpending: [:], effectiveLimits: carry.effectiveLimits)[0].effectiveLimit?.amount, 540)
+        var unallocatedChild = child
+        unallocatedChild.limit = nil
+        let generalTree = try BudgetTree(currency: sgd, nodes: [parent, unallocatedChild])
+        let generalCarry = try BudgetRolloverEngine.snapshot(
+            tree: generalTree,
+            monthlySpending: [MonthlyBudgetSpending(monthStart: january, directSpending: [child.id: Money(50, currency: sgd)])],
+            asOf: february, calendar: calendar
+        )
+        XCTAssertEqual(generalCarry.carryIn[parent.id]?.amount, 50)
+        var fixedParent = parent
+        fixedParent.limit = try Money(300, currency: sgd)
+        fixedParent.allocationMode = .fixedTotal
+        XCTAssertThrowsError(try BudgetMergePlanner.validateRolloverScopes(
+            before: [fixedParent, child], after: [parent, child], affectedIDs: [parent.id]
+        )) { XCTAssertEqual($0 as? BudgetMergeError, .rolloverRequiresReview) }
     }
 
     func testDeepOutlineAndAggregateDoNotRecurse() throws {
@@ -129,7 +165,7 @@ final class AutomaticBudgetTests: XCTestCase {
         }
         let tree = try BudgetTree(currency: sgd, nodes: nodes)
         XCTAssertEqual(BudgetOutline.items(nodes).count, nodes.count)
-        XCTAssertEqual(try tree.progress(directSpending: [])[0].effectiveLimit?.amount, 1)
+        XCTAssertEqual(try tree.progress(directSpending: [:])[0].effectiveLimit?.amount, 1)
     }
 
     func testVisibilityIsIndependentAndDoesNotMutateTheBudget() throws {

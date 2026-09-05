@@ -8,6 +8,7 @@ struct MonthlyBudgetPresentation: Equatable {
     let progress: [BudgetProgress]
     let summary: BudgetPlanSummary?
     let purposes: [UUID: BudgetPurpose]
+    let unclassifiedNodeIDs: Set<UUID>
 }
 
 extension AppModel {
@@ -42,6 +43,13 @@ extension AppModel {
         )
         var nodes = budgetNodes
         try nodes[index].setMonthlyAllocation(allocation)
+        if budgetNodes[index].resolved(for: month, currency: currency).allocationMode != mode {
+            try BudgetMergePlanner.validateRolloverScopes(
+                before: budgetNodes.map { $0.resolved(for: month, currency: currency) },
+                after: nodes.map { $0.resolved(for: month, currency: currency) },
+                affectedIDs: [categoryID]
+            )
+        }
         let timeline = try budgetConfigurationTimelineRecording(nodes: nodes)
         let generation = storeGeneration
         try await requireStore().write([
@@ -59,6 +67,7 @@ extension AppModel {
     ) async -> DerivedValue<MonthlyBudgetPresentation> {
         do {
             let read = try beginLogicalBookRead()
+            let timeline = try validatedBudgetConfigurationTimeline(asOf: currentDate())
             let revision = budgetNodesRevision
             let journalRevision = journalProjectionRevision
             let calendar = reportingCalendar
@@ -68,6 +77,9 @@ extension AppModel {
                   let range = FinancialPeriodBoundary.dayKeyRange(for: interval, calendar: calendar)
             else { throw AppModelError.invalidBook }
             let isClosed = interval.end <= currentDate()
+            if isClosed, let first = timeline.revisions.first, interval.start < first.effectiveMonth {
+                return .unavailable(.budgetHistoryUnavailable)
+            }
             let events: [LedgerPostingEvent]
             if isClosed {
                 events = try await read.store.fetchBudgetPostingEvents(
@@ -88,11 +100,43 @@ extension AppModel {
                 summary: try tree.planSummary(directSpending: spending, effectiveLimits: rollover),
                 purposes: Dictionary(uniqueKeysWithValues: tree.nodes.map {
                     ($0.id, tree.effectivePurpose(for: $0.id))
-                })
+                }),
+                unclassifiedNodeIDs: tree.nodesNeedingPurpose(directSpending: spending)
             ))
         } catch {
             return .unavailable(.budgetCalculationFailed)
         }
+    }
+
+    func useRecurringBudget(categoryID: UUID, date: Date, currency: CurrencyCode) async throws {
+        try beginJournalMutation()
+        defer { endJournalMutation() }
+        let month = try BudgetMonth(containing: date, calendar: reportingCalendar)
+        let current = try BudgetMonth(containing: currentDate(), calendar: reportingCalendar)
+        guard month >= current else { throw AppModelError.closedBudgetPeriod }
+        guard let index = budgetNodes.firstIndex(where: { $0.id == categoryID }) else {
+            throw AppModelError.missingRecord
+        }
+        var nodes = budgetNodes
+        nodes[index].monthlyAllocations.removeAll { $0.month == month && $0.currency == currency }
+        guard nodes != budgetNodes else { return }
+        let oldMode = budgetNodes[index].resolved(for: month, currency: currency).allocationMode
+        if oldMode != nodes[index].resolved(for: month, currency: currency).allocationMode {
+            try BudgetMergePlanner.validateRolloverScopes(
+                before: budgetNodes.map { $0.resolved(for: month, currency: currency) },
+                after: nodes.map { $0.resolved(for: month, currency: currency) },
+                affectedIDs: [categoryID]
+            )
+        }
+        let timeline = try budgetConfigurationTimelineRecording(nodes: nodes)
+        let generation = storeGeneration
+        try await requireStore().write([
+            try RecordWrite(nodes[index], id: categoryID.uuidString, in: .budgetNodes),
+            try budgetConfigurationTimelineWrite(timeline)
+        ])
+        guard isCurrentStoreGeneration(generation) else { return }
+        budgetConfigurationTimeline = timeline
+        budgetNodes = nodes
     }
 
     private func monthlyRolloverLimits(
@@ -117,11 +161,17 @@ extension AppModel {
         let events = try await store.fetchBudgetPostingEvents(
             originDayKeyRange: range, excludingEntryIDs: invalidJournalEntryIDs
         )
-        let periods = try closedMonthBudgetSpending(
+        let rawPeriods = try closedMonthBudgetSpending(
             events: events, attributions: [:], currency: tree.currency,
             replayStart: start, currentMonthStart: month, calendar: reportingCalendar,
             excludingEntryIDs: invalidJournalEntryIDs
         )
+        let periods = rawPeriods.map { period in
+            let ids = Set(timeline.revision(effectiveAt: period.monthStart).nodes.map(\.id))
+            return MonthlyBudgetSpending(monthStart: period.monthStart, directSpending: period.directSpending.filter {
+                ids.contains($0.key) && $0.value.currency == tree.currency
+            })
+        }
         return try BudgetRolloverEngine.snapshot(
             timeline: timeline, monthlySpending: periods, asOf: date,
             calendar: reportingCalendar

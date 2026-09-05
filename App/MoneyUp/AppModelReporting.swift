@@ -381,7 +381,7 @@ extension AppModel {
         )
     }
 
-    func prepareBudgetConfigurationTimelineAfterLoad(
+    func loadBudgetConfigurationTimeline(
         in store: EncryptedRecordStore,
         persistsMigration: Bool
     ) async throws {

@@ -662,13 +662,9 @@ public enum BudgetRolloverEngine {
                     carryIn: start.carry.filter { !$0.value.isZero }
                 )
             }
-            let rolled = try tree.rolledUpSpending(
-                directSpending: spendingByMonth[start.month] ?? [:]
-            )
             start.carry = try nextCarry(
                 tree: tree,
                 effectiveLimits: effective,
-                rolledSpending: rolled,
                 directSpending: spendingByMonth[start.month] ?? [:],
                 month: start.month,
                 calendar: calendar
@@ -747,11 +743,14 @@ public enum BudgetRolloverEngine {
     private static func nextCarry(
         tree: BudgetTree,
         effectiveLimits: [UUID: Money],
-        rolledSpending: [UUID: Money],
         directSpending: [UUID: Money],
         month: Date,
         calendar: Calendar
     ) throws -> [UUID: Money] {
+        let rolledSpending = try tree.rolledUpSpending(directSpending: directSpending)
+        let allocationSpending = try BudgetAllocationSpending.totals(
+            nodes: tree.nodes, currency: tree.currency, directSpending: directSpending
+        )
         var result: [UUID: Money] = [:]
         for node in tree.nodes where isRolloverActive(
             node,
@@ -759,7 +758,7 @@ public enum BudgetRolloverEngine {
             calendar: calendar
         ) {
             guard let limit = effectiveLimits[node.id] else { continue }
-            let spending = node.allocationMode == .automatic ? directSpending : rolledSpending
+            let spending = node.allocationMode == .automatic ? allocationSpending : rolledSpending
             let spent = spending[node.id] ?? Money.zero(currency: tree.currency)
             let balance = try limit.subtracting(spent)
             switch node.rolloverRule {

@@ -51,7 +51,11 @@ struct BudgetPlanView: View {
                 case let .unavailable(issue):
                     Section {
                         DerivedValueUnavailableView(issue: issue, prominent: true)
-                        Button("action.retry") { Task { await load() } }
+                        if issue == .budgetHistoryUnavailable {
+                            Button("history.scope.month") { selectedDate = nil }
+                        } else {
+                            Button("action.retry") { Task { await load() } }
+                        }
                     }
                 }
             } else {
@@ -77,11 +81,9 @@ struct BudgetPlanView: View {
 
     private var scopeSection: some View {
         Section {
-            DatePicker("budget.month", selection: Binding(
+            BudgetMonthPicker(selection: Binding(
                 get: { selectedDate ?? now }, set: { selectedDate = $0 }
-            ), displayedComponents: .date)
-            .environment(\.calendar, model.reportingCalendar)
-            .environment(\.timeZone, model.reportingCalendar.timeZone)
+            ), calendar: model.reportingCalendar)
             SearchableCurrencyPicker(
                 title: "transaction.currency",
                 selection: Binding(
@@ -89,14 +91,24 @@ struct BudgetPlanView: View {
                 ), existing: model.budgetCurrencies
             )
         } footer: {
-            Text("budget.scope_detail")
+            MoneyUpExplainer("budget.scope_detail")
         }
     }
 
     @ViewBuilder
     private func budgetContent(_ snapshot: MonthlyBudgetPresentation) -> some View {
         let outline = BudgetOutline.items(snapshot.progress.map(\.node))
+        let groups = Dictionary(grouping: outline, by: \.rootID)
         let progress = Dictionary(uniqueKeysWithValues: snapshot.progress.map { ($0.node.id, $0) })
+        if !snapshot.unclassifiedNodeIDs.isEmpty {
+            Section {
+                Label(
+                    String(format: AppLocalization.string("plan.purpose_review_title"), snapshot.unclassifiedNodeIDs.count),
+                    systemImage: "exclamationmark.shield"
+                )
+                Text("plan.purpose_review_detail").font(.caption).foregroundStyle(.secondary)
+            }
+        }
         if let summary = snapshot.summary {
             Section {
                 BudgetSummaryCard(
@@ -105,6 +117,11 @@ struct BudgetPlanView: View {
                 )
                 if !summary.unbudgetedSpent.isZero {
                     LabeledContent("budget.unbudgeted_spending", value: formattedMoney(summary.unbudgetedSpent))
+                }
+            }
+            Section {
+                BudgetCompositionView(progress: snapshot.progress, allowsEditing: !isClosed) { node in
+                    if !isClosed { editingNode = node }
                 }
             }
         }
@@ -119,7 +136,7 @@ struct BudgetPlanView: View {
         }
         ForEach(outline.filter { $0.depth == 0 }) { root in
             Section {
-                ForEach(outline.filter { $0.rootID == root.id }) { item in
+                ForEach(groups[root.id] ?? []) { item in
                     categoryRow(item, progress: progress[item.id], snapshot: snapshot)
                 }
             } header: {
@@ -155,7 +172,11 @@ struct BudgetPlanView: View {
                         ? "budget.children_overallocated" : "budget.fixed_total_detail")
                         .font(.caption).foregroundStyle(.secondary)
                 }
-                if let directRemaining = progress?.directRemaining, directRemaining.amount < .zero {
+                if snapshot.unclassifiedNodeIDs.contains(item.id), item.node.limit == nil {
+                    Label("plan.purpose.unclassified", systemImage: "questionmark.circle")
+                        .font(.caption).foregroundStyle(.orange)
+                }
+                if progress?.childAllocation != nil, let directRemaining = progress?.directRemaining, directRemaining.amount < .zero {
                     Label("budget.direct_overspent", systemImage: "exclamationmark.triangle")
                         .font(.caption).foregroundStyle(.red)
                 }

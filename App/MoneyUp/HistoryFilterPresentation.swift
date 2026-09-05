@@ -1,4 +1,19 @@
 import Foundation
+import MoneyUpCore
+
+enum HistoryCategoryScope {
+    static func expanded(_ roots: Set<UUID>, in accounts: [LedgerAccount]) -> Set<UUID> {
+        let children = Dictionary(grouping: accounts, by: \.parentID)
+        var result = roots
+        var pending = Array(roots)
+        while let id = pending.popLast() {
+            for child in children[id] ?? [] where result.insert(child.id).inserted {
+                pending.append(child.id)
+            }
+        }
+        return result
+    }
+}
 
 extension HistoryFilterDraft {
     var activeFilterCount: Int {

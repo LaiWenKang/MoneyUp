@@ -84,8 +84,12 @@ extension SQLCipherConnection {
             try migrateToVersion8()
             currentVersion = 8
         }
-        guard currentVersion < 9 else { return }
-        try migrateToVersion9()
+        if currentVersion < 9 {
+            try migrateToVersion9()
+            currentVersion = 9
+        }
+        guard currentVersion < 10 else { return }
+        try migrateToVersion10()
     }
 
     private func storedSchemaVersion() throws -> Int32 {
@@ -95,6 +99,13 @@ extension SQLCipherConnection {
             }
             return sqlite3_column_int(statement, 0)
         }
+    }
+
+    /// Budget allocation modes and period/currency overrides change financial
+    /// interpretation. Older readers must reject the book even though the
+    /// encrypted generic-record table itself needs no structural alteration.
+    private func migrateToVersion10() throws {
+        try performMigration { try execute("PRAGMA user_version = 10;") }
     }
 
     private func performMigration(_ migration: () throws -> Void) throws {

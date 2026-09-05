@@ -158,7 +158,7 @@ extension AppModel {
             defaultReferenceCount = planningReferenceCount(to: id)
         }
         let draftReferenceCount: Int
-        if let quickLogDraft {
+        if let quickLogDraft, quickLogDraft.hasTransactionContent {
             draftReferenceCount = [
                 quickLogDraft.accountID,
                 quickLogDraft.destinationAccountID,
@@ -178,6 +178,7 @@ extension AppModel {
             holdingCount: holdingCount,
             childCount: childCount,
             defaultReferenceCount: defaultReferenceCount,
+            planningReferenceCount: planningReferenceCount(to: id),
             draftReferenceCount: draftReferenceCount,
             hasConfiguredBudget: budget?.limit != nil
                 || (budget?.purpose ?? .unclassified) != .unclassified
@@ -231,71 +232,14 @@ extension AppModel {
     }
 
     func reparentCategory(id: UUID, parentID: UUID?) async throws {
-        try beginLifecycleMutation()
-        defer { endLifecycleMutation() }
-        guard let index = accounts.firstIndex(where: { $0.id == id }) else {
-            throw AppModelError.missingRecord
-        }
-        let original = accounts[index]
-        try requireLifecycleEligible(original)
-        guard original.kind == .expense || original.kind == .income else {
-            throw AppModelError.invalidCategoryKind
-        }
-        if let parentID {
-            guard compatibleCategoryParents(for: id).contains(where: {
-                $0.id == parentID
-            }) else { throw AppModelError.invalidCategoryParent }
-        }
-        guard original.parentID != parentID else { return }
-
-        var updated = original
-        updated.parentID = parentID
-        var candidateBudgets = budgetNodes
-        let beforeBudget = candidateBudgets.first { $0.id == id }
-        if original.kind == .expense {
-            guard let currency = profile?.baseCurrency,
-                  let budgetIndex = candidateBudgets.firstIndex(where: {
-                      $0.id == id
-                  }) else { throw AppModelError.missingRecord }
-            candidateBudgets[budgetIndex].parentID = parentID
-            _ = try BudgetTree(currency: currency, nodes: candidateBudgets)
-        } else {
-            var cursor = parentID
-            var visited = Set([id])
-            while let candidate = cursor {
-                guard visited.insert(candidate).inserted else {
-                    throw AppModelError.invalidCategoryParent
-                }
-                cursor = accountsByID[candidate]?.parentID
-            }
-        }
-        let afterBudget = candidateBudgets.first { $0.id == id }
-        let timeline = original.kind == .expense
-            ? try budgetConfigurationTimelineRecording(nodes: candidateBudgets)
-            : nil
-        let audit = LedgerAccountLifecycleAudit(
-            action: .categoryMetadataUpdated,
-            before: original,
-            after: updated,
-            beforeBudget: beforeBudget,
-            afterBudget: afterBudget
+        guard let account = accountsByID[id] else { throw AppModelError.missingRecord }
+        let budget = budgetNodes.first { $0.id == id }
+        try await updateCategoryMetadata(
+            categoryID: id, name: account.name, amount: budget?.limit?.amount,
+            purpose: budget?.purpose ?? .unclassified,
+            pacingCadence: budget?.pacingCadence ?? .monthly,
+            rolloverRule: budget?.rolloverRule ?? .none, parentChange: .set(parentID)
         )
-        var writes = [
-            try RecordWrite(updated, id: updated.id.uuidString, in: .accounts),
-            try lifecycleAuditWrite(audit)
-        ]
-        if let afterBudget {
-            writes.append(
-                try RecordWrite(afterBudget, id: afterBudget.id.uuidString, in: .budgetNodes)
-            )
-        }
-        if let timeline { writes.append(try budgetConfigurationTimelineWrite(timeline)) }
-        let generation = storeGeneration
-        try await requireStore().write(writes)
-        guard isCurrentStoreGeneration(generation) else { return }
-        accounts[index] = updated
-        if let timeline { budgetConfigurationTimeline = timeline }
-        budgetNodes = candidateBudgets
     }
 
     private func descendantCategoryIDs(of id: UUID) -> Set<UUID> {
@@ -376,7 +320,8 @@ extension AppModel {
         purpose: BudgetPurpose,
         pacingCadence: BudgetPacingCadence = .monthly,
         rolloverRule: BudgetRolloverRule,
-        parentChange: CategoryParentChange = .unchanged
+        parentChange: CategoryParentChange = .unchanged,
+        allocationMode: BudgetAllocationMode? = nil
     ) async throws {
         try beginLifecycleMutation()
         defer { endLifecycleMutation() }
@@ -403,8 +348,20 @@ extension AppModel {
                 currency: currency
             )
             updatedBudget.name = updatedAccount.name
-            updatedBudget.parentID = updatedAccount.parentID
+            if let allocationMode { updatedBudget.allocationMode = allocationMode }
+            updatedBudget.parentID = originalAccount.parentID
             candidateBudgets[budgetIndex] = updatedBudget
+            if beforeBudget?.allocationMode != updatedBudget.allocationMode {
+                try BudgetMergePlanner.validateRolloverScopes(
+                    before: budgetNodes, after: candidateBudgets, affectedIDs: [categoryID]
+                )
+            }
+            if updatedAccount.parentID != originalAccount.parentID {
+                candidateBudgets = try BudgetMergePlanner.moving(
+                    categoryID: categoryID, parentID: updatedAccount.parentID,
+                    nodes: candidateBudgets, currency: currency
+                )
+            }
             _ = try BudgetTree(currency: currency, nodes: candidateBudgets)
         }
 
@@ -432,7 +389,8 @@ extension AppModel {
             afterBudget: afterBudget,
             beforeBudget: beforeBudget,
             candidateTimeline: candidateTimeline,
-            audit: audit
+            audit: audit,
+            candidateBudgets: candidateBudgets
         )
 
         let generation = storeGeneration
@@ -450,7 +408,8 @@ extension AppModel {
         afterBudget: BudgetNode?,
         beforeBudget: BudgetNode?,
         candidateTimeline: BudgetConfigurationTimeline?,
-        audit: LedgerAccountLifecycleAudit
+        audit: LedgerAccountLifecycleAudit,
+        candidateBudgets: [BudgetNode]
     ) throws -> [RecordWrite] {
         var writes: [RecordWrite] = []
         if updatedAccount != originalAccount {
@@ -473,6 +432,10 @@ extension AppModel {
         }
         if let candidateTimeline {
             writes.append(try budgetConfigurationTimelineWrite(candidateTimeline))
+        }
+        let original = Dictionary(uniqueKeysWithValues: budgetNodes.map { ($0.id, $0) })
+        for node in candidateBudgets where node.id != updatedAccount.id && original[node.id] != node {
+            writes.append(try RecordWrite(node, id: node.id.uuidString, in: .budgetNodes))
         }
         writes.append(try lifecycleAuditWrite(audit))
         return writes
@@ -597,11 +560,19 @@ extension AppModel {
         }
         var writes = [try lifecycleAuditWrite(audit)]
         var candidateProfile = profile
+        clearReferences(to: id, in: &candidateProfile)
         candidateProfile?.pinnedBudgetNodeIDs.removeAll { $0 == id }
         candidateProfile?.displayPreferences.removeCategory(id)
         if let candidateProfile, candidateProfile != profile {
             writes.append(try RecordWrite(
                 candidateProfile, id: UserProfile.primaryRecordID, in: .profile
+            ))
+        }
+        var candidateDraft = quickLogDraft
+        clearReferences(to: id, in: &candidateDraft)
+        if let candidateDraft, candidateDraft != quickLogDraft {
+            writes.append(try RecordWrite(
+                candidateDraft, id: QuickLogDraft.primaryRecordID, in: .quickLogDrafts
             ))
         }
         if let candidateTimeline {
@@ -621,6 +592,7 @@ extension AppModel {
         if let candidateTimeline { budgetConfigurationTimeline = candidateTimeline }
         budgetNodes = candidateBudgets
         profile = candidateProfile
+        quickLogDraft = candidateDraft
     }
 
     func setAccountBalance(accountID: UUID, displayBalance: Decimal) async throws {

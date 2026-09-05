@@ -1,6 +1,7 @@
 # MoneyUp redesign review — 5 September 2026
 
-Status: discussion proposal. No application implementation or migration in this review.
+Status: initial proposal, subsequently approved by the user. See
+`BUDGET_REDESIGN_2026-09-05.md` for implementation refinements and verification.
 Source inspected: `5b0ef2078ff2c15d76145ab3cdd9411ca9727336` (`main`).
 The user reports the latest build; the exact installed binary is not established.
 

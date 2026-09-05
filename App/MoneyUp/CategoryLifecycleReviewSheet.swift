@@ -2,9 +2,16 @@ import MoneyUpCore
 import SwiftUI
 
 struct CategoryBudgetImpact: Identifiable {
+    struct Change: Identifiable {
+        let id: UUID
+        let name: String
+        let before: Money?
+        let after: Money?
+    }
     let currency: CurrencyCode
     let before: Money
     let after: Money
+    let changes: [Change]
     var id: CurrencyCode { currency }
 }
 
@@ -18,11 +25,17 @@ extension AppModel {
         )
         let month = try BudgetMonth(containing: currentDateForUserAction(), calendar: reportingCalendar)
         return try budgetCurrencies.map { currency in
-            let before = try BudgetTree(currency: currency, nodes: budgetNodes, month: month)
-                .planSummary(directSpending: [:])?.limit ?? .zero(currency: currency)
-            let after = try BudgetTree(currency: currency, nodes: candidateNodes, month: month)
-                .planSummary(directSpending: [:])?.limit ?? .zero(currency: currency)
-            return CategoryBudgetImpact(currency: currency, before: before, after: after)
+            let beforeTree = try BudgetTree(currency: currency, nodes: budgetNodes, month: month)
+            let afterTree = try BudgetTree(currency: currency, nodes: candidateNodes, month: month)
+            let before = try beforeTree.planSummary(directSpending: [:])?.limit ?? .zero(currency: currency)
+            let after = try afterTree.planSummary(directSpending: [:])?.limit ?? .zero(currency: currency)
+            let original = Dictionary(uniqueKeysWithValues: try beforeTree.progress(directSpending: [:]).map { ($0.node.id, $0) })
+            let changes = try afterTree.progress(directSpending: [:]).compactMap { item -> CategoryBudgetImpact.Change? in
+                guard let prior = original[item.node.id],
+                      prior.node.limit != item.node.limit || prior.node.allocationMode != item.node.allocationMode else { return nil }
+                return .init(id: item.node.id, name: item.node.name, before: prior.effectiveLimit, after: item.effectiveLimit)
+            }
+            return CategoryBudgetImpact(currency: currency, before: before, after: after, changes: changes)
         }
     }
 }
@@ -72,6 +85,16 @@ struct CategoryLifecycleReviewSheet: View {
                             LabeledContent(item.currency.value) {
                                 Text("\(formattedMoney(item.before)) → \(formattedMoney(item.after))")
                                     .monospacedDigit()
+                            }
+                            if !item.changes.isEmpty {
+                                DisclosureGroup("lifecycle.affected_budgets") {
+                                    ForEach(item.changes) { change in
+                                        LabeledContent(change.name) {
+                                            Text("\(change.before.map { formattedMoney($0) } ?? "—") → \(change.after.map { formattedMoney($0) } ?? "—")")
+                                                .monospacedDigit()
+                                        }
+                                    }
+                                }
                             }
                         }
                         Text("lifecycle.merge_budget_detail")

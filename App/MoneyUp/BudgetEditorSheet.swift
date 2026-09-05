@@ -41,6 +41,10 @@ struct BudgetEditorSheet: View {
         isValid ? nil : AppLocalization.string("budget.invalid_allocation")
     }
     private var hasChildren: Bool { model.budgetNodes.contains { $0.parentID == node.id } }
+    private var hasMonthlyOverride: Bool {
+        guard let month = try? BudgetMonth(containing: asOf, calendar: model.reportingCalendar) else { return false }
+        return node.monthlyAllocations.contains { $0.month == month && $0.currency == currency }
+    }
 
     var body: some View {
         NavigationStack {
@@ -48,7 +52,7 @@ struct BudgetEditorSheet: View {
                 allocationSection
                 if hasChildren {
                     Section {
-                        Picker("budget.allocation_mode", selection: $mode) {
+                        Picker("budget.allocation_mode", selection: Binding(get: { mode }, set: changeMode)) {
                             Text("budget.mode.automatic").tag(BudgetAllocationMode.automatic)
                             Text("budget.mode.fixed_total").tag(BudgetAllocationMode.fixedTotal)
                         }
@@ -75,6 +79,11 @@ struct BudgetEditorSheet: View {
                         }
                     ))
                 } footer: { Text("display.category_guidance_detail") }
+                if hasMonthlyOverride {
+                    Section {
+                        Button("budget.use_recurring") { Task { await useRecurring() } }
+                    } footer: { Text("budget.use_recurring_detail") }
+                }
             }
             .disabled(isSaving)
             .scrollDismissesKeyboard(.interactively)
@@ -150,6 +159,29 @@ struct BudgetEditorSheet: View {
                 amount: trimmed.isEmpty ? nil : decimalAmount(from: trimmed),
                 mode: mode, purpose: purpose
             )
+            dismiss()
+        } catch { errorMessage = safeUserMessage(for: error, context: .save) }
+    }
+
+    private func changeMode(_ newMode: BudgetAllocationMode) {
+        guard let currency else { return }
+        do {
+            guard trimmed.isEmpty || decimalAmount(from: trimmed) != nil else {
+                throw MonthlyBudgetError.invalidAllocation
+            }
+            let own = try decimalAmount(from: trimmed).map { try Money($0, currency: currency) }
+            let converted = try BudgetModeConversion.limit(own, children: childAllocation, from: mode, to: newMode)
+            amountText = converted.map { editableAmount($0.amount) } ?? ""
+            mode = newMode
+        } catch { errorMessage = safeUserMessage(for: error, context: .save) }
+    }
+
+    private func useRecurring() async {
+        guard let currency else { return }
+        isSaving = true
+        defer { isSaving = false }
+        do {
+            try await model.useRecurringBudget(categoryID: node.id, date: asOf, currency: currency)
             dismiss()
         } catch { errorMessage = safeUserMessage(for: error, context: .save) }
     }

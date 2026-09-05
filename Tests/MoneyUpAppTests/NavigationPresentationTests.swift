@@ -16,7 +16,7 @@ final class NavigationPresentationTests: XCTestCase {
                     selection: selection
                 )
             }
-            XCTAssertEqual(expanded, [selection])
+            XCTAssertEqual(expanded, PlanSection.ordered)
         }
     }
 
@@ -41,7 +41,7 @@ final class NavigationPresentationTests: XCTestCase {
                     selection: selection
                 )
             }
-            XCTAssertEqual(expanded, [selection])
+            XCTAssertEqual(expanded, PlanSection.ordered)
         }
     }
 

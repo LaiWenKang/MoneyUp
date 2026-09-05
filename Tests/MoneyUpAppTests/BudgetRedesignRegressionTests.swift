@@ -2,6 +2,7 @@ import Foundation
 @testable import MoneyUp
 import MoneyUpCore
 import MoneyUpPersistence
+import MoneyUpIntelligence
 import XCTest
 
 final class BudgetRedesignRegressionTests: XCTestCase {
@@ -36,6 +37,16 @@ final class BudgetRedesignRegressionTests: XCTestCase {
         let foreign = await model.monthlyBudgetPresentation(asOf: now, currency: fixture.usd)
         XCTAssertEqual(foreign.value?.summary?.limit.amount, 80)
         XCTAssertEqual(foreign.value?.summary?.spent.amount, 0)
+        let suggestion = try BudgetLimitSuggestion(
+            categoryID: child.id, currentLimit: Money(50, currency: fixture.sgd),
+            proposedLimit: Money(60, currency: fixture.sgd), median: Money(60, currency: fixture.sgd),
+            medianAbsoluteDeviation: Money(0, currency: fixture.sgd), sampleSize: 3, ruleID: "test-monthly"
+        )
+        let patch = try await model.applyBudgetSuggestions([suggestion], expectedLogicalBookRevision: model.logicalBookRevision)
+        XCTAssertEqual(model.budgetPlanSummaryThisMonthResult().value.flatMap { $0 }?.limit.amount, 60)
+        XCTAssertNil(model.budgetNodes.first { $0.id == child.id }?.limit)
+        try await model.undoBudgetSuggestionPatch(patch)
+        XCTAssertEqual(model.budgetPlanSummaryThisMonthResult().value.flatMap { $0 }?.limit.amount, 50)
         await fixture.store.close()
         let reopened = try fixture.reopenStore()
         let storedNodes = try await reopened.fetchAll(BudgetNode.self, from: .budgetNodes)
@@ -72,9 +83,12 @@ final class BudgetRedesignRegressionTests: XCTestCase {
         let fixture = try AppModelFixture()
         defer { fixture.removeFiles() }
         let node = BudgetNode(id: fixture.food.id, name: fixture.food.name, limit: try Money(100, currency: fixture.sgd), purpose: .flexible)
-        let profile = UserProfile(baseCurrency: fixture.sgd, pinnedBudgetNodeIDs: [node.id])
-        try await fixture.seed(profile: profile, accounts: [fixture.wallet, fixture.food], budgetNodes: [node])
-        let model = fixture.model(profile: profile, accounts: [fixture.wallet, fixture.food], budgetNodes: [node])
+        let profile = UserProfile(baseCurrency: fixture.sgd, preferredExpenseCategoryID: node.id, pinnedBudgetNodeIDs: [node.id])
+        let draft = QuickLogDraft(kind: .expense, amountText: "", destinationAmountText: "",
+            accountID: fixture.wallet.id, destinationAccountID: nil, categoryID: node.id,
+            occurredAt: Date(), dateWasEdited: false, payee: "", note: "", smartText: "")
+        try await fixture.seed(profile: profile, accounts: [fixture.wallet, fixture.food], budgetNodes: [node], quickLogDraft: draft)
+        let model = fixture.model(profile: profile, accounts: [fixture.wallet, fixture.food], budgetNodes: [node], quickLogDraft: draft)
         XCTAssertFalse(model.lifecycleImpact(for: node.id).isUnused)
         XCTAssertTrue(model.lifecycleImpact(for: node.id).canDeleteWithoutReassignment)
         try await model.deleteLedgerItem(id: node.id)
@@ -85,6 +99,9 @@ final class BudgetRedesignRegressionTests: XCTestCase {
         let stored = try await reopened.fetch(LedgerAccount.self, id: node.id.uuidString, from: .accounts)
         let storedProfile = try await reopened.fetch(UserProfile.self, id: UserProfile.primaryRecordID, from: .profile)
         XCTAssertNil(stored)
+        XCTAssertNil(storedProfile?.preferredExpenseCategoryID)
+        let storedDraft = try await reopened.fetch(QuickLogDraft.self, id: QuickLogDraft.primaryRecordID, from: .quickLogDrafts)
+        XCTAssertNil(storedDraft?.categoryID)
         XCTAssertTrue(storedProfile?.pinnedBudgetNodeIDs.isEmpty == true)
         await reopened.close()
     }

@@ -490,9 +490,10 @@ extension AppModel {
     func budgetPace(
         for progress: BudgetProgress,
         cadence: BudgetPacingCadence,
+        purpose: BudgetPurpose? = nil,
         asOf: Date? = nil
     ) -> DerivedValue<BudgetPace?> {
-        guard progress.node.purpose == .flexible,
+        guard (purpose ?? progress.node.purpose) == .flexible,
               let remaining = progress.remaining,
               remaining.amount > .zero else { return .available(nil) }
         do {

@@ -118,39 +118,29 @@ extension AppModel {
     ) throws -> [BudgetNode] {
         guard source.kind == .expense else { return budgetNodes }
         guard let currency = profile?.baseCurrency else { throw AppModelError.invalidBook }
-
-        let sourceNode = budgetNodes.first { $0.id == source.id }
-        var candidate = budgetNodes.filter { $0.id != source.id }
-        let accountByID = Dictionary(
-            uniqueKeysWithValues: candidateAccounts.map { ($0.id, $0) }
-        )
-
-        if sourceNode != nil {
-            if let targetIndex = candidate.firstIndex(where: { $0.id == target.id }) {
-                candidate[targetIndex] = try BudgetMergePlanner.mergedNode(
-                    sourceID: source.id, targetID: target.id,
-                    nodes: budgetNodes, currency: currency
-                )
-            } else {
-                throw AppModelError.missingRecord
+        var nodes = budgetNodes
+        var known = Set(nodes.map(\.id))
+        for endpoint in [source, target] {
+            var cursor: LedgerAccount? = endpoint
+            var visited = Set<UUID>()
+            while let account = cursor, visited.insert(account.id).inserted {
+                if known.insert(account.id).inserted {
+                    nodes.append(BudgetNode(
+                        id: account.id, parentID: account.parentID, name: account.name,
+                        allocationMode: .automatic
+                    ))
+                }
+                cursor = account.parentID.flatMap { accountsByID[$0] }
             }
         }
-
-        let directlyAffectedIDs = Set(
-            [target.id] + budgetNodes.filter { $0.parentID == source.id }.map(\.id)
+        let result = try BudgetMergePlanner.merging(
+            sourceID: source.id, targetID: target.id, nodes: nodes, currency: currency
         )
-        for index in candidate.indices where directlyAffectedIDs.contains(candidate[index].id) {
-            guard let account = accountByID[candidate[index].id] else {
-                throw AppModelError.invalidBook
-            }
-            candidate[index].parentID = account.parentID
-            if candidate[index].id == target.id {
-                candidate[index].name = account.name
-            }
-        }
-
-        _ = try BudgetTree(currency: currency, nodes: candidate)
-        return candidate
+        let accountByID = Dictionary(uniqueKeysWithValues: candidateAccounts.map { ($0.id, $0) })
+        guard result.allSatisfy({ node in
+            accountByID[node.id].map { $0.parentID == node.parentID } == true
+        }) else { throw AppModelError.invalidBook }
+        return result
     }
 
     func repoint(
