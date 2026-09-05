@@ -49,7 +49,7 @@ struct PlanView: View {
     @State private var selection: PlanSection = .budget
     @Environment(AppModel.self) private var model
     @Environment(\.appReportingSnapshot) private var sharedReportingSnapshot
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.moneyUpReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @AppStorage(MoneyAmountPrivacy.storageKey)
     private var hidesAmounts = MoneyAmountPrivacy.defaultHidesAmounts
@@ -199,343 +199,7 @@ struct PlanView: View {
     }
 }
 
-private struct BudgetPlanView: View {
-    @Environment(AppModel.self) private var model
-    @Environment(\.appReportingSnapshot) private var sharedReportingSnapshot
-    @State private var editingNode: BudgetNode?
-    @State private var isAddingCategory = false
-    @State private var categoryKindToAdd: LedgerAccountKind = .expense
-    @State private var isManagingCategories = false
-    @State private var displayedPacingCadence: BudgetPacingCadence = .daily
-    @State private var errorMessage: String?
-    @AppStorage(MoneyUpDisclosureSection.planBudgetDetail.rawValue)
-    private var showsRowDetail = false
-
-    /// How far through the month we are, drawn on every bar so a number can be
-    /// read as ahead or behind rather than just large.
-    private var reportingSnapshot: AppReportingSnapshot {
-        sharedReportingSnapshot
-            ?? AppReportingSnapshot(
-                instant: model.currentDateForUserAction(),
-                calendar: model.reportingCalendar
-            )
-    }
-
-    /// Pinning from the budget list keeps the choice next to the category it
-    /// concerns, rather than only inside the Today board's editor.
-    @ViewBuilder
-    private func pinAction(for node: BudgetNode) -> some View {
-        let isPinned = model.isBudgetNodePinned(node.id)
-        if isPinned || model.canPinAnotherBudgetNode {
-            Button {
-                Task { await togglePin(node, isPinned: isPinned) }
-            } label: {
-                Label(
-                    isPinned ? "plan.unpin_from_today" : "plan.pin_to_today",
-                    systemImage: isPinned ? "pin.slash" : "pin"
-                )
-            }
-            .tint(.accentColor)
-        }
-    }
-
-    private func togglePin(_ node: BudgetNode, isPinned: Bool) async {
-        do {
-            try await model.setBudgetNodePinned(node.id, isPinned: !isPinned)
-            errorMessage = nil
-        } catch {
-            errorMessage = safeUserMessage(for: error, context: .save)
-        }
-    }
-
-    private func progressByIDResult(
-        asOf reportingDate: Date
-    ) -> DerivedValue<[UUID: BudgetProgress]> {
-        switch model.budgetProgressThisMonthResult(asOf: reportingDate) {
-        case let .available(progress):
-            return .available(
-                Dictionary(
-                    uniqueKeysWithValues: progress.map { ($0.node.id, $0) }
-                )
-            )
-        case let .unavailable(issue):
-            return .unavailable(issue)
-        }
-    }
-
-    var body: some View {
-        // Resolved once per update. Reading it inside the row loop recomputed
-        // the whole budget tree for every category on screen.
-        let snapshot = reportingSnapshot
-        let reportingDate = snapshot.instant
-        let progressResult = progressByIDResult(asOf: reportingDate)
-        let elapsed = snapshot.monthElapsed
-        let foreignSpendingResult = model.excludedForeignSpendingThisMonthResult(
-            asOf: reportingDate
-        )
-        let summaryResult = model.budgetPlanSummaryThisMonthResult(
-            asOf: reportingDate
-        )
-        let purposeOverview = model.budgetPurposeOverview()
-        let purposes = purposeOverview.effectivePurposeByID
-        let needsPurposeCount = purposeOverview.reviewCount
-
-        return List {
-                Section {
-                    Picker("plan.pacing_view", selection: $displayedPacingCadence) {
-                        Text("plan.pacing.today").tag(BudgetPacingCadence.daily)
-                        Text("plan.pacing.this_week").tag(BudgetPacingCadence.weekly)
-                        Text("plan.pacing.rest_of_month").tag(BudgetPacingCadence.monthly)
-                    }
-                    .pickerStyle(.segmented)
-                } footer: {
-                    MoneyUpExplainer("plan.pacing_view_detail")
-                }
-
-                if case let .available(.some(summary)) = summaryResult {
-                    Section {
-                        BudgetSummaryCard(
-                            limit: summary.limit,
-                            spent: summary.spent,
-                            remaining: summary.remaining,
-                            elapsed: elapsed
-                        )
-                    }
-                } else if case let .unavailable(issue) = summaryResult {
-                    Section {
-                        DerivedValueUnavailableView(
-                            issue: issue,
-                            prominent: true
-                        )
-                    }
-                }
-
-                if needsPurposeCount > 0 {
-                    Section {
-                        Label {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(
-                                    String(
-                                        format: AppLocalization.string("plan.purpose_review_title"),
-                                        needsPurposeCount
-                                    )
-                                )
-                                .font(.headline)
-                                Text("plan.purpose_review_detail")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                            }
-                        } icon: {
-                            Image(systemName: "exclamationmark.shield.fill")
-                                .foregroundStyle(.orange)
-                        }
-                    }
-                }
-
-                if model.profile?.intelligenceEnabled == true {
-                    Section {
-                        NavigationLink {
-                            BudgetSuggestionReviewView()
-                        } label: {
-                            HStack(spacing: 12) {
-                                MoneyUpSymbolBadge(
-                                    systemImage: "wand.and.stars",
-                                    color: .accentColor
-                                )
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text("intelligence.budget.review_title")
-                                        .font(.headline)
-                                    Text("intelligence.budget.row_detail")
-                                        .font(.subheadline)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                            .padding(.vertical, 4)
-                        }
-                        NavigationLink {
-                            BudgetSimulatorView()
-                        } label: {
-                            HStack(spacing: 12) {
-                                MoneyUpSymbolBadge(
-                                    systemImage: "slider.horizontal.3",
-                                    color: .accentColor
-                                )
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text("simulator.title").font(.headline)
-                                    Text("simulator.row_detail")
-                                        .font(.subheadline)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                            .padding(.vertical, 4)
-                        }
-                    } header: {
-                        Text("simulator.explore")
-                    }
-                } else {
-                    Section {
-                        NavigationLink {
-                            BudgetSimulatorView()
-                        } label: {
-                            Label("simulator.title", systemImage: "slider.horizontal.3")
-                                .font(.headline)
-                                .padding(.vertical, 4)
-                        }
-                    } header: {
-                        Text("simulator.explore")
-                    }
-                }
-
-                if case let .available(foreignSpending) = foreignSpendingResult,
-                   !foreignSpending.isEmpty {
-                    Section {
-                        ForEach(foreignSpending, id: \.currency) { money in
-                            LabeledContent(
-                                "plan.foreign_not_counted",
-                                value: formattedMoney(money)
-                            )
-                        }
-                    } footer: {
-                        MoneyUpExplainer("plan.foreign_not_counted_detail")
-                    }
-                } else if case let .unavailable(issue) = foreignSpendingResult {
-                    Section {
-                        DerivedValueUnavailableView(issue: issue)
-                    }
-                }
-
-                Section {
-                    switch progressResult {
-                    case let .available(progress):
-                        ForEach(model.budgetNodeOutline) { item in
-                            Button {
-                                editingNode = item.node
-                            } label: {
-                                BudgetRow(
-                                    node: item.node,
-                                    depth: item.depth,
-                                    progress: progress[item.node.id],
-                                    elapsed: elapsed,
-                                    purpose: purposes[item.node.id] ?? .unclassified,
-                                    displayedPacingCadence: displayedPacingCadence,
-                                    showsDetail: showsRowDetail,
-                                    reportingDate: reportingDate
-                                )
-                            }
-                            .buttonStyle(.plain)
-                            .swipeActions(edge: .leading) {
-                                pinAction(for: item.node)
-                            }
-                        }
-                    case let .unavailable(issue):
-                        ForEach(model.budgetNodeOutline) { item in
-                            Button {
-                                editingNode = item.node
-                            } label: {
-                                HStack {
-                                    Text(item.node.name)
-                                    Spacer()
-                                    Text("—")
-                                        .monospacedDigit()
-                                }
-                                .padding(.leading, CGFloat(min(item.depth, 4)) * 16)
-                                .accessibilityLabel(
-                                    "\(item.node.name), \(issue.localizedDescription)"
-                                )
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                } header: {
-                    Text("plan.this_month")
-                } footer: {
-                    MoneyUpExplainer("plan.rollup_detail")
-                }
-            }
-            .scrollContentBackground(.hidden)
-            .background(Color.moneyUpBackground)
-            .overlay {
-                if model.budgetNodes.isEmpty {
-                    VStack(spacing: 12) {
-                        MoneyUpIllustration("MoneyUpScenarioStudio", role: .empty)
-                        Text("plan.empty")
-                            .font(.title2.bold())
-                        Text("plan.empty_detail")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.center)
-                        Button {
-                            categoryKindToAdd = .expense
-                            isAddingCategory = true
-                        } label: {
-                            Label("category.add", systemImage: "plus.circle.fill")
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(.moneyUpAction)
-                    }
-                    .padding(28)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(
-                        cornerRadius: 24,
-                        style: .continuous
-                    ))
-                    .padding()
-                }
-            }
-            .navigationTitle("plan.budget")
-            .moneyUpOperationErrorAlert(message: $errorMessage)
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        showsRowDetail.toggle()
-                    } label: {
-                        Image(
-                            systemName: showsRowDetail
-                                ? "text.alignleft"
-                                : "line.3.horizontal.decrease"
-                        )
-                    }
-                    .accessibilityLabel("plan.toggle_row_detail")
-                    .accessibilityValue(
-                        showsRowDetail ? "state.expanded" : "state.collapsed"
-                    )
-                }
-                ToolbarItem(placement: .primaryAction) {
-                    Menu {
-                        Button {
-                            categoryKindToAdd = .expense
-                            isAddingCategory = true
-                        } label: {
-                            Label("lifecycle.add_expense_category", systemImage: "minus.circle")
-                        }
-                        Button {
-                            categoryKindToAdd = .income
-                            isAddingCategory = true
-                        } label: {
-                            Label("lifecycle.add_income_category", systemImage: "plus.circle")
-                        }
-                        Button {
-                            isManagingCategories = true
-                        } label: {
-                            Label("lifecycle.manage_categories", systemImage: "slider.horizontal.3")
-                        }
-                    } label: {
-                        Label("category.add", systemImage: "ellipsis.circle")
-                    }
-                }
-            }
-            .sheet(item: $editingNode) { node in
-                BudgetEditorSheet(node: node)
-            }
-            .sheet(isPresented: $isAddingCategory) {
-                AddCategorySheet(kind: categoryKindToAdd)
-            }
-            .sheet(isPresented: $isManagingCategories) {
-                CategoryManagementList()
-            }
-    }
-}
-
-private struct BudgetRow: View {
+struct BudgetRow: View {
     @Environment(AppModel.self) private var model
     let node: BudgetNode
     let depth: Int
@@ -545,6 +209,8 @@ private struct BudgetRow: View {
     let displayedPacingCadence: BudgetPacingCadence
     let showsDetail: Bool
     let reportingDate: Date
+    var showsName = true
+    var showsPacing = true
 
     private var spent: Money? { progress?.spent }
 
@@ -572,7 +238,7 @@ private struct BudgetRow: View {
         let ratioResult = ratio
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(node.name)
+                Text(showsName ? node.name : AppLocalization.string("budget.group_total"))
                     .fontWeight(depth == 0 ? .semibold : .regular)
                     .foregroundStyle(depth == 0 ? .primary : .secondary)
                 Spacer(minLength: 8)
@@ -627,7 +293,7 @@ private struct BudgetRow: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 }
-                if let progress {
+                if showsPacing, model.displayPreferences.showsGuidance(for: node.id), let progress {
                     switch model.budgetPace(
                         for: progress,
                         cadence: displayedPacingCadence,
@@ -664,7 +330,7 @@ private struct BudgetRow: View {
     }
 }
 
-private struct BudgetSummaryCard: View {
+struct BudgetSummaryCard: View {
     let limit: Money
     let spent: Money
     let remaining: Money
@@ -714,105 +380,6 @@ private struct BudgetSummaryCard: View {
         }
         .padding(.vertical, 6)
         .accessibilityElement(children: .combine)
-    }
-}
-
-private struct BudgetEditorSheet: View {
-    @Environment(\.dismiss) private var dismiss
-    @Environment(AppModel.self) private var model
-    let node: BudgetNode
-
-    @State private var amountText: String
-    @State private var purpose: BudgetPurpose
-    @State private var pacingCadence: BudgetPacingCadence
-    @State private var isSaving = false
-    @State private var errorMessage: String?
-
-    init(node: BudgetNode) {
-        self.node = node
-        _amountText = State(
-            initialValue: node.limit.map {
-                editableAmount($0.amount)
-            } ?? ""
-        )
-        _purpose = State(initialValue: node.purpose)
-        _pacingCadence = State(initialValue: node.pacingCadence)
-    }
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    TextField("quick_log.amount", text: $amountText)
-                        .moneyAmountKeyboard(currency: model.profile?.baseCurrency)
-                } header: {
-                    Text("plan.monthly_limit")
-                } footer: {
-                    Text("plan.blank_removes_limit")
-                }
-                Section {
-                    Picker("plan.purpose", selection: $purpose) {
-                        ForEach(BudgetPurpose.allCases, id: \.self) { option in
-                            Label(option.titleKey, systemImage: option.systemImage)
-                                .tag(option)
-                        }
-                    }
-                } header: {
-                    Text("plan.purpose")
-                } footer: {
-                    MoneyUpExplainer("plan.purpose_detail")
-                }
-                if purpose == .flexible {
-                    Section {
-                        Picker("plan.pacing", selection: $pacingCadence) {
-                            ForEach(BudgetPacingCadence.allCases, id: \.self) { cadence in
-                                Text(cadence.titleKey).tag(cadence)
-                            }
-                        }
-                    } footer: {
-                        MoneyUpExplainer("plan.pacing_detail")
-                    }
-                }
-            }
-            .scrollContentBackground(.hidden)
-            .background(Color.moneyUpBackground)
-            .navigationTitle(node.name)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("action.cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("action.save") { Task { await save() } }
-                        .disabled(
-                            isSaving
-                                || (!amountText.isEmpty && decimalAmount(from: amountText) == nil)
-                                || (!amountText.isEmpty && purpose == .unclassified)
-                        )
-                }
-                MoneyUpKeyboardDoneToolbar()
-            }
-            .moneyUpOperationErrorAlert(message: $errorMessage)
-        }
-        .presentationDetents([.medium])
-    }
-
-    private func save() async {
-        isSaving = true
-        errorMessage = nil
-        defer { isSaving = false }
-        do {
-            let trimmed = amountText.trimmingCharacters(in: .whitespacesAndNewlines)
-            try await model.setBudgetLimit(
-                categoryID: node.id,
-                amount: trimmed.isEmpty ? nil : decimalAmount(from: trimmed),
-                purpose: purpose,
-                pacingCadence: purpose == .flexible ? pacingCadence : .monthly
-            )
-            dismiss()
-        } catch {
-            errorMessage = safeUserMessage(for: error, context: .save)
-        }
     }
 }
 
@@ -867,6 +434,8 @@ struct AddCategorySheet: View {
     @State private var parentID: UUID?
     @State private var isSaving = false
     @State private var errorMessage: String?
+    @State private var isDiscarding = false
+    private let originalParentID: UUID?
     let kind: LedgerAccountKind
     let onAdded: @MainActor (UUID) -> Void
 
@@ -876,6 +445,7 @@ struct AddCategorySheet: View {
         onAdded: @escaping @MainActor (UUID) -> Void = { _ in }
     ) {
         self.kind = kind
+        self.originalParentID = initialParentID
         self.onAdded = onAdded
         _parentID = State(initialValue: initialParentID)
     }
@@ -900,21 +470,32 @@ struct AddCategorySheet: View {
                     }
                 }
             }
+            .disabled(isSaving)
+            .scrollDismissesKeyboard(.interactively)
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
             .navigationTitle(titleKey)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("action.cancel") { dismiss() }
+                    Button("action.cancel") {
+                        if !name.isEmpty || parentID != originalParentID { isDiscarding = true }
+                        else { dismiss() }
+                    }.disabled(isSaving)
                 }
+                MoneyUpKeyboardDoneToolbar()
                 ToolbarItem(placement: .confirmationAction) {
                     Button("action.save") { Task { await save() } }
                         .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSaving)
                 }
             }
+            .confirmationDialog("draft.discard_title", isPresented: $isDiscarding, titleVisibility: .visible) {
+                Button("draft.discard_changes", role: .destructive) { dismiss() }
+                Button("draft.keep_editing", role: .cancel) {}
+            }
             .moneyUpOperationErrorAlert(message: $errorMessage)
         }
+        .interactiveDismissDisabled(isSaving || !name.isEmpty || parentID != originalParentID)
     }
 
     private func save() async {

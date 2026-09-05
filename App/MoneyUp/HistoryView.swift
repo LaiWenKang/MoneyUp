@@ -64,7 +64,7 @@ struct HistoryFilterDraft: Hashable {
     }
 
     var hasActiveFilters: Bool {
-        kind != .all || accountID != nil || categoryIDs != nil
+        kind != .all || accountID != nil || categoryIDs != nil || categoryPostingCurrency != nil
             || includesStartDate || includesEndDate
             || !minimumAmountText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             || !maximumAmountText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -267,7 +267,7 @@ struct HistoryView: View {
     }
 
     @Environment(AppModel.self) private var model
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.moneyUpReduceMotion) private var reduceMotion
     @Environment(\.appReportingSnapshot) private var sharedReportingSnapshot
     @AppStorage(MoneyAmountPrivacy.storageKey)
     private var hidesAmounts = MoneyAmountPrivacy.defaultHidesAmounts
@@ -475,24 +475,26 @@ struct HistoryView: View {
                 }
             }
 
-            if hasAdvancedFilters {
-                    Section {
-                        HStack {
-                            Label(
-                                "history.filters_active",
-                                systemImage: "line.3.horizontal.decrease.circle.fill"
-                            )
-                            Spacer()
-                            Button("action.reset") {
-                                let snapshot = reportingSnapshot
-                                filters = HistoryFilterDraft(
-                                    now: snapshot.instant,
-                                    calendar: snapshot.calendar
-                                )
-                                quickRange = .all
-                            }
-                        }
+            Section {
+                HStack(spacing: 12) {
+                    Button { showingFilters = true } label: {
+                        Label {
+                            Text(filters.activeFilterCount == 0
+                                ? AppLocalization.string("history.filter")
+                                : String(format: AppLocalization.string("history.filter_count"), filters.activeFilterCount))
+                        } icon: { Image(systemName: "line.3.horizontal.decrease.circle") }
                     }
+                    .labelStyle(.titleAndIcon)
+                    Spacer(minLength: 8)
+                    Button("history.clear_filters") {
+                        let snapshot = reportingSnapshot
+                        filters = HistoryFilterDraft(now: snapshot.instant, calendar: snapshot.calendar)
+                        quickRange = .all
+                    }.disabled(!filters.hasActiveFilters)
+                }
+                if !searchText.isEmpty {
+                    Button("history.clear_search") { searchText = ""; appliedSearchText = "" }
+                }
             }
 
                 if !model.journalRecentEntriesAreCurrent {
@@ -736,16 +738,7 @@ struct HistoryView: View {
                 }
                 ToolbarItemGroup(placement: .primaryAction) {
                     MoneyUpAmountPrivacyButton()
-                    Button {
-                        showingFilters = true
-                    } label: {
-                        Image(
-                            systemName: hasAdvancedFilters
-                                ? "line.3.horizontal.decrease.circle.fill"
-                                : "line.3.horizontal.decrease.circle"
-                        )
-                    }
-                    .accessibilityLabel("history.filter")
+
                 }
             }
             .sheet(isPresented: $showingFilters) {

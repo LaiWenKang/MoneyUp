@@ -246,6 +246,14 @@ extension AppModel {
     }
 
     func lock() {
+        if pendingDisplayPreferences != nil, let write = displayPreferenceWriteTask {
+            requiresAuthenticationPrivacyCover = true
+            Task { @MainActor in
+                await write.value
+                lock()
+            }
+            return
+        }
         // Stop day-boundary work as soon as authentication is required, even
         // when an atomic mutation must drain before decoded state is cleared.
         cancelWidgetReportingDayRefresh()

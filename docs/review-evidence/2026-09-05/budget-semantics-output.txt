@@ -1,0 +1,6 @@
+parent cap=none, groceries=300, dining=200 -> parent limit=nil, parent spent=145, plan limit=500, plan spent=120, unbudgeted=25
+parent cap=none, groceries=400, dining=200 -> parent limit=nil, parent spent=145, plan limit=600, plan spent=120, unbudgeted=25
+parent cap=500, groceries=300, dining=200 -> parent limit=500, parent spent=145, plan limit=500, plan spent=145, unbudgeted=0
+parent cap=500, groceries=400, dining=200 -> parent limit=500, parent spent=145, plan limit=500, plan spent=145, unbudgeted=0
+Current merge rule, child into parent: plan limit 500 -> 700
+PASS: 4 core budget cases; merge arithmetic demonstrated (not an app lifecycle test).

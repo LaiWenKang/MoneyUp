@@ -65,6 +65,7 @@ func moneyUpPaceRatio(
 /// Role-based sizing prevents decorative art from consuming the space needed
 /// for the screen's decision and primary action.
 struct MoneyUpIllustration: View {
+    @Environment(\.moneyUpShowsIllustrations) private var showsIllustrations
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let assetName: String
     let role: MoneyUpIllustrationRole
@@ -76,7 +77,7 @@ struct MoneyUpIllustration: View {
 
     @ViewBuilder
     var body: some View {
-        if !(dynamicTypeSize.isAccessibilitySize && role == .inline) {
+        if showsIllustrations && !(dynamicTypeSize.isAccessibilitySize && role == .inline) {
             Image(assetName)
                 .resizable()
                 .scaledToFit()

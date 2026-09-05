@@ -244,7 +244,7 @@ struct HistoryFilterSheet: View {
                 }
 
                 Section {
-                    Button("action.reset", role: .destructive) {
+                    Button("history.clear_filters") {
                         draft = HistoryFilterDraft(calendar: calendar)
                     }
                 }

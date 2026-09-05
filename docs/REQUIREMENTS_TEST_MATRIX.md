@@ -406,16 +406,16 @@ exact-SHA CI before signed promotion.
 
 - Requirements traced: **97 / 97**.
 - Requirements with at least one named automated or manual case: **97 / 97**.
-- Declared automated tests in source after this review: **1052** (396 core, 58
-  persistence, 11 intelligence, 576 app-target, and 11 performance-target
+- Declared automated tests in source after this review: **1068** (406 core, 58
+  persistence, 11 intelligence, 582 app-target, and 11 performance-target
   declarations; XCTest methods plus Swift Testing `@Test` declarations). Of
-  those declarations, **999** are XCTest functions named `test...`; the
+  those declarations, **1015** are XCTest functions named `test...`; the
   remaining 53 are Swift Testing `@Test` declarations in MoneyUpCore.
 - Tests executed on the prior build-10 0.7.1 candidate in GitHub Actions:
   **742 / 742 declared test sites** across the 376 package, 355 app-target, and
   11 performance-target declarations; exact PR-head run 300 and merged
   implementation run 301 passed all four jobs.
-- The approved-rework branch declares 1052 test sites; its exact-head macOS run
+- The approved-rework branch declares 1068 test sites; its exact-head macOS run
   is `AUTO-PENDING`.
 - Local static validation is reported separately in
   `QUALITY_AUDIT_0.6.0.md`; automated success does not convert any

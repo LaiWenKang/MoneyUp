@@ -107,7 +107,8 @@ extension AppModel {
                 id: category.id,
                 parentID: parentID,
                 name: normalizedName,
-                limit: nil
+                limit: nil,
+                allocationMode: .automatic
             )
             let candidate = budgetNodes + [node]
             _ = try BudgetTree(currency: currency, nodes: candidate)
@@ -163,6 +164,7 @@ extension AppModel {
                 quickLogDraft.destinationAccountID,
                 quickLogDraft.categoryID
             ].compactMap { $0 }.filter { $0 == id }.count
+                + quickLogDraft.splitLines.filter { $0.categoryID == id }.count
         } else {
             draftReferenceCount = 0
         }
@@ -179,6 +181,7 @@ extension AppModel {
             draftReferenceCount: draftReferenceCount,
             hasConfiguredBudget: budget?.limit != nil
                 || (budget?.purpose ?? .unclassified) != .unclassified
+                || !(budget?.monthlyAllocations.isEmpty ?? true)
         )
     }
 
@@ -372,24 +375,15 @@ extension AppModel {
         amount: Decimal?,
         purpose: BudgetPurpose,
         pacingCadence: BudgetPacingCadence = .monthly,
-        rolloverRule: BudgetRolloverRule
+        rolloverRule: BudgetRolloverRule,
+        parentChange: CategoryParentChange = .unchanged
     ) async throws {
         try beginLifecycleMutation()
         defer { endLifecycleMutation() }
 
-        let normalizedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalizedName.isEmpty else { throw AppModelError.emptyName }
-        guard let accountIndex = accounts.firstIndex(where: { $0.id == categoryID }) else {
-            throw AppModelError.missingRecord
-        }
-        let originalAccount = accounts[accountIndex]
-        try requireLifecycleEligible(originalAccount)
-        guard originalAccount.kind == .expense || originalAccount.kind == .income else {
-            throw AppModelError.invalidCategoryKind
-        }
-
-        var updatedAccount = originalAccount
-        updatedAccount.name = normalizedName
+        let (accountIndex, originalAccount, updatedAccount) = try categoryMetadataAccount(
+            id: categoryID, name: name, parentChange: parentChange
+        )
         var candidateBudgets = budgetNodes
         let beforeBudget = budgetNodes.first { $0.id == categoryID }
 
@@ -408,7 +402,8 @@ extension AppModel {
                 rolloverRule: rolloverRule,
                 currency: currency
             )
-            updatedBudget.name = normalizedName
+            updatedBudget.name = updatedAccount.name
+            updatedBudget.parentID = updatedAccount.parentID
             candidateBudgets[budgetIndex] = updatedBudget
             _ = try BudgetTree(currency: currency, nodes: candidateBudgets)
         }
@@ -581,7 +576,7 @@ extension AppModel {
             throw AppModelError.missingRecord
         }
         try requireLifecycleEligible(source)
-        guard lifecycleImpact(for: id).isUnused else {
+        guard lifecycleImpact(for: id).canDeleteWithoutReassignment else {
             throw AppModelError.ledgerItemInUse
         }
 
@@ -601,6 +596,14 @@ extension AppModel {
             candidateTimeline = nil
         }
         var writes = [try lifecycleAuditWrite(audit)]
+        var candidateProfile = profile
+        candidateProfile?.pinnedBudgetNodeIDs.removeAll { $0 == id }
+        candidateProfile?.displayPreferences.removeCategory(id)
+        if let candidateProfile, candidateProfile != profile {
+            writes.append(try RecordWrite(
+                candidateProfile, id: UserProfile.primaryRecordID, in: .profile
+            ))
+        }
         if let candidateTimeline {
             writes.append(try budgetConfigurationTimelineWrite(candidateTimeline))
         }
@@ -617,6 +620,7 @@ extension AppModel {
         accounts.removeAll { $0.id == id }
         if let candidateTimeline { budgetConfigurationTimeline = candidateTimeline }
         budgetNodes = candidateBudgets
+        profile = candidateProfile
     }
 
     func setAccountBalance(accountID: UUID, displayBalance: Decimal) async throws {

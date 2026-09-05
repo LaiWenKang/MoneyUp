@@ -80,41 +80,6 @@ final class AppModel {
         }
     }
 
-    struct LedgerItemLifecycleImpact: Equatable {
-        let transactionCount: Int
-        /// False means `transactionCount` is only a last-known value. In that
-        /// state destructive "unused" actions must fail closed until the
-        /// compact journal projection has been rebuilt.
-        let transactionReferencesAreCurrent: Bool
-        let scheduleCount: Int
-        let holdingCount: Int
-        let childCount: Int
-        let defaultReferenceCount: Int
-        let draftReferenceCount: Int
-        let hasConfiguredBudget: Bool
-
-        var isUnused: Bool {
-            transactionReferencesAreCurrent
-                && transactionCount == 0
-                && scheduleCount == 0
-                && holdingCount == 0
-                && childCount == 0
-                && defaultReferenceCount == 0
-                && draftReferenceCount == 0
-                && !hasConfiguredBudget
-        }
-
-        var totalReferenceCount: Int {
-            transactionCount
-                + scheduleCount
-                + holdingCount
-                + childCount
-                + defaultReferenceCount
-                + draftReferenceCount
-                + (hasConfiguredBudget ? 1 : 0)
-        }
-    }
-
     enum InvestmentOpeningTreatment: String, CaseIterable, Identifiable {
         case deductFromCash
         case cashAlreadyExcludesPosition
@@ -189,6 +154,7 @@ final class AppModel {
 
     struct BudgetTreeCacheEntry {
         let currency: CurrencyCode
+        let month: BudgetMonth
         let revision: UInt64
         let result: Result<BudgetTree, Error>
     }
@@ -451,6 +417,10 @@ final class AppModel {
     var exchangeRateMutationIsActive = false
     var exchangeRateMutationWaiters: [CheckedContinuation<Void, Never>] = []
     var budgetNodesRevision: UInt64 = 0
+    var pendingDisplayPreferences: MoneyUpDisplayPreferences?
+    var displayPreferenceRequest: UInt64 = 0
+    var displayPreferenceWriteTask: Task<Void, Never>?
+    var displayPreferenceFailure: Error?
     var budgetTreeCache: BudgetTreeCacheEntry?
     var budgetConfigurationTimeline: BudgetConfigurationTimeline?
     var budgetConfigurationTimelineInvalid = false

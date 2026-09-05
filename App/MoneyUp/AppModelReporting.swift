@@ -236,21 +236,32 @@ extension AppModel {
     /// One validated hierarchy per base-currency/budget revision. Invalid
     /// trees are cached too, so every view in one render observes the same
     /// failure without repeating validation work.
-    func reportingBudgetTree(currency: CurrencyCode) throws -> BudgetTree {
+    func reportingBudgetTree(
+        currency: CurrencyCode,
+        asOf date: Date? = nil
+    ) throws -> BudgetTree {
+        let instant = date ?? currentDate()
+        let month = try BudgetMonth(containing: instant, calendar: reportingCalendar)
         if let budgetTreeCache,
            budgetTreeCache.currency == currency,
+           budgetTreeCache.month == month,
            budgetTreeCache.revision == budgetNodesRevision {
             return try budgetTreeCache.result.get()
         }
 
         let result: Result<BudgetTree, Error>
         do {
-            result = .success(try BudgetTree(currency: currency, nodes: budgetNodes))
+            let nowMonth = try BudgetMonth(containing: currentDate(), calendar: reportingCalendar)
+            let nodes = month < nowMonth
+                ? budgetConfigurationTimeline?.revision(effectiveAt: instant).nodes ?? budgetNodes
+                : budgetNodes
+            result = .success(try BudgetTree(currency: currency, nodes: nodes, month: month))
         } catch {
             result = .failure(error)
         }
         budgetTreeCache = BudgetTreeCacheEntry(
             currency: currency,
+            month: month,
             revision: budgetNodesRevision,
             result: result
         )

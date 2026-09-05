@@ -99,7 +99,7 @@ struct InsightsView: View {
 
     @Environment(AppModel.self) var model
     @Environment(\.dynamicTypeSize) var dynamicTypeSize
-    @Environment(\.accessibilityReduceMotion) var reduceMotion
+    @Environment(\.moneyUpReduceMotion) var reduceMotion
     @AppStorage(MoneyAmountPrivacy.storageKey)
     var hidesAmounts = MoneyAmountPrivacy.defaultHidesAmounts
     @State var period: ReportPeriod = .thisMonth

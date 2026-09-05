@@ -58,6 +58,8 @@ func safeUserMessage(
          is TransactionFactoryError,
          is JournalEntryValidationError,
          is BudgetTreeError,
+         is BudgetMergeError,
+         is MonthlyBudgetError,
          is DecimalCalculationError,
          is CurrencyCodeError,
          is MoneyError,

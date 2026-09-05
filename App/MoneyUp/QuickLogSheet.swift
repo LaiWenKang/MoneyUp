@@ -380,7 +380,7 @@ struct QuickLogEntryView: View {
     }
 
     @Environment(\.dismiss) var dismiss
-    @Environment(\.accessibilityReduceMotion) var accessibilityReduceMotion
+    @Environment(\.moneyUpReduceMotion) var accessibilityReduceMotion
     @Environment(\.accessibilityVoiceOverEnabled) var isVoiceOverEnabled
     @Environment(\.dynamicTypeSize) var dynamicTypeSize
     @Environment(AppModel.self) var model

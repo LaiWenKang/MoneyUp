@@ -612,11 +612,9 @@ public enum BudgetRolloverEngine {
         )
         let currentTree = try BudgetTree(
             currency: currency,
-            nodes: revisionForMonth(currentMonth.start).nodes
+            nodes: revisionForMonth(currentMonth.start).nodes,
+            month: BudgetMonth(containing: currentMonth.start, calendar: calendar)
         )
-        guard currentTree.currency == currency else {
-            throw BudgetRolloverError.configurationCurrencyMismatch
-        }
         let currentConfiguredLimits = configuredLimits(in: currentTree)
         let activationMonths = allConfigurationNodes.compactMap { node -> Date? in
             guard node.limit != nil,
@@ -644,7 +642,10 @@ public enum BudgetRolloverEngine {
                     currency: currency
                 )
             }
-            let tree = try BudgetTree(currency: currency, nodes: revision.nodes)
+            let tree = try BudgetTree(
+                currency: currency, nodes: revision.nodes,
+                month: BudgetMonth(containing: start.month, calendar: calendar)
+            )
             guard tree.currency == currency else {
                 throw BudgetRolloverError.configurationCurrencyMismatch
             }
@@ -668,6 +669,7 @@ public enum BudgetRolloverEngine {
                 tree: tree,
                 effectiveLimits: effective,
                 rolledSpending: rolled,
+                directSpending: spendingByMonth[start.month] ?? [:],
                 month: start.month,
                 calendar: calendar
             )
@@ -746,6 +748,7 @@ public enum BudgetRolloverEngine {
         tree: BudgetTree,
         effectiveLimits: [UUID: Money],
         rolledSpending: [UUID: Money],
+        directSpending: [UUID: Money],
         month: Date,
         calendar: Calendar
     ) throws -> [UUID: Money] {
@@ -756,7 +759,8 @@ public enum BudgetRolloverEngine {
             calendar: calendar
         ) {
             guard let limit = effectiveLimits[node.id] else { continue }
-            let spent = rolledSpending[node.id] ?? Money.zero(currency: tree.currency)
+            let spending = node.allocationMode == .automatic ? directSpending : rolledSpending
+            let spent = spending[node.id] ?? Money.zero(currency: tree.currency)
             let balance = try limit.subtracting(spent)
             switch node.rolloverRule {
             case .none: break

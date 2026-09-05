@@ -125,35 +125,14 @@ extension AppModel {
             uniqueKeysWithValues: candidateAccounts.map { ($0.id, $0) }
         )
 
-        if let sourceNode {
+        if sourceNode != nil {
             if let targetIndex = candidate.firstIndex(where: { $0.id == target.id }) {
-                if let sourceLimit = sourceNode.limit {
-                    if let targetLimit = candidate[targetIndex].limit {
-                        candidate[targetIndex].limit = try targetLimit.adding(sourceLimit)
-                    } else {
-                        candidate[targetIndex].limit = sourceLimit
-                    }
-                }
-                if candidate[targetIndex].purpose == .unclassified {
-                    candidate[targetIndex].purpose = sourceNode.purpose
-                }
-                if candidate[targetIndex].rolloverRule == .none,
-                   sourceNode.rolloverRule != .none {
-                    candidate[targetIndex].rolloverRule = sourceNode.rolloverRule
-                    candidate[targetIndex].rolloverStartedAt = sourceNode.rolloverStartedAt
-                }
-            } else {
-                candidate.append(
-                    BudgetNode(
-                        id: target.id,
-                        parentID: accountByID[target.id]?.parentID,
-                        name: target.name,
-                        limit: sourceNode.limit,
-                        purpose: sourceNode.purpose,
-                        rolloverRule: sourceNode.rolloverRule,
-                        rolloverStartedAt: sourceNode.rolloverStartedAt
-                    )
+                candidate[targetIndex] = try BudgetMergePlanner.mergedNode(
+                    sourceID: source.id, targetID: target.id,
+                    nodes: budgetNodes, currency: currency
                 )
+            } else {
+                throw AppModelError.missingRecord
             }
         }
 
@@ -283,6 +262,9 @@ extension AppModel {
         if updated.accountID == id { updated.accountID = nil }
         if updated.destinationAccountID == id { updated.destinationAccountID = nil }
         if updated.categoryID == id { updated.categoryID = nil }
+        for index in updated.splitLines.indices where updated.splitLines[index].categoryID == id {
+            updated.splitLines[index].categoryID = nil
+        }
         draft = updated
     }
 
@@ -299,6 +281,10 @@ extension AppModel {
         if updated.preferredIncomeCategoryID == sourceID {
             updated.preferredIncomeCategoryID = targetID
         }
+        updated.pinnedBudgetNodeIDs = UserProfile.normalizedPins(
+            updated.pinnedBudgetNodeIDs.map { $0 == sourceID ? targetID : $0 }
+        )
+        updated.displayPreferences.mergeCategory(sourceID, into: targetID)
         profile = updated
     }
 
@@ -313,6 +299,9 @@ extension AppModel {
             updated.destinationAccountID = targetID
         }
         if updated.categoryID == sourceID { updated.categoryID = targetID }
+        for index in updated.splitLines.indices where updated.splitLines[index].categoryID == sourceID {
+            updated.splitLines[index].categoryID = targetID
+        }
         if updated.accountID == updated.destinationAccountID {
             updated.destinationAccountID = nil
         }

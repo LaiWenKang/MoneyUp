@@ -27,7 +27,7 @@ extension AppModel {
         asOf requestedDate: Date? = nil
     ) throws -> BudgetRolloverSnapshot {
         let asOf = requestedDate ?? currentDate()
-        let timeline = try validatedBudgetConfigurationTimeline(asOf: asOf)
+        let timeline = try validatedBudgetConfigurationTimeline(asOf: currentDate())
         return try budgetRolloverSnapshot(
             tree: tree,
             timeline: timeline,

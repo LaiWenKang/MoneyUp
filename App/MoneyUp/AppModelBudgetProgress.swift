@@ -112,7 +112,7 @@ extension AppModel {
         }
         let date = requestedDate ?? currentDate()
         do {
-            let tree = try reportingBudgetTree(currency: currency)
+            let tree = try reportingBudgetTree(currency: currency, asOf: date)
             let rollover = try currentBudgetRolloverSnapshot(tree: tree, asOf: date)
             switch spendingThisMonthResult(asOf: date) {
             case let .available(spending):
@@ -141,7 +141,7 @@ extension AppModel {
         }
         let date = requestedDate ?? currentDate()
         do {
-            let tree = try reportingBudgetTree(currency: currency)
+            let tree = try reportingBudgetTree(currency: currency, asOf: date)
             let rollover = try currentBudgetRolloverSnapshot(tree: tree, asOf: date)
             switch spendingThisMonthResult(asOf: date) {
             case let .available(spending):
@@ -185,7 +185,7 @@ extension AppModel {
         }
 
         do {
-            let tree = try reportingBudgetTree(currency: currency)
+            let tree = try reportingBudgetTree(currency: currency, asOf: date)
             let rollover = try currentBudgetRolloverSnapshot(tree: tree, asOf: date)
             let representedSpending = spendingRepresented(in: tree, from: spending)
             guard try tree.planSummary(

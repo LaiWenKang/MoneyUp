@@ -69,6 +69,13 @@ struct AppSettingsView: View {
         @Bindable var bindableModel = model
         Form {
             Section {
+                NavigationLink {
+                    DisplaySettingsView()
+                } label: {
+                    Label("display.title", systemImage: "slider.horizontal.3")
+                }
+            }
+            Section {
                 Picker(
                     "settings.language",
                     selection: Binding(

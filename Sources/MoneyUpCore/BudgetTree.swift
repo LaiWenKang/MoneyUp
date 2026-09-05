@@ -13,6 +13,13 @@ public enum BudgetPurpose: String, Codable, CaseIterable, Hashable, Sendable {
     case goal
 }
 
+public enum BudgetAllocationMode: String, Codable, CaseIterable, Hashable, Sendable {
+    /// A legacy envelope containing its descendants, preserved on upgrade.
+    case fixedTotal
+    /// A direct allocation, added to the independently budgeted children.
+    case automatic
+}
+
 /// Determines what may enter the following month's allocation.
 ///
 /// Existing budgets decode as `none`; enabling rollover therefore starts from
@@ -33,6 +40,8 @@ public struct BudgetNode: Codable, Equatable, Identifiable, Sendable {
     public var parentID: UUID?
     public var name: String
     public var limit: Money?
+    public var allocationMode: BudgetAllocationMode
+    public var monthlyAllocations: [MonthlyBudgetAllocation]
     public var purpose: BudgetPurpose
     /// Optional daily/weekly guidance derived from the monthly source of truth.
     public var pacingCadence: BudgetPacingCadence
@@ -49,12 +58,16 @@ public struct BudgetNode: Codable, Equatable, Identifiable, Sendable {
         purpose: BudgetPurpose = .unclassified,
         pacingCadence: BudgetPacingCadence = .monthly,
         rolloverRule: BudgetRolloverRule = .none,
-        rolloverStartedAt: Date? = nil
+        rolloverStartedAt: Date? = nil,
+        allocationMode: BudgetAllocationMode = .fixedTotal,
+        monthlyAllocations: [MonthlyBudgetAllocation] = []
     ) {
         self.id = id
         self.parentID = parentID
         self.name = name
         self.limit = limit
+        self.allocationMode = allocationMode
+        self.monthlyAllocations = monthlyAllocations
         self.purpose = purpose
         self.pacingCadence = pacingCadence
         self.rolloverRule = rolloverRule
@@ -66,6 +79,8 @@ public struct BudgetNode: Codable, Equatable, Identifiable, Sendable {
         case parentID
         case name
         case limit
+        case allocationMode
+        case monthlyAllocations
         case purpose
         case pacingCadence
         case rolloverRule
@@ -78,6 +93,12 @@ public struct BudgetNode: Codable, Equatable, Identifiable, Sendable {
         parentID = try container.decodeIfPresent(UUID.self, forKey: .parentID)
         name = try container.decode(String.self, forKey: .name)
         limit = try container.decodeIfPresent(Money.self, forKey: .limit)
+        allocationMode = try container.decodeIfPresent(
+            BudgetAllocationMode.self, forKey: .allocationMode
+        ) ?? .fixedTotal
+        monthlyAllocations = try container.decodeIfPresent(
+            [MonthlyBudgetAllocation].self, forKey: .monthlyAllocations
+        ) ?? []
         purpose = try container.decodeIfPresent(
             BudgetPurpose.self,
             forKey: .purpose
@@ -93,6 +114,7 @@ public struct BudgetNode: Codable, Equatable, Identifiable, Sendable {
         rolloverStartedAt = rolloverRule == .none
             ? nil
             : try container.decodeIfPresent(Date.self, forKey: .rolloverStartedAt)
+        try validateMonthlyAllocations()
     }
 }
 
@@ -102,17 +124,26 @@ public struct BudgetProgress: Equatable, Sendable {
     public let effectiveLimit: Money?
     public let spent: Money
     public let remaining: Money?
+    public let directSpent: Money
+    public let directRemaining: Money?
+    public let childAllocation: Money?
 
     public init(
         node: BudgetNode,
         effectiveLimit: Money?,
         spent: Money,
-        remaining: Money?
+        remaining: Money?,
+        directSpent: Money? = nil,
+        directRemaining: Money? = nil,
+        childAllocation: Money? = nil
     ) {
         self.node = node
         self.effectiveLimit = effectiveLimit
         self.spent = spent
         self.remaining = remaining
+        self.directSpent = directSpent ?? spent
+        self.directRemaining = directRemaining
+        self.childAllocation = childAllocation
     }
 }
 
@@ -169,10 +200,18 @@ public struct BudgetTree: Codable, Equatable, Sendable {
 
     private let nodesByID: [UUID: BudgetNode]
 
-    public init(currency: CurrencyCode, nodes: [BudgetNode]) throws {
+    public init(
+        currency: CurrencyCode,
+        nodes sourceNodes: [BudgetNode],
+        month: BudgetMonth? = nil
+    ) throws {
+        let nodes = month.map { month in
+            sourceNodes.map { $0.resolved(for: month, currency: currency) }
+        } ?? sourceNodes
         var index: [UUID: BudgetNode] = [:]
 
         for node in nodes {
+            try node.validateMonthlyAllocations()
             guard index.updateValue(node, forKey: node.id) == nil else {
                 throw BudgetTreeError.duplicateNode(node.id)
             }
@@ -249,15 +288,24 @@ public struct BudgetTree: Codable, Equatable, Sendable {
 
         try validate(effectiveLimits: effectiveLimits)
 
+        let allocation = try BudgetAggregation(
+            currency: currency, nodes: nodes, effectiveLimits: effectiveLimits
+        )
         return try nodes.map { node in
             let spent = totals[node.id] ?? Money.zero(currency: currency)
-            let limit = effectiveLimits[node.id] ?? node.limit
+            let direct = directSpending[node.id] ?? Money.zero(currency: currency)
+            let limit = allocation.totals[node.id]
             let remaining = try limit?.subtracting(spent)
             return BudgetProgress(
                 node: node,
                 effectiveLimit: limit,
                 spent: spent,
-                remaining: remaining
+                remaining: remaining,
+                directSpent: direct,
+                directRemaining: node.allocationMode == .automatic
+                    ? try (effectiveLimits[node.id] ?? node.limit)?.subtracting(direct)
+                    : nil,
+                childAllocation: allocation.childrenTotals[node.id]
             )
         }
     }
@@ -266,9 +314,12 @@ public struct BudgetTree: Codable, Equatable, Sendable {
         directSpending: [UUID: Money],
         effectiveLimits: [UUID: Money] = [:]
     ) throws -> BudgetPlanSummary? {
-        try planSummary(
+        let allocation = try BudgetAggregation(
+            currency: currency, nodes: nodes, effectiveLimits: effectiveLimits
+        )
+        return try planSummary(
             directSpending: directSpending,
-            topmostLimits: topmostLimitedNodes,
+            topmostLimits: allocation.summaryNodes,
             effectiveLimits: effectiveLimits
         )
     }
@@ -290,7 +341,8 @@ public struct BudgetTree: Codable, Equatable, Sendable {
         return try planSummary(
             directSpending: directSpending,
             topmostLimits: selected,
-            effectiveLimits: effectiveLimits
+            effectiveLimits: effectiveLimits,
+            directAllocations: true
         )
     }
 
@@ -328,7 +380,7 @@ public struct BudgetTree: Codable, Equatable, Sendable {
             guard node.limit != nil else { return false }
             var parentID = node.parentID
             while let id = parentID, let parent = nodesByID[id] {
-                if parent.limit != nil { return false }
+                if parent.limit != nil, parent.allocationMode == .fixedTotal { return false }
                 parentID = parent.parentID
             }
             return true
@@ -339,7 +391,8 @@ public struct BudgetTree: Codable, Equatable, Sendable {
         var owner: BudgetNode?
         var currentID: UUID? = nodeID
         while let id = currentID, let node = nodesByID[id] {
-            if node.limit != nil { owner = node }
+            if node.limit != nil,
+               owner == nil || node.allocationMode == .fixedTotal { owner = node }
             currentID = node.parentID
         }
         return owner
@@ -348,7 +401,8 @@ public struct BudgetTree: Codable, Equatable, Sendable {
     private func planSummary(
         directSpending: [UUID: Money],
         topmostLimits: [BudgetNode],
-        effectiveLimits: [UUID: Money]
+        effectiveLimits: [UUID: Money],
+        directAllocations: Bool = false
     ) throws -> BudgetPlanSummary? {
         let progress = try progress(
             directSpending: directSpending,
@@ -360,14 +414,20 @@ public struct BudgetTree: Codable, Equatable, Sendable {
         guard !topmostLimits.isEmpty else { return nil }
 
         var limit = Decimal.zero
-        for money in topmostLimits.compactMap({ effectiveLimits[$0.id] ?? $0.limit }) {
+        for node in topmostLimits {
+            let money = directAllocations
+                ? effectiveLimits[node.id] ?? node.limit
+                : progressByID[node.id]?.effectiveLimit
+            guard let money else { continue }
             limit = try CheckedDecimal.adding(limit, money.amount)
         }
         var spent = Decimal.zero
         for node in topmostLimits {
             spent = try CheckedDecimal.adding(
                 spent,
-                progressByID[node.id]?.spent.amount ?? .zero
+                directAllocations && node.allocationMode == .automatic
+                    ? directSpending[node.id]?.amount ?? .zero
+                    : progressByID[node.id]?.spent.amount ?? .zero
             )
         }
         var totalSpent = Decimal.zero
