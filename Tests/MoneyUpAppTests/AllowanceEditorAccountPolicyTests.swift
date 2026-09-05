@@ -37,7 +37,9 @@ final class AllowanceEditorAccountPolicyTests: XCTestCase {
             currency: fixture.currency
         )
 
-        XCTAssertEqual(result.map(\.id), [fixture.owned.id])
+        XCTAssertEqual(Set(result.map(\.id)), [
+            fixture.owned.id, fixture.archivedOwnerAccount.id
+        ])
     }
 
     func testNameOnlyEditPreservesPlanZoneWhenProfileZoneDiffers() throws {

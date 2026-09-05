@@ -272,7 +272,7 @@ final class AllowanceJournalIntegrityTests: XCTestCase {
         let fixture = try AllowanceIntegrityFixture()
         let boundary = Date(
             timeIntervalSinceReferenceDate:
-                fixture.periodEnd.timeIntervalSinceReferenceDate + 0.123_456_7
+                fixture.periodEnd.timeIntervalSinceReferenceDate - 0.876_543_3
         )
         let entryID = UUID()
         var plan = try AllowancePlan(

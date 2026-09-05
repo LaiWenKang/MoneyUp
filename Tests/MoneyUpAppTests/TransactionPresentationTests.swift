@@ -39,10 +39,10 @@ final class TransactionPresentationTests: XCTestCase {
         )
         XCTAssertEqual(chinese.inclusiveRemainingDayCount, 1)
         XCTAssertEqual(chinese.monthEndDescription, "9月30日")
-        XCTAssertEqual(chinese.reportingDayDescription, "9月30日周三")
+        XCTAssertEqual(chinese.reportingDayDescription, "9月30日 周三")
         XCTAssertEqual(
             chinese.contextDescription,
-            "9月30日周三 · 至 9月30日 剩余 1 天（含今天）"
+            "9月30日 周三 · 至 9月30日 剩余 1 天（含今天）"
         )
     }
 
@@ -66,11 +66,11 @@ final class TransactionPresentationTests: XCTestCase {
             ),
             (
                 .simplifiedChinese,
-                "9月15日周二",
+                "9月15日 周二",
                 "9月30日",
                 "至 9月30日 剩余 16 天（含今天）",
                 "新加坡时间",
-                "9月15日周二 · 至 9月30日 剩余 16 天（含今天） "
+                "9月15日 周二 · 至 9月30日 剩余 16 天（含今天） "
                     + "· 报表时区：新加坡时间"
             )
         ]

@@ -46,10 +46,21 @@ final class LockedCaptureStoreProtectionTests: XCTestCase {
             options: [.atomic, .completeFileProtectionUnlessOpen]
         )
 
-        try LockedCaptureStore.enforceDurableFileProtection(at: url)
+        let fileManager = ProtectionRecordingFileManager()
+        try LockedCaptureStore.enforceDurableFileProtection(
+            at: url,
+            fileManager: fileManager
+        )
+        XCTAssertEqual(
+            fileManager.requestedProtection,
+            .completeUntilFirstUserAuthentication
+        )
 
         let reopenedCiphertext = try Data(contentsOf: url)
         XCTAssertEqual(reopenedCiphertext, ciphertext)
+        // Simulator filesystems do not expose device Data Protection metadata.
+        // The requested policy and authenticated bytes are checked on every host.
+        #if !targetEnvironment(simulator)
         let attributes = try FileManager.default.attributesOfItem(
             atPath: url.path
         )
@@ -57,6 +68,7 @@ final class LockedCaptureStoreProtectionTests: XCTestCase {
             attributes[.protectionKey] as? FileProtectionType,
             .completeUntilFirstUserAuthentication
         )
+        #endif
         let reopenedBox = try AES.GCM.SealedBox(combined: reopenedCiphertext)
         let reopenedPlaintext = try AES.GCM.open(reopenedBox, using: key)
         XCTAssertEqual(
@@ -66,5 +78,17 @@ final class LockedCaptureStoreProtectionTests: XCTestCase {
             ),
             queue
         )
+    }
+}
+
+private final class ProtectionRecordingFileManager: FileManager, @unchecked Sendable {
+    private(set) var requestedProtection: FileProtectionType?
+
+    override func setAttributes(
+        _ attributes: [FileAttributeKey: Any],
+        ofItemAtPath path: String
+    ) throws {
+        requestedProtection = attributes[.protectionKey] as? FileProtectionType
+        try super.setAttributes(attributes, ofItemAtPath: path)
     }
 }

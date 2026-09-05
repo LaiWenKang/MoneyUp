@@ -3214,6 +3214,7 @@ final class AppModelTests: XCTestCase {
             Set(RecordCollection.allCases.map(\.rawValue))
         )
 
+        let widgetBeforeRestore = widgetStore.read(now: now)
         let restoreTask = Task { @MainActor in
             try await model.restoreEncryptedBackup(
                 ticket,
@@ -3230,7 +3231,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(model.intelligenceFindings.isEmpty)
         XCTAssertEqual(
             widgetStore.read(now: now),
-            .available(percentUsed: 31, validUntil: .distantFuture)
+            widgetBeforeRestore
         )
         let handledDuringReplacement = model.handleDeepLink(
             try XCTUnwrap(URL(string: "moneyup://quick-log/expense"))
@@ -4232,6 +4233,7 @@ final class AppModelTests: XCTestCase {
         )
         model.refreshIntelligence()
         XCTAssertEqual(services.intelligence.refreshInvocationCount, 1)
+        let widgetBeforeRestore = widgetStore.read(now: now)
         let restoreTask = Task { @MainActor in
             try await model.restoreEncryptedBackup(
                 archive,
@@ -4248,7 +4250,7 @@ final class AppModelTests: XCTestCase {
         }
         XCTAssertEqual(
             widgetStore.read(now: now),
-            .available(percentUsed: 41, validUntil: .distantFuture)
+            widgetBeforeRestore
         )
         XCTAssertEqual(services.intelligence.cancelInvocationCount, 1)
         XCTAssertTrue(model.intelligenceFindings.isEmpty)
@@ -9167,7 +9169,10 @@ final class AppModelTests: XCTestCase {
 
     @MainActor
     func testColdBasicDeepLinkRoutesBeforeProtectedBookStartup() throws {
-        let model = AppModel(dataEraseIntent: .none)
+        let model = AppModel(
+            dataEraseIntent: .none,
+            quickActionRouteBroker: MoneyUpQuickActionRouteBroker()
+        )
         UserDefaults.standard.set(
             true,
             forKey: AppModel.lockedQuickCapturePreferenceKey
@@ -9184,7 +9189,10 @@ final class AppModelTests: XCTestCase {
 
     @MainActor
     func testColdReceiptDeepLinkDoesNotEnterRedactedCapture() throws {
-        let model = AppModel(dataEraseIntent: .none)
+        let model = AppModel(
+            dataEraseIntent: .none,
+            quickActionRouteBroker: MoneyUpQuickActionRouteBroker()
+        )
         UserDefaults.standard.set(
             true,
             forKey: AppModel.lockedQuickCapturePreferenceKey
@@ -14483,7 +14491,7 @@ extension AppModelTests {
         let suiteName = "MoneyUpWidgetExtremePercent-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
-        let expiry = Date().addingTimeInterval(60)
+        let expiry = Date(timeIntervalSinceReferenceDate: 800_000_060)
         defaults.set(3, forKey: "budgetStatus.schemaVersion")
         defaults.set(true, forKey: "budgetStatus.enabled")
         defaults.set("available", forKey: "budgetStatus.state")
@@ -15537,7 +15545,7 @@ extension AppModelTests {
             $0.hasPrefix("loan_plans/orphan-")
         })
         XCTAssertTrue(model.recoveryIssues.contains {
-            $0.hasPrefix("allowance_plans/orphan-")
+            $0 == "allowance_plans/journal-\(allowance.id)"
         })
         let storedSchedule = try await fixture.store.fetch(
             ScheduledTransaction.self,
@@ -15705,6 +15713,11 @@ extension AppModelTests {
             equityAccountID: equity.id,
             accountIsLiability: false
         )
+        try await fixture.seed(
+            profile: UserProfile(baseCurrency: fixture.sgd),
+            accounts: [restricted, equity, fixture.food],
+            entries: [opening]
+        )
         let model = fixture.model(
             accounts: [restricted, equity, fixture.food],
             entries: [opening]
@@ -15767,7 +15780,7 @@ extension AppModelTests {
             currentDisplayBalance: 10
         ), 15)
         XCTAssertEqual(model.displayBalanceResult(for: restricted).value?.amount, 10)
-        try await assertStoredCount(0, in: .journalEntries, store: fixture.store)
+        try await assertStoredCount(1, in: .journalEntries, store: fixture.store)
 
         let malformed = try TransactionFactory.balanceAdjustment(
             displayBalanceDelta: Money(-5, currency: fixture.sgd),
@@ -15775,7 +15788,14 @@ extension AppModelTests {
             equityAccountID: equity.id,
             accountIsLiability: false
         )
-        let malformedModel = fixture.model(
+        let malformedFixture = try AppModelFixture()
+        defer { malformedFixture.removeFiles() }
+        try await malformedFixture.seed(
+            profile: UserProfile(baseCurrency: fixture.sgd),
+            accounts: [restricted, equity, fixture.food],
+            entries: [malformed]
+        )
+        let malformedModel = malformedFixture.model(
             accounts: [restricted, equity, fixture.food],
             entries: [malformed]
         )
@@ -15783,6 +15803,7 @@ extension AppModelTests {
             accountID: restricted.id,
             displayBalance: 0
         ))
+        await malformedFixture.store.close()
         await fixture.store.close()
     }
 

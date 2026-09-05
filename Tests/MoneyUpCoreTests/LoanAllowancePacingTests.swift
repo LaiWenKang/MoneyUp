@@ -160,6 +160,8 @@ final class LoanAllowancePacingTests: XCTestCase {
             usages: [usage]
         )
 
+        XCTAssertEqual(try plan.summary(asOf: start).remaining.amount, 12)
+        XCTAssertEqual(try plan.summary(asOf: usage.occurredAt).remaining.amount, 8)
         XCTAssertEqual(try plan.summary(asOf: start.addingTimeInterval(7_200)).remaining.amount, 8)
         XCTAssertEqual(try plan.summary(asOf: start.addingTimeInterval(90_000)).remaining.amount, 12)
     }

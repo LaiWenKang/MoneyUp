@@ -663,7 +663,7 @@ public extension AllowancePlan {
             )
         }
 
-        let currentUsed = try totalUsage(in: interval)
+        let currentUsed = try totalUsage(in: interval, through: asOf)
         let carry = try carryEntering(interval.start, policy: policy, calendar: calendar)
         let entitlement = try policy.amount.adding(carry)
         let remaining = try entitlement.subtracting(currentUsed)
@@ -1041,9 +1041,13 @@ public extension AllowancePlan {
         return DateInterval(start: start, end: end)
     }
 
-    private func totalUsage(in interval: DateInterval) throws -> Money {
+    private func totalUsage(
+        in interval: DateInterval,
+        through asOf: Date? = nil
+    ) throws -> Money {
         var total = Decimal.zero
         for usage in usages where usage.claimStatus != .rejected
+            && (asOf.map { usage.occurredAt <= $0 } ?? true)
             && FinancialPeriodBoundary.contains(usage.occurredAt, in: interval) {
             total = try CheckedDecimal.adding(total, usage.amount.amount)
         }

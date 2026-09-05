@@ -134,7 +134,7 @@ final class RestrictedAssetVisibilityTests: XCTestCase {
         let fixture = try AppModelFixture()
         defer { fixture.removeFiles() }
         let huge = try XCTUnwrap(
-            Decimal(string: "9e127", locale: Locale(identifier: "en_US_POSIX"))
+            Decimal(string: "3e165", locale: Locale(identifier: "en_US_POSIX"))
         )
         let first = LedgerAccount(
             name: "First card",
@@ -153,16 +153,17 @@ final class RestrictedAssetVisibilityTests: XCTestCase {
             kind: .equity,
             systemRole: .openingBalances
         )
-        let entries = try [first, second].map { account in
+        let secondEquity = LedgerAccount(name: "Second opening", kind: .equity)
+        let entries = try [(first, equity), (second, secondEquity)].map { account, offset in
             try TransactionFactory.balanceAdjustment(
                 displayBalanceDelta: Money(huge, currency: fixture.sgd),
                 accountID: account.id,
-                equityAccountID: equity.id,
+                equityAccountID: offset.id,
                 accountIsLiability: false
             )
         }
         let model = fixture.model(
-            accounts: [first, second, equity, fixture.food],
+            accounts: [first, second, equity, secondEquity, fixture.food],
             entries: entries
         )
 
