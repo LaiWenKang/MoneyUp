@@ -1,6 +1,6 @@
 # Golden PRD Execution Plan
 
-Last reconciled: 2 September 2026 against the uploaded MoneyUp Golden PRD
+Last reconciled: 5 September 2026 against the uploaded MoneyUp Golden PRD
 (document version 1.0; supplied file label v1.1), the independent 0.4.0 audit,
 and later accepted founder decisions.
 
@@ -43,11 +43,28 @@ status.
   reparenting, and cycle/kind validation directly from Log.
 - [x] Flexible category budgets can opt into exact daily or weekly remaining
   pacing, and Plan can view Today, This week, or Rest of month without mutation.
-- [x] Planning-only allowances support daily/weekday/weekly/monthly cadence,
-  optional expiry, eligible categories, limit/prepaid/reimbursement funding,
-  linked same-currency assets, usage history, and no/full/capped rollover.
-  Eligible Quick Log expenses save allowance evidence atomically; edit/delete
-  relink or remove it atomically without creating fictitious income or net worth.
+- [x] Allowances keep benefit-limit, prepaid-asset, and reimbursement modes
+  economically distinct across daily/weekday/weekly/monthly cadence, optional
+  expiry, eligible categories, usage history, and no/full/capped rollover.
+  Benefit capacity and reimbursement claims remain policy/evidence only;
+  prepaid value must already exist in an exclusively owned, same-currency
+  restricted account and is displayed separately from unrestricted wealth.
+  Policy-zone editors store a visible inclusive end as the next civil-day
+  boundary, preserve exact legacy partial-day bounds, and retain the plan zone
+  for name-only edits. Usage/category choices and date presentation resolve the
+  governing policy revision. A historical prepaid preview reads indexed ledger
+  state at the exact expense instant and fails closed if its plan, account,
+  instant, projection, or book revision becomes stale. Eligible Quick Log
+  expenses save allowance evidence atomically. Stable-ID edit/delete/Undo is
+  limited to current standalone benefit usage; linked, prepaid, reimbursement,
+  archived, and grandfathered evidence remains protected. Reimbursement claims
+  follow optimistic pending → approved/rejected and approved → reimbursed
+  transitions; terminal states cannot reopen, every status remains evidence-only,
+  and actual incoming money is logged separately. Archive/unarchive is an
+  effective-dated pause. Every restricted debit requires exactly one valid
+  usage/expiry authorization; bounded complete-history account recovery reaches
+  a fixed point without deleting encrypted evidence, and strict restore rejects
+  an invalid graph.
 - [x] Loan plans attach to loan liability accounts and show remaining/advanced/
   paid principal, interest, fees, dates, APR, term, debt-total inclusion, notes,
   repayment history, additional drawdown, paid-off closure, and home/vehicle/
@@ -55,17 +72,35 @@ status.
   Financial activity is posted atomically through the balanced ledger.
 - [x] Eligible Apple on-device assistance defaults on for new and legacy
   profiles while explicit opt-out and all fail-closed input boundaries remain.
-- [x] Optional deliberate tab swipes on passive space move exactly one adjacent
-  tab without taking horizontal gestures from filters, charts, or carousels.
+- [x] Remove optional global tab swipes so filters, charts, carousels, and lists
+  retain their horizontal gestures; the fixed five-tab bar is the only global
+  tab-navigation control. A present legacy preference must decode as a Boolean
+  and is normalized to `false`; new initialization ignores `true` and encoding
+  omits the retired key.
 - [x] Flexible Today shows daily, next-seven-day, and remaining-period capacity,
   remaining days, commitments, and the inspectable arithmetic.
-- [x] Plan opens directly on Budget and uses one larger section control for
-  Budget, Calendar, Goals, and Allowances; History hot categories match it.
+- [x] Plan opens directly on Budget and uses one non-scrolling adaptive peer
+  selector for Budget, Calendar, Goals, and Allowances; History retains readable
+  time scopes and moves dynamic hot categories into one labelled menu.
 - [x] Log and edit accept bounded encrypted images/PDFs; metadata stripping,
   OCR, PDF text extraction, visual classification, and explainable History
   matching stay on device and cannot modify ledger facts.
 - [x] Smart Overview widgets add privacy-safe review counts, allowance
-  percentage, and next-commitment timing across supported Home/Lock families.
+  percentage, and relative next-commitment day status across supported Home/Lock
+  families. Absent snapshot means disabled; corrupt, future-schema, oversized,
+  contradictory, or negative-field content makes the whole generation stale.
+  The extension is read-only, the maintenance writer canonicalizes stale state,
+  accessibility Dynamic Type reduces Home density, and active-scene/reporting-
+  day lifecycle work republishes and rearms from one current generation.
+- [x] Core adds provider-neutral market identity, observation, freshness,
+  request-policy, migration, and estimated-valuation contracts. Manual/local is
+  the only active policy. Quotes are strictly positive except an explicit
+  manual/manual-legacy zero write-down; provider zero is invalid. Bound source,
+  record/sequence, type/delay/quality, venue/currency, and time provenance drives
+  dedupe before eligibility. Provider results must bind their request identity,
+  time, exact result set, supported source kind/provider, and per-instrument quote
+  currency. No provider, network transport, credentials, persisted quote schema,
+  background fetch, or symbol transmission ships in this tranche.
 - [x] SQLCipher schema 9, recovery preview, restore validation, quarantine,
   inventory, bilingual strings, accessible errors, tests, version 0.7.1, and
   source build 11 cover the new records and flows.
@@ -121,7 +156,10 @@ status.
 - [ ] Deferred: exact-candidate physical iPhone, accessibility, migration,
   restore, and oldest-device performance evidence remains open
 
-## 0.7.0 W3 - optional bounded on-device matching
+## 0.7.0 W3 - optional bounded on-device matching (historical)
+
+The off-by-default W3 policy below records the 0.7.0 decision and is superseded
+by 0.7.1's documented default-on setting with an explicit opt-out.
 
 - [x] Keep the persisted Foundation Models preference off for legacy and new
   profiles; gate before planning so disabled execution invokes neither planner
@@ -206,10 +244,16 @@ status.
 
 - [x] Extract one shared six-case quick-action type while retaining the exact
   persisted widget raw values and existing `moneyup://quick-log/<mode>` routes
-- [x] Route the action-only `OpenQuickLogIntent` through a bounded process-local
-  FIFO and generation-bound unique UI request that defers startup/UI-slot
-  contention, preserves duplicate order, and invalidates queued, occupied, and
-  local handoffs synchronously across erase, restore, and tombstone startup,
+- [x] Route the action-only `OpenQuickLogIntent` through a coordinated,
+  16-record/4,096-byte data-free App Group FIFO and generation-bound UI request.
+  Accepted tokens survive process recreation until exact UI acknowledgement;
+  a pre-acknowledgement crash may replay navigation but cannot create a
+  financial commit. Canonical/backup-excluded first-unlock storage, per-submit
+  reload plus authority CAS, exact postcondition reconciliation, and token-bound
+  locked-capture replay keep admission and acknowledgement crash-tolerant.
+  Capacity rejects newest, and durable closed-admission epochs invalidate
+  queued, occupied, and local handoffs across erase, restore, key replacement,
+  and tombstone startup before lifecycle work begins,
   shared by widgets, six bilingual App Shortcuts, and one configurable iOS 18
   Control Widget
 - [x] Replace quick-action links with interactive intent buttons while keeping
@@ -229,10 +273,17 @@ status.
 - [x] SQLCipher with pinned dependency, device-bound Keychain key, privacy
   cover, timed lock, transactional writes, and schema downgrade refusal
 - [x] Quarantine/recovery that preserves encrypted raw records rather than
-  locking out the readable book
+  locking out the readable book, including complete restricted-account debit
+  authorization scanning and mutually dependent account/plan/journal fixed-point
+  recovery. Per plan, work is bounded at 4,096 usage rows, 4,096 reconciliation
+  rows, 512 archive transitions, and `10,000 + 2 × maxPolicyRevisions` period
+  work, with 100,000 aggregate ceilings; weekday-period estimation is exact O(1)
+  work from weekdays rather than calendar days
 - [x] File-backed version-2 `.moneyup` archive with bounded authenticated chunks,
   version-1 compatibility, validated destructive preview, digest-bound commit,
-  transactional restore, and file-backed rollback
+  transactional restore, and file-backed rollback. Production restore reduces
+  the raw candidate in stable key order before `AppModel` load with cooperative
+  cancellation and bounded state, without a second whole-book snapshot
 - [x] Dedicated missing-device-key state plus isolated, crash-resumable keyless
   `.moneyup` restore with exact old-ciphertext rollback; physical passcode-removal
   evidence remains open
@@ -241,7 +292,10 @@ status.
 - [x] SQLCipher schema 9 with journal/posting, searchable receipt metadata, exact store
   metrics, budget-attribution, and derived intelligence indexes; compact
   balances, monthly rollover checkpoints, bounded recent activity, on-demand
-  paging, and additive loan/allowance recovery coverage
+  paging, and additive loan/allowance recovery coverage. Effective-dated
+  allowance archive history is encoded additively inside the existing record
+  payload with a strict per-plan marker, so it requires no SQL schema bump;
+  genuine legacy archives infer an evidence-consistent boundary.
 - [x] Exact 0.7.1 PR-head and merged-implementation release, Core/persistence/
   intelligence, app-model, app/widget Simulator, and performance jobs passed in
   CI runs 300 and 301
@@ -309,8 +363,15 @@ status.
 - [x] Optional bounded encrypted image/PDF evidence lifecycle and local search
   projection included in raw snapshot and `.moneyup` restore, excluded from
   readable exports, widgets, logs, and diagnostics
-- [x] Privacy-redacted widget actions and opt-in percentage/state-only budget
-  snapshot using `group.com.laiwenkang.MoneyUp`
+- [x] `group.com.laiwenkang.MoneyUp` has an exact three-artifact allowlist: one
+  nonfinancial language preference, one atomic bounded schema-4 Budget Status/
+  Smart Overview summary `Data` value, and one bounded data-free quick-action
+  ingress JSON file. The summary contains only state, a bounded reporting-period
+  token, rounded budget/allowance percentages, bounded review/expense-commitment
+  counts, expiry, and relative due-day distance. The ingress contains only
+  schema/authority and admission metadata, opaque tokens, and one of six closed
+  action values. Neither artifact contains exact due dates or record fields, and
+  there is no fourth App Group key or file
 - [x] Action-only App Intents, bilingual App Shortcuts, interactive quick-action
   widgets, and an iOS 18 Control Widget share one strict URL allowlist; no
   platform action writes or returns transaction data
@@ -382,7 +443,7 @@ installation, and physical evidence are separate gates.
   before the workflow assigns a unique upload build
 - [x] Bilingual in-app 0.7.1 release notes cover the complete feedback follow-up
 - [x] Local release, architecture, structure, launch-safety, platform-action,
-  performance, and adversarial validator suites pass with 779 declared Swift tests
+  performance, and adversarial validator suites pass with 1052 declared Swift tests
 - [x] Correct the App Review 0.3.0 launch watchdog by keeping startup
   Keychain/SQLCipher work off the UI actor without weakening encryption, and
   make the boundary mutation-tested in CI and TestFlight preflight
@@ -427,7 +488,8 @@ installation, and physical evidence are separate gates.
 - StoreKit purchase or subscription for the first public version
 - Bank aggregation or third-party access to financial records
 - Hosted generative AI or receipt transmission
-- Automatic market prices that disclose a symbol list
+- Provider-backed automatic market prices or any feature that transmits a
+  symbol list; the current release contains contracts only and remains manual
 - Two-way live spreadsheet editing
 - Investment/tax advice or trade execution
 - Browser app as a substitute for the native iPhone release

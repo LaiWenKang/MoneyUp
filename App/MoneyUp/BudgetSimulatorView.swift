@@ -22,6 +22,7 @@ struct BudgetSimulatorView: View {
     }
 
     @Environment(AppModel.self) private var model
+    @Environment(\.appReportingSnapshot) private var sharedReportingSnapshot
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(MoneyAmountPrivacy.storageKey)
     private var hidesAmounts = MoneyAmountPrivacy.defaultHidesAmounts
@@ -29,17 +30,17 @@ struct BudgetSimulatorView: View {
     @State private var additionalIncomeText = ""
     @FocusState private var focusedField: Field?
 
-    private var monthElapsed: Double {
-        let calendar = model.reportingCalendar
-        let now = Date()
-        guard let month = calendar.dateInterval(of: .month, for: now) else { return 0 }
-        let span = month.end.timeIntervalSince(month.start)
-        guard span > 0 else { return 0 }
-        return min(max(now.timeIntervalSince(month.start) / span, 0), 1)
+    private var reportingSnapshot: AppReportingSnapshot {
+        sharedReportingSnapshot
+            ?? AppReportingSnapshot(
+                instant: model.currentDateForUserAction(),
+                calendar: model.reportingCalendar
+            )
     }
 
     var body: some View {
         let _ = hidesAmounts
+        let snapshot = reportingSnapshot
         return ScrollView {
             LazyVStack(spacing: 16) {
                 MoneyUpCard {
@@ -56,11 +57,20 @@ struct BudgetSimulatorView: View {
                 }
 
                 switch (
-                    model.budgetPlanSummaryThisMonthResult(),
-                    model.reportResult(for: .thisMonth)
+                    model.budgetPlanSummaryThisMonthResult(
+                        asOf: snapshot.instant
+                    ),
+                    model.reportResult(
+                        for: .thisMonth,
+                        asOf: snapshot.instant
+                    )
                 ) {
                 case let (.available(.some(summary)), .available(report)):
-                    simulator(summary: summary, report: report)
+                    simulator(
+                        summary: summary,
+                        report: report,
+                        monthElapsed: snapshot.monthElapsed
+                    )
                 case (.available(.none), _):
                     MoneyUpCard {
                         ContentUnavailableView(
@@ -105,7 +115,8 @@ struct BudgetSimulatorView: View {
     @ViewBuilder
     private func simulator(
         summary: BudgetPlanSummary,
-        report: PeriodReport
+        report: PeriodReport,
+        monthElapsed: Double
     ) -> some View {
         let currency = summary.limit.currency
         let additionalSpending = parsedAmount(
@@ -161,7 +172,7 @@ struct BudgetSimulatorView: View {
                 additionalSpending: additionalSpending,
                 additionalIncome: additionalIncome
             ) {
-                forecastCards(forecast)
+                forecastCards(forecast, monthElapsed: monthElapsed)
             } else {
                 MoneyUpCard {
                     Text("simulator.unavailable")
@@ -207,7 +218,10 @@ struct BudgetSimulatorView: View {
     }
 
     @ViewBuilder
-    private func forecastCards(_ forecast: BudgetScenarioForecast) -> some View {
+    private func forecastCards(
+        _ forecast: BudgetScenarioForecast,
+        monthElapsed: Double
+    ) -> some View {
         let points = [
             ChartPoint(
                 id: "current",
@@ -229,7 +243,8 @@ struct BudgetSimulatorView: View {
             points: points,
             limit: limit,
             isOver: isOver,
-            budgetUsage: budgetUsage
+            budgetUsage: budgetUsage,
+            monthElapsed: monthElapsed
         )
         forecastSummaryCard(forecast, isOver: isOver)
     }
@@ -239,7 +254,8 @@ struct BudgetSimulatorView: View {
         points: [ChartPoint],
         limit: Double,
         isOver: Bool,
-        budgetUsage: DerivedValue<Decimal?>
+        budgetUsage: DerivedValue<Decimal?>,
+        monthElapsed: Double
     ) -> some View {
         MoneyUpCard {
             VStack(alignment: .leading, spacing: 14) {

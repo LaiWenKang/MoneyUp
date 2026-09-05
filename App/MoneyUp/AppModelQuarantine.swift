@@ -116,9 +116,10 @@ extension AppModel {
             retainedAccountByID: retainedAccountByID,
             existingEntryIDs: existingPlanningEntryIDs
         )
-        quarantineInvalidAllowanceRelationships(
+        try quarantineInvalidAllowanceRelationships(
             retainedAccountByID: retainedAccountByID,
-            existingEntryIDs: existingPlanningEntryIDs
+            existingEntryIDs: existingPlanningEntryIDs,
+            observesCancellation: observesCancellation
         )
     }
 
@@ -159,29 +160,126 @@ extension AppModel {
 
     func quarantineInvalidAllowanceRelationships(
         retainedAccountByID: [UUID: LedgerAccount],
-        existingEntryIDs: Set<UUID>
-    ) {
-        allowancePlans.removeAll { plan in
-            let categoryIDs = plan.eligibleCategoryIDs.union(
-                plan.usages.compactMap(\.categoryID)
-            )
-            let linkedIDs = Set(plan.usages.compactMap(\.linkedJournalEntryID))
-            let invalid = categoryIDs.contains {
-                retainedAccountByID[$0]?.kind != .expense
-            } || !linkedIDs.isSubset(of: existingEntryIDs) || {
-                switch plan.fundingMode {
-                case .benefitLimit:
-                    return plan.linkedAccountID != nil
-                case .prepaidAsset, .reimbursement:
-                    guard let id = plan.linkedAccountID,
-                          let account = retainedAccountByID[id] else { return true }
-                    return account.kind != .asset
-                        || account.currency != plan.amount.currency
-                }
-            }()
-            if invalid { recoveryIssues.append("allowance_plans/orphan-\(plan.id)") }
-            return invalid
+        existingEntryIDs: Set<UUID>,
+        observesCancellation: Bool
+    ) throws {
+        var prepaidAccountCounts: [UUID: Int] = [:]
+        for (offset, plan) in allowancePlans.enumerated() {
+            if observesCancellation, offset.isMultiple(of: 64) {
+                try Task.checkCancellation()
+            }
+            guard !plan.isArchived,
+                  plan.fundingMode == .prepaidAsset,
+                  let accountID = plan.linkedAccountID,
+                  Self.allowanceFundingCompatibility(
+                      for: plan,
+                      accountsByID: retainedAccountByID
+                  ) == .current else { continue }
+            prepaidAccountCounts[accountID, default: 0] += 1
         }
+        var duplicatePrepaidAccountIDs = Set<UUID>()
+        for item in prepaidAccountCounts where item.value > 1 {
+            duplicatePrepaidAccountIDs.insert(item.key)
+        }
+        var retained: [AllowancePlan] = []
+        var relationshipCount = 0
+        for (offset, plan) in allowancePlans.enumerated() {
+            if observesCancellation, offset.isMultiple(of: 64) {
+                try Task.checkCancellation()
+            }
+            let invalid = try allowanceRelationshipIsInvalid(
+                plan,
+                retainedAccountByID: retainedAccountByID,
+                existingEntryIDs: existingEntryIDs,
+                duplicatePrepaidAccountIDs: duplicatePrepaidAccountIDs,
+                relationshipCount: &relationshipCount,
+                observesCancellation: observesCancellation
+            )
+            if invalid {
+                recoveryIssues.append("allowance_plans/orphan-\(plan.id)")
+            } else {
+                retained.append(plan)
+            }
+        }
+        allowancePlans = retained
+    }
+
+    private func allowanceRelationshipIsInvalid(
+        _ plan: AllowancePlan,
+        retainedAccountByID: [UUID: LedgerAccount],
+        existingEntryIDs: Set<UUID>,
+        duplicatePrepaidAccountIDs: Set<UUID>,
+        relationshipCount: inout Int,
+        observesCancellation: Bool
+    ) throws -> Bool {
+        var hasInvalidCategory = false
+        var hasInvalidEntryLink = false
+        for categoryID in plan.eligibleCategoryIDs {
+            try checkAllowanceRelationshipCancellation(
+                &relationshipCount,
+                observesCancellation: observesCancellation
+            )
+            if retainedAccountByID[categoryID]?.kind != .expense {
+                hasInvalidCategory = true
+            }
+        }
+        for policy in plan.policyRevisions {
+            for categoryID in policy.eligibleCategoryIDs {
+                try checkAllowanceRelationshipCancellation(
+                    &relationshipCount,
+                    observesCancellation: observesCancellation
+                )
+                if retainedAccountByID[categoryID]?.kind != .expense {
+                    hasInvalidCategory = true
+                }
+            }
+        }
+        for usage in plan.usages {
+            try checkAllowanceRelationshipCancellation(
+                &relationshipCount,
+                observesCancellation: observesCancellation
+            )
+            if let categoryID = usage.categoryID,
+               retainedAccountByID[categoryID]?.kind != .expense {
+                hasInvalidCategory = true
+            }
+            if let entryID = usage.linkedJournalEntryID,
+               !existingEntryIDs.contains(entryID) {
+                hasInvalidEntryLink = true
+            }
+        }
+        for reconciliation in plan.reconciliations {
+            try checkAllowanceRelationshipCancellation(
+                &relationshipCount,
+                observesCancellation: observesCancellation
+            )
+            if let entryID = reconciliation.linkedJournalEntryID,
+               !existingEntryIDs.contains(entryID) {
+                hasInvalidEntryLink = true
+            }
+        }
+        let compatibility = Self.allowanceFundingCompatibility(
+            for: plan,
+            accountsByID: retainedAccountByID
+        )
+        return hasInvalidCategory || hasInvalidEntryLink
+            || compatibility == .invalid
+            || (!plan.isArchived
+                && plan.fundingMode == .prepaidAsset
+                && plan.linkedAccountID.map(
+                    duplicatePrepaidAccountIDs.contains
+                ) == true
+                && compatibility == .current)
+    }
+
+    private func checkAllowanceRelationshipCancellation(
+        _ count: inout Int,
+        observesCancellation: Bool
+    ) throws {
+        if observesCancellation, count.isMultiple(of: 256) {
+            try Task.checkCancellation()
+        }
+        count += 1
     }
 
     func quarantineInvalidAccountHierarchy(
@@ -496,6 +594,15 @@ extension AppModel {
         guard case let .available(balances) = accountBalancesResult() else {
             return false
         }
+        return quarantineInvestmentLedgerMismatches(balances: balances)
+    }
+
+    /// Recovery uses the unpublished compact snapshot so an account removal
+    /// cannot race ahead of the balance universe used for this decision.
+    @discardableResult
+    func quarantineInvestmentLedgerMismatches(
+        balances: [UUID: [CurrencyCode: Money]]
+    ) -> Bool {
         var invalidHoldingIDs = Set<UUID>()
         var invalidPositionIDs = Set<UUID>()
         for holding in investmentHoldings {
@@ -597,6 +704,10 @@ extension AppModel {
         }
         try requireLifecycleEligible(source)
         try requireLifecycleEligible(target)
+        try requireNonrestrictedLifecycleReassignment(
+            source: source,
+            target: target
+        )
         guard planningReferenceCount(to: sourceID) == 0 else {
             throw AppModelError.ledgerItemInUse
         }
@@ -649,6 +760,8 @@ extension AppModel {
             targetID: target.id
         )
         try validateLifecycleRelationshipCandidates(
+            source: source,
+            target: target,
             accounts: hierarchy.accounts,
             entries: journal.entries,
             schedules: schedules.values,

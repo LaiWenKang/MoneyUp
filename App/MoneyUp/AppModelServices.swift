@@ -21,6 +21,8 @@ final class LedgerService: LedgerServicing {
     var entries: [JournalEntry]
     var journalEntryCount: Int
     var journalRecentEntriesAreCurrent: Bool
+    var restrictedAllowanceBalanceProjection:
+        RestrictedAllowanceBalanceProjection?
 
     init(
         accounts: [LedgerAccount] = [],
@@ -34,6 +36,7 @@ final class LedgerService: LedgerServicing {
         self.entries = entries
         self.journalEntryCount = journalEntryCount
         self.journalRecentEntriesAreCurrent = journalRecentEntriesAreCurrent
+        restrictedAllowanceBalanceProjection = nil
     }
 }
 

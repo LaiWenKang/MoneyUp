@@ -579,17 +579,21 @@ public actor EncryptedRecordStore {
     /// IDs in bounded batches, so attribution integrity remains proportional
     /// to attribution count without one actor round-trip per row.
     public func fetchJournalEntriesRecovering(
-        ids: Set<UUID>
+        ids: Set<UUID>,
+        observesCancellation: Bool = true
     ) throws -> RecoveredRecords<JournalEntry> {
-        try Task.checkCancellation()
+        if observesCancellation { try Task.checkCancellation() }
         let records = try connection.fetch(
             collection: RecordCollection.journalEntries.rawValue,
-            recordIDs: ids.map(\.uuidString)
+            recordIDs: ids.map(\.uuidString),
+            observesCancellation: observesCancellation
         )
         var values: [JournalEntry] = []
         var issues: [RecordDecodeIssue] = []
         for (offset, record) in records.enumerated() {
-            if offset.isMultiple(of: 256) { try Task.checkCancellation() }
+            if observesCancellation, offset.isMultiple(of: 256) {
+                try Task.checkCancellation()
+            }
             do {
                 let entry = try Self.makeDecoder().decode(
                     JournalEntry.self,
@@ -705,13 +709,59 @@ public actor EncryptedRecordStore {
         )
     }
 
+    /// Complete, account-scoped ledger history from the normalized encrypted
+    /// index. Callers use this for chronological invariants while production
+    /// keeps only a bounded recent journal slice in memory.
+    public func fetchJournalPostingEvents(
+        accountIDs: Set<UUID>,
+        excludingEntryIDs: Set<UUID> = [],
+        observesCancellation: Bool = true
+    ) throws -> [LedgerPostingEvent] {
+        guard !accountIDs.isEmpty else { return [] }
+        return try makePostingEvents(
+            from: connection.fetchJournalPostings(
+                accountIDs: Set(accountIDs.map(\.uuidString)),
+                observesCancellation: observesCancellation
+            ),
+            excludingEntryIDs: excludingEntryIDs,
+            observesCancellation: observesCancellation
+        )
+    }
+
+    /// Account-scoped normalized rows at or after one exact instant. The
+    /// point-in-time restricted projection subtracts these future deltas from
+    /// the compact ending-balance index without retaining complete history.
+    public func fetchJournalPostingEvents(
+        accountIDs: Set<UUID>,
+        startDateInclusive: Date,
+        excludingEntryIDs: Set<UUID> = [],
+        observesCancellation: Bool = true
+    ) throws -> [LedgerPostingEvent] {
+        guard !accountIDs.isEmpty else { return [] }
+        return try makePostingEvents(
+            from: connection.fetchJournalPostings(
+                accountIDs: Set(accountIDs.map(\.uuidString)),
+                startDate: startDateInclusive,
+                observesCancellation: observesCancellation
+            ),
+            excludingEntryIDs: excludingEntryIDs,
+            observesCancellation: observesCancellation
+        )
+    }
+
     private func makePostingEvents(
         from rows: [IndexedPostingRow],
-        excludingEntryIDs: Set<UUID>
+        excludingEntryIDs: Set<UUID>,
+        observesCancellation: Bool = false
     ) throws -> [LedgerPostingEvent] {
         let excluded = Set(excludingEntryIDs.map { $0.uuidString.lowercased() })
-        return try rows.compactMap { row in
-            guard !excluded.contains(row.entryID.lowercased()) else { return nil }
+        var events: [LedgerPostingEvent] = []
+        events.reserveCapacity(rows.count)
+        for (offset, row) in rows.enumerated() {
+            if observesCancellation, offset.isMultiple(of: 256) {
+                try Task.checkCancellation()
+            }
+            guard !excluded.contains(row.entryID.lowercased()) else { continue }
             guard let entryID = UUID(uuidString: row.entryID),
                   let postingID = UUID(uuidString: row.postingID),
                   let accountID = UUID(uuidString: row.accountID),
@@ -742,7 +792,7 @@ public actor EncryptedRecordStore {
                     recordID: row.entryID
                 )
             }
-            return LedgerPostingEvent(
+            events.append(LedgerPostingEvent(
                 entryID: entryID,
                 occurredAt: Date(timeIntervalSince1970: row.occurredAt),
                 originDayKey: row.originDayKey,
@@ -751,8 +801,9 @@ public actor EncryptedRecordStore {
                     accountID: accountID,
                     money: money
                 )
-            )
+            ))
         }
+        return events
     }
 
     /// Loads exact balances and relationship counts from materialized index

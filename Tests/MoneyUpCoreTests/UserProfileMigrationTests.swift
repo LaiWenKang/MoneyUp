@@ -59,7 +59,7 @@ final class UserProfileMigrationTests: XCTestCase {
         }
     }
 
-    func testLegacyProfileDefaultsOnDeviceAssistanceOnAndSwipeNavigationOff() throws {
+    func testLegacyProfileDefaultsAssistanceOnAndRetiresSwipeNavigation() throws {
         let profile = UserProfile(
             baseCurrency: try CurrencyCode("SGD"),
             foundationModelAssistanceEnabled: true
@@ -70,7 +70,7 @@ final class UserProfileMigrationTests: XCTestCase {
             ) as? [String: Any]
         )
         object.removeValue(forKey: "foundationModelAssistanceEnabled")
-        object.removeValue(forKey: "enablesTabSwipeNavigation")
+        object["enablesTabSwipeNavigation"] = true
 
         let decoded = try JSONDecoder().decode(
             UserProfile.self,
@@ -79,6 +79,16 @@ final class UserProfileMigrationTests: XCTestCase {
 
         XCTAssertTrue(decoded.foundationModelAssistanceEnabled)
         XCTAssertFalse(decoded.enablesTabSwipeNavigation)
+        let rewritten = try XCTUnwrap(
+            JSONSerialization.jsonObject(
+                with: try JSONEncoder().encode(decoded)
+            ) as? [String: Any]
+        )
+        XCTAssertNil(rewritten["enablesTabSwipeNavigation"])
+        XCTAssertFalse(UserProfile(
+            baseCurrency: try CurrencyCode("SGD"),
+            enablesTabSwipeNavigation: true
+        ).enablesTabSwipeNavigation)
     }
 
     func testFoundationModelAssistanceDefaultsOnAndExplicitOptOutRoundTrips() throws {

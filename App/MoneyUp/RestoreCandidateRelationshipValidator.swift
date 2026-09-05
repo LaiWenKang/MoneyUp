@@ -17,6 +17,7 @@ extension RestoreCandidateValidator {
         investmentHoldings: [InvestmentHolding],
         netWorthSnapshots: [NetWorthSnapshot],
         quickLogDraft: QuickLogDraft?,
+        allowancePlans: [AllowancePlan],
         in store: EncryptedRecordStore
     ) async throws -> RestoreEntryPreviewMetadata {
         let profile = try validatedRelationshipProfile(
@@ -44,6 +45,15 @@ extension RestoreCandidateValidator {
         try validateAccountParentCycles(accountByID)
         try validateRelationshipSystemAccounts(accounts)
         try validateSystemPostingOwners(journalEntries, accountByID: accountByID)
+        try validateRestrictedAllowanceLedgers(
+            accounts: accounts,
+            journalEntries: journalEntries
+        )
+        try AllowanceJournalIntegrity.requireValid(
+            plans: allowancePlans,
+            accountsByID: accountByID,
+            entriesByID: journalByID
+        )
         try validateRelationshipBudgetNodes(budgetNodes, accountByID: accountByID)
         try validateRelationshipPreferences(profile, accountByID: accountByID)
         try validateRelationshipSchedules(
@@ -131,12 +141,50 @@ extension RestoreCandidateValidator {
                     throw AppModelError.invalidBook
                 }
             }
+            if account.accountType == .restrictedAllowance {
+                guard account.kind == .asset,
+                      account.currency != nil,
+                      account.systemRole == nil,
+                      account.parentID == nil else {
+                    throw AppModelError.invalidBook
+                }
+            }
             if let parentID = account.parentID {
                 guard let parent = accountByID[parentID],
                       parent.kind == account.kind else {
                     throw AppModelError.invalidBook
                 }
             }
+        }
+    }
+
+    static func validateRestrictedAllowanceLedgers(
+        accounts: [LedgerAccount],
+        journalEntries: [JournalEntry]
+    ) throws {
+        let expectedCurrencies = Dictionary(
+            uniqueKeysWithValues: accounts.compactMap { account in
+                guard account.accountType == .restrictedAllowance,
+                      let currency = account.currency else { return nil }
+                return (account.id, currency)
+            }
+        )
+        guard !expectedCurrencies.isEmpty else { return }
+        let restrictedIDs = Set(expectedCurrencies.keys)
+        do {
+            let events = try RestrictedAllowanceLedgerInvariant.events(
+                for: journalEntries,
+                restrictedAccountIDs: restrictedIDs,
+                observesCancellation: true
+            )
+            try RestrictedAllowanceLedgerInvariant.requireValid(
+                expectedCurrencies: expectedCurrencies,
+                events: events
+            )
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            throw AppModelError.invalidBook
         }
     }
 

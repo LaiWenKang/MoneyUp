@@ -166,8 +166,8 @@ final class PinnedBudgetBoardTests: XCTestCase {
         // that remain on 2 September 2026.
         XCTAssertEqual(summary.remaining?.amount, 310)
         XCTAssertEqual(spread.daily.remainingDayCount, 29)
-        XCTAssertEqual(spread.daily.available.amount, Decimal(string: "10.69"))
-        XCTAssertEqual(spread.weekly.available.amount, Decimal(string: "74.83"))
+        XCTAssertEqual(spread.daily.available.amount, Decimal(string: "10.68"))
+        XCTAssertEqual(spread.weekly.available.amount, Decimal(string: "74.76"))
         await fixture.store.close()
     }
 

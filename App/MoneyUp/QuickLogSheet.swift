@@ -215,6 +215,61 @@ enum QuickLogOccurrencePolicy {
     }
 }
 
+/// Keeps the Quick Log presentation aligned with the ledger authorization
+/// boundary. A restricted account is never an ordinary expense source: its
+/// full debit must be governed by the one prepaid plan that owns it.
+enum QuickLogAllowanceSourcePolicy {
+    static func planIsEligible(
+        _ plan: AllowancePlan,
+        for sourceAccount: LedgerAccount
+    ) -> Bool {
+        guard sourceAccount.accountType == .restrictedAllowance else {
+            return true
+        }
+        return plan.fundingMode == .prepaidAsset
+            && plan.linkedAccountID == sourceAccount.id
+    }
+
+    static func canCommitExpense(
+        sourceAccount: LedgerAccount,
+        hasAllowanceSelection: Bool,
+        selectedPlan: AllowancePlan?,
+        total: Money,
+        application: Money?
+    ) -> Bool {
+        guard hasAllowanceSelection else {
+            return sourceAccount.accountType != .restrictedAllowance
+        }
+        guard let selectedPlan,
+              planIsEligible(selectedPlan, for: sourceAccount),
+              let application,
+              application.amount > .zero,
+              application.currency == total.currency else {
+            return false
+        }
+        guard sourceAccount.accountType == .restrictedAllowance else {
+            return true
+        }
+        return application == total
+    }
+}
+
+/// Identity of one asynchronous prepaid funding read. Including the exact plan
+/// and projection revisions prevents an older account/date result from being
+/// reused after any financial context changes.
+struct QuickLogPrepaidFundingRequest: Equatable, Sendable {
+    let plan: AllowancePlan
+    let sourceAccountID: UUID
+    let occurredAt: Date
+    let journalProjectionRevision: UInt64
+    let logicalBookRevision: UInt64
+}
+
+struct QuickLogPrepaidFundingLoad: Equatable, Sendable {
+    let request: QuickLogPrepaidFundingRequest
+    let remaining: AllowanceRemainingAvailability
+}
+
 enum QuickLogSuggestionPolicy {
     static func shouldPrefillReceiptCandidate(
         confidence: CaptureConfidence?,
@@ -388,6 +443,7 @@ struct QuickLogEntryView: View {
     @State var autoAppliedCategorySuggestionID: UUID?
     @State var splitLines: [QuickLogSplitDraftLine] = []
     @State var selectedAllowanceID: UUID?
+    @State var prepaidFundingLoad: QuickLogPrepaidFundingLoad?
     /// Provenance for a draft promoted from the lock-safe capture inbox. This
     /// must survive every edit so AppModel can complete the cross-store
     /// exact-once handoff instead of treating the edited draft as unrelated.
@@ -426,6 +482,16 @@ struct QuickLogEntryView: View {
         kind == .income ? model.incomeCategories : model.expenseCategories
     }
 
+    /// A restricted allowance account may receive a top-up, but it is never a
+    /// generic transfer source. Allowance expenses authorize their own debit
+    /// later in the model layer, so non-transfer entry keeps the full list.
+    var sourceAccounts: [LedgerAccount] {
+        guard kind == .transfer else { return model.userAccounts }
+        return model.userAccounts.filter {
+            $0.accountType != .restrictedAllowance
+        }
+    }
+
     var categoryKind: LedgerAccountKind {
         kind == .income ? .income : .expense
     }
@@ -435,7 +501,11 @@ struct QuickLogEntryView: View {
     }
 
     var selectedAccountCurrency: CurrencyCode? {
-        model.userAccounts.first(where: { $0.id == accountID })?.currency
+        selectedSourceAccount?.currency
+    }
+
+    var selectedSourceAccount: LedgerAccount? {
+        sourceAccounts.first(where: { $0.id == accountID })
     }
 
     var selectedDestinationCurrency: CurrencyCode? {
@@ -536,9 +606,9 @@ struct QuickLogEntryView: View {
 
     var canSave: Bool {
         guard !isScanning,
-              amount != nil,
+              let amount,
               let accountID,
-              model.userAccounts.contains(where: { $0.id == accountID }) else {
+              let sourceAccount = selectedSourceAccount else {
             return false
         }
         switch kind {
@@ -547,9 +617,19 @@ struct QuickLogEntryView: View {
                 ? categories.contains { $0.id == categoryID }
                 : splitLinesAreValid
             guard transactionIsValid else { return false }
-            return kind != .expense
-                || selectedAllowanceID == nil
-                || selectedAllowanceApplication != nil
+            guard kind == .expense else { return true }
+            guard let currency = sourceAccount.currency,
+                  let total = try? Money(
+                amount,
+                currency: currency
+            ) else { return false }
+            return QuickLogAllowanceSourcePolicy.canCommitExpense(
+                sourceAccount: sourceAccount,
+                hasAllowanceSelection: selectedAllowanceID != nil,
+                selectedPlan: selectedAllowancePlan,
+                total: total,
+                application: selectedAllowanceApplication
+            )
         case .transfer:
             return destinationAccountID != nil
                 && destinationAccountID != accountID

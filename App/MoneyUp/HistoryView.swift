@@ -70,6 +70,20 @@ struct HistoryFilterDraft: Hashable {
             || !maximumAmountText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    /// Date shortcuts own only the date predicates. Every other advanced
+    /// predicate remains active and must keep the filter indicator visible.
+    var hasNonDateAdvancedFilters: Bool {
+        kind != .all || accountID != nil || categoryPostingCurrency != nil
+            || !minimumAmountText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !maximumAmountText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    func showsAdvancedFilterIndicator(quickRange: HistoryQuickRange?) -> Bool {
+        categoryIDs != nil
+            || hasNonDateAdvancedFilters
+            || (quickRange == nil && (includesStartDate || includesEndDate))
+    }
+
     func isValid(calendar: Calendar) -> Bool {
         hasValidAmountRange && hasValidDateRange(calendar: calendar)
     }
@@ -163,22 +177,6 @@ private struct HistoryDayGroup: Identifiable {
     var id: Date { date }
 }
 
-private enum HistoryQuickRange: String, CaseIterable, Hashable {
-    case today
-    case sevenDays
-    case month
-    case all
-
-    var title: LocalizedStringKey {
-        switch self {
-        case .today: "history.scope.today"
-        case .sevenDays: "history.scope.seven_days"
-        case .month: "history.scope.month"
-        case .all: "history.scope.all"
-        }
-    }
-}
-
 struct HistoryHotCategory: Equatable, Identifiable {
     let id: UUID
     let occurrenceCount: Int
@@ -237,6 +235,24 @@ enum HistoryHotCategoryRanker {
     }
 }
 
+enum HistoryCategoryFilterState: Equatable {
+    case all
+    case category(UUID)
+    case group(Int)
+
+    init(categoryIDs: Set<UUID>?) {
+        guard let categoryIDs else {
+            self = .all
+            return
+        }
+        if categoryIDs.count == 1, let categoryID = categoryIDs.first {
+            self = .category(categoryID)
+        } else {
+            self = .group(categoryIDs.count)
+        }
+    }
+}
+
 struct HistoryView: View {
     private enum InitialPageOutcome: Sendable {
         case available(AppModel.HistoryPageResult)
@@ -252,6 +268,7 @@ struct HistoryView: View {
 
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.appReportingSnapshot) private var sharedReportingSnapshot
     @AppStorage(MoneyAmountPrivacy.storageKey)
     private var hidesAmounts = MoneyAmountPrivacy.defaultHidesAmounts
     @State private var searchText = ""
@@ -279,9 +296,19 @@ struct HistoryView: View {
     @State private var paginationPerformanceMeasurement:
         HistoryPerformanceMeasurement?
     @State private var quickRange: HistoryQuickRange?
-    init(preset: HistoryPreset? = nil) {
+    @State private var lastAppliedRollingDay: ReportingDayIdentity?
+    let returnOrigin: HistoryReturnOrigin?
+    let onReturnToOrigin: @MainActor () -> Void
+
+    init(
+        preset: HistoryPreset? = nil,
+        returnOrigin: HistoryReturnOrigin? = nil,
+        onReturnToOrigin: @escaping @MainActor () -> Void = {}
+    ) {
         _filters = State(initialValue: HistoryFilterDraft(preset: preset))
         _quickRange = State(initialValue: preset == nil ? .today : nil)
+        self.returnOrigin = returnOrigin
+        self.onReturnToOrigin = onReturnToOrigin
     }
 
     private var query: HistoryQuery {
@@ -301,8 +328,7 @@ struct HistoryView: View {
     }
 
     private var hasAdvancedFilters: Bool {
-        filters.categoryIDs != nil
-            || (quickRange == nil && filters.hasActiveFilters)
+        filters.showsAdvancedFilterIndicator(quickRange: quickRange)
     }
 
     private var hotCategories: [HistoryHotCategory] {
@@ -310,6 +336,32 @@ struct HistoryView: View {
             entries: model.entries,
             accounts: model.accounts
         )
+    }
+
+    private var categoryFilterValue: String {
+        switch HistoryCategoryFilterState(categoryIDs: filters.categoryIDs) {
+        case .all:
+            AppLocalization.string("history.filter.any_category")
+        case let .category(categoryID):
+            model.categoryPathName(for: categoryID)
+        case let .group(count):
+            String(
+                format: AppLocalization.string("history.filter.category_count"),
+                count
+            )
+        }
+    }
+
+    private var reportingSnapshot: AppReportingSnapshot {
+        sharedReportingSnapshot
+            ?? AppReportingSnapshot(
+                instant: model.currentDateForUserAction(),
+                calendar: model.reportingCalendar
+            )
+    }
+
+    private var reportingDayIdentity: ReportingDayIdentity {
+        reportingSnapshot.reportingDayIdentity
     }
 
     private var dayGroups: [HistoryDayGroup] {
@@ -337,76 +389,90 @@ struct HistoryView: View {
         let _ = hidesAmounts
         return List {
             Section {
-                Picker("history.scope", selection: $quickRange) {
-                    ForEach(HistoryQuickRange.allCases, id: \.self) { range in
-                        Text(range.title).tag(Optional(range))
-                    }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .onChange(of: quickRange) { _, range in
-                    if let range { applyQuickRange(range) }
-                }
+                HistoryScopeSelector(selection: $quickRange)
             }
             .listRowBackground(Color.clear)
 
-            if !hotCategories.isEmpty {
-                Section {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(hotCategories) { hotCategory in
-                                let selectedIDs = Set([hotCategory.id])
-                                let isSelected = filters.categoryIDs == selectedIDs
-                                Button {
-                                    withAnimation(
-                                        MoneyUpMotion.animation(
-                                            for: .selection,
-                                            reduceMotion: reduceMotion
+            Section {
+                HStack(spacing: 8) {
+                    Menu {
+                        Button {
+                            setCategoryFilter(nil)
+                        } label: {
+                            Label(
+                                "history.filter.any_category",
+                                systemImage: filters.categoryIDs == nil
+                                    ? "checkmark"
+                                    : "square.grid.2x2"
+                            )
+                        }
+
+                        if !hotCategories.isEmpty {
+                            Section("history.hot_categories") {
+                                ForEach(hotCategories) { hotCategory in
+                                    let selectedIDs = Set([hotCategory.id])
+                                    Button {
+                                        setCategoryFilter(selectedIDs)
+                                    } label: {
+                                        Label(
+                                            model.categoryPathName(for: hotCategory.id),
+                                            systemImage: filters.categoryIDs == selectedIDs
+                                                ? "checkmark"
+                                                : "clock.arrow.circlepath"
                                         )
-                                    ) {
-                                        filters.categoryIDs = isSelected
-                                            ? nil
-                                            : selectedIDs
-                                        filters.categoryPostingCurrency = nil
                                     }
-                                } label: {
-                                    Label(
-                                        model.categoryPathName(for: hotCategory.id),
-                                        systemImage: isSelected
-                                            ? "checkmark.circle.fill"
-                                            : "circle"
-                                    )
-                                        .font(.subheadline.weight(.semibold))
-                                        .padding(.horizontal, 14)
-                                        .frame(minHeight: 44)
-                                        .background(
-                                            isSelected
-                                                ? Color.accentColor.opacity(0.18)
-                                                : Color.secondary.opacity(0.12),
-                                            in: Capsule()
-                                        )
-                                        .overlay {
-                                            Capsule()
-                                                .stroke(
-                                                    isSelected
-                                                        ? Color.accentColor.opacity(0.50)
-                                                        : Color.clear,
-                                                    lineWidth: 1
-                                                )
-                                        }
                                 }
-                                .buttonStyle(MoneyUpPressableButtonStyle())
-                                .accessibilityAddTraits(
-                                    isSelected ? .isSelected : []
-                                )
-                                .accessibilityHint("history.hot_categories_hint")
                             }
                         }
+
+                        Divider()
+                        Button {
+                            showingFilters = true
+                        } label: {
+                            Label(
+                                "history.filter.more_categories",
+                                systemImage: "line.3.horizontal.decrease.circle"
+                            )
+                        }
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "square.grid.2x2")
+                                .foregroundStyle(Color.accentColor)
+                                .accessibilityHidden(true)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("history.filter.category")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(.primary)
+                                Text(categoryFilterValue)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(2)
+                            }
+                            Spacer(minLength: 8)
+                            Image(systemName: "chevron.up.chevron.down")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .accessibilityHidden(true)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        .contentShape(Rectangle())
                     }
-                } header: {
-                    Text("history.hot_categories")
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("history.filter.category")
+                    .accessibilityValue(categoryFilterValue)
+                    .accessibilityHint("history.filter.category_hint")
+
+                    if filters.categoryIDs != nil {
+                        Button {
+                            setCategoryFilter(nil)
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .frame(width: 44, height: 44)
+                        }
+                        .buttonStyle(.borderless)
+                        .accessibilityLabel("history.filter.clear_category")
+                    }
                 }
-                .listRowBackground(Color.clear)
             }
 
             if hasAdvancedFilters {
@@ -418,8 +484,10 @@ struct HistoryView: View {
                             )
                             Spacer()
                             Button("action.reset") {
+                                let snapshot = reportingSnapshot
                                 filters = HistoryFilterDraft(
-                                    calendar: model.reportingCalendar
+                                    now: snapshot.instant,
+                                    calendar: snapshot.calendar
                                 )
                                 quickRange = .all
                             }
@@ -585,10 +653,25 @@ struct HistoryView: View {
             .navigationTitle("tab.history")
             .searchable(text: $searchText, prompt: "history.search")
             .onAppear {
-                guard !didInitializeReportingDates else { return }
-                didInitializeReportingDates = true
-                filters.rebaseInactiveDates(calendar: model.reportingCalendar)
-                if let quickRange { applyQuickRange(quickRange) }
+                let snapshot = reportingSnapshot
+                if !didInitializeReportingDates {
+                    didInitializeReportingDates = true
+                    filters.rebaseInactiveDates(
+                        now: snapshot.instant,
+                        calendar: snapshot.calendar
+                    )
+                }
+                refreshRollingQuickRangeIfNeeded(snapshot: snapshot)
+            }
+            .onChange(of: quickRange) { _, range in
+                guard let range else {
+                    lastAppliedRollingDay = nil
+                    return
+                }
+                applyQuickRange(range, snapshot: reportingSnapshot)
+            }
+            .onChange(of: reportingDayIdentity) { _, _ in
+                refreshRollingQuickRangeIfNeeded(snapshot: reportingSnapshot)
             }
             .task(id: searchText) {
                 do {
@@ -637,6 +720,20 @@ struct HistoryView: View {
                 pendingPaginationAfterInitialLoad = false
             }
             .toolbar {
+                if let returnOrigin {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button {
+                            onReturnToOrigin()
+                        } label: {
+                            Label(
+                                returnOrigin.backTitle,
+                                systemImage: "chevron.backward"
+                            )
+                            .labelStyle(.titleAndIcon)
+                        }
+                        .accessibilityLabel(returnOrigin.backTitle)
+                    }
+                }
                 ToolbarItemGroup(placement: .primaryAction) {
                     MoneyUpAmountPrivacyButton()
                     Button {
@@ -697,27 +794,41 @@ struct HistoryView: View {
 }
 
 extension HistoryView {
-    private func applyQuickRange(_ range: HistoryQuickRange) {
-        let now = model.currentDateForUserAction()
-        let calendar = model.reportingCalendar
-        filters.endDate = now
-        switch range {
-        case .today:
-            filters.includesStartDate = true
-            filters.startDate = now
-            filters.includesEndDate = true
-        case .sevenDays:
-            filters.includesStartDate = true
-            filters.startDate = calendar.date(byAdding: .day, value: -6, to: now) ?? now
-            filters.includesEndDate = true
-        case .month:
-            filters.includesStartDate = true
-            filters.startDate = calendar.dateInterval(of: .month, for: now)?.start ?? now
-            filters.includesEndDate = true
-        case .all:
-            filters.includesStartDate = false
-            filters.includesEndDate = false
+    private func setCategoryFilter(_ categoryIDs: Set<UUID>?) {
+        withAnimation(
+            MoneyUpMotion.animation(
+                for: .selection,
+                reduceMotion: reduceMotion
+            )
+        ) {
+            filters.categoryIDs = categoryIDs
+            filters.categoryPostingCurrency = nil
         }
+    }
+
+    private func refreshRollingQuickRangeIfNeeded(
+        snapshot: AppReportingSnapshot
+    ) {
+        guard HistoryRollingRangeRefreshPolicy.shouldReapply(
+            range: quickRange,
+            lastAppliedDay: lastAppliedRollingDay,
+            currentDay: snapshot.reportingDayIdentity
+        ), let quickRange else { return }
+        applyQuickRange(quickRange, snapshot: snapshot)
+    }
+
+    private func applyQuickRange(
+        _ range: HistoryQuickRange,
+        snapshot: AppReportingSnapshot
+    ) {
+        filters.applyQuickRange(
+            range,
+            asOf: snapshot.instant,
+            calendar: snapshot.calendar
+        )
+        lastAppliedRollingDay = range.isRolling
+            ? snapshot.reportingDayIdentity
+            : nil
     }
 
     private func delete(_ entry: JournalEntry) async {

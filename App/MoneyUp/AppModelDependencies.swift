@@ -161,6 +161,12 @@ enum AppModelLifecycleCheckpoint: Equatable, Sendable {
     /// The journal transaction is durable, but no in-memory or derived
     /// projection has been allowed to publish the new state yet.
     case afterJournalCommitBeforeProjectionRefresh
+    /// Journal state is coherent, but allowance evidence has not yet been
+    /// assigned. The widget must remain explicitly stale at this boundary.
+    case afterAllowanceJournalProjectionBeforePlanApply
+    /// An allowance-only mutation is durable but its in-memory plan has not
+    /// yet been replaced. Widget publication must remain stale here.
+    case afterAllowanceUsageCommitBeforeApply
     case afterAccountWriteBeforeApply
     case afterCaptureDraftPersisted
     /// The candidate has passed isolated store and domain validation, but the

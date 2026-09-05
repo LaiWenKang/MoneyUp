@@ -25,10 +25,18 @@ Apple's agreement guidance is at
 
 ## 2. Register the App Group and verify MoneyUp's two identifiers
 
-MoneyUp 0.6.0 adds an opt-in budget-status widget. The app publishes only a
-percentage and availability state to a shared container; it never publishes an
-amount, payee, account name, holding, balance, transaction, or ledger
-identifier. This requires one permanent App Group shared by the app and widget.
+MoneyUp's widget status sharing is opt-in. The current 0.7.1 candidate uses one
+permanent App Group with an exact three-artifact allowlist: one nonfinancial
+language preference, one atomic bounded schema-4 summary `Data` value for Budget
+Status/Smart Overview, and one bounded data-free quick-action ingress JSON file.
+The summary may contain state, a bounded reporting-period token, bounded budget
+and allowance percentages, bounded review and active expense-commitment counts,
+expiry, and a reporting-calendar-derived relative due-day distance. The ingress
+may contain only schema/authority and admission metadata, opaque tokens, and one
+of six closed action values. There is no fourth App Group key or file. Neither
+artifact contains an exact due date, amount, payee, account name, holding,
+symbol, quote, balance, transaction/book/ledger identifier, note, attachment,
+or extracted evidence. The app and widget share only this reviewed group.
 
 Open **Certificates, Identifiers & Profiles** → **Identifiers**, tap **+**,
 choose **App Groups**, and register:

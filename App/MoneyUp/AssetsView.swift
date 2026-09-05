@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 
 struct AssetsView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.appReportingSnapshot) private var sharedReportingSnapshot
     @AppStorage(MoneyAmountPrivacy.storageKey)
     private var hidesAmounts = MoneyAmountPrivacy.defaultHidesAmounts
     @State private var isAddingAccount = false
@@ -17,16 +18,6 @@ struct AssetsView: View {
     @State private var xlsxDocument = XLSXDocument()
     @State private var errorMessage: String?
     @State private var holdingPendingDeletion: InvestmentHolding?
-
-    private var investmentAccounts: [LedgerAccount] {
-        model.userAccounts.filter {
-            $0.accountType == .investment || $0.accountType == .brokerage
-        }
-    }
-
-    private var archivedFinancialAccounts: [LedgerAccount] {
-        model.allUserAccounts.filter { $0.isArchived && $0.systemRole == nil }
-    }
 
     private var activeInvestmentHoldings: [InvestmentHolding] {
         model.investmentHoldings.filter { !$0.isArchived }
@@ -104,6 +95,8 @@ struct AssetsView: View {
     }
 
     var body: some View {
+        let now = sharedReportingSnapshot?.instant
+            ?? model.currentDateForUserAction()
         let _ = hidesAmounts
         return NavigationStack {
             List {
@@ -153,6 +146,11 @@ struct AssetsView: View {
                                 prominent: true
                             )
                         }
+                        RestrictedStoredValueSummary(
+                            result: model.restrictedAllowanceValueByCurrencyResult(
+                                asOf: now
+                            )
+                        )
                         if let oldestPositionPriceDate {
                             HStack(spacing: 4) {
                                 Text("assets.oldest_position_price")
@@ -164,7 +162,7 @@ struct AssetsView: View {
                                     $0.positionAccountID != nil
                                         && $0.quantity > .zero
                                         && $0.isPriceStale(
-                                            relativeTo: Date(),
+                                            relativeTo: now,
                                             calendar: model.reportingCalendar
                                         )
                                 }) {
@@ -204,12 +202,16 @@ struct AssetsView: View {
                                 )
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(account.name)
+                                    RestrictedAccountTypeLabel(account: account)
                                     Text(account.currency?.value ?? "")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                 }
                                 Spacer()
-                                switch model.displayBalanceResult(for: account) {
+                                switch model.accountBalanceResultForPresentation(
+                                    for: account,
+                                    asOf: now
+                                ) {
                                 case let .available(balance):
                                     Text(formattedMoney(balance))
                                         .font(.subheadline.monospacedDigit())
@@ -224,6 +226,7 @@ struct AssetsView: View {
                                     }
                                 }
                             }
+                            .accessibilityElement(children: .combine)
                         }
                         .buttonStyle(.plain)
                     }
@@ -251,13 +254,19 @@ struct AssetsView: View {
                             Button {
                                 editingAccount = account
                             } label: {
-                                HStack {
-                                    Label(account.name, systemImage: "archivebox.fill")
+                                HStack(spacing: 12) {
+                                    Image(systemName: "archivebox.fill")
+                                        .accessibilityHidden(true)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(account.name)
+                                        RestrictedAccountTypeLabel(account: account)
+                                        Text(account.currency?.value ?? "")
+                                            .font(.caption.monospaced())
+                                            .foregroundStyle(.secondary)
+                                    }
                                     Spacer()
-                                    Text(account.currency?.value ?? "")
-                                        .font(.caption.monospaced())
-                                        .foregroundStyle(.secondary)
                                 }
+                                .accessibilityElement(children: .combine)
                             }
                             .buttonStyle(.plain)
                         }
@@ -308,7 +317,7 @@ struct AssetsView: View {
                                             Text("holding.price_as_of")
                                             Text(priceAsOf, format: .dateTime.year().month().day())
                                             if holding.isPriceStale(
-                                                relativeTo: Date(),
+                                                relativeTo: now,
                                                 calendar: model.reportingCalendar
                                             ) {
                                                 Text("holding.stale")
@@ -590,4 +599,16 @@ struct AssetsView: View {
         }
     }
 
+}
+
+private extension AssetsView {
+    var investmentAccounts: [LedgerAccount] {
+        model.userAccounts.filter {
+            $0.accountType == .investment || $0.accountType == .brokerage
+        }
+    }
+
+    var archivedFinancialAccounts: [LedgerAccount] {
+        model.allUserAccounts.filter { $0.isArchived && $0.systemRole == nil }
+    }
 }

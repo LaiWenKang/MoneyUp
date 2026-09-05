@@ -2,14 +2,6 @@ import MoneyUpCore
 import SwiftUI
 
 struct SavingsGoalsView: View {
-    /// Supplied when Plan swaps this section in; nil when it is pushed and the
-    /// system already draws a back button.
-    let sectionBack: MoneyUpSectionBackAction?
-
-    init(sectionBack: MoneyUpSectionBackAction? = nil) {
-        self.sectionBack = sectionBack
-    }
-
     @Environment(AppModel.self) private var model
     @State private var isAddingGoal = false
     @State private var selectedGoalID: UUID?
@@ -23,61 +15,58 @@ struct SavingsGoalsView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            List {
-                if !activeGoals.isEmpty {
-                    Section("goal.active") {
-                        ForEach(activeGoals) { goal in
-                            goalButton(goal)
-                        }
-                    }
-                }
-                if !archivedGoals.isEmpty {
-                    Section("goal.archived") {
-                        ForEach(archivedGoals) { goal in
-                            goalButton(goal)
-                        }
+        List {
+            if !activeGoals.isEmpty {
+                Section("goal.active") {
+                    ForEach(activeGoals) { goal in
+                        goalButton(goal)
                     }
                 }
             }
-            .scrollContentBackground(.hidden)
-            .background(Color.moneyUpBackground)
-            .overlay {
-                if model.savingsGoals.isEmpty {
-                    ContentUnavailableView {
-                        Label("goal.empty", systemImage: "target")
-                    } description: {
-                        Text("goal.empty_detail")
-                    } actions: {
-                        Button("goal.add") { isAddingGoal = true }
-                            .buttonStyle(.borderedProminent)
-                            .tint(.moneyUpAction)
+            if !archivedGoals.isEmpty {
+                Section("goal.archived") {
+                    ForEach(archivedGoals) { goal in
+                        goalButton(goal)
                     }
                 }
             }
-            .navigationTitle("plan.goals")
-            .moneyUpSectionBackToolbar(sectionBack)
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        isAddingGoal = true
-                    } label: {
-                        Label("goal.add", systemImage: "plus")
-                    }
+        }
+        .scrollContentBackground(.hidden)
+        .background(Color.moneyUpBackground)
+        .overlay {
+            if model.savingsGoals.isEmpty {
+                ContentUnavailableView {
+                    Label("goal.empty", systemImage: "target")
+                } description: {
+                    Text("goal.empty_detail")
+                } actions: {
+                    Button("goal.add") { isAddingGoal = true }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.moneyUpAction)
                 }
             }
-            .sheet(isPresented: $isAddingGoal) {
-                GoalEditorSheet()
-            }
-            .sheet(
-                isPresented: Binding(
-                    get: { selectedGoalID != nil },
-                    set: { if !$0 { selectedGoalID = nil } }
-                )
-            ) {
-                if let selectedGoalID {
-                    GoalManagementSheet(goalID: selectedGoalID)
+        }
+        .navigationTitle("plan.goals")
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    isAddingGoal = true
+                } label: {
+                    Label("goal.add", systemImage: "plus")
                 }
+            }
+        }
+        .sheet(isPresented: $isAddingGoal) {
+            GoalEditorSheet()
+        }
+        .sheet(
+            isPresented: Binding(
+                get: { selectedGoalID != nil },
+                set: { if !$0 { selectedGoalID = nil } }
+            )
+        ) {
+            if let selectedGoalID {
+                GoalManagementSheet(goalID: selectedGoalID)
             }
         }
     }

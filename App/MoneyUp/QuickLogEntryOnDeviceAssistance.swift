@@ -160,7 +160,7 @@ extension QuickLogEntryView {
         cancelOnDeviceAssistance()
         let enabled = model.profile?.foundationModelAssistanceEnabled == true
         guard enabled, let profile = model.profile else { return }
-        let accounts = model.userAccounts
+        let accounts = sourceAccounts
         let categorySnapshot = categories
         let baseline = QuickLogAssistancePublicationBaseline(
             kind: kind,
@@ -199,7 +199,7 @@ extension QuickLogEntryView {
                     currentSplitLines: splitLines,
                     currentAccount: onDeviceAccountFieldState,
                     currentCategory: onDeviceCategoryFieldState,
-                    currentAccountIDs: Set(model.userAccounts.map(\.id)),
+                    currentAccountIDs: Set(sourceAccounts.map(\.id)),
                     currentCategoryIDs: Set(categories.map(\.id))
                 ) else { return }
             onDeviceAssistance = QuickLogAssistancePresentation(
@@ -228,7 +228,7 @@ extension QuickLogEntryView {
     }
 
     func useOnDeviceAccountSuggestion(_ id: UUID) {
-        guard model.userAccounts.contains(where: { $0.id == id }),
+        guard sourceAccounts.contains(where: { $0.id == id }),
               var presentation = onDeviceAssistance else { return }
         guard let state = presentation.applyAccount(
             id,

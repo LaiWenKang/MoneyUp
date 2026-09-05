@@ -226,8 +226,11 @@ extension AllowancePlanError: @retroactive LocalizedError {
             AppLocalization.string("error.amount_must_be_positive")
         case .currencyMismatch:
             AppLocalization.string("error.balance_currency_mismatch")
+        case .usageExceedsAvailable:
+            AppLocalization.string("allowance.error.overuse")
         case .invalidDate, .invalidTimeZone, .invalidRolloverCap,
-             .tooManyCategories, .tooManyUsages, .usageBeforeStart, .usageAfterEnd:
+             .tooManyCategories, .tooManyUsages, .usageBeforeStart, .usageAfterEnd,
+             .duplicateLinkedUsage, .invalidPolicyRevision, .duplicateReconciliation:
             AppLocalization.string("allowance.error.invalid")
         }
     }

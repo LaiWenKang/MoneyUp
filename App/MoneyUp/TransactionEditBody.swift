@@ -42,7 +42,7 @@ extension TransactionEditView {
                                 : "transaction.account",
                             selection: $accountID
                         ) {
-                            ForEach(editableUserAccounts) { account in
+                            ForEach(editableSourceAccounts) { account in
                                 Text(verbatim: editorLabel(for: account))
                                     .tag(Optional(account.id))
                             }
@@ -348,7 +348,11 @@ extension TransactionEditView {
                 }
                 Button("action.cancel", role: .cancel) {}
             } message: {
-                Text("transaction.delete_detail")
+                Text(
+                    hasLinkedAllowanceClaim
+                        ? "allowance.claim.delete_confirmation_detail"
+                        : "transaction.delete_detail"
+                )
             }
             .confirmationDialog(
                 "receipt.delete_title",
@@ -364,6 +368,21 @@ extension TransactionEditView {
                 }
             } message: {
                 Text("receipt.delete_detail")
+            }
+            .confirmationDialog(
+                "allowance.claim.edit_invalidation_confirmation_title",
+                isPresented: $isConfirmingClaimInvalidation,
+                titleVisibility: .visible
+            ) {
+                Button(
+                    "allowance.claim.edit_invalidation_confirmation_action",
+                    role: .destructive
+                ) {
+                    Task { await save(confirmingClaimInvalidation: true) }
+                }
+                Button("action.cancel", role: .cancel) {}
+            } message: {
+                Text("allowance.claim.edit_invalidation_confirmation_detail")
             }
             .moneyUpOperationErrorAlert(message: $errorMessage)
             }
@@ -396,8 +415,8 @@ extension TransactionEditView {
     }
 
     func selectValidDefaults() {
-        if !editableUserAccounts.contains(where: { $0.id == accountID }) {
-            accountID = editableUserAccounts.first?.id
+        if !editableSourceAccounts.contains(where: { $0.id == accountID }) {
+            accountID = editableSourceAccounts.first?.id
         }
         if kind == .transfer {
             if destinationAccountID == accountID
@@ -416,7 +435,7 @@ extension TransactionEditView {
         }
     }
 
-    func save() async {
+    func save(confirmingClaimInvalidation: Bool = false) async {
         guard let amount = decimalAmount(from: amountText),
               let accountID else { return }
         isSaving = true
@@ -435,9 +454,12 @@ extension TransactionEditView {
                 occurredAt: occurredAt,
                 payee: payee,
                 note: note,
-                attachmentDrafts: pendingEvidence
+                attachmentDrafts: pendingEvidence,
+                confirmsRemovingAllowanceClaim: confirmingClaimInvalidation
             )
             dismiss()
+        } catch AppModelError.allowanceClaimRemovalConfirmationRequired {
+            isConfirmingClaimInvalidation = true
         } catch {
             errorMessage = safeUserMessage(for: error, context: .save)
         }

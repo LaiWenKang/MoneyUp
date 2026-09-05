@@ -2,6 +2,15 @@ import MoneyUpCore
 import SwiftUI
 import UniformTypeIdentifiers
 
+enum ManagedAccountBalanceEditPolicy {
+    static func shouldPersist(
+        initial: Decimal?,
+        edited: Decimal
+    ) -> Bool {
+        initial != edited
+    }
+}
+
 struct AddAccountSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AppModel.self) private var model
@@ -49,6 +58,7 @@ struct AddAccountSheet: View {
                         .moneyAmountKeyboard(
                             currency: try? CurrencyCode(currencyCode),
                             allowsNegative: !type.isLiabilityAccount
+                                && type != .restrictedAllowance
                         )
                         .moneyUpFieldValidation(balanceValidationMessage)
                     if let balanceValidationMessage {
@@ -128,21 +138,27 @@ struct AccountManagementSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(AppModel.self) private var model
+    @Environment(\.appReportingSnapshot) private var sharedReportingSnapshot
     let account: LedgerAccount
 
     @State private var name: String
     @State private var balanceText: String
+    @State private var initialDisplayBalance: Decimal?
     @State private var targetID: UUID?
     @State private var pendingLifecycleAction: PendingLifecycleAction?
     @State private var isSaving = false
     @State private var nameValidationMessage: String?
     @State private var balanceValidationMessage: String?
     @State private var errorMessage: String?
+    @State private var restrictedFundingRecords: [RestrictedAllowanceFundingRecord] = []
+    @State private var fundingCorrection: RestrictedAllowanceFundingRecord?
+    @State private var isLoadingRestrictedFunding = false
 
     init(account: LedgerAccount) {
         self.account = account
         _name = State(initialValue: account.name)
         _balanceText = State(initialValue: "")
+        _initialDisplayBalance = State(initialValue: nil)
     }
 
     private var currentAccount: LedgerAccount {
@@ -159,8 +175,25 @@ struct AccountManagementSheet: View {
 
     private var editedBalance: Decimal? {
         guard let value = decimalAmount(from: balanceText) else { return nil }
-        guard currentAccount.kind != .liability || value >= .zero else { return nil }
-        return value
+        return validatedManagedBalance(
+            value,
+            accountKind: currentAccount.kind,
+            accountType: currentAccount.accountType,
+            currentDisplayBalance: currentDisplayBalance
+        )
+    }
+
+    private var currentDisplayBalance: Decimal? {
+        guard case let .available(balance) =
+            model.accountBalanceResultForPresentation(
+                for: currentAccount,
+                asOf: currentBalanceDate
+            ) else { return nil }
+        return balance.amount
+    }
+
+    private var currentBalanceDate: Date {
+        sharedReportingSnapshot?.instant ?? model.currentDateForUserAction()
     }
 
     private var balanceLabel: LocalizedStringKey {
@@ -182,6 +215,7 @@ struct AccountManagementSheet: View {
                         .moneyAmountKeyboard(
                             currency: currentAccount.currency,
                             allowsNegative: currentAccount.kind != .liability
+                                && currentAccount.accountType != .restrictedAllowance
                         )
                         .disabled(currentAccount.isArchived)
                         .moneyUpFieldValidation(balanceValidationMessage)
@@ -192,6 +226,8 @@ struct AccountManagementSheet: View {
                     VStack(alignment: .leading, spacing: 6) {
                         if currentAccount.kind == .liability {
                             Text("account.amount_owed_detail")
+                        } else if currentAccount.accountType == .restrictedAllowance {
+                            Text("account.restricted_balance_management_detail")
                         } else if currentAccount.accountType == .brokerage
                             || currentAccount.accountType == .investment {
                             Text("account.investment_cash_detail")
@@ -199,6 +235,43 @@ struct AccountManagementSheet: View {
                             Text("account.current_balance_detail")
                         }
                         Text("account.adjustment_detail")
+                    }
+                }
+
+                if currentAccount.accountType == .restrictedAllowance {
+                    Section("account.restricted_funding_history") {
+                        if isLoadingRestrictedFunding {
+                            ProgressView()
+                        } else if restrictedFundingRecords.isEmpty {
+                            Text("account.restricted_funding_empty")
+                                .foregroundStyle(.secondary)
+                        } else {
+                            ForEach(restrictedFundingRecords) { record in
+                                Button {
+                                    fundingCorrection = record
+                                } label: {
+                                    HStack {
+                                        VStack(alignment: .leading) {
+                                            Text(record.occurredAt.formattedForReporting(
+                                                .dateTime.year().month().day(),
+                                                calendar: model.reportingCalendar
+                                            ))
+                                            if let note = record.note {
+                                                Text(note)
+                                                    .font(.caption)
+                                                    .foregroundStyle(.secondary)
+                                            }
+                                        }
+                                        Spacer()
+                                        Text(formattedMoney(record.amount))
+                                            .monospacedDigit()
+                                    }
+                                }
+                                .disabled(currentAccount.isArchived)
+                            }
+                        }
+                    } footer: {
+                        Text("account.restricted_funding_history_detail")
                     }
                 }
 
@@ -259,6 +332,14 @@ struct AccountManagementSheet: View {
                     Text(impactSummary(impact))
                 }
             }
+            .task(id: currentAccount.id) {
+                await loadRestrictedFunding()
+            }
+            .sheet(item: $fundingCorrection) { record in
+                RestrictedFundingCorrectionSheet(record: record) {
+                    Task { await loadRestrictedFunding() }
+                }
+            }
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
             .navigationTitle(currentAccount.name)
@@ -276,8 +357,12 @@ struct AccountManagementSheet: View {
             .onAppear {
                 guard balanceText.isEmpty else { return }
                 targetID = targets.first?.id
-                switch model.displayBalanceResult(for: currentAccount) {
+                switch model.accountBalanceResultForPresentation(
+                    for: currentAccount,
+                    asOf: currentBalanceDate
+                ) {
                 case let .available(balance):
+                    initialDisplayBalance = balance.amount
                     balanceText = editableAmount(balance.amount)
                 case let .unavailable(issue):
                     errorMessage = issue.localizedDescription
@@ -304,6 +389,20 @@ struct AccountManagementSheet: View {
         }
     }
 
+    private func loadRestrictedFunding() async {
+        guard currentAccount.accountType == .restrictedAllowance else { return }
+        isLoadingRestrictedFunding = true
+        defer { isLoadingRestrictedFunding = false }
+        do {
+            restrictedFundingRecords = try await model
+                .restrictedAllowanceFundingRecords(accountID: currentAccount.id)
+        } catch is CancellationError {
+            return
+        } catch {
+            errorMessage = safeUserMessage(for: error, context: .read)
+        }
+    }
+
     private func save() async {
         nameValidationMessage = nil
         balanceValidationMessage = nil
@@ -312,17 +411,31 @@ struct AccountManagementSheet: View {
             nameValidationMessage = AppLocalization.string("account.name_error")
             return
         }
-        guard let balance = editedBalance else {
-            balanceValidationMessage = currentAccount.kind == .liability
-                ? AppLocalization.string("account.amount_owed_error")
-                : AppLocalization.string("account.current_balance_error")
+        let parsedBalance = decimalAmount(from: balanceText)
+        let balanceChanged = parsedBalance.map {
+            ManagedAccountBalanceEditPolicy.shouldPersist(
+                initial: initialDisplayBalance,
+                edited: $0
+            )
+        } ?? true
+        let balance = balanceChanged ? editedBalance : parsedBalance
+        guard let balance else {
+            if currentAccount.accountType == .restrictedAllowance {
+                balanceValidationMessage = AppLocalization.string(
+                    "account.restricted_balance_management_error"
+                )
+            } else {
+                balanceValidationMessage = currentAccount.kind == .liability
+                    ? AppLocalization.string("account.amount_owed_error")
+                    : AppLocalization.string("account.current_balance_error")
+            }
             return
         }
         isSaving = true
         defer { isSaving = false }
         do {
             try await model.renameLedgerItem(id: account.id, name: name)
-            if !currentAccount.isArchived {
+            if !currentAccount.isArchived, balanceChanged {
                 try await model.setAccountBalance(
                     accountID: account.id,
                     displayBalance: balance

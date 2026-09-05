@@ -265,6 +265,7 @@ struct OnboardingView: View {
                             .moneyAmountKeyboard(
                                 currency: try? CurrencyCode(currencyCode),
                                 allowsNegative: !accountType.isLiabilityAccount
+                                    && accountType != .restrictedAllowance
                             )
                             .focused($focusedField, equals: .openingBalance)
                             .textFieldStyle(.roundedBorder)
@@ -525,6 +526,7 @@ private extension FinancialAccountType {
         case .cash: "account.type.cash"
         case .bank: "account.type.bank"
         case .eWallet: "account.type.e_wallet"
+        case .restrictedAllowance: "account.type.restricted_allowance"
         case .creditCard: "account.type.credit_card"
         case .loan: "account.type.loan"
         case .brokerage: "account.type.brokerage"

@@ -28,6 +28,7 @@ struct AppModelRecoveryRelationships: Sendable {
     let budgetAttributionEntryIDs: Set<UUID>?
     let investmentEntriesByID: [UUID: JournalEntry]
     let planningEntryIDs: Set<UUID>
+    let restrictedPrepaidEvidenceEntryIDsByPlan: [UUID: Set<UUID>]
     let loadsCompleteBudgetAttributions: Bool
 }
 
@@ -113,6 +114,7 @@ extension AppModel {
         journalProjectionRevision &+= 1
         retainsCompleteJournal = false
         invalidateCommittedJournalProjection()
+        invalidJournalEntryIDs = []
         recoveryIssues = []
         closedMonthBudgetProjection = nil
         budgetConfigurationTimeline = nil
@@ -401,9 +403,16 @@ extension AppModel {
             existingBudgetAttributionEntryIDs = nil
         }
         existingScheduledLinkedEntryIDs = existingScheduledEntryIDs
+        let accountByID = Dictionary(
+            uniqueKeysWithValues: accounts.map { ($0.id, $0) }
+        )
+        let allowanceEvidence = try recoveryAllowanceRelationshipEvidence(
+            accountsByID: accountByID,
+            observesCancellation: observesCancellation
+        )
         let requestedPlanningEntryIDs = Set(
             loanPlans.flatMap(\.activities).map(\.journalEntryID)
-                + allowancePlans.flatMap(\.usages).compactMap(\.linkedJournalEntryID)
+                + allowanceEvidence.linkedEntryIDs
         )
         let existingPlanningEntryIDs = try await store.existingJournalEntryIDs(
             in: requestedPlanningEntryIDs
@@ -419,6 +428,8 @@ extension AppModel {
             budgetAttributionEntryIDs: existingBudgetAttributionEntryIDs,
             investmentEntriesByID: investmentEntriesByID,
             planningEntryIDs: existingPlanningEntryIDs,
+            restrictedPrepaidEvidenceEntryIDsByPlan:
+                allowanceEvidence.restrictedEntryIDsByPlan,
             loadsCompleteBudgetAttributions: loadsCompleteBudgetAttributions
         )
     }
@@ -461,21 +472,19 @@ extension AppModel {
         in store: EncryptedRecordStore,
         mode: BookLoadMode
     ) async throws {
-        try quarantineInvalidRelationships(
-            existingAttachmentEntryIDs: relationships.attachmentEntryIDs,
-            existingScheduledEntryIDs: relationships.scheduledEntryIDs,
-            existingBudgetAttributionEntryIDs:
-                relationships.budgetAttributionEntryIDs,
-            investmentEntriesByID: relationships.investmentEntriesByID,
-            existingPlanningEntryIDs: relationships.planningEntryIDs,
-            observesCancellation: mode.observesCancellationWhileLoading
+        quarantineMalformedRestrictedAllowanceAccounts()
+        try await convergeRecoveredLedgerRelationships(
+            relationships,
+            in: store,
+            mode: mode
         )
+
         if relationships.loadsCompleteBudgetAttributions {
             try await validateBudgetEntryAttributionsAfterLoad(in: store)
         }
         // Rollover's complete closed-month projection depends on the persisted
-        // dated configuration. Prepare or quarantine that timeline before the
-        // normalized journal refresh derives any budget state from it.
+        // dated configuration. Prepare or quarantine that timeline only after
+        // journal/account quarantine has reached its fixed point.
         try await prepareBudgetConfigurationTimelineAfterLoad(
             in: store,
             persistsMigration: mode.persistsBudgetTimelineMigration
@@ -485,14 +494,6 @@ extension AppModel {
             loadRecentEntries: true,
             observesCancellation: mode.observesCancellationWhileLoading
         )
-        if !mode.rejectsRecoveryIssues,
-           quarantineInvestmentLedgerMismatches() {
-            try await refreshJournalDerivedState(
-                from: store,
-                loadRecentEntries: true,
-                observesCancellation: mode.observesCancellationWhileLoading
-            )
-        }
         // The normalized ledger snapshot identifies entries that exist but are
         // quarantined as one atomic unit because an account reference is bad.
         // Their attachments remain preserved in SQLCipher/backups but hidden
@@ -504,6 +505,35 @@ extension AppModel {
             }
             return invalid
         }
+    }
+
+    func quarantineRecoveredRelationships(
+        _ relationships: AppModelRecoveryRelationships,
+        excludingEntryIDs: Set<UUID>,
+        observesCancellation: Bool
+    ) throws {
+        let attachmentEntryIDs = relationships.attachmentEntryIDs
+            .subtracting(excludingEntryIDs)
+        let scheduledEntryIDs = relationships.scheduledEntryIDs
+            .subtracting(excludingEntryIDs)
+        let budgetAttributionEntryIDs = relationships.budgetAttributionEntryIDs
+            .map { $0.subtracting(excludingEntryIDs) }
+        let investmentEntriesByID = relationships.investmentEntriesByID.filter {
+            !excludingEntryIDs.contains($0.key)
+        }
+        let planningEntryIDs = relationships.planningEntryIDs
+            .subtracting(excludingEntryIDs)
+
+        existingScheduledLinkedEntryIDs = scheduledEntryIDs
+        self.investmentLinkedEntriesByID = investmentEntriesByID
+        try quarantineInvalidRelationships(
+            existingAttachmentEntryIDs: attachmentEntryIDs,
+            existingScheduledEntryIDs: scheduledEntryIDs,
+            existingBudgetAttributionEntryIDs: budgetAttributionEntryIDs,
+            investmentEntriesByID: investmentEntriesByID,
+            existingPlanningEntryIDs: planningEntryIDs,
+            observesCancellation: observesCancellation
+        )
     }
 
     func loadQuickLogDraft(

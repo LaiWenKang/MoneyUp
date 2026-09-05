@@ -3,7 +3,7 @@
 MoneyUp handles sensitive financial data. Security claims here distinguish
 implemented controls from planned work and known limits.
 
-## Founders Beta 0.7.0 source controls
+## Founders Beta 0.7.1 source controls
 
 "Implemented" below describes the source-integrated candidate. Exact-candidate
 Mac CI, signed-entitlement inspection, physical-device checks, beta evidence,
@@ -20,7 +20,7 @@ and App Review remain separate release gates.
 | App-switcher privacy cover while inactive | Implemented |
 | iOS file protection for the database | Implemented |
 | Privacy-redacted quick-action widget with no financial values | Implemented |
-| Opt-in App Group widget snapshot restricted to percentage/state only | Implemented; signing/device gate open |
+| Exact App Group allowlist: non-financial language preference, atomic schema-4 redacted summary, and bounded data-free quick-action ingress file | Implemented; signing/device gate open |
 | On-device receipt reading; optional metadata-stripped SQLCipher-encrypted retention; no upload | Implemented; exact-candidate and physical fixture evidence open |
 | Plaintext CSV/XLSX warning and user-selected destination | Implemented |
 | Destructive recovery reset with explicit confirmation | Implemented |
@@ -32,9 +32,9 @@ and App Review remain separate release gates.
 | File-backed chunk-authenticated portable backup and transactional restore | Implemented with v1 compatibility and test coverage; exact-candidate/physical execution open |
 | Missing-device-key detection and keyless `.moneyup` recovery transaction | Implemented with isolated validation, crash-resume, and rollback tests; physical passcode-removal drill open |
 | Previewable local CSV/Qianji import with atomic commit | Implemented with test coverage; exact-candidate execution open |
-| SQLCipher schema-7 journal/posting/receipt/budget/intelligence indexes, store metrics, and compact exact balances | Implemented; exact-candidate tests open |
+| SQLCipher schema-9 journal/posting/receipt/budget/intelligence/evidence indexes, store metrics, and compact exact balances | Implemented; exact-candidate tests open |
 | Optional explainable local intelligence with review-only actions and derived-data opt-out clearing | Implemented; exact-candidate and physical review open |
-| Off-by-default Foundation Models ordinal matching over at most 16 existing names per list, with no financial/free-text output | Implemented; Xcode 26 compile and eligible-device behavior gates open |
+| Default-on, explicitly opt-out Foundation Models ordinal matching over at most 16 existing names per list, with no financial/free-text output | Implemented; Xcode 26 compile and eligible-device behavior gates open |
 | Optional end-to-end-encrypted device sync | Explicitly deferred from 1.0 |
 
 ## Privacy guarantee
@@ -51,20 +51,28 @@ bounds the longest edge, and re-encodes new JPEG/PNG pixels without copying GPS,
 EXIF, TIFF device, caption, or edit-history metadata into SQLCipher. The image
 never enters a draft, diagnostic log, widget, CSV, or XLSX export and is never
 transmitted. Typed-phrase parsing and category suggestions are plain arithmetic
-and string matching over the user's own records. If separately enabled, Apple's
-default on-device system language model receives only a bounded context after
+and string matching over the user's own records. On eligible devices, Apple's
+default on-device system language model is enabled unless the user opts out and
+receives only a bounded context after
 parsed financial spans are removed plus at most 16 existing local names per
 list. Its generated shape contains only literal-range ordinals; it receives no
 image or receipt bytes and cannot return any financial field or free text. Unavailability,
 cancellation, error, staleness, or an invalid ordinal preserves the exact-rule
 result. No remote model receives a receipt, an amount, or a payee.
 
-The opt-in budget-status widget does not change the network guarantee. The app
-writes a versioned availability/state plus integer percentage to
-`group.com.laiwenkang.MoneyUp`; the extension reads it locally. The snapshot
-contains no amount, payee, account name, holding, balance, transaction, book,
-or ledger identifier. Disabling the setting or erasing the profile scrubs it
-and known legacy prototype keys.
+The App Group does not change the network guarantee. Its exact allowlist is the
+non-financial app-language preference, one atomic schema-4 redacted Budget
+Status/Smart Overview value, and one bounded data-free quick-action ingress
+file. The snapshot may contain state, a bounded reporting-period token, bounded
+budget and allowance percentages, bounded review and active expense-commitment
+counts, expiry, and a reporting-calendar-derived relative due-day distance. The
+ingress file may contain only its schema/authority metadata, admission state,
+opaque handoff tokens, and one of six closed action values. Neither artifact may
+contain an exact due date, amount, payee, account name, holding, symbol, quote,
+balance, transaction/book/ledger identifier, note, attachment, or extracted
+evidence. No other App Group key or file is approved. Disabling summaries or
+erasing the profile scrubs the summary and known legacy prototype keys;
+authoritative erase/restore boundaries invalidate old quick-action ingress.
 
 The guarantee does not cover:
 
@@ -118,11 +126,35 @@ The guarantee does not cover:
   WAL journaling, secure deletion, and foreign-key enforcement.
 - The database uses a versioned schema and rejects a schema newer than the app
   supports.
-- Schema 6 stores journal/posting lookup indexes, exact account/currency balance
-  rows, bounded receipt metadata, trigger-maintained store totals, and historical
-  budget-attribution indexes inside SQLCipher. Routine mutations update each
+- Schema 9 stores journal/posting lookup indexes, exact account/currency balance
+  rows, bounded receipt metadata and evidence-search fields, trigger-maintained
+  store totals, historical budget-attribution indexes, derived intelligence
+  indexes, and additive loan/allowance records inside SQLCipher. Routine
+  mutations update each
   projection in the same transaction; rebuild is reserved for migration,
   restore, or repair.
+- Allowance archive history is additive inside the existing schema-9 encrypted
+  payload and does not require a SQL migration. Current-format plans bind a
+  supported per-plan marker, effective-dated transition timeline, and current
+  state; partial, null, unsupported, unordered, or inconsistent forms fail
+  closed. Fully legacy archived records infer the earliest boundary consistent
+  with plan start, usage, and reconciliation evidence. A forged payload stripped
+  of both new fields is indistinguishable from that genuine legacy shape under
+  backward compatibility; SQLCipher and authenticated archive provenance, not
+  the additive marker alone, is the security boundary.
+- Every live negative posting from a restricted-allowance account must have
+  exactly one semantically valid usage or expiry authorization. Normal recovery
+  uses the complete normalized history of affected restricted accounts plus
+  referenced evidence, converges account/plan/journal quarantine to a monotonic
+  fixed point, and retains all raw encrypted rows. Invalid prepaid evidence is
+  excluded with its plan; an ordinary benefit-limit or reimbursement expense is
+  retained when only its allowance metadata is invalid. Strict restore rejects
+  the equivalent candidate instead of installing a partial graph.
+- Reimbursement status is evidence-only and forward-only: pending may become
+  approved or rejected, approved may become reimbursed, and terminal states do
+  not reopen. Those updates never create a receivable, deposit, cash movement,
+  income, or journal mutation; actual incoming money uses the ordinary ledger
+  workflow.
 - Normal unlock retains only bounded recent activity plus compact reference and
   balance state; whole-book operations page from the encrypted store on demand.
 - Multi-record setup and reconciliation operations use a single immediate
@@ -149,6 +181,17 @@ ticket binds the preview to the staged ciphertext SHA-256; commit verifies a
 bounded private copy against that digest before touching the live store. Cancel,
 wrong password, tamper, unsupported schema, or a staged-file swap therefore
 cannot reach replacement and never modifies the user-selected archive.
+Before candidate-model load, a stable-order SQL cursor reduces stored rows into
+bounded validation state with cooperative cancellation; production restore does
+not materialize a second whole-book snapshot. Nested allowance history is
+screened before domain decode at 4,096 usages, 4,096 reconciliations, and 512
+archive transitions per plan; aggregate usage, reconciliation, archive-transition,
+and cadence-period work is each capped at 100,000. A plan may require at most
+`10,000 + 2 × maxPolicyRevisions` period work (11,024 at the 512-revision cap),
+and weekday work is counted exactly in constant time from weekdays rather than
+calendar-day iteration. Relationship validation then rejects unauthorized, multiply claimed,
+or semantically mismatched restricted debits before replacement. Exact-candidate
+near-limit runtime and peak-memory evidence remains a production release gate.
 Staging, validation, verified-commit, and rollback ciphertext ownership is
 deterministic, permission-bound, and scavenged exactly on startup so
 interruption cannot accumulate artifacts. The rollback archive and a writer
@@ -179,6 +222,9 @@ validator rejects other source entitlements. The TestFlight workflow also
 requires both embedded distribution profiles and both signed bundles to carry
 exactly that group before Apple validation or upload. Registering and enabling
 the capability in the Apple Developer account remains an account-holder gate.
+Within that container, the only approved artifacts are the language preference,
+the single schema-4 widget-summary value, and the bounded quick-action ingress
+file; adding any key, file, or field requires a new privacy review and gate.
 
 ## Reporting a vulnerability
 

@@ -293,10 +293,15 @@ extension SQLCipherConnection {
     }
 
     func readPostingRows(
-        from statement: OpaquePointer
+        from statement: OpaquePointer,
+        observesCancellation: Bool = false
     ) throws -> [IndexedPostingRow] {
         var rows: [IndexedPostingRow] = []
+        var rowOffset = 0
         while true {
+            if observesCancellation, rowOffset.isMultiple(of: 256) {
+                try Task.checkCancellation()
+            }
             let result = sqlite3_step(statement)
             if result == SQLITE_DONE { break }
             guard result == SQLITE_ROW,
@@ -318,6 +323,7 @@ extension SQLCipherConnection {
                     amount: String(cString: rawAmount)
                 )
             )
+            rowOffset += 1
         }
         return rows
     }

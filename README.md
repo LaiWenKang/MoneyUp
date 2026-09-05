@@ -12,9 +12,9 @@ MoneyUp's source app identity is **Founders Beta 0.7.1 (source build 11)**.
 This candidate extends the feedback baseline merged through pull request #40
 with exact split assistance, stronger keyboard avoidance, direct hierarchical
 category management, default-on eligible on-device assistance, useful
-History shortcuts, general loan purposes, optional tab gestures, account-aware
-allowances, selectable pacing, a Plan overview, and a privacy-safe Smart
-Overview widget. A second feedback pass then made every amount name its own
+History shortcuts, general loan purposes, account-aware allowances, selectable
+pacing, an adaptive Plan selector, and a privacy-safe Smart Overview widget. A
+second feedback pass then made every amount name its own
 currency where a symbol would be ambiguous, rebuilt Today around user-pinned
 budget categories with month/week/day remaining, removed the parts of Today
 that another tab already owned, and gave every swapped Plan section an
@@ -47,9 +47,15 @@ The beta includes:
   rollover rules, sinking funds, and savings goals with contributions,
   withdrawals, resets, archive, and deletion; parent categories can be changed
   safely, and flexible budgets can expose exact daily or weekly pacing;
-- planning-only employer allowances with daily, weekday, weekly, or monthly
-  cadence, optional end dates, category eligibility, no/full/capped rollover,
-  and usage history; allowance value never inflates income, cash, or net worth;
+- three economically distinct allowance modes with daily, weekday, weekly, or
+  monthly cadence, optional end dates, category eligibility, no/full/capped
+  rollover, and usage history: benefit limits remain planning-only, prepaid
+  value must already exist in an exclusively linked restricted asset, and
+  reimbursement moves through pending/approved/rejected/reimbursed evidence
+  without ever creating cash, income, or a receivable; qualifying prepaid value
+  is shown separately as restricted stored value. Policy-zone civil dates,
+  revision-aware categories, historical prepaid availability, and standalone
+  benefit-usage corrections all fail closed when their evidence becomes stale;
 - actual and recurring projected money flow in the finance calendar, including
   schedule editing, pausing, ending, skipping, confirming, matching, and
   exactly-once posting;
@@ -87,6 +93,12 @@ The beta includes:
 - ledger-linked manually priced holdings with dated price history, stale-price
   warnings, explicit opening-cash treatment, FIFO lots and disposals, and
   frozen net-worth snapshots kept separate by currency;
+- provider-neutral instrument, observation, freshness, request-policy, and
+  estimated-valuation contracts under a deny-by-default manual/local policy;
+  this release adds no market-data provider, endpoint, credential, background
+  quote job, symbol transmission, or automatic-price promise. Provider zero is
+  invalid; only an explicit manual/migrated-manual write-down may be zero, and
+  source/correction/request/provider/currency provenance is validated before use;
 - smart entry that reads a receipt photo or screenshot with bounded, fast-first
   on-device text recognition, shows reading progress immediately, populates
   visible amount/payee/date suggestions, parses typed phrases such as "lunch
@@ -105,11 +117,13 @@ The beta includes:
   per-row chrome; guidance shown at a destructive or irreversible decision is
   deliberately never collapsed, and remembered layout preferences use a closed
   set of keys that cannot carry book content;
-- a permanent five-tab layout for Today, History, center Log, Plan, and Assets,
-  with an optional deliberate left/right swipe shortcut, a Plan overview that
-  routes to Budget, Calendar, Goals, and Allowances without repeating them in
-  the chip bar, and a named top-left route back to that overview from every
-  swapped section; Today shows only what no other tab owns;
+- a permanent five-tab layout for Today, History, center Log, Plan, and Assets;
+  the fixed tab bar is the only global tab-navigation control, while Plan uses
+  one adaptive icon/label selector for Budget, Calendar, Goals, and Allowances
+  and contextual screens expose a named top-left Back route only when a real
+  origin exists; the retired swipe preference is type-checked when present,
+  normalized off even if an initializer requests it, and omitted on rewrite;
+  Today shows only what no other tab owns;
   Log retains encrypted draft recovery, configurable smart defaults, success
   feedback, and Undo, while the keyboard provides Done, reachable Save, and a
   draft-preserving route to every other tab;
@@ -129,15 +143,29 @@ The beta includes:
   income, transfer, refund, smart entry, and receipt scanning; a separate
   encrypted Quick Capture inbox that does not reveal balances while locked;
   and configurable Budget Status or Smart Overview surfaces whose opt-in App
-  Group snapshot contains only budget/allowance percentages, bounded review/
-  allowance/commitment counts, state, expiry, and the next commitment time,
-  never amounts, payees, accounts, holdings, balances, or ledger identifiers;
+  Group snapshot contains only state, a bounded reporting-period token,
+  budget/allowance percentages, a bounded review count, a bounded active
+  expense-commitment count, expiry, and a relative due-day count,
+  never amounts, payees, accounts, holdings/symbols/quotes, balances, notes/
+  evidence, or domain identifiers. The App Group allowlist contains only that
+  atomic summary, the non-financial language preference, and one bounded
+  data-free quick-action ingress file; there is no fourth key or file. An absent
+  summary means disabled, while corrupt, future, oversized, contradictory, or
+  negative-field content makes the whole generation stale. The extension is
+  read-only, the app canonicalizes stale storage, accessibility text sizes
+  reduce Home-widget information density, and ready-scene/reporting-day
+  lifecycle work publishes only one coherent current generation;
 - six bilingual, action-only App Shortcuts, interactive quick-action widget
   buttons, and a configurable iOS 18 Control Widget that open only the existing
-  allowlisted routes; Budget status remains passive and no platform action
-  carries or returns transaction details;
+  allowlisted routes; Budget Status and Smart Overview remain passive and no
+  platform action carries or returns transaction details;
 - file-backed password-protected `.moneyup` v2 backup with bounded authenticated
-  chunks, v1 compatibility, and transactional restore/rollback;
+  chunks, v1 compatibility, and transactional restore/rollback; before domain
+  load, restore reduces raw isolated-store rows in stable key order with
+  cooperative cancellation and bounded state rather than a second whole-book
+  snapshot. Per-plan ceilings are 4,096 usages, 4,096 reconciliations, 512
+  archive transitions, and `10,000 + 2 × maxPolicyRevisions` cadence work, with
+  100,000 aggregate ceilings and exact O(1) weekday counting;
 - preview-first local import for Qianji-style and generic CSV/TSV exports, with
   manual column mapping, reviewed account/category targets, duplicate
   detection, row-level issues, and atomic saving;
@@ -156,7 +184,7 @@ The beta includes:
 - an App Store privacy manifest, an in-app bilingual privacy and beta guide,
   backup exclusion for non-restorable ciphertext, and confirmations before
   permanent transaction, schedule, or holding deletion;
-- SQLCipher schema-8 normalized journal, receipt, budget-attribution,
+- SQLCipher schema-9 normalized journal, receipt, budget-attribution,
   intelligence, and exact store-metric indexes; compact balances, monthly
   rollover checkpoints, a bounded recent-activity cache, and on-demand
   History/Calendar/export/intelligence reads so normal unlock does not retain

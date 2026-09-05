@@ -2,24 +2,13 @@ import MoneyUpCore
 import SwiftUI
 import UIKit
 
-enum DashboardReportingClockPolicy {
-    /// Uses the book's reporting calendar so daylight-saving transitions and a
-    /// reporting zone that differs from the device zone never become a fixed
-    /// 86,400-second approximation.
-    static func nextRefresh(
-        after date: Date,
-        calendar: Calendar,
-        scheduledOccurrences: [Date] = []
-    ) -> Date? {
-        guard let dayEnd = calendar.dateInterval(of: .day, for: date)?.end else {
-            return nil
-        }
-        guard let nextOccurrence = scheduledOccurrences
-            .filter({ $0 >= date })
-            .min() else { return dayEnd }
-        // Move just beyond an occurrence because `occurrence(onOrAfter:)`
-        // intentionally includes an occurrence exactly equal to its argument.
-        return min(dayEnd, nextOccurrence.addingTimeInterval(1))
+enum DashboardAccountPolicy {
+    /// Today's cash position includes ordinary liquid assets and liabilities,
+    /// but a policy-gated allowance must never inflate unrestricted cash.
+    static func isIncludedInCashAndDebt(_ account: LedgerAccount) -> Bool {
+        guard account.systemRole == nil else { return false }
+        guard account.kind == .asset else { return true }
+        return account.accountType?.isUnrestrictedLiquidity ?? true
     }
 }
 
@@ -47,31 +36,24 @@ struct DashboardView: View {
     @Environment(AppModel.self) var model
     @Environment(\.scenePhase) var scenePhase
     @Environment(\.dynamicTypeSize) var dynamicTypeSize
+    @Environment(\.appReportingSnapshot) var sharedReportingSnapshot
     @AppStorage(MoneyAmountPrivacy.storageKey)
     var hidesAmounts = MoneyAmountPrivacy.defaultHidesAmounts
     @State var isShowingFlexibleTodayBreakdown = false
     @State var isEditingPins = false
-    @State var reportingNow: Date?
-    @State var reportingClockGeneration = 0
     let onOpenLog: () -> Void
     let onOpenPlan: () -> Void
 
     init(
-        initialReportingDate: Date? = nil,
         onOpenLog: @escaping () -> Void = {},
         onOpenPlan: @escaping () -> Void = {}
     ) {
-        _reportingNow = State(initialValue: initialReportingDate)
         self.onOpenLog = onOpenLog
         self.onOpenPlan = onOpenPlan
     }
 
-    var spendableAccounts: [LedgerAccount] {
-        model.allUserAccounts.filter {
-            $0.systemRole == nil
-                && $0.accountType != .brokerage
-                && $0.accountType != .investment
-        }
+    var cashAndDebtAccounts: [LedgerAccount] {
+        model.allUserAccounts.filter(DashboardAccountPolicy.isIncludedInCashAndDebt)
     }
 
     var cashDebtPosition: DerivedValue<CashDebtPosition> {
@@ -81,7 +63,7 @@ struct DashboardView: View {
         var cash = Decimal.zero
         var debt = Decimal.zero
         do {
-            for account in spendableAccounts where account.currency == currency {
+            for account in cashAndDebtAccounts where account.currency == currency {
                 switch model.displayBalanceResult(for: account) {
                 case let .available(balance):
                     if account.kind == .liability {
@@ -123,7 +105,7 @@ struct DashboardView: View {
         }
         var totals: [CurrencyCode: Decimal] = [:]
 
-        for account in spendableAccounts {
+        for account in cashAndDebtAccounts {
             guard let currency = account.currency, currency != base else { continue }
             switch model.displayBalanceResult(for: account) {
             case let .available(balance):
@@ -164,12 +146,13 @@ struct DashboardView: View {
     }
 
     var nextScheduledTransaction: UpcomingSchedule? {
-        let now = reportingDate
+        let snapshot = reportingSnapshot
+        let now = snapshot.instant
         return model.scheduledTransactions
             .compactMap { transaction in
                 transaction.occurrence(
                     onOrAfter: now,
-                    calendar: model.reportingCalendar
+                    calendar: snapshot.calendar
                 ).map {
                     UpcomingSchedule(transaction: transaction, occurrence: $0)
                 }
@@ -182,12 +165,7 @@ struct DashboardView: View {
     }
 
     var monthElapsed: Double {
-        let calendar = model.reportingCalendar
-        let now = reportingDate
-        guard let month = calendar.dateInterval(of: .month, for: now) else { return 0 }
-        let span = month.end.timeIntervalSince(month.start)
-        guard span > 0 else { return 0 }
-        return min(max(now.timeIntervalSince(month.start) / span, 0), 1)
+        reportingSnapshot.monthElapsed
     }
 
     func budgetRatio(

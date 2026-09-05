@@ -375,43 +375,29 @@ extension SQLCipherConnection {
     }
 
     func fetchAllRecords() throws -> [StoredRecordSnapshot] {
-        try withStatement(
-            """
-            SELECT collection, record_id, payload, updated_at
-            FROM records
-            ORDER BY collection ASC, record_id ASC;
-            """
-        ) { statement in
-            var records: [StoredRecordSnapshot] = []
-            var rowIndex = 0
-            while true {
-                if rowIndex.isMultiple(of: 256) {
-                    try Task.checkCancellation()
-                }
-                let result = sqlite3_step(statement)
-                if result == SQLITE_DONE { break }
-                guard result == SQLITE_ROW,
-                      let rawCollection = sqlite3_column_text(statement, 0),
-                      let rawID = sqlite3_column_text(statement, 1) else {
-                    throw makeError(code: result == SQLITE_ROW ? SQLITE_CORRUPT : result)
-                }
-                records.append(
-                    StoredRecordSnapshot(
-                        collection: String(cString: rawCollection),
-                        recordID: String(cString: rawID),
-                        payload: data(from: statement, column: 2),
-                        updatedAt: sqlite3_column_double(statement, 3)
-                    )
-                )
-                rowIndex += 1
-            }
-            return records
+        try reduceAllRecords(into: []) { records, record, _ in
+            records.append(record)
         }
     }
 
     func enumerateAllRecords(
         _ consume: (StoredRecordSnapshot) throws -> Void
     ) throws {
+        _ = try reduceAllRecords(into: ()) { _, record, _ in
+            try consume(record)
+        }
+    }
+
+    /// Walks the encrypted store in stable physical-key order while retaining
+    /// only the caller's bounded accumulator and the current row payload.
+    func reduceAllRecords<State>(
+        into initialState: State,
+        _ updateAccumulatingResult: (
+            inout State,
+            StoredRecordSnapshot,
+            Int
+        ) throws -> Void
+    ) throws -> State {
         try withStatement(
             """
             SELECT collection, record_id, payload, updated_at
@@ -419,6 +405,7 @@ extension SQLCipherConnection {
             ORDER BY collection ASC, record_id ASC;
             """
         ) { statement in
+            var state = initialState
             var rowIndex = 0
             while true {
                 if rowIndex.isMultiple(of: 256) {
@@ -433,14 +420,15 @@ extension SQLCipherConnection {
                         code: result == SQLITE_ROW ? SQLITE_CORRUPT : result
                     )
                 }
-                try consume(StoredRecordSnapshot(
+                try updateAccumulatingResult(&state, StoredRecordSnapshot(
                     collection: String(cString: rawCollection),
                     recordID: String(cString: rawID),
                     payload: data(from: statement, column: 2),
                     updatedAt: sqlite3_column_double(statement, 3)
-                ))
+                ), rowIndex)
                 rowIndex += 1
             }
+            return state
         }
     }
 }

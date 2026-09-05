@@ -14,6 +14,7 @@ private struct LoadedInvestmentValidationContext {
 extension AppModel {
     func clearDecodedState() {
         logicalBookRevision &+= 1
+        invalidateWidgetIntelligencePublication()
         intelligenceService.cancelPendingWork()
         journalProjectionRevision &+= 1
         journalDerivedRefreshTask?.cancel()
@@ -78,6 +79,21 @@ extension AppModel {
             $0.kind == .liability && $0.accountType == .loan
         }.map(\.id))
         let expenseCategoryIDs = Set(accounts.filter { $0.kind == .expense }.map(\.id))
+        let loadedAccountsByID = Dictionary(
+            accounts.map { ($0.id, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        let activePrepaidLinks = allowancePlans.compactMap { plan -> UUID? in
+            guard !plan.isArchived,
+                  plan.fundingMode == .prepaidAsset,
+                  Self.allowanceFundingCompatibility(
+                      for: plan,
+                      accountsByID: loadedAccountsByID
+                  ) == .current else {
+                return nil
+            }
+            return plan.linkedAccountID
+        }
         guard Set(loanPlans.map(\.id)).count == loanPlans.count,
               Set(loanPlans.map(\.accountID)).count == loanPlans.count,
               loanAccountIDs.isSubset(of: accountIDs),
@@ -91,21 +107,15 @@ extension AppModel {
                       ) ?? true)
               }),
               Set(allowancePlans.map(\.id)).count == allowancePlans.count,
+              Set(activePrepaidLinks).count == activePrepaidLinks.count,
               allowancePlans.allSatisfy({ plan in
-                  plan.eligibleCategoryIDs.isSubset(of: expenseCategoryIDs)
-                      && {
-                          switch plan.fundingMode {
-                          case .benefitLimit:
-                              return plan.linkedAccountID == nil
-                          case .prepaidAsset, .reimbursement:
-                              guard let id = plan.linkedAccountID,
-                                    let account = accounts.first(where: { $0.id == id }) else {
-                                  return false
-                              }
-                              return account.kind == .asset
-                                  && account.currency == plan.amount.currency
-                          }
-                      }()
+                  plan.policyRevisions.allSatisfy {
+                      $0.eligibleCategoryIDs.isSubset(of: expenseCategoryIDs)
+                  }
+                      && Self.allowanceFundingCompatibility(
+                          for: plan,
+                          accountsByID: loadedAccountsByID
+                      ) != .invalid
                       && plan.usages.allSatisfy { usage in
                           usage.categoryID.map(expenseCategoryIDs.contains) ?? true
                       }
@@ -124,6 +134,14 @@ extension AppModel {
             if let parentID = account.parentID, !accountIDs.contains(parentID) {
                 throw AppModelError.invalidBook
             }
+            if account.accountType == .restrictedAllowance {
+                guard account.kind == .asset,
+                      account.currency != nil,
+                      account.systemRole == nil,
+                      account.parentID == nil else {
+                    throw AppModelError.invalidBook
+                }
+            }
         }
         let expenseIDs = Set(accounts.filter { $0.kind == .expense }.map(\.id))
         guard budgetNodes.allSatisfy({ expenseIDs.contains($0.id) }) else {
@@ -136,7 +154,47 @@ extension AppModel {
         }) else {
             throw AppModelError.invalidBook
         }
+        try validateLoadedRestrictedAllowanceLedgers()
         return accountIDs
+    }
+
+    private func validateLoadedRestrictedAllowanceLedgers() throws {
+        let restrictedCurrencies = Dictionary(
+            uniqueKeysWithValues: accounts.compactMap { account in
+                guard account.accountType == .restrictedAllowance,
+                      let currency = account.currency else { return nil }
+                return (account.id, currency)
+            }
+        )
+        guard !restrictedCurrencies.isEmpty else { return }
+        if retainsCompleteJournal {
+            let restrictedIDs = Set(restrictedCurrencies.keys)
+            do {
+                let events = try RestrictedAllowanceLedgerInvariant.events(
+                    for: entries,
+                    restrictedAccountIDs: restrictedIDs,
+                    observesCancellation: true
+                )
+                try RestrictedAllowanceLedgerInvariant.requireValid(
+                    expectedCurrencies: restrictedCurrencies,
+                    events: events
+                )
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                throw AppModelError.invalidBook
+            }
+            return
+        }
+        guard case let .available(balances) = accountBalancesResult(),
+              restrictedCurrencies.allSatisfy({ accountID, currency in
+                  let accountBalances = balances[accountID] ?? [:]
+                  return accountBalances.allSatisfy {
+                      $0.key == currency || $0.value.isZero
+                  } && (accountBalances[currency]?.amount ?? .zero) >= .zero
+              }) else {
+            throw AppModelError.invalidBook
+        }
     }
 
     private func validateLoadedSchedules(
@@ -443,6 +501,7 @@ enum AppModelError: Error {
     case loanOverpayment
     case loanNotPaidOff
     case invalidAllowance
+    case allowanceClaimRemovalConfirmationRequired
     case invalidCategoryParent
 }
 
@@ -514,6 +573,10 @@ extension AppModelError: LocalizedError {
         case .loanOverpayment: AppLocalization.string("loan.error.overpayment")
         case .loanNotPaidOff: AppLocalization.string("loan.error.not_paid_off")
         case .invalidAllowance: AppLocalization.string("allowance.error.invalid")
+        case .allowanceClaimRemovalConfirmationRequired:
+            AppLocalization.string(
+                "allowance.claim.edit_invalidation_confirmation_detail"
+            )
         case .invalidCategoryParent:
             AppLocalization.string("lifecycle.error.invalid_parent")
         }

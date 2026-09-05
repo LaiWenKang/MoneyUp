@@ -445,6 +445,54 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testAuthenticationCancellationDoesNotReopenCrashClosedIngress()
+        async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let broker = MoneyUpQuickActionRouteBroker()
+        let staleEpoch = try broker.beginAuthoritativeBoundary()
+        broker.endAuthoritativeBoundary(staleEpoch)
+        let model = fixture.model(
+            quickActionRouteBroker: broker,
+            openDatabaseStore: { _ in
+                throw DatabaseKeyStoreError.authenticationCancelled
+            }
+        )
+
+        let didValidateStartup = await model.start()
+        XCTAssertFalse(didValidateStartup)
+
+        XCTAssertEqual(model.state, .locked)
+        XCTAssertTrue(broker.isAuthoritativeBoundaryActive)
+        XCTAssertFalse(broker.isAuthoritativeLifecycleBoundaryActive)
+        XCTAssertFalse(broker.submit(.expense))
+    }
+
+    @MainActor
+    func testStartupOpenFailureDoesNotReopenCrashClosedIngress()
+        async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let broker = MoneyUpQuickActionRouteBroker()
+        let staleEpoch = try broker.beginAuthoritativeBoundary()
+        broker.endAuthoritativeBoundary(staleEpoch)
+        let model = fixture.model(
+            quickActionRouteBroker: broker,
+            openDatabaseStore: { _ in throw PersistenceError.databaseClosed }
+        )
+
+        let didValidateStartup = await model.start()
+        XCTAssertFalse(didValidateStartup)
+
+        guard case .failed = model.state else {
+            return XCTFail("Database-open failure must expose recovery UI")
+        }
+        XCTAssertTrue(broker.isAuthoritativeBoundaryActive)
+        XCTAssertFalse(broker.isAuthoritativeLifecycleBoundaryActive)
+        XCTAssertFalse(broker.submit(.income))
+    }
+
+    @MainActor
     func testPendingKeyCliffReplacementDeniesLockedCapture() throws {
         let fixture = try AppModelFixture()
         defer { fixture.removeFiles() }
@@ -497,7 +545,9 @@ final class AppModelTests: XCTestCase {
             for: fixture.databaseURL
         )
         let events = EraseEventRecorder()
+        let broker = MoneyUpQuickActionRouteBroker()
         let model = fixture.model(
+            quickActionRouteBroker: broker,
             openDatabaseStore: { _ in
                 events.record("unexpected-open")
                 throw PersistenceError.databaseClosed
@@ -522,6 +572,9 @@ final class AppModelTests: XCTestCase {
                 for: fixture.databaseURL
             )
         )
+        XCTAssertTrue(broker.isAuthoritativeBoundaryActive)
+        XCTAssertFalse(broker.isAuthoritativeLifecycleBoundaryActive)
+        XCTAssertFalse(broker.submit(.expense))
     }
 
     @MainActor
@@ -544,7 +597,9 @@ final class AppModelTests: XCTestCase {
         )
         let events = EraseEventRecorder()
         let liveDatabaseURL = fixture.databaseURL
+        let broker = MoneyUpQuickActionRouteBroker()
         let model = fixture.model(
+            quickActionRouteBroker: broker,
             openDatabaseStore: { _ in
                 throw DatabaseKeyStoreError.missingDeviceBoundKey
             },
@@ -570,6 +625,9 @@ final class AppModelTests: XCTestCase {
                 for: fixture.databaseURL
             )
         )
+        XCTAssertTrue(broker.isAuthoritativeBoundaryActive)
+        XCTAssertFalse(broker.isAuthoritativeLifecycleBoundaryActive)
+        XCTAssertFalse(broker.submit(.income))
     }
 
     @MainActor
@@ -657,10 +715,8 @@ final class AppModelTests: XCTestCase {
             forKey: AppModel.lockedQuickCapturePreferenceKey
         )
         widgetStore.publish(
-            enabled: true,
-            percentUsed: 87,
-            periodToken: "2026-08",
-            validUntil: .distantFuture
+            .available(percentUsed: 87, validUntil: .distantFuture),
+            periodToken: "2026-08"
         )
         let broker = MoneyUpQuickActionRouteBroker()
         let model = fixture.model(
@@ -838,10 +894,8 @@ final class AppModelTests: XCTestCase {
             forKey: AppModel.lockedQuickCapturePreferenceKey
         )
         widgetStore.publish(
-            enabled: true,
-            percentUsed: 87,
-            periodToken: "2026-08",
-            validUntil: .distantFuture
+            .available(percentUsed: 87, validUntil: .distantFuture),
+            periodToken: "2026-08"
         )
         let liveDatabaseURL = fixture.databaseURL
         let model = fixture.model(
@@ -2081,10 +2135,8 @@ final class AppModelTests: XCTestCase {
             budgetWidgetSnapshotStore: widgetStore
         )
         widgetStore.publish(
-            enabled: true,
-            percentUsed: 73,
-            periodToken: "2026-08",
-            validUntil: .distantFuture
+            .available(percentUsed: 73, validUntil: .distantFuture),
+            periodToken: "2026-08"
         )
         try await model.encryptedBackup(
             to: archiveURL,
@@ -2172,8 +2224,12 @@ final class AppModelTests: XCTestCase {
         } catch is CancellationError {
             // Expected.
         }
-        XCTAssertFalse(
+        XCTAssertTrue(
             model.quickActionRouteBroker.isAuthoritativeBoundaryActive
+        )
+        XCTAssertFalse(
+            model.quickActionRouteBroker
+                .isAuthoritativeLifecycleBoundaryActive
         )
         XCTAssertTrue(keyEvents.snapshot().isEmpty)
         XCTAssertEqual(
@@ -2314,10 +2370,8 @@ final class AppModelTests: XCTestCase {
             services: services
         )
         widgetStore.publish(
-            enabled: true,
-            percentUsed: 62,
-            periodToken: "2026-08",
-            validUntil: .distantFuture
+            .available(percentUsed: 62, validUntil: .distantFuture),
+            periodToken: "2026-08"
         )
         try await model.encryptedBackup(
             to: archiveURL,
@@ -2426,10 +2480,8 @@ final class AppModelTests: XCTestCase {
             budgetWidgetSnapshotStore: widgetStore
         )
         widgetStore.publish(
-            enabled: true,
-            percentUsed: 42,
-            periodToken: "2026-08",
-            validUntil: .distantFuture
+            .available(percentUsed: 42, validUntil: .distantFuture),
+            periodToken: "2026-08"
         )
         try await model.encryptedBackup(
             to: archiveURL,
@@ -3119,10 +3171,8 @@ final class AppModelTests: XCTestCase {
             services: services
         )
         widgetStore.publish(
-            enabled: true,
-            percentUsed: 31,
-            periodToken: "2026-04",
-            validUntil: .distantFuture
+            .available(percentUsed: 31, validUntil: .distantFuture),
+            periodToken: "2026-04"
         )
         model.refreshIntelligence()
         XCTAssertEqual(services.intelligence.refreshInvocationCount, 1)
@@ -4177,10 +4227,8 @@ final class AppModelTests: XCTestCase {
             services: services
         )
         widgetStore.publish(
-            enabled: true,
-            percentUsed: 41,
-            periodToken: "2026-04",
-            validUntil: .distantFuture
+            .available(percentUsed: 41, validUntil: .distantFuture),
+            periodToken: "2026-04"
         )
         model.refreshIntelligence()
         XCTAssertEqual(services.intelligence.refreshInvocationCount, 1)
@@ -4508,6 +4556,7 @@ final class AppModelTests: XCTestCase {
             investmentHoldings: [],
             netWorthSnapshots: [],
             quickLogDraft: validIncomeDraft,
+            allowancePlans: [],
             in: fixture.store
         )
 
@@ -4522,6 +4571,7 @@ final class AppModelTests: XCTestCase {
                 investmentHoldings: [],
                 netWorthSnapshots: [],
                 quickLogDraft: mismatchedKind,
+                allowancePlans: [],
                 in: fixture.store
             )
             XCTFail("Expected a mismatched income split category to be rejected")
@@ -4540,6 +4590,7 @@ final class AppModelTests: XCTestCase {
                 investmentHoldings: [],
                 netWorthSnapshots: [],
                 quickLogDraft: duplicateLineIDs,
+                allowancePlans: [],
                 in: fixture.store
             )
             XCTFail("Expected duplicate draft split identities to be rejected")
@@ -4706,6 +4757,7 @@ final class AppModelTests: XCTestCase {
                     investmentHoldings: [],
                     netWorthSnapshots: [],
                     quickLogDraft: nil,
+                    allowancePlans: [],
                     in: fixture.store
                 )
                 XCTFail("Expected an invalid account hierarchy to be rejected")
@@ -4838,6 +4890,7 @@ final class AppModelTests: XCTestCase {
                     investmentHoldings: [],
                     netWorthSnapshots: [],
                     quickLogDraft: nil,
+                    allowancePlans: [],
                     in: fixture.store
                 )
                 XCTFail("Expected invalid system-account topology to be rejected")
@@ -4884,6 +4937,7 @@ final class AppModelTests: XCTestCase {
                 investmentHoldings: [],
                 netWorthSnapshots: [],
                 quickLogDraft: nil,
+                allowancePlans: [],
                 in: fixture.store
             )
             XCTFail("Expected ordinary ownership of a system account to fail")
@@ -4940,6 +4994,7 @@ final class AppModelTests: XCTestCase {
                 investmentHoldings: [],
                 netWorthSnapshots: [],
                 quickLogDraft: nil,
+                allowancePlans: [],
                 in: fixture.store
             )
             XCTFail("Expected a linked amount mismatch to be rejected")
@@ -4975,6 +5030,7 @@ final class AppModelTests: XCTestCase {
             investmentHoldings: [],
             netWorthSnapshots: [],
             quickLogDraft: nil,
+            allowancePlans: [],
             in: fixture.store
         )
         await fixture.store.close()
@@ -5016,6 +5072,7 @@ final class AppModelTests: XCTestCase {
                 investmentHoldings: [],
                 netWorthSnapshots: [],
                 quickLogDraft: nil,
+                allowancePlans: [],
                 in: fixture.store
             )
             XCTFail("Expected an unowned investment entry to be rejected")
@@ -5106,6 +5163,7 @@ final class AppModelTests: XCTestCase {
                 investmentHoldings: [],
                 netWorthSnapshots: [],
                 quickLogDraft: nil,
+                allowancePlans: [],
                 in: fixture.store
             )
             XCTFail("Expected an unaudited attribution remap to be rejected")
@@ -5133,6 +5191,7 @@ final class AppModelTests: XCTestCase {
             investmentHoldings: [],
             netWorthSnapshots: [],
             quickLogDraft: nil,
+            allowancePlans: [],
             in: fixture.store
         )
 
@@ -5163,6 +5222,7 @@ final class AppModelTests: XCTestCase {
                 investmentHoldings: [],
                 netWorthSnapshots: [],
                 quickLogDraft: nil,
+                allowancePlans: [],
                 in: fixture.store
             )
             XCTFail("Expected a coherent origin-context rewrite to be rejected")
@@ -5214,6 +5274,7 @@ final class AppModelTests: XCTestCase {
                 investmentHoldings: [],
                 netWorthSnapshots: [],
                 quickLogDraft: nil,
+                allowancePlans: [],
                 in: fixture.store
             )
             XCTFail("Expected altered attribution money to be rejected")
@@ -6327,6 +6388,59 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testValidatedEraseRestartReopensIngressAfterDeferredStartupLock()
+        async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let replacementDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("MoneyUpEraseDeferredLock-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: replacementDirectory) }
+        let replacementStore = try EncryptedRecordStore(
+            databaseURL: replacementDirectory.appendingPathComponent(
+                "replacement.sqlite"
+            ),
+            key: Data(repeating: 0x75, count: 32)
+        )
+        let startupGate = AsyncGate()
+        let broker = MoneyUpQuickActionRouteBroker()
+        let model = fixture.model(
+            lifecycleHooks: hooks(
+                pausing: .afterStartupTombstoneInspection,
+                at: startupGate
+            ),
+            dataEraseIntent: .none,
+            quickActionRouteBroker: broker,
+            openDatabaseStore: { _ in
+                OpenedDatabaseStore(
+                    store: replacementStore,
+                    unlockToFirstUsefulContentInterval: nil
+                )
+            },
+            restartAfterErase: true
+        )
+
+        let eraseTask = Task { @MainActor in
+            await model.eraseAllDataAndRestart()
+        }
+        let reachedStartup = await startupGate.waitUntilReached(
+            timeout: .seconds(5)
+        )
+        XCTAssertTrue(reachedStartup)
+        XCTAssertTrue(model.isStarting)
+        XCTAssertTrue(broker.isAuthoritativeLifecycleBoundaryActive)
+        model.lock()
+        XCTAssertTrue(model.lockAfterStart)
+        await startupGate.release()
+        await eraseTask.value
+
+        XCTAssertEqual(model.state, .locked)
+        XCTAssertFalse(broker.isAuthoritativeBoundaryActive)
+        XCTAssertFalse(broker.isAuthoritativeLifecycleBoundaryActive)
+        XCTAssertTrue(broker.submit(.expense))
+        await replacementStore.close()
+    }
+
+    @MainActor
     func testRestoreBoundaryClearsQueueWithoutViewCallback() async throws {
         let fixture = try AppModelFixture()
         defer { fixture.removeFiles() }
@@ -6379,7 +6493,8 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
-    func testCancelledRestoreBalancesQuickActionBoundary() async throws {
+    func testCancelledRestoreEndsEpochButKeepsDurableAdmissionClosed()
+    async throws {
         let fixture = try AppModelFixture()
         defer { fixture.removeFiles() }
         try await fixture.seed(
@@ -6410,16 +6525,19 @@ final class AppModelTests: XCTestCase {
             try await restoreTask.value
             XCTFail("Cancelled restore should stop before replacement")
         } catch is CancellationError {
-            // The defer must reopen the process-local action boundary.
+            // Cancellation ends the in-process epoch but cannot authorize
+            // reopening durable cross-process admission.
         }
-        XCTAssertFalse(broker.isAuthoritativeBoundaryActive)
+        XCTAssertTrue(broker.isAuthoritativeBoundaryActive)
+        XCTAssertFalse(broker.isAuthoritativeLifecycleBoundaryActive)
         XCTAssertNil(model.requestedQuickLogRequest)
         XCTAssertEqual(broker.handoffGeneration, oldRequest.generation + 1)
-        XCTAssertTrue(broker.submit(.expense))
+        XCTAssertFalse(broker.submit(.expense))
     }
 
     @MainActor
-    func testUnreadableStartupTombstoneClearsQueueAndBalancesBoundary() async throws {
+    func testUnreadableStartupTombstoneKeepsDurableAdmissionClosed()
+    async throws {
         let fixture = try AppModelFixture()
         defer { fixture.removeFiles() }
         let broker = MoneyUpQuickActionRouteBroker()
@@ -6457,8 +6575,9 @@ final class AppModelTests: XCTestCase {
         await startTask.value
 
         XCTAssertEqual(broker.pendingCount, 0)
-        XCTAssertFalse(broker.isAuthoritativeBoundaryActive)
-        XCTAssertTrue(broker.submit(.expense))
+        XCTAssertTrue(broker.isAuthoritativeBoundaryActive)
+        XCTAssertFalse(broker.isAuthoritativeLifecycleBoundaryActive)
+        XCTAssertFalse(broker.submit(.expense))
         guard case .failed = model.state else {
             XCTFail("Unreadable erase intent must fail startup closed")
             return
@@ -6589,11 +6708,12 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertEqual(events.snapshot(), ["intent-mark-attempted"])
         XCTAssertEqual(broker.pendingCount, 0)
-        XCTAssertFalse(broker.isAuthoritativeBoundaryActive)
+        XCTAssertTrue(broker.isAuthoritativeBoundaryActive)
+        XCTAssertFalse(broker.isAuthoritativeLifecycleBoundaryActive)
         XCTAssertEqual(broker.handoffGeneration, 1)
         XCTAssertNil(model.requestedQuickLogRequest)
         XCTAssertNil(model.presentedQuickLogRequest)
-        XCTAssertTrue(broker.submit(.income))
+        XCTAssertFalse(broker.submit(.income))
         guard case .failed = model.state else {
             XCTFail("A failed durable marker must abort erase")
             await fixture.store.close()
@@ -6740,6 +6860,7 @@ final class AppModelTests: XCTestCase {
         )
         let events = EraseEventRecorder()
         let captureStore = EraseRecordingLockedCaptureStore(events: events)
+        let broker = MoneyUpQuickActionRouteBroker()
         let intent = DataEraseIntentAccess(
             isPending: {
                 events.record("intent-checked")
@@ -6755,6 +6876,7 @@ final class AppModelTests: XCTestCase {
                 throw DatabaseKeyStoreError.authenticationCancelled
             },
             dataEraseIntent: intent,
+            quickActionRouteBroker: broker,
             openDatabaseStore: { _ in
                 events.record("database-opened")
                 return OpenedDatabaseStore(
@@ -6781,6 +6903,9 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(model.profile)
         XCTAssertTrue(model.accounts.isEmpty)
         XCTAssertTrue(FileManager.default.fileExists(atPath: fixture.databaseURL.path))
+        XCTAssertTrue(broker.isAuthoritativeBoundaryActive)
+        XCTAssertFalse(broker.isAuthoritativeLifecycleBoundaryActive)
+        XCTAssertFalse(broker.submit(.expense))
         await replacementStore.close()
     }
 
@@ -6796,6 +6921,7 @@ final class AppModelTests: XCTestCase {
             key: Data(repeating: 0x73, count: 32)
         )
         let events = EraseEventRecorder()
+        let broker = MoneyUpQuickActionRouteBroker()
         let intent = RetryingEraseIntent(
             events: events,
             clearFailuresRemaining: 1
@@ -6805,6 +6931,7 @@ final class AppModelTests: XCTestCase {
             lockedCaptureStore: captureStore,
             deleteDatabaseKey: { events.record("database-key-deleted") },
             dataEraseIntent: intent.access,
+            quickActionRouteBroker: broker,
             openDatabaseStore: { _ in
                 events.record("database-opened")
                 return OpenedDatabaseStore(
@@ -6824,11 +6951,16 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(intent.pending)
         XCTAssertEqual(events.snapshot().filter { $0 == "database-opened" }.count, 0)
         XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.databaseURL.path))
+        XCTAssertTrue(broker.isAuthoritativeBoundaryActive)
+        XCTAssertFalse(broker.isAuthoritativeLifecycleBoundaryActive)
+        XCTAssertFalse(broker.submit(.expense))
 
         await model.start()
 
         XCTAssertFalse(intent.pending)
         XCTAssertEqual(model.state, .onboarding)
+        XCTAssertFalse(broker.isAuthoritativeBoundaryActive)
+        XCTAssertTrue(broker.submit(.income))
         XCTAssertEqual(
             events.snapshot(),
             [
@@ -7911,7 +8043,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(invalidatedImpact.isUnused)
         XCTAssertEqual(
             widgetStore.read(now: now),
-            .needsBudget(validUntil: month.end)
+            .stale
         )
 
         await commitBoundaryGate.release()
@@ -8027,7 +8159,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(reached, "Precommit failure checkpoint timed out")
         XCTAssertEqual(
             widgetStore.read(now: now),
-            .needsBudget(validUntil: month.end)
+            .stale
         )
         await fixture.store.close()
         await commitBoundaryGate.release()
@@ -8041,6 +8173,158 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.entries, [prior])
         XCTAssertTrue(model.journalRecentEntriesAreCurrent)
         XCTAssertEqual(budgetWidgetPercent(widgetStore.read(now: now)), 25)
+    }
+
+    @MainActor
+    func testDerivedUnavailableBudgetPublishesStaleNotNeedsBudget() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let suiteName = "MoneyUpUnavailableBudgetWidget-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let widgetStore = BudgetWidgetSnapshotStore(defaults: defaults)
+        let now = try XCTUnwrap(
+            ISO8601DateFormatter().date(from: "2026-08-15T12:00:00Z")
+        )
+        let profile = UserProfile(
+            baseCurrency: fixture.sgd,
+            showsBudgetStatusWidget: true,
+            reportingTimeZoneIdentifier: "GMT"
+        )
+        let invalidBudget = BudgetNode(
+            id: fixture.food.id,
+            name: fixture.food.name,
+            limit: try Money(100, currency: fixture.usd),
+            purpose: .flexible
+        )
+        let model = fixture.model(
+            profile: profile,
+            budgetNodes: [invalidBudget],
+            budgetWidgetSnapshotStore: widgetStore,
+            currentDate: { now }
+        )
+
+        guard case .unavailable(.budgetCalculationFailed) =
+                model.budgetPlanSummaryThisMonthResult(asOf: now) else {
+            await fixture.store.close()
+            return XCTFail("Expected the invalid budget derivative to be unavailable")
+        }
+        XCTAssertEqual(widgetStore.read(now: now), .stale)
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testConfiguredZeroBudgetPublishesStableZeroBudgetState() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let suiteName = "MoneyUpZeroBudgetWidget-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let widgetStore = BudgetWidgetSnapshotStore(defaults: defaults)
+        let now = try XCTUnwrap(
+            ISO8601DateFormatter().date(from: "2026-08-15T12:00:00Z")
+        )
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "GMT"))
+        let month = try XCTUnwrap(calendar.dateInterval(of: .month, for: now))
+        let profile = UserProfile(
+            baseCurrency: fixture.sgd,
+            showsBudgetStatusWidget: true,
+            reportingTimeZoneIdentifier: "GMT"
+        )
+        let zeroBudget = BudgetNode(
+            id: fixture.food.id,
+            name: fixture.food.name,
+            limit: try Money(0, currency: fixture.sgd),
+            purpose: .flexible
+        )
+
+        let model = fixture.model(
+            profile: profile,
+            budgetNodes: [zeroBudget],
+            budgetWidgetSnapshotStore: widgetStore,
+            currentDate: { now }
+        )
+
+        guard case let .available(.some(summary)) =
+                model.budgetPlanSummaryThisMonthResult(asOf: now) else {
+            await fixture.store.close()
+            return XCTFail("Expected the configured zero budget to be available")
+        }
+        XCTAssertEqual(summary.limit.amount, .zero)
+        XCTAssertEqual(
+            widgetStore.read(now: now),
+            .zeroBudget(validUntil: month.end)
+        )
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testNegativeRolloverPublishesStableNegativeBudgetState() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let suiteName = "MoneyUpNegativeBudgetWidget-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let widgetStore = BudgetWidgetSnapshotStore(defaults: defaults)
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "GMT"))
+        let january = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026, month: 1, day: 1
+        )))
+        let februaryNow = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026, month: 2, day: 15, hour: 12
+        )))
+        let february = try XCTUnwrap(
+            calendar.dateInterval(of: .month, for: februaryNow)
+        )
+        let profile = UserProfile(
+            baseCurrency: fixture.sgd,
+            showsBudgetStatusWidget: true,
+            reportingTimeZoneIdentifier: "GMT"
+        )
+        let budget = BudgetNode(
+            id: fixture.food.id,
+            name: fixture.food.name,
+            limit: try Money(100, currency: fixture.sgd),
+            purpose: .flexible,
+            rolloverRule: .fullBalance,
+            rolloverStartedAt: january
+        )
+        let timeline = try BudgetConfigurationTimeline(
+            currency: fixture.sgd,
+            revisions: [BudgetConfigurationRevision(
+                effectiveMonth: january,
+                nodes: [budget]
+            )]
+        )
+        let overspend = try TransactionFactory.expense(
+            amount: try Money(250, currency: fixture.sgd),
+            paidFrom: fixture.wallet.id,
+            category: fixture.food.id,
+            occurredAt: january.addingTimeInterval(12 * 86_400)
+        )
+
+        let model = fixture.model(
+            profile: profile,
+            entries: [overspend],
+            budgetNodes: [budget],
+            budgetWidgetSnapshotStore: widgetStore,
+            budgetConfigurationTimeline: timeline,
+            currentDate: { februaryNow }
+        )
+
+        guard case let .available(.some(summary)) =
+                model.budgetPlanSummaryThisMonthResult(asOf: februaryNow) else {
+            await fixture.store.close()
+            return XCTFail("Expected the rollover budget to be available")
+        }
+        XCTAssertEqual(summary.limit.amount, -50)
+        XCTAssertEqual(
+            widgetStore.read(now: februaryNow),
+            .negativeBudget(validUntil: february.end)
+        )
+        await fixture.store.close()
     }
 
     @MainActor
@@ -9525,6 +9809,161 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.entries, [entry])
         let auditCount = try await fixture.store.count(in: .accountLifecycleAudit)
         XCTAssertEqual(auditCount, 0)
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testRestrictedAccountCannotMergeIntoOrdinaryCash() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let restricted = LedgerAccount(
+            name: "Meal card",
+            kind: .asset,
+            currency: fixture.sgd,
+            accountType: .restrictedAllowance
+        )
+        let equity = LedgerAccount(
+            name: "Opening balances",
+            kind: .equity,
+            systemRole: .openingBalances
+        )
+        let opening = try TransactionFactory.balanceAdjustment(
+            displayBalanceDelta: Money(10, currency: fixture.sgd),
+            accountID: restricted.id,
+            equityAccountID: equity.id,
+            accountIsLiability: false
+        )
+        let accounts = [fixture.wallet, restricted, equity, fixture.food]
+        try await fixture.seed(
+            profile: UserProfile(baseCurrency: fixture.sgd),
+            accounts: accounts,
+            entries: [opening]
+        )
+        let model = fixture.model(accounts: accounts, entries: [opening])
+
+        XCTAssertTrue(model.compatibleLifecycleTargets(for: restricted.id).isEmpty)
+        do {
+            try await model.mergeLedgerItem(
+                id: restricted.id,
+                into: fixture.wallet.id
+            )
+            XCTFail("Expected restricted source merge to be rejected")
+        } catch AppModelError.incompatibleLedgerItems {}
+
+        XCTAssertEqual(model.accounts, accounts)
+        XCTAssertEqual(model.entries, [opening])
+        try await assertStoredCount(accounts.count, in: .accounts, store: fixture.store)
+        try await assertStoredCount(1, in: .journalEntries, store: fixture.store)
+        try await assertStoredCount(0, in: .journalEntryRevisions, store: fixture.store)
+        try await assertStoredCount(0, in: .accountLifecycleAudit, store: fixture.store)
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testNegativeOrdinaryAccountCannotMergeIntoRestrictedAccount() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let ordinary = LedgerAccount(
+            name: "Overdrawn bank",
+            kind: .asset,
+            currency: fixture.sgd,
+            accountType: .bank
+        )
+        let restricted = LedgerAccount(
+            name: "Meal card",
+            kind: .asset,
+            currency: fixture.sgd,
+            accountType: .restrictedAllowance
+        )
+        let expense = try TransactionFactory.expense(
+            amount: Money(8, currency: fixture.sgd),
+            paidFrom: ordinary.id,
+            category: fixture.food.id,
+            occurredAt: Date()
+        )
+        let accounts = [ordinary, restricted, fixture.food]
+        try await fixture.seed(
+            profile: UserProfile(baseCurrency: fixture.sgd),
+            accounts: accounts,
+            entries: [expense]
+        )
+        let model = fixture.model(accounts: accounts, entries: [expense])
+
+        XCTAssertFalse(
+            model.compatibleLifecycleTargets(for: ordinary.id)
+                .contains { $0.id == restricted.id }
+        )
+        do {
+            try await model.mergeLedgerItem(
+                id: ordinary.id,
+                into: restricted.id
+            )
+            XCTFail("Expected restricted target merge to be rejected")
+        } catch AppModelError.incompatibleLedgerItems {}
+
+        XCTAssertEqual(model.accounts, accounts)
+        XCTAssertEqual(model.entries, [expense])
+        try await assertStoredCount(accounts.count, in: .accounts, store: fixture.store)
+        try await assertStoredCount(1, in: .journalEntries, store: fixture.store)
+        try await assertStoredCount(0, in: .journalEntryRevisions, store: fixture.store)
+        try await assertStoredCount(0, in: .accountLifecycleAudit, store: fixture.store)
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testScheduleReassignmentCannotTargetRestrictedAccount() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let ordinary = LedgerAccount(
+            name: "Daily bank",
+            kind: .asset,
+            currency: fixture.sgd,
+            accountType: .bank
+        )
+        let restricted = LedgerAccount(
+            name: "Meal card",
+            kind: .asset,
+            currency: fixture.sgd,
+            accountType: .restrictedAllowance
+        )
+        let schedule = try ScheduledTransaction(
+            kind: .expense,
+            name: "Groceries",
+            amount: Money(25, currency: fixture.sgd),
+            accountID: ordinary.id,
+            categoryAccountID: fixture.food.id,
+            nextOccurrence: Date(),
+            frequency: .weekly
+        )
+        let accounts = [ordinary, restricted, fixture.food]
+        try await fixture.seed(
+            profile: UserProfile(baseCurrency: fixture.sgd),
+            accounts: accounts,
+            schedules: [schedule]
+        )
+        let model = fixture.model(
+            accounts: accounts,
+            scheduledTransactions: [schedule]
+        )
+
+        do {
+            try await model.deleteLedgerItem(
+                id: ordinary.id,
+                reassigningTo: restricted.id
+            )
+            XCTFail("Expected restricted schedule target to be rejected")
+        } catch AppModelError.incompatibleLedgerItems {}
+
+        XCTAssertEqual(model.accounts, accounts)
+        XCTAssertEqual(model.scheduledTransactions, [schedule])
+        let storedSchedule = try await fixture.store.fetch(
+            ScheduledTransaction.self,
+            id: schedule.id.uuidString,
+            from: .scheduledTransactions
+        )
+        XCTAssertEqual(storedSchedule, schedule)
+        try await assertStoredCount(0, in: .accountLifecycleAudit, store: fixture.store)
+        try await assertStoredCount(0, in: .journalEntries, store: fixture.store)
         await fixture.store.close()
     }
 
@@ -11769,10 +12208,8 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(store.read(), .disabled)
         XCTAssertNil(defaults.object(forKey: "budgetStatus.amount"))
         XCTAssertNil(defaults.object(forKey: "widget.payee"))
-        XCTAssertEqual(
-            defaults.integer(forKey: "budgetStatus.schemaVersion"),
-            BudgetWidgetSnapshotStore.currentSchemaVersion
-        )
+        XCTAssertNotNil(defaults.data(forKey: BudgetWidgetSnapshotStore.payloadKey))
+        XCTAssertNil(defaults.object(forKey: "budgetStatus.schemaVersion"))
     }
 
     @MainActor
@@ -11857,10 +12294,11 @@ final class AppModelTests: XCTestCase {
         let snapshotStore = BudgetWidgetSnapshotStore(defaults: defaults)
         let now = Date(timeIntervalSinceReferenceDate: 800_000_000)
         snapshotStore.publish(
-            enabled: true,
-            percentUsed: 73,
-            periodToken: "2026-05",
-            validUntil: now.addingTimeInterval(3_600)
+            .available(
+                percentUsed: 73,
+                validUntil: now.addingTimeInterval(3_600)
+            ),
+            periodToken: "2026-05"
         )
         XCTAssertEqual(budgetWidgetPercent(snapshotStore.read(now: now)), 73)
 
@@ -13995,11 +14433,8 @@ extension AppModelTests {
 
         XCTAssertEqual(store.read(), .stale)
         XCTAssertNil(defaults.object(forKey: "budgetStatus.percentUsed"))
-        XCTAssertTrue(defaults.bool(forKey: "budgetStatus.enabled"))
-        XCTAssertEqual(
-            defaults.integer(forKey: "budgetStatus.schemaVersion"),
-            BudgetWidgetSnapshotStore.currentSchemaVersion
-        )
+        XCTAssertNil(defaults.object(forKey: "budgetStatus.enabled"))
+        XCTAssertNotNil(defaults.data(forKey: BudgetWidgetSnapshotStore.payloadKey))
     }
 
     func testVersionTwoWidgetStatusSurvivesInsightSchemaMigration() throws {
@@ -14023,10 +14458,7 @@ extension AppModelTests {
         )
         XCTAssertNil(store.readInsights(now: expiry.addingTimeInterval(-1)))
         XCTAssertNil(defaults.object(forKey: "budgetStatus.insight.future"))
-        XCTAssertEqual(
-            defaults.integer(forKey: "budgetStatus.schemaVersion"),
-            BudgetWidgetSnapshotStore.currentSchemaVersion
-        )
+        XCTAssertNotNil(defaults.data(forKey: BudgetWidgetSnapshotStore.payloadKey))
     }
 
     func testFutureWidgetSchemaIsDisabledAndUnknownPayloadIsScrubbed() throws {
@@ -14044,10 +14476,7 @@ extension AppModelTests {
         XCTAssertEqual(store.read(), .disabled)
         XCTAssertNil(defaults.object(forKey: "budgetStatus.percentUsed"))
         XCTAssertNil(defaults.object(forKey: "budgetStatus.futureAmount"))
-        XCTAssertEqual(
-            defaults.integer(forKey: "budgetStatus.schemaVersion"),
-            BudgetWidgetSnapshotStore.currentSchemaVersion
-        )
+        XCTAssertNotNil(defaults.data(forKey: BudgetWidgetSnapshotStore.payloadKey))
     }
 
     func testTamperedExtremeWidgetPercentClampsBeforeIntegerConversion() throws {
@@ -14055,10 +14484,7 @@ extension AppModelTests {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let expiry = Date().addingTimeInterval(60)
-        defaults.set(
-            BudgetWidgetSnapshotStore.currentSchemaVersion,
-            forKey: "budgetStatus.schemaVersion"
-        )
+        defaults.set(3, forKey: "budgetStatus.schemaVersion")
         defaults.set(true, forKey: "budgetStatus.enabled")
         defaults.set("available", forKey: "budgetStatus.state")
         defaults.set("2026-08", forKey: "budgetStatus.periodToken")
@@ -14099,10 +14525,8 @@ extension AppModelTests {
                 )
             )
             store.publish(
-                enabled: true,
-                percentUsed: 42,
-                periodToken: token,
-                validUntil: interval.end
+                .available(percentUsed: 42, validUntil: interval.end),
+                periodToken: token
             )
 
             XCTAssertEqual(
@@ -14126,10 +14550,8 @@ extension AppModelTests {
         let now = Date(timeIntervalSinceReferenceDate: 800_000_000)
         let expiry = now.addingTimeInterval(30)
         store.publish(
-            enabled: true,
-            percentUsed: nil,
-            periodToken: "2026-05",
-            validUntil: expiry
+            .needsBudget(validUntil: expiry),
+            periodToken: "2026-05"
         )
 
         XCTAssertEqual(store.read(now: now), .needsBudget(validUntil: expiry))
@@ -14424,6 +14846,7 @@ extension AppModelTests {
             model.allowancePlans.first?.usages.first?.linkedJournalEntryID,
             replacement.id
         )
+        XCTAssertEqual(model.allowancePlans.first?.usages.first?.amount.amount, 10)
         let stored = try await fixture.store.fetch(
             AllowancePlan.self,
             id: plan.id.uuidString,
@@ -14439,6 +14862,1683 @@ extension AppModelTests {
         await fixture.store.close()
     }
 
+    @MainActor
+    func testRestrictedAllowanceRejectsGenericTransfersButAcceptsIncomingFunding()
+    async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let restricted = LedgerAccount(
+            name: "Meal card",
+            kind: .asset,
+            currency: fixture.sgd,
+            accountType: .restrictedAllowance
+        )
+        let occurredAt = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let plan = try AllowancePlan(
+            name: "Meals",
+            amount: Money(5, currency: fixture.sgd),
+            cadence: .daily,
+            fundingMode: .prepaidAsset,
+            linkedAccountID: restricted.id,
+            startsAt: occurredAt.addingTimeInterval(-3_600),
+            eligibleCategoryIDs: [fixture.food.id]
+        )
+        let model = fixture.model(
+            accounts: [fixture.wallet, restricted, fixture.food],
+            allowancePlans: [plan],
+            currentDate: { occurredAt }
+        )
+
+        await assertThrowsAsync(try await model.logTransfer(
+            amount: 7,
+            sourceAccountID: restricted.id,
+            destinationAccountID: fixture.wallet.id,
+            occurredAt: occurredAt,
+            payee: nil,
+            note: nil
+        ))
+        let direct = try TransactionFactory.transfer(
+            amount: Money(7, currency: fixture.sgd),
+            from: restricted.id,
+            to: fixture.wallet.id,
+            occurredAt: occurredAt
+        )
+        await assertThrowsAsync(try await model.save(direct))
+        try await assertStoredCount(0, in: .journalEntries, store: fixture.store)
+
+        let loggedTopUpID = try await model.logTransfer(
+            amount: 7,
+            sourceAccountID: fixture.wallet.id,
+            destinationAccountID: restricted.id,
+            occurredAt: occurredAt,
+            payee: "Benefit top-up",
+            note: nil
+        )
+        let topUpID = try XCTUnwrap(loggedTopUpID)
+        XCTAssertEqual(model.displayBalanceResult(for: restricted).value?.amount, 7)
+        _ = try await model.logExpense(
+            amount: 5,
+            accountID: fixture.wallet.id,
+            categoryID: fixture.food.id,
+            occurredAt: occurredAt,
+            payee: "Lunch",
+            note: nil,
+            allowancePlanID: plan.id
+        )
+        XCTAssertEqual(model.displayBalanceResult(for: restricted).value?.amount, 2)
+        await assertThrowsAsync(try await model.deleteEntry(id: topUpID))
+        await assertThrowsAsync(try await model.replaceEntry(
+            id: topUpID,
+            kind: .transfer,
+            amount: 1,
+            destinationAmount: nil,
+            accountID: fixture.wallet.id,
+            destinationAccountID: restricted.id,
+            categoryID: nil,
+            occurredAt: occurredAt,
+            payee: "Reduced top-up",
+            note: nil
+        ))
+        XCTAssertEqual(model.displayBalanceResult(for: restricted).value?.amount, 2)
+        try await assertStoredCount(2, in: .journalEntries, store: fixture.store)
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testFutureTopUpCannotFundBackdatedPrepaidExpense() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let spendAt = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let restricted = LedgerAccount(
+            name: "Meal card",
+            kind: .asset,
+            currency: fixture.sgd,
+            accountType: .restrictedAllowance
+        )
+        let topUp = try TransactionFactory.transfer(
+            amount: Money(20, currency: fixture.sgd),
+            from: fixture.wallet.id,
+            to: restricted.id,
+            occurredAt: spendAt.addingTimeInterval(86_400)
+        )
+        let plan = try AllowancePlan(
+            name: "Meals",
+            amount: Money(20, currency: fixture.sgd),
+            cadence: .daily,
+            fundingMode: .prepaidAsset,
+            linkedAccountID: restricted.id,
+            startsAt: spendAt.addingTimeInterval(-3_600),
+            timeZoneIdentifier: "UTC",
+            eligibleCategoryIDs: [fixture.food.id]
+        )
+        let profile = UserProfile(baseCurrency: fixture.sgd)
+        let accounts = [fixture.wallet, restricted, fixture.food]
+        try await fixture.seed(
+            profile: profile,
+            accounts: accounts,
+            entries: [topUp],
+            allowancePlans: [plan]
+        )
+        let model = fixture.model(
+            profile: profile,
+            accounts: accounts,
+            entries: [topUp],
+            allowancePlans: [plan],
+            currentDate: { spendAt }
+        )
+
+        await assertThrowsAsync(try await model.logExpense(
+            amount: 5,
+            accountID: fixture.wallet.id,
+            categoryID: fixture.food.id,
+            occurredAt: spendAt,
+            allowancePlanID: plan.id
+        ))
+        XCTAssertTrue(model.allowancePlans[0].usages.isEmpty)
+        try await assertStoredCount(1, in: .journalEntries, store: fixture.store)
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testEarlyTopUpEditAndDeleteRejectHistoricalOverdraft() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let first = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let restricted = LedgerAccount(
+            name: "Meal card",
+            kind: .asset,
+            currency: fixture.sgd,
+            accountType: .restrictedAllowance
+        )
+        let earlyTopUp = try TransactionFactory.transfer(
+            amount: Money(5, currency: fixture.sgd),
+            from: fixture.wallet.id,
+            to: restricted.id,
+            occurredAt: first
+        )
+        let laterTopUp = try TransactionFactory.transfer(
+            amount: Money(10, currency: fixture.sgd),
+            from: fixture.wallet.id,
+            to: restricted.id,
+            occurredAt: first.addingTimeInterval(7_200)
+        )
+        let plan = try AllowancePlan(
+            name: "Meals",
+            amount: Money(100, currency: fixture.sgd),
+            cadence: .monthly,
+            fundingMode: .prepaidAsset,
+            linkedAccountID: restricted.id,
+            startsAt: first.addingTimeInterval(-3_600),
+            timeZoneIdentifier: "UTC",
+            eligibleCategoryIDs: [fixture.food.id]
+        )
+        let profile = UserProfile(baseCurrency: fixture.sgd)
+        let accounts = [fixture.wallet, restricted, fixture.food]
+        try await fixture.seed(
+            profile: profile,
+            accounts: accounts,
+            entries: [earlyTopUp, laterTopUp],
+            allowancePlans: [plan]
+        )
+        let model = fixture.model(
+            profile: profile,
+            accounts: accounts,
+            entries: [earlyTopUp, laterTopUp],
+            allowancePlans: [plan],
+            currentDate: { first.addingTimeInterval(3_600) }
+        )
+        _ = try await model.logExpense(
+            amount: 5,
+            accountID: fixture.wallet.id,
+            categoryID: fixture.food.id,
+            occurredAt: first.addingTimeInterval(3_600),
+            allowancePlanID: plan.id
+        )
+
+        await assertThrowsAsync(try await model.replaceEntry(
+            id: earlyTopUp.id,
+            kind: .transfer,
+            amount: 1,
+            destinationAmount: nil,
+            accountID: fixture.wallet.id,
+            destinationAccountID: restricted.id,
+            categoryID: nil,
+            occurredAt: first,
+            payee: nil,
+            note: nil
+        ))
+        await assertThrowsAsync(try await model.deleteEntry(id: earlyTopUp.id))
+        XCTAssertNotNil(model.entries.first { $0.id == earlyTopUp.id })
+        try await assertStoredCount(3, in: .journalEntries, store: fixture.store)
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testBoundaryFundingCannotBackfillConfirmedExpiry() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "UTC"))
+        let start = try XCTUnwrap(
+            calendar.date(from: DateComponents(year: 2026, month: 9, day: 1))
+        )
+        let restricted = LedgerAccount(
+            name: "Meal card",
+            kind: .asset,
+            currency: fixture.sgd,
+            accountType: .restrictedAllowance
+        )
+        let topUp = try TransactionFactory.transfer(
+            amount: Money(12, currency: fixture.sgd),
+            from: fixture.wallet.id,
+            to: restricted.id,
+            occurredAt: start.addingTimeInterval(86_400)
+        )
+        let plan = try AllowancePlan(
+            name: "Meals",
+            amount: Money(12, currency: fixture.sgd),
+            cadence: .daily,
+            fundingMode: .prepaidAsset,
+            linkedAccountID: restricted.id,
+            startsAt: start,
+            timeZoneIdentifier: "UTC"
+        )
+        let profile = UserProfile(baseCurrency: fixture.sgd)
+        let accounts = [fixture.wallet, restricted, fixture.food]
+        try await fixture.seed(
+            profile: profile,
+            accounts: accounts,
+            entries: [topUp],
+            allowancePlans: [plan]
+        )
+        let asOf = start.addingTimeInterval(93_600)
+        let model = fixture.model(
+            profile: profile,
+            accounts: accounts,
+            entries: [topUp],
+            allowancePlans: [plan],
+            currentDate: { asOf }
+        )
+        let requirement = try XCTUnwrap(plan.expiryRequirements(asOf: asOf).first)
+
+        await assertThrowsAsync(try await model.confirmExpiredPrepaidAllowance(
+            planID: plan.id,
+            requirement: requirement,
+            confirmedExpiredAmount: 1,
+            asOf: asOf
+        ))
+        XCTAssertTrue(model.allowancePlans[0].reconciliations.isEmpty)
+        try await assertStoredCount(1, in: .journalEntries, store: fixture.store)
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testRecoveryQuarantinesUnauthorizedEarlyDebitBeforeTemporalValidation()
+    async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let first = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let restricted = LedgerAccount(
+            name: "Malformed meal card",
+            kind: .asset,
+            currency: fixture.sgd,
+            accountType: .restrictedAllowance
+        )
+        let equity = LedgerAccount(
+            name: "Opening balances",
+            kind: .equity,
+            systemRole: .openingBalances
+        )
+        let earlyDebit = try TransactionFactory.balanceAdjustment(
+            displayBalanceDelta: Money(-5, currency: fixture.sgd),
+            accountID: restricted.id,
+            equityAccountID: equity.id,
+            accountIsLiability: false,
+            occurredAt: first
+        )
+        let laterFunding = try TransactionFactory.balanceAdjustment(
+            displayBalanceDelta: Money(10, currency: fixture.sgd),
+            accountID: restricted.id,
+            equityAccountID: equity.id,
+            accountIsLiability: false,
+            occurredAt: first.addingTimeInterval(3_600)
+        )
+        let plan = try AllowancePlan(
+            name: "Meals",
+            amount: Money(10, currency: fixture.sgd),
+            cadence: .daily,
+            fundingMode: .prepaidAsset,
+            linkedAccountID: restricted.id,
+            startsAt: first,
+            timeZoneIdentifier: "UTC"
+        )
+        let profile = UserProfile(baseCurrency: fixture.sgd)
+        let accounts = [restricted, equity, fixture.food]
+        try await fixture.seed(
+            profile: profile,
+            accounts: accounts,
+            entries: [earlyDebit, laterFunding],
+            allowancePlans: [plan]
+        )
+        let model = fixture.model(profile: profile, accounts: accounts)
+
+        try await model.reloadPersistedBookForTesting()
+
+        XCTAssertTrue(model.accounts.contains { $0.id == restricted.id })
+        XCTAssertTrue(model.allowancePlans.contains { $0.id == plan.id })
+        XCTAssertTrue(model.invalidJournalEntryIDs.contains(earlyDebit.id))
+        XCTAssertFalse(model.invalidJournalEntryIDs.contains(laterFunding.id))
+        XCTAssertTrue(model.recoveryIssues.contains {
+            $0 == "journal_entries/restricted-unauthorized-\(earlyDebit.id)"
+        })
+        let storedAccount = try await fixture.store.fetch(
+            LedgerAccount.self,
+            id: restricted.id.uuidString,
+            from: .accounts
+        )
+        let storedEntry = try await fixture.store.fetch(
+            JournalEntry.self,
+            id: earlyDebit.id.uuidString,
+            from: .journalEntries
+        )
+        let storedPlan = try await fixture.store.fetch(
+            AllowancePlan.self,
+            id: plan.id.uuidString,
+            from: .allowancePlans
+        )
+        XCTAssertNotNil(storedAccount)
+        XCTAssertNotNil(storedEntry)
+        XCTAssertNotNil(storedPlan)
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testRecoveryRechecksRestrictedFundingAfterHierarchyQuarantine()
+    async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let first = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let restricted = LedgerAccount(
+            name: "Meal card",
+            kind: .asset,
+            currency: fixture.sgd,
+            accountType: .restrictedAllowance
+        )
+        let orphanFunding = LedgerAccount(
+            name: "Orphan funding",
+            kind: .asset,
+            currency: fixture.sgd,
+            parentID: UUID()
+        )
+        let equity = LedgerAccount(
+            name: "Opening balances",
+            kind: .equity,
+            systemRole: .openingBalances
+        )
+        let funding = try TransactionFactory.transfer(
+            amount: Money(10, currency: fixture.sgd),
+            from: orphanFunding.id,
+            to: restricted.id,
+            occurredAt: first
+        )
+        var plan = try AllowancePlan(
+            name: "Meals",
+            amount: Money(10, currency: fixture.sgd),
+            cadence: .daily,
+            fundingMode: .prepaidAsset,
+            linkedAccountID: restricted.id,
+            startsAt: first,
+            timeZoneIdentifier: "UTC",
+            eligibleCategoryIDs: [fixture.food.id]
+        )
+        let debit = try JournalEntry(
+            kind: .expense,
+            occurredAt: first.addingTimeInterval(3_600),
+            postings: [
+                Posting(
+                    accountID: fixture.food.id,
+                    money: Money(5, currency: fixture.sgd)
+                ),
+                Posting(
+                    accountID: restricted.id,
+                    money: Money(-5, currency: fixture.sgd)
+                )
+            ]
+        )
+        plan = try plan.addingUsage(AllowanceUsage(
+            amount: Money(5, currency: fixture.sgd),
+            occurredAt: debit.occurredAt,
+            categoryID: fixture.food.id,
+            linkedJournalEntryID: debit.id,
+            policyRevisionID: plan.policy(at: debit.occurredAt)?.id
+        ))
+        let profile = UserProfile(baseCurrency: fixture.sgd)
+        let accounts = [restricted, orphanFunding, equity, fixture.food]
+        try await fixture.seed(
+            profile: profile,
+            accounts: accounts,
+            entries: [funding, debit],
+            allowancePlans: [plan]
+        )
+        let model = fixture.model(profile: profile, accounts: accounts)
+
+        try await model.reloadPersistedBookForTesting()
+
+        XCTAssertFalse(model.accounts.contains { $0.id == orphanFunding.id })
+        XCTAssertFalse(model.accounts.contains { $0.id == restricted.id })
+        XCTAssertFalse(model.allowancePlans.contains { $0.id == plan.id })
+        XCTAssertTrue(model.invalidJournalEntryIDs.isSuperset(of: [
+            funding.id, debit.id
+        ]))
+        XCTAssertTrue(model.recoveryIssues.contains {
+            $0.hasPrefix("accounts/restricted-invalid-history-")
+        })
+        let storedRestricted = try await fixture.store.fetch(
+            LedgerAccount.self,
+            id: restricted.id.uuidString,
+            from: .accounts
+        )
+        let storedFunding = try await fixture.store.fetch(
+            JournalEntry.self,
+            id: funding.id.uuidString,
+            from: .journalEntries
+        )
+        XCTAssertNotNil(storedRestricted)
+        XCTAssertNotNil(storedFunding)
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testRecoveryRechecksRestrictedFundingAfterInvestmentMismatch()
+    async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let first = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let brokerage = LedgerAccount(
+            name: "Brokerage",
+            kind: .asset,
+            currency: fixture.sgd,
+            accountType: .brokerage
+        )
+        let position = LedgerAccount(
+            name: "Position",
+            kind: .asset,
+            currency: fixture.sgd,
+            systemRole: .investmentPosition
+        )
+        let restricted = LedgerAccount(
+            name: "Meal card",
+            kind: .asset,
+            currency: fixture.sgd,
+            accountType: .restrictedAllowance
+        )
+        let equity = LedgerAccount(
+            name: "Opening balances",
+            kind: .equity,
+            systemRole: .openingBalances
+        )
+        let openingID = UUID()
+        var holding = try InvestmentHolding(
+            accountID: brokerage.id,
+            symbol: "MEAL",
+            name: "Meal Co",
+            quantity: 0,
+            positionAccountID: position.id
+        )
+        try holding.recordPurchase(
+            quantity: 1,
+            unitCost: Money(100, currency: fixture.sgd),
+            occurredAt: first,
+            entryID: openingID
+        )
+        try holding.recordPrice(
+            Money(100, currency: fixture.sgd),
+            asOf: first,
+            entryID: openingID
+        )
+        let opening = try TransactionFactory.investmentOpening(
+            positionValue: Money(100, currency: fixture.sgd),
+            positionAccountID: position.id,
+            equityAccountID: equity.id,
+            occurredAt: first,
+            id: openingID
+        )
+        let funding = try TransactionFactory.transfer(
+            amount: Money(10, currency: fixture.sgd),
+            from: position.id,
+            to: restricted.id,
+            occurredAt: first.addingTimeInterval(3_600)
+        )
+        var plan = try AllowancePlan(
+            name: "Meals",
+            amount: Money(10, currency: fixture.sgd),
+            cadence: .daily,
+            fundingMode: .prepaidAsset,
+            linkedAccountID: restricted.id,
+            startsAt: first,
+            timeZoneIdentifier: "UTC",
+            eligibleCategoryIDs: [fixture.food.id]
+        )
+        let debit = try JournalEntry(
+            kind: .expense,
+            occurredAt: first.addingTimeInterval(7_200),
+            postings: [
+                Posting(
+                    accountID: fixture.food.id,
+                    money: Money(10, currency: fixture.sgd)
+                ),
+                Posting(
+                    accountID: restricted.id,
+                    money: Money(-10, currency: fixture.sgd)
+                )
+            ]
+        )
+        plan = try plan.addingUsage(AllowanceUsage(
+            amount: Money(10, currency: fixture.sgd),
+            occurredAt: debit.occurredAt,
+            categoryID: fixture.food.id,
+            linkedJournalEntryID: debit.id,
+            policyRevisionID: plan.policy(at: debit.occurredAt)?.id
+        ))
+        let profile = UserProfile(baseCurrency: fixture.sgd)
+        let accounts = [brokerage, position, restricted, equity, fixture.food]
+        try await fixture.seed(
+            profile: profile,
+            accounts: accounts,
+            entries: [opening, funding, debit],
+            holdings: [holding],
+            allowancePlans: [plan]
+        )
+        let model = fixture.model(profile: profile, accounts: accounts)
+
+        try await model.reloadPersistedBookForTesting()
+
+        XCTAssertFalse(model.investmentHoldings.contains { $0.id == holding.id })
+        XCTAssertFalse(model.accounts.contains { $0.id == position.id })
+        XCTAssertFalse(model.accounts.contains { $0.id == restricted.id })
+        XCTAssertFalse(model.allowancePlans.contains { $0.id == plan.id })
+        XCTAssertTrue(model.invalidJournalEntryIDs.isSuperset(of: [
+            opening.id, funding.id, debit.id
+        ]))
+        let storedHolding = try await fixture.store.fetch(
+            InvestmentHolding.self,
+            id: holding.id.uuidString,
+            from: .investmentHoldings
+        )
+        let storedRestricted = try await fixture.store.fetch(
+            LedgerAccount.self,
+            id: restricted.id.uuidString,
+            from: .accounts
+        )
+        XCTAssertNotNil(storedHolding)
+        XCTAssertNotNil(storedRestricted)
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testRecoveryUsesLiveJournalIDsForScheduleLoanAndAllowanceLinks()
+    async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "UTC"))
+        let first = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let orphan = LedgerAccount(
+            name: "Orphan source",
+            kind: .asset,
+            currency: fixture.sgd,
+            parentID: UUID()
+        )
+        let loanAccount = LedgerAccount(
+            name: "Loan",
+            kind: .liability,
+            currency: fixture.sgd,
+            accountType: .loan
+        )
+        let linkedEntry = try TransactionFactory.transfer(
+            amount: Money(1, currency: fixture.sgd),
+            from: orphan.id,
+            to: fixture.wallet.id,
+            occurredAt: first
+        )
+        var schedule = try ScheduledTransaction(
+            kind: .expense,
+            name: "Linked schedule",
+            amount: Money(1, currency: fixture.sgd),
+            accountID: fixture.wallet.id,
+            categoryAccountID: fixture.food.id,
+            nextOccurrence: first,
+            frequency: .weekly,
+            recurrenceTimeZoneIdentifier: "UTC"
+        )
+        try schedule.resolveCurrent(
+            occurrenceID: schedule.currentOccurrenceID,
+            as: .matched,
+            linkedEntryID: linkedEntry.id,
+            at: first.addingTimeInterval(60),
+            calendar: calendar
+        )
+        let activity = try LoanActivity(
+            kind: .drawdown,
+            occurredAt: first,
+            principal: Money(1, currency: fixture.sgd),
+            interest: Money.zero(currency: fixture.sgd),
+            fees: Money.zero(currency: fixture.sgd),
+            journalEntryID: linkedEntry.id
+        )
+        let loan = try LoanPlan(
+            accountID: loanAccount.id,
+            name: "Linked loan",
+            originalPrincipal: Money(1, currency: fixture.sgd),
+            openedAt: first,
+            activities: [activity]
+        )
+        var allowance = try AllowancePlan(
+            name: "Linked allowance",
+            amount: Money(1, currency: fixture.sgd),
+            cadence: .daily,
+            startsAt: first,
+            timeZoneIdentifier: "UTC",
+            eligibleCategoryIDs: [fixture.food.id]
+        )
+        allowance = try allowance.addingUsage(AllowanceUsage(
+            amount: Money(1, currency: fixture.sgd),
+            occurredAt: first,
+            categoryID: fixture.food.id,
+            linkedJournalEntryID: linkedEntry.id,
+            policyRevisionID: allowance.policy(at: first)?.id
+        ))
+        let profile = UserProfile(baseCurrency: fixture.sgd)
+        let accounts = [fixture.wallet, fixture.food, orphan, loanAccount]
+        try await fixture.seed(
+            profile: profile,
+            accounts: accounts,
+            entries: [linkedEntry],
+            schedules: [schedule],
+            loanPlans: [loan],
+            allowancePlans: [allowance]
+        )
+        let model = fixture.model(profile: profile, accounts: accounts)
+
+        try await model.reloadPersistedBookForTesting()
+
+        XCTAssertTrue(model.invalidJournalEntryIDs.contains(linkedEntry.id))
+        XCTAssertFalse(model.scheduledTransactions.contains { $0.id == schedule.id })
+        XCTAssertFalse(model.loanPlans.contains { $0.id == loan.id })
+        XCTAssertFalse(model.allowancePlans.contains { $0.id == allowance.id })
+        XCTAssertTrue(model.recoveryIssues.contains {
+            $0.hasPrefix("scheduled_transactions/orphan-")
+        })
+        XCTAssertTrue(model.recoveryIssues.contains {
+            $0.hasPrefix("loan_plans/orphan-")
+        })
+        XCTAssertTrue(model.recoveryIssues.contains {
+            $0.hasPrefix("allowance_plans/orphan-")
+        })
+        let storedSchedule = try await fixture.store.fetch(
+            ScheduledTransaction.self,
+            id: schedule.id.uuidString,
+            from: .scheduledTransactions
+        )
+        let storedLoan = try await fixture.store.fetch(
+            LoanPlan.self,
+            id: loan.id.uuidString,
+            from: .loanPlans
+        )
+        let storedAllowance = try await fixture.store.fetch(
+            AllowancePlan.self,
+            id: allowance.id.uuidString,
+            from: .allowancePlans
+        )
+        XCTAssertNotNil(storedSchedule)
+        XCTAssertNotNil(storedLoan)
+        XCTAssertNotNil(storedAllowance)
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testStrictRestoreRejectsRestrictedHistoricalOverdraft() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let first = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let restricted = LedgerAccount(
+            name: "Malformed meal card",
+            kind: .asset,
+            currency: fixture.sgd,
+            accountType: .restrictedAllowance
+        )
+        let equity = LedgerAccount(
+            name: "Opening balances",
+            kind: .equity,
+            systemRole: .openingBalances
+        )
+        let earlyDebit = try TransactionFactory.balanceAdjustment(
+            displayBalanceDelta: Money(-5, currency: fixture.sgd),
+            accountID: restricted.id,
+            equityAccountID: equity.id,
+            accountIsLiability: false,
+            occurredAt: first
+        )
+        let laterFunding = try TransactionFactory.balanceAdjustment(
+            displayBalanceDelta: Money(10, currency: fixture.sgd),
+            accountID: restricted.id,
+            equityAccountID: equity.id,
+            accountIsLiability: false,
+            occurredAt: first.addingTimeInterval(3_600)
+        )
+        let profile = UserProfile(baseCurrency: fixture.sgd)
+        let accounts = [restricted, equity, fixture.food]
+        try await fixture.seed(
+            profile: profile,
+            accounts: accounts,
+            entries: [earlyDebit, laterFunding]
+        )
+
+        await assertThrowsAsync(try await RestoreCandidateValidator
+            .validateRelationships(
+                profile: profile,
+                accounts: accounts,
+                budgetNodes: [],
+                scheduledTransactions: [],
+                investmentHoldings: [],
+                netWorthSnapshots: [],
+                quickLogDraft: nil,
+                allowancePlans: [],
+                in: fixture.store
+            ))
+        let storedEntry = try await fixture.store.fetch(
+            JournalEntry.self,
+            id: earlyDebit.id.uuidString,
+            from: .journalEntries
+        )
+        XCTAssertNotNil(storedEntry)
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testRestrictedAllowanceRejectsScheduledExpenseAtEveryWriteBoundary()
+    async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let restricted = LedgerAccount(
+            name: "Meal card",
+            kind: .asset,
+            currency: fixture.sgd,
+            accountType: .restrictedAllowance
+        )
+        let profile = UserProfile(baseCurrency: fixture.sgd)
+        let schedule = try ScheduledTransaction(
+            kind: .expense,
+            name: "Legacy meal schedule",
+            amount: Money(5, currency: fixture.sgd),
+            accountID: restricted.id,
+            categoryAccountID: fixture.food.id,
+            nextOccurrence: Date(timeIntervalSinceReferenceDate: 800_000_000),
+            frequency: .daily
+        )
+        let accounts = [fixture.wallet, restricted, fixture.food]
+        try await fixture.seed(
+            profile: profile,
+            accounts: accounts,
+            schedules: [schedule]
+        )
+        let model = fixture.model(profile: profile, accounts: accounts)
+        try await model.reloadPersistedBookForTesting()
+        XCTAssertEqual(model.scheduledTransactions.map(\.id), [schedule.id])
+        XCTAssertFalse(model.recoveryIssues.contains {
+            $0.contains("scheduled_transactions/orphan")
+        })
+
+        await assertThrowsAsync(try await model.postScheduledOccurrence(
+            scheduleID: schedule.id,
+            occurrenceID: schedule.currentOccurrenceID
+        ))
+        await assertThrowsAsync(try await model.updateScheduledTransaction(
+            id: schedule.id,
+            kind: .expense,
+            name: schedule.name,
+            amount: schedule.amount,
+            accountID: restricted.id,
+            categoryAccountID: fixture.food.id,
+            nextOccurrence: schedule.nextOccurrence,
+            frequency: schedule.frequency
+        ))
+        let newSchedule = try ScheduledTransaction(
+            kind: .expense,
+            name: "New bypass",
+            amount: Money(3, currency: fixture.sgd),
+            accountID: restricted.id,
+            categoryAccountID: fixture.food.id,
+            nextOccurrence: schedule.nextOccurrence,
+            frequency: .weekly
+        )
+        await assertThrowsAsync(try await model.addScheduledTransaction(newSchedule))
+        XCTAssertEqual(model.scheduledTransactions.first?.currentOccurrenceIndex, 0)
+        try await assertStoredCount(0, in: .journalEntries, store: fixture.store)
+        try await assertStoredCount(1, in: .scheduledTransactions, store: fixture.store)
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testRestrictedAllowanceRejectsBalanceReductionAndNegativeOpening()
+    async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let restricted = LedgerAccount(
+            name: "Meal card",
+            kind: .asset,
+            currency: fixture.sgd,
+            accountType: .restrictedAllowance
+        )
+        let equity = LedgerAccount(
+            name: "Opening balances",
+            kind: .equity,
+            systemRole: .openingBalances
+        )
+        let opening = try TransactionFactory.balanceAdjustment(
+            displayBalanceDelta: Money(10, currency: fixture.sgd),
+            accountID: restricted.id,
+            equityAccountID: equity.id,
+            accountIsLiability: false
+        )
+        let model = fixture.model(
+            accounts: [restricted, equity, fixture.food],
+            entries: [opening]
+        )
+
+        await assertThrowsAsync(try await model.setAccountBalance(
+            accountID: restricted.id,
+            displayBalance: 5
+        ))
+        await assertThrowsAsync(try await model.addAccount(
+            name: "Negative benefit",
+            type: .restrictedAllowance,
+            currencyCode: fixture.sgd.value,
+            startingBalance: -1
+        ))
+        await assertThrowsAsync(try await model.completeOnboarding(
+            baseCurrencyCode: fixture.sgd.value,
+            accountName: "Negative benefit",
+            accountType: .restrictedAllowance,
+            startingBalance: -1
+        ))
+        XCTAssertNil(parsedOpeningBalance(
+            from: "-1",
+            accountType: .restrictedAllowance
+        ))
+        XCTAssertNil(validatedManagedBalance(
+            -1,
+            accountKind: .asset,
+            accountType: .restrictedAllowance,
+            currentDisplayBalance: 10
+        ))
+        XCTAssertNil(validatedManagedBalance(
+            5,
+            accountKind: .asset,
+            accountType: .restrictedAllowance,
+            currentDisplayBalance: 10
+        ))
+        XCTAssertNil(validatedManagedBalance(
+            10,
+            accountKind: .asset,
+            accountType: .restrictedAllowance,
+            currentDisplayBalance: nil
+        ))
+        XCTAssertNil(validatedManagedBalance(
+            0,
+            accountKind: .asset,
+            accountType: .restrictedAllowance,
+            currentDisplayBalance: -5
+        ))
+        XCTAssertEqual(validatedManagedBalance(
+            10,
+            accountKind: .asset,
+            accountType: .restrictedAllowance,
+            currentDisplayBalance: 10
+        ), 10)
+        XCTAssertEqual(validatedManagedBalance(
+            15,
+            accountKind: .asset,
+            accountType: .restrictedAllowance,
+            currentDisplayBalance: 10
+        ), 15)
+        XCTAssertEqual(model.displayBalanceResult(for: restricted).value?.amount, 10)
+        try await assertStoredCount(0, in: .journalEntries, store: fixture.store)
+
+        let malformed = try TransactionFactory.balanceAdjustment(
+            displayBalanceDelta: Money(-5, currency: fixture.sgd),
+            accountID: restricted.id,
+            equityAccountID: equity.id,
+            accountIsLiability: false
+        )
+        let malformedModel = fixture.model(
+            accounts: [restricted, equity, fixture.food],
+            entries: [malformed]
+        )
+        await assertThrowsAsync(try await malformedModel.setAccountBalance(
+            accountID: restricted.id,
+            displayBalance: 0
+        ))
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testPrepaidAllowancePresentationUsesLowerAuthoritativeCardBalance()
+    async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let now = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let restricted = LedgerAccount(
+            name: "Meal card",
+            kind: .asset,
+            currency: fixture.sgd,
+            accountType: .restrictedAllowance
+        )
+        let equity = LedgerAccount(
+            name: "Opening balances",
+            kind: .equity,
+            systemRole: .openingBalances
+        )
+        let opening = try TransactionFactory.balanceAdjustment(
+            displayBalanceDelta: Money(5, currency: fixture.sgd),
+            accountID: restricted.id,
+            equityAccountID: equity.id,
+            accountIsLiability: false,
+            occurredAt: now.addingTimeInterval(-1)
+        )
+        let plan = try AllowancePlan(
+            name: "Meals",
+            amount: Money(20, currency: fixture.sgd),
+            cadence: .daily,
+            fundingMode: .prepaidAsset,
+            linkedAccountID: restricted.id,
+            startsAt: now.addingTimeInterval(-3_600),
+            timeZoneIdentifier: "UTC"
+        )
+        let model = fixture.model(
+            profile: UserProfile(
+                baseCurrency: fixture.sgd,
+                showsBudgetStatusWidget: true,
+                reportingTimeZoneIdentifier: "UTC"
+            ),
+            accounts: [restricted, equity, fixture.food],
+            entries: [opening],
+            allowancePlans: [plan],
+            currentDate: { now }
+        )
+
+        let presentation = model.allowancePresentation(plan, asOf: now)
+        XCTAssertEqual(presentation.remainingMeaning, .prepaidSpendable)
+        XCTAssertEqual(presentation.policySummary?.remaining.amount, 20)
+        XCTAssertEqual(presentation.remaining.value?.amount, 5)
+        XCTAssertEqual(
+            model.widgetInsights(asOf: now)?.allowancePercentRemaining,
+            25
+        )
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testPrepaidAllowancePresentationRetainsPolicyWhenLedgerUnavailable()
+    async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let now = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let restricted = LedgerAccount(
+            name: "Meal card",
+            kind: .asset,
+            currency: fixture.sgd,
+            accountType: .restrictedAllowance
+        )
+        let plan = try AllowancePlan(
+            name: "Meals",
+            amount: Money(20, currency: fixture.sgd),
+            cadence: .daily,
+            fundingMode: .prepaidAsset,
+            linkedAccountID: restricted.id,
+            startsAt: now.addingTimeInterval(-3_600),
+            timeZoneIdentifier: "UTC"
+        )
+        let model = fixture.model(
+            accounts: [restricted, fixture.food],
+            allowancePlans: [plan],
+            retainsCompleteJournal: false,
+            currentDate: { now }
+        )
+
+        let presentation = model.allowancePresentation(plan, asOf: now)
+        XCTAssertEqual(presentation.policySummary?.remaining.amount, 20)
+        XCTAssertNil(presentation.remaining.value)
+        guard case .unavailable(.appNotReady) = presentation.remaining else {
+            await fixture.store.close()
+            return XCTFail("Expected prepaid spendable value to fail closed")
+        }
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testAllowancePresentationSeparatesActiveAndScheduledPolicy() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "UTC"))
+        let start = try XCTUnwrap(
+            calendar.date(from: DateComponents(year: 2026, month: 9, day: 1))
+        )
+        let now = start.addingTimeInterval(6 * 3_600)
+        var plan = try AllowancePlan(
+            name: "Meals",
+            amount: Money(10, currency: fixture.sgd),
+            cadence: .daily,
+            startsAt: start,
+            timeZoneIdentifier: "UTC"
+        )
+        plan = try plan.addingUsage(AllowanceUsage(
+            amount: Money(2, currency: fixture.sgd),
+            occurredAt: start.addingTimeInterval(3_600),
+            policyRevisionID: plan.policy(at: start)?.id
+        ))
+        plan = try plan.applyingUpdate(
+            AllowancePlan(
+                id: plan.id,
+                name: plan.name,
+                amount: Money(20, currency: fixture.sgd),
+                cadence: .monthly,
+                startsAt: start,
+                timeZoneIdentifier: "UTC"
+            ),
+            effectiveAt: now
+        )
+        let model = fixture.model(
+            allowancePlans: [plan],
+            currentDate: { now }
+        )
+
+        let presentation = model.allowancePresentation(plan, asOf: now)
+        XCTAssertEqual(
+            presentation.remainingMeaning,
+            .benefitPolicyCapacity
+        )
+        XCTAssertEqual(presentation.activePolicy?.amount.amount, 10)
+        XCTAssertEqual(presentation.activePolicy?.cadence, .daily)
+        XCTAssertEqual(presentation.pendingPolicy?.amount.amount, 20)
+        XCTAssertEqual(presentation.pendingPolicy?.cadence, .monthly)
+        XCTAssertEqual(
+            presentation.pendingPolicy?.effectiveAt,
+            start.addingTimeInterval(86_400)
+        )
+        XCTAssertEqual(presentation.remaining.value?.amount, 8)
+
+        let reimbursement = try AllowancePlan(
+            name: "Travel claim",
+            amount: Money(50, currency: fixture.sgd),
+            cadence: .monthly,
+            fundingMode: .reimbursement,
+            startsAt: start,
+            timeZoneIdentifier: "UTC"
+        )
+        XCTAssertEqual(
+            model.allowancePresentation(reimbursement, asOf: now)
+                .remainingMeaning,
+            .reimbursementClaimCapacity
+        )
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testRestrictedAllowanceRejectsLoanImportAndPreferredAccountUse()
+    async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let restricted = LedgerAccount(
+            name: "Meal card",
+            kind: .asset,
+            currency: fixture.sgd,
+            accountType: .restrictedAllowance
+        )
+        let loanAccount = LedgerAccount(
+            name: "Loan",
+            kind: .liability,
+            currency: fixture.sgd,
+            accountType: .loan
+        )
+        let salary = LedgerAccount(name: "Salary", kind: .income)
+        let model = fixture.model(
+            accounts: [fixture.wallet, restricted, loanAccount, fixture.food, salary]
+        )
+        let loanID = try await model.addLoanPlan(
+            accountID: loanAccount.id,
+            name: "Loan",
+            originalPrincipal: 100,
+            openedAt: Date(timeIntervalSinceReferenceDate: 700_000_000),
+            annualPercentageRate: nil,
+            termMonths: nil,
+            includeInTotalDebt: true,
+            interestExpenseAccountID: nil,
+            feeExpenseAccountID: nil
+        )
+
+        await assertThrowsAsync(try await model.recordLoanPayment(
+            loanID: loanID,
+            paidFrom: restricted.id,
+            principal: 1,
+            interest: 0,
+            fees: 0,
+            occurredAt: Date(timeIntervalSinceReferenceDate: 800_000_000),
+            note: nil
+        ))
+        let row = ImportedTransaction(
+            id: "restricted-import",
+            sourceLine: 2,
+            kind: .expense,
+            occurredAt: Date(),
+            amount: 1,
+            accountName: restricted.name,
+            categoryName: fixture.food.name
+        )
+        await assertThrowsAsync(try await model.importTransactions(
+            [row],
+            fallbackAccountID: restricted.id,
+            fallbackExpenseCategoryID: fixture.food.id,
+            fallbackIncomeCategoryID: salary.id
+        ))
+        await assertThrowsAsync(try await model.updatePreferredAccount(restricted.id))
+        XCTAssertNil(model.profile?.preferredAccountID)
+        try await assertStoredCount(0, in: .journalEntries, store: fixture.store)
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testLinkedAllowanceReplacementCannotBecomeRestrictedTransfer() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let restricted = LedgerAccount(
+            name: "Meal card",
+            kind: .asset,
+            currency: fixture.sgd,
+            accountType: .restrictedAllowance
+        )
+        let occurredAt = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let plan = try AllowancePlan(
+            name: "Meal limit",
+            amount: Money(20, currency: fixture.sgd),
+            cadence: .daily,
+            startsAt: occurredAt.addingTimeInterval(-3_600),
+            eligibleCategoryIDs: [fixture.food.id]
+        )
+        let model = fixture.model(
+            accounts: [fixture.wallet, restricted, fixture.food],
+            allowancePlans: [plan],
+            currentDate: { occurredAt }
+        )
+        let loggedOriginalID = try await model.logExpense(
+            amount: 5,
+            accountID: fixture.wallet.id,
+            categoryID: fixture.food.id,
+            occurredAt: occurredAt,
+            payee: nil,
+            note: nil,
+            allowancePlanID: plan.id
+        )
+        let originalID = try XCTUnwrap(loggedOriginalID)
+
+        await assertThrowsAsync(try await model.replaceEntry(
+            id: originalID,
+            kind: .transfer,
+            amount: 5,
+            destinationAmount: nil,
+            accountID: restricted.id,
+            destinationAccountID: fixture.wallet.id,
+            categoryID: nil,
+            occurredAt: occurredAt,
+            payee: nil,
+            note: nil
+        ))
+        XCTAssertNotNil(model.entries.first { $0.id == originalID })
+        XCTAssertEqual(model.allowancePlans.first?.usages.count, 1)
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testPrepaidAllowanceDebitsRestrictedAssetAndSplitsRemainder() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "UTC"))
+        let day = try XCTUnwrap(
+            calendar.date(from: DateComponents(year: 2026, month: 9, day: 4))
+        )
+        let occurredAt = day.addingTimeInterval(12 * 3_600)
+        let restricted = LedgerAccount(
+            name: "Meal card",
+            kind: .asset,
+            currency: fixture.sgd,
+            accountType: .restrictedAllowance
+        )
+        let otherRestricted = LedgerAccount(
+            name: "Other benefit card",
+            kind: .asset,
+            currency: fixture.sgd,
+            accountType: .restrictedAllowance
+        )
+        let equity = LedgerAccount(
+            name: "Opening balances",
+            kind: .equity,
+            systemRole: .openingBalances
+        )
+        let opening = try TransactionFactory.balanceAdjustment(
+            displayBalanceDelta: Money(15, currency: fixture.sgd),
+            accountID: restricted.id,
+            equityAccountID: equity.id,
+            accountIsLiability: false,
+            occurredAt: day
+        )
+        let plan = try AllowancePlan(
+            name: "Meals",
+            amount: Money(15, currency: fixture.sgd),
+            cadence: .daily,
+            fundingMode: .prepaidAsset,
+            linkedAccountID: restricted.id,
+            startsAt: day,
+            timeZoneIdentifier: "UTC",
+            eligibleCategoryIDs: [fixture.food.id]
+        )
+        let profile = UserProfile(
+            baseCurrency: fixture.sgd,
+            reportingTimeZoneIdentifier: "UTC"
+        )
+        let accounts = [
+            fixture.wallet, restricted, otherRestricted, equity, fixture.food
+        ]
+        try await fixture.seed(
+            profile: profile,
+            accounts: accounts,
+            entries: [opening],
+            allowancePlans: [plan]
+        )
+        let model = fixture.model(
+            profile: profile,
+            accounts: accounts,
+            entries: [opening],
+            allowancePlans: [plan],
+            currentDate: { occurredAt }
+        )
+        XCTAssertTrue(model.isAllowanceWritable(plan))
+        let unauthorizedSplitSource = try TransactionFactory.expense(
+            amount: Money(20, currency: fixture.sgd),
+            paidFrom: otherRestricted.id,
+            category: fixture.food.id,
+            occurredAt: occurredAt
+        )
+        await assertThrowsAsync(try await model.prepareAllowanceApplication(
+            entry: unauthorizedSplitSource,
+            plan: plan
+        ))
+
+        let savedEntryID = try await model.logExpense(
+            amount: 20,
+            accountID: fixture.wallet.id,
+            categoryID: fixture.food.id,
+            occurredAt: occurredAt,
+            payee: "Lunch",
+            note: nil,
+            allowancePlanID: plan.id
+        )
+        let entryID = try XCTUnwrap(savedEntryID)
+        let saved = try XCTUnwrap(model.entries.first { $0.id == entryID })
+        XCTAssertEqual(
+            saved.postings.first { $0.accountID == restricted.id }?.money.amount,
+            -15
+        )
+        XCTAssertEqual(
+            saved.postings.first { $0.accountID == fixture.wallet.id }?.money.amount,
+            -5
+        )
+        XCTAssertEqual(saved.balanceByCurrency[fixture.sgd], .zero)
+        XCTAssertEqual(model.allowancePlans.first?.usages.first?.amount.amount, 15)
+        XCTAssertEqual(model.displayBalanceResult(for: restricted).value?.amount, 0)
+        XCTAssertEqual(model.displayBalanceResult(for: fixture.wallet).value?.amount, -5)
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testEditingExpenseToIneligibleCategoryRemovesAllowanceAllocation() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let occurredAt = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let transport = LedgerAccount(name: "Transport", kind: .expense)
+        let plan = try AllowancePlan(
+            name: "Meals",
+            amount: Money(15, currency: fixture.sgd),
+            cadence: .daily,
+            startsAt: occurredAt.addingTimeInterval(-3_600),
+            eligibleCategoryIDs: [fixture.food.id]
+        )
+        let accounts = [fixture.wallet, fixture.food, transport]
+        let profile = UserProfile(baseCurrency: fixture.sgd)
+        try await fixture.seed(
+            profile: profile,
+            accounts: accounts,
+            allowancePlans: [plan]
+        )
+        let model = fixture.model(
+            profile: profile,
+            accounts: accounts,
+            allowancePlans: [plan],
+            currentDate: { occurredAt.addingTimeInterval(60) }
+        )
+        let savedOriginalID = try await model.logExpense(
+            amount: 12,
+            accountID: fixture.wallet.id,
+            categoryID: fixture.food.id,
+            occurredAt: occurredAt,
+            payee: "Lunch",
+            note: nil,
+            allowancePlanID: plan.id
+        )
+        let originalID = try XCTUnwrap(savedOriginalID)
+
+        try await model.replaceEntry(
+            id: originalID,
+            kind: .expense,
+            amount: 12,
+            destinationAmount: nil,
+            accountID: fixture.wallet.id,
+            destinationAccountID: nil,
+            categoryID: transport.id,
+            occurredAt: occurredAt,
+            payee: "Train",
+            note: nil
+        )
+
+        XCTAssertTrue(try XCTUnwrap(model.allowancePlans.first).usages.isEmpty)
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testReimbursementCreatesPendingClaimWithoutInventingAnAsset() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let occurredAt = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let plan = try AllowancePlan(
+            name: "Travel claim",
+            amount: Money(100, currency: fixture.sgd),
+            cadence: .monthly,
+            fundingMode: .reimbursement,
+            startsAt: occurredAt.addingTimeInterval(-3_600),
+            eligibleCategoryIDs: [fixture.food.id]
+        )
+        let profile = UserProfile(baseCurrency: fixture.sgd)
+        try await fixture.seed(
+            profile: profile,
+            accounts: [fixture.wallet, fixture.food],
+            allowancePlans: [plan]
+        )
+        let model = fixture.model(
+            profile: profile,
+            accounts: [fixture.wallet, fixture.food],
+            allowancePlans: [plan],
+            currentDate: { occurredAt }
+        )
+
+        _ = try await model.logExpense(
+            amount: 20,
+            accountID: fixture.wallet.id,
+            categoryID: fixture.food.id,
+            occurredAt: occurredAt,
+            payee: "Client lunch",
+            note: nil,
+            allowancePlanID: plan.id
+        )
+
+        XCTAssertEqual(model.allowancePlans.first?.usages.first?.claimStatus, .pendingApproval)
+        XCTAssertNil(model.allowancePlans.first?.linkedAccountID)
+        XCTAssertEqual(model.displayBalanceResult(for: fixture.wallet).value?.amount, -20)
+        XCTAssertEqual(model.netWorthByCurrencyResult().value?.first?.amount, -20)
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testPrepaidExpiryReconciliationIsAuditableAndIdempotent() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "UTC"))
+        let day = try XCTUnwrap(
+            calendar.date(from: DateComponents(year: 2026, month: 9, day: 1))
+        )
+        let asOf = day.addingTimeInterval((2 * 86_400) + 60)
+        let restricted = LedgerAccount(
+            name: "Meal card",
+            kind: .asset,
+            currency: fixture.sgd,
+            accountType: .restrictedAllowance
+        )
+        let equity = LedgerAccount(
+            name: "Opening balances",
+            kind: .equity,
+            systemRole: .openingBalances
+        )
+        let opening = try TransactionFactory.balanceAdjustment(
+            displayBalanceDelta: Money(24, currency: fixture.sgd),
+            accountID: restricted.id,
+            equityAccountID: equity.id,
+            accountIsLiability: false,
+            occurredAt: day
+        )
+        let plan = try AllowancePlan(
+            name: "Meals",
+            amount: Money(12, currency: fixture.sgd),
+            cadence: .daily,
+            fundingMode: .prepaidAsset,
+            linkedAccountID: restricted.id,
+            startsAt: day,
+            timeZoneIdentifier: "UTC"
+        )
+        let profile = UserProfile(
+            baseCurrency: fixture.sgd,
+            reportingTimeZoneIdentifier: "UTC"
+        )
+        let accounts = [restricted, equity, fixture.food]
+        try await fixture.seed(
+            profile: profile,
+            accounts: accounts,
+            entries: [opening],
+            allowancePlans: [plan]
+        )
+        let model = fixture.model(
+            profile: profile,
+            accounts: accounts,
+            entries: [opening],
+            allowancePlans: [plan],
+            currentDate: { asOf }
+        )
+
+        let requirement = try XCTUnwrap(
+            model.allowancePlans.first?.expiryRequirements(asOf: asOf).first
+        )
+        try await model.confirmExpiredPrepaidAllowance(
+            planID: plan.id,
+            requirement: requirement,
+            confirmedExpiredAmount: 5,
+            asOf: asOf
+        )
+        try await model.confirmExpiredPrepaidAllowance(
+            planID: plan.id,
+            requirement: requirement,
+            confirmedExpiredAmount: 5,
+            asOf: asOf
+        )
+
+        XCTAssertEqual(model.allowancePlans.first?.reconciliations.count, 1)
+        XCTAssertEqual(
+            model.entries.filter {
+                $0.sourceSystem == AppModel.allowanceExpirySourceSystem
+            }.count,
+            1
+        )
+        XCTAssertEqual(model.displayBalanceResult(for: restricted).value?.amount, 19)
+        XCTAssertEqual(
+            try model.allowancePlans.first?.expiryRequirements(asOf: asOf).count,
+            1
+        )
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testDuplicateLegacyAllowanceAssetLinksLoadReadOnlyWithoutQuarantine()
+    async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let generic = LedgerAccount(
+            name: "Legacy benefit wallet",
+            kind: .asset,
+            currency: fixture.sgd,
+            accountType: .bank
+        )
+        let equity = LedgerAccount(
+            name: "Opening balances",
+            kind: .equity,
+            systemRole: .openingBalances
+        )
+        let start = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let negativeLegacyBalance = try TransactionFactory.balanceAdjustment(
+            displayBalanceDelta: Money(-5, currency: fixture.sgd),
+            accountID: generic.id,
+            equityAccountID: equity.id,
+            accountIsLiability: false,
+            occurredAt: start
+        )
+        let prepaid = try AllowancePlan(
+            name: "Legacy prepaid",
+            amount: Money(20, currency: fixture.sgd),
+            cadence: .daily,
+            fundingMode: .prepaidAsset,
+            linkedAccountID: generic.id,
+            startsAt: start
+        )
+        let reimbursement = try AllowancePlan(
+            name: "Legacy claim",
+            amount: Money(100, currency: fixture.sgd),
+            cadence: .monthly,
+            fundingMode: .reimbursement,
+            linkedAccountID: generic.id,
+            startsAt: start
+        )
+        let secondPrepaid = try AllowancePlan(
+            name: "Second legacy prepaid",
+            amount: Money(10, currency: fixture.sgd),
+            cadence: .weekly,
+            fundingMode: .prepaidAsset,
+            linkedAccountID: generic.id,
+            startsAt: start
+        )
+        let profile = UserProfile(baseCurrency: fixture.sgd)
+        let accounts = [generic, equity, fixture.food]
+        try await fixture.seed(
+            profile: profile,
+            accounts: accounts,
+            entries: [negativeLegacyBalance],
+            allowancePlans: [prepaid, secondPrepaid, reimbursement]
+        )
+        let model = fixture.model(profile: profile, accounts: accounts)
+
+        try await model.reloadPersistedBookForTesting()
+
+        XCTAssertEqual(Set(model.allowancePlans.map(\.id)), Set([
+            prepaid.id, secondPrepaid.id, reimbursement.id
+        ]))
+        XCTAssertEqual(generic.accountType, .bank)
+        XCTAssertEqual(
+            AppModel.allowanceFundingCompatibility(
+                for: prepaid,
+                accountsByID: model.accountsByID
+            ),
+            .legacyPrepaidAsset
+        )
+        XCTAssertFalse(model.recoveryIssues.contains {
+            $0.contains("allowance_plans/orphan")
+        })
+        XCTAssertFalse(model.recoveryIssues.contains {
+            $0.contains("restricted-invalid-history")
+        })
+        XCTAssertEqual(
+            model.displayBalanceResult(for: generic).value?.amount,
+            -5
+        )
+        XCTAssertFalse(model.isAllowanceWritable(prepaid))
+        XCTAssertFalse(model.isAllowanceWritable(secondPrepaid))
+        XCTAssertFalse(model.isAllowanceWritable(reimbursement))
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testRestrictedAllowanceIsExcludedFromHeadlineNetWorth() throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let restricted = LedgerAccount(
+            name: "Meal card",
+            kind: .asset,
+            currency: fixture.sgd,
+            accountType: .restrictedAllowance
+        )
+        let equity = LedgerAccount(
+            name: "Opening balances",
+            kind: .equity,
+            systemRole: .openingBalances
+        )
+        let opening = try TransactionFactory.balanceAdjustment(
+            displayBalanceDelta: Money(25, currency: fixture.sgd),
+            accountID: restricted.id,
+            equityAccountID: equity.id,
+            accountIsLiability: false
+        )
+        let model = fixture.model(
+            accounts: [restricted, equity, fixture.food],
+            entries: [opening]
+        )
+
+        XCTAssertEqual(model.displayBalanceResult(for: restricted).value?.amount, 25)
+        XCTAssertTrue(try XCTUnwrap(model.netWorthByCurrencyResult().value).isEmpty)
+    }
+
+    @MainActor
+    func testReconciledPrepaidPeriodRejectsDeletionAndBackdatedUse() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let day = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let asOf = day.addingTimeInterval(86_400 + 60)
+        let restricted = LedgerAccount(
+            name: "Meal card",
+            kind: .asset,
+            currency: fixture.sgd,
+            accountType: .restrictedAllowance
+        )
+        let equity = LedgerAccount(
+            name: "Opening balances",
+            kind: .equity,
+            systemRole: .openingBalances
+        )
+        let opening = try TransactionFactory.balanceAdjustment(
+            displayBalanceDelta: Money(12, currency: fixture.sgd),
+            accountID: restricted.id,
+            equityAccountID: equity.id,
+            accountIsLiability: false,
+            occurredAt: day
+        )
+        let plan = try AllowancePlan(
+            name: "Meals",
+            amount: Money(12, currency: fixture.sgd),
+            cadence: .daily,
+            fundingMode: .prepaidAsset,
+            linkedAccountID: restricted.id,
+            startsAt: day,
+            timeZoneIdentifier: "UTC"
+        )
+        let accounts = [fixture.wallet, restricted, equity, fixture.food]
+        let profile = UserProfile(baseCurrency: fixture.sgd)
+        try await fixture.seed(
+            profile: profile,
+            accounts: accounts,
+            entries: [opening],
+            allowancePlans: [plan]
+        )
+        let model = fixture.model(
+            profile: profile,
+            accounts: accounts,
+            entries: [opening],
+            allowancePlans: [plan],
+            currentDate: { asOf }
+        )
+        let loggedEntryID = try await model.logExpense(
+            amount: 5,
+            accountID: fixture.wallet.id,
+            categoryID: fixture.food.id,
+            occurredAt: day.addingTimeInterval(3_600),
+            allowancePlanID: plan.id
+        )
+        let entryID = try XCTUnwrap(loggedEntryID)
+        let requirement = try XCTUnwrap(
+            model.allowancePlans.first?.expiryRequirements(asOf: asOf).first
+        )
+        try await model.confirmExpiredPrepaidAllowance(
+            planID: plan.id,
+            requirement: requirement,
+            confirmedExpiredAmount: 0,
+            asOf: asOf
+        )
+
+        await assertThrowsAsync(try await model.deleteEntry(id: entryID))
+        await assertThrowsAsync(try await model.logExpense(
+            amount: 1,
+            accountID: fixture.wallet.id,
+            categoryID: fixture.food.id,
+            occurredAt: day.addingTimeInterval(7_200),
+            allowancePlanID: plan.id
+        ))
+        await fixture.store.close()
+    }
+
     func testSmartWidgetInsightsAreBoundedExpireAndScrubWithOptOut() throws {
         let suiteName = "MoneyUpWidgetInsights-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
@@ -14447,32 +16547,29 @@ extension AppModelTests {
         let now = Date(timeIntervalSinceReferenceDate: 800_000_000)
         let expiry = now.addingTimeInterval(60)
         store.publish(
-            enabled: true,
-            percentUsed: nil,
-            periodToken: "2026-05",
-            validUntil: expiry
+            .needsBudget(validUntil: expiry),
+            periodToken: "2026-05"
         )
         store.publishInsights(
             enabled: true,
             reviewCount: Int.max,
-            activeAllowanceCount: -2,
             allowancePercentRemaining: 150,
             activeCommitmentCount: Int.max,
-            nextCommitment: now.addingTimeInterval(30),
+            daysUntilNextCommitment: Int.max,
             validUntil: expiry
         )
 
         let insights = try XCTUnwrap(store.readInsights(now: now))
         XCTAssertEqual(insights.reviewCount, 9_999)
-        XCTAssertEqual(insights.activeAllowanceCount, 0)
         XCTAssertEqual(insights.allowancePercentRemaining, 100)
         XCTAssertEqual(insights.activeCommitmentCount, 9_999)
+        XCTAssertEqual(insights.daysUntilNextCommitment, 9_999)
         XCTAssertNil(store.readInsights(now: expiry))
 
-        store.publish(enabled: false, percentUsed: nil)
+        store.publish(.disabled)
         XCTAssertNil(store.readInsights(now: now))
         let persisted = defaults.persistentDomain(forName: suiteName) ?? [:]
-        XCTAssertFalse(persisted.keys.contains { $0.contains("insight.") })
+        XCTAssertEqual(Set(persisted.keys), BudgetWidgetSnapshotStore.allowedPersistedKeys)
     }
 
     @MainActor
@@ -14501,6 +16598,31 @@ extension AppModelTests {
         XCTAssertEqual(stored?.autoLockDelay, 60)
         await fixture.store.close()
     }
+}
+
+@MainActor
+private func assertThrowsAsync<T>(
+    _ expression: @autoclosure () async throws -> T,
+    file: StaticString = #filePath,
+    line: UInt = #line
+) async {
+    do {
+        _ = try await expression()
+        XCTFail("Expected operation to throw", file: file, line: line)
+    } catch {
+        // Expected failure.
+    }
+}
+
+private func assertStoredCount(
+    _ expected: Int,
+    in collection: RecordCollection,
+    store: EncryptedRecordStore,
+    file: StaticString = #filePath,
+    line: UInt = #line
+) async throws {
+    let actual = try await store.count(in: collection)
+    XCTAssertEqual(actual, expected, file: file, line: line)
 }
 
 private func posixPermissions(at url: URL) throws -> Int {
@@ -14576,6 +16698,7 @@ struct AppModelFixture {
         exchangeRates: [DatedExchangeRate] = [],
         netWorthSnapshots: [NetWorthSnapshot] = [],
         savingsGoals: [SavingsGoal] = [],
+        loanPlans: [LoanPlan] = [],
         quickLogDraft: QuickLogDraft? = nil,
         lockedCaptureStore: any LockedCaptureStoring = InMemoryLockedCaptureStore(
             captures: []
@@ -14596,6 +16719,7 @@ struct AppModelFixture {
         keyCliffRecoveryResidueScavenger: @escaping @Sendable (URL) -> Void = {
             KeyCliffRecoveryTransaction.scavengeUncommittedCandidate(for: $0)
         },
+        restartAfterErase: Bool = false,
         retainsCompleteJournal: Bool = true,
         budgetWidgetSnapshotStore: BudgetWidgetSnapshotStore = BudgetWidgetSnapshotStore(),
         budgetConfigurationTimeline: BudgetConfigurationTimeline? = nil,
@@ -14615,6 +16739,7 @@ struct AppModelFixture {
             exchangeRates: exchangeRates,
             netWorthSnapshots: netWorthSnapshots,
             savingsGoals: savingsGoals,
+            loanPlans: loanPlans,
             allowancePlans: allowancePlans,
             quickLogDraft: quickLogDraft,
             lockedCaptureStore: lockedCaptureStore,
@@ -14629,6 +16754,7 @@ struct AppModelFixture {
             keyCliffRecoveryKeyAccess: keyCliffRecoveryKeyAccess,
             keyCliffRecoveryResidueScavenger:
                 keyCliffRecoveryResidueScavenger,
+            restartAfterErase: restartAfterErase,
             retainsCompleteJournal: retainsCompleteJournal,
             budgetWidgetSnapshotStore: budgetWidgetSnapshotStore,
             budgetConfigurationTimeline: budgetConfigurationTimeline,
@@ -14647,6 +16773,7 @@ struct AppModelFixture {
         schedules: [ScheduledTransaction] = [],
         holdings: [InvestmentHolding] = [],
         savingsGoals: [SavingsGoal] = [],
+        loanPlans: [LoanPlan] = [],
         allowancePlans: [AllowancePlan] = [],
         quickLogDraft: QuickLogDraft? = nil
     ) async throws {
@@ -14681,6 +16808,9 @@ struct AppModelFixture {
         }
         writes += try savingsGoals.map {
             try RecordWrite($0, id: $0.id.uuidString, in: .savingsGoals)
+        }
+        writes += try loanPlans.map {
+            try RecordWrite($0, id: $0.id.uuidString, in: .loanPlans)
         }
         writes += try allowancePlans.map {
             try RecordWrite($0, id: $0.id.uuidString, in: .allowancePlans)

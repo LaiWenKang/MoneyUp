@@ -10,6 +10,7 @@ public struct FlexibleTodayBreakdown: Equatable, Sendable {
     public let flexibleCommitments: Money
     public let availableForRemainingPeriod: Money
     public let amountPerDay: Money
+    public let amountForNextSevenDays: Money
     public let remainingDayCount: Int
     public let periodStart: Date
     public let periodEnd: Date
@@ -22,6 +23,7 @@ public struct FlexibleTodayBreakdown: Equatable, Sendable {
         flexibleCommitments: Money,
         availableForRemainingPeriod: Money,
         amountPerDay: Money,
+        amountForNextSevenDays: Money,
         remainingDayCount: Int,
         periodStart: Date,
         periodEnd: Date,
@@ -33,6 +35,7 @@ public struct FlexibleTodayBreakdown: Equatable, Sendable {
         self.flexibleCommitments = flexibleCommitments
         self.availableForRemainingPeriod = availableForRemainingPeriod
         self.amountPerDay = amountPerDay
+        self.amountForNextSevenDays = amountForNextSevenDays
         self.remainingDayCount = remainingDayCount
         self.periodStart = periodStart
         self.periodEnd = periodEnd
@@ -108,15 +111,16 @@ public extension FinanceCalculator {
         asOf date: Date,
         calendar: Calendar = .current
     ) throws -> FlexibleTodayBreakdown? {
-        guard let month = calendar.dateInterval(of: .month, for: date) else {
+        let period: BudgetPaceReportingPeriod
+        do {
+            period = try BudgetPaceCalculator.reportingPeriod(
+                asOf: date,
+                calendar: calendar
+            )
+        } catch {
             return nil
         }
-
-        let today = calendar.startOfDay(for: date)
-        let days = max(
-            1,
-            calendar.dateComponents([.day], from: today, to: month.end).day ?? 1
-        )
+        let today = period.startOfToday
         var baseCommitments = Decimal.zero
         var foreignCommitments: [CurrencyCode: Decimal] = [:]
         var schedulesNeedingReview = 0
@@ -126,6 +130,12 @@ public extension FinanceCalculator {
             && flexibleCategoryIDs.contains(schedule.categoryAccountID) {
             if schedule.nextOccurrence < today {
                 schedulesNeedingReview += 1
+                try addFlexibleCommitment(
+                    schedule.amount,
+                    baseCurrency: flexibleBudgetRemaining.currency,
+                    baseCommitments: &baseCommitments,
+                    foreignCommitments: &foreignCommitments
+                )
             }
 
             var reference = today
@@ -135,19 +145,13 @@ public extension FinanceCalculator {
                     onOrAfter: reference,
                     calendar: calendar
                   ),
-                  occurrence < month.end {
-                if schedule.amount.currency == flexibleBudgetRemaining.currency {
-                    baseCommitments = try CheckedDecimal.adding(
-                        baseCommitments,
-                        schedule.amount.amount
-                    )
-                } else {
-                    let currency = schedule.amount.currency
-                    foreignCommitments[currency] = try CheckedDecimal.adding(
-                        foreignCommitments[currency] ?? .zero,
-                        schedule.amount.amount
-                    )
-                }
+                  occurrence < period.endOfMonth {
+                try addFlexibleCommitment(
+                    schedule.amount,
+                    baseCurrency: flexibleBudgetRemaining.currency,
+                    baseCommitments: &baseCommitments,
+                    foreignCommitments: &foreignCommitments
+                )
                 count += 1
                 reference = occurrence.addingTimeInterval(1)
             }
@@ -158,14 +162,10 @@ public extension FinanceCalculator {
             currency: flexibleBudgetRemaining.currency
         )
         let available = try flexibleBudgetRemaining.subtracting(scheduled)
-        let dailyAmount = try CheckedDecimal.divideForCurrencyRounding(
-            available.amount,
-            Decimal(days),
-            currency: flexibleBudgetRemaining.currency
-        )
-        let perDay = try Money(
-            dailyAmount,
-            currency: flexibleBudgetRemaining.currency
+        let pace = try BudgetPaceCalculator.spread(
+            remaining: available,
+            asOf: date,
+            calendar: calendar
         )
         let excluded = try foreignCommitments
             .sorted { $0.key < $1.key }
@@ -175,16 +175,36 @@ public extension FinanceCalculator {
             flexibleBudgetRemaining: flexibleBudgetRemaining,
             flexibleCommitments: scheduled,
             availableForRemainingPeriod: available,
-            amountPerDay: perDay,
-            remainingDayCount: days,
+            amountPerDay: pace.daily.available,
+            amountForNextSevenDays: pace.weekly.available,
+            remainingDayCount: period.remainingDayCount,
             periodStart: today,
-            periodEnd: month.end,
+            periodEnd: period.endOfMonth,
             excludedForeignSpending: excludedForeignSpending.sorted {
                 $0.currency < $1.currency
             },
             excludedForeignCommitments: excluded,
             schedulesNeedingReview: schedulesNeedingReview
         )
+    }
+
+    private static func addFlexibleCommitment(
+        _ amount: Money,
+        baseCurrency: CurrencyCode,
+        baseCommitments: inout Decimal,
+        foreignCommitments: inout [CurrencyCode: Decimal]
+    ) throws {
+        if amount.currency == baseCurrency {
+            baseCommitments = try CheckedDecimal.adding(
+                baseCommitments,
+                amount.amount
+            )
+        } else {
+            foreignCommitments[amount.currency] = try CheckedDecimal.adding(
+                foreignCommitments[amount.currency] ?? .zero,
+                amount.amount
+            )
+        }
     }
 
     static func budgetScenario(

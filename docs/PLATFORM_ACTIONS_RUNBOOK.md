@@ -23,33 +23,63 @@ duplicate/dot segments, and extra or trailing path components are rejected:
 | Receipt | `moneyup://quick-log/scan-receipt` |
 
 No platform surface may accept, announce, return, or persist transaction
-details or record identifiers. The intent opens MoneyUp and places the closed
-action in a bounded 16-action process-local FIFO. Direct `.onOpenURL` input is
-first converted by the same exact closed map and submitted to that FIFO; it
-does not mutate `AppModel` directly. The main scene consumes at
-most one action into a generation-bound, uniquely identified UI request slot,
-waits while startup or another request is active, maps it to the exact existing
-route above, and leaves
-authentication, authoritative erase denial, draft handling, locked Quick
-Capture, validation, and durable writes inside the app. Identical invocations
-remain distinct. At capacity, the newest invocation is rejected in memory so
-accepted older actions are never evicted or reordered; the rejected attempt
+details or domain identifiers. Before `perform()` reports success, the intent
+atomically appends the closed action plus an opaque stable handoff token to a
+coordinated, schema-1 App Group FIFO capped at 16 records and 4,096 bytes.
+That file contains only schema/authority metadata, admission state, tokens, and
+closed action values. Its canonical JSON rejects duplicate or unknown keys,
+its private directory is reasserted as `0700` and excluded from backup, and its
+atomic ingress uses first-unlock file protection because the contents are data-free.
+Basic Lock Screen Quick Capture therefore remains available after the first
+device unlock of a boot; reboot-before-first-unlock remains protected. Direct
+`.onOpenURL` input is first converted by the same exact closed map and submitted
+to that FIFO; it does not mutate `AppModel` directly.
+
+The app reloads durable ingress on cold launch and every active-scene entry.
+It begins at most one FIFO delivery into a generation-bound UI request slot,
+but does not remove the durable head then. The exact token remains durable
+until that exact presented request is applied or dismissed and acknowledged.
+An in-process duplicate/stale acknowledgement cannot remove a different head.
+Authentication, authoritative erase denial, draft handling, locked Quick
+Capture, validation, and every financial write remain inside the app.
+
+This is durable **at-least-once ingress with idempotent exact-token UI
+acknowledgement**, not an impossible claim of exactly-once execution across
+process death. A crash after delivery but before acknowledgement may replay the
+same navigation request after relaunch; it cannot create or repeat a financial
+commit because the action carries no transaction data and only opens/focuses
+the existing form. App Intents supplies no stable OS invocation identifier, so
+an OS retry or two identical taps cannot be deduplicated safely; each successful
+submission receives a distinct token. At capacity, the newest invocation is rejected
+without evicting or reordering accepted work, and the rejected attempt
 still wakes the strict router so accepted work cannot conceal newly unreadable
-erase authority. An authoritative erase
-or exclusive book-replacement lifecycle boundary discards the entire in-memory
-queue before routing; a pending or unreadable erase tombstone does the same.
+erase authority. Every durable producer reloads the current epoch before a new
+submission and the coordinated append compares that observed authority again;
+a boundary that races between those operations rejects the append. A late or
+ambiguous coordination error is reported as accepted only when the exact
+token/action postcondition is durably present in the same authority epoch.
+An authoritative erase
+or exclusive book-replacement lifecycle boundary durably closes admission and
+discards the entire old-book FIFO before routing; a pending or unreadable erase
+tombstone does the same.
 The same complete discard applies if erase authority changes after one action
 is dequeued or while its lock-safe capture handoff is being checked.
 Ordinary startup or same-book lifecycle work and an occupied UI request slot
-only defer the queue. Erase, restore, and pending/unreadable startup tombstones
-synchronously open a process-local boundary epoch before their first
-suspension. Beginning an epoch advances the book generation and immediately
-clears both the FIFO and any occupied/local UI handoff. Every submission while
-any epoch remains active is rejected, and a deferred epoch close covers all
-success, error, and cancellation exits. The boundary cover removes ready/locked
-action UI until the epoch closes, and exact request tokens prevent delayed
-callbacks from consuming a newer identical action. Correctness does not depend
-on a SwiftUI observation callback seeing an intermediate lifecycle flag.
+only defer the queue. Erase, restore, key replacement, and pending/unreadable
+startup tombstones synchronously persist a closed-admission boundary before
+their first lifecycle side effect or suspension; failure to persist that close
+aborts the destructive entry point. Beginning an epoch advances the book
+generation and clears both the FIFO and any occupied/local UI handoff. Every
+submission while any epoch remains active is rejected. A process crash leaves
+admission closed, and only a successfully validated authoritative startup may
+recover it. One coordinated recovery preserves any already-valid open epoch
+and its accepted FIFO (including a first append racing normal startup), while
+absent, corrupt, or closed state becomes a new empty/open epoch. Failed or
+cancelled startup remains admission-closed but still exposes the normal Locked
+or Recovery UI, never a permanent launch cover. Balanced normal completion
+covers all success, error, and cancellation exits. Exact request tokens prevent
+delayed callbacks from consuming a newer identical action. Correctness does not
+depend on a SwiftUI observation callback seeing an intermediate lifecycle flag.
 
 ## 1. Build and metadata gate
 
@@ -106,10 +136,37 @@ Chinese as the device or per-app language in system Settings.
   order after the mutation finishes. They must not be mistaken for an erase or
   restore boundary.
 - Invoke the same action twice while MoneyUp is warm. Confirm the second waits
-  until the first Log request is consumed, then appears once itself.
+  until the first Log request is acknowledged, then appears with a different
+  token. Do not treat the two user/OS invocations as duplicates.
+- In an instrumented build, terminate the app after durable admission but
+  before routing. Relaunch and confirm the same token is delivered. Repeat by
+  terminating after dequeue/presentation but before acknowledgement; relaunch
+  may replay that navigation once, and must show no automatically created
+  transaction. A clean exact-token acknowledgement must remove the durable
+  head; later relaunch/foreground must not replay it.
+- Corrupt the ingress file, write a future schema, add an unrecognized field,
+  duplicate a JSON key, change canonical encoding, and exceed 4,096 bytes.
+  Each state must block admission and route nothing. Confirm its dedicated
+  directory remains owner-only and backup-excluded. A validated authoritative
+  startup may recover absent/corrupt/closed state; an extension or
+  pre-validation callback may not.
+- Hold one app broker at absent state, accept the first action from a second
+  process while startup validates, then finish validated recovery. Confirm the
+  accepted token remains the FIFO head. Repeat with extension brokers cached on
+  the open and closed sides of a completed boundary; their first later tap must
+  reload the current epoch and succeed, while an injected rotation between
+  reload and append must fail its authority comparison.
+- Terminate during an erase/restore/key-replacement boundary. Confirm the
+  persisted admission state remains closed through process recreation and
+  opens empty only after startup validates/reconciles the authoritative book.
 - Repeat while locked, entering data in the first form before cancelling or
   finishing it. Confirm the second action receives a fresh empty form and a
   delayed callback from the first cannot dismiss or save the second.
+- Terminate after a locked-capture inbox append but before its UI completion.
+  Relaunch and confirm the ingress token identifies the already-saved capture,
+  the form reports it saved, and retry cannot append a second payload. After an
+  unlocked upgrade from an older build, confirm the ciphertext bytes and FIFO
+  are unchanged while file protection migrates to first-unlock availability.
 - Invoke four different actions in rapid order while MoneyUp is warm. Consume
   each Log request and confirm FIFO order with no replacement, duplication, or
   replay after foregrounding.
@@ -123,7 +180,7 @@ Capture a screen recording with fictional data. A route mismatch, unexpected
 spoken result, reordered/replaced invocation, transient-start loss, silent
 draft replacement, or direct save is release-blocking.
 
-## 3. Interactive widget and passive status
+## 3. Interactive widgets and passive summaries
 
 Preserve an existing pre-update small and medium `MoneyUpQuickLog` widget, then
 install the candidate in place. Add fresh small, medium, and every supported
@@ -137,10 +194,30 @@ Lock Screen family beside them.
    basic action must expose the same full Quick Log details as the center Log
    tab, including account, category, title, notes, date/time, and applicable
    transfer or split fields.
-3. Configure **Budget status** in every supported family. Tap the percentage,
-   title, icon, progress view, and surrounding background. Budget status must
-   remain passive and must not open MoneyUp or run an intent.
-4. Confirm the pre-update widgets retain their configuration. In particular,
+3. Configure **Budget status** and **Smart Overview** in every supported Home and
+   Lock Screen family. Exercise disabled, stale, needs-budget, zero-budget,
+   negative-budget, current 0%, and over-100% budget states plus nil/partial
+   review, allowance, and expense-commitment insights. Disabled must direct the
+   user to Settings; stale must direct the user to open MoneyUp; other states and
+   unavailable components must never masquerade as zero.
+4. Verify every Smart Overview family preserves the current budget while an
+   individual insight is unavailable, counts only expense commitments, and shows
+   only reporting-calendar-relative due-day distance. At the earliest displayed
+   expiry, the complete generation becomes stale; no mixed-generation fields or
+   exact due date may remain visible.
+5. Tap every Budget Status and Smart Overview percentage, title, icon,
+   gauge/progress view, and surrounding background. Both surfaces remain passive
+   and must not open MoneyUp or run an intent. Inspect the shared container: its
+   app-owned allowlist is exactly one nonfinancial language preference, one
+   atomic bounded schema-4 summary `Data` value, and one bounded data-free
+   quick-action ingress JSON file, with no fourth key or file. Confirm the summary
+   contains only state, a bounded reporting-period token, rounded budget/
+   allowance percentages, review/expense-commitment counts, expiry, and relative
+   due-day distance. Confirm the ingress contains only schema/authority and
+   admission metadata, opaque tokens, and one of six closed action values.
+   Neither may contain an amount, payee, account, holding/symbol/quote, balance,
+   transaction, note/evidence, book, exact due date, or ledger identity.
+6. Confirm the pre-update widgets retain their configuration. In particular,
    Smart Entry and Receipt must not reset merely because their persisted raw
    values use `smartEntry` and `scanReceipt` while their URL paths use hyphens.
 
@@ -170,10 +247,17 @@ numbers. Widget configuration preservation remains a physical migration gate.
 ## 5. Privacy and persistence inspection
 
 Use fictional records and take a before/after snapshot of the reviewed App
-Group defaults. Merely invoking a shortcut, widget button, or control must not
-write a route, pending action, or transaction detail there. Existing language
-preference and opt-in bounded status snapshot keys may already exist;
-their payload must not change solely because an action opened the app.
+Group artifacts. An accepted shortcut, widget button, control, or allowlisted
+URL may change only the bounded data-free ingress file by appending its closed
+action, opaque token, and reviewed protocol metadata. It must not persist a URL
+route, transaction detail, or domain identifier, and it must not mutate the
+existing nonfinancial language preference or opt-in bounded summary merely
+because the action opened the app. A rejected invocation must leave all three
+artifacts unchanged; no fourth app-owned key or file may appear. Confirm the
+ingress bytes are canonical, the enclosing ingress directory is `0700` and
+backup-excluded, and a simulated late write error is reconciled against the
+exact token/action postcondition rather than returning a false rejection for a
+commit that is already durable.
 
 Search Console and the built metadata for the fictional values used in the
 run. Inspect notification center, Spotlight, Live Activities, Siri history,

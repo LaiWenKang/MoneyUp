@@ -6,7 +6,8 @@ import MoneyUpPersistence
 /// into a disposable encrypted store. Normal unlock recovery remains tolerant
 /// so one damaged row cannot hide the rest of a readable book.
 enum RestoreCandidateValidator {
-    struct SnapshotWorkLimitState {
+    struct SnapshotWorkLimitState: Sendable {
+        var recordCount = 0
         var aggregateRecordIDByteCount = 0
         var collectionCounts: [String: Int] = [:]
         var journalPostingCount = 0
@@ -17,6 +18,9 @@ enum RestoreCandidateValidator {
         var savingsGoalActivityCount = 0
         var loanActivityCount = 0
         var allowanceUsageCount = 0
+        var allowanceReconciliationCount = 0
+        var allowancePeriodWorkCount = 0
+        var allowanceArchiveTransitionCount = 0
         var aggregatePayloadByteCount = 0
     }
 
@@ -66,6 +70,15 @@ enum RestoreCandidateValidator {
     static let maximumLoanActivityCount = 100_000
     static let maximumAllowanceUsagesPerPlan = AllowancePlan.maximumUsageCount
     static let maximumAllowanceUsageCount = 100_000
+    static let maximumAllowanceReconciliationsPerPlan =
+        AllowancePlan.maximumReconciliationCount
+    static let maximumAllowanceReconciliationCount = 100_000
+    static let maximumAllowancePeriodsPerPlan = 10_000
+        + (AllowancePlan.maximumPolicyRevisionCount * 2)
+    static let maximumAllowancePeriodWorkCount = 100_000
+    static let maximumAllowanceArchiveTransitionsPerPlan =
+        AllowancePlan.maximumArchiveTransitionCount
+    static let maximumAllowanceArchiveTransitionCount = 100_000
     static let maximumBudgetTimelineRevisionCount =
         BudgetConfigurationTimeline.maximumRevisionCount
     static let maximumBudgetNodesPerRevision =
@@ -124,17 +137,11 @@ enum RestoreCandidateValidator {
 
         do {
             for (index, record) in snapshot.records.enumerated() {
-                if index.isMultiple(of: 256) { try Task.checkCancellation() }
-                let collection = try validateSnapshotRecordEnvelope(
+                try validateSnapshotWorkLimitRecord(
                     record,
+                    index: index,
                     maximumAggregatePayloadByteCount:
                         maximumAggregatePayloadByteCount,
-                    state: &state
-                )
-                guard let collection else { continue }
-                try validateNestedWorkLimits(
-                    for: record,
-                    collection: collection,
                     decoder: decoder,
                     state: &state
                 )
@@ -144,6 +151,38 @@ enum RestoreCandidateValidator {
         } catch {
             throw AppModelError.invalidBook
         }
+    }
+
+    /// One-row primitive shared by snapshot fixtures and the production
+    /// actor-isolated SQL cursor. Keeping the ceiling state explicit prevents
+    /// either path from drifting to a different nested-work contract.
+    static func validateSnapshotWorkLimitRecord(
+        _ record: StoredRecordSnapshot,
+        index: Int,
+        maximumAggregatePayloadByteCount: Int?,
+        decoder: JSONDecoder,
+        state: inout SnapshotWorkLimitState
+    ) throws {
+        if index.isMultiple(of: 256) { try Task.checkCancellation() }
+        guard index == state.recordCount,
+              index >= 0,
+              index < maximumCandidateRecordCount else {
+            throw AppModelError.invalidBook
+        }
+        state.recordCount += 1
+        let collection = try validateSnapshotRecordEnvelope(
+            record,
+            maximumAggregatePayloadByteCount:
+                maximumAggregatePayloadByteCount,
+            state: &state
+        )
+        guard let collection else { return }
+        try validateNestedWorkLimits(
+            for: record,
+            collection: collection,
+            decoder: decoder,
+            state: &state
+        )
     }
 
     static func validateSnapshotRecordEnvelope(
@@ -251,16 +290,7 @@ enum RestoreCandidateValidator {
                 aggregateLimit: maximumLoanActivityCount
             )
         case .allowancePlans:
-            let shape = try decoder.decode(
-                AllowancePlanWorkShape.self,
-                from: record.payload
-            )
-            state.allowanceUsageCount = try boundedAggregateCount(
-                current: state.allowanceUsageCount,
-                adding: shape.usageCount,
-                perRecordLimit: maximumAllowanceUsagesPerPlan,
-                aggregateLimit: maximumAllowanceUsageCount
-            )
+            try validateAllowanceWork(record, decoder: decoder, state: &state)
         case .budgetConfigurationTimelines:
             try validateBudgetTimelineWork(record, decoder: decoder)
         case .budgetEntryAttributions:
@@ -320,6 +350,45 @@ enum RestoreCandidateValidator {
             adding: shape.totalCount,
             perRecordLimit: maximumSavingsGoalActivitiesPerGoal,
             aggregateLimit: maximumSavingsGoalActivityCount
+        )
+    }
+
+    static func validateAllowanceWork(
+        _ record: StoredRecordSnapshot,
+        decoder: JSONDecoder,
+        state: inout SnapshotWorkLimitState
+    ) throws {
+        let shape = try decoder.decode(
+            AllowancePlanWorkShape.self,
+            from: record.payload
+        )
+        guard shape.policyRevisionCount
+                <= AllowancePlan.maximumPolicyRevisionCount else {
+            throw AppModelError.invalidBook
+        }
+        state.allowanceUsageCount = try boundedAggregateCount(
+            current: state.allowanceUsageCount,
+            adding: shape.usageCount,
+            perRecordLimit: maximumAllowanceUsagesPerPlan,
+            aggregateLimit: maximumAllowanceUsageCount
+        )
+        state.allowanceReconciliationCount = try boundedAggregateCount(
+            current: state.allowanceReconciliationCount,
+            adding: shape.reconciliationCount,
+            perRecordLimit: maximumAllowanceReconciliationsPerPlan,
+            aggregateLimit: maximumAllowanceReconciliationCount
+        )
+        state.allowancePeriodWorkCount = try boundedAggregateCount(
+            current: state.allowancePeriodWorkCount,
+            adding: shape.periodWorkCount,
+            perRecordLimit: maximumAllowancePeriodsPerPlan,
+            aggregateLimit: maximumAllowancePeriodWorkCount
+        )
+        state.allowanceArchiveTransitionCount = try boundedAggregateCount(
+            current: state.allowanceArchiveTransitionCount,
+            adding: shape.archiveTransitionCount,
+            perRecordLimit: maximumAllowanceArchiveTransitionsPerPlan,
+            aggregateLimit: maximumAllowanceArchiveTransitionCount
         )
     }
 

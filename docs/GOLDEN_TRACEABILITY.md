@@ -1,6 +1,6 @@
 # Golden PRD Traceability - MoneyUp 0.7.1 Candidate
 
-Reconciled: 3 September 2026
+Reconciled: 5 September 2026
 
 This is the requirement-to-evidence map for the retained MoneyUp 0.6.0
 migration baseline, merged 0.7.0 W1-W7 work, the merged build-10 0.7.1
@@ -18,11 +18,16 @@ Core/persistence/intelligence, app-model, and app/widget Simulator gates. The
 candidate must repeat exact-head CI before signed promotion. Physical-device,
 signed-binary, TestFlight, and release evidence remain open.
 
-The exact 97-row requirement-to-test mapping is in
+The exact 97-row Golden requirement-to-test mapping and later approved overlays
+are in
 [REQUIREMENTS_TEST_MATRIX.md](REQUIREMENTS_TEST_MATRIX.md). The complete source,
 dependency, defect, test-design, and release-blocker review is in
 [QUALITY_AUDIT_0.6.0.md](QUALITY_AUDIT_0.6.0.md), with the closed file manifest
-in [FILE_REVIEW_INVENTORY.md](FILE_REVIEW_INVENTORY.md).
+in [FILE_REVIEW_INVENTORY.md](FILE_REVIEW_INVENTORY.md). The 4 September founder
+amendment is recorded without altering the uploaded documents in
+[CHANGE_CONTROL_0.7.1_APPROVED_REWORK.md](CHANGE_CONTROL_0.7.1_APPROVED_REWORK.md),
+with its exact-SHA and physical evidence contract in
+[QA_RELEASE_GATE_0.7.1_APPROVED_REWORK.md](QA_RELEASE_GATE_0.7.1_APPROVED_REWORK.md).
 
 ## Evidence vocabulary
 
@@ -94,8 +99,8 @@ exact-candidate run.
 | ID | Implementation and evidence anchor | Current evidence state |
 |---|---|---|
 | W7-URL | `MoneyUpQuickAction.init(exactDeepLink:)` is a base-free, byte-exact six-literal map. `testPersistedActionsMapToExactDataFreeDeepLinks` accepts every canonical route; `testDeepLinkAllowlistRejectsEveryNoncanonicalVariant` rejects case, escape, credential, port, query, fragment, and path variants without creating a request. | Local source/mutation gate passed; exact-candidate Xcode and signed URL-launch matrix open. |
-| W7-FIFO | `MoneyUpApp.routeDeepLink` sends `.onOpenURL` through the same bounded action-only `MoneyUpQuickActionRouteBroker` and disposition router as App Intents. Cold startup, transient work, occupied UI, duplicate order, and capacity are pinned by the W7 action tests. A capacity-rejected invocation never evicts accepted work but still wakes the router to advance or authoritatively discard it. | Local source/mutation gate passed; exact-candidate XCTest and physical shortcut/widget/control routing open. |
-| W7-AUTH | Generation-bound boundary epochs synchronously invalidate queued and occupied old-book work; pending or unreadable erase authority discards the queue before routing. A denial discovered after dequeue or while attempting lock-safe capture also clears the entire tail and leaves no request. Boundary, tombstone, restore, erase, and stale-callback regressions remain named in the W7/AppModel suites. | Source implemented; exact-candidate XCTest plus signed interruption/forensic privacy evidence open. |
+| W7-FIFO | `MoneyUpApp.routeDeepLink` sends `.onOpenURL` through the same coordinated, schema-1, 16-record/4,096-byte data-free ingress store and disposition router as App Intents. Intent success follows the atomic append. Canonical JSON, `0700`/backup-excluded storage, first-unlock protection, exact write-postcondition reconciliation, cold/active-scene reload, process recreation before route or after dequeue, exact-token acknowledgement, duplicate order, malformed/future/oversized/duplicate-key input, and capacity rejection are pinned by named action tests. Delivery is at least once until UI acknowledgement: a crash may replay navigation, never a financial commit. OS retries remain distinct without an OS-stable invocation ID. | Local source/mutation gate passed; exact-candidate XCTest and physical shortcut/widget/control routing open. |
+| W7-AUTH | Generation-bound boundary epochs synchronously persist closed admission and invalidate queued/occupied old-book work before erase, restore, or key-replacement side effects. Producers reload then authority-CAS every append; a close failure aborts lifecycle entry and a crash leaves admission closed until explicit validated recovery. That coordinated recovery preserves a concurrently established valid/open FIFO but resets absent, corrupt, or closed state. Token-bound locked capture makes a crash after inbox append idempotent, while its legacy protection migration preserves ciphertext and FIFO bytes. Boundary, tombstone, restore, erase, key-cliff, concurrent-bootstrap, long-lived-extension, acknowledgement-failure, and stale-token regressions remain named in the W7/AppModel suites. | Source implemented; exact-candidate XCTest plus signed interruption/forensic privacy evidence open. |
 
 ## Capture and transactions
 
@@ -177,7 +182,7 @@ exact-candidate run.
 | SET-03 | Settings stores smart/fixed account/expense/income defaults while Log keeps each selection editable. | Source implemented; Mac/UI check open. |
 | SET-04 | Settings links Data Safety, backup/restore, import, privacy/beta, pending captures, and quarantined counts/actions. | Source implemented; bilingual navigation review open. |
 | SET-05 | Widget configuration chooses preferred actions across supported Home/Lock families and semantic appearances. | Source implemented; physical family/light/dark/tinted/redacted gate open. |
-| SET-06 | `BudgetWidgetSnapshot`, profile opt-in, App Group store, and widget views share only percentage/state and scrub opt-out/erase. | Source implemented; Apple capability, signed entitlement, and physical privacy gates open. |
+| SET-06 | `BudgetWidgetSnapshot`, profile opt-in, the App Group store, and Budget Status/Smart Overview share one bounded schema-4 generation containing only state, a bounded reporting-period token, rounded budget/allowance percentages, review/expense-commitment counts, expiry, and relative due-day distance. The App Group allowlist is exactly the nonfinancial language preference, that one atomic summary `Data` value, and one bounded data-free quick-action ingress file. An absent summary means disabled/opted out; corrupt, future-schema, oversized, contradictory, or negative-field summaries are wholly stale. The extension is read-only, while the ready app canonicalizes stale state, republishes after eligible activation/day-boundary changes, and reduces Home-widget density at accessibility Dynamic Type sizes. Opt-out scrubs the financial summary; erase/restore authority also invalidates old ingress work. | Source implemented; exact-candidate automated execution, Apple capability, signed entitlement, and physical privacy/lifecycle/accessibility gates open. |
 | SET-07 | Background-lock orphan state is removed/honored and archive fields have actual lifecycle actions. | Source implemented; migration/runtime tests open. |
 | SET-08 | New reporting-zone, rollover, goal, rate, attachment, and widget preferences define defaults/migrations/localization/accessibility/persistence tests. | Source implemented; exact-candidate suites and physical behavior open. |
 
@@ -189,11 +194,11 @@ exact-candidate run.
 | POR-02 | CSV emits UTF-8 BOM and neutralizes formula-like user text without changing valid negative numerics. | Source implemented; exact-candidate exporter tests open. |
 | POR-03 | Export UI warns that CSV/XLSX are readable plaintext and uses the system destination picker. | Source implemented; physical sheet/picker check open. |
 | POR-04 | `PortableArchiveV2`, `EncryptedRecordStore.exportPortableArchive`, and `MoneyUpArchiveTransfer` create file-backed authenticated archives from a user password independent of the live key. Fixed 1 MiB chunks cover current books within the enforced 100,000-record/512 MB stored-payload envelope; v1 remains readable. | Source implementation complete; exact-candidate Mac tests plus clean-device, near-limit v2, and compatible-v1 physical proof open. |
-| POR-05 | File-backed restore bounded-copies and fully validates a candidate in an isolated SQLCipher store before showing a privacy-safe replacement preview. One SHA-256-and-length ticket owns normal and key-cliff restore; key-cliff current state is explicitly inaccessible, and its private copy is reverified before key/manifest mutation. Marker removal gates ready state, capture preference/promotion, widget, and intelligence. Normal restore suppresses cross-book projections and intent, retains a deterministic private rollback directory, and republishes only the successful candidate or completed rollback. Failures wait for sheet dismissal; success has one visible-focus or post-transition announcement route. | Integrated source and static regressions implemented; exact-candidate CI, interruption/power-loss, and physical restore/accessibility gates remain open. |
+| POR-05 | File-backed restore bounded-copies and fully validates a candidate in an isolated SQLCipher store before showing a privacy-safe replacement preview. Production restore reduces raw candidate records in stable key order before `AppModel` load, with cooperative cancellation and bounded reduction state rather than a second whole-book snapshot. One SHA-256-and-length ticket owns normal and key-cliff restore; key-cliff current state is explicitly inaccessible, and its private copy is reverified before key/manifest mutation. Marker removal gates ready state, capture preference/promotion, widget, and intelligence. Normal restore suppresses cross-book projections and intent, retains a deterministic private rollback directory, and republishes only the successful candidate or completed rollback. Failures wait for sheet dismissal; success has one visible-focus or post-transition announcement route. | Integrated source and static regressions implemented; exact-candidate raw-reduction/work-limit CI, interruption/power-loss, and physical restore/accessibility gates remain open. |
 | POR-06 | `TransactionCSVImporter` and import UI implement local preview, row issues, duplicate detection, mappings, and atomic commit. | Source implemented; mapped fixture/device review open. |
 | POR-07 | Unknown CSV/TSV mapping UI and dependency-free native OOXML XLSX export are present; spreadsheets remain non-live. | Source implemented; Numbers/Excel physical-open check open. |
-| POR-08 | Quarantine/recovery preserves bad raw encrypted rows and offers backup/export/restore before destructive erase. | Source implemented; corrupted-book recovery drill open. |
-| POR-09 | Schema migration/index rebuild and legacy decoders preserve valid 0.4.0 precision and default new fields safely. | Source implemented; exact migration suite and installed-book upgrade open. |
+| POR-08 | Quarantine/recovery preserves bad raw encrypted rows and offers backup/export/restore before destructive erase. Allowance recovery is bounded per plan at 4,096 usage rows, 4,096 reconciliation rows, 512 archive transitions, and `10,000 + 2 × maxPolicyRevisions` period work, with 100,000 aggregate ceilings for each collection; weekday-period estimation is exact O(1) work from weekdays rather than calendar-day iteration. | Source implemented; exact-candidate limit/cancellation execution and corrupted-book recovery drill open. |
+| POR-09 | Schema migration/index rebuild and legacy decoders preserve valid 0.4.0 precision and default new fields safely. The allowance archive timeline is additive inside the schema-9 payload: current-format marker/timeline/state is strict, while a fully legacy archived record infers the earliest evidence-consistent boundary without rewriting the journal or bumping SQLCipher. | Source implemented; exact archive-compatibility suite and installed-book upgrade open. |
 | POR-10 | Bundle/App Store/Keychain/container/widget identities are fixed in source and release workflow. | Source configured; TestFlight-to-TestFlight/App-Store physical gate open. |
 | POR-11 | `FIRST_TEST.md` defines pre/post inventory across all record types and widget/Keychain state. | Evidence-only requirement; physical reconciliation open. |
 
@@ -210,7 +215,7 @@ exact-candidate run.
 | DAT-07 | `TransactionOriginContext`, stable day key, reporting time zone, and posting events retain travel/DST attribution. | Source implemented; extreme-zone physical/Simulator regression open. |
 | DAT-08 | `DerivedValue` propagates unavailable/error state; UI shows reason and OSLog receives redacted operation/diagnostic only. The separate performance category accepts only 18 static interval names, empty low-level messages, and fixed journey outcomes. | Source implemented with signpost source gate; fault-injection/physical log audit open. |
 | DAT-09 | AppModel/store batches cover setup, edit, lifecycle, import, restore, draft removal, reconciliation, investment, attachment, and goal operations atomically. | Source implemented; exact-candidate rollback/race tests open. |
-| DAT-10 | Store decode issues and relationship validation quarantine/count bad rows without discarding the readable book or raw record. | Source implemented; corrupted fixture/recovery evidence open. |
+| DAT-10 | Store decode issues and relationship validation quarantine/count bad rows without discarding the readable book or raw record. Allowance recovery closes restricted debit/evidence ownership over complete indexed account-scoped history to a monotonic fixed point, preserves every encrypted raw row, and respects the documented per-plan and aggregate work ceilings; strict restore rejects the same invalid graph. | Source implemented; exact-candidate allowance-integrity, limit, and cancellation execution plus corrupted fixture/recovery evidence open. |
 
 ## Privacy, security, and safety
 
@@ -223,7 +228,7 @@ exact-candidate run.
 | SEC-05 | Bilingual setup/Security/Data Safety/first-backup copy warns that passcode removal or app deletion can make the live book unrecoverable. Missing key plus ciphertext is a dedicated state. Keyless `.moneyup` recovery copies and validates an isolated SQLCipher candidate before a durable artifact-mask/key/install transaction, preserves the external archive, and rolls back on reopen/load failure. Current writes cannot outgrow the v2 envelope. | Source implemented with rejection/cancellation/filesystem rollback tests; exact-candidate and physical passcode-removal/interruption drill open. |
 | SEC-06 | Vision processing is on device; receipt sources are transient unless explicitly retained, then orientation-applied pixels are bounded and re-encoded without GPS/EXIF/TIFF device metadata before SQLCipher/archive persistence. They are never exported/read by widgets. | Source implemented with metadata fixture; exact-candidate and physical retention/network observation open. |
 | SEC-07 | Runtime data egress is explicit export only; privacy/security docs require new review before any network integration. | Source implemented; exact-binary network review open. |
-| SEC-08 | Redacted logging/diagnostics, domain-payload-free performance signposts with fixed outcomes, privacy cover, Quick Capture design, and percentage/state-only widget snapshot exclude sensitive values. | Source implemented with signpost source gate; physical feedback/widget/log audit open. |
+| SEC-08 | Redacted logging/diagnostics, domain-payload-free performance signposts with fixed outcomes, privacy cover, and Quick Capture design preserve the App Group's exact three-artifact allowlist: one nonfinancial language preference, one atomic bounded schema-4 summary `Data` value, and one bounded data-free quick-action ingress JSON file carrying only schema/authority metadata, admission metadata, opaque tokens, and one of six closed action values. Exact due dates, financial records, amounts, names, holdings/quotes, balances, notes/evidence, and domain identifiers are forbidden. | Source implemented with signpost and App Group source gates; exact-candidate automated execution and physical feedback/widget/log audit open. |
 | SEC-09 | `PRIVACY.md`, privacy manifest, store working copy, support/release docs, and workflow define exact-binary reconciliation. | Release gate open; no submitted binary has been reviewed. |
 | SEC-10 | Privacy/security documents state compromised OS, shared credentials, unlocked screen, screenshots, and post-export disclosure as limits. | Source documentation implemented; exact store copy review open. |
 
@@ -263,6 +268,26 @@ and a new setting. Approved W2 subsequently adds separate optional indexed
 recurrence/anomaly discovery and an intelligence setting without weakening the
 PA capture rules. Schedule creation remains manual. Physical latency, accuracy,
 accessibility, and real-OCR targets remain open for the exact release candidate.
+
+## Approved amendment MU-CC-071-2026-09-04 — Decision trust and navigation
+
+The founder approved this amendment after testing `0.7.1 (1037.1)`. It is not
+text from either uploaded PRD and does not silently change the internally
+printed Golden version. Its complete decisions and non-goals are in
+[CHANGE_CONTROL_0.7.1_APPROVED_REWORK.md](CHANGE_CONTROL_0.7.1_APPROVED_REWORK.md).
+
+| Requirement range | Controlled change | Current evidence state |
+|---|---|---|
+| `AR-TOD-01...05` | Flexible today naming, compact date/period/conditional-zone context, one reporting snapshot, inclusive final-day-safe denominator, and exact minor-unit apportionment. A liquidity-aware Safe-to-Spend model remains deferred. | Approved; exact-candidate automated and physical evidence open. |
+| `AR-ALL-01...09` | Distinguish policy limits, prepaid restricted value, and reimbursement-claim evidence; make qualifying prepaid value discoverable as a restricted account without duplicating balances or unrestricted capacity; enforce exclusive active-plan account ownership; bind editing, visible civil dates, categories, and historical Quick Log previews to the governing policy revision and its time zone; preserve atomic funding/usage and historical facts; support stable-ID corrections only for eligible standalone benefit usage; model archive/unarchive as an effective-dated pause; require exactly one valid authorization for every restricted debit; and keep the optimistic pending → approved/rejected → reimbursed claim lifecycle evidence-only. | Approved; exact-candidate claim, editor, historical-preview, usage-correction, archive-compatibility, journal-integrity, migration, ledger, recovery, and physical evidence open. |
+| `AR-MKT-01...06` | Introduce Core-only instrument/quote/provider/store/estimated-valuation contracts under a manual-local deny-by-default policy. Quotes are strictly positive except an explicit manual/manual-legacy zero write-down; provenance binds source kind/identifier, record/sequence identity, quote type, delay, quality, venue/currency, and time. Source identity drives dedupe before eligibility, and provider responses must bind request identity/time, exact result set, supported source kinds, provider identity, and each instrument's quote currency. No provider, network, credentials, persistence schema, or symbol transmission is activated in this tranche. | Approved foundation; future provider activation remains separately blocked. |
+| `AR-NAV-01...05` | Remove global tab swipe, use one adaptive Plan peer selector, move History's dynamic categories into a labelled menu, and provide Back only for a real pushed or recorded origin. | Approved; exact-candidate accessibility/navigation evidence open. |
+| `AR-WDG-01...06` | Atomic versioned snapshot, family-native layouts, reporting-calendar-relative dates, coherent unavailable/stale state, durable at-least-once data-free ingress with exact-token UI acknowledgement, and an exact redacted App Group allowlist. | Approved; exact-candidate widget, signed-extension, and physical matrix open. |
+
+The exact designed automated, mutation, migration, signed, and physical cases
+are in
+[QA_RELEASE_GATE_0.7.1_APPROVED_REWORK.md](QA_RELEASE_GATE_0.7.1_APPROVED_REWORK.md).
+No row above is a pass merely because this decision is approved.
 
 ## Non-functional promotion gates
 
@@ -329,6 +354,18 @@ claimed to be text from that document:
   eligibility to allocations explicitly classified as flexible. The Golden
   arithmetic, commitment, period, exclusion, unavailable-state, and
   inspectability invariants remain auditable.
+- **Approved rework MU-CC-071-2026-09-04** adds date/period trust context and
+  exact residual apportionment to Flexible today; distinguishes allowance
+  entitlement, prepaid restricted value, and evidence-only reimbursement
+  claims; adds exclusive restricted-account ownership, revision-zone civil-date
+  editing, historical prepaid previews, and safe standalone benefit-usage
+  correction; adds a manual-only Core market-observation foundation with an
+  explicit manual-zero write-down exception and bound provenance; removes global tab swipe;
+  replaces Plan's synthetic overview/back model with an adaptive peer selector
+  plus contextual native Back; consolidates History's dynamic category chips;
+  and makes the widget snapshot/layout/calendar/action boundaries explicit.
+  The decision record limits its own authority and keeps true liquidity-aware
+  Safe-to-Spend and all market networking separately gated.
 
 The later decisions change presentation/eligibility, not ledger correctness,
 privacy, portability, or release evidence standards.

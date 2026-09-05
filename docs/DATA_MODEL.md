@@ -112,15 +112,105 @@ explicit expense categories. A loan can be marked finished only when its ledger
 principal is exactly zero. `includeInTotalDebt` affects the loan-center aggregate,
 not accounting or net worth.
 
-`AllowancePlan` represents an expiring benefit such as a company meal
-allowance. It has an exact-currency amount, daily/weekday/weekly/monthly cadence,
-reporting time zone, optional end date, eligible expense categories,
-no/full/capped rollover, and bounded usage records. `benefitLimit` is
-planning-only; `prepaidAsset` and `reimbursement` must reference an active
-same-currency asset account whose ledger balance remains authoritative. The
-allowance never becomes income or a second net-worth input. Quick Log can write
-an eligible expense and linked usage atomically; replacing or deleting the
-expense relinks or removes that evidence in the same SQLCipher transaction.
+`AllowancePlan` is policy over a benefit limit, restricted prepaid asset, or
+reimbursement claim; it never manufactures a balance. It has an exact-currency
+amount, daily/weekday/weekly/monthly cadence, reporting time zone, optional end
+date, eligible expense categories, no/full/capped rollover, and bounded usage,
+policy-revision, and reconciliation evidence. `AllowancePolicyRevision` is
+effective-dated so later edits cannot reinterpret an earlier usage.
+
+Archive/unarchive is also an immutable effective-dated timeline with an active
+baseline. Archive is a pause, not deletion or proration. Historical summaries
+use the state at the requested instant; wholly archived cadence periods add no
+entitlement or expiry expectation, while a period active for any instant keeps
+one unprorated entitlement. The current lifecycle Boolean is a presentation and
+write guard derived consistently with the last transition, not authority to
+rewrite the past.
+
+Current-format plans persist `archiveTimelineVersion`, `archiveTransitions`,
+and `isArchived` as one per-plan integrity unit. If either new field is present,
+missing/null/unsupported markers, missing/null timelines, an empty timeline
+paired with an archived current state, unordered or nonalternating transitions,
+and a final state inconsistent with `isArchived` fail closed. Schema-9
+compatibility still accepts a fully legacy
+shape containing neither new field. An archived legacy record with no evidence
+infers its transition at plan start; otherwise the transition is the earliest
+finite instant strictly after its latest usage and no earlier than its latest
+reconciliation period end. Consequently, a deliberately forged payload that
+removes both new fields is indistinguishable from genuine legacy data under
+schema-9 backward compatibility; SQLCipher and authenticated portable archives
+remain the provenance boundary rather than an unsupported claim of semantic
+history authentication. These are additive Codable payload fields and require
+no SQLCipher schema bump.
+
+`benefitLimit` is entitlement only and has no ledger account. `prepaidAsset`
+must reference an active same-currency `restrictedAllowance` asset and uses that
+account as the real payment source; any uncovered expense remains on the
+explicitly selected source. One active prepaid plan owns one restricted account;
+new/edit pickers exclude an account owned by another active plan while retaining
+the edited plan's own valid link. Availability is evaluated from the encrypted
+posting index at the expense instant: later top-ups cannot fund earlier use,
+and the account's running balance may never be negative. Quick Log's asynchronous
+historical preview is bound to the exact plan, source account, occurrence
+instant, journal-projection revision, and logical-book revision. It publishes
+only the matching result and fails closed while loading or after any of those
+facts changes; it never substitutes the current display balance. Events with
+the same timestamp form one atomic batch because journal entries have no durable
+order within that instant. Completed non-rollover periods use an idempotent
+`AllowanceReconciliation` plus balanced non-income/non-expense adjustment to
+remove only truly expired stored value. `reimbursement` starts as
+expense-backed pending-claim evidence with an explicit
+`AllowanceClaimStatus`. The only forward transitions are pending to approved or
+rejected, then approved to reimbursed; rejected and reimbursed are terminal.
+Every transition is an optimistic, durable evidence update and never creates or
+changes a journal entry, cash account, restricted account, income, or receivable.
+An actual incoming reimbursement is recorded separately through the normal
+ledger workflow.
+
+The allowance editor treats user-picked dates as policy-zone civil dates: a
+start is stored at that day's start and a visible inclusive final day is stored
+as the next civil-day boundary, preserving the domain's half-open interval
+across DST. Existing legacy partial-day bounds retain their exact instants
+rather than being silently rounded. A name-only edit preserves the plan zone;
+a zone/rule edit becomes an effective future policy revision. The active and
+pending governing zones are visible, and usage/reconciliation dates are
+formatted through their recorded policy revision's zone. A usage editor resolves
+the policy at the chosen occurrence instant, offers General only for an
+unrestricted category policy, and clears or normalizes a category that becomes
+invalid when the date crosses a revision boundary.
+
+Quick Log writes the eligible expense, funding split, and linked usage
+atomically. Replacing or deleting the expense recomputes, relinks, or removes
+that evidence in the same SQLCipher transaction. An eligible reimbursement
+expense edit preserves its advanced status, deletion removes its claim evidence,
+and an edit that removes eligibility requires explicit confirmation before the
+evidence is discarded.
+An unlinked, current, non-grandfathered benefit-only usage can itself be edited
+by exact expected evidence without changing its stable usage ID. Delete returns
+that exact evidence; the Undo request synchronously captures the usage, plan,
+and policy revision and atomically re-adds it only if the current plan is
+writable and the unlinked/unclaimed/category/date/revision/capacity invariants
+still hold. Linked, prepaid, reimbursement, archived, and grandfathered
+evidence stays on its authoritative workflow and fails closed. Cross-record validation is
+bidirectional: every live negative posting from a `restrictedAllowance` account
+must be authorized by exactly one valid prepaid usage or expiry reconciliation,
+and every claim must match the entry's immutable kind, date, currency, category,
+amount, restricted account, and—where applicable—source, fingerprint, origin,
+and balanced adjustment postings. Positive restricted-account funding needs no
+allowance claim. A source label alone is descriptive metadata, not authority.
+
+Normal recovery reads the complete normalized posting history only for live
+restricted accounts, fetches the full entries needed for negative postings and
+linked evidence, and repeats the mutually dependent account/plan/journal checks
+until their removal and quarantine sets reach a monotonic fixed point. An
+invalid prepaid plan also quarantines its restricted-debit/expiry evidence in
+memory; an ordinary benefit-limit or reimbursement expense remains in the book
+when only its allowance metadata is invalid. Malformed accounts, historically
+negative balances, unauthorized or multiply claimed restricted debits, and
+invalid evidence never participate in live calculations, but their encrypted
+rows are retained for backup and diagnosis. Strict restore rejects the same
+conditions rather than importing a partially trusted graph. Restricted value
+is excluded from unrestricted cash and Flexible today.
 
 ## Time, recurrence, and reporting calendar
 
@@ -140,7 +230,7 @@ expense relinks or removes that evidence in the same SQLCipher transaction.
 
 ## SQLCipher records and normalized indexes
 
-Deterministic encrypted payloads remain the recovery source of truth. Schema 8
+Deterministic encrypted payloads remain the recovery source of truth. Schema 9
 includes normalized ledger, attachment, store-envelope, historical budget, and
 derived intelligence projections:
 
@@ -246,17 +336,81 @@ results remain visibly dated estimates and unconverted mode remains available.
 No applicable rate produces an explicit unavailable/unconverted result, never
 an invented value.
 
-## Widget snapshot
+## Market-data foundation
 
-The app and widget share one App Group only for a versioned redacted snapshot.
-Budget status contains state, reporting-period token, expiry, and a bounded
-integer percent used. Smart Overview adds bounded review/allowance/commitment
-counts, an allowance-remaining percentage, daily expiry, and an optional next
-commitment timestamp. The payload contains no amount, payee, account name,
-holding, balance, transaction, book, or ledger identifier. Opt-out, profile
-removal, erase, and unsupported future schemas scrub the snapshot and known
-legacy prototype keys. Locking may retain already-published opt-in derivatives
-because they contain no financial record fields.
+The 0.7.1 approved rework adds Core-only value types and protocols; it does not
+add a stored collection or SQLCipher migration. `InstrumentIdentity` preserves
+symbol, venue, quote currency, resolution, and stable identity without guessing
+an ambiguous listing. `MarketQuoteObservation` is immutable dated evidence with
+an exact price, quote/received times, quote type, delay, quality, market-session
+context, and provenance.
+
+`MarketEstimatedNetWorthEngine` can replace a position's already-recorded value
+exactly once inside a derived estimate or retain that recorded value and report
+a stable gap. It does not mutate the journal, `InvestmentHolding.priceHistory`,
+lots/disposals, balances, or frozen net-worth snapshots. Missing or stale
+quotes and absent FX produce partial/unavailable evidence, never zero or an
+invented converted total.
+
+`MarketDataPolicy.manualLocalDefault` is the only active shipping policy. The
+provider and observation-store protocols plus request planner are seams for a
+future separately approved implementation; this release has no concrete
+provider, endpoint, credential, network call, background task, or persisted
+quote store.
+
+Observation validation binds manual, migrated-manual, imported, and provider
+source classes to their allowed quote type, delay, and quality. Price is
+strictly positive except for an explicit user-entered or migrated-manual zero
+write-down; provider zero is invalid and cannot represent unavailability.
+Event identity includes source class plus any source-native record/sequence ID,
+and corrections are deduplicated before current-policy filtering so a newer
+ineligible correction cannot revive older evidence. A provider batch is
+untrusted until its request ID/time and exact result set, supported instrument
+kinds, requested quote currencies, and provider provenance all match.
+
+## App Group artifacts and widget snapshot
+
+The app and widget share one App Group with an exact three-artifact allowlist:
+
+1. the non-financial app-language preference;
+2. one schema-4 redacted widget-summary `Data` value; and
+3. one bounded, data-free quick-action ingress file containing only schema and
+   authority metadata, admission state, opaque handoff tokens, and one of the
+   six closed action-enum values.
+
+No other default key or file is an approved cross-process data channel.
+Replacing the widget-summary value is its publication boundary, so a reader
+cannot combine independently written fields from different generations. Budget
+Status contains state, reporting-period token, expiry, and a bounded integer
+percent used. Smart Overview adds an optional current review count, bounded
+allowance and commitment state, a reporting-calendar-derived relative due-day
+count, and one expiry. Nil review count means refresh incomplete; it is not the
+same as zero. Positive values are bounded at their reviewed publication limits;
+any negative percent, count, or relative-day field invalidates the whole atomic
+generation instead of being clamped or salvaged.
+
+Schemas 1–3 migrate once from their independent keys; an exact due date without
+reporting-calendar identity is dropped rather than reinterpreted. An absent
+schema-4 payload is the genuine opt-out/disabled state. A present corrupt,
+oversized, contradictory, negative-field, or unsupported-future payload is
+stale and opens the app for refresh: the read-only widget never writes it back,
+while the app-side maintenance writer atomically replaces it with canonical
+stale state. Expiry also becomes stale. Only a canonical disabled generation
+shows Settings guidance. The payload contains no amount, payee, account name,
+holding/symbol/quote, balance, transaction/book/ledger identifier, note,
+attachment, or evidence text. Opt-out, profile removal, erase, and restore
+boundaries scrub the summary and known legacy prototype keys. Locking may retain
+already-published opt-in derivatives because they contain no financial record
+fields.
+
+When the ready scene activates, the app republishes an eligible current
+generation and arms exactly one wait for the next boundary in the book's
+reporting calendar. Crossing that civil-day boundary refreshes and rearms;
+inactivity, lock, replacement, or logical-book revision cancels or invalidates
+obsolete work. First-run/onboarding and opt-out remain disabled rather than
+silently activating summaries. Home widgets use a reduced information density
+at accessibility Dynamic Type sizes, while Lock Screen families keep their
+native compact hierarchy.
 
 ## Export identity and portable recovery
 
@@ -275,6 +429,20 @@ append, duplication, and reordering. Version 1 remains readable for backward
 compatibility. Restore validates collection identities and domain relationships,
 reloads invariants, and uses a separate file-backed rollback archive if a
 post-commit load fails.
+
+Before candidate `AppModel` load, production restore streams raw stored rows in
+stable key order from the isolated SQLCipher store, checks cooperative
+cancellation, and carries only bounded validation state rather than materializing
+a second whole-book snapshot. Per-record and aggregate ceilings cover record and
+payload bytes, nested journal/lifecycle/investment/schedule/goal/loan work, and
+allowance usages, reconciliations, archive transitions, and cadence-period walks.
+Allowance ceilings include 4,096 usages, 4,096 reconciliations, and 512 archive
+transitions per plan, plus 100,000 of each in aggregate; cadence validation
+permits `10,000 + 2 × maxPolicyRevisions` period work per plan (11,024 at the
+512-revision cap) and 100,000 period walks across the candidate. Weekday work is
+counted exactly from weekdays in constant time rather than charging every
+calendar day. Exceeding any ceiling rejects the candidate before domain decode/
+relationship traversal or live-book replacement.
 
 CSV/Qianji import is local and preview-first. Invalid rows are surfaced,
 unknown CSV/TSV layouts can be mapped column by column, account/category

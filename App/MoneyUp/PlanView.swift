@@ -1,87 +1,17 @@
 import MoneyUpCore
 import SwiftUI
 
-struct PlanView: View {
-    fileprivate enum Section: Hashable {
-        case budget
-        case goals
-        case allowances
-        case calendar
-    }
+enum PlanSection: String, CaseIterable, Hashable {
+    case budget
+    case calendar
+    case goals
+    case allowances
 
-    fileprivate static let switchableSections: [Section] = [
+    static let ordered: [PlanSection] = [
         .budget, .calendar, .goals, .allowances
     ]
 
-    @State private var selection: Section = .budget
-    @Environment(AppModel.self) private var model
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @AppStorage(MoneyAmountPrivacy.storageKey)
-    private var hidesAmounts = MoneyAmountPrivacy.defaultHidesAmounts
-
-    var body: some View {
-        let _ = hidesAmounts
-        return Group {
-            switch selection {
-            case .budget:
-                BudgetPlanView()
-            case .goals:
-                SavingsGoalsView()
-            case .allowances:
-                AllowanceCenterView()
-            case .calendar:
-                CalendarView(providesNavigationStack: true)
-            }
-        }
-        .safeAreaInset(edge: .top, spacing: 0) {
-            sectionSwitcher
-        }
-        .environment(\.calendar, model.reportingCalendar)
-        .environment(\.timeZone, model.reportingCalendar.timeZone)
-    }
-
-    private var sectionSwitcher: some View {
-        HStack(spacing: 8) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(Self.switchableSections, id: \.self) { section in
-                        Button {
-                            withAnimation(
-                                MoneyUpMotion.animation(
-                                    for: .selection,
-                                    reduceMotion: reduceMotion
-                                )
-                            ) {
-                                selection = section
-                            }
-                        } label: {
-                            Label(section.title, systemImage: section.systemImage)
-                                .font(.subheadline.weight(.semibold))
-                                .padding(.horizontal, 14)
-                                .frame(minHeight: 44)
-                                .background(
-                                    selection == section
-                                        ? Color.accentColor.opacity(0.18)
-                                        : Color.secondary.opacity(0.10),
-                                    in: Capsule()
-                                )
-                        }
-                        .buttonStyle(MoneyUpPressableButtonStyle())
-                        .accessibilityAddTraits(selection == section ? .isSelected : [])
-                    }
-                }
-                .padding(.leading, 16)
-            }
-            MoneyUpAmountPrivacyButton()
-                .padding(.trailing, 16)
-        }
-        .padding(.vertical, 8)
-        .background(.bar)
-    }
-}
-
-private extension PlanView.Section {
-    var title: LocalizedStringKey {
+    var titleKeyString: String {
         switch self {
         case .budget: "plan.budget"
         case .goals: "plan.goals"
@@ -89,6 +19,8 @@ private extension PlanView.Section {
         case .calendar: "tab.calendar"
         }
     }
+
+    var title: LocalizedStringKey { LocalizedStringKey(titleKeyString) }
 
     var systemImage: String {
         switch self {
@@ -100,14 +32,176 @@ private extension PlanView.Section {
     }
 }
 
-private struct BudgetPlanView: View {
-    let sectionBack: MoneyUpSectionBackAction?
-
-    init(sectionBack: MoneyUpSectionBackAction? = nil) {
-        self.sectionBack = sectionBack
+enum PlanSectionSelectorPolicy {
+    static func usesMenu(at dynamicTypeSize: DynamicTypeSize) -> Bool {
+        dynamicTypeSize.isAccessibilitySize
     }
 
+    static func showsTitle(
+        for section: PlanSection,
+        selection: PlanSection
+    ) -> Bool {
+        section == selection
+    }
+}
+
+struct PlanView: View {
+    @State private var selection: PlanSection = .budget
     @Environment(AppModel.self) private var model
+    @Environment(\.appReportingSnapshot) private var sharedReportingSnapshot
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @AppStorage(MoneyAmountPrivacy.storageKey)
+    private var hidesAmounts = MoneyAmountPrivacy.defaultHidesAmounts
+
+    var body: some View {
+        let _ = hidesAmounts
+        let snapshot = reportingSnapshot
+        return NavigationStack {
+            sectionRoot
+                // This modifier belongs to the stack's root screen. Pushed
+                // destinations replace it and therefore receive the native
+                // Back control without carrying the peer-section selector.
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    sectionSwitcher
+                }
+                .toolbar {
+                    ToolbarItem(placement: .primaryAction) {
+                        MoneyUpAmountPrivacyButton()
+                    }
+                }
+        }
+        .environment(\.calendar, snapshot.calendar)
+        .environment(\.timeZone, snapshot.calendar.timeZone)
+    }
+
+    private var reportingSnapshot: AppReportingSnapshot {
+        sharedReportingSnapshot
+            ?? AppReportingSnapshot(
+                instant: model.currentDateForUserAction(),
+                calendar: model.reportingCalendar
+            )
+    }
+
+    @ViewBuilder
+    private var sectionRoot: some View {
+        switch selection {
+        case .budget:
+            BudgetPlanView()
+        case .goals:
+            SavingsGoalsView()
+        case .allowances:
+            AllowanceCenterView()
+        case .calendar:
+            CalendarView(providesNavigationStack: false)
+        }
+    }
+
+    @ViewBuilder
+    private var sectionSwitcher: some View {
+        Group {
+            if PlanSectionSelectorPolicy.usesMenu(at: dynamicTypeSize) {
+                sectionMenu
+            } else {
+                ViewThatFits(in: .horizontal) {
+                    compactSectionStrip
+                    sectionMenu
+                }
+            }
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 16)
+        .background(.bar)
+    }
+
+    private var compactSectionStrip: some View {
+        HStack(spacing: 8) {
+            ForEach(PlanSection.ordered, id: \.self) { section in
+                sectionButton(section)
+            }
+        }
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private var sectionMenu: some View {
+        Menu {
+            ForEach(PlanSection.ordered, id: \.self) { section in
+                Button {
+                    select(section)
+                } label: {
+                    Label {
+                        Text(section.title)
+                    } icon: {
+                        Image(
+                            systemName: selection == section
+                                ? "checkmark.circle.fill"
+                                : section.systemImage
+                        )
+                    }
+                }
+                .accessibilityAddTraits(
+                    selection == section ? .isSelected : []
+                )
+            }
+        } label: {
+            Label(selection.title, systemImage: selection.systemImage)
+                .font(.headline)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .padding(.horizontal, 14)
+                .background(Color.accentColor.opacity(0.18), in: Capsule())
+        }
+        .buttonStyle(MoneyUpPressableButtonStyle())
+        .accessibilityLabel("plan.section_picker")
+        .accessibilityValue(Text(selection.title))
+    }
+
+    private func sectionButton(_ section: PlanSection) -> some View {
+        let isSelected = selection == section
+        return Button {
+            select(section)
+        } label: {
+            Group {
+                if PlanSectionSelectorPolicy.showsTitle(
+                    for: section,
+                    selection: selection
+                ) {
+                    Label(section.title, systemImage: section.systemImage)
+                        .padding(.horizontal, 14)
+                } else {
+                    Image(systemName: section.systemImage)
+                        .frame(width: 44)
+                }
+            }
+            .font(.subheadline.weight(.semibold))
+            .frame(minHeight: 44)
+            .background(
+                isSelected
+                    ? Color.accentColor.opacity(0.18)
+                    : Color.secondary.opacity(0.10),
+                in: Capsule()
+            )
+        }
+        .buttonStyle(MoneyUpPressableButtonStyle())
+        .accessibilityLabel(Text(section.title))
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    private func select(_ section: PlanSection) {
+        guard selection != section else { return }
+        withAnimation(
+            MoneyUpMotion.animation(
+                for: .selection,
+                reduceMotion: reduceMotion
+            )
+        ) {
+            selection = section
+        }
+    }
+}
+
+private struct BudgetPlanView: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.appReportingSnapshot) private var sharedReportingSnapshot
     @State private var editingNode: BudgetNode?
     @State private var isAddingCategory = false
     @State private var categoryKindToAdd: LedgerAccountKind = .expense
@@ -119,13 +213,12 @@ private struct BudgetPlanView: View {
 
     /// How far through the month we are, drawn on every bar so a number can be
     /// read as ahead or behind rather than just large.
-    private var monthElapsed: Double {
-        let calendar = model.reportingCalendar
-        let now = Date()
-        guard let month = calendar.dateInterval(of: .month, for: now) else { return 0 }
-        let span = month.end.timeIntervalSince(month.start)
-        guard span > 0 else { return 0 }
-        return min(max(now.timeIntervalSince(month.start) / span, 0), 1)
+    private var reportingSnapshot: AppReportingSnapshot {
+        sharedReportingSnapshot
+            ?? AppReportingSnapshot(
+                instant: model.currentDateForUserAction(),
+                calendar: model.reportingCalendar
+            )
     }
 
     /// Pinning from the budget list keeps the choice next to the category it
@@ -155,8 +248,10 @@ private struct BudgetPlanView: View {
         }
     }
 
-    private func progressByIDResult() -> DerivedValue<[UUID: BudgetProgress]> {
-        switch model.budgetProgressThisMonthResult() {
+    private func progressByIDResult(
+        asOf reportingDate: Date
+    ) -> DerivedValue<[UUID: BudgetProgress]> {
+        switch model.budgetProgressThisMonthResult(asOf: reportingDate) {
         case let .available(progress):
             return .available(
                 Dictionary(
@@ -171,16 +266,21 @@ private struct BudgetPlanView: View {
     var body: some View {
         // Resolved once per update. Reading it inside the row loop recomputed
         // the whole budget tree for every category on screen.
-        let progressResult = progressByIDResult()
-        let elapsed = monthElapsed
-        let foreignSpendingResult = model.excludedForeignSpendingThisMonthResult()
-        let summaryResult = model.budgetPlanSummaryThisMonthResult()
+        let snapshot = reportingSnapshot
+        let reportingDate = snapshot.instant
+        let progressResult = progressByIDResult(asOf: reportingDate)
+        let elapsed = snapshot.monthElapsed
+        let foreignSpendingResult = model.excludedForeignSpendingThisMonthResult(
+            asOf: reportingDate
+        )
+        let summaryResult = model.budgetPlanSummaryThisMonthResult(
+            asOf: reportingDate
+        )
         let purposeOverview = model.budgetPurposeOverview()
         let purposes = purposeOverview.effectivePurposeByID
         let needsPurposeCount = purposeOverview.reviewCount
 
-        return NavigationStack {
-            List {
+        return List {
                 Section {
                     Picker("plan.pacing_view", selection: $displayedPacingCadence) {
                         Text("plan.pacing.today").tag(BudgetPacingCadence.daily)
@@ -318,7 +418,8 @@ private struct BudgetPlanView: View {
                                     elapsed: elapsed,
                                     purpose: purposes[item.node.id] ?? .unclassified,
                                     displayedPacingCadence: displayedPacingCadence,
-                                    showsDetail: showsRowDetail
+                                    showsDetail: showsRowDetail,
+                                    reportingDate: reportingDate
                                 )
                             }
                             .buttonStyle(.plain)
@@ -381,7 +482,6 @@ private struct BudgetPlanView: View {
                 }
             }
             .navigationTitle("plan.budget")
-            .moneyUpSectionBackToolbar(sectionBack)
             .moneyUpOperationErrorAlert(message: $errorMessage)
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
@@ -432,7 +532,6 @@ private struct BudgetPlanView: View {
             .sheet(isPresented: $isManagingCategories) {
                 CategoryManagementList()
             }
-        }
     }
 }
 
@@ -445,6 +544,7 @@ private struct BudgetRow: View {
     let purpose: BudgetPurpose
     let displayedPacingCadence: BudgetPacingCadence
     let showsDetail: Bool
+    let reportingDate: Date
 
     private var spent: Money? { progress?.spent }
 
@@ -530,7 +630,8 @@ private struct BudgetRow: View {
                 if let progress {
                     switch model.budgetPace(
                         for: progress,
-                        cadence: displayedPacingCadence
+                        cadence: displayedPacingCadence,
+                        asOf: reportingDate
                     ) {
                     case let .available(.some(pace)):
                         Text(

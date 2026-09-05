@@ -103,14 +103,24 @@ struct IntelligenceScheduleReviewView: View {
                     .disabled(isSaving || !canSave)
                 }
             }
-            .onAppear { applyReportingDateOnce() }
+            .onAppear {
+                applyReportingDateOnce()
+                if !eligibleAccounts.contains(where: { $0.id == accountID }),
+                   let fallback = eligibleAccounts.first {
+                    accountID = fallback.id
+                }
+            }
             .moneyUpOperationErrorAlert(message: $errorMessage)
         }
         .interactiveDismissDisabled(isSaving)
     }
 
     private var eligibleAccounts: [LedgerAccount] {
-        model.userAccounts.filter { $0.currency == selection.offer.amount.currency }
+        model.userAccounts.filter {
+            $0.currency == selection.offer.amount.currency
+                && (selection.offer.kind != .expense
+                    || $0.accountType != .restrictedAllowance)
+        }
     }
 
     private var eligibleCategories: [LedgerAccount] {

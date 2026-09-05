@@ -7,6 +7,12 @@ struct LockedQuickCaptureView: View {
         case note
     }
 
+    private enum ReplayInspectionState {
+        case checking
+        case ready
+        case failed
+    }
+
     @Environment(AppModel.self) private var model
     let request: QuickLogRouteRequest
 
@@ -21,6 +27,7 @@ struct LockedQuickCaptureView: View {
     @State private var errorMessage: String?
     @State private var didSave = false
     @State private var showsFieldErrors = false
+    @State private var replayInspectionState: ReplayInspectionState = .checking
     @FocusState private var focusedField: FocusedField?
 
     private var hasValidAmount: Bool {
@@ -35,7 +42,9 @@ struct LockedQuickCaptureView: View {
     }
 
     private var canSave: Bool {
-        hasValidAmount && detailsFitCapture
+        replayInspectionState == .ready
+            && hasValidAmount
+            && detailsFitCapture
     }
 
     private var hasUnsavedInput: Bool {
@@ -129,6 +138,22 @@ struct LockedQuickCaptureView: View {
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(.secondary)
                         }
+                        switch replayInspectionState {
+                        case .checking:
+                            ProgressView()
+                                .accessibilityLabel("lock.opening")
+                        case .failed:
+                            Button {
+                                Task { await inspectCommittedCapture() }
+                            } label: {
+                                Label(
+                                    "action.retry",
+                                    systemImage: "arrow.clockwise"
+                                )
+                            }
+                        case .ready:
+                            EmptyView()
+                        }
                     }
 
                     Section {
@@ -167,6 +192,7 @@ struct LockedQuickCaptureView: View {
                             Text("capture.reconcile_later")
                         }
                     }
+                    .disabled(replayInspectionState != .ready)
 
                     Section {
                         Button {
@@ -205,7 +231,7 @@ struct LockedQuickCaptureView: View {
                         model.consumeQuickLogRequest(request)
                     }
                 }
-                if !didSave {
+                if !didSave, replayInspectionState == .ready {
                     ToolbarItemGroup(placement: .keyboard) {
                         Button("capture.save") { Task { await save() } }
                             .disabled(!canSave || isSaving)
@@ -217,9 +243,7 @@ struct LockedQuickCaptureView: View {
             }
         }
         .task {
-            guard !didSave else { return }
-            await Task.yield()
-            focusedField = .amount
+            await inspectCommittedCapture()
         }
         .moneyUpFeedback(
             for: .financialCommit,
@@ -255,10 +279,10 @@ struct LockedQuickCaptureView: View {
         defer { isSaving = false }
 
         // A valid form is first appended to the existing device-only encrypted
-        // inbox. `didSave` is the view-level idempotency boundary: if
-        // authentication is cancelled and the user retries, the same input is
-        // not appended again. Promotion into authenticated Log remains the
-        // model's existing exactly-once path and still requires normal review.
+        // inbox. The durable ingress token is also the append's idempotency
+        // key, while `didSave` prevents a second same-view attempt after an
+        // authentication cancellation. Promotion into authenticated Log
+        // remains the model's existing exactly-once path and requires review.
         if hasUnsavedInput, !didSave {
             showsFieldErrors = true
             guard hasValidAmount else {
@@ -288,5 +312,29 @@ struct LockedQuickCaptureView: View {
         }
         guard model.requestedQuickLogRequest == request else { return }
         await model.start()
+    }
+
+    private func inspectCommittedCapture() async {
+        guard !didSave else { return }
+        replayInspectionState = .checking
+        errorMessage = nil
+        focusedField = nil
+        do {
+            if try await model.resumeCommittedLockedCaptureIfPresent(
+                request: request
+            ) {
+                didSave = true
+                return
+            }
+            guard !Task.isCancelled else { return }
+            replayInspectionState = .ready
+            await Task.yield()
+            focusedField = .amount
+        } catch is CancellationError {
+            return
+        } catch {
+            replayInspectionState = .failed
+            errorMessage = safeUserMessage(for: error, context: .read)
+        }
     }
 }

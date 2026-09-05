@@ -59,6 +59,14 @@ struct MoneyUpApp: App {
                     .frame(width: 0, height: 0)
                 }
                 .task {
+                    quickActionRouteBroker.reloadDurableIngress()
+                    model.retryPresentedQuickActionAcknowledgement()
+                    if scenePhase == .active {
+                        // SwiftUI need not emit an initial scenePhase change.
+                        // Register the already-active launch before startup so
+                        // ready publication can arm the reporting-day refresh.
+                        model.sceneDidBecomeActive()
+                    }
                     routePendingQuickAction()
                     await model.startAfterInitialRoutingWindow()
                 }
@@ -86,7 +94,10 @@ struct MoneyUpApp: App {
                     case .background:
                         model.sceneDidEnterBackground()
                     case .active:
+                        quickActionRouteBroker.reloadDurableIngress()
+                        model.retryPresentedQuickActionAcknowledgement()
                         model.sceneDidBecomeActive()
+                        routePendingQuickAction()
                     case .inactive:
                         model.sceneDidBecomeInactive()
                     @unknown default:

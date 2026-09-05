@@ -445,6 +445,58 @@ final class EncryptedRecordStoreTests: XCTestCase {
         await store.close()
     }
 
+    func testAccountScopedPostingEventsAreCompleteOrderedAndExcludable()
+    async throws {
+        let fixture = try TemporaryDatabaseFixture()
+        let store = try EncryptedRecordStore(
+            databaseURL: fixture.databaseURL,
+            key: fixture.key
+        )
+        let selectedAccountID = UUID()
+        let otherAccountID = UUID()
+        let categoryID = UUID()
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        let laterSelected = try makeExpenseEntry(
+            occurredAt: start.addingTimeInterval(20),
+            amount: 2,
+            firstAccountID: selectedAccountID,
+            secondAccountID: categoryID
+        )
+        let unrelated = try makeExpenseEntry(
+            occurredAt: start.addingTimeInterval(10),
+            amount: 3,
+            firstAccountID: otherAccountID,
+            secondAccountID: categoryID
+        )
+        let earlierSelected = try makeExpenseEntry(
+            occurredAt: start,
+            amount: 1,
+            firstAccountID: selectedAccountID,
+            secondAccountID: categoryID
+        )
+        let writes = try [laterSelected, unrelated, earlierSelected].map {
+            try RecordWrite($0, id: $0.id.uuidString, in: .journalEntries)
+        }
+        try await store.write(writes)
+
+        let events = try await store.fetchJournalPostingEvents(
+            accountIDs: [selectedAccountID]
+        )
+        XCTAssertEqual(events.map(\.entryID), [earlierSelected.id, laterSelected.id])
+        XCTAssertEqual(events.map(\.occurredAt), [
+            earlierSelected.occurredAt, laterSelected.occurredAt
+        ])
+        XCTAssertTrue(events.allSatisfy {
+            $0.posting.accountID == selectedAccountID
+        })
+        let excludingEarlier = try await store.fetchJournalPostingEvents(
+            accountIDs: [selectedAccountID],
+            excludingEntryIDs: [earlierSelected.id]
+        )
+        XCTAssertEqual(excludingEarlier.map(\.entryID), [laterSelected.id])
+        await store.close()
+    }
+
     func testSnapshotRestoreRebuildsTheJournalDateIndex() async throws {
         let fixture = try TemporaryDatabaseFixture()
         let store = try EncryptedRecordStore(

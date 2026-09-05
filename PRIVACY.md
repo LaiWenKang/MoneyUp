@@ -1,6 +1,6 @@
 # MoneyUp Privacy Policy
 
-Effective: 1 September 2026
+Effective: 4 September 2026
 
 MoneyUp is a local-first personal-finance app. Its core privacy rule is simple:
 financial records are processed on the user's iPhone and are not sent to a
@@ -23,8 +23,9 @@ it in the encrypted database and password-protected portable backups. It is
 never added to drafts, widgets, readable CSV/XLSX exports, or uploaded. Typed
 smart entry and category suggestions also run on the device.
 
-Optional Smart Entry matching is off by default. On eligible devices, it uses
-only Apple's default on-device system language model. MoneyUp first removes
+Optional Smart Entry matching is enabled by default for new and existing
+profiles, with an explicit Settings opt-out. On eligible devices, it uses only
+Apple's default on-device system language model. MoneyUp first removes
 parsed monetary, date, currency, and exact-name spans, then supplies a bounded
 context plus at most 16 existing local names per list. The model can return
 only bounded ordinals into those closed lists; it cannot return free text or
@@ -34,12 +35,20 @@ If the model is unavailable, cancelled, fails, or returns an invalid ordinal,
 MoneyUp silently keeps the deterministic rule-based result. No custom model
 provider, server, tool, image, or receipt data is used.
 
-If the user explicitly enables budget status for widgets, MoneyUp shares only
-an availability/state value and an integer percentage through its local App
-Group. That snapshot contains no amount, payee, account name, holding, balance,
-transaction, book, or ledger identifier. Disabling the setting or erasing the
-book removes the snapshot. Quick-action widgets remain free of financial
-values.
+MoneyUp's local App Group has an exact three-artifact allowlist: the chosen
+non-financial app-language preference; one atomic, versioned schema-4 Budget
+Status/Smart Overview snapshot when the user explicitly enables summaries; and
+one bounded data-free quick-action ingress JSON file. The snapshot may contain state, a bounded
+reporting-period token, bounded budget and allowance percentages, bounded review
+and active expense-commitment counts, expiry, and a reporting-calendar-derived
+relative due-day distance. The ingress file contains only schema/authority
+metadata, admission state, opaque handoff tokens, and one of six fixed action
+types. Neither contains an
+exact due date, amount, payee, account name, holding, symbol, quote, balance,
+transaction/book/ledger identifier, note, attachment, or extracted evidence;
+no other App Group key or file is approved. Disabling summaries or erasing the
+book removes the snapshot, and erase/restore boundaries invalidate old action
+requests. Quick-action widget timelines remain free of financial values.
 
 ## Collection, tracking, and advertising
 
@@ -112,7 +121,7 @@ when available.
 
 # MoneyUp 隐私政策（简体中文）
 
-生效日期：2026 年 9 月 1 日
+生效日期：2026 年 9 月 4 日
 
 MoneyUp 是一款本地优先的个人财务应用。核心隐私原则很简单：财务记录在
 用户的 iPhone 上处理，不会发送到 MoneyUp 服务器。
@@ -129,16 +138,23 @@ MoneyUp 无需注册，也没有接收这些记录的应用后端。
 编辑历史元数据，然后写入加密数据库及受密码保护的便携备份。图片不会进入草稿、
 组件、可读的 CSV／XLSX 导出，也不会上传。文字智能录入和分类建议也完全在设备上运行。
 
-可选的智能记账匹配默认关闭。在符合条件的设备上，它只使用 Apple 默认的本机系统
-语言模型。MoneyUp 会先移除已解析的金额、日期、币种及精确名称片段，再提供有界文字
+可选的智能记账匹配对新用户和既有用户默认开启，并可在“设置”中明确关闭。在符合条件的
+设备上，它只使用 Apple 默认的本机系统语言模型。MoneyUp 会先移除已解析的金额、日期、
+币种及精确名称片段，再提供有界文字
 上下文，以及每个列表最多 16 个现有本机名称。模型只能返回这些封闭列表中的有界序号，
 不能返回自由文字或任何财务字段；每项匹配都只作为可见建议，需由用户检查。若模型不可用、被取消、失败或
 返回无效序号，MoneyUp 会静默保留确定性规则结果。此功能不使用任何供应商服务、服务器、
 工具、图片、收据数据、自定义模型或自定义模型供应商。
 
-只有用户明确启用小组件预算状态时，MoneyUp 才会通过本机 App Group 共享
-可用性／状态与整数百分比。该快照不含金额、商户、账户名称、持仓、余额、
-交易、账本或账本标识符。关闭此设置或抹掉账本会删除该快照；快捷操作小组件
+MoneyUp 的本机 App Group 只允许三类资料：非财务性的应用语言偏好；用户明确
+启用小组件摘要后，为“预算状态”和“智能概览”写入的一个原子化、带版本的
+schema 4 快照；以及一个有界的快捷操作接入文件。快照可包含状态、有界的报告期标记、
+预算与津贴百分比、待检查项与有效支出承诺数量、到期时间，以及根据报告日历
+计算的相对到期天数。该 JSON 接入文件不含财务资料，只包含架构版本／权限元数据、
+接纳状态、不透明交接令牌与六种固定操作之一。
+两者均不含精确到期日期、金额、商户、账户名称、持仓、证券代码、行情、余额、交易／
+账本标识符、备注、附件或提取的证据；不允许其他 App Group 键或文件。关闭摘要或抹掉
+账本会删除快照，抹掉／恢复边界会使旧快捷操作请求失效。快捷操作小组件的时间线
 仍不包含任何财务数值。
 
 ## 收集、追踪与广告

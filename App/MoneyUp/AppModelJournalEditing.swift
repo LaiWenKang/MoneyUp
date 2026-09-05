@@ -92,7 +92,8 @@ extension AppModel {
         occurredAt: Date,
         payee: String?,
         note: String?,
-        attachmentDrafts: [ReceiptAttachmentDraft] = []
+        attachmentDrafts: [ReceiptAttachmentDraft] = [],
+        confirmsRemovingAllowanceClaim: Bool = false
     ) async throws {
         let request = JournalEntryReplacementRequest(
             kind: kind,
@@ -106,15 +107,9 @@ extension AppModel {
             payee: payee,
             note: note
         )
-        let linkedScheduleIDs = Set(scheduledTransactions.compactMap { schedule in
-            schedule.resolutions.contains { $0.linkedEntryID == id }
-                ? schedule.id
-                : nil
-        })
+        let linkedScheduleIDs = replacementLinkedScheduleIDs(for: id)
         try beginJournalAndScheduleMutation(scheduleIDs: linkedScheduleIDs)
-        defer {
-            endJournalAndScheduleMutation(scheduleIDs: linkedScheduleIDs)
-        }
+        defer { endJournalAndScheduleMutation(scheduleIDs: linkedScheduleIDs) }
         let lookupStore = try requireStore()
         let original = try await replacementOriginalEntry(id: id, in: lookupStore)
         guard !isProtectedJournalEntry(original) else {
@@ -124,10 +119,15 @@ extension AppModel {
             attachmentDrafts,
             originalEntryID: original.id
         )
-        let candidate = try makeReplacementCandidate(request, original: original)
-        let replacement = try makeReplacementEntry(
-            from: candidate.entry,
-            original: original
+        let (candidate, allowanceReplacement) = try await preparedReplacementCandidate(
+            request, original: original,
+            confirmsRemovingAllowanceClaim: confirmsRemovingAllowanceClaim
+        )
+        let replacement = allowanceReplacement.entry
+        try await requireNonnegativeRestrictedBalances(
+            afterRemoving: original,
+            adding: replacement,
+            in: lookupStore
         )
         let budgetPlan = try await replacementBudgetPlan(
             original: original,
@@ -140,7 +140,8 @@ extension AppModel {
             addedAccounts: candidate.addedAccounts,
             budgetPlan: budgetPlan,
             linkedScheduleIDs: linkedScheduleIDs,
-            attachmentDrafts: attachmentDrafts
+            attachmentDrafts: attachmentDrafts,
+            allowances: allowanceReplacement.plans
         )
         let generation = storeGeneration
         let transactionStore = try requireStore()
@@ -178,6 +179,37 @@ extension AppModel {
 }
 
 extension AppModel {
+    private func replacementLinkedScheduleIDs(for entryID: UUID) -> Set<UUID> {
+        Set(scheduledTransactions.compactMap { schedule in
+            schedule.resolutions.contains { $0.linkedEntryID == entryID }
+                ? schedule.id
+                : nil
+        })
+    }
+
+    private func preparedReplacementCandidate(
+        _ request: JournalEntryReplacementRequest,
+        original: JournalEntry,
+        confirmsRemovingAllowanceClaim: Bool
+    ) async throws -> (
+        JournalEntryReplacementCandidate,
+        PreparedAllowanceReplacement
+    ) {
+        let candidate = try makeReplacementCandidate(request, original: original)
+        let replacement = try makeReplacementEntry(
+            from: candidate.entry,
+            original: original
+        )
+        return (
+            candidate,
+            try await prepareAllowanceReplacement(
+                original: original,
+                replacement: replacement,
+                confirmsRemovingAllowanceClaim: confirmsRemovingAllowanceClaim
+            )
+        )
+    }
+
     private func validateReplacementAttachmentDrafts(
         _ drafts: [ReceiptAttachmentDraft],
         originalEntryID: UUID
@@ -567,7 +599,8 @@ extension AppModel {
         addedAccounts: [LedgerAccount],
         budgetPlan: JournalEntryReplacementBudgetPlan,
         linkedScheduleIDs: Set<UUID>,
-        attachmentDrafts: [ReceiptAttachmentDraft]
+        attachmentDrafts: [ReceiptAttachmentDraft],
+        allowances: [AllowancePlan]
     ) throws -> JournalEntryReplacementWritePlan {
         var writes = try addedAccounts.map {
             try RecordWrite($0, id: $0.id.uuidString, in: .accounts)
@@ -600,15 +633,6 @@ extension AppModel {
         }
         writes += try schedules.map {
             try RecordWrite($0, id: $0.id.uuidString, in: .scheduledTransactions)
-        }
-        let allowances = try allowancePlans.compactMap { plan -> AllowancePlan? in
-            guard plan.usages.contains(where: {
-                $0.linkedJournalEntryID == original.id
-            }) else { return nil }
-            let updated = replacement.kind == .expense
-                ? try plan.relinkingUsages(from: original.id, to: replacement.id)
-                : plan.removingUsages(linkedTo: original.id)
-            return updated
         }
         writes += try allowances.map {
             try RecordWrite($0, id: $0.id.uuidString, in: .allowancePlans)

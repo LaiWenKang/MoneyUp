@@ -157,7 +157,7 @@ extension AppModel {
         incomeCategoryID: UUID
     ) throws -> LedgerAccount {
         guard let fallbackAccount = userAccounts.first(where: {
-            $0.id == accountID
+            $0.id == accountID && $0.accountType != .restrictedAllowance
         }), expenseCategories.contains(where: {
             $0.id == expenseCategoryID && $0.systemRole == nil
         }), incomeCategories.contains(where: {
@@ -345,6 +345,7 @@ extension AppModel {
         (account.kind == .asset || account.kind == .liability)
             && account.systemRole == nil
             && !account.isArchived
+            && account.accountType != .restrictedAllowance
             && (currency == nil || account.currency == currency)
     }
 
@@ -462,6 +463,7 @@ extension AppModel {
                 context: context,
                 state: &state
             )
+            try rejectRestrictedAllowanceDebit(in: baseEntry)
             state.importedEntries.append(
                 try JournalEntry(
                     kind: baseEntry.kind,

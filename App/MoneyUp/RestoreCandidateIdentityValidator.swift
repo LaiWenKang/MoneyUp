@@ -4,6 +4,7 @@ import MoneyUpPersistence
 
 extension RestoreCandidateValidator {
     struct SnapshotIdentityState: Sendable {
+        var recordCount = 0
         var logicalIDsByCollection: [String: Set<UUID>] = [:]
         var exchangeRatePairDays = Set<String>()
         var physicalRecordIDs = Set<String>()
@@ -17,6 +18,9 @@ extension RestoreCandidateValidator {
         var savingsGoalActivityCount = 0
         var loanActivityCount = 0
         var allowanceUsageCount = 0
+        var allowanceReconciliationCount = 0
+        var allowancePeriodWorkCount = 0
+        var allowanceArchiveTransitionCount = 0
     }
 
     static func validateSnapshotIdentities(
@@ -46,6 +50,63 @@ extension RestoreCandidateValidator {
         }
     }
 
+    /// Production restore preflight. Both strict passes stream directly from
+    /// the disposable SQLCipher store: nested collection sizes are rejected
+    /// across the complete candidate before AppModel performs its collection-
+    /// wide domain load, then canonical physical/logical identities are
+    /// verified.
+    static func validateStoredRecords(
+        in store: EncryptedRecordStore,
+        expectedRecordCount: Int,
+        maximumAggregatePayloadByteCount: Int
+    ) async throws {
+        guard isWithinCandidateRecordLimit(expectedRecordCount) else {
+            throw AppModelError.invalidBook
+        }
+        do {
+            let workDecoder = JSONDecoder()
+            let workState = try await store.reduceStoredRecords(
+                into: SnapshotWorkLimitState()
+            ) { state, record, index in
+                try validateSnapshotWorkLimitRecord(
+                    record,
+                    index: index,
+                    maximumAggregatePayloadByteCount:
+                        maximumAggregatePayloadByteCount,
+                    decoder: workDecoder,
+                    state: &state
+                )
+            }
+            guard workState.recordCount == expectedRecordCount else {
+                throw AppModelError.invalidBook
+            }
+
+            let identityDecoder = JSONDecoder()
+            let identityState = try await store.reduceStoredRecords(
+                into: SnapshotIdentityState()
+            ) { state, record, index in
+                try validateSnapshotIdentityRecord(
+                    record,
+                    index: index,
+                    decoder: identityDecoder,
+                    state: &state
+                )
+            }
+            guard identityState.recordCount == expectedRecordCount else {
+                throw AppModelError.invalidBook
+            }
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            // Some legacy/domain decoders wrap an underlying cancellation in
+            // a validation error. The task flag remains authoritative.
+            try Task.checkCancellation()
+            // Never surface record identifiers or decoder diagnostics from an
+            // authenticated but untrusted archive.
+            throw AppModelError.invalidBook
+        }
+    }
+
     static func validateSnapshotIdentityRecord(
         _ record: StoredRecordSnapshot,
         index: Int,
@@ -53,6 +114,12 @@ extension RestoreCandidateValidator {
         state: inout SnapshotIdentityState
     ) throws {
         if index.isMultiple(of: 256) { try Task.checkCancellation() }
+        guard index == state.recordCount,
+              index >= 0,
+              index < maximumCandidateRecordCount else {
+            throw AppModelError.invalidBook
+        }
+        state.recordCount += 1
         let collection = try validateIdentityRecordEnvelope(
             record,
             state: &state
@@ -170,23 +237,57 @@ extension RestoreCandidateValidator {
             )
             return try decoder.decode(LoanPlan.self, from: record.payload).id
         case .allowancePlans:
-            let shape = try decoder.decode(
-                AllowancePlanWorkShape.self,
-                from: record.payload
+            return try decodeAllowanceIdentity(
+                record,
+                decoder: decoder,
+                state: &state
             )
-            state.allowanceUsageCount = try boundedAggregateCount(
-                current: state.allowanceUsageCount,
-                adding: shape.usageCount,
-                perRecordLimit: maximumAllowanceUsagesPerPlan,
-                aggregateLimit: maximumAllowanceUsageCount
-            )
-            return try decoder.decode(AllowancePlan.self, from: record.payload).id
         case .budgetConfigurationTimelines:
             try validateBudgetTimeline(record, decoder: decoder)
             return nil
         case .budgetEntryAttributions:
             return try decodeAttributionIdentity(record, decoder: decoder, state: &state)
         }
+    }
+
+    static func decodeAllowanceIdentity(
+        _ record: StoredRecordSnapshot,
+        decoder: JSONDecoder,
+        state: inout SnapshotIdentityState
+    ) throws -> UUID {
+        let shape = try decoder.decode(
+            AllowancePlanWorkShape.self,
+            from: record.payload
+        )
+        guard shape.policyRevisionCount
+                <= AllowancePlan.maximumPolicyRevisionCount else {
+            throw AppModelError.invalidBook
+        }
+        state.allowanceUsageCount = try boundedAggregateCount(
+            current: state.allowanceUsageCount,
+            adding: shape.usageCount,
+            perRecordLimit: maximumAllowanceUsagesPerPlan,
+            aggregateLimit: maximumAllowanceUsageCount
+        )
+        state.allowanceReconciliationCount = try boundedAggregateCount(
+            current: state.allowanceReconciliationCount,
+            adding: shape.reconciliationCount,
+            perRecordLimit: maximumAllowanceReconciliationsPerPlan,
+            aggregateLimit: maximumAllowanceReconciliationCount
+        )
+        state.allowancePeriodWorkCount = try boundedAggregateCount(
+            current: state.allowancePeriodWorkCount,
+            adding: shape.periodWorkCount,
+            perRecordLimit: maximumAllowancePeriodsPerPlan,
+            aggregateLimit: maximumAllowancePeriodWorkCount
+        )
+        state.allowanceArchiveTransitionCount = try boundedAggregateCount(
+            current: state.allowanceArchiveTransitionCount,
+            adding: shape.archiveTransitionCount,
+            perRecordLimit: maximumAllowanceArchiveTransitionsPerPlan,
+            aggregateLimit: maximumAllowanceArchiveTransitionCount
+        )
+        return try decoder.decode(AllowancePlan.self, from: record.payload).id
     }
 
     static func decodePrimaryRecord<Value: Decodable>(
@@ -636,17 +737,71 @@ extension RestoreCandidateValidator {
 
     struct AllowancePlanWorkShape: Decodable {
         let usageCount: Int
-        enum CodingKeys: String, CodingKey { case usages }
+        let reconciliationCount: Int
+        let policyRevisionCount: Int
+        let periodWorkCount: Int
+        let archiveTransitionCount: Int
+        enum CodingKeys: String, CodingKey {
+            case usages
+            case reconciliations
+            case archiveTransitions
+            case startsAt
+            case cadence
+            case timeZoneIdentifier
+            case policyRevisions
+        }
 
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
-            guard container.contains(.usages) else {
+            if container.contains(.usages) {
+                let values = try container.nestedUnkeyedContainer(forKey: .usages)
+                guard let count = values.count else {
+                    throw AppModelError.invalidBook
+                }
+                usageCount = count
+            } else {
                 usageCount = 0
-                return
             }
-            let values = try container.nestedUnkeyedContainer(forKey: .usages)
-            guard let count = values.count else { throw AppModelError.invalidBook }
-            usageCount = count
+            if container.contains(.reconciliations) {
+                let values = try container.nestedUnkeyedContainer(
+                    forKey: .reconciliations
+                )
+                guard let count = values.count else {
+                    throw AppModelError.invalidBook
+                }
+                reconciliationCount = count
+            } else {
+                reconciliationCount = 0
+            }
+            if container.contains(.archiveTransitions) {
+                let values = try container.nestedUnkeyedContainer(
+                    forKey: .archiveTransitions
+                )
+                guard let count = values.count else {
+                    throw AppModelError.invalidBook
+                }
+                archiveTransitionCount = count
+            } else {
+                archiveTransitionCount = 0
+            }
+            if container.contains(.policyRevisions) {
+                let values = try container.nestedUnkeyedContainer(
+                    forKey: .policyRevisions
+                )
+                guard let count = values.count else {
+                    throw AppModelError.invalidBook
+                }
+                policyRevisionCount = count
+            } else {
+                policyRevisionCount = 0
+            }
+            if usageCount <= AllowancePlan.maximumUsageCount,
+               reconciliationCount <= AllowancePlan.maximumReconciliationCount,
+               policyRevisionCount <= AllowancePlan.maximumPolicyRevisionCount {
+                periodWorkCount = try Self.periodWorkCount(in: container)
+            } else {
+                periodWorkCount = 0
+            }
         }
     }
 

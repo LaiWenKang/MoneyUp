@@ -21,6 +21,12 @@ struct ImportTransactionsView: View {
     @State private var message: String?
     @State private var errorMessage: String?
 
+    private var eligibleAccounts: [LedgerAccount] {
+        model.userAccounts.filter {
+            $0.accountType != .restrictedAllowance
+        }
+    }
+
     var body: some View {
         Form {
             Section {
@@ -110,7 +116,7 @@ struct ImportTransactionsView: View {
                         existing: model.accounts.compactMap(\.currency)
                     )
                     Picker("settings.default_account", selection: $fallbackAccountID) {
-                        ForEach(model.userAccounts) { account in
+                        ForEach(eligibleAccounts) { account in
                             Text(accountCurrencyLabel(account)).tag(Optional(account.id))
                         }
                     }
@@ -149,7 +155,7 @@ struct ImportTransactionsView: View {
                                     fallback: fallbackAccountID
                                 )
                             ) {
-                                ForEach(model.userAccounts) { account in
+                                ForEach(eligibleAccounts) { account in
                                     Text(accountCurrencyLabel(account)).tag(Optional(account.id))
                                 }
                             }
@@ -256,8 +262,8 @@ struct ImportTransactionsView: View {
         defaultCurrencyCode = model.profile?.baseCurrency.value ?? "SGD"
         fallbackAccountID = model.profile?.preferredAccountID
             .flatMap { preferred in
-                model.userAccounts.contains(where: { $0.id == preferred }) ? preferred : nil
-            } ?? model.userAccounts.first?.id
+                eligibleAccounts.contains(where: { $0.id == preferred }) ? preferred : nil
+            } ?? eligibleAccounts.first?.id
         fallbackExpenseCategoryID = model.profile?.preferredExpenseCategoryID
             .flatMap { preferred in
                 model.expenseCategories.contains(where: { $0.id == preferred })
@@ -433,7 +439,7 @@ struct ImportTransactionsView: View {
 
     private func exactAccount(named name: String) -> LedgerAccount? {
         let key = normalizedName(name)
-        return model.userAccounts.first { normalizedName($0.name) == key }
+        return eligibleAccounts.first { normalizedName($0.name) == key }
     }
 
     private func exactCategory(named name: String, kind: LedgerAccountKind) -> LedgerAccount? {

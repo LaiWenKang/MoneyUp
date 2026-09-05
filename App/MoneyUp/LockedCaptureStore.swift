@@ -91,6 +91,13 @@ actor LockedCaptureStore {
     private static let service = "com.laiwenkang.MoneyUp.locked-capture-key"
     private static let account = "primary"
     private static let maximumCount = 100
+    /// Match the device-only Keychain item's AfterFirstUnlock availability.
+    /// The inbox must remain reopenable after a later device relock so a
+    /// second Lock Screen capture and stable-token crash replay can converge.
+    static let durableWriteOptions: Data.WritingOptions = [
+        .atomic,
+        .completeFileProtectionUntilFirstUserAuthentication
+    ]
     // Covers the worst-case JSON escaping of every bounded field in 100
     // captures while preventing a corrupt file from causing an unbounded read.
     private static let maximumEncryptedByteCount = 2_000_000
@@ -141,18 +148,19 @@ actor LockedCaptureStore {
         }
         try Task.checkCancellation()
 
+        let captures: [LockedCapture]
         do {
             let box = try AES.GCM.SealedBox(combined: encrypted)
             let plaintext = try AES.GCM.open(box, using: SymmetricKey(data: key))
-            let captures = try JSONDecoder().decode([LockedCapture].self, from: plaintext)
+            captures = try JSONDecoder().decode(
+                [LockedCapture].self,
+                from: plaintext
+            )
             guard captures.count <= Self.maximumCount,
                   Set(captures.map(\.id)).count == captures.count,
                   captures.allSatisfy(\.isStructurallyValid) else {
                 throw LockedCaptureStoreError.invalidData
             }
-            // JSON array order is the authoritative FIFO. Wall-clock rollback
-            // must not reorder captures that were appended sequentially.
-            return captures
         } catch is CancellationError {
             throw CancellationError()
         } catch {
@@ -161,6 +169,16 @@ actor LockedCaptureStore {
             // stable, destructive-recovery-eligible condition.
             throw LockedCaptureStoreError.invalidData
         }
+        do {
+            try Self.enforceDurableFileProtection(at: url)
+        } catch {
+            // A metadata/protection-state failure does not make authenticated
+            // ciphertext corrupt. Preserve it and retry after the next unlock.
+            throw LockedCaptureStoreError.unavailable
+        }
+        // JSON array order is the authoritative FIFO. Wall-clock rollback must
+        // not reorder captures that were appended sequentially.
+        return captures
     }
 
     @discardableResult
@@ -245,7 +263,25 @@ actor LockedCaptureStore {
               combined.count <= Self.maximumEncryptedByteCount else {
             throw LockedCaptureStoreError.unavailable
         }
-        try combined.write(to: url, options: [.atomic, .completeFileProtectionUnlessOpen])
+        try combined.write(to: url, options: Self.durableWriteOptions)
+    }
+
+    /// Upgrade an inbox written by an earlier build without rewriting its
+    /// authenticated ciphertext. A locked legacy file makes this call fail;
+    /// callers classify that as retryable and try again after device unlock.
+    static func enforceDurableFileProtection(
+        at url: URL,
+        fileManager: FileManager = .default
+    ) throws {
+        // Setting the reviewed value is idempotent and avoids reading the
+        // file's broader metadata dictionary merely to inspect protection.
+        try fileManager.setAttributes(
+            [
+                .protectionKey:
+                    FileProtectionType.completeUntilFirstUserAuthentication
+            ],
+            ofItemAtPath: url.path
+        )
     }
 
     private func fileURL() throws -> URL {

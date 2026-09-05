@@ -13,6 +13,12 @@ private struct JournalReportIntervals: Sendable {
     let eventDayKeys: Range<Int>
 }
 
+private struct JournalDerivedReadAuthority {
+    let generation: Int
+    let logicalBookRevision: UInt64
+    let projectionRevision: UInt64
+}
+
 extension AppModel {
     func refreshJournalDerivedState(
         from journalStore: EncryptedRecordStore? = nil,
@@ -22,20 +28,12 @@ extension AppModel {
         observesCancellation: Bool = true,
         expectedProjectionRevision: UInt64? = nil
     ) async throws {
-        let generation = storeGeneration
-        let projectionRevision = expectedProjectionRevision
-            ?? journalProjectionRevision
-        guard projectionRevision == journalProjectionRevision else {
-            throw CancellationError()
-        }
+        let authority = try journalDerivedReadAuthority(
+            expectedProjectionRevision: expectedProjectionRevision
+        )
         let now = requestedNow ?? currentDate()
         let reportCalendar = calendar ?? reportingCalendar
-        let currentStore: EncryptedRecordStore
-        if let journalStore {
-            currentStore = journalStore
-        } else {
-            currentStore = try requireStore()
-        }
+        let currentStore = try journalStore ?? requireStore()
         let accountSnapshot = accounts
         let validAccountIDs = Set(accountSnapshot.map(\.id))
         let expectedAccountCurrencies = Dictionary(
@@ -45,18 +43,33 @@ extension AppModel {
         )
         let ledgerIndex = try await currentStore.journalLedgerIndex(
             validAccountIDs: validAccountIDs,
-            expectedAccountCurrencies: expectedAccountCurrencies
+            expectedAccountCurrencies: expectedAccountCurrencies,
+            excludingEntryIDs: invalidJournalEntryIDs
         )
-        let quarantinedJournalEntryIDs = ledgerIndex.invalidRelationshipEntryIDs.union(
-            ledgerIndex.issues.compactMap { UUID(uuidString: $0.recordID) }
-        )
+        let quarantinedJournalEntryIDs = invalidJournalEntryIDs
+            .union(ledgerIndex.invalidRelationshipEntryIDs)
+            .union(ledgerIndex.issues.compactMap {
+                UUID(uuidString: $0.recordID)
+            })
         let diagnostics = try await currentStore.journalIndexDiagnostics()
-        guard ownsStoreGeneration(generation) else { throw AppModelError.locked }
+        try requireCurrentJournalDerivedRead(authority)
+        let restrictedBalanceProjection = try await
+            preparedRestrictedAllowanceBalanceProjection(
+                from: currentStore,
+                accountSnapshot: accountSnapshot,
+                endingBalances: ledgerIndex.balances,
+                projectedAt: now,
+                excludingEntryIDs: quarantinedJournalEntryIDs,
+                generation: authority.generation,
+                logicalBookRevision: authority.logicalBookRevision,
+                journalProjectionRevision: authority.projectionRevision,
+                observesCancellation: observesCancellation
+            )
         let recentEntries = try await recentJournalEntries(
             from: currentStore,
             loadRecentEntries: loadRecentEntries,
             observesCancellation: observesCancellation,
-            generation: generation,
+            generation: authority.generation,
             quarantinedEntryIDs: quarantinedJournalEntryIDs,
             validAccountIDs: validAccountIDs
         )
@@ -67,31 +80,54 @@ extension AppModel {
             now: now,
             calendar: reportCalendar,
             quarantinedEntryIDs: quarantinedJournalEntryIDs,
-            generation: generation
+            generation: authority.generation
         )
         let preparedBudgetProjection = try await makePreparedBudgetProjection(
             from: currentStore,
             now: now,
             quarantinedEntryIDs: quarantinedJournalEntryIDs,
-            generation: generation
+            generation: authority.generation
         )
 
         await lifecycleHooks.checkpoint(.afterJournalProjectionReadBeforePublish)
-        guard ownsStoreGeneration(generation) else { throw AppModelError.locked }
-        guard projectionRevision == journalProjectionRevision else {
-            throw CancellationError()
-        }
+        try requireCurrentJournalDerivedRead(authority)
         publishJournalDerivedState(
             ledgerIndex: ledgerIndex,
             diagnostics: diagnostics,
             quarantinedEntryIDs: quarantinedJournalEntryIDs,
             recentEntries: recentEntries,
             loadRecentEntries: loadRecentEntries,
+            restrictedBalanceProjection: restrictedBalanceProjection,
             budgetProjection: preparedBudgetProjection,
             reports: preparedReports,
             now: now,
             calendar: reportCalendar
         )
+    }
+
+    private func journalDerivedReadAuthority(
+        expectedProjectionRevision: UInt64?
+    ) throws -> JournalDerivedReadAuthority {
+        let authority = JournalDerivedReadAuthority(
+            generation: storeGeneration,
+            logicalBookRevision: logicalBookRevision,
+            projectionRevision: expectedProjectionRevision
+                ?? journalProjectionRevision
+        )
+        try requireCurrentJournalDerivedRead(authority)
+        return authority
+    }
+
+    private func requireCurrentJournalDerivedRead(
+        _ authority: JournalDerivedReadAuthority
+    ) throws {
+        guard ownsStoreGeneration(authority.generation),
+              logicalBookRevision == authority.logicalBookRevision else {
+            throw AppModelError.locked
+        }
+        guard journalProjectionRevision == authority.projectionRevision else {
+            throw CancellationError()
+        }
     }
 
     private func recentJournalEntries(
@@ -294,6 +330,7 @@ extension AppModel {
         quarantinedEntryIDs: Set<UUID>,
         recentEntries: [JournalEntry],
         loadRecentEntries: Bool,
+        restrictedBalanceProjection: RestrictedAllowanceBalanceProjection,
         budgetProjection: ClosedMonthBudgetProjection?,
         reports: PreparedJournalReports?,
         now: Date,
@@ -305,8 +342,14 @@ extension AppModel {
         journalReferenceCountsAreCurrent = true
         invalidJournalEntryIDs = quarantinedEntryIDs
         recordHistoryDecodeIssues(ledgerIndex.issues)
-        if loadRecentEntries { entries = recentEntries }
+        // Install the bounded cache without invoking the public collection
+        // setter. That setter publishes the widget synchronously, which would
+        // expose a mixed generation before the projection and report caches
+        // below are installed. The one coherent publication remains at the end.
+        if loadRecentEntries { services.ledger.entries = recentEntries }
         closedMonthBudgetProjection = budgetProjection
+        services.ledger.restrictedAllowanceBalanceProjection =
+            restrictedBalanceProjection
         balanceCache = .available(ledgerIndex.balances)
         reportCache = reports?.reports.mapValues { .available($0) } ?? [:]
         reportCacheDay = calendar.startOfDay(for: now)
@@ -420,6 +463,7 @@ extension AppModel {
     func invalidateInFlightJournalProjection() {
         journalProjectionRevision &+= 1
         journalDerivedRefreshWasDeferred = true
+        invalidateWidgetIntelligencePublication()
     }
 
     func invalidateCommittedJournalProjection(
@@ -439,8 +483,8 @@ extension AppModel {
     }
 
     /// A committed journal mutation must never leave a pre-commit percentage
-    /// visible while its complete budget projection is being rebuilt. Preserve
-    /// only the opt-in bit and current reporting-period boundary.
+    /// visible while its complete budget projection is being rebuilt. Publish
+    /// an explicit field-free stale state instead of implying no budget exists.
     func publishUnavailableBudgetWidgetSnapshot() {
         guard !isBookReplacementInProgress,
               startupFailureKind != .missingDeviceBoundKey,
@@ -449,22 +493,7 @@ extension AppModel {
             disableBudgetWidgetSnapshot()
             return
         }
-        let now = currentDate()
-        guard let period = reportingCalendar.dateInterval(of: .month, for: now),
-              let periodToken = BudgetWidgetSnapshotStore.periodToken(
-                  for: period.start,
-                  calendar: reportingCalendar
-              ) else {
-            budgetWidgetSnapshotStore.publish(enabled: true, percentUsed: nil)
-            WidgetCenter.shared.reloadTimelines(ofKind: "MoneyUpQuickLog")
-            return
-        }
-        budgetWidgetSnapshotStore.publish(
-            enabled: true,
-            percentUsed: nil,
-            periodToken: periodToken,
-            validUntil: period.end
-        )
+        budgetWidgetSnapshotStore.publish(.stale)
         WidgetCenter.shared.reloadTimelines(ofKind: "MoneyUpQuickLog")
     }
 
