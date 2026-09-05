@@ -905,11 +905,10 @@ final class PlatformQuickLogActionTests: XCTestCase {
         )
         let replay = try XCTUnwrap(recreatedModel.requestedQuickLogRequest)
         XCTAssertEqual(replay.ingressToken, token)
-        XCTAssertTrue(
-            try await recreatedModel.resumeCommittedLockedCaptureIfPresent(
-                request: replay
-            )
+        let resumed = try await recreatedModel.resumeCommittedLockedCaptureIfPresent(
+            request: replay
         )
+        XCTAssertTrue(resumed)
         recreatedModel.consumeQuickLogRequest(replay)
 
         XCTAssertNil(recreatedModel.requestedQuickLogRequest)
@@ -979,11 +978,10 @@ final class PlatformQuickLogActionTests: XCTestCase {
             .routed
         )
         let replay = try XCTUnwrap(replayModel.requestedQuickLogRequest)
-        XCTAssertTrue(
-            try await replayModel.resumeCommittedLockedCaptureIfPresent(
-                request: replay
-            )
+        let resumed = try await replayModel.resumeCommittedLockedCaptureIfPresent(
+            request: replay
         )
+        XCTAssertTrue(resumed)
         replayModel.consumeQuickLogRequest(replay)
         let captures = try await inbox.all()
         XCTAssertEqual(captures.count, 1)
