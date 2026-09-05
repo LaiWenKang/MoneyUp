@@ -6,7 +6,8 @@ struct RootView: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        if model.quickActionRouteBroker.isAuthoritativeBoundaryActive {
+        if model.quickActionRouteBroker
+            .isAuthoritativeLifecycleBoundaryActive {
             LaunchingView()
                 .id(model.quickActionRouteBroker.handoffGeneration)
         } else {
@@ -24,7 +25,12 @@ struct RootView: View {
             case .onboarding:
                 OnboardingView()
             case .ready:
-                MainTabView()
+                MainTabView(
+                    initialReportingSnapshot: AppReportingSnapshot(
+                        instant: model.currentDateForUserAction(),
+                        calendar: model.reportingCalendar
+                    )
+                )
                     .id(model.quickActionRouteBroker.handoffGeneration)
             case let .failed(message):
                 RecoveryView(message: message)
@@ -203,36 +209,82 @@ enum MoneyUpSection: Hashable {
     case assets
 }
 
-enum TabSwipeNavigationPolicy {
-    static func destination(
-        from current: MoneyUpSection,
-        translation: CGSize
-    ) -> MoneyUpSection? {
-        guard abs(translation.width) >= 72,
-              abs(translation.width) > abs(translation.height) * 1.6 else {
-            return nil
+enum HistoryReturnOrigin: String, Equatable {
+    case today
+    case log
+    case plan
+    case assets
+
+    var destination: MoneyUpSection {
+        switch self {
+        case .today: .today
+        case .log: .log
+        case .plan: .plan
+        case .assets: .assets
         }
-        let sections: [MoneyUpSection] = [.today, .history, .log, .plan, .assets]
-        guard let index = sections.firstIndex(of: current) else { return nil }
-        let target = translation.width < 0 ? index + 1 : index - 1
-        guard sections.indices.contains(target) else { return nil }
-        return sections[target]
+    }
+
+    var titleKeyString: String {
+        switch self {
+        case .today: "tab.today"
+        case .log: "tab.log"
+        case .plan: "tab.plan"
+        case .assets: "tab.assets"
+        }
+    }
+
+    var backTitle: String {
+        String(
+            format: AppLocalization.string("history.back_to_format"),
+            AppLocalization.string(titleKeyString)
+        )
+    }
+}
+
+/// Process-local authority for a real cross-tab return route. It is never
+/// persisted across lock/cold launch and consumption clears it before the tab
+/// changes, making repeated taps harmless.
+struct HistoryCrossTabNavigationState: Equatable {
+    private(set) var origin: HistoryReturnOrigin?
+
+    mutating func record(origin: HistoryReturnOrigin) {
+        self.origin = origin
+    }
+
+    mutating func clearForDirectTabSelection() {
+        origin = nil
+    }
+
+    mutating func consumeReturnDestination() -> MoneyUpSection? {
+        guard let origin else { return nil }
+        self.origin = nil
+        return origin.destination
     }
 }
 
 private struct MainTabView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.scenePhase) private var scenePhase
     @State private var selectedSection: MoneyUpSection = .today
     @State private var quickLogKind: QuickLogKind = .expense
     @State private var historyReviewDate: Date?
     @State private var historyReviewSequence = 0
+    @State private var historyCrossTabNavigation = HistoryCrossTabNavigationState()
+    @State private var reportingClock: AppReportingClockState
     @State private var isShowingWhatsNew = false
     @State private var hasCheckedForUpdate = false
 
+    init(initialReportingSnapshot: AppReportingSnapshot) {
+        _reportingClock = State(
+            initialValue: AppReportingClockState(
+                snapshot: initialReportingSnapshot
+            )
+        )
+    }
+
     var body: some View {
-        TabView(selection: $selectedSection) {
+        TabView(selection: directTabSelection) {
             DashboardView(
-                initialReportingDate: model.currentDateForUserAction(),
                 onOpenLog: { selectedSection = .log },
                 onOpenPlan: { selectedSection = .plan }
             )
@@ -240,7 +292,11 @@ private struct MainTabView: View {
                 .tag(MoneyUpSection.today)
 
             NavigationStack {
-                HistoryView(preset: historyPreset(for: historyReviewDate))
+                HistoryView(
+                    preset: historyPreset(for: historyReviewDate),
+                    returnOrigin: historyCrossTabNavigation.origin,
+                    onReturnToOrigin: returnFromHistory
+                )
             }
                 .id(historyReviewSequence)
                 .tabItem { Label("tab.history", systemImage: "clock.arrow.circlepath") }
@@ -258,6 +314,7 @@ private struct MainTabView: View {
                     case .today:
                         selectedSection = .today
                     case let .history(reviewDate):
+                        historyCrossTabNavigation.record(origin: .log)
                         if let reviewDate {
                             historyReviewDate = reviewDate
                             historyReviewSequence &+= 1
@@ -284,22 +341,7 @@ private struct MainTabView: View {
                 .tabItem { Label("tab.assets", systemImage: "wallet.bifold.fill") }
                 .tag(MoneyUpSection.assets)
         }
-        // The tab gesture deliberately does not recognize simultaneously with
-        // child controls. Horizontal filter bars, charts, carousels, fields,
-        // and other interactive regions own their drags; this fallback only
-        // wins on passive space in the selected tab.
-        .gesture(
-            DragGesture(minimumDistance: 24, coordinateSpace: .local)
-                .onEnded { value in
-                    guard model.profile?.enablesTabSwipeNavigation == true,
-                          let destination = TabSwipeNavigationPolicy.destination(
-                            from: selectedSection,
-                            translation: value.translation
-                          ) else { return }
-                    withAnimation(.snappy) { selectedSection = destination }
-                },
-            including: .gesture
-        )
+        .environment(\.appReportingSnapshot, reportingClock.snapshot)
         .sheet(isPresented: $isShowingWhatsNew) {
             WhatsNewSheet()
         }
@@ -313,6 +355,102 @@ private struct MainTabView: View {
         .onChange(of: model.pendingRestoreCompletionAnnouncement) { _, pending in
             guard pending != nil else { return }
             announcePendingRestoreCompletionAfterAppearance()
+        }
+        .task(id: reportingClockTaskID) {
+            await refreshAtReportingBoundaries()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active {
+                rearmReportingClock()
+            } else {
+                reportingClock.cancelForInactivity()
+            }
+        }
+        .onChange(of: model.scheduledTransactions) { _, _ in
+            rearmReportingClockIfActive()
+        }
+        .onChange(of: reportingTimeZoneIdentifier) { _, _ in
+            rearmReportingClockIfActive()
+        }
+        .onChange(of: model.restrictedAllowanceProjectionClockIdentity) { _, _ in
+            rearmReportingClockIfActive()
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: UIApplication.significantTimeChangeNotification
+            )
+        ) { _ in
+            rearmReportingClockIfActive()
+        }
+    }
+
+    /// Only TabView's user-driven binding enters here. Programmatic routes
+    /// mutate `selectedSection` directly after recording any genuine origin.
+    private var directTabSelection: Binding<MoneyUpSection> {
+        Binding(
+            get: { selectedSection },
+            set: { destination in
+                historyCrossTabNavigation.clearForDirectTabSelection()
+                selectedSection = destination
+            }
+        )
+    }
+
+    private func returnFromHistory() {
+        guard let destination = historyCrossTabNavigation
+            .consumeReturnDestination() else { return }
+        selectedSection = destination
+    }
+
+    private var reportingTimeZoneIdentifier: String {
+        model.reportingCalendar.timeZone.identifier
+    }
+
+    private var reportingClockTaskID: String {
+        "\(reportingTimeZoneIdentifier):\(reportingClock.generation):\(scenePhase == .active)"
+    }
+
+    private func rearmReportingClockIfActive() {
+        guard scenePhase == .active else {
+            reportingClock.cancelForInactivity()
+            return
+        }
+        rearmReportingClock()
+    }
+
+    private func rearmReportingClock() {
+        reportingClock.rearm(
+            instant: model.currentDateForUserAction(),
+            calendar: model.reportingCalendar
+        )
+    }
+
+    /// One foreground sleeper drives every rolling view. It is cancelled when
+    /// the scene leaves active and immediately re-snapshotted on activation.
+    @MainActor
+    private func refreshAtReportingBoundaries() async {
+        guard scenePhase == .active else { return }
+        while !Task.isCancelled {
+            let now = model.currentDateForUserAction()
+            let calendar = model.reportingCalendar
+            reportingClock.publish(instant: now, calendar: calendar)
+            model.refreshRestrictedAllowanceProjectionIfNeeded(asOf: now)
+            let scheduledOccurrences = model.scheduledTransactions.compactMap {
+                $0.occurrence(onOrAfter: now, calendar: calendar)
+            }
+            guard let nextRefresh = ReportingClockPolicy.nextRefresh(
+                after: now,
+                calendar: calendar,
+                scheduledOccurrences: scheduledOccurrences,
+                restrictedAllowanceChange:
+                    model.restrictedAllowanceProjectionExpiry(after: now)
+            ) else { return }
+            let delay = max(nextRefresh.timeIntervalSince(now), 0.001)
+            do {
+                try await Task.sleep(for: .seconds(delay))
+            } catch {
+                return
+            }
         }
     }
 

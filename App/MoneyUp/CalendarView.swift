@@ -15,20 +15,12 @@ private struct CalendarDateComputation {
 }
 
 struct CalendarView: View {
-    /// History pushes this screen onto its own stack, where the system draws
-    /// the back button; Plan swaps it in as a section and must supply both the
-    /// container and the way back itself. A nested stack in the pushed case
-    /// would silently remove History's back button.
+    /// The Plan root supplies its shared stack. Other callers may request a
+    /// standalone stack while sheets continue to own their own containers.
     let providesNavigationStack: Bool
-    /// Supplied when Plan swaps this section in; nil when History pushes it.
-    let sectionBack: MoneyUpSectionBackAction?
 
-    init(
-        providesNavigationStack: Bool = true,
-        sectionBack: MoneyUpSectionBackAction? = nil
-    ) {
+    init(providesNavigationStack: Bool = true) {
         self.providesNavigationStack = providesNavigationStack
-        self.sectionBack = sectionBack
     }
 
     @Environment(AppModel.self) private var model
@@ -121,7 +113,6 @@ struct CalendarView: View {
         .scrollContentBackground(.hidden)
         .background(Color.moneyUpBackground)
         .navigationTitle("tab.calendar")
-        .moneyUpSectionBackToolbar(sectionBack)
     }
 
     private var loadingCalendarList: some View {
@@ -726,14 +717,22 @@ private struct AddScheduleSheet: View {
         kind == .income ? model.incomeCategories : model.expenseCategories
     }
 
+    private var eligibleAccounts: [LedgerAccount] {
+        model.userAccounts.filter {
+            kind != .expense || $0.accountType != .restrictedAllowance
+        }
+    }
+
     private var selectedCurrency: CurrencyCode? {
-        model.userAccounts.first(where: { $0.id == accountID })?.currency
+        eligibleAccounts.first(where: { $0.id == accountID })?.currency
     }
 
     private var canSave: Bool {
         guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               let amount = decimalAmount(from: amountText), amount > .zero,
-              accountID != nil, categoryID != nil else { return false }
+              let accountID,
+              eligibleAccounts.contains(where: { $0.id == accountID }),
+              categoryID != nil else { return false }
         return true
     }
 
@@ -751,7 +750,7 @@ private struct AddScheduleSheet: View {
                     TextField("quick_log.amount", text: $amountText)
                         .moneyAmountKeyboard(currency: selectedCurrency)
                     Picker("transaction.account", selection: $accountID) {
-                        ForEach(model.userAccounts) { account in
+                        ForEach(eligibleAccounts) { account in
                             Text(accountCurrencyLabel(account)).tag(Optional(account.id))
                         }
                     }
@@ -799,7 +798,9 @@ private struct AddScheduleSheet: View {
     }
 
     private func selectDefaults() {
-        accountID = accountID ?? model.userAccounts.first?.id
+        if !eligibleAccounts.contains(where: { $0.id == accountID }) {
+            accountID = eligibleAccounts.first?.id
+        }
         if !categories.contains(where: { $0.id == categoryID }) {
             categoryID = categories.first { $0.parentID != nil }?.id ?? categories.first?.id
         }

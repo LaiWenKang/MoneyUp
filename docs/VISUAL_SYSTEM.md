@@ -139,11 +139,17 @@ surface, and elevated canvases; release validation checks every pairing.
 
 Quick-action widget timelines remain data-free. The 0.7.1 source candidate
 offers opt-in Budget Status and Smart Overview surfaces backed by a versioned
-App Group snapshot containing only state, bounded percentages/counts, expiry,
-and optional next-commitment timing. It receives no amount, payee, account
-name, holding, balance, transaction, or ledger identifier. Disabled or
-unavailable states use honest guidance rather than a fake statistic;
-over-budget and review states use text and shape as well as color.
+App Group snapshot containing only state, a bounded reporting-period token,
+bounded percentages/counts, expiry, and an optional reporting-calendar-derived
+due-day distance. The App Group's only other approved artifacts are the
+non-financial language preference and a bounded, data-free quick-action ingress
+file. None receives an exact due date, amount, payee, account name,
+holding/symbol/quote, balance, transaction, note/evidence, or domain identifier.
+Disabled, stale, and unavailable states use honest distinct guidance rather
+than a fake statistic; over-budget and review states use text and shape as well
+as color. Home widgets switch to an intentionally reduced information density
+at accessibility Dynamic Type sizes, while accessory families retain their
+native compact hierarchy rather than squeezing a Home-screen grid.
 
 The widget surfaces still require the final physical Home/Lock Screen
 family, redacted, light, dark, and tinted matrix on the exact signed candidate.

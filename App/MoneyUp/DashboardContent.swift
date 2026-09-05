@@ -12,6 +12,10 @@ extension DashboardView {
         return NavigationStack {
             ScrollView {
                 LazyVStack(spacing: 16) {
+                    TodayPeriodContextView(
+                        reportingDate: reportingDate,
+                        reportingCalendar: reportingSnapshot.calendar
+                    )
                     headline
                     IntelligenceSummaryLink()
                     positionCard
@@ -47,11 +51,8 @@ extension DashboardView {
         .sheet(isPresented: $isEditingPins) {
             PinnedBudgetEditorSheet()
         }
-        .environment(\.calendar, model.reportingCalendar)
-        .environment(\.timeZone, model.reportingCalendar.timeZone)
-        .task(id: reportingClockTaskID) {
-            await refreshAtReportingDayBoundaries()
-        }
+        .environment(\.calendar, reportingSnapshot.calendar)
+        .environment(\.timeZone, reportingSnapshot.calendar.timeZone)
         .background {
             if scenePhase == .active,
                !model.requiresAuthenticationPrivacyCover,
@@ -68,20 +69,6 @@ extension DashboardView {
                         )
                     }
             }
-        }
-        .onChange(of: scenePhase) { _, newPhase in
-            guard newPhase == .active else { return }
-            restartReportingClock()
-        }
-        .onChange(of: model.scheduledTransactions) { _, _ in
-            restartReportingClock()
-        }
-        .onReceive(
-            NotificationCenter.default.publisher(
-                for: UIApplication.significantTimeChangeNotification
-            )
-        ) { _ in
-            restartReportingClock()
         }
     }
 
@@ -519,42 +506,16 @@ extension DashboardView {
         }
     }
 
+    var reportingSnapshot: AppReportingSnapshot {
+        sharedReportingSnapshot
+            ?? AppReportingSnapshot(
+                instant: model.currentDateForUserAction(),
+                calendar: model.reportingCalendar
+            )
+    }
+
     var reportingDate: Date {
-        reportingNow ?? model.currentDateForUserAction()
-    }
-
-    var reportingClockTaskID: String {
-        "\(model.reportingCalendar.timeZone.identifier):\(reportingClockGeneration)"
-    }
-
-    func restartReportingClock() {
-        reportingNow = model.currentDateForUserAction()
-        reportingClockGeneration &+= 1
-    }
-
-    /// A sleeping foreground task is effectively free, is cancelled with the
-    /// view, and is paired with the scene-phase refresh for suspended apps.
-    /// Every Today calculation reads the resulting single reporting instant.
-    @MainActor
-    func refreshAtReportingDayBoundaries() async {
-        while !Task.isCancelled {
-            let now = model.currentDateForUserAction()
-            reportingNow = now
-            let scheduledOccurrences = model.scheduledTransactions.compactMap {
-                $0.occurrence(onOrAfter: now, calendar: model.reportingCalendar)
-            }
-            guard let nextRefresh = DashboardReportingClockPolicy.nextRefresh(
-                after: now,
-                calendar: model.reportingCalendar,
-                scheduledOccurrences: scheduledOccurrences
-            ) else { return }
-            let delay = max(nextRefresh.timeIntervalSince(now), 0.001)
-            do {
-                try await Task.sleep(for: .seconds(delay))
-            } catch {
-                return
-            }
-        }
+        reportingSnapshot.instant
     }
 
     func budgetPaceKey(ratio: Double) -> LocalizedStringKey {

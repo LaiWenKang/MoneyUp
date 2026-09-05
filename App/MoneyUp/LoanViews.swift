@@ -425,7 +425,11 @@ private struct LoanPaymentSheet: View {
 
     private var currency: CurrencyCode { plan.originalPrincipal.currency }
     private var accounts: [LedgerAccount] {
-        model.userAccounts.filter { $0.kind == .asset && $0.currency == currency }
+        model.userAccounts.filter {
+            $0.kind == .asset
+                && $0.accountType != .restrictedAllowance
+                && $0.currency == currency
+        }
     }
 
     var body: some View {

@@ -83,10 +83,12 @@ extension AppModel {
             return
         }
         let quickActionBoundaryEpoch = try beginRestoreMutation()
+        var quickActionRecoveryWasValidated = false
         defer {
             finishBookReplacementMutation()
-            quickActionRouteBroker.endAuthoritativeBoundary(
-                quickActionBoundaryEpoch
+            finishQuickActionBoundary(
+                quickActionBoundaryEpoch,
+                validatedRecovery: quickActionRecoveryWasValidated
             )
         }
         await finishBeginningRestoreMutation()
@@ -100,6 +102,7 @@ extension AppModel {
             from: commitURL,
             password: password
         )
+        quickActionRecoveryWasValidated = true
     }
 
     private func restorePreviewCurrentBook()

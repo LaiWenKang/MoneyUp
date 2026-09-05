@@ -1,3 +1,5 @@
+import Foundation
+
 enum QuickLogLaunchMode: String, Equatable, Sendable {
     case expense
     case income
@@ -33,11 +35,13 @@ enum QuickLogLaunchMode: String, Equatable, Sendable {
     }
 }
 
-/// One process-local delivery from a platform action or deep link into Log.
-/// The generation binds the request to the current logical book, while the
-/// monotonic identifier keeps identical consecutive actions distinct.
+/// One UI delivery from durable, data-free platform ingress into Log. The
+/// opaque ingress token is acknowledged only after this exact request is
+/// applied; the generation prevents it from crossing a logical-book boundary.
 struct QuickLogRouteRequest: Equatable, Identifiable, Sendable {
     let id: UInt64
+    let ingressToken: UUID
+    let requiresIngressAcknowledgement: Bool
     let generation: UInt64
     let mode: QuickLogLaunchMode
 }

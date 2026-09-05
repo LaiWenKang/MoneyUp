@@ -564,7 +564,7 @@ W3_SOURCE_FUNCTION_DIGESTS: tuple[
             r"[^{};]*\)\s*\{",
             re.DOTALL,
         ),
-        "a196373e152a734b383e19b79ae1eb68334950e49ccb47d2a2a1b877f4eb7fd8",
+        "d005401475600a4c37f1062d7a30fbb599e0e42f9c51fc5b8a13a34a6bc431a8",
     ),
     (
         W3_PRODUCTION_SENTINEL_PATH,
@@ -573,7 +573,7 @@ W3_SOURCE_FUNCTION_DIGESTS: tuple[
             r"\bpublic\s+init\s*\(\s*from\s+decoder\s*:\s*Decoder\s*\)"
             r"\s*throws\s*\{"
         ),
-        "06d48a640fba7ae0ddecd78e504ea53b7b57542cef38cb7d9e524f43532fd4b7",
+        "54a60e08f0ae9cb2e82569196d78db722d43de416986c58df1f88dac8beb1c76",
     ),
     (
         W3_REVIEWED_ENTRY_PATH,
@@ -602,7 +602,7 @@ W3_SOURCE_FUNCTION_DIGESTS: tuple[
             r"\bfunc\s+startOnDeviceAssistance\s*\(\s*for\s+parsed\s*:"
             r"\s*ParsedNaturalLanguageEntry\s*\)\s*\{"
         ),
-        "82faaeab814a53ea1afddd48e683b81f57825317fd99f92e613cf26e191bc598",
+        "cef4a92bf14c6b78c14c3244f0c6274a621fd9df0683342135947644b587f32e",
     ),
 )
 
@@ -611,19 +611,19 @@ W3_PATH_TYPE_DIGESTS: tuple[tuple[str, str, str, str], ...] = (
         "App/MoneyUp/QuickLogEntryBody.swift",
         "extension",
         "QuickLogEntryView",
-        "02e6d9b37bd4c8beff433d911ee4319768a2267a311117ea53b0d8f6f7ded5c0",
+        "2baad02f6557d04dbc910f9ed73df7c2af94687f60ba43e3f357752651081eb2",
     ),
     (
         "App/MoneyUp/QuickLogEntryReceipt.swift",
         "extension",
         "QuickLogEntryView",
-        "d1f2c4224a663db250291443bac6a8d20d7c720923a8eacbdc99c4a1f8a95f1f",
+        "55c72d73441cfbc6e65e9b007faeca4f36897c3732294b4c7c3abda9901b20b4",
     ),
     (
         W3_REVIEWED_ENTRY_ASSISTANCE_PATH,
         "extension",
         "QuickLogEntryView",
-        "47ff6706a3bd31ac16a2e5213ac09660afc3ec15cbf0ad41fbb6f9eef520027e",
+        "a7c13b1378358359f0fcfba0c9ea3aff56768afc9e4bf6249686b64ea2ed685c",
     ),
     (
         "App/MoneyUp/QuickLogEntryReceiptCandidates.swift",
@@ -4437,7 +4437,7 @@ def _w3_accessible_suggestion_actions(
                 r"\bfunc\s+captureSuggestions\s*\(\s*_\s+result\s*:"
                 r"\s*CaptureSuggestionResult\s*\)\s*->\s*some\s+View\s*\{"
             ),
-            "730096fb08938c2a4d1ebfcdb37e1077acc336d2cc69b64572dcdb7dd6ab0aa9",
+            "9e20afde715c9bbb4918917376e04f8c52c33fbf8b69c87889e7d584ce0dc767",
         ),
     )
     use_literal = "quick_log.use_suggestion"

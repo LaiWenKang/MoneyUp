@@ -59,6 +59,11 @@ extension AppModel {
         guard !occurrenceAlreadyExists else {
             throw ScheduledTransactionError.occurrenceAlreadyResolved
         }
+        try await requireNonnegativeRestrictedBalances(
+            afterRemoving: nil,
+            adding: entry,
+            in: scheduleStore
+        )
         var updated = schedule
         try updated.resolveCurrent(
             occurrenceID: occurrenceID,
@@ -110,6 +115,7 @@ extension AppModel {
         calendar: Calendar
     ) throws -> PreparedScheduledOccurrence {
         try validateScheduleReferences(schedule)
+        try validateProspectiveScheduleSource(schedule)
         try requireValidNewWriteAmount(
             schedule.amount.amount,
             currency: schedule.amount.currency
@@ -421,6 +427,13 @@ extension AppModel {
                 || (schedule.kind == .income && category.kind == .income) else {
             throw AppModelError.missingRecord
         }
+    }
+
+    func validateProspectiveScheduleSource(
+        _ schedule: ScheduledTransaction
+    ) throws {
+        guard schedule.kind == .expense else { return }
+        try requireGenericOutgoingSource(schedule.accountID)
     }
 
     static func scheduleFingerprint(

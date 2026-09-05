@@ -88,6 +88,11 @@ extension AppModel {
             // an inbox handoff failure.
             recordRecoveryIssue("locked_captures/promotion-unavailable")
         }
+        // Model setters above run while state is still `.onboarding`, where
+        // active-scene widget scheduling must fail closed. Mirror normal
+        // startup only after the durable book is ready so the atomic snapshot
+        // is republished and an opted-in profile can arm its day boundary.
+        refreshIntelligence()
     }
 
     private func makeOnboardingBook(
@@ -97,7 +102,8 @@ extension AppModel {
         startingBalance: Decimal
     ) throws -> OnboardingBook {
         let currency = try CurrencyCode(baseCurrencyCode)
-        if accountType.isLiabilityAccount, startingBalance < .zero {
+        if (accountType.isLiabilityAccount || accountType == .restrictedAllowance),
+           startingBalance < .zero {
             throw AppModelError.negativeAmount
         }
         try requireValidNewWriteAmount(startingBalance, currency: currency)

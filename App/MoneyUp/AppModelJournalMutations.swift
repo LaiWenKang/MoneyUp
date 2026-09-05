@@ -20,6 +20,10 @@ extension AppModel {
         allowancePlanID: UUID? = nil
     ) async throws -> UUID? {
         try requireActiveCategory(categoryID, kind: .expense)
+        try requireAllowanceGovernedExpenseSource(
+            accountID,
+            allowancePlanID: allowancePlanID
+        )
         let currency = try currency(for: accountID)
         try requireValidNewWriteAmount(amount, currency: currency)
         let entry = try TransactionFactory.expense(
@@ -110,6 +114,12 @@ extension AppModel {
         allowancePlanID: UUID? = nil
     ) async throws -> UUID? {
         guard kind != .transfer else { throw AppModelError.invalidCategoryKind }
+        if kind == .expense {
+            try requireAllowanceGovernedExpenseSource(
+                accountID,
+                allowancePlanID: allowancePlanID
+            )
+        }
         let currency = try currency(for: accountID)
         try requireValidNewWriteAmount(amount, currency: currency)
         for line in lines {
@@ -179,6 +189,7 @@ extension AppModel {
         note: String?,
         attachmentDrafts: [ReceiptAttachmentDraft] = []
     ) async throws -> UUID? {
+        try requireGenericOutgoingSource(sourceAccountID)
         let sourceCurrency = try currency(for: sourceAccountID)
         let destinationCurrency = try currency(for: destinationAccountID)
         try requireValidNewWriteAmount(amount, currency: sourceCurrency)
@@ -231,10 +242,7 @@ extension AppModel {
         defer { endJournalAndScheduleMutation(scheduleIDs: linkedScheduleIDs) }
         let generation = storeGeneration
         let entryStore = try requireStore()
-        let entry = try await entryForDeletion(id: id, in: entryStore)
-        guard !isProtectedJournalEntry(entry) else {
-            throw AppModelError.investmentEntryMutationForbidden
-        }
+        let entry = try await validatedEntryForDeletion(id: id, in: entryStore)
         let originalAttribution = try await budgetEntryAttribution(
             for: id,
             in: entryStore
@@ -273,7 +281,7 @@ extension AppModel {
         var writes = try updatedSchedules.map {
             try RecordWrite($0, id: $0.id.uuidString, in: .scheduledTransactions)
         }
-        let updatedAllowances = allowancesAfterDeletingLinkedEntry(id)
+        let updatedAllowances = try allowancesAfterDeletingLinkedEntry(id)
         writes += try allowanceWrites(changedTo: updatedAllowances)
         if let candidateTimeline {
             writes.append(try budgetConfigurationTimelineWrite(candidateTimeline))
@@ -316,10 +324,43 @@ extension AppModel {
         })
     }
 
+    private func validatedEntryForDeletion(
+        id: UUID,
+        in store: EncryptedRecordStore
+    ) async throws -> JournalEntry {
+        let entry = try await entryForDeletion(id: id, in: store)
+        guard !isProtectedJournalEntry(entry) else {
+            throw AppModelError.investmentEntryMutationForbidden
+        }
+        try await requireNonnegativeRestrictedBalances(
+            afterRemoving: entry,
+            adding: nil,
+            in: store
+        )
+        return entry
+    }
+
     private func allowancesAfterDeletingLinkedEntry(
         _ entryID: UUID
-    ) -> [AllowancePlan] {
-        allowancePlans.map { $0.removingUsages(linkedTo: entryID) }
+    ) throws -> [AllowancePlan] {
+        try allowancePlans.map { plan in
+            guard let usage = plan.usages.first(where: {
+                $0.linkedJournalEntryID == entryID
+            }) else { return plan }
+            guard !plan.hasGrandfatheredActivity else {
+                throw AppModelError.invalidAllowance
+            }
+            if plan.fundingMode == .prepaidAsset,
+               plan.reconciliations.contains(where: {
+                   FinancialPeriodBoundary.contains(
+                       usage.occurredAt,
+                       in: DateInterval(start: $0.periodStart, end: $0.periodEnd)
+                   )
+               }) {
+                throw AppModelError.invalidAllowance
+            }
+            return try plan.removingUsages(linkedTo: entryID)
+        }
     }
 
     private func allowanceWrites(

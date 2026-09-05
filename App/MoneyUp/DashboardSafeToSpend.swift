@@ -133,29 +133,23 @@ extension DashboardView {
             Text(formattedMoney(breakdown.amountPerDay))
                 .moneyUpFinancialValue(.hero)
                 .foregroundStyle(
-                    breakdown.amountPerDay.amount < .zero ? Color.red : Color.primary
+                    breakdown.availableForRemainingPeriod.amount < .zero
+                        ? Color.red
+                        : Color.primary
                 )
             Text("dashboard.safe_to_spend.per_day")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
-            if let weekly = try? Money(
-                CheckedDecimal.multiplying(
-                    breakdown.amountPerDay.amount,
-                    Decimal(min(7, breakdown.remainingDayCount))
+            Label(
+                String(
+                    format: AppLocalization.string("dashboard.safe_to_spend.weekly_format"),
+                    formattedMoney(breakdown.amountForNextSevenDays),
+                    min(7, breakdown.remainingDayCount)
                 ),
-                currency: breakdown.amountPerDay.currency
-            ) {
-                Label(
-                    String(
-                        format: AppLocalization.string("dashboard.safe_to_spend.weekly_format"),
-                        formattedMoney(weekly),
-                        min(7, breakdown.remainingDayCount)
-                    ),
-                    systemImage: "calendar.day.timeline.left"
-                )
-                .font(.footnote.weight(.semibold))
-            }
-            if breakdown.amountPerDay.amount < .zero {
+                systemImage: "calendar.day.timeline.left"
+            )
+            .font(.footnote.weight(.semibold))
+            if breakdown.availableForRemainingPeriod.amount < .zero {
                 Label(
                     "dashboard.safe_to_spend.attention",
                     systemImage: "exclamationmark.triangle.fill"
@@ -185,7 +179,7 @@ extension DashboardView {
                             Text(formattedMoney(breakdown.amountPerDay))
                                 .font(.title3.monospacedDigit().weight(.semibold))
                                 .foregroundStyle(
-                                    breakdown.amountPerDay.amount < .zero
+                                    breakdown.availableForRemainingPeriod.amount < .zero
                                         ? Color.red
                                         : Color.primary
                                 )

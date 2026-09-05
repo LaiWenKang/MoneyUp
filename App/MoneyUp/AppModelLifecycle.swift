@@ -27,18 +27,20 @@ extension AppModel {
         return false
     }
 
-    func start() async {
-        guard !isWorking else { return }
+    @discardableResult
+    func start() async -> Bool {
+        guard !isWorking else { return false }
         finishUnlockToFirstUsefulContentMeasurement(outcome: .cancelled)
         var quickActionBoundaryEpoch: UInt64?
-        isWorking = true
-        isStarting = true
+        var quickActionRecoveryWasValidated = false
+        beginStartupWork()
         defer {
             isWorking = false
             isStarting = false
-            if let quickActionBoundaryEpoch {
-                quickActionRouteBroker.endAuthoritativeBoundary(quickActionBoundaryEpoch)
-            }
+            finishQuickActionBoundary(
+                quickActionBoundaryEpoch,
+                validatedRecovery: quickActionRecoveryWasValidated
+            )
         }
         let dataEraseInspection = await inspectDataEraseIntent()
         quickActionBoundaryEpoch = dataEraseInspection.boundaryEpoch
@@ -83,12 +85,8 @@ extension AppModel {
             try await openAndFinishStartupIncludingKeyCliffRecovery(
                 databaseURL: databaseURL
             )
-            if lockAfterStart {
-                lockAfterStart = false
-                isWorking = false
-                isStarting = false
-                lock()
-            }
+            quickActionRecoveryWasValidated = true
+            finishDeferredStartupLockIfNeeded()
         } catch let error as DatabaseKeyStoreError
             where error == .authenticationCancelled
                 && !pendingDataEraseIsIncomplete {
@@ -108,6 +106,32 @@ extension AppModel {
                 message: safeUserMessage(for: error, context: .unlock)
             )
         }
+        return quickActionRecoveryWasValidated
+    }
+
+    private func beginStartupWork() {
+        isWorking = true
+        isStarting = true
+    }
+
+    private func finishDeferredStartupLockIfNeeded() {
+        guard lockAfterStart else { return }
+        lockAfterStart = false
+        isWorking = false
+        isStarting = false
+        lock()
+    }
+
+    func finishQuickActionBoundary(
+        _ epoch: UInt64?,
+        validatedRecovery: Bool
+    ) {
+        if let epoch {
+            quickActionRouteBroker.endAuthoritativeBoundary(epoch)
+        }
+        if validatedRecovery {
+            finishValidatedQuickActionIngressRecovery()
+        }
     }
 
     private func inspectDataEraseIntent() async -> (
@@ -118,17 +142,26 @@ extension AppModel {
             let isPending = try await dataEraseIntent
                 .isPendingWithoutBlockingLaunch()
             if isPending {
-                return (
-                    .success(true),
-                    beginAuthoritativeQuickActionBoundary()
-                )
+                do {
+                    return (
+                        .success(true),
+                        try beginAuthoritativeQuickActionBoundary()
+                    )
+                } catch {
+                    return (.failure(error), nil)
+                }
             }
             return (.success(false), nil)
         } catch {
-            return (
-                .failure(error),
-                beginAuthoritativeQuickActionBoundary()
-            )
+            let inspectionError = error
+            do {
+                return (
+                    .failure(inspectionError),
+                    try beginAuthoritativeQuickActionBoundary()
+                )
+            } catch {
+                return (.failure(error), nil)
+            }
         }
     }
 }
@@ -213,6 +246,9 @@ extension AppModel {
     }
 
     func lock() {
+        // Stop day-boundary work as soon as authentication is required, even
+        // when an atomic mutation must drain before decoded state is cleared.
+        cancelWidgetReportingDayRefresh()
         if isLifecycleMutationInProgress
             || isJournalMutationInProgress
             || !investmentMutationsInProgress.isEmpty
@@ -299,6 +335,8 @@ extension AppModel {
     }
 
     func sceneDidLeaveActive(at date: Date) {
+        widgetLifecycleRefresh.isSceneActive = false
+        cancelWidgetReportingDayRefresh()
         // Startup can already hold a decrypted key/store while domain loading
         // is suspended. Track that interval too; `lock()` records a deferred
         // request until startup reaches an atomic publication boundary.
@@ -348,6 +386,8 @@ extension AppModel {
     }
 
     func sceneDidBecomeActive(at date: Date = Date()) {
+        let wasAlreadyActive = widgetLifecycleRefresh.isSceneActive
+        widgetLifecycleRefresh.isSceneActive = true
         autoLockTask?.cancel()
         autoLockTask = nil
         // A startup authentication prompt can be cancelled while the scene is
@@ -357,10 +397,16 @@ extension AppModel {
         if state == .locked {
             leftActiveAt = nil
             requiresAuthenticationPrivacyCover = false
+            cancelWidgetReportingDayRefresh()
             return
         }
         guard let leftActiveAt else {
             requiresAuthenticationPrivacyCover = false
+            if wasAlreadyActive {
+                rearmWidgetReportingDayRefreshIfEligible()
+            } else {
+                refreshWidgetForSceneActivationIfEligible()
+            }
             return
         }
         self.leftActiveAt = nil
@@ -370,6 +416,7 @@ extension AppModel {
             lock()
         } else {
             requiresAuthenticationPrivacyCover = false
+            refreshWidgetForSceneActivationIfEligible()
         }
     }
 
@@ -443,6 +490,7 @@ extension AppModel {
         guard !isWorking,
               !isLifecycleMutationInProgress,
               !goalMutationBarrierClosed,
+              !quickActionRouteBroker.isAuthoritativeBoundaryActive,
               !lockedCaptureWriteInProgress else { return false }
         do {
             guard try dataEraseIntent.isPending() == false else { return false }
@@ -470,14 +518,22 @@ extension AppModel {
         }
         try await saveLockedCapture(
             mode: request.mode,
+            captureID: request.ingressToken,
             amountText: amountText,
             payee: payee,
             note: note
         )
+        if request.requiresIngressAcknowledgement {
+            _ = quickActionRouteBroker.acknowledge(
+                token: request.ingressToken,
+                allowingCommittedCaptureReplay: true
+            )
+        }
     }
 
     func saveLockedCapture(
         mode: QuickLogLaunchMode,
+        captureID: UUID = UUID(),
         amountText: String,
         payee: String,
         note: String
@@ -505,6 +561,7 @@ extension AppModel {
         }
         pendingLockedCaptureCount = try await lockedCaptureStore.append(
             LockedCapture(
+                id: captureID,
                 kind: kind,
                 amountText: amountText,
                 payee: payee,
@@ -515,7 +572,14 @@ extension AppModel {
     }
 
     func consumeQuickLogRequest(_ request: QuickLogRouteRequest) {
-        guard requestedQuickLogRequest == request else { return }
+        guard requestedQuickLogRequest == request,
+              presentedQuickLogRequest == nil
+                || presentedQuickLogRequest == request else { return }
+        if request.requiresIngressAcknowledgement {
+            guard quickActionRouteBroker.acknowledge(
+                token: request.ingressToken
+            ) else { return }
+        }
         requestedQuickLogMode = nil
     }
 
@@ -523,7 +587,9 @@ extension AppModel {
     func presentQuickLogRequest(_ request: QuickLogRouteRequest) -> Bool {
         guard requestedQuickLogRequest == request,
               request.generation == quickActionRouteBroker.handoffGeneration,
-              !quickActionRouteBroker.isAuthoritativeBoundaryActive else {
+              !quickActionRouteBroker.isAuthoritativeBoundaryActive,
+              presentedQuickLogRequest == nil
+                || presentedQuickLogRequest == request else {
             return false
         }
         presentedQuickLogRequest = request
@@ -533,11 +599,28 @@ extension AppModel {
     /// The only AppModel entry point for an erase or book-replacement action
     /// boundary. The broker generation and occupied UI slot are invalidated in
     /// the same main-actor turn, before lifecycle code can suspend.
-    func beginAuthoritativeQuickActionBoundary() -> UInt64 {
-        let epoch = quickActionRouteBroker.beginAuthoritativeBoundary()
+    func beginAuthoritativeQuickActionBoundary() throws -> UInt64 {
+        let epoch = try quickActionRouteBroker.beginAuthoritativeBoundary()
         requestedQuickLogMode = nil
-        presentedQuickLogRequest = nil
         return epoch
+    }
+
+    /// Successful authoritative startup may replace an unreadable/closed
+    /// ingress envelope with a new empty protocol epoch. Any still-present UI
+    /// request whose token no longer owns a delivery belongs to the old epoch.
+    private func clearOrphanedQuickActionRequestAfterDurableRecovery() {
+        guard let request = requestedQuickLogRequest,
+              request.requiresIngressAcknowledgement,
+              !quickActionRouteBroker.ownsActiveDelivery(
+                  token: request.ingressToken
+              ) else { return }
+        requestedQuickLogMode = nil
+    }
+
+    func finishValidatedQuickActionIngressRecovery() {
+        guard quickActionRouteBroker
+            .reopenDurableAdmissionAfterAuthoritativeRecovery() else { return }
+        clearOrphanedQuickActionRequestAfterDurableRecovery()
     }
 
     /// Runs OCR outside the view and only returns a parsed draft to the same

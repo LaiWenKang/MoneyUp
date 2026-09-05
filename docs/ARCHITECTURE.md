@@ -9,18 +9,24 @@ flowchart TD
     App --> Intel["MoneyUpIntelligence"]
     App --> Store["MoneyUpPersistence"]
     Store --> Cipher["SQLCipher schema 9"]
-    App --> Shared["Bounded status-only App Group"]
+    App --> Shared["Three-artifact App Group"]
     Shared --> Widget
     App --> Files["CSV/XLSX/import/archive"]
 ```
 
-The widget has two deliberately separate boundaries. Basic actions can route
-to a device-only encrypted Quick Capture inbox without opening the book. The
-opt-in Budget Status and Smart Overview surfaces read a tiny snapshot from
-`group.com.laiwenkang.MoneyUp` containing only state, bounded percentages and
-counts, expiry, and an optional next-commitment timestamp. The shared container
-never receives amounts, payees, account names, holdings, balances, transaction
-data, ledger identifiers, the SQLCipher database, or its Keychain key.
+The widget has deliberately separate action and summary boundaries. The sole
+App Group `group.com.laiwenkang.MoneyUp` has an exact three-artifact allowlist:
+the non-financial language preference, one atomic schema-4 Budget Status/Smart
+Overview value, and one bounded data-free quick-action ingress file. The summary
+contains only state, a bounded reporting-period token, bounded percentages and
+counts, expiry, and an optional reporting-calendar-derived due-day distance.
+The ingress file contains only schema/authority metadata, admission state,
+opaque handoff tokens, and one of six closed action values; protected book
+capture still goes to the separate encrypted Quick Capture inbox. No other
+default key or file is approved, and the shared container never receives
+amounts, payees, account names, holdings/symbols/quotes, balances, transaction
+data, notes/evidence, domain identifiers, the SQLCipher database, or its
+Keychain key.
 
 `MoneyUpCore` has no UI, database, or network dependency. It uses Foundation
 for domain behavior and CryptoKit only to create local import fingerprints.
@@ -35,7 +41,7 @@ required.
 | MoneyUpCore | Exact money, ledger, hierarchy, recurrence, goals, investments, reports, export rules | Implemented in source; exact-candidate core tests open |
 | MoneyUpIntelligence | Pure deterministic detectors, exact evidence contracts, projections, and budget proposals; depends only on MoneyUpCore | Implemented; W2 branch and merged-main CI passed; final-candidate repeat open |
 | MoneyUpPersistence | SQLCipher schema/migrations, normalized encrypted indexes, atomic writes, snapshots | Implemented in source; Mac test gate open |
-| Widget | Redacted actions plus opt-in percentage/state status | Implemented in source; App Group registration/signing and device matrix open |
+| Widget | Redacted actions plus opt-in bounded Budget Status/Smart Overview generation; exact App Group allowlist of language preference, atomic summary value, and data-free action-ingress file | Implemented in source; App Group registration/signing and device matrix open |
 | Portability | CSV/XLSX, mapped local import, sanitized encrypted attachments, file-backed archive lifecycle | Implemented in source; exact-candidate and physical restore/export drills open |
 
 `BudgetTree`, `BudgetRollover`, `SavingsGoal`, and `FinancialGuidance` own the
@@ -105,9 +111,10 @@ money/date/ID, arbitrary string, and extra-call mutations fail validation.
 
 W3's production boundary is narrower still. `NaturalLanguageEntryParser`
 retains sole ownership of every financial field and emits a separate bounded
-context with parsed financial spans removed. The optional, persisted setting
-defaults off, and its disabled path performs neither planning nor selection.
-When enabled, stable existing-name lists are capped at 16. Canonical Unicode
+context with parsed financial spans removed. The persisted setting defaults on
+for new and legacy profiles, with an explicit Settings opt-out; its disabled
+path performs neither planning nor selection. When enabled, stable existing-name
+lists are capped at 16. Canonical Unicode
 normalization and scalar/UTF-8 ceilings apply to context, each name, and the
 whole prompt. The only framework implementation accepts that typed request,
 uses `SystemLanguageModel.default`, checks exact availability, creates one
@@ -269,7 +276,20 @@ Current writes enforce a 100,000-record/512 MB stored-payload envelope, while
 legacy version-1 archives remain readable within their compatibility limit.
 Attachments, user rates, goals, snapshots, and quarantined encrypted raw
 records remain in the archive. Restore streams into an isolated SQLCipher store
-before confirmation, then presents only archive/schema versions, collection
+before confirmation. Before candidate-model load, a stable-order SQL cursor
+reduces raw rows into bounded work state with cooperative cancellation; it does
+not materialize a second database snapshot. Per-row and aggregate limits cover
+payload/identity bytes and every nested collection, including allowance usage,
+reconciliation, archive-transition, and cadence-period work. Weekday period
+estimation is exact constant-time civil-calendar arithmetic. Per plan, the
+allowance gates admit at most 4,096 usages, 4,096 reconciliations, 512 archive
+transitions, and `10,000 + 2 × maxPolicyRevisions` period work (11,024 at the
+512-revision cap), with 100,000 aggregate ceilings for each collection. Normal
+recovery still closes allowance/account/journal dependencies over complete
+indexed restricted-account history to a monotonic fixed point and preserves the
+encrypted raw rows; strict restore rejects the equivalent invalid graph. Any
+limit failure precedes domain decode, relationship traversal, and live
+replacement. Restore then presents only archive/schema versions, collection
 counts, entry span, currencies, quarantine count, and current-to-candidate
 replacement counts. The confirmation ticket binds that preview to the staged
 ciphertext SHA-256; commit first makes a bounded private copy and rejects any

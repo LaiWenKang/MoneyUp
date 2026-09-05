@@ -3,6 +3,325 @@ import MoneyUpCore
 import XCTest
 
 final class TransactionPresentationTests: XCTestCase {
+    func testFinalReportingDayContextIsLocalizedInEnglishAndSimplifiedChinese() throws {
+        XCTAssertEqual(
+            AppLocalization.string(
+                "dashboard.safe_to_spend",
+                language: .english
+            ),
+            "Flexible today"
+        )
+        XCTAssertEqual(
+            AppLocalization.string(
+                "dashboard.safe_to_spend",
+                language: .simplifiedChinese
+            ),
+            "今日灵活可用"
+        )
+
+        let english = try reportingContext(
+            day: 30,
+            language: .english,
+            deviceTimeZoneIdentifier: "Asia/Singapore"
+        )
+        XCTAssertEqual(english.inclusiveRemainingDayCount, 1)
+        XCTAssertEqual(english.monthEndDescription, "Sep 30")
+        XCTAssertEqual(english.reportingDayDescription, "Wed, Sep 30")
+        XCTAssertEqual(
+            english.contextDescription,
+            "Wed, Sep 30 · 1 day through Sep 30 (today included)"
+        )
+
+        let chinese = try reportingContext(
+            day: 30,
+            language: .simplifiedChinese,
+            deviceTimeZoneIdentifier: "Asia/Singapore"
+        )
+        XCTAssertEqual(chinese.inclusiveRemainingDayCount, 1)
+        XCTAssertEqual(chinese.monthEndDescription, "9月30日")
+        XCTAssertEqual(chinese.reportingDayDescription, "9月30日 周三")
+        XCTAssertEqual(
+            chinese.contextDescription,
+            "9月30日 周三 · 至 9月30日 剩余 1 天（含今天）"
+        )
+    }
+
+    func testMidMonthContextIsExactWithAndWithoutReportingZone() throws {
+        let expectations: [(
+            language: AppLanguagePreference,
+            reportingDay: String,
+            monthEnd: String,
+            period: String,
+            reportingZone: String,
+            zonedContext: String
+        )] = [
+            (
+                .english,
+                "Tue, Sep 15",
+                "Sep 30",
+                "16 days through Sep 30 (today included)",
+                "Singapore Time",
+                "Tue, Sep 15 · 16 days through Sep 30 (today included) "
+                    + "· Reporting: Singapore Time"
+            ),
+            (
+                .simplifiedChinese,
+                "9月15日 周二",
+                "9月30日",
+                "至 9月30日 剩余 16 天（含今天）",
+                "新加坡时间",
+                "9月15日 周二 · 至 9月30日 剩余 16 天（含今天） "
+                    + "· 报表时区：新加坡时间"
+            )
+        ]
+
+        for expectation in expectations {
+            let matchingZone = try reportingContext(
+                day: 15,
+                language: expectation.language,
+                deviceTimeZoneIdentifier: "Asia/Singapore"
+            )
+            XCTAssertEqual(
+                matchingZone.reportingDayDescription,
+                expectation.reportingDay
+            )
+            XCTAssertEqual(
+                matchingZone.monthEndDescription,
+                expectation.monthEnd
+            )
+            XCTAssertEqual(matchingZone.inclusiveRemainingDayCount, 16)
+            XCTAssertNil(matchingZone.reportingTimeZoneDescription)
+            XCTAssertEqual(
+                matchingZone.contextDescription,
+                "\(expectation.reportingDay) · \(expectation.period)"
+            )
+
+            let differentZone = try reportingContext(
+                day: 15,
+                language: expectation.language,
+                deviceTimeZoneIdentifier: "America/Los_Angeles"
+            )
+            XCTAssertEqual(
+                differentZone.reportingDayDescription,
+                expectation.reportingDay
+            )
+            XCTAssertEqual(
+                differentZone.monthEndDescription,
+                expectation.monthEnd
+            )
+            XCTAssertEqual(differentZone.inclusiveRemainingDayCount, 16)
+            XCTAssertEqual(
+                differentZone.reportingTimeZoneDescription,
+                expectation.reportingZone
+            )
+            XCTAssertEqual(
+                differentZone.contextDescription,
+                expectation.zonedContext
+            )
+        }
+    }
+
+    func testTodayContextShowsReportingZoneOnlyWhenDeviceZoneDiffers() throws {
+        let singapore = try XCTUnwrap(TimeZone(identifier: "Asia/Singapore"))
+        let losAngeles = try XCTUnwrap(
+            TimeZone(identifier: "America/Los_Angeles")
+        )
+
+        XCTAssertFalse(
+            DashboardReportingContextPolicy.shouldShowReportingTimeZone(
+                reportingTimeZone: singapore,
+                deviceTimeZone: singapore
+            )
+        )
+        XCTAssertTrue(
+            DashboardReportingContextPolicy.shouldShowReportingTimeZone(
+                reportingTimeZone: singapore,
+                deviceTimeZone: losAngeles
+            )
+        )
+    }
+
+    private func reportingContext(
+        day: Int,
+        language: AppLanguagePreference,
+        deviceTimeZoneIdentifier: String
+    ) throws -> TodayPeriodContextPresentation {
+        let calendar = FinancialPeriodBoundary.gregorianCalendar(
+            timeZoneIdentifier: "Asia/Singapore"
+        )
+        let reportingDate = try XCTUnwrap(
+            calendar.date(
+                from: DateComponents(
+                    year: 2026,
+                    month: 9,
+                    day: day,
+                    hour: 12
+                )
+            )
+        )
+        let deviceTimeZone = try XCTUnwrap(
+            TimeZone(identifier: deviceTimeZoneIdentifier)
+        )
+        return try XCTUnwrap(
+            TodayPeriodContextFormatter.presentation(
+                reportingDate: reportingDate,
+                reportingCalendar: calendar,
+                locale: language.locale,
+                deviceTimeZone: deviceTimeZone,
+                localizedString: {
+                    AppLocalization.string($0, language: language)
+                }
+            )
+        )
+    }
+
+    func testTodayCashExcludesRestrictedAllowanceAssetsButKeepsDebt() throws {
+        let sgd = try CurrencyCode("SGD")
+        let cash = LedgerAccount(
+            name: "Cash",
+            kind: .asset,
+            currency: sgd,
+            accountType: .cash
+        )
+        let restrictedAllowance = LedgerAccount(
+            name: "Meal benefit",
+            kind: .asset,
+            currency: sgd,
+            accountType: .restrictedAllowance
+        )
+        let creditCard = LedgerAccount(
+            name: "Card",
+            kind: .liability,
+            currency: sgd,
+            accountType: .creditCard
+        )
+
+        XCTAssertTrue(DashboardAccountPolicy.isIncludedInCashAndDebt(cash))
+        XCTAssertFalse(
+            DashboardAccountPolicy.isIncludedInCashAndDebt(restrictedAllowance)
+        )
+        XCTAssertTrue(DashboardAccountPolicy.isIncludedInCashAndDebt(creditCard))
+    }
+
+    func testRestrictedSourceOnlyOffersItsOwningPrepaidPlan() throws {
+        let sgd = try CurrencyCode("SGD")
+        let restricted = LedgerAccount(
+            name: "Meal wallet",
+            kind: .asset,
+            currency: sgd,
+            accountType: .restrictedAllowance
+        )
+        let matching = try allowancePlan(
+            currency: sgd,
+            mode: .prepaidAsset,
+            linkedAccountID: restricted.id
+        )
+        let mismatched = try allowancePlan(
+            currency: sgd,
+            mode: .prepaidAsset,
+            linkedAccountID: UUID()
+        )
+        let benefit = try allowancePlan(
+            currency: sgd,
+            mode: .benefitLimit
+        )
+
+        XCTAssertTrue(
+            QuickLogAllowanceSourcePolicy.planIsEligible(
+                matching,
+                for: restricted
+            )
+        )
+        XCTAssertFalse(
+            QuickLogAllowanceSourcePolicy.planIsEligible(
+                mismatched,
+                for: restricted
+            )
+        )
+        XCTAssertFalse(
+            QuickLogAllowanceSourcePolicy.planIsEligible(
+                benefit,
+                for: restricted
+            )
+        )
+    }
+
+    func testRestrictedSourceRequiresExactFullPrepaidCoverage() throws {
+        let sgd = try CurrencyCode("SGD")
+        let restricted = LedgerAccount(
+            name: "Meal wallet",
+            kind: .asset,
+            currency: sgd,
+            accountType: .restrictedAllowance
+        )
+        let plan = try allowancePlan(
+            currency: sgd,
+            mode: .prepaidAsset,
+            linkedAccountID: restricted.id
+        )
+        let total = try Money(10, currency: sgd)
+
+        XCTAssertFalse(QuickLogAllowanceSourcePolicy.canCommitExpense(
+            sourceAccount: restricted,
+            hasAllowanceSelection: false,
+            selectedPlan: nil,
+            total: total,
+            application: nil
+        ))
+        XCTAssertFalse(QuickLogAllowanceSourcePolicy.canCommitExpense(
+            sourceAccount: restricted,
+            hasAllowanceSelection: true,
+            selectedPlan: plan,
+            total: total,
+            application: try Money(4, currency: sgd)
+        ))
+        XCTAssertTrue(QuickLogAllowanceSourcePolicy.canCommitExpense(
+            sourceAccount: restricted,
+            hasAllowanceSelection: true,
+            selectedPlan: plan,
+            total: total,
+            application: total
+        ))
+    }
+
+    func testOrdinarySourceAllowsUncoveredOrSplitAllowanceExpense() throws {
+        let sgd = try CurrencyCode("SGD")
+        let cash = LedgerAccount(
+            name: "Cash",
+            kind: .asset,
+            currency: sgd,
+            accountType: .cash
+        )
+        let plan = try allowancePlan(
+            currency: sgd,
+            mode: .prepaidAsset,
+            linkedAccountID: UUID()
+        )
+        let total = try Money(10, currency: sgd)
+
+        XCTAssertTrue(QuickLogAllowanceSourcePolicy.canCommitExpense(
+            sourceAccount: cash,
+            hasAllowanceSelection: false,
+            selectedPlan: nil,
+            total: total,
+            application: nil
+        ))
+        XCTAssertTrue(QuickLogAllowanceSourcePolicy.canCommitExpense(
+            sourceAccount: cash,
+            hasAllowanceSelection: true,
+            selectedPlan: plan,
+            total: total,
+            application: try Money(4, currency: sgd)
+        ))
+        XCTAssertFalse(QuickLogAllowanceSourcePolicy.canCommitExpense(
+            sourceAccount: cash,
+            hasAllowanceSelection: true,
+            selectedPlan: nil,
+            total: total,
+            application: nil
+        ))
+    }
+
     func testDashboardRefreshUsesReportingMidnightAcrossDifferentZones() throws {
         let now = try XCTUnwrap(
             ISO8601DateFormatter().date(from: "2026-08-28T15:59:00Z")
@@ -15,13 +334,13 @@ final class TransactionPresentationTests: XCTestCase {
         )
 
         let reportingBoundary = try XCTUnwrap(
-            DashboardReportingClockPolicy.nextRefresh(
+            ReportingClockPolicy.nextRefresh(
                 after: now,
                 calendar: singapore
             )
         )
         let deviceBoundary = try XCTUnwrap(
-            DashboardReportingClockPolicy.nextRefresh(after: now, calendar: utc)
+            ReportingClockPolicy.nextRefresh(after: now, calendar: utc)
         )
 
         XCTAssertEqual(reportingBoundary.timeIntervalSince(now), 60)
@@ -37,7 +356,7 @@ final class TransactionPresentationTests: XCTestCase {
         )
 
         let boundary = try XCTUnwrap(
-            DashboardReportingClockPolicy.nextRefresh(
+            ReportingClockPolicy.nextRefresh(
                 after: now,
                 calendar: losAngeles
             )
@@ -56,7 +375,7 @@ final class TransactionPresentationTests: XCTestCase {
         )
 
         let refresh = try XCTUnwrap(
-            DashboardReportingClockPolicy.nextRefresh(
+            ReportingClockPolicy.nextRefresh(
                 after: now,
                 calendar: singapore,
                 scheduledOccurrences: [occurrence]
@@ -64,6 +383,27 @@ final class TransactionPresentationTests: XCTestCase {
         )
 
         XCTAssertEqual(refresh, occurrence.addingTimeInterval(1))
+    }
+
+    func testDashboardRefreshUsesEarlierRestrictedAllowanceChange() throws {
+        let now = try XCTUnwrap(
+            ISO8601DateFormatter().date(from: "2026-08-28T02:00:00Z")
+        )
+        let restrictedChange = now.addingTimeInterval(5 * 60)
+        let laterSchedule = now.addingTimeInterval(15 * 60)
+        let singapore = FinancialPeriodBoundary.gregorianCalendar(
+            timeZoneIdentifier: "Asia/Singapore"
+        )
+
+        XCTAssertEqual(
+            ReportingClockPolicy.nextRefresh(
+                after: now,
+                calendar: singapore,
+                scheduledOccurrences: [laterSchedule],
+                restrictedAllowanceChange: restrictedChange
+            ),
+            restrictedChange
+        )
     }
 
     func testQuickLogSplitFocusUsesStableLineIdentity() {
@@ -98,39 +438,6 @@ final class TransactionPresentationTests: XCTestCase {
             XCTAssertEqual(QuickLogFocusScrollPolicy.target(for: field), field)
         }
         XCTAssertNil(QuickLogFocusScrollPolicy.target(for: nil))
-    }
-
-    func testTabSwipeRequiresDeliberateHorizontalMovementAndNeverWraps() {
-        XCTAssertEqual(
-            TabSwipeNavigationPolicy.destination(
-                from: .history,
-                translation: CGSize(width: -90, height: 12)
-            ),
-            .log
-        )
-        XCTAssertEqual(
-            TabSwipeNavigationPolicy.destination(
-                from: .plan,
-                translation: CGSize(width: 90, height: 12)
-            ),
-            .log
-        )
-        XCTAssertNil(TabSwipeNavigationPolicy.destination(
-            from: .today,
-            translation: CGSize(width: 90, height: 0)
-        ))
-        XCTAssertNil(TabSwipeNavigationPolicy.destination(
-            from: .assets,
-            translation: CGSize(width: -90, height: 0)
-        ))
-        XCTAssertNil(TabSwipeNavigationPolicy.destination(
-            from: .history,
-            translation: CGSize(width: 60, height: 0)
-        ))
-        XCTAssertNil(TabSwipeNavigationPolicy.destination(
-            from: .history,
-            translation: CGSize(width: 90, height: 70)
-        ))
     }
 
     func testOccurrenceDateRefreshesOnlyForAnUntouchedNewDraft() {
@@ -673,5 +980,21 @@ final class TransactionPresentationTests: XCTestCase {
 
     private func accountsByID(_ accounts: [LedgerAccount]) -> [UUID: LedgerAccount] {
         Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0) })
+    }
+
+    private func allowancePlan(
+        currency: CurrencyCode,
+        mode: AllowanceFundingMode,
+        linkedAccountID: UUID? = nil
+    ) throws -> AllowancePlan {
+        try AllowancePlan(
+            name: "Test allowance",
+            amount: Money(100, currency: currency),
+            cadence: .monthly,
+            fundingMode: mode,
+            linkedAccountID: linkedAccountID,
+            startsAt: Date(timeIntervalSince1970: 1_700_000_000),
+            timeZoneIdentifier: "UTC"
+        )
     }
 }

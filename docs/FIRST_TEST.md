@@ -132,10 +132,12 @@ the app silently resets, or the opening balance is wrong.
 - Verify account balances after every action.
 - Record `lunch 12.50 cash yesterday` or the equivalent Chinese phrase with
   smart entry, then correct every field before saving.
-- Confirm **On-device Smart Entry matching** is off on an upgraded and a clean
-  profile. On an eligible iOS 26 device, enable it and enter ambiguous English
-  and Chinese phrases. Every optional match must name only an existing account
-  or category; **Reject on-device match** must dismiss/revert it in one tap;
+- Confirm **On-device Smart Entry matching** is on by default on an upgraded and
+  a clean profile. Turn it off and confirm an ambiguous phrase keeps only the
+  deterministic rule result. On an eligible iOS 26 device, turn it back on and
+  enter ambiguous English and Chinese phrases. Every optional match must name
+  only an existing account or category; **Reject on-device match** must
+  dismiss/revert it in one tap;
   VoiceOver must announce **Use account suggestion: _name_** or **Use category
   suggestion: _name_** in the active language for both on-device and book-
   history suggestions. **Use** may change only that picker and must never save;
@@ -178,7 +180,19 @@ the app silently resets, or the opening balance is wrong.
   and search can find the saved descriptive text.
 - Confirm History opens on Today and its complete per-currency spending,
   refunds, income, and signed net reconcile independently. Repeat seven-day,
-  month, and all-time scopes, use advanced filters, and open Calendar directly.
+  month, and all-time scopes. With no, one, five, and more than five eligible hot
+  categories, verify the single labelled category menu shows full paths,
+  deterministic active state, and Reset; combine it with advanced filters.
+- Drag horizontally over History scopes, menus, lists, Plan controls, and chart
+  content. No child gesture may switch the root tab; the fixed five-tab bar is
+  the only global tab-navigation control.
+- Upgrade disposable legacy-profile fixtures with the retired root-swipe field
+  absent, `false`, and `true`, plus a separate fixture with the wrong JSON type.
+  The three valid fixtures must open with swipe disabled and normalize to
+  `false`; the wrong-type fixture must fail profile decoding rather than coerce.
+  Save each valid book and inspect the encoded profile: the retired key is
+  omitted. An instrumented initializer attempt with `true` must also result in
+  `false`.
 
 ### 3. Budgets and insights
 
@@ -194,16 +208,27 @@ the app silently resets, or the opening balance is wrong.
   remaining civil days; confirm pacing changes no monthly limit, rollover,
   journal entry, or historical report.
 - Check Today, Plan (including Calendar), and Insights for the same amount and currency.
+- On each Plan peer section, verify the selected item shows icon and name while
+  the other three remain directly tappable without horizontal scrolling. Repeat
+  in English and Simplified Chinese, at the largest Dynamic Type size, and with
+  VoiceOver; the accessible-size fallback must retain all four names and states.
 - If this book originally came from 0.5.0, confirm every still-unclassified
   limited allocation shows **Choose a purpose** and Today shows no optimistic
   daily amount. Classify one flexible allocation, one rent/bill allocation, one
   debt allocation, and one savings goal.
-- On Today, open **Flexible Today**. Reconcile only flexible remaining budget
-  minus active flexible scheduled occurrences, divided by days remaining
-  including today. Confirm rent, loan/card repayment, and goals contribute zero;
-  each flexible commitment is deducted once; foreign-currency activity,
-  unbudgeted spending, future income, missing rates, and forecast assumptions
-  are stated rather than silently folded into the amount.
+- On Today, confirm the compact context line names the localized reporting date,
+  month end, and inclusive remaining-day count. It names the reporting zone only
+  when that zone differs from the device zone. Open **Flexible Today** and
+  reconcile only flexible remaining budget minus active flexible scheduled
+  occurrences, apportioned across those civil days including today. Confirm rent,
+  loan/card repayment, and goals contribute zero; each flexible commitment is
+  deducted once; foreign-currency activity, unbudgeted spending, future income,
+  missing rates, and forecast assumptions are stated rather than silently folded
+  into the amount.
+- Repeat the Today calculation on the reporting month’s final civil day for a
+  two-decimal currency, JPY, and KWD. The denominator must be one and the final
+  day must receive the exact residual so the apportioned month reconciles without
+  losing or inventing a minor unit. Repeat across a DST boundary and leap February.
 - Confirm Cash on hand, Card and loan debt, and Net cash remain separate and
   match the underlying base-currency accounts.
 - Open Plan → Budget what-if. Try additional spending and income, compare the
@@ -214,6 +239,11 @@ the app silently resets, or the opening balance is wrong.
 - Tap a category bar and a monthly-flow bar, inspect the selected value, then
   open transactions. Confirm History has the matching category/date filters and
   Back returns to the chart.
+- Verify tab and Plan peer roots show no decorative Back. A pushed detail/editor
+  pops one real destination, every sheet uses its semantic Cancel/Close/Done,
+  and a genuine cross-tab History origin shows one localized **Back to …** route
+  that is consumed once. Direct tab selection, lock, cancellation, and cold
+  launch must clear stale origins without duplicating actions or losing a draft.
 - Repeat both chart selections in grayscale and with the iOS blue/yellow color
   filter (a tritan proxy, not a clinical equivalence claim). Confirm every bar
   remains visible, the dashed selection rule remains distinct, and labels,
@@ -285,12 +315,71 @@ the app silently resets, or the opening balance is wrong.
   and fees. Reconcile the single balanced journal entry, reject a principal
   overpayment, and confirm the plan cannot finish until ledger principal is
   exactly zero.
-- Create a weekday meal allowance with an end date and no rollover. Record
-  category-linked and general use with notes; confirm unused daily value expires
-  at the reporting-day boundary and never appears as cash, income, or net worth.
-- Repeat with weekly/monthly cadence and capped/full rollover using disposable
-  values. Reconcile eligibility, availability, usage history, cap behavior, and
-  archive/restore across a reporting-period boundary.
+- Create benefit-limit, prepaid-asset, and reimbursement meal allowances. Only
+  the prepaid plan may link to an active same-currency **Restricted allowance**
+  account, and its visible **Spendable now** value must not exceed either policy
+  capacity or the authoritative ledger balance. Benefit and claim capacity must
+  remain labelled policy values, not cash or assets.
+- Create two active prepaid plans in the same currency and try to assign the
+  same restricted account to both. The second plan's add/edit picker must omit or
+  reject the account while the first plan's editor retains its own current
+  account. Repeat after archive/unarchive and mode/account changes; there must
+  never be two active owners or a transient unrestricted classification.
+- Set the profile reporting zone and the allowance policy zone to visibly
+  different zones. A new plan start must resolve to policy-zone day start, and a
+  visible inclusive end must persist as the next policy-zone civil-day start,
+  including 23- and 25-hour DST days. A name-only edit must preserve the plan
+  zone; a rule/zone edit must create future policy terms rather than rewrite
+  prior usage. Import a legacy partial-day bound and confirm it remains the exact
+  instant instead of being rounded. Active and pending terms must name their
+  governing zone wherever that context changes the visible date.
+- Put different eligible categories on two policy revisions, then backdate and
+  future-date usage across their boundary. The picker must resolve the revision
+  at the expense instant; **General** is available only for unrestricted use,
+  and any selection made stale by a date/plan/category change must be cleared or
+  rejected before save.
+- Record category-linked and general use with notes. For prepaid expenses, verify
+  the linked restricted account funds the amount atomically, a future top-up
+  cannot fund a backdated expense, and no historical running balance becomes
+  negative. Uncovered spend requires an explicit split or a clear rejection.
+- For a backdated prepaid expense, compare Quick Log's preview with the indexed
+  account ledger at that exact instant. Add a funding entry after the expense and
+  a later debit: neither may be pulled backward into the preview. While an
+  instrumented preview request is in flight, change each of the plan, source
+  account, expense instant, journal projection revision, and logical book
+  revision in separate runs. Every stale result must be discarded and saving
+  must fail closed until the current preview completes.
+- Create current standalone benefit usage, then edit it, delete it, and Undo the
+  deletion by stable usage identifier; edit must preserve the UUID, and delete
+  must return the exact evidence. Clear the presentation state before one Undo
+  and confirm its synchronously captured usage/plan/policy still restores. In
+  separate runs, consume the remaining capacity and supersede the policy
+  revision before Undo; both must fail without a store change. Repeat against
+  transaction-linked, prepaid, reimbursement, archived, and grandfathered
+  evidence; every ineligible correction must fail closed without changing the
+  ledger or another usage row.
+- Create an eligible reimbursement expense and record baseline entry/posting/
+  account counts and balances. Exercise pending → approved, pending → rejected,
+  and approved → reimbursed with the expected current status; stale/concurrent
+  expected-status attempts must fail, and rejected/reimbursed claims must remain
+  terminal. Every transition must change claim evidence only—the baseline
+  journal/account/cash/income/receivable facts remain identical. Edit the still-
+  eligible expense and confirm its advanced status is preserved; delete it and
+  confirm the evidence is removed. Then make another advanced claim ineligible:
+  cancellation must preserve both records, while explicit confirmation removes
+  only the allowance evidence. Log the actual incoming reimbursement separately
+  and reconcile that it is the only operation that moves money.
+- Repeat daily/weekday/weekly/monthly cadence and no/capped/full rollover across
+  reporting-zone midnight, DST, travel, and period end. Policy expiry must not
+  delete prepaid ledger value or create income/expense; only an explicitly
+  confirmed provider expiry may reduce the restricted account. Active and
+  scheduled policy terms must remain visibly separate, and a second edit must be
+  able to replace or cancel an unreferenced scheduled revision.
+- In Assets, reconcile the separately labelled restricted subtotal by currency,
+  including archived accounts, against the ledger. Every restricted row must be
+  text-labelled, and the unrestricted cash/headline figure must exclude it.
+  Exercise archive, restore, merge, and delete/reassign and confirm restricted
+  identities fail closed when their references cannot be preserved.
 
 ### 6. Corrections and export
 
@@ -314,18 +403,59 @@ the app silently resets, or the opening balance is wrong.
   render, their legacy expense/income links open correctly, they can be resized
   and edited, and they survive a reboot. Then choose a 0.7.1 preferred action. If
   migration fails, remove and re-add the widget and report both build numbers.
-- Add small and medium MoneyUp widgets to the Home Screen and one MoneyUp widget
-  to the Lock Screen.
-- Check inline, circular, and rectangular Lock Screen families where available,
-  plus tinted Home Screen rendering.
+- Add small and medium MoneyUp widgets to the Home Screen and inline, circular,
+  and rectangular MoneyUp widgets to the Lock Screen. Configure Quick Actions,
+  Budget Status, and Smart Overview in every family each surface supports.
 - Confirm the horned-money mark, dimensional action buttons, and decorative
   background remain clear in light, dark, and tinted modes without resembling
   real financial data.
-- With budget status disabled, confirm the widget asks to enable it and shows no
-  invented percentage. Enable it and confirm only percentage/state appears -
-  never amount, payee, account name, holding, balance, transaction, or ledger
-  identifier. Disable it and erase a disposable book to confirm the snapshot is
-  scrubbed. Repeat while the book is locked and in redacted mode.
+- Exercise Smart Overview and Budget Status with opt-in disabled, unavailable
+  projection, missing budget, intentional zero budget, negative effective budget,
+  current 0% and over-100% use, and expiry. Disabled must direct the user to
+  Settings; stale must direct the user to open MoneyUp; zero, negative, missing,
+  and current values must remain distinct in visible and VoiceOver copy.
+- On an instrumented disposable install, separately supply an absent summary and
+  corrupt, future-schema, oversized, contradictory, and negative-field summaries.
+  Absence alone must render disabled/opted out; every malformed present summary
+  must invalidate the whole generation as stale, never salvage positive sibling
+  fields or invent zero. Opening/rendering the read-only extension must not
+  change App Group bytes or modification times. The unlocked maintenance writer
+  must atomically canonicalize the stale state; only a later eligible coherent
+  app projection may publish a current generation.
+- Exercise nil and partial review, allowance, and commitment summaries in every
+  Smart Overview family. A current budget must remain visible when an insight is
+  unavailable; unavailable fields show no invented zero. Confirm commitments
+  count expenses only and use the reporting-calendar day distance to the next
+  one, never an exact due date or device-zone reinterpretation.
+- Tap every Budget Status and Smart Overview label, value, icon, gauge/progress
+  view, and background. Both summaries remain passive and run no intent. At the
+  first displayed-data expiry the whole visible generation becomes stale rather
+  than mixing old and new fields.
+- Repeat Home widgets in English and Simplified Chinese at the largest supported
+  accessibility Dynamic Type sizes. Quick Actions, Budget Status, and Smart
+  Overview must reduce information density without clipping or losing their
+  primary action/state; inline/circular/rectangular accessories must retain
+  native family geometry rather than inherit a compressed Home layout.
+- Activate a ready scene just before a reporting-day boundary and record the
+  instrumented lifecycle trace. It must republish one eligible generation, arm
+  exactly one current boundary wait, refresh after the boundary, and rearm once.
+  Repeat across a DST boundary and after background/inactive, lock, book
+  replacement, and logical-book revision changes; obsolete waits/results must
+  not publish. Onboarding/opt-out remains disabled and does not silently enable
+  summaries. After an allowance mutation, the widget may publish only after its
+  plan and journal projections form one coherent state.
+- Inspect the App Group while enabled. Its allowlist is exactly three artifacts:
+  one nonfinancial language preference, one atomic bounded schema-4 summary
+  `Data` value, and one bounded data-free quick-action ingress JSON file—never a
+  fourth key or file. The summary may contain only state, a bounded reporting-
+  period token, rounded budget/allowance percentages, bounded review and expense-
+  commitment counts, expiry, and relative due-day distance. The ingress may
+  contain only schema/authority metadata, admission metadata, opaque tokens, and
+  one of the six closed action values. Neither may contain an exact due date,
+  amount, payee, account name, holding/symbol/quote, balance, transaction,
+  note/evidence, book, or ledger identifier. Disable summaries, erase a
+  disposable book, and repeat through lock/redaction to confirm required
+  invalidation/scrubbing without creating another artifact.
 - While the book is available, open Expense, Income, Transfer, and Refund from
   the widget and confirm each routes to the full Quick Log with editable
   account, category, title, notes, date/time, transfer, and split details.
@@ -382,6 +512,7 @@ inventory and compare every semantic field; `generatedAt` is expected to differ.
 | `POR-05-TAMPER` | Duplicate a valid `.moneyup` file, flip one byte in the duplicate on a Mac, and try to restore only the modified copy. | Restore is rejected without exposing content; the live book and its inventory remain byte-for-byte/logically unchanged. The untouched archive still restores on the clean QA device. | Candidate version/build; original and modified archive SHA-256; before/after inventory files and hashes; redacted rejection screenshot. |
 | `POR-05-CANCEL` | Separately cancel the backup destination picker, restore source picker, and every restore confirmation/password sheet that offers Cancel. | No success state is shown, no partial candidate replaces the live book, and every inventory field except `generatedAt` plus every balance matches. | Which sheet was cancelled; device/OS; before/after inventory files and hashes; semantic comparison; observed UI state. |
 | `POR-05-INTERRUPT` | With the 10,000-entry fixture and large fictional receipt attachments, force-terminate MoneyUp once during backup generation and once during restore validation, before any success acknowledgement. Repeat during a large import. | Relaunch opens either the complete pre-operation book or the complete committed result—never a mixture. A partial backup is not presented as ready and is rejected if selected. Import has zero partial rows or duplicates. | Timestamped screen recording with private values covered; termination point; before/after counts, balances, inventory hashes, and output-file SHA-256. |
+| `POR-05-WORK-GATE` | With instrumented disposable archives, exercise each per-plan allowance ceiling exactly at and one beyond 4,096 usage rows, 4,096 reconciliation rows, 512 archive transitions, and `10,000 + 2 × maxPolicyRevisions` period work (11,024 when the revision cap is 512); separately exercise each 100,000 aggregate ceiling. Include a very long weekday cadence span, and cancel one otherwise-valid restore during raw candidate reduction. | Exact-limit candidates follow normal validation; each plus-one candidate is rejected before `AppModel` load with privacy-safe evidence and no live-book change. Production reduction visits raw records in stable key order, responds cooperatively to cancellation, retains bounded state without a second whole-book snapshot, and computes weekday-period work exactly in O(1) from weekdays rather than calendar-day iteration. Fixed-point recovery still scans complete indexed restricted-account history and preserves all encrypted raw rows; strict restore rejects an invalid graph. | Exact generator/commit and archive hashes; configured and observed work counts; deterministic rejection codes; before/after inventory hashes; cancellation trace; Instruments peak-memory trace; oldest-device elapsed time; proof that no candidate rows entered the live model. |
 | `POR-05-POWER-LOSS` | On the disposable physical-device book, start the same receipt-heavy restore, then power the device off while processing and restart it. Repeat once during a transaction save or schedule post. | SQLCipher recovery yields exactly the old state or exactly the committed new state. There is no onboarding reset, key mismatch, orphan attachment, unbalanced entry, partial schedule advance, or duplicate. | Device/OS/battery/power state; approximate interruption point; before/after inventory hashes; balance and schedule reconciliation; redacted video. |
 | `SEC-05-KEY-CLIFF` | On a disposable iPhone book only, first export and independently verify a `.moneyup` backup outside MoneyUp. Record its SHA-256 and baseline inventory, then remove the device passcode and reopen the exact candidate. Confirm the dedicated missing-key state, set a new device passcode without deleting MoneyUp, then separately try Cancel, a wrong password, and a tampered copy before restoring the untouched archive. Repeat once with force-termination after validation/installation begins. | MoneyUp explicitly says the device-bound key is missing and never shows onboarding or creates a key beside old ciphertext. Cancel/wrong password/tamper preserve the key-cliff state. The untouched external archive is unchanged. Valid restore yields exactly the archived inventory and balances; interrupted recovery resumes to that complete book or rolls back to the same key-cliff state, never a mixture. | Candidate/version/build/device/OS; backup SHA-256 before/after; baseline/restored inventory and hashes; exact result of every attempt; redacted screenshots/video. Mark this open until physically executed—source tests are not pass evidence. |
 | `POR-04-NEAR-LIMIT` | With an instrumented disposable fixture, create and restore a multi-chunk v2 book near the enforced stored-payload ceiling; separately restore a valid near-limit compatible v1 archive. Record peak resident memory and repeat a wrong-password attempt for each. | V2 completes without whole-book memory growth and every inventory/hash reconciles. Wrong passwords leave the live book unchanged. V1 either completes within the oldest-device safety budget or blocks release; a crash/termination is not an acceptable pass. | Exact fixture generator/commit; v1/v2 file hashes and sizes; Instruments memory trace; before/after inventory hashes; device/OS; elapsed time. |

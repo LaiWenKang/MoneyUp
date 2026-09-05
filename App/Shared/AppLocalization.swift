@@ -33,14 +33,23 @@ enum AppLanguagePreference: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    static var defaults: UserDefaults {
+    static var defaults: UserDefaults? {
         UserDefaults(
             suiteName: BudgetWidgetSnapshotStore.appGroupIdentifier
-        ) ?? .standard
+        )
     }
 
     static var current: AppLanguagePreference {
-        let stored = defaults.string(forKey: storageKey)
+        resolved(from: defaults)
+    }
+
+    /// The extension must not silently cross from its App Group container to
+    /// its own standard defaults domain. If the shared suite is unavailable,
+    /// system language is the only truthful common preference.
+    static func resolved(
+        from defaults: UserDefaults?
+    ) -> AppLanguagePreference {
+        let stored = defaults?.string(forKey: storageKey)
         return stored.flatMap(AppLanguagePreference.init(rawValue:)) ?? .system
     }
 }
@@ -50,10 +59,21 @@ enum AppLanguagePreference: String, CaseIterable, Identifiable, Sendable {
 /// accessibility messages switch with the visible interface.
 enum AppLocalization {
     static func string(_ key: String) -> String {
+        string(key, language: AppLanguagePreference.current)
+    }
+
+    /// Resolves a programmatic string for an explicit supported language.
+    /// Production continues to use the persisted preference above; the
+    /// explicit form keeps localized presentation fixtures independent from
+    /// process-wide defaults.
+    static func string(
+        _ key: String,
+        language: AppLanguagePreference
+    ) -> String {
         let owner = Bundle(for: AppLocalizationBundleToken.self)
-        guard AppLanguagePreference.current != .system,
+        guard language != .system,
               let localizedBundle = localizedBundle(
-                  for: AppLanguagePreference.current,
+                  for: language,
                   owner: owner
               ) else {
             return owner.localizedString(forKey: key, value: key, table: nil)

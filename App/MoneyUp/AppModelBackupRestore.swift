@@ -106,10 +106,12 @@ extension AppModel {
         password: String
     ) async throws {
         let quickActionBoundaryEpoch = try beginRestoreMutation()
+        var quickActionRecoveryWasValidated = false
         defer {
             finishBookReplacementMutation()
-            quickActionRouteBroker.endAuthoritativeBoundary(
-                quickActionBoundaryEpoch
+            finishQuickActionBoundary(
+                quickActionBoundaryEpoch,
+                validatedRecovery: quickActionRecoveryWasValidated
             )
         }
         await finishBeginningRestoreMutation()
@@ -118,6 +120,7 @@ extension AppModel {
             from: archiveURL,
             password: password
         )
+        quickActionRecoveryWasValidated = true
     }
     #endif
 
@@ -211,13 +214,14 @@ extension AppModel {
               !isJournalMutationInProgress else {
             throw AppModelError.transactionInProgress
         }
+        let quickActionBoundaryEpoch =
+            try beginAuthoritativeQuickActionBoundary()
         // Close admission before the first suspension. A normal restore keeps
         // the same store actor, so a distinct logical revision invalidates
         // every old-book read even if it resumes after replacement finishes.
+        cancelWidgetReportingDayRefresh()
         isBookReplacementInProgress = true
         logicalBookRevision &+= 1
-        let quickActionBoundaryEpoch =
-            beginAuthoritativeQuickActionBoundary()
         isWorking = true
         goalMutationBarrierClosed = true
         return quickActionBoundaryEpoch
@@ -322,6 +326,7 @@ extension AppModel {
             investmentHoldings: investmentHoldings,
             netWorthSnapshots: netWorthSnapshots,
             quickLogDraft: quickLogDraft,
+            allowancePlans: allowancePlans,
             in: store
         )
         if let profile {
@@ -473,6 +478,14 @@ extension AppModel {
                 <= RestoreCandidateValidator.maximumAggregateCollectionByteCount else {
             throw AppModelError.invalidBook
         }
+        try Task.checkCancellation()
+        try await RestoreCandidateValidator.validateStoredRecords(
+            in: store,
+            expectedRecordCount: metrics.recordCount,
+            maximumAggregatePayloadByteCount:
+                RestoreCandidateValidator.maximumBackupStoredPayloadByteCount
+        )
+        try Task.checkCancellation()
 
         let validationModel = AppModel(
             restoreValidationStore: store,
@@ -492,6 +505,7 @@ extension AppModel {
             investmentHoldings: validationModel.investmentHoldings,
             netWorthSnapshots: validationModel.netWorthSnapshots,
             quickLogDraft: validationModel.quickLogDraft,
+            allowancePlans: validationModel.allowancePlans,
             in: store
         )
         try Task.checkCancellation()

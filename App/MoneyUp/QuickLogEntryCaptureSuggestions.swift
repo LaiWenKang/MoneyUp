@@ -128,11 +128,11 @@ extension QuickLogEntryView {
                   parserSuppliedValue: draft.accountID != nil,
                   hasFixedDefault: validPreferred(
                       model.profile?.preferredAccountID,
-                      in: model.userAccounts
+                      in: sourceAccounts
                   ) != nil,
                   usedPayeeHistory: suggestion.evidence.usedPayeeHistory
               ),
-              model.userAccounts.contains(where: {
+              sourceAccounts.contains(where: {
                   $0.id == suggestion.ledgerAccountID
               }) else { return }
         invalidateOnDeviceAccountForDeterministicChange()
@@ -184,7 +184,9 @@ extension QuickLogEntryView {
             Label("quick_log.suggestions_from_book", systemImage: "lightbulb.max")
                 .font(.subheadline.weight(.semibold))
             if let suggestion = result.accountSuggestion,
-               let account = model.accountsByID[suggestion.ledgerAccountID] {
+               let account = sourceAccounts.first(where: {
+                   $0.id == suggestion.ledgerAccountID
+               }) {
                 captureSuggestionRow(
                     title: AppLocalization.string("quick_log.suggested_account"),
                     account: account,

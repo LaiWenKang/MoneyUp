@@ -1,6 +1,6 @@
 # App Store Submission Working Copy
 
-Last reviewed: 3 September 2026 for the 0.7.1 source candidate
+Last reviewed: 4 September 2026 for the 0.7.1 source candidate
 
 This file is the source of truth for App Store Connect entry. Verify every
 claim against the exact archived binary before submission.
@@ -45,8 +45,10 @@ before sending the note.
 - Languages: English and Simplified Chinese
 - Bundle ID: `com.laiwenkang.MoneyUp`
 - Widget bundle ID: `com.laiwenkang.MoneyUp.Widget`
-- Shared App Group: `group.com.laiwenkang.MoneyUp` (percentage/state-only
-  budget widget snapshot)
+- Shared App Group: `group.com.laiwenkang.MoneyUp` (exactly three artifacts: one
+  nonfinancial language preference, one atomic bounded schema-4 summary `Data`
+  value, and one bounded data-free quick-action ingress JSON file; no fourth key
+  or file, exact due date, or financial record field)
 - App Store record name: `MoneyUp: CowCome`
 - Installed Home Screen name: `MoneyUp`
 - Privacy policy: <https://github.com/LaiWenKang/MoneyUp/blob/main/PRIVACY.md>
@@ -94,10 +96,12 @@ Description:
 > or camera metadata. Privacy-redacted Home and Lock Screen widgets open Expense, Income,
 > Transfer, Refund, Smart Entry, or Receipt actions without displaying financial
 > values. Basic actions can use a separate encrypted capture inbox while the
-> full book remains locked. An optional budget-status configuration receives
-> only bounded status, percentages, review/allowance/commitment counts, expiry,
-> and next-commitment timing - never an amount, payee, account name, holding,
-> balance, transaction, or ledger identifier.
+> full book remains locked. Optional Budget Status and Smart Overview
+> configurations receive only bounded state, a bounded reporting-period token,
+> budget and allowance percentages, review and active expense-commitment counts, expiry,
+> and a reporting-calendar-derived due-day distance - never an exact due date,
+> amount, payee, account name, holding, symbol, quote, balance,
+> transaction/book/ledger identifier, note, attachment, or extracted evidence.
 >
 > MoneyUp requires no account and contains no ads or tracking. Its local
 > SQLCipher database uses a random device-protected key. Data leaves the app
@@ -153,11 +157,15 @@ Version 1.0 release notes:
 >
 > 智能录入可识别收据或截图，也能理解一句话记账。识别与建议均在 iPhone
 > 本机运行，图片绝不会上传，且只有你明确选择随交易保留时，才会移除源文件中的
-> 位置与相机元数据并重新编码后写入加密存储。
+> 位置与相机元数据并重新编码后写入加密存储。在符合条件的设备上，Apple 本机辅助
+> 功能对新用户和既有用户默认开启，并可在“设置”中明确关闭；它只能从现有本机账户或
+> 分类名称中提出需检查的匹配，确定性规则仍控制所有财务字段与保存。
 > 主屏幕与锁定屏幕的隐私保护小组件不会显示
-> 财务金额，可打开支出、收入、转账、退款、智能记账或小票操作。可选预算状态
-> 仅接收百分比与状态，不包含金额、商户、账户名称、持仓、余额、交易或账本
-> 标识符。账本锁定时，
+> 财务金额，可打开支出、收入、转账、退款、智能记账或小票操作。可选的“预算状态”
+> 与“智能概览”只接收一个原子化 schema 4 快照，其中可包含有界的状态、预算／津贴
+> 百分比、待检查项／有效支出承诺数量、到期时间，以及根据报告日历计算的相对到期天数；
+> 不包含精确到期日期、金额、商户、账户名称、持仓、证券代码、行情、余额、交易／账本
+> 标识符、备注、附件或提取的证据。账本锁定时，
 > 基本操作可写入独立的加密快速记录收件箱，而完整余额仍保持锁定。
 >
 > MoneyUp 无需注册，不含广告或追踪。本地 SQLCipher 数据库使用随机、受设备
@@ -183,7 +191,8 @@ Beta description:
 > simulator, chart drill-through, on-device smart entry, indexed
 > History/edit/refunds/splits, ledger-linked investments, encrypted
 > backup/restore, reviewed CSV/XLSX portability, configurable app language,
-> visible transaction details, category management, and optional explainable
+> visible transaction details, category management, expiring benefit/prepaid/
+> reimbursement allowances, and optional explainable
 > local recurrence, duplicate, anomaly, projection, and budget suggestions in
 > English and Simplified Chinese. Use sample
 > data first while physical upgrade and restore drills are completed.
@@ -195,7 +204,9 @@ What to test:
 > nested budget roll-up, Flexible Today classification/arithmetic, the what-if simulator,
 > schedule edit/post/match, chart inspection/drill-through, rollover/goals,
 > holding purchases/sales/repricing/lots, privacy-safe Budget Status and Smart
-> Overview widgets,
+> Overview widgets (including large text, stale/disabled states, and reporting-
+> day refresh), restricted prepaid account ownership/historical funding, policy-
+> zone dates, benefit-usage corrections, evidence-only reimbursement status,
 > shortcuts, confirmed deletion, language selection, visible merchant/title and
 > multiline notes, category create/rename/archive/restore/merge/reassign/delete,
 > intelligence opt-out and rebuild, evidence-backed recurrence/duplicate/anomaly
@@ -245,8 +256,15 @@ beta but is not a replacement for a public support contact.
 > amounts in quick-action timelines. Its basic actions can open a separate
 > encrypted Quick Capture form; this contains no balances or database key and
 > moves into the full ledger only after authenticated unlock. If the reviewer
-> explicitly enables Budget status in Settings, the App Group snapshot contains
-> only percentage/state and none of the record fields listed above.
+> explicitly enables **Allow widget summaries** in Settings, the atomic bounded
+> schema-4 App Group summary for Budget Status and Smart Overview contains only
+> state, a reporting-period token, budget/allowance percentages, review/active
+> expense-commitment counts, expiry, and a reporting-calendar-derived relative
+> due-day distance. The App Group's only other artifacts are one nonfinancial
+> language preference and one bounded data-free quick-action ingress JSON file;
+> that file contains only schema/authority and admission metadata, opaque tokens,
+> and one of six closed action values. There is no fourth key or file. None
+> contains an exact due date or any financial record field listed above.
 
 No demo account is required because there is no account system.
 

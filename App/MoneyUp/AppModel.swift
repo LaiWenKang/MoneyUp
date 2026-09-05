@@ -24,6 +24,11 @@ struct ClosedMonthBudgetProjection: Sendable {
     let monthlySpending: [MonthlyBudgetSpending]
 }
 
+struct BudgetPurposeOverview: Equatable {
+    let effectivePurposeByID: [UUID: BudgetPurpose]
+    let reviewCount: Int
+}
+
 @MainActor
 @Observable
 final class AppModel {
@@ -35,7 +40,6 @@ final class AppModel {
         case ready
         case failed(String)
     }
-
     enum StartupFailureKind: Equatable, Sendable {
         case missingDeviceBoundKey
     }
@@ -116,11 +120,6 @@ final class AppModel {
         case cashAlreadyExcludesPosition
 
         var id: String { rawValue }
-    }
-
-    struct BudgetPurposeOverview: Equatable {
-        let effectivePurposeByID: [UUID: BudgetPurpose]
-        let reviewCount: Int
     }
 
     struct PendingQuickLogCommit {
@@ -339,11 +338,15 @@ final class AppModel {
             services.capture.requestedQuickLogMode = newValue
             guard let newValue else {
                 requestedQuickLogRequest = nil
+                presentedQuickLogRequest = nil
                 return
             }
             nextQuickLogRequestID &+= 1
             requestedQuickLogRequest = QuickLogRouteRequest(
                 id: nextQuickLogRequestID,
+                ingressToken: quickActionRouteBroker.activeIngressToken ?? UUID(),
+                requiresIngressAcknowledgement:
+                    quickActionRouteBroker.activeIngressToken != nil,
                 generation: quickActionRouteBroker.handoffGeneration,
                 mode: newValue
             )
@@ -406,6 +409,7 @@ final class AppModel {
     var lockedCaptureWriteInProgress = false
     var storeCloseTask: Task<Void, Never>?
     var autoLockTask: Task<Void, Never>?
+    @ObservationIgnored var widgetLifecycleRefresh = WidgetLifecycleRefreshState()
     /// First instant the scene stopped being active. iOS normally sends
     /// `.inactive` before `.background`; retaining the first instant prevents
     /// the second transition from silently extending the lock deadline.
@@ -421,6 +425,7 @@ final class AppModel {
     var lockAfterStart = false
     var isLifecycleMutationInProgress = false
     var manualJournalMutationIsActive = false
+    var widgetSnapshotRefreshWasDeferred = false
     var lockAfterLifecycleMutation = false
     var goalMutationsInProgress = 0
     var goalMutationBarrierClosed = false
@@ -442,6 +447,7 @@ final class AppModel {
     var journalDerivedRefreshTaskToken: UUID?
     var journalDerivedRefreshWasDeferred = false
     var journalProjectionRevision: UInt64 = 0
+    var widgetIntelligencePublication = WidgetIntelligencePublicationState()
     var exchangeRateMutationIsActive = false
     var exchangeRateMutationWaiters: [CheckedContinuation<Void, Never>] = []
     var budgetNodesRevision: UInt64 = 0

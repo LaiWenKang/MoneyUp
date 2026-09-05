@@ -32,9 +32,15 @@ extension AppModel {
         monthToDateComparisonCache = nil
         monthToDateComparisonCacheDay = nil
         balanceCache = nil
+        services.ledger.restrictedAllowanceBalanceProjection = nil
     }
 
     func refreshBudgetWidgetSnapshot() {
+        guard !manualJournalMutationIsActive else {
+            widgetSnapshotRefreshWasDeferred = true
+            return
+        }
+        widgetSnapshotRefreshWasDeferred = false
         // A nil profile during normal lock is intentional: the last explicitly
         // opted-in percentage remains available to the Lock/Home widget. Only
         // destructive erase or a confirmed no-book startup calls the explicit
@@ -47,25 +53,59 @@ extension AppModel {
             return
         }
         let now = currentDate()
-        refreshWidgetInsights(asOf: now)
         guard let period = reportingCalendar.dateInterval(of: .month, for: now),
               let periodToken = BudgetWidgetSnapshotStore.periodToken(
                   for: period.start,
                   calendar: reportingCalendar
               ) else {
             budgetWidgetSnapshotStore.publish(
-                enabled: true,
-                percentUsed: nil
+                .stale
             )
             WidgetCenter.shared.reloadTimelines(ofKind: "MoneyUpQuickLog")
+            rearmWidgetReportingDayRefreshIfEligible()
             return
         }
 
-        let percentage: Int?
-        if case let .available(.some(summary)) = budgetPlanSummaryThisMonthResult(
-            asOf: now
-        ),
-           summary.limit.amount > .zero {
+        let snapshot = currentBudgetWidgetSnapshot(
+            asOf: now,
+            validUntil: period.end
+        )
+        let insights: MoneyUpWidgetInsights?
+        switch snapshot {
+        case .available, .needsBudget, .zeroBudget, .negativeBudget:
+            insights = widgetInsights(asOf: now)
+        case .disabled, .stale:
+            insights = nil
+        }
+        budgetWidgetSnapshotStore.publish(
+            snapshot,
+            periodToken: periodToken,
+            insights: insights
+        )
+        WidgetCenter.shared.reloadTimelines(ofKind: "MoneyUpQuickLog")
+        rearmWidgetReportingDayRefreshIfEligible()
+    }
+
+    func currentBudgetWidgetSnapshot(
+        asOf now: Date,
+        validUntil: Date
+    ) -> BudgetWidgetSnapshot {
+        switch budgetPlanSummaryThisMonthResult(asOf: now) {
+        case .available(nil):
+            return .needsBudget(validUntil: validUntil)
+        case let .available(.some(summary)):
+            if summary.limit.amount == .zero {
+                // Zero is a valid, intentional monthly plan (for example a
+                // no-spend month). It has no meaningful percentage, but it is
+                // neither missing nor waiting for a refresh.
+                return .zeroBudget(validUntil: validUntil)
+            }
+            guard summary.limit.amount > .zero else {
+                // Full-balance rollover can truthfully make the effective
+                // monthly capacity negative. That stable state also has no
+                // meaningful percentage and must not masquerade as zero.
+                return .negativeBudget(validUntil: validUntil)
+            }
             do {
                 var raw = try CheckedDecimal.multiplying(
                     CheckedDecimal.ratio(
@@ -77,75 +117,101 @@ extension AppModel {
                 var rounded = Decimal.zero
                 NSDecimalRound(&rounded, &raw, 0, .plain)
                 let clamped = min(max(rounded, .zero), Decimal(9_999))
-                percentage = NSDecimalNumber(decimal: clamped).intValue
+                return .available(
+                    percentUsed: NSDecimalNumber(decimal: clamped).intValue,
+                    validUntil: validUntil
+                )
             } catch {
-                percentage = nil
+                return .stale
             }
-        } else {
-            percentage = nil
+        case .unavailable:
+            return .stale
         }
-        budgetWidgetSnapshotStore.publish(
-            enabled: true,
-            percentUsed: percentage,
-            periodToken: periodToken,
-            validUntil: period.end
-        )
-        WidgetCenter.shared.reloadTimelines(ofKind: "MoneyUpQuickLog")
     }
 
     func disableBudgetWidgetSnapshot() {
-        budgetWidgetSnapshotStore.publish(enabled: false, percentUsed: nil)
-        budgetWidgetSnapshotStore.publishInsights(enabled: false)
+        cancelWidgetReportingDayRefresh()
+        budgetWidgetSnapshotStore.publish(.disabled)
         WidgetCenter.shared.reloadTimelines(ofKind: "MoneyUpQuickLog")
     }
 
-    func refreshWidgetInsights(asOf now: Date) {
-        guard let validUntil = reportingCalendar.dateInterval(of: .day, for: now)?.end else {
-            budgetWidgetSnapshotStore.publishInsights(enabled: false)
-            return
+    func widgetInsights(asOf now: Date) -> MoneyUpWidgetInsights? {
+        guard let dayEnd = reportingCalendar.dateInterval(of: .day, for: now)?.end else {
+            return nil
         }
-        let activeAllowances = allowancePlans.compactMap { plan -> AllowanceSummary? in
-            guard !plan.isArchived,
-                  case let .available(summary) = allowanceSummary(plan, asOf: now),
-                  summary.isAvailableToday else { return nil }
-            return summary
+        let allowancePercent = widgetAllowancePercentRemaining(asOf: now)
+        let validUntil = min(
+            dayEnd,
+            restrictedAllowanceProjectionExpiry(after: now) ?? dayEnd
+        )
+        // Smart Overview's commitment surface is an outflow warning. Income
+        // schedules are useful forecasts, but counting them here would make an
+        // incoming salary look like money the user owes.
+        let activeCommitments = scheduledTransactions.filter {
+            $0.isActive && $0.kind == .expense
         }
-        var entitlement = Decimal.zero
-        var remaining = Decimal.zero
-        for summary in activeAllowances {
-            guard summary.entitlement.currency == profile?.baseCurrency else { continue }
-            entitlement = (try? CheckedDecimal.adding(
-                entitlement,
-                summary.entitlement.amount
-            )) ?? entitlement
-            remaining = (try? CheckedDecimal.adding(
-                remaining,
-                summary.remaining.amount
-            )) ?? remaining
-        }
-        let allowancePercent: Int?
-        if entitlement > .zero,
-           let ratio = try? CheckedDecimal.ratio(remaining, entitlement),
-           var raw = try? CheckedDecimal.multiplying(ratio, 100) {
-            var rounded = Decimal.zero
-            NSDecimalRound(&rounded, &raw, 0, .plain)
-            allowancePercent = NSDecimalNumber(decimal: rounded).intValue
-        } else {
-            allowancePercent = nil
-        }
-        let activeSchedules = scheduledTransactions.filter(\.isActive)
-        let nextCommitment = activeSchedules.compactMap {
+        let nextCommitment = activeCommitments.compactMap {
             $0.occurrence(onOrAfter: now, calendar: reportingCalendar)
         }.min()
-        budgetWidgetSnapshotStore.publishInsights(
-            enabled: true,
-            reviewCount: intelligenceFindings.count,
-            activeAllowanceCount: activeAllowances.count,
+        let daysUntilNextCommitment = nextCommitment.flatMap { date -> Int? in
+            let today = reportingCalendar.startOfDay(for: now)
+            let commitmentDay = reportingCalendar.startOfDay(for: date)
+            guard let days = reportingCalendar.dateComponents(
+                [.day],
+                from: today,
+                to: commitmentDay
+            ).day else { return nil }
+            return min(max(days, 0), 9_999)
+        }
+        let currentReviewCount: Int? = if profile?.intelligenceEnabled == true,
+                                          widgetIntelligencePublication.resultsAreCurrent,
+                                          !intelligenceService.isRefreshing,
+                                          !intelligenceService.isUnavailable {
+            intelligenceFindings.count
+        } else {
+            nil
+        }
+        return MoneyUpWidgetInsights(
+            reviewCount: currentReviewCount,
             allowancePercentRemaining: allowancePercent,
-            activeCommitmentCount: activeSchedules.count,
-            nextCommitment: nextCommitment,
+            activeCommitmentCount: activeCommitments.count,
+            daysUntilNextCommitment: daysUntilNextCommitment,
             validUntil: validUntil
         )
+    }
+
+    private func widgetAllowancePercentRemaining(asOf now: Date) -> Int? {
+        guard let baseCurrency = profile?.baseCurrency else { return nil }
+        var entitlement = Decimal.zero
+        var remaining = Decimal.zero
+        do {
+            for plan in allowancePlans where !plan.isArchived {
+                let presentation = allowancePresentation(plan, asOf: now)
+                guard let summary = presentation.policySummary else { return nil }
+                guard summary.isAvailableToday else { continue }
+                guard case let .available(displayRemaining) =
+                    presentation.remaining else { return nil }
+                guard summary.entitlement.currency == baseCurrency,
+                      summary.used.currency == baseCurrency,
+                      displayRemaining.currency == baseCurrency else { return nil }
+                entitlement = try CheckedDecimal.adding(
+                    entitlement,
+                    summary.entitlement.amount
+                )
+                remaining = try CheckedDecimal.adding(
+                    remaining,
+                    displayRemaining.amount
+                )
+            }
+            guard entitlement > .zero else { return nil }
+            let ratio = try CheckedDecimal.ratio(remaining, entitlement)
+            var raw = try CheckedDecimal.multiplying(ratio, 100)
+            var rounded = Decimal.zero
+            NSDecimalRound(&rounded, &raw, 0, .plain)
+            return NSDecimalNumber(decimal: rounded).intValue
+        } catch {
+            return nil
+        }
     }
 
     func accountBalancesResult() -> DerivedValue<[UUID: [CurrencyCode: Money]]> {
@@ -177,11 +243,28 @@ extension AppModel {
         additionalWrites: [RecordWrite] = [],
         additionalAccounts: [LedgerAccount] = [],
         receiptData: Data? = nil,
-        attachmentDrafts: [ReceiptAttachmentDraft] = []
+        attachmentDrafts: [ReceiptAttachmentDraft] = [],
+        authorizedRestrictedAllowanceAccountID: UUID? = nil,
+        journalMutationAlreadyBegun: Bool = false
     ) async throws -> UUID? {
-        try beginJournalMutation()
-        defer { endJournalMutation() }
+        if journalMutationAlreadyBegun,
+           !manualJournalMutationIsActive {
+            throw AppModelError.transactionInProgress
+        }
+        try rejectRestrictedAllowanceDebit(
+            in: entry,
+            authorizedAccountID: authorizedRestrictedAllowanceAccountID
+        )
+        if !journalMutationAlreadyBegun { try beginJournalMutation() }
+        defer {
+            if !journalMutationAlreadyBegun { endJournalMutation() }
+        }
         let context = try prepareJournalSave(entry)
+        try await requireNonnegativeRestrictedBalances(
+            afterRemoving: nil,
+            adding: context.entry,
+            in: context.store
+        )
         let attribution = try BudgetEntryAttribution(
             entry: context.entry,
             originTimeZoneIdentifier: profile?.reportingTimeZoneIdentifier

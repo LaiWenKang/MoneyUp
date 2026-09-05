@@ -67,12 +67,13 @@ enum MoneyUpQuickActionRouting {
         case .route:
             break
         }
-        guard let action = broker.takePendingAction() else { return .idle }
-        guard model.handleDeepLink(action.deepLink) else {
+        guard let record = broker.takePendingRecord() else { return .idle }
+        guard model.handleDeepLink(record.action.deepLink) else {
             broker.discardAllPendingActions()
             return .discarded
         }
-        guard model.requestedQuickLogMode != nil else {
+        guard model.requestedQuickLogMode != nil,
+              model.requestedQuickLogRequest?.ingressToken == record.token else {
             broker.discardAllPendingActions()
             return .discarded
         }

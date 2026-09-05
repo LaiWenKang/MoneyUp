@@ -123,6 +123,7 @@ struct TransactionEditView: View {
     @State var isSaving = false
     @State var errorMessage: String?
     @State var isConfirmingDelete = false
+    @State var isConfirmingClaimInvalidation = false
     @State var pendingAttachmentDeletionID: UUID?
     @State var isConfirmingAttachmentDelete = false
     @State var attachmentImages: [UUID: UIImage] = [:]
@@ -179,6 +180,13 @@ struct TransactionEditView: View {
         }
     }
 
+    var editableSourceAccounts: [LedgerAccount] {
+        guard kind == .transfer else { return editableUserAccounts }
+        return editableUserAccounts.filter {
+            $0.accountType != .restrictedAllowance
+        }
+    }
+
     var categories: [LedgerAccount] {
         let expectedKind: LedgerAccountKind = kind == .income ? .income : .expense
         return model.accounts.filter { category in
@@ -195,7 +203,7 @@ struct TransactionEditView: View {
     }
 
     var sourceCurrency: CurrencyCode? {
-        editableUserAccounts.first(where: { $0.id == accountID })?.currency
+        editableSourceAccounts.first(where: { $0.id == accountID })?.currency
     }
 
     var destinationCurrency: CurrencyCode? {
@@ -243,7 +251,7 @@ struct TransactionEditView: View {
         guard isEditable,
               decimalAmount(from: amountText).map({ $0 > .zero }) == true,
               let accountID,
-              editableUserAccounts.contains(where: { $0.id == accountID }) else {
+              editableSourceAccounts.contains(where: { $0.id == accountID }) else {
             return false
         }
         if kind == .transfer {
@@ -261,6 +269,16 @@ struct TransactionEditView: View {
 
     var attachmentMetadata: [ReceiptAttachmentMetadata] {
         model.receiptAttachmentMetadata.filter { $0.entryID == entry.id }
+    }
+
+    var hasLinkedAllowanceClaim: Bool {
+        model.allowancePlans.contains { plan in
+            plan.fundingMode == .reimbursement
+                && plan.usages.contains { usage in
+                    usage.linkedJournalEntryID == entry.id
+                        && usage.claimStatus != nil
+                }
+        }
     }
 
     @ViewBuilder

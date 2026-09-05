@@ -323,7 +323,7 @@ class PlatformActionsValidatorTests(unittest.TestCase):
             self.source("App/MoneyUp/AppModelBackupRestore.swift"),
         )
 
-        self.assertTrue(any("request setter must remain" in error for error in errors))
+        self.assertTrue(any("request setter must bind" in error for error in errors))
 
     def test_rejects_direct_link_action_in_new_compiled_widget_file(self) -> None:
         errors = self.inventory_with_extra(
@@ -416,6 +416,47 @@ class PlatformActionsValidatorTests(unittest.TestCase):
 
         self.assertTrue(any("compiled source roots drifted" in error for error in errors))
 
+    def test_rejects_locked_capture_first_unlock_protection_drift(self) -> None:
+        source = self.source("App/MoneyUp/LockedCaptureStore.swift")
+        mutations = [
+            source.replace(
+                ".completeFileProtectionUntilFirstUserAuthentication",
+                ".completeFileProtectionUnlessOpen",
+                1,
+            ),
+            source.replace(
+                "        try Self.enforceDurableFileProtection(at: url)\n",
+                "",
+                1,
+            ),
+            source.replace(
+                "FileProtectionType.completeUntilFirstUserAuthentication",
+                "FileProtectionType.completeUnlessOpen",
+                1,
+            ),
+        ]
+
+        for mutated in mutations:
+            with tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                shutil.copytree(ROOT / "App", root / "App")
+                shutil.copy2(ROOT / "Package.swift", root / "Package.swift")
+                shutil.copy2(ROOT / "project.yml", root / "project.yml")
+                (root / "App/MoneyUp/LockedCaptureStore.swift").write_text(
+                    mutated,
+                    encoding="utf-8",
+                )
+                errors = VALIDATOR.validate_identity_and_capture_boundary(root)
+
+            self.assertTrue(
+                any(
+                    "first-unlock protection" in error
+                    or "must migrate without legacy writes" in error
+                    for error in errors
+                ),
+                errors,
+            )
+
     def test_rejects_direct_mutation_and_control_payload(self) -> None:
         shared = self.source("App/Shared/MoneyUpQuickAction.swift")
         mutated_shared = shared.replace(
@@ -475,12 +516,444 @@ class PlatformActionsValidatorTests(unittest.TestCase):
 
         self.assertTrue(any("budget status must remain passive" in error for error in errors))
 
+    def test_widget_previews_use_modern_macros_and_keep_qa_variants(self) -> None:
+        source = self.source("App/MoneyUpWidget/MoneyUpWidget.swift")
+
+        self.assertNotIn("PreviewProvider", source)
+        self.assertNotIn("WidgetPreviewContext", source)
+        self.assertNotIn(".previewContext", source)
+        self.assertGreaterEqual(source.count("#Preview("), 8)
+        self.assertIn('as: .systemSmall', source)
+        self.assertIn('as: .systemMedium', source)
+        self.assertIn('.dynamicTypeSize, .accessibility5', source)
+        self.assertIn('language: .english', source)
+        self.assertIn('language: .simplifiedChinese', source)
+
+        mutations = [
+            source.replace("#Preview(", "#LegacyPreview(", 1),
+            source.replace(
+                ".environment(\\.dynamicTypeSize, .accessibility5)",
+                ".environment(\\.dynamicTypeSize, .large)",
+                1,
+            ),
+            source.replace("language: .simplifiedChinese", "language: .english"),
+            source.replace(
+                '#Preview("Quick action · Small", as: .systemSmall)',
+                '#Preview("Quick action · Small")',
+                1,
+            ),
+        ]
+        for mutated in mutations:
+            self.assertNotEqual(mutated, source)
+            errors = VALIDATOR.validate_widget_source(mutated)
+            self.assertTrue(
+                any("modern macros" in error for error in errors),
+                errors,
+            )
+
+    def test_rejects_quick_action_hint_that_promises_lockless_capture(self) -> None:
+        catalog_paths = (
+            "App/MoneyUp/Resources/Localizable.xcstrings",
+            "App/MoneyUpWidget/Localizable.xcstrings",
+            "App/MoneyUp/Resources/AppShortcuts.xcstrings",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for relative in catalog_paths:
+                destination = root / relative
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(ROOT / relative, destination)
+            widget_catalog = root / catalog_paths[1]
+            source = widget_catalog.read_text(encoding="utf-8")
+            mutated = source.replace(
+                "Open MoneyUp to continue logging",
+                "Open private capture without unlocking MoneyUp",
+                1,
+            )
+            self.assertNotEqual(mutated, source)
+            widget_catalog.write_text(mutated, encoding="utf-8")
+
+            errors = VALIDATOR.validate_localization_catalogs(root)
+
+        self.assertTrue(
+            any("must not promise" in error for error in errors),
+            errors,
+        )
+
+    def test_rejects_shared_localization_standard_defaults_fallback(self) -> None:
+        source = self.source("App/Shared/AppLocalization.swift")
+        mutated = source.replace(
+            "            suiteName: BudgetWidgetSnapshotStore.appGroupIdentifier\n"
+            "        )\n"
+            "    }\n\n"
+            "    static var current",
+            "            suiteName: BudgetWidgetSnapshotStore.appGroupIdentifier\n"
+            "        ) ?? .standard\n"
+            "    }\n\n"
+            "    static var current",
+            1,
+        )
+
+        self.assertNotEqual(mutated, source)
+        errors = VALIDATOR.validate_app_localization_source(mutated)
+        self.assertTrue(
+            any("standard defaults" in error for error in errors),
+            errors,
+        )
+
+    def test_rejects_missing_stable_nonpercentage_budget_layout(self) -> None:
+        source = self.source("App/MoneyUpWidget/MoneyUpWidget.swift")
+        for state in ("zeroBudget", "negativeBudget"):
+            with self.subTest(state=state):
+                mutated = source.replace(
+                    f"        case .{state}(_):\n",
+                    "        case .stale:\n",
+                    1,
+                )
+
+                errors = VALIDATOR.validate_widget_source(mutated)
+
+                self.assertTrue(
+                    any("preserve distinct" in error for error in errors)
+                )
+
+    def test_rejects_budget_status_state_family_or_available_semantics_drift(
+        self,
+    ) -> None:
+        source = self.source("App/MoneyUpWidget/MoneyUpWidget.swift")
+        mutations = [
+            (
+                "active family handoff",
+                source.replace(
+                    "                BudgetStatusWidgetView(\n"
+                    "                    snapshot: entry.budgetSnapshot,\n"
+                    "                    family: family,\n"
+                    "                    homeDensity: homeDensity\n"
+                    "                )",
+                    "                BudgetStatusWidgetView(\n"
+                    "                    snapshot: entry.budgetSnapshot,\n"
+                    "                    family: .systemSmall,\n"
+                    "                    homeDensity: homeDensity\n"
+                    "                )",
+                    1,
+                ),
+                "active widget family",
+            ),
+            (
+                "disabled guidance",
+                source.replace(
+                    'detail: "widget.budget_enable",',
+                    'detail: "widget.budget_stale",',
+                    1,
+                ),
+                "preserve distinct",
+            ),
+            (
+                "available threshold",
+                source.replace(
+                    "let isOver = percentUsed > 100",
+                    "let isOver = percentUsed >= 100",
+                    1,
+                ),
+                "available and over-plan states",
+            ),
+            (
+                "small available outcome",
+                source.replace(
+                    "smallAvailableStatus("
+                    "percentUsed: percentUsed, isOver: isOver)",
+                    "smallAvailableStatus("
+                    "percentUsed: percentUsed, isOver: false)",
+                    1,
+                ),
+                "available and over-plan states",
+            ),
+            (
+                "rectangular nonpercentage guidance",
+                source.replace(
+                    "Text(compactDetail).font(.caption).lineLimit(2)",
+                    "Text(detail).font(.caption).lineLimit(2)",
+                    1,
+                ),
+                "nonpercentage states",
+            ),
+            (
+                "accessibility budget density",
+                source.replace(
+                    "if homeDensity.usesReducedBudgetStatus {",
+                    "if false {",
+                    1,
+                ),
+                "available and over-plan states",
+            ),
+            (
+                "accessibility quick-action density",
+                source.replace(
+                    ".prefix(homeDensity.mediumQuickActionLimit)",
+                    ".prefix(4)",
+                    1,
+                ),
+                "Home quick actions",
+            ),
+            (
+                "AX5 bilingual previews",
+                source.replace(
+                    ".environment(\\.dynamicTypeSize, .accessibility5)",
+                    ".environment(\\.dynamicTypeSize, .large)",
+                ),
+                "widget previews",
+            ),
+            (
+                "rectangular decorative accessibility",
+                source.replace(
+                    ".frame(width: 28)\n"
+                    "                .accessibilityHidden(true)",
+                    ".frame(width: 28)",
+                    1,
+                ),
+                "rectangular action accessibility",
+            ),
+            (
+                "rectangular explicit action label",
+                source.replace(
+                    ".accessibilityElement(children: .ignore)\n"
+                    "        .accessibilityLabel(action.titleKey)\n"
+                    "        .accessibilityHint(action.accessibilityHintKey)",
+                    ".accessibilityElement(children: .combine)\n"
+                    "        .accessibilityHint(action.accessibilityHintKey)",
+                    1,
+                ),
+                "rectangular action accessibility",
+            ),
+        ]
+        for label, mutated, expected_error in mutations:
+            with self.subTest(label=label):
+                self.assertNotEqual(mutated, source)
+                errors = VALIDATOR.validate_widget_source(mutated)
+                self.assertTrue(
+                    any(expected_error in error for error in errors),
+                    errors,
+                )
+
+    def test_rejects_non_atomic_widget_snapshot_publication(self) -> None:
+        source = self.source("App/Shared/BudgetWidgetSnapshot.swift")
+        mutated = source.replace(
+            "        defaults.set(data, forKey: Self.payloadKey)\n",
+            "        defaults.set(data, forKey: Self.payloadKey)\n"
+            '        defaults.set(4, forKey: "budgetStatus.schemaVersion")\n',
+            1,
+        )
+
+        errors = VALIDATOR.validate_widget_snapshot_source(mutated)
+
+        self.assertTrue(any("one version-4 App Group write" in error for error in errors))
+
+        mutations = [
+            (
+                source.replace("percentUsed >= 0", "percentUsed >= -1", 1),
+                "reject negative current derivatives",
+            ),
+            (
+                source.replace(
+                    "allowancePercentRemaining.map { $0 >= 0 }",
+                    "allowancePercentRemaining.map { $0 >= -1 }",
+                    1,
+                ),
+                "reject negative current derivatives",
+            ),
+            (
+                source.replace(
+                    "return value == .disabled ? .disabled : .stale",
+                    "return .disabled",
+                    1,
+                ),
+                "canonical empty disabled",
+            ),
+            (
+                source.replace(
+                    "        guard let decoded = decodedRecord(from: data) else {\n"
+                    "            if allowsMaintenanceWrites {\n"
+                    "                persist(.stale, to: defaults)\n"
+                    "            }\n"
+                    "            return .stale\n"
+                    "        }\n",
+                    "        guard let decoded = decodedRecord(from: data) "
+                    "else { return nil }\n",
+                    1,
+                ),
+                "present corrupt or future",
+            ),
+            (
+                source.replace(
+                    "data.count <= Self.maximumPayloadByteCount",
+                    "!data.isEmpty",
+                    1,
+                ),
+                "capped before",
+            ),
+            (
+                source.replace(
+                    "token.utf8.count == 7",
+                    "!token.isEmpty",
+                    1,
+                ),
+                "canonical bounded YYYY-MM",
+            ),
+        ]
+        for unsafe, expected_error in mutations:
+            self.assertNotEqual(unsafe, source)
+            errors = VALIDATOR.validate_widget_snapshot_source(unsafe)
+            self.assertTrue(
+                any(expected_error in error for error in errors),
+                errors,
+            )
+
+    def test_rejects_ambiguous_nil_percentage_widget_publication(self) -> None:
+        source = self.source("App/Shared/BudgetWidgetSnapshot.swift")
+        mutated = source.replace(
+            "        _ snapshot: BudgetWidgetSnapshot,\n",
+            "        enabled: Bool,\n        percentUsed: Int?,\n",
+            1,
+        )
+
+        errors = VALIDATOR.validate_widget_snapshot_source(mutated)
+
+        self.assertTrue(any("distinguish disabled" in error for error in errors))
+
+    def test_rejects_exact_commitment_date_in_widget_snapshot(self) -> None:
+        source = self.source("App/Shared/BudgetWidgetSnapshot.swift")
+        mutated = source.replace(
+            "        var daysUntilNextCommitment: Int?\n",
+            "        var nextCommitment: Date?\n",
+            1,
+        )
+
+        errors = VALIDATOR.validate_widget_snapshot_source(mutated)
+
+        self.assertTrue(any("bounded derivatives" in error for error in errors))
+
+    def test_rejects_mixed_generation_widget_reads(self) -> None:
+        source = self.source("App/MoneyUpWidget/MoneyUpWidget.swift")
+        mutated = source.replace(
+            "        let now = Date()\n"
+            "        let snapshot = store.readPublishedSnapshot(now: now)\n",
+            "        let now = Date()\n",
+            1,
+        ).replace(
+            "            budgetSnapshot: snapshot.budget,\n"
+            "            insights: snapshot.insights\n",
+            "            budgetSnapshot: store.read(),\n"
+            "            insights: store.readInsights()\n",
+            1,
+        )
+
+        errors = VALIDATOR.validate_widget_source(mutated)
+
+        self.assertTrue(any("one generation" in error for error in errors))
+
+    def test_rejects_smart_overview_integration_family_or_guidance_drift(self) -> None:
+        widget = self.source("App/MoneyUpWidget/MoneyUpWidget.swift")
+        split_generation = widget.replace(
+            "                    insights: entry.insights,\n",
+            "                    insights: nil,\n",
+            1,
+        )
+        self.assertTrue(
+            any(
+                "Smart Overview must receive budget and insights" in error
+                for error in VALIDATOR.validate_widget_source(split_generation)
+            )
+        )
+
+        overview = self.source("App/MoneyUpWidget/SmartOverviewWidgetView.swift")
+        mutations = [
+            (
+                "body family route",
+                overview.replace(
+                    "        case .accessoryRectangular:\n"
+                    "            accessoryRectangular\n",
+                    "        case .accessoryInline:\n"
+                    "            accessoryRectangular\n",
+                    1,
+                ),
+                "route every supported",
+            ),
+            (
+                "WidgetFamily mapping",
+                overview.replace(
+                    "        case .accessoryRectangular:\n"
+                    "            return .accessoryRectangular\n",
+                    "        case .accessoryRectangular:\n"
+                    "            return .systemSmall\n",
+                    1,
+                ),
+                "mapping must preserve",
+            ),
+            (
+                "disabled guidance",
+                overview.replace(
+                    '            ? "widget.smart_enable"\n'
+                    '            : "widget.smart_open_app"\n',
+                    '            ? "widget.smart_open_app"\n'
+                    '            : "widget.smart_open_app"\n',
+                    1,
+                ),
+                "distinguish disabled Settings guidance",
+            ),
+            (
+                "stale accessibility",
+                overview.replace(
+                    "        case .stale:\n"
+                    '            return AppLocalization.string("widget.smart_open_app")\n',
+                    "        case .stale:\n"
+                    '            return AppLocalization.string("widget.smart_enable")\n',
+                    1,
+                ),
+                "open-app refresh for stale data",
+            ),
+            (
+                "Lock Screen stale guidance",
+                overview.replace(
+                    '"widget.smart_refresh_short"',
+                    '"widget.smart_enable_short"',
+                    1,
+                ),
+                "Lock Screen layouts",
+            ),
+            (
+                "negative budget distinction",
+                overview.replace(
+                    'AppLocalization.string("widget.smart_budget_negative")',
+                    'AppLocalization.string("widget.smart_budget_zero")',
+                    1,
+                ),
+                "distinguish zero and negative budgets",
+            ),
+            (
+                "accessibility Home density",
+                overview.replace(
+                    "presentation.homeDensity == .accessibility",
+                    "presentation.homeDensity == .standard",
+                    1,
+                ),
+                "reduced-density accessibility layouts",
+            ),
+        ]
+        for label, mutated, expected_error in mutations:
+            with self.subTest(label=label):
+                self.assertNotEqual(mutated, overview)
+                errors = VALIDATOR.validate_smart_overview_widget_source(mutated)
+                self.assertTrue(
+                    any(expected_error in error for error in errors),
+                    errors,
+                )
+
     def test_rejects_broker_payload_or_missing_warm_route(self) -> None:
         shared = self.source("App/Shared/MoneyUpQuickAction.swift")
         mutated_shared = shared.replace(
-            "    private(set) var revision: UInt64 = 0\n",
-            "    private(set) var revision: UInt64 = 0\n"
-            "    var note: String\n",
+            "    let action: MoneyUpQuickAction\n",
+            "    let action: MoneyUpQuickAction\n"
+            "    let note: String\n",
             1,
         )
         app = self.source("App/MoneyUp/MoneyUpApp.swift")
@@ -492,7 +965,7 @@ class PlatformActionsValidatorTests(unittest.TestCase):
 
         self.assertTrue(
             any(
-                "action FIFO, boundary epochs" in error
+                "opaque token and closed action" in error
                 for error in VALIDATOR.validate_shared_action_source(mutated_shared)
             )
         )
@@ -506,27 +979,258 @@ class PlatformActionsValidatorTests(unittest.TestCase):
     def test_rejects_broker_file_persistence(self) -> None:
         source = self.source("App/Shared/MoneyUpQuickAction.swift")
         mutated = source.replace(
-            "        pendingActions.append(action)\n",
-            "        pendingActions.append(action)\n"
+            "        guard MoneyUpQuickActionRouteBroker.shared.submit(action) else {\n",
             "        try? action.rawValue.write(\n"
             '            toFile: "/tmp/moneyup-route",\n'
             "            atomically: true,\n"
             "            encoding: .utf8\n"
-            "        )\n",
+            "        )\n"
+            "        guard MoneyUpQuickActionRouteBroker.shared.submit(action) else {\n",
             1,
         )
 
         errors = VALIDATOR.validate_shared_action_source(mutated)
 
         self.assertTrue(any("file persistence" in error for error in errors))
-        self.assertTrue(any("submit must remain" in error for error in errors))
+        self.assertTrue(any("durably admit" in error for error in errors))
+
+    def test_rejects_durable_ingress_payload_or_bound_drift(self) -> None:
+        source = self.source("App/Shared/MoneyUpQuickAction.swift")
+        mutations = [
+            source.replace(
+                "    let action: MoneyUpQuickAction\n",
+                "    let action: MoneyUpQuickAction\n    let amount: Int\n",
+                1,
+            ),
+            source.replace(
+                "static let maximumPayloadByteCount = 4_096",
+                "static let maximumPayloadByteCount = 40_960",
+                1,
+            ),
+            source.replace(
+                ".completeFileProtectionUntilFirstUserAuthentication",
+                ".noFileProtection",
+                1,
+            ),
+            source.replace(
+                'Set($0.keys) == Set(["token", "action"])',
+                'Set($0.keys).isSuperset(of: ["token", "action"])',
+                1,
+            ),
+        ]
+
+        for mutated in mutations:
+            self.assertNotEqual(mutated, source)
+            errors = VALIDATOR.validate_shared_action_source(mutated)
+            self.assertTrue(
+                any(
+                    "durable ingress" in error
+                    or "exact broker/intent structural contract" in error
+                    for error in errors
+                ),
+                errors,
+            )
+
+    def test_rejects_uncoordinated_or_non_atomic_durable_ingress(self) -> None:
+        source = self.source("App/Shared/MoneyUpQuickAction.swift")
+        mutations = [
+            source.replace("NSFileCoordinator(filePresenter: nil)", "HiddenStore", 1),
+            source.replace("                .atomic,\n", "", 1),
+            source.replace("options: .forReplacing", "options: []", 1),
+        ]
+
+        for mutated in mutations:
+            self.assertNotEqual(mutated, source)
+            errors = VALIDATOR.validate_shared_action_source(mutated)
+            self.assertTrue(any("durable ingress" in error for error in errors), errors)
+
+    def test_rejects_durable_epoch_recovery_and_postcondition_drift(self) -> None:
+        source = self.source("App/Shared/MoneyUpQuickAction.swift")
+        mutations = [
+            (
+                "canonical wire shape",
+                source.replace(
+                    "try encoder.encode(envelope) == data",
+                    "true",
+                    1,
+                ),
+                "try encoder.encode(envelope) == data",
+            ),
+            (
+                "backup migration",
+                source.replace(
+                    "resourceValues.isExcludedFromBackup = true",
+                    "resourceValues.isExcludedFromBackup = false",
+                    1,
+                ),
+                "install-local",
+            ),
+            (
+                "private directory",
+                source.replace(
+                    ".posixPermissions: 0o700",
+                    ".posixPermissions: 0o755",
+                    1,
+                ),
+                "reassert private permissions",
+            ),
+            (
+                "recovery CAS",
+                source.replace(
+                    "guard wasAbsent || envelope.admission == .closed else {",
+                    "guard wasAbsent else {",
+                    1,
+                ),
+                "atomically preserve valid/open work",
+            ),
+            (
+                "producer preflight",
+                source.replace("            reloadDurableIngress()\n", "", 1),
+                "durable submission must refresh",
+            ),
+            (
+                "append authority",
+                source.replace(
+                    "|| envelope.authorityToken == expectedAuthorityToken,",
+                    "|| true,",
+                    1,
+                ),
+                "producer's observed authority epoch",
+            ),
+            (
+                "atomic postcondition",
+                source.replace("persisted == envelope", "true", 1),
+                "persisted == envelope",
+            ),
+            (
+                "ack authority",
+                source.replace(
+                    "previousAuthorityToken == snapshot.authorityToken",
+                    "true",
+                    1,
+                ),
+                "acknowledgement convergence",
+            ),
+            (
+                "stale completion",
+                source.replace(
+                    "            if previousAuthorityToken != "
+                    "snapshot.authorityToken {\n"
+                    "                acknowledgedDeliveryToken = nil\n"
+                    "                acknowledgementRetryToken = nil\n"
+                    "            }\n",
+                    "            if previousAuthorityToken != "
+                    "snapshot.authorityToken {\n"
+                    "                acknowledgementRetryToken = nil\n"
+                    "            }\n",
+                    1,
+                ),
+                "authority replacement",
+            ),
+            (
+                "implicit reopen",
+                source.replace(
+                    "        revision &+= 1\n"
+                    "    }\n\n"
+                    "    /// Successful startup is the authority",
+                    "        _ = reopenDurableAdmissionAfterAuthoritativeRecovery()\n"
+                    "        revision &+= 1\n"
+                    "    }\n\n"
+                    "    /// Successful startup is the authority",
+                    1,
+                ),
+                "never implicitly reopen",
+            ),
+        ]
+
+        for label, mutated, expected_error in mutations:
+            with self.subTest(label=label):
+                self.assertNotEqual(mutated, source)
+                errors = VALIDATOR.validate_shared_action_source(mutated)
+                self.assertTrue(
+                    any(expected_error in error for error in errors),
+                    errors,
+                )
+
+    def test_rejects_success_result_without_durable_admission(self) -> None:
+        source = self.source("App/Shared/MoneyUpQuickAction.swift")
+        mutated = source.replace(
+            "        guard MoneyUpQuickActionRouteBroker.shared.submit(action) else {\n"
+            "            throw MoneyUpQuickActionIngressError.unavailable\n"
+            "        }\n",
+            "        _ = MoneyUpQuickActionRouteBroker.shared.submit(action)\n",
+            1,
+        )
+
+        errors = VALIDATOR.validate_shared_action_source(mutated)
+
+        self.assertTrue(any("durably admit" in error for error in errors), errors)
+
+    def test_rejects_missing_cold_or_active_durable_reload(self) -> None:
+        source = self.source("App/MoneyUp/MoneyUpApp.swift")
+        mutations = [
+            source.replace(
+                "                    quickActionRouteBroker.reloadDurableIngress()\n",
+                "",
+                1,
+            ),
+            source.replace(
+                "                        quickActionRouteBroker.reloadDurableIngress()\n",
+                "",
+                1,
+            ),
+        ]
+
+        for mutated in mutations:
+            self.assertNotEqual(mutated, source)
+            errors = VALIDATOR.validate_app_routing_source(mutated)
+            self.assertTrue(any("route gate" in error for error in errors), errors)
+
+    def test_rejects_startup_not_reopening_crash_closed_ingress(self) -> None:
+        model = self.source("App/MoneyUp/AppModel.swift")
+        lifecycle = self.source("App/MoneyUp/AppModelLifecycle.swift")
+        settings = self.source("App/MoneyUp/AppModelSettings.swift")
+        restore = self.source("App/MoneyUp/AppModelBackupRestore.swift")
+        mutated = lifecycle.replace(
+            "        guard quickActionRouteBroker\n"
+            "            .reopenDurableAdmissionAfterAuthoritativeRecovery() "
+            "else { return }\n",
+            "        guard false else { return }\n",
+            1,
+        )
+
+        errors = VALIDATOR.validate_boundary_lifecycle_sources(
+            model,
+            mutated,
+            settings,
+            restore,
+        )
+
+        self.assertTrue(any("validated recovery" in error for error in errors), errors)
+
+    def test_rejects_scene_retry_without_an_explicit_failed_ack(self) -> None:
+        source = self.source("App/MoneyUp/AppModelQuickActionIngress.swift")
+        mutated = source.replace(
+            "              quickActionRouteBroker.needsAcknowledgementRetry(\n"
+            "                  token: request.ingressToken\n"
+            "              ),\n",
+            "",
+            1,
+        )
+
+        self.assertNotEqual(mutated, source)
+        errors = VALIDATOR.validate_model_quick_action_ingress_source(mutated)
+        self.assertTrue(
+            any("already failed" in error for error in errors),
+            errors,
+        )
 
     def test_rejects_pending_actions_property_observer(self) -> None:
         source = self.source("App/Shared/MoneyUpQuickAction.swift")
         mutated = source.replace(
-            "    private var pendingActions: [MoneyUpQuickAction] = []\n",
-            "    private var pendingActions: [MoneyUpQuickAction] = [] {\n"
-            "        didSet { HiddenSink.accept(pendingActions) }\n"
+            "    private var pendingRecords: [MoneyUpQuickActionIngressRecord] = []\n",
+            "    private var pendingRecords: [MoneyUpQuickActionIngressRecord] = [] {\n"
+            "        didSet { HiddenSink.accept(pendingRecords) }\n"
             "    }\n",
             1,
         )
@@ -540,11 +1244,11 @@ class PlatformActionsValidatorTests(unittest.TestCase):
     def test_rejects_helpers_anywhere_in_broker_intent_or_router(self) -> None:
         shared = self.source("App/Shared/MoneyUpQuickAction.swift")
         broker_helper = shared.replace(
-            "}\n\n/// Opens the app and hands off one allowlisted action in memory.",
+            "}\n\nenum MoneyUpQuickActionIngressError: Error {",
             "    private func hiddenBrokerHelper(_ action: MoneyUpQuickAction) {\n"
             "        HiddenSink.accept(action)\n"
             "    }\n"
-            "}\n\n/// Opens the app and hands off one allowlisted action in memory.",
+            "}\n\nenum MoneyUpQuickActionIngressError: Error {",
             1,
         )
         intent_helper = shared.replace(
@@ -620,21 +1324,25 @@ class PlatformActionsValidatorTests(unittest.TestCase):
         source = self.source("App/MoneyUp/MoneyUpQuickActionRouting.swift")
         mutations = (
             source.replace(
-                "        guard model.handleDeepLink(action.deepLink) else {\n"
+                "        guard model.handleDeepLink(record.action.deepLink) else {\n"
                 "            broker.discardAllPendingActions()\n"
                 "            return .discarded\n"
                 "        }\n",
-                "        guard model.handleDeepLink(action.deepLink) else {\n"
+                "        guard model.handleDeepLink(record.action.deepLink) else {\n"
                 "            return .routed\n"
                 "        }\n",
                 1,
             ),
             source.replace(
-                "        guard model.requestedQuickLogMode != nil else {\n"
+                "        guard model.requestedQuickLogMode != nil,\n"
+                "              model.requestedQuickLogRequest?.ingressToken "
+                "== record.token else {\n"
                 "            broker.discardAllPendingActions()\n"
                 "            return .discarded\n"
                 "        }\n",
-                "        guard model.requestedQuickLogMode != nil else {\n"
+                "        guard model.requestedQuickLogMode != nil,\n"
+                "              model.requestedQuickLogRequest?.ingressToken "
+                "== record.token else {\n"
                 "            return .routed\n"
                 "        }\n",
                 1,
@@ -651,15 +1359,11 @@ class PlatformActionsValidatorTests(unittest.TestCase):
     def test_rejects_capacity_paths_that_do_not_wake_strict_routing(self) -> None:
         shared = self.source("App/Shared/MoneyUpQuickAction.swift")
         muted_broker = shared.replace(
-            "        guard pendingActions.count < Self.maximumPendingActionCount "
-            "else {\n"
+            "            apply(confirmedLoad, preservingActiveDelivery: true)\n"
             "            revision &+= 1\n"
-            "            return false\n"
-            "        }\n",
-            "        guard pendingActions.count < Self.maximumPendingActionCount "
-            "else {\n"
-            "            return false\n"
-            "        }\n",
+            "            return wasAccepted\n",
+            "            apply(confirmedLoad, preservingActiveDelivery: true)\n"
+            "            return wasAccepted\n",
             1,
         )
         app = self.source("App/MoneyUp/MoneyUpApp.swift")
@@ -674,9 +1378,11 @@ class PlatformActionsValidatorTests(unittest.TestCase):
             1,
         )
 
+        self.assertNotEqual(muted_broker, shared)
+
         self.assertTrue(
             any(
-                "wake routing after a capacity rejection" in error
+                "exact broker/intent structural contract" in error
                 for error in VALIDATOR.validate_shared_action_source(muted_broker)
             )
         )
@@ -693,9 +1399,13 @@ class PlatformActionsValidatorTests(unittest.TestCase):
         settings = self.source("App/MoneyUp/AppModelSettings.swift")
         restore = self.source("App/MoneyUp/AppModelBackupRestore.swift")
         mutated_settings = settings.replace(
-            "            quickActionRouteBroker.endAuthoritativeBoundary("
-            "quickActionBoundaryEpoch)\n",
-            "            quickActionRouteBroker.discardAllPendingActions()\n",
+            "        defer {\n"
+            "            finishQuickActionBoundary(\n"
+            "                quickActionBoundaryEpoch,\n"
+            "                validatedRecovery: quickActionRecoveryWasValidated\n"
+            "            )\n"
+            "        }\n",
+            "        defer { quickActionRouteBroker.discardAllPendingActions() }\n",
             1,
         )
 
@@ -736,13 +1446,11 @@ class PlatformActionsValidatorTests(unittest.TestCase):
         settings = self.source("App/MoneyUp/AppModelSettings.swift")
         restore = self.source("App/MoneyUp/AppModelBackupRestore.swift")
         mutated_lifecycle = lifecycle.replace(
-            "        } catch {\n"
-            "            return (\n"
-            "                .failure(error),\n"
-            "                beginAuthoritativeQuickActionBoundary()\n"
-            "            )\n",
-            "        } catch {\n"
-            "            return (.failure(error), nil)\n",
+            "                return (\n"
+            "                    .failure(inspectionError),\n"
+            "                    try beginAuthoritativeQuickActionBoundary()\n"
+            "                )\n",
+            "                return (.failure(inspectionError), nil)\n",
             1,
         )
 
@@ -791,23 +1499,21 @@ class PlatformActionsValidatorTests(unittest.TestCase):
         lifecycle = self.source("App/MoneyUp/AppModelLifecycle.swift")
         settings = self.source("App/MoneyUp/AppModelSettings.swift")
         restore = self.source("App/MoneyUp/AppModelBackupRestore.swift")
-        mutated_lifecycle = lifecycle.replace(
-            "        requestedQuickLogMode = nil\n"
-            "        presentedQuickLogRequest = nil\n"
-            "        return epoch\n",
-            "        requestedQuickLogMode = nil\n"
-            "        return epoch\n",
+        mutated_model = model.replace(
+            "                requestedQuickLogRequest = nil\n"
+            "                presentedQuickLogRequest = nil\n",
+            "                requestedQuickLogRequest = nil\n",
             1,
         )
 
         errors = VALIDATOR.validate_boundary_lifecycle_sources(
-            model,
-            mutated_lifecycle,
+            mutated_model,
+            lifecycle,
             settings,
             restore,
         )
 
-        self.assertTrue(any("occupied UI request" in error for error in errors))
+        self.assertTrue(any("AppModel request setter" in error for error in errors))
 
     def test_rejects_unversioned_locked_and_main_tab_handoffs(self) -> None:
         root = self.source("App/MoneyUp/RootView.swift")
@@ -840,8 +1546,9 @@ class PlatformActionsValidatorTests(unittest.TestCase):
         original = (
             "        defer {\n"
             "            finishBookReplacementMutation()\n"
-            "            quickActionRouteBroker.endAuthoritativeBoundary(\n"
-            "                quickActionBoundaryEpoch\n"
+            "            finishQuickActionBoundary(\n"
+            "                quickActionBoundaryEpoch,\n"
+            "                validatedRecovery: quickActionRecoveryWasValidated\n"
             "            )\n"
             "        }\n"
             "        await finishBeginningRestoreMutation()\n"
@@ -851,8 +1558,9 @@ class PlatformActionsValidatorTests(unittest.TestCase):
             "        await finishBeginningRestoreMutation()\n"
             "        defer {\n"
             "            finishBookReplacementMutation()\n"
-            "            quickActionRouteBroker.endAuthoritativeBoundary(\n"
-            "                quickActionBoundaryEpoch\n"
+            "            finishQuickActionBoundary(\n"
+            "                quickActionBoundaryEpoch,\n"
+            "                validatedRecovery: quickActionRecoveryWasValidated\n"
             "            )\n"
             "        }\n",
             1,
@@ -873,13 +1581,23 @@ class PlatformActionsValidatorTests(unittest.TestCase):
     def test_rejects_unbalanced_production_book_replacement_boundaries(self) -> None:
         preview = self.source("App/MoneyUp/AppModelRestorePreview.swift")
         key_cliff = self.source("App/MoneyUp/AppModelKeyCliffRecovery.swift")
-        end = (
-            "            quickActionRouteBroker.endAuthoritativeBoundary(\n"
-            "                quickActionBoundaryEpoch\n"
+        preview_cleanup = (
+            "        defer {\n"
+            "            finishBookReplacementMutation()\n"
+            "            finishQuickActionBoundary(\n"
+            "                quickActionBoundaryEpoch,\n"
+            "                validatedRecovery: quickActionRecoveryWasValidated\n"
             "            )\n"
+            "        }\n"
         )
-        mutated_preview = preview.replace(end, "", 1)
-        mutated_key_cliff = key_cliff.replace(end, "", 1)
+        key_cliff_cleanup = preview_cleanup
+        mutation = (
+            "        defer {\n"
+            "            finishBookReplacementMutation()\n"
+            "        }\n"
+        )
+        mutated_preview = preview.replace(preview_cleanup, mutation, 1)
+        mutated_key_cliff = key_cliff.replace(key_cliff_cleanup, mutation, 1)
         self.assertNotEqual(mutated_preview, preview)
         self.assertNotEqual(mutated_key_cliff, key_cliff)
 
@@ -900,16 +1618,12 @@ class PlatformActionsValidatorTests(unittest.TestCase):
     def test_rejects_resumed_startup_boundary_drift(self) -> None:
         preview = self.source("App/MoneyUp/AppModelRestorePreview.swift")
         key_cliff = self.source("App/MoneyUp/AppModelKeyCliffRecovery.swift")
-        resume_end = (
-            "                quickActionRouteBroker.endAuthoritativeBoundary(\n"
-            "                    quickActionBoundaryEpoch\n"
-            "                )\n"
-        )
         deferred_cleanup = (
             "        defer {\n"
-            "            if let quickActionBoundaryEpoch {\n"
-            f"{resume_end}"
-            "            }\n"
+            "            finishQuickActionBoundary(\n"
+            "                quickActionBoundaryEpoch,\n"
+            "                validatedRecovery: quickActionRecoveryWasValidated\n"
+            "            )\n"
             "        }\n"
         )
         resume_work = (
@@ -918,12 +1632,14 @@ class PlatformActionsValidatorTests(unittest.TestCase):
         )
         mutations = [
             key_cliff.replace(
-                "            quickActionBoundaryEpoch = "
-                "beginAuthoritativeQuickActionBoundary()\n",
-                "            quickActionBoundaryEpoch = nil\n",
+                "        let quickActionBoundaryEpoch = "
+                "try quickActionBoundaryForKeyCliffResume(\n"
+                "            isResuming\n"
+                "        )\n",
+                "        let quickActionBoundaryEpoch: UInt64? = nil\n",
                 1,
             ),
-            key_cliff.replace(resume_end, "", 1),
+            key_cliff.replace(deferred_cleanup, "", 1),
             key_cliff.replace(deferred_cleanup, "", 1).replace(
                 resume_work,
                 resume_work + deferred_cleanup,

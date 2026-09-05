@@ -89,24 +89,39 @@ Then in Xcode:
     month, all-time, filter, and Calendar routes remain available.
 11. Enable daily and weekly guidance on disposable flexible budgets and verify
     the pace changes without changing the monthly limit or ledger.
-12. Create a daily non-rollover meal allowance and a disposable loan plan.
-    Confirm expired allowance value never becomes income or net worth, and a
-    loan repayment separates principal, interest, and fees in one balanced
-    entry before the loan can finish at zero principal.
+12. Create benefit-limit, prepaid-asset, and reimbursement meal allowances plus
+    a disposable loan plan. Confirm policy capacity never becomes income, cash,
+    or an asset; prepaid value appears only from its exclusively owned funded
+    restricted account. Move a reimbursement claim from pending to approved and
+    reimbursed, and reject a separate pending claim. Counts and balances must not
+    change: every status is evidence-only, terminal states do not reopen, and
+    actual incoming reimbursement is logged separately. When prepaid policy
+    capacity expires, confirm the ledger asset remains until an actual provider
+    expiry is explicitly reconciled. A loan repayment must
+    separate principal, interest, and fees in one balanced entry before the loan
+    can finish at zero principal.
 
 ## Add the widget
 
 Long-press the Home Screen or Lock Screen, add a widget, and search for MoneyUp.
 The horned-money small and Lock Screen widgets can be configured for Expense,
-Income, Transfer, Refund, Smart Entry, Receipt, or the opt-in budget status;
-the medium widget shows illustrated quick actions or status as configured. The
-status contains only a percentage/state and no amount, payee, account, holding,
-balance, transaction, or ledger identifier. Expense, income, transfer, and
-refund open the full Quick Log when the protected book is available. While it
-remains locked, the separate encrypted Quick Capture inbox accepts amount plus
-optional title and notes without exposing balances, accounts, categories,
-history, or ledger identifiers; protected account and category selection
-happens only after intentional unlock and review.
+Income, Transfer, Refund, Smart Entry, Receipt, Budget Status, or Smart Overview;
+the medium widget shows illustrated quick actions or the selected passive
+summary. The App Group allowlist is exactly the nonfinancial language
+preference, one opt-in bounded atomic schema-4 summary `Data` value, and one
+bounded data-free quick-action ingress JSON file; there is no fourth key or file.
+The summary contains status, a bounded reporting-period token, rounded budget/
+allowance percentages, review and expense-commitment counts, expiry, and
+reporting-calendar-relative due-day distance. The ingress contains only schema/
+authority and admission metadata, opaque tokens, and one of six closed action
+values. Neither contains an exact due date, amount, payee, account name,
+holding/symbol/quote, balance, transaction, note/evidence, book, or ledger
+identifier. Expense, income,
+transfer, and refund open the full Quick Log when the protected book is
+available. While it remains locked, the separate encrypted Quick Capture inbox
+accepts amount plus optional title and notes without exposing balances,
+accounts, categories, history, or ledger identifiers; protected account and
+category selection happens only after intentional unlock and review.
 
 ## Export to Numbers or Excel
 

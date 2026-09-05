@@ -2373,6 +2373,86 @@ def validate_key_cliff_recovery_boundary() -> None:
     print("Validated key-cliff recovery and rollback boundary")
 
 
+def restore_raw_record_gate_errors(
+    restore_source: str,
+    validator_source: str,
+    store_source: str,
+    connection_source: str,
+) -> list[str]:
+    """Check that untrusted nested work is streamed before model decoding."""
+    errors: list[str] = []
+    restore = swift_without_comments(restore_source)
+    validator = swift_without_comments(validator_source)
+    store = swift_without_comments(store_source)
+    connection = swift_without_comments(connection_source)
+
+    candidate = source_section(
+        restore,
+        "func validateRestoreCandidate(",
+        "static func temporaryRestoreValidationKey",
+    )
+    ordered = (
+        candidate.find("RestoreCandidateValidator.validateStoredRecords("),
+        candidate.find("let validationModel = AppModel("),
+        candidate.find("validationModel.load(from: store, mode: .restoreValidation)"),
+    )
+    if min(ordered) < 0 or list(ordered) != sorted(ordered):
+        errors.append(
+            "restore must stream strict raw-record validation before AppModel load"
+        )
+    for marker in (
+        "expectedRecordCount: metrics.recordCount",
+        "RestoreCandidateValidator.maximumBackupStoredPayloadByteCount",
+    ):
+        if marker not in candidate:
+            errors.append(f"restore raw validation call is missing {marker}")
+    if ".snapshot(" in candidate:
+        errors.append("restore raw validation must not materialize a database snapshot")
+
+    validator_body = source_section(
+        validator,
+        "static func validateStoredRecords(",
+        "static func validateSnapshotIdentityRecord(",
+    )
+    validator_order = (
+        validator_body.find("let workState = try await store.reduceStoredRecords("),
+        validator_body.find("let identityState = try await store.reduceStoredRecords("),
+    )
+    for marker in (
+        "validateSnapshotWorkLimitRecord(",
+        "validateSnapshotIdentityRecord(",
+        "maximumAggregatePayloadByteCount:",
+        "workState.recordCount == expectedRecordCount",
+        "identityState.recordCount == expectedRecordCount",
+        "catch is CancellationError",
+    ):
+        if marker not in validator_body:
+            errors.append(f"restore raw validator is missing {marker}")
+    if min(validator_order) < 0 or validator_order[0] >= validator_order[1]:
+        errors.append(
+            "restore raw validator must finish nested-work scan before identity decode"
+        )
+
+    if (
+        "public func reduceStoredRecords<State: Sendable>(" not in store
+        or "try connection.reduceAllRecords(" not in store
+    ):
+        errors.append("encrypted store is missing its Sendable raw-record reducer")
+    reducer = source_section(
+        connection,
+        "func reduceAllRecords<State>(",
+        "\n}",
+    )
+    for marker in (
+        "ORDER BY collection ASC, record_id ASC",
+        "Task.checkCancellation()",
+        "updateAccumulatingResult(&state",
+    ):
+        if marker not in reducer:
+            errors.append(f"SQL raw-record reducer is missing {marker}")
+    return errors
+
+
 def validate_restore_preview_boundary() -> None:
     model_path = ROOT / "App" / "MoneyUp" / "AppModelRestorePreview.swift"
     preview_path = ROOT / "App" / "MoneyUp" / "RestorePreview.swift"
@@ -2393,11 +2473,25 @@ def validate_restore_preview_boundary() -> None:
     )
     intelligence_path = ROOT / "App" / "MoneyUp" / "AppModelIntelligence.swift"
     bounded_reader_path = ROOT / "App" / "MoneyUp" / "BoundedFileReader.swift"
+    raw_validator_path = (
+        ROOT / "App" / "MoneyUp" / "RestoreCandidateIdentityValidator.swift"
+    )
+    encrypted_store_path = (
+        ROOT / "Sources" / "MoneyUpPersistence"
+        / "EncryptedRecordStoreDiagnostics.swift"
+    )
+    connection_records_path = (
+        ROOT / "Sources" / "MoneyUpPersistence"
+        / "SQLCipherConnectionReceipts.swift"
+    )
     portable_writer_path = (
         ROOT / "Sources" / "MoneyUpPersistence"
         / "PortableArchiveV2Validation.swift"
     )
     tests_path = ROOT / "Tests" / "MoneyUpAppTests" / "AppModelTests.swift"
+    raw_gate_tests_path = (
+        ROOT / "Tests" / "MoneyUpAppTests" / "RestoreWorkGateTests.swift"
+    )
     accessible_tests_path = (
         ROOT / "Tests" / "MoneyUpAppTests"
         / "AccessibleErrorPresentationTests.swift"
@@ -2415,8 +2509,12 @@ def validate_restore_preview_boundary() -> None:
     journal_derived = journal_derived_path.read_text(encoding="utf-8")
     intelligence = intelligence_path.read_text(encoding="utf-8")
     bounded_reader = bounded_reader_path.read_text(encoding="utf-8")
+    raw_validator = raw_validator_path.read_text(encoding="utf-8")
+    encrypted_store = encrypted_store_path.read_text(encoding="utf-8")
+    connection_records = connection_records_path.read_text(encoding="utf-8")
     portable_writer = portable_writer_path.read_text(encoding="utf-8")
     tests = tests_path.read_text(encoding="utf-8")
+    raw_gate_tests = raw_gate_tests_path.read_text(encoding="utf-8")
     accessible_tests = accessible_tests_path.read_text(encoding="utf-8")
 
     preview_prepare = model.split(
@@ -2437,6 +2535,22 @@ def validate_restore_preview_boundary() -> None:
     if validation_index < 0 or flush_index < 0 or validation_index > flush_index:
         fail("restore must authenticate and validate before flushing the live draft")
 
+    raw_gate_errors = restore_raw_record_gate_errors(
+        restore,
+        raw_validator,
+        encrypted_store,
+        connection_records,
+    )
+    if raw_gate_errors:
+        fail("; ".join(raw_gate_errors))
+    for marker in (
+        "testRestorePreviewRejectsOversizedAllowanceArchiveTimelineBeforeLoad",
+        "AllowancePlan.maximumArchiveTransitionCount + 1",
+        "model.prepareEncryptedRestorePreview(",
+    ):
+        if marker not in raw_gate_tests:
+            fail(f"restore raw-record production regression test is missing {marker}")
+
     required_by_source = {
         preview_path: (
             "let byteCount: Int",
@@ -2456,8 +2570,11 @@ def validate_restore_preview_boundary() -> None:
             "return .inaccessible",
             "guard store == nil, case .failed = state",
             "let quickActionBoundaryEpoch = try beginRestoreMutation()",
+            "var quickActionRecoveryWasValidated = false",
             "finishBookReplacementMutation()",
-            "quickActionRouteBroker.endAuthoritativeBoundary(",
+            "finishQuickActionBoundary(",
+            "validatedRecovery: quickActionRecoveryWasValidated",
+            "quickActionRecoveryWasValidated = true",
             "await finishBeginningRestoreMutation()",
         ),
         restore_path: (
@@ -2465,8 +2582,11 @@ def validate_restore_preview_boundary() -> None:
             "requestedQuickLogMode = nil",
             "intelligenceService.cancelPendingWork()",
             "let quickActionBoundaryEpoch = try beginRestoreMutation()",
+            "var quickActionRecoveryWasValidated = false",
             "finishBookReplacementMutation()",
-            "quickActionRouteBroker.endAuthoritativeBoundary(",
+            "finishQuickActionBoundary(",
+            "validatedRecovery: quickActionRecoveryWasValidated",
+            "quickActionRecoveryWasValidated = true",
             "await finishBeginningRestoreMutation()",
             "restoreRollbackArchiveURL",
             "restoreRollbackDirectoryURL",
@@ -5263,6 +5383,96 @@ def validate_testflight_owner_command_workflow() -> None:
     print("Validated owner-only, SHA-pinned TestFlight command workflow")
 
 
+def validate_approved_rework_documents() -> None:
+    """Keep the founder-approved amendment explicit and fully traceable."""
+    documents = {
+        "change": ROOT / "docs" / "CHANGE_CONTROL_0.7.1_APPROVED_REWORK.md",
+        "qa": ROOT / "docs" / "QA_RELEASE_GATE_0.7.1_APPROVED_REWORK.md",
+        "matrix": ROOT / "docs" / "REQUIREMENTS_TEST_MATRIX.md",
+        "golden": ROOT / "docs" / "GOLDEN_TRACEABILITY.md",
+        "release": ROOT / "docs" / "RELEASE_0.7.1.md",
+    }
+    contents: dict[str, str] = {}
+    for label, path in documents.items():
+        try:
+            contents[label] = path.read_text(encoding="utf-8")
+        except OSError as error:
+            fail(f"cannot read approved-rework {label} document: {error}")
+        if "TODO" in contents[label] or "TBD" in contents[label]:
+            fail(f"approved-rework {label} document contains a placeholder")
+
+    decision_id = "MU-CC-071-2026-09-04"
+    for label in ("change", "qa", "golden", "release"):
+        if decision_id not in contents[label]:
+            fail(f"approved-rework {label} document is missing {decision_id}")
+
+    change = contents["change"]
+    for declaration in (
+        "Golden PRD **v1.0**",
+        "`MoneyUp-PRD-v1.1.pdf`",
+        "not a silent replacement",
+        "liquidity-aware Safe-to-Spend",
+        "Manual/local is the only active policy",
+        "No provider adapter",
+        "Remove global horizontal tab-swiping",
+        "Back is contextual, never decorative",
+        "Publish one atomic, versioned, bounded widget snapshot",
+        "The user-uploaded documents remain unmodified",
+    ):
+        if declaration not in change:
+            fail(
+                "approved-rework change control is missing boundary: "
+                f"{declaration}"
+            )
+
+    prefixes = {
+        "AR-TOD": 5,
+        "AR-ALL": 6,
+        "AR-MKT": 6,
+        "AR-NAV": 5,
+        "AR-WDG": 6,
+    }
+    for prefix, count in prefixes.items():
+        for index in range(1, count + 1):
+            identifier = f"{prefix}-{index:02d}"
+            if f"`{identifier}`" not in change:
+                fail(f"change control is missing requirement {identifier}")
+            if f"| `{identifier}` |" not in contents["matrix"]:
+                fail(f"requirements matrix is missing {identifier}")
+
+    qa = contents["qa"]
+    for prefix, count in {
+        "TOD-AUTO": 6,
+        "ALL-AUTO": 7,
+        "MKT-AUTO": 7,
+        "NAV-AUTO": 5,
+        "WDG-AUTO": 7,
+        "MIG-AUTO": 4,
+        "SEC-AUTO": 2,
+    }.items():
+        for index in range(1, count + 1):
+            identifier = f"{prefix}-{index:02d}"
+            if f"`{identifier}`" not in qa:
+                fail(f"approved-rework QA matrix is missing {identifier}")
+
+    for declaration in (
+        "Branch head:",
+        "PR merge result:",
+        "Merged main:",
+        "expected_sha=M",
+        "IPA SHA-256",
+        "A validate run and an upload run produce separate signed artifacts",
+        "Simulator evidence cannot close a physical-device",
+    ):
+        if declaration not in qa:
+            fail(f"approved-rework release gate is missing {declaration}")
+
+    print(
+        "Validated approved-rework authority, 28 requirements, 38 designed "
+        "tests, and exact-SHA release gate"
+    )
+
+
 def main() -> None:
     validate_localizations()
     validate_offline_runtime_boundary()
@@ -5291,6 +5501,7 @@ def main() -> None:
     validate_ci_workflow()
     validate_testflight_workflow()
     validate_testflight_owner_command_workflow()
+    validate_approved_rework_documents()
     print("Release asset validation passed")
 
 

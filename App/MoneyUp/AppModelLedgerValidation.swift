@@ -8,11 +8,17 @@ import WidgetKit
 
 extension AppModel {
     func validateLifecycleRelationshipCandidates(
+        source: LedgerAccount,
+        target: LedgerAccount,
         accounts candidateAccounts: [LedgerAccount],
         entries candidateEntries: [JournalEntry],
         schedules candidateSchedules: [ScheduledTransaction],
         holdings candidateHoldings: [InvestmentHolding]
     ) throws {
+        try requireNonrestrictedLifecycleReassignment(
+            source: source,
+            target: target
+        )
         guard Set(candidateAccounts.map(\.id)).count == candidateAccounts.count,
               Set(candidateSchedules.map(\.id)).count == candidateSchedules.count,
               Set(candidateHoldings.map(\.id)).count == candidateHoldings.count else {
@@ -236,6 +242,16 @@ extension AppModel {
                 || account.kind == .liability
                 || account.kind == .expense
                 || account.kind == .income else {
+            throw AppModelError.incompatibleLedgerItems
+        }
+    }
+
+    func requireNonrestrictedLifecycleReassignment(
+        source: LedgerAccount,
+        target: LedgerAccount
+    ) throws {
+        guard source.accountType != .restrictedAllowance,
+              target.accountType != .restrictedAllowance else {
             throw AppModelError.incompatibleLedgerItems
         }
     }
@@ -503,6 +519,9 @@ extension AppModel {
 
     func endJournalMutation() {
         manualJournalMutationIsActive = false
+        if widgetSnapshotRefreshWasDeferred {
+            refreshBudgetWidgetSnapshot()
+        }
         applyDeferredLockIfPossible()
         resumeDeferredJournalDerivedRefreshIfPossible()
     }
@@ -562,7 +581,11 @@ extension AppModel {
         isBookReplacementInProgress = false
         // Trigger retained views to reload only after the authoritative old or
         // replacement book can accept reads again.
+        let priorLogicalBookRevision = logicalBookRevision
         logicalBookRevision &+= 1
+        rebaseRestrictedAllowanceProjection(
+            from: priorLogicalBookRevision
+        )
         switch state {
         case .ready:
             refreshBudgetWidgetSnapshot()

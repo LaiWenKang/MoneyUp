@@ -342,7 +342,8 @@ extension QuickLogEntryView {
             dateWasEdited = true
         }
         if let parsedPayee = draft.payee { payee = parsedPayee }
-        if let parsedAccount = draft.accountID {
+        if let parsedAccount = draft.accountID,
+           sourceAccounts.contains(where: { $0.id == parsedAccount }) {
             accountID = parsedAccount
             accountWasEdited = true
         }
@@ -369,12 +370,13 @@ extension QuickLogEntryView {
     /// Fills what is still unset. It must not overwrite a value the user or a
     /// parsed draft already chose, because it also runs when the kind changes.
     func selectDefaults() {
-        if !model.userAccounts.contains(where: { $0.id == accountID }) {
+        if !sourceAccounts.contains(where: { $0.id == accountID }) {
             accountWasEdited = false
             accountID = validPreferred(
                 model.profile?.preferredAccountID,
-                in: model.userAccounts
-            ) ?? recentAccountID() ?? model.userAccounts.first?.id
+                in: sourceAccounts
+            ) ?? validPreferred(recentAccountID(), in: sourceAccounts)
+                ?? sourceAccounts.first?.id
         }
         switch kind {
         case .expense:

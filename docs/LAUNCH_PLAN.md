@@ -1,6 +1,6 @@
 # MoneyUp Rollout Plan
 
-Last updated: 2 September 2026
+Last updated: 4 September 2026
 
 ## Release decision
 
@@ -14,13 +14,13 @@ later explicit product, privacy, and threat-model decision.
 
 | Area | Status | Release meaning |
 |---|---|---|
-| Product | Combined 0.7.1 feedback candidate; source build 11 | Stable amount entry, encrypted image/PDF evidence search, child-owned horizontal gestures, direct Plan Budget entry, larger Plan/History controls, and the earlier 0.7.1 improvements are integrated as one release; exact-head and physical acceptance remain open |
-| Scale architecture | SQLCipher schema 9 implemented; build-11 CI pending | Exact store metrics, normalized budget attribution, compact balances, bounded recent activity, payload-free intelligence indexes, and a blob-free encrypted evidence-search projection are integrated; exact-head and physical measurements remain open |
-| Privacy | Source and policy aligned | Local processing, no tracking/backend, metadata-stripped optional encrypted images/PDFs, on-device OCR/classification, and a bounded status-only App Group snapshot containing no financial record fields |
+| Product | Combined 0.7.1 feedback candidate; source build 11 | Stable amount entry, encrypted image/PDF evidence search, fixed global tabs with child-owned horizontal gestures, adaptive Plan/History controls, restricted prepaid assets, a manual-only provider-neutral market-data foundation, and the earlier 0.7.1 improvements are integrated as one release; exact-head and physical acceptance remain open |
+| Scale architecture | SQLCipher schema 9 implemented; build-11 CI pending | Exact store metrics, normalized budget attribution, compact balances, bounded recent activity, payload-free intelligence indexes, blob-free encrypted evidence search, stable-order bounded raw-restore reduction, and explicit allowance per-plan/aggregate work gates are integrated; exact-head and physical cancellation/memory/limit measurements remain open |
+| Privacy | Source and policy aligned | Local processing, no tracking/backend, and metadata-stripped encrypted image/PDF evidence remain local. The App Group allowlist is exactly one nonfinancial language preference, one opt-in bounded atomic schema-4 summary, and one bounded data-free quick-action ingress file—no fourth artifact, financial record field, exact due date, amount, name, holding/quote, evidence, or domain identity |
 | CI | Build-10 baseline passed; build 11 pending | Runs [300](https://github.com/LaiWenKang/MoneyUp/actions/runs/33628781671) and [301](https://github.com/LaiWenKang/MoneyUp/actions/runs/33630422384) passed the prior release/structure, Core/persistence/intelligence, app-model, unsigned app/widget Simulator, and serial performance gates. Build 11 must repeat all four jobs. |
 | Automated scale baseline | Build-10 baseline passed; build 11 pending | The serial Release XCTest target seeds the SHA-bound intelligence-v1 10,000-entry corpus and 20 schedules outside measured blocks, checks detector/operation invariants, and retains raw/JSON clock, CPU, memory, and logical-write evidence on an exact iPhone 16 Pro/iOS 18.5 Simulator; Simulator measurements do not close physical ceilings |
 | Backup scale | Source remediation and Mac CI passed; physical evidence open | Version 2 streams file-backed 1 MiB authenticated chunks across a 100,000-record/512 MB stored-payload envelope, so current accepted books have a complete export; interruption, near-limit v2, and compatible-v1 physical-memory evidence remain required |
-| Apple capability | 0.7.1 signed validation pending | Earlier signed results cannot be reused for the changed schema-8 binary. TestFlight run 24 stopped in preflight before signing/upload; the corrected 0.7.1 release-truth SHA must repeat the protected validate operation |
+| Apple capability | 0.7.1 signed validation pending | Earlier signed results cannot be reused for the changed schema-9 binary. TestFlight run 24 stopped in preflight before signing/upload; the corrected 0.7.1 release-truth SHA must repeat the protected validate operation |
 | Distribution | 0.7.0 (1025.1) accepted for processing; 0.7.1 not uploaded | Confirm 0.7.0 processing, Founders Internal availability, and installed predecessor build in App Store Connect; validation or upload alone is not installation evidence |
 | Physical QA | Open | Upgrade/restore, 10,000-entry/20-schedule performance, bilingual accessibility/widget matrix, and the founder/co-tester seven-day run remain open |
 | Public release | Blocked | Closed beta, exact-binary compliance, App Review, manual release, and 72-hour operations evidence are not complete |
@@ -105,19 +105,31 @@ Complete [the founder/co-tester runbook](FIRST_TEST.md), including:
   access;
 - password-protected v2 archive restore on a clean/fresh install plus v1
   compatibility, wrong password, tampering/cancellation/failure atomicity, and
-  near-limit memory observation;
+  near-limit memory observation; stable-order raw reduction before model load,
+  exact per-plan/aggregate allowance work ceilings, O(1) weekday counting, and
+  cancellation without a second whole-book snapshot;
 - real-current-time and history-informed editable defaults; amount/account/
-  title/notes/split keyboard reachability; Today/seven-day/month/all History
-  totals; visible descriptive text/category paths; direct Calendar access; and
-  receipt/screenshot latency/error, orientation, and metadata-stripping paths;
+  title/notes/split keyboard reachability; Today’s localized reporting date,
+  month end, inclusive day denominator, and exact final-day minor-unit residual;
+  seven-day/month/all History totals and labelled hot-category menu; fixed global
+  tabs, adaptive Plan selector, contextual Back; visible descriptive text/category
+  paths; direct Calendar access; and receipt/screenshot latency/error,
+  orientation, and metadata-stripping paths;
 - arbitrary-depth category creation/reparent rejection, exact daily/weekly
-  budget pacing, expiring allowance cadence/rollover, and loan drawdown/
-  repayment/finish-at-zero accounting;
+  budget pacing, expiring allowance cadence/rollover, exclusive prepaid-account
+  ownership, policy-zone civil dates/revision categories, exact-instant prepaid
+  preview/stale invalidation, stable-ID benefit correction, evidence-only
+  reimbursement claim lifecycle, and loan drawdown/repayment/finish-at-zero
+  accounting;
 - schedule post/match exactly once, split edit, lifecycle operations, rollover,
   goals, investment purchase/sale/reprice, and CSV/XLSX/import paths;
 - every widget family in light/dark/tinted/redacted states, including full Log
   routing while available, locked amount/title/notes capture with protected
-  category/account deferral, opt-in percentage/state, and opt-out scrubbing;
+  category/account deferral, and passive Budget Status/Smart Overview coverage
+  for absent/disabled, corrupt/future/oversized/contradictory/negative-field
+  stale, missing, zero, available, partial-insight, and expiry states; read-only
+  extension behavior, AX-sized Home density, active/reporting-day refresh, and
+  signed inspection of the exact three-artifact App Group allowlist;
 - English and Simplified Chinese, VoiceOver, largest Dynamic Type, Reduce
   Motion, smallest supported and current large iPhones;
 - the Golden p95 budgets on the oldest supported iPhone with 10,000 entries and

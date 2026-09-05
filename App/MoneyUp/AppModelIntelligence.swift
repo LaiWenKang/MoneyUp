@@ -3,6 +3,15 @@ import MoneyUpCore
 import MoneyUpIntelligence
 import MoneyUpPersistence
 
+/// A zero review count is publishable only after intelligence finishes for the
+/// exact logical-book revision. A single holder keeps this race state out of
+/// the already-large AppModel declaration.
+struct WidgetIntelligencePublicationState {
+    var task: Task<Void, Never>?
+    var revision: UInt64 = 0
+    var resultsAreCurrent = false
+}
+
 extension AppModel {
     static let maximumIntelligenceHistoryReviewCount = 100
 
@@ -37,12 +46,16 @@ extension AppModel {
     }
 
     func refreshIntelligence() {
+        invalidateWidgetIntelligencePublication()
         guard !isBookReplacementInProgress,
               state == .ready,
               let profile,
               let store,
               profile.intelligenceEnabled else {
             intelligenceService.cancelPendingWork()
+            if state == .ready, self.profile != nil {
+                refreshBudgetWidgetSnapshot()
+            }
             return
         }
         let asOfDay = FinancialPeriodBoundary.dayKey(
@@ -54,6 +67,7 @@ extension AppModel {
             to: asOfDay
         ) else {
             intelligenceService.cancelPendingWork()
+            refreshBudgetWidgetSnapshot()
             return
         }
         intelligenceService.refresh(
@@ -62,10 +76,45 @@ extension AppModel {
             asOfDay: asOfDay,
             enabled: true
         )
+        // Clear any prior generation immediately. A nil review count means
+        // "refreshing/unavailable"; it must never masquerade as a valid zero.
+        refreshBudgetWidgetSnapshot()
+
+        let publicationRevision = widgetIntelligencePublication.revision
+        let generation = storeGeneration
+        let refreshInvocation = intelligenceService.refreshInvocationCount
+        let cancelInvocation = intelligenceService.cancelInvocationCount
+        widgetIntelligencePublication.task = Task { [weak self] in
+            guard let self else { return }
+            await self.intelligenceService.waitForCurrentRefresh()
+            guard !Task.isCancelled,
+                  publicationRevision == self.widgetIntelligencePublication.revision,
+                  refreshInvocation == self.intelligenceService.refreshInvocationCount,
+                  cancelInvocation == self.intelligenceService.cancelInvocationCount,
+                  self.isCurrentStoreGeneration(generation),
+                  self.state == .ready,
+                  self.profile?.intelligenceEnabled == true,
+                  !self.intelligenceService.isRefreshing else { return }
+            self.widgetIntelligencePublication.task = nil
+            self.widgetIntelligencePublication.resultsAreCurrent =
+                !self.intelligenceService.isUnavailable
+            self.refreshBudgetWidgetSnapshot()
+        }
     }
 
     func waitForCurrentIntelligenceRefresh() async {
         await intelligenceService.waitForCurrentRefresh()
+        await widgetIntelligencePublication.task?.value
+    }
+
+    /// Invalidates only the derivative publication. The intelligence service
+    /// owns its own task cancellation/revision and may continue until the next
+    /// refresh replaces it.
+    func invalidateWidgetIntelligencePublication() {
+        widgetIntelligencePublication.revision &+= 1
+        widgetIntelligencePublication.resultsAreCurrent = false
+        widgetIntelligencePublication.task?.cancel()
+        widgetIntelligencePublication.task = nil
     }
 
     func indexedCaptureSuggestion(

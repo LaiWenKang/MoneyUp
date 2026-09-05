@@ -304,6 +304,7 @@ extension AppModel {
             recurrenceTimeZone: reportingCalendar.timeZone
         )
         try validateScheduleReferences(canonical)
+        try validateProspectiveScheduleSource(canonical)
         try requireValidNewWriteAmount(
             canonical.amount.amount,
             currency: canonical.amount.currency
@@ -344,6 +345,7 @@ extension AppModel {
                 recurrenceTimeZone: self.reportingCalendar.timeZone
             )
             try self.validateScheduleReferences(updated)
+            try self.validateProspectiveScheduleSource(updated)
             try self.requireValidNewWriteAmount(
                 updated.amount.amount,
                 currency: updated.amount.currency,

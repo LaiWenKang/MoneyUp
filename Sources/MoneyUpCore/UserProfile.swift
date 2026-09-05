@@ -28,9 +28,9 @@ public struct UserProfile: Codable, Equatable, Sendable {
     /// existing Quick Log accounts and categories. It is enabled by default;
     /// unsupported devices fail closed to deterministic parsing.
     public var foundationModelAssistanceEnabled: Bool
-    /// Optional hidden horizontal gesture for experienced users. The visible
-    /// tab bar always remains the primary and accessible navigation control.
-    public var enablesTabSwipeNavigation: Bool
+    /// Retired compatibility value. Old payloads may still contain the key,
+    /// but 0.7.1 normalizes it off and never writes it again.
+    public private(set) var enablesTabSwipeNavigation: Bool
     /// Fixed Gregorian reporting zone. Legacy profiles decode as GMT so their
     /// day attribution remains deterministic rather than following travel.
     public var reportingTimeZoneIdentifier: String
@@ -70,7 +70,7 @@ public struct UserProfile: Codable, Equatable, Sendable {
         self.showsBudgetStatusWidget = showsBudgetStatusWidget
         self.intelligenceEnabled = intelligenceEnabled
         self.foundationModelAssistanceEnabled = foundationModelAssistanceEnabled
-        self.enablesTabSwipeNavigation = enablesTabSwipeNavigation
+        self.enablesTabSwipeNavigation = false
         self.reportingTimeZoneIdentifier = TimeZone(
             identifier: reportingTimeZoneIdentifier
         )?.identifier ?? "GMT"
@@ -150,8 +150,13 @@ public struct UserProfile: Codable, Equatable, Sendable {
         foundationModelAssistanceEnabled = try container.decodeIfPresent(
             Bool.self, forKey: .foundationModelAssistanceEnabled
         ) ?? true
-        enablesTabSwipeNavigation = try container.decodeIfPresent(
-            Bool.self, forKey: .enablesTabSwipeNavigation) ?? false
+        if container.contains(.enablesTabSwipeNavigation) {
+            _ = try container.decode(
+                Bool.self,
+                forKey: .enablesTabSwipeNavigation
+            )
+        }
+        enablesTabSwipeNavigation = false
         reportingTimeZoneIdentifier = try Self.decodedReportingTimeZone(
             from: container
         )
@@ -165,6 +170,44 @@ public struct UserProfile: Codable, Equatable, Sendable {
                 forKey: .pinnedBudgetNodeIDs
             ) ?? []
         )
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(baseCurrency, forKey: .baseCurrency)
+        try container.encode(createdAt, forKey: .createdAt)
+        try container.encode(autoLockDelay, forKey: .autoLockDelay)
+        try container.encode(
+            allowLockedQuickCapture,
+            forKey: .allowLockedQuickCapture
+        )
+        try container.encodeIfPresent(
+            preferredAccountID,
+            forKey: .preferredAccountID
+        )
+        try container.encodeIfPresent(
+            preferredExpenseCategoryID,
+            forKey: .preferredExpenseCategoryID
+        )
+        try container.encodeIfPresent(
+            preferredIncomeCategoryID,
+            forKey: .preferredIncomeCategoryID
+        )
+        try container.encode(
+            showsBudgetStatusWidget,
+            forKey: .showsBudgetStatusWidget
+        )
+        try container.encode(intelligenceEnabled, forKey: .intelligenceEnabled)
+        try container.encode(
+            foundationModelAssistanceEnabled,
+            forKey: .foundationModelAssistanceEnabled
+        )
+        try container.encode(
+            reportingTimeZoneIdentifier,
+            forKey: .reportingTimeZoneIdentifier
+        )
+        try container.encode(currencyDisplay, forKey: .currencyDisplay)
+        try container.encode(pinnedBudgetNodeIDs, forKey: .pinnedBudgetNodeIDs)
     }
 
     /// Older builds persisted additional whole-minute choices. Keep those books

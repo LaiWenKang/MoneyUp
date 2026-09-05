@@ -61,8 +61,8 @@ class LaunchSafetyValidatorTests(unittest.TestCase):
     def test_rejects_direct_authenticated_key_load_in_lifecycle(self) -> None:
         self.mutate(
             "App/MoneyUp/AppModelLifecycle.swift",
-            "func start() async {",
-            "func start() async {\n"
+            "func start() async -> Bool {",
+            "func start() async -> Bool {\n"
             "        _ = try? DatabaseKeyStore.loadOrCreateKey(\n"
             "            databaseURL: Self.databaseURL()\n"
             "        )",

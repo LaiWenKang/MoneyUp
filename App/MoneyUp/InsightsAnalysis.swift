@@ -160,6 +160,9 @@ extension InsightsView {
                         .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 12)
+                // This drill-through stays in Today's navigation stack. The
+                // system Back control therefore returns to the exact chart;
+                // no synthetic cross-tab origin is created.
                 NavigationLink {
                     HistoryView(
                         preset: HistoryPreset(
@@ -205,6 +208,8 @@ extension InsightsView {
                 of: .month,
                 for: flow.month
             ) {
+                // Keep chart drill-through as a real push so native Back owns
+                // the return route and History never shows a fake root Back.
                 NavigationLink {
                     HistoryView(preset: HistoryPreset(interval: interval))
                 } label: {

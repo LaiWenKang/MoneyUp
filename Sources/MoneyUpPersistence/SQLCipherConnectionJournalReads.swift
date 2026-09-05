@@ -50,7 +50,8 @@ extension SQLCipherConnection {
 
     func fetch(
         collection: String,
-        recordIDs: [String]
+        recordIDs: [String],
+        observesCancellation: Bool = true
     ) throws -> [(id: String, payload: Data)] {
         guard !recordIDs.isEmpty else { return [] }
         let sortedIDs = Array(Set(recordIDs)).sorted()
@@ -58,7 +59,7 @@ extension SQLCipherConnection {
         // One collection bind plus 400 record IDs remains comfortably below
         // SQLite's default host-parameter limit.
         for start in stride(from: 0, to: sortedIDs.count, by: 400) {
-            try Task.checkCancellation()
+            if observesCancellation { try Task.checkCancellation() }
             let batch = Array(sortedIDs[start..<min(start + 400, sortedIDs.count)])
             let fetched: [StoredPayload] = try withStatement(
                 """
@@ -289,6 +290,71 @@ extension SQLCipherConnection {
             ) == SQLITE_OK else { throw makeError() }
             return try readPostingRows(from: statement)
         }
+    }
+
+    /// Reads the complete normalized posting history for a narrow set of
+    /// accounts. This is used by account-local invariants that cannot be
+    /// derived from the ending-balance aggregate and must not require decoding
+    /// or retaining the user's complete journal.
+    func fetchJournalPostings(
+        accountIDs: Set<String>,
+        startDate: Date? = nil,
+        observesCancellation: Bool
+    ) throws -> [IndexedPostingRow] {
+        let sortedAccountIDs = accountIDs.sorted()
+        guard !sortedAccountIDs.isEmpty else { return [] }
+
+        var rows: [IndexedPostingRow] = []
+        for batchStart in stride(from: 0, to: sortedAccountIDs.count, by: 400) {
+            if observesCancellation { try Task.checkCancellation() }
+            let batch = Array(
+                sortedAccountIDs[
+                    batchStart..<min(batchStart + 400, sortedAccountIDs.count)
+                ]
+            )
+            let fetched = try withStatement(
+                """
+                SELECT posting.entry_id, posting.occurred_at, entry.origin_day_key,
+                    posting.posting_id, posting.account_id, posting.currency,
+                    posting.amount_text
+                FROM journal_posting_index AS posting
+                JOIN journal_entry_index AS entry ON entry.entry_id = posting.entry_id
+                WHERE posting.account_id IN (\(Self.placeholders(batch.count)))
+                    \(startDate == nil ? "" : "AND posting.occurred_at >= ?")
+                ORDER BY posting.occurred_at ASC, posting.entry_id ASC,
+                    posting.posting_id ASC;
+                """
+            ) { statement in
+                for (offset, accountID) in batch.enumerated() {
+                    try bindText(accountID, at: Int32(offset + 1), to: statement)
+                }
+                if let startDate {
+                    try bindDouble(
+                        startDate.timeIntervalSince1970,
+                        at: Int32(batch.count + 1),
+                        to: statement
+                    )
+                }
+                return try readPostingRows(
+                    from: statement,
+                    observesCancellation: observesCancellation
+                )
+            }
+            rows.append(contentsOf: fetched)
+        }
+        if sortedAccountIDs.count <= 400 {
+            if observesCancellation { try Task.checkCancellation() }
+            return rows
+        }
+        let ordered = rows.sorted {
+            if $0.occurredAt != $1.occurredAt {
+                return $0.occurredAt < $1.occurredAt
+            }
+            if $0.entryID != $1.entryID { return $0.entryID < $1.entryID }
+            return $0.postingID < $1.postingID
+        }
+        if observesCancellation { try Task.checkCancellation() }
+        return ordered
     }
 
     func fetchBudgetPostings(

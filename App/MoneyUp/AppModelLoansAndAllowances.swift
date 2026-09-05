@@ -2,6 +2,13 @@ import Foundation
 import MoneyUpCore
 import MoneyUpPersistence
 
+enum AllowanceFundingCompatibility: Equatable {
+    case current
+    case legacyPrepaidAsset
+    case legacyReimbursementLink
+    case invalid
+}
+
 extension AppModel {
     func addLoanPlan(
         accountID: UUID,
@@ -113,6 +120,7 @@ extension AppModel {
               let cashAccount = accountsByID[accountID],
               !cashAccount.isArchived,
               cashAccount.kind == .asset,
+              cashAccount.accountType != .restrictedAllowance,
               cashAccount.currency == currency else {
             throw AppModelError.invalidLoan
         }
@@ -238,10 +246,11 @@ extension AppModel {
         try beginJournalMutation()
         defer { endJournalMutation() }
         guard !allowancePlans.contains(where: { $0.id == plan.id }),
-              plan.eligibleCategoryIDs.allSatisfy({ id in
-                  accountsByID[id]?.kind == .expense
-              }) else { throw AppModelError.invalidAllowance }
+              allowanceCategoriesExist(plan) else {
+            throw AppModelError.invalidAllowance
+        }
         try validateAllowanceFunding(plan)
+        try validateUniquePrepaidFunding(plan)
         let generation = storeGeneration
         try await requireStore().upsert(
             plan,
@@ -257,18 +266,26 @@ extension AppModel {
         try beginJournalMutation()
         defer { endJournalMutation() }
         guard let index = allowancePlans.firstIndex(where: { $0.id == plan.id }),
-              plan.eligibleCategoryIDs.allSatisfy({ id in
-                  accountsByID[id]?.kind == .expense
-              }) else { throw AppModelError.invalidAllowance }
-        try validateAllowanceFunding(plan)
+              allowanceCategoriesExist(plan) else {
+            throw AppModelError.invalidAllowance
+        }
+        let updated = try allowancePlans[index].applyingUpdate(
+            plan,
+            effectiveAt: currentDateForUserAction()
+        )
+        guard allowanceCategoriesExist(updated) else {
+            throw AppModelError.invalidAllowance
+        }
+        try validateAllowanceFunding(updated)
+        try validateUniquePrepaidFunding(updated)
         let generation = storeGeneration
         try await requireStore().upsert(
-            plan,
-            id: plan.id.uuidString,
+            updated,
+            id: updated.id.uuidString,
             in: .allowancePlans
         )
         guard isCurrentStoreGeneration(generation) else { return }
-        allowancePlans[index] = plan
+        allowancePlans[index] = updated
         allowancePlans.sort {
             $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
         }
@@ -276,35 +293,109 @@ extension AppModel {
 
     func recordAllowanceUsage(
         planID: UUID,
+        expectedPolicyRevisionID: UUID,
         amount: Decimal,
         categoryID: UUID?,
-        linkedJournalEntryID: UUID? = nil,
         occurredAt: Date,
         note: String?
     ) async throws {
-        try beginJournalMutation()
+        try beginAllowanceUsageMutation()
         defer { endJournalMutation() }
         guard let index = allowancePlans.firstIndex(where: { $0.id == planID }),
               !allowancePlans[index].isArchived else {
             throw AppModelError.missingRecord
         }
         let plan = allowancePlans[index]
+        let isAvailable = (try? plan.summary(asOf: occurredAt))?.isAvailableToday == true
+        guard !plan.hasGrandfatheredActivity,
+              plan.fundingMode == .benefitLimit,
+              isAllowanceWritable(plan),
+              let policy = plan.policy(at: occurredAt),
+              policy.id == expectedPolicyRevisionID,
+              isAvailable else {
+            throw AppModelError.invalidAllowance
+        }
         if let categoryID {
-            guard accountsByID[categoryID]?.kind == .expense,
-                  plan.eligibleCategoryIDs.isEmpty
-                    || plan.eligibleCategoryIDs.contains(categoryID) else {
+            guard let category = accountsByID[categoryID],
+                  category.kind == .expense,
+                  !category.isArchived,
+                  policy.accepts(categoryID: categoryID) else {
                 throw AppModelError.invalidAllowance
             }
+        } else if !policy.eligibleCategoryIDs.isEmpty {
+            throw AppModelError.invalidAllowance
         }
         try requireValidNewWriteAmount(amount, currency: plan.amount.currency)
         let usage = try AllowanceUsage(
             amount: try Money(amount, currency: plan.amount.currency),
             occurredAt: occurredAt,
             categoryID: categoryID,
-            linkedJournalEntryID: linkedJournalEntryID,
-            note: note
+            note: note,
+            policyRevisionID: policy.id
         )
-        let updated = try plan.addingUsage(usage)
+        let updated: AllowancePlan
+        do {
+            updated = try plan.addingUsage(usage)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            throw AppModelError.invalidAllowance
+        }
+        let generation = storeGeneration
+        try await requireStore().upsert(
+            updated,
+            id: updated.id.uuidString,
+            in: .allowancePlans
+        )
+        guard isCurrentStoreGeneration(generation) else { return }
+        allowancePlans[index] = updated
+        refreshBudgetWidgetSnapshot()
+    }
+
+    /// Advances one reimbursement claim using an optimistic current-state
+    /// precondition. The expected status prevents a stale row or repeated tap
+    /// from applying a transition to newer evidence.
+    func updateAllowanceClaimStatus(
+        planID: UUID,
+        usageID: UUID,
+        expectedCurrentStatus: AllowanceClaimStatus,
+        to newStatus: AllowanceClaimStatus
+    ) async throws {
+        try beginAllowanceUsageMutation()
+        defer { endJournalMutation() }
+
+        let matchingPlanIndices = allowancePlans.indices.filter {
+            allowancePlans[$0].id == planID
+        }
+        guard matchingPlanIndices.count == 1,
+              let index = matchingPlanIndices.first else {
+            throw AppModelError.invalidAllowance
+        }
+        let plan = allowancePlans[index]
+        let matchingUsages = plan.usages.filter { $0.id == usageID }
+        guard !plan.isArchived,
+              plan.fundingMode == .reimbursement,
+              isAllowanceWritable(plan),
+              matchingUsages.count == 1,
+              matchingUsages[0].claimStatus == expectedCurrentStatus,
+              newStatus != expectedCurrentStatus else {
+            throw AppModelError.invalidAllowance
+        }
+
+        let updated: AllowancePlan
+        do {
+            updated = try plan.updatingClaimStatus(
+                usageID: usageID,
+                to: newStatus
+            )
+        } catch {
+            throw AppModelError.invalidAllowance
+        }
+        guard updated.usages.first(where: { $0.id == usageID })?.claimStatus
+                == newStatus else {
+            throw AppModelError.invalidAllowance
+        }
+
         let generation = storeGeneration
         try await requireStore().upsert(
             updated,
@@ -316,9 +407,9 @@ extension AppModel {
     }
 
     /// Persists a journal entry and its allowance evidence in one SQLCipher
-    /// transaction. The allowance is capped to eligible spending and the
-    /// current entitlement, so Quick Log can never create phantom value or
-    /// over-consume a daily benefit.
+    /// transaction. A prepaid allowance becomes a real payment source: its
+    /// linked restricted asset funds the eligible portion and the originally
+    /// selected account funds any remainder.
     func save(
         _ entry: JournalEntry,
         applyingAllowance planID: UUID?,
@@ -332,63 +423,46 @@ extension AppModel {
                 attachmentDrafts: attachmentDrafts
             )
         }
+        try beginJournalMutation()
+        defer { endJournalMutation() }
         guard entry.kind == .expense,
-              let index = allowancePlans.firstIndex(where: { $0.id == planID }),
-              !allowancePlans[index].isArchived else {
+              let initialIndex = allowancePlans.firstIndex(where: { $0.id == planID }),
+              !allowancePlans[initialIndex].isArchived else {
+            throw AppModelError.invalidAllowance
+        }
+        guard let index = allowancePlans.firstIndex(where: { $0.id == planID }) else {
             throw AppModelError.invalidAllowance
         }
         let plan = allowancePlans[index]
         try validateAllowanceFunding(plan)
-        let eligiblePostings = entry.postings.filter { posting in
-            guard accountsByID[posting.accountID]?.kind == .expense,
-                  posting.money.amount > .zero else { return false }
-            return plan.eligibleCategoryIDs.isEmpty
-                || plan.eligibleCategoryIDs.contains(posting.accountID)
-        }
-        guard !eligiblePostings.isEmpty else {
-            throw AppModelError.invalidAllowance
-        }
-        var eligibleAmount = Decimal.zero
-        for posting in eligiblePostings {
-            guard posting.money.currency == plan.amount.currency else {
-                throw AppModelError.invalidAllowance
-            }
-            eligibleAmount = try CheckedDecimal.adding(
-                eligibleAmount,
-                posting.money.amount
-            )
-        }
-        let summary = try plan.summary(asOf: entry.occurredAt)
-        let appliedAmount = min(eligibleAmount, max(summary.remaining.amount, .zero))
-        guard appliedAmount > .zero else {
-            throw AppModelError.invalidAllowance
-        }
-        let categoryID = eligiblePostings.count == 1
-            ? eligiblePostings[0].accountID
-            : nil
-        let usage = try AllowanceUsage(
-            amount: try Money(appliedAmount, currency: plan.amount.currency),
-            occurredAt: entry.occurredAt,
-            categoryID: categoryID,
-            linkedJournalEntryID: entry.id,
-            note: entry.note
+        let application = try await prepareAllowanceApplication(
+            entry: entry,
+            plan: plan
         )
-        let updated = try plan.addingUsage(usage)
         let planWrite = try RecordWrite(
-            updated,
-            id: updated.id.uuidString,
+            application.plan,
+            id: application.plan.id.uuidString,
             in: .allowancePlans
         )
         let savedID = try await save(
-            entry,
+            application.entry,
             additionalWrites: [planWrite],
             receiptData: receiptData,
-            attachmentDrafts: attachmentDrafts
+            attachmentDrafts: attachmentDrafts,
+            authorizedRestrictedAllowanceAccountID:
+                plan.fundingMode == .prepaidAsset ? plan.linkedAccountID : nil,
+            journalMutationAlreadyBegun: true
         )
-        if savedID == entry.id,
-           let currentIndex = allowancePlans.firstIndex(where: { $0.id == planID }) {
-            allowancePlans[currentIndex] = updated
-            refreshBudgetWidgetSnapshot()
+        if savedID == application.entry.id {
+            await lifecycleHooks.checkpoint(
+                .afterAllowanceJournalProjectionBeforePlanApply
+            )
+            if let currentIndex = allowancePlans.firstIndex(where: {
+                $0.id == planID
+            }) {
+                allowancePlans[currentIndex] = application.plan
+                refreshBudgetWidgetSnapshot()
+            }
         }
         return savedID
     }
@@ -456,21 +530,63 @@ extension AppModel {
         }
     }
 
-    private func validateAllowanceFunding(_ plan: AllowancePlan) throws {
+    func validateAllowanceFunding(_ plan: AllowancePlan) throws {
+        guard Self.allowanceFundingCompatibility(
+            for: plan,
+            accountsByID: accountsByID
+        ) == .current else {
+            throw AppModelError.invalidAllowance
+        }
+    }
+
+    func isAllowanceWritable(_ plan: AllowancePlan) -> Bool {
+        !plan.hasGrandfatheredActivity
+            && Self.allowanceFundingCompatibility(
+                for: plan,
+                accountsByID: accountsByID
+            ) == .current
+    }
+
+    static func allowanceFundingCompatibility(
+        for plan: AllowancePlan,
+        accountsByID: [UUID: LedgerAccount]
+    ) -> AllowanceFundingCompatibility {
         switch plan.fundingMode {
         case .benefitLimit:
-            guard plan.linkedAccountID == nil else {
-                throw AppModelError.invalidAllowance
-            }
-        case .prepaidAsset, .reimbursement:
-            guard let accountID = plan.linkedAccountID,
-                  let account = accountsByID[accountID],
+            return plan.linkedAccountID == nil ? .current : .invalid
+        case .prepaidAsset:
+            guard let id = plan.linkedAccountID,
+                  let account = accountsByID[id],
                   account.kind == .asset,
-                  !account.isArchived,
-                  account.currency == plan.amount.currency else {
-                throw AppModelError.invalidAllowance
-            }
+                  account.currency == plan.amount.currency else { return .invalid }
+            return account.accountType == .restrictedAllowance && !account.isArchived
+                ? .current : .legacyPrepaidAsset
+        case .reimbursement:
+            guard let id = plan.linkedAccountID else { return .current }
+            guard let account = accountsByID[id],
+                  account.kind == .asset,
+                  account.currency == plan.amount.currency else { return .invalid }
+            return .legacyReimbursementLink
         }
+    }
+
+    private func allowanceCategoriesExist(_ plan: AllowancePlan) -> Bool {
+        let categoryIDs = plan.policyRevisions.reduce(
+            plan.eligibleCategoryIDs.union(plan.usages.compactMap(\.categoryID))
+        ) { $0.union($1.eligibleCategoryIDs) }
+        return categoryIDs.allSatisfy { accountsByID[$0]?.kind == .expense }
+    }
+
+    private func validateUniquePrepaidFunding(_ plan: AllowancePlan) throws {
+        guard !plan.isArchived,
+              plan.fundingMode == .prepaidAsset,
+              let accountID = plan.linkedAccountID else { return }
+        guard !allowancePlans.contains(where: {
+            $0.id != plan.id
+                && !$0.isArchived
+                && $0.fundingMode == .prepaidAsset
+                && $0.linkedAccountID == accountID
+        }) else { throw AppModelError.invalidAllowance }
     }
 
     private func commitLoanActivity(

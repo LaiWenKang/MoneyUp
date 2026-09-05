@@ -13,11 +13,25 @@ public enum FinancialAccountType: String, Codable, CaseIterable, Sendable {
     case cash
     case bank
     case eWallet = "e_wallet"
+    /// Stored value that can be spent only under an allowance policy. It is a
+    /// real ledger asset, but never unrestricted cash.
+    case restrictedAllowance = "restricted_allowance"
     case creditCard = "credit_card"
     case loan
     case brokerage
     case investment
     case other
+
+    /// Whether this account can fund general spending without a policy gate.
+    /// Callers must still check the account kind and current balance.
+    public var isUnrestrictedLiquidity: Bool {
+        switch self {
+        case .cash, .bank, .eWallet, .other:
+            true
+        case .restrictedAllowance, .creditCard, .loan, .brokerage, .investment:
+            false
+        }
+    }
 }
 
 public enum SystemAccountRole: String, Codable, Sendable {

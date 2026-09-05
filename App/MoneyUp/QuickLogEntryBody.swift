@@ -43,7 +43,7 @@ extension QuickLogEntryView {
                             }
                         )
                     ) {
-                        ForEach(model.userAccounts) { account in
+                        ForEach(sourceAccounts) { account in
                             Text(accountCurrencyLabel(account)).tag(Optional(account.id))
                         }
                     }
@@ -196,7 +196,8 @@ extension QuickLogEntryView {
                         Text("transaction.no_accounts")
                             .foregroundStyle(.secondary)
                     }
-                } else if kind == .transfer && model.userAccounts.count < 2 {
+                } else if kind == .transfer
+                            && (sourceAccounts.isEmpty || model.userAccounts.count < 2) {
                     Section {
                         Text("transaction.need_two_accounts")
                             .foregroundStyle(.secondary)
@@ -604,5 +605,4 @@ extension QuickLogEntryView {
         .environment(\.calendar, captureCalendar)
         .environment(\.timeZone, captureCalendar.timeZone)
     }
-
 }

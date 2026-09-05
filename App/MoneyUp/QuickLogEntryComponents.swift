@@ -93,10 +93,37 @@ extension QuickLogEntryView {
                     Text(plan.name).tag(Optional(plan.id))
                 }
             }
+            if let presentation = selectedAllowancePresentation,
+               let remaining = selectedAllowanceRemaining?.value {
+                let remainingTitleKey = presentation.remainingMeaning
+                    == .prepaidSpendable
+                    ? "allowance.prepaid_spendable_at_transaction_time"
+                    : presentation.remainingMeaning.titleKeyString
+                LabeledContent(LocalizedStringKey(
+                    remainingTitleKey
+                )) {
+                    Text(formattedMoney(remaining))
+                        .monospacedDigit()
+                }
+                .font(.caption)
+            } else if selectedPrepaidFundingIsLoading {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("allowance.checking_prepaid_balance")
+                        .foregroundStyle(.secondary)
+                }
+                .font(.caption)
+            } else if let remaining = selectedAllowanceRemaining,
+                      case let .unavailable(issue) = remaining {
+                DerivedValueUnavailableView(issue: issue)
+            }
             if let application = selectedAllowanceApplication {
+                let applicationKey = selectedAllowancePresentation?
+                    .remainingMeaning.applicationKeyString
+                    ?? "allowance.apply_amount"
                 Label(
                     String(
-                        format: AppLocalization.string("allowance.apply_amount"),
+                        format: AppLocalization.string(applicationKey),
                         formattedMoney(application)
                     ),
                     systemImage: "giftcard.fill"
@@ -105,6 +132,17 @@ extension QuickLogEntryView {
                 .foregroundStyle(.tint)
             }
         }
+        if kind == .expense,
+           selectedSourceAccount?.accountType == .restrictedAllowance {
+            Label(
+                "quick_log.restricted_source_rule",
+                systemImage: "lock.shield"
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        prepaidFundingLifecycleAnchor
     }
 
     var addCategoryButton: some View {
@@ -120,52 +158,42 @@ extension QuickLogEntryView {
     }
 
     var availableAllowances: [AllowancePlan] {
-        guard kind == .expense, let currency = selectedAccountCurrency else { return [] }
+        guard kind == .expense,
+              let currency = selectedAccountCurrency,
+              let sourceAccount = selectedSourceAccount else { return [] }
         return model.allowancePlans.filter { plan in
+            let presentation = model.allowancePresentation(plan, asOf: occurredAt)
             guard !plan.isArchived,
+                  model.isAllowanceWritable(plan),
                   plan.amount.currency == currency,
-                  case let .available(summary) = model.allowanceSummary(
-                    plan,
-                    asOf: occurredAt
-                  ) else { return false }
-            return summary.isAvailableToday && summary.remaining.amount > .zero
+                  QuickLogAllowanceSourcePolicy.planIsEligible(
+                      plan,
+                      for: sourceAccount
+                  ),
+                  let summary = presentation.policySummary,
+                  summary.isAvailableToday else { return false }
+            guard summary.remaining.amount > .zero else { return false }
+            if plan.fundingMode != .prepaidAsset {
+                guard case let .available(remaining) = presentation.remaining,
+                      remaining.amount > .zero else {
+                    return false
+                }
+            }
+            return true
         }
     }
 
-    var selectedAllowanceApplication: Money? {
+    var selectedAllowancePlan: AllowancePlan? {
         guard let selectedAllowanceID,
-              let plan = availableAllowances.first(where: { $0.id == selectedAllowanceID }),
-              let totalAmount = amount,
-              let currency = selectedAccountCurrency else { return nil }
-        var eligibleAmount = Decimal.zero
-        if splitLines.isEmpty {
-            guard let categoryID,
-                  plan.eligibleCategoryIDs.isEmpty
-                    || plan.eligibleCategoryIDs.contains(categoryID) else { return nil }
-            eligibleAmount = totalAmount
-        } else {
-            for line in splitLines {
-                guard let categoryID = line.categoryID,
-                      plan.eligibleCategoryIDs.isEmpty
-                        || plan.eligibleCategoryIDs.contains(categoryID),
-                      let lineAmount = decimalAmount(from: line.amountText) else { continue }
-                eligibleAmount = (try? CheckedDecimal.adding(
-                    eligibleAmount,
-                    lineAmount
-                )) ?? eligibleAmount
-            }
-        }
-        guard eligibleAmount > .zero,
-              case let .available(summary) = model.allowanceSummary(
-                plan,
-                asOf: occurredAt
-              ),
-              let money = try? Money(
-                min(eligibleAmount, summary.remaining.amount),
-                currency: currency
-              ),
-              money.amount > .zero else { return nil }
-        return money
+              let plan = availableAllowances.first(where: {
+                  $0.id == selectedAllowanceID
+              }) else { return nil }
+        return plan
+    }
+
+    var selectedAllowancePresentation: AllowancePresentation? {
+        guard let plan = selectedAllowancePlan else { return nil }
+        return model.allowancePresentation(plan, asOf: occurredAt)
     }
 
     var occurrenceSection: some View {

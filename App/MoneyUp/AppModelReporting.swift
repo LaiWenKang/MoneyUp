@@ -21,11 +21,16 @@ extension AppModel {
         }
     }
 
-    /// Authoritative ledger net worth, separated by currency. Holdings are not
-    /// added here: their hidden position accounts already carry their value.
+    /// Authoritative headline ledger net worth, separated by currency.
+    /// Holdings are not added here: their hidden position accounts already
+    /// carry their value. Policy-bound allowance stored value is intentionally
+    /// reported by `restrictedAllowanceValueByCurrencyResult()` instead.
     func netWorthByCurrencyResult() -> DerivedValue<[Money]> {
         var totals: [CurrencyCode: Decimal] = [:]
         for account in allUserAccounts {
+            // Provider-controlled or otherwise policy-bound stored value must
+            // never be presented as headline or unrestricted wealth.
+            guard account.accountType != .restrictedAllowance else { continue }
             guard let currency = account.currency else { continue }
             switch displayBalanceResult(for: account) {
             case let .available(balance):

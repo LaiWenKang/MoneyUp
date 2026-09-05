@@ -48,10 +48,6 @@ extension AppModel {
         }
     }
 
-    func updateTabSwipeNavigation(_ enabled: Bool) async throws {
-        try await mutateProfile { $0.enablesTabSwipeNavigation = enabled }
-    }
-
     func updateReportingTimeZone(_ identifier: String) async throws {
         guard let zone = TimeZone(identifier: identifier) else {
             throw AppModelError.invalidBook
@@ -60,6 +56,15 @@ extension AppModel {
     }
 
     func updatePreferredAccount(_ id: UUID?) async throws {
+        if let id {
+            guard let account = accountsByID[id],
+                  !account.isArchived,
+                  account.systemRole == nil,
+                  account.accountType != .restrictedAllowance,
+                  account.kind == .asset || account.kind == .liability else {
+                throw AppModelError.invalidAllowance
+            }
+        }
         try await mutateProfile { $0.preferredAccountID = id }
     }
 
@@ -123,10 +128,14 @@ extension AppModel {
               !manualJournalMutationIsActive || pendingCommit != nil else {
             return
         }
-        let quickActionBoundaryEpoch =
-            beginAuthoritativeQuickActionBoundary()
+        guard let quickActionBoundaryEpoch =
+                beginEraseQuickActionBoundary() else { return }
+        var quickActionRecoveryWasValidated = false
         defer {
-            quickActionRouteBroker.endAuthoritativeBoundary(quickActionBoundaryEpoch)
+            finishQuickActionBoundary(
+                quickActionBoundaryEpoch,
+                validatedRecovery: quickActionRecoveryWasValidated
+            )
         }
         isWorking = true
         goalMutationBarrierClosed = true
@@ -174,13 +183,8 @@ extension AppModel {
                 clearEraseIntent: dataEraseIntent.clear
             )
             finishSuccessfulEraseRecoveryState()
-            if restartAfterErase {
-                finishExclusiveDataLifecycleMutation()
-                await start()
-            } else {
-                state = .onboarding
-                finishExclusiveDataLifecycleMutation()
-            }
+            quickActionRecoveryWasValidated =
+                await finishSuccessfulEraseAndRestartIfNeeded()
         } catch {
             lockAfterStart = false
             clearDecodedState()
@@ -190,8 +194,31 @@ extension AppModel {
         }
     }
 
+    private func beginEraseQuickActionBoundary() -> UInt64? {
+        do {
+            return try beginAuthoritativeQuickActionBoundary()
+        } catch {
+            state = .failed(safeUserMessage(for: error, context: .save))
+            return nil
+        }
+    }
+
     private func finishSuccessfulEraseRecoveryState() {
         pendingLockedCaptureCount = 0
         startupFailureKind = nil
+    }
+
+    private func finishSuccessfulEraseAndRestartIfNeeded() async -> Bool {
+        guard restartAfterErase else {
+            state = .onboarding
+            finishExclusiveDataLifecycleMutation()
+            return true
+        }
+        finishExclusiveDataLifecycleMutation()
+        // Startup's validation result is authoritative even when a deferred
+        // background lock deliberately publishes `.locked` afterward. The
+        // outer erase boundary must still reopen ingress after that safe,
+        // fully validated replacement startup.
+        return await start()
     }
 }

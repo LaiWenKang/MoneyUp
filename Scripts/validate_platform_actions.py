@@ -19,17 +19,17 @@ WIDGET_BUNDLE_ID = "com.laiwenkang.MoneyUp.Widget"
 APP_GROUP_ID = "group.com.laiwenkang.MoneyUp"
 APP_GROUP_PAYLOAD_SHA256 = {
     "App/Shared/BudgetWidgetSnapshot.swift": (
-        "9d923b715a6dfb8e874a87cf0e6e9793166ffc97c7eb2ec7ce5f5239f64c0542"
+        "9c2b7e85b89aecfabab955d8d81db1d22e80474b43236190960f9f4c283e4170"
     ),
 }
 LOCKED_CAPTURE_STORE_SHA256 = (
-    "d7f8890fb41b1faf9963961c0ef4039b916d2863a4048d5a023fa650c292b467"
+    "7421cac819be5c3b4cf7f3bc2ab52368dd526bdc9e372a60a44a7feeabde79b4"
 )
 SHARED_ACTION_SOURCE_SHA256 = (
-    "b9a2bcb8a29dcea02bcacb5414bef6397c0370e525bb8f9401b0b164fc535d38"
+    "fee3f0db239b9d60238747e2c4375529f3c66dfba8822b1b2e4528d543662260"
 )
 APP_ROUTER_SOURCE_SHA256 = (
-    "5a9334fd5bef49c921ffda531ea769864a820c917742509356dbb96c246d2a9e"
+    "4efedc06179e798945c1b654b475072d7ddbef7d48abdc239297f8c745220fb7"
 )
 PACKAGE_MANIFEST_SHA256 = (
     "47842f01189d9dba4167cd6d4f60d38dd05329367ee59d3adcc11359feb998de"
@@ -64,6 +64,10 @@ PLATFORM_LOCALIZATION_KEYS = {
     "platform_intent.open_quick_log.description",
     "platform_intent.open_quick_log.action",
 }
+PREFERENCE_NEUTRAL_CAPTURE_HINTS = (
+    "Open MoneyUp to continue logging",
+    "打开 MoneyUp 以继续记账",
+)
 CONTROL_LOCALIZATION_KEYS = {
     "control.quick_log.display_name",
     "control.quick_log.description",
@@ -163,6 +167,7 @@ PLATFORM_REFERENCE_ALLOWLIST = APP_INTENTS_SOURCE_ALLOWLIST | {
     "App/MoneyUp/AppModelBackupRestore.swift",
     "App/MoneyUp/AppModelKeyCliffRecovery.swift",
     "App/MoneyUp/AppModelLifecycle.swift",
+    "App/MoneyUp/AppModelQuickActionIngress.swift",
     "App/MoneyUp/AppModelRestorePreview.swift",
     "App/MoneyUp/AppModelSettings.swift",
     "App/MoneyUp/AppModelValidation.swift",
@@ -177,6 +182,7 @@ PLATFORM_REFERENCE_ALLOWLIST = APP_INTENTS_SOURCE_ALLOWLIST | {
 PLATFORM_REFERENCE_MARKERS = (
     "MoneyUpQuickAction",
     "quickActionRouteBroker",
+    "needsAcknowledgementRetry",
     "QuickLogRouteRequest",
     "requestedQuickLogRequest",
     "presentedQuickLogRequest",
@@ -212,8 +218,8 @@ COMPILED_REFERENCE_INVENTORY = {
         "App/MoneyUp/AppModelLifecycle.swift": 1,
         "App/MoneyUp/MoneyUpApp.swift": 1,
         "App/MoneyUp/QuickLogLaunchMode.swift": 1,
-        "App/Shared/MoneyUpQuickAction.swift": 11,
-        "App/MoneyUpWidget/MoneyUpWidget.swift": 10,
+        "App/Shared/MoneyUpQuickAction.swift": 10,
+        "App/MoneyUpWidget/MoneyUpWidget.swift": 12,
     },
     r"\bMoneyUpQuickActionRouteBroker\b": {
         "App/MoneyUp/AppModel.swift": 5,
@@ -222,15 +228,17 @@ COMPILED_REFERENCE_INVENTORY = {
         "App/Shared/MoneyUpQuickAction.swift": 3,
     },
     r"\bquickActionRouteBroker\b": {
-        "App/MoneyUp/AppModel.swift": 10,
-        "App/MoneyUp/AppModelBackupRestore.swift": 1,
-        "App/MoneyUp/AppModelKeyCliffRecovery.swift": 2,
-        "App/MoneyUp/AppModelLifecycle.swift": 5,
-        "App/MoneyUp/AppModelRestorePreview.swift": 1,
-        "App/MoneyUp/AppModelSettings.swift": 1,
-        "App/MoneyUp/MoneyUpApp.swift": 4,
+        "App/MoneyUp/AppModel.swift": 12,
+        "App/MoneyUp/AppModelKeyCliffRecovery.swift": 1,
+        "App/MoneyUp/AppModelLifecycle.swift": 10,
+        "App/MoneyUp/AppModelQuickActionIngress.swift": 2,
+        "App/MoneyUp/MoneyUpApp.swift": 6,
         "App/MoneyUp/MoneyUpQuickActionRouting.swift": 2,
         "App/MoneyUp/RootView.swift": 3,
+    },
+    r"\bneedsAcknowledgementRetry\b": {
+        "App/MoneyUp/AppModelQuickActionIngress.swift": 1,
+        "App/Shared/MoneyUpQuickAction.swift": 1,
     },
     r"\bOpenQuickLogIntent\b": {
         "App/MoneyUp/MoneyUpAppShortcuts.swift": 6,
@@ -241,6 +249,7 @@ COMPILED_REFERENCE_INVENTORY = {
     r"\bQuickLogRouteRequest\b": {
         "App/MoneyUp/AppModel.swift": 3,
         "App/MoneyUp/AppModelLifecycle.swift": 3,
+        "App/MoneyUp/AppModelQuickActionIngress.swift": 1,
         "App/MoneyUp/LockedQuickCaptureView.swift": 1,
         "App/MoneyUp/QuickLogEntryDraft.swift": 1,
         "App/MoneyUp/QuickLogLaunchMode.swift": 1,
@@ -248,22 +257,25 @@ COMPILED_REFERENCE_INVENTORY = {
     },
     r"\brequestedQuickLogRequest\b": {
         "App/MoneyUp/AppModel.swift": 3,
-        "App/MoneyUp/AppModelLifecycle.swift": 3,
+        "App/MoneyUp/AppModelLifecycle.swift": 4,
+        "App/MoneyUp/AppModelQuickActionIngress.swift": 3,
         "App/MoneyUp/LockedQuickCaptureView.swift": 1,
         "App/MoneyUp/MoneyUpApp.swift": 1,
+        "App/MoneyUp/MoneyUpQuickActionRouting.swift": 1,
         "App/MoneyUp/RootView.swift": 3,
     },
     r"\bpresentedQuickLogRequest\b": {
-        "App/MoneyUp/AppModel.swift": 1,
-        "App/MoneyUp/AppModelLifecycle.swift": 2,
+        "App/MoneyUp/AppModel.swift": 2,
+        "App/MoneyUp/AppModelLifecycle.swift": 5,
+        "App/MoneyUp/AppModelQuickActionIngress.swift": 1,
         "App/MoneyUp/AppModelValidation.swift": 1,
         "App/MoneyUp/RootView.swift": 1,
     },
     r"\brequestedQuickLogMode\b": {
         "App/MoneyUp/AppModel.swift": 3,
         "App/MoneyUp/AppModelBackupRestore.swift": 1,
-        "App/MoneyUp/AppModelKeyCliffRecovery.swift": 3,
-        "App/MoneyUp/AppModelLifecycle.swift": 9,
+        "App/MoneyUp/AppModelKeyCliffRecovery.swift": 2,
+        "App/MoneyUp/AppModelLifecycle.swift": 10,
         "App/MoneyUp/AppModelLockedCaptureRecovery.swift": 1,
         "App/MoneyUp/AppModelServices.swift": 5,
         "App/MoneyUp/MoneyUpQuickActionRouting.swift": 2,
@@ -321,6 +333,24 @@ def normalized_swift_body(source: str | None) -> str:
         flags=re.DOTALL,
     )
     return " ".join(without_comments.split())
+
+
+def simple_switch_case_body(source: str | None, label: str) -> str | None:
+    """Return one top-level simple enum case body from an isolated switch."""
+    if source is None:
+        return None
+    match = re.search(
+        rf"(?m)^\s*case\s+\.{re.escape(label)}\s*:\s*",
+        source,
+    )
+    if match is None:
+        return None
+    following = re.search(
+        r"(?m)^\s*(?:case\s+\.[A-Za-z][A-Za-z0-9]*\s*:|default\s*:)",
+        source[match.end():],
+    )
+    end = len(source) if following is None else match.end() + following.start()
+    return source[match.end():end]
 
 
 def project_target_source_paths(project: str, target: str) -> list[str] | None:
@@ -471,9 +501,132 @@ def validate_shared_action_source(source: str) -> list[str]:
         "func perform() async throws -> some IntentResult",
     )
     if perform is None or " ".join(perform.split()) != (
-        "MoneyUpQuickActionRouteBroker.shared.submit(action) return .result()"
+        "guard MoneyUpQuickActionRouteBroker.shared.submit(action) else { "
+        "throw MoneyUpQuickActionIngressError.unavailable } return .result()"
     ):
-        errors.append("OpenQuickLogIntent perform body must remain broker-only")
+        errors.append(
+            "OpenQuickLogIntent must durably admit before returning a payload-free result"
+        )
+
+    record_body = declaration_body(
+        source,
+        "struct MoneyUpQuickActionIngressRecord",
+    )
+    if record_body is None or " ".join(record_body.split()) != (
+        "let token: UUID let action: MoneyUpQuickAction"
+    ):
+        errors.append(
+            "durable ingress records may contain only an opaque token and closed action"
+        )
+
+    store_body = declaration_body(
+        source,
+        "final class MoneyUpQuickActionIngressFileStore",
+    )
+    store_required = [
+        "static let currentSchemaVersion = 1",
+        "static let maximumRecordCount = 16",
+        "static let maximumPayloadByteCount = 4_096",
+        'static let storageDirectoryName = "MoneyUpQuickActionIngress"',
+        'static let fileName = "moneyup-quick-action-ingress-v1.json"',
+        "var schemaVersion: Int",
+        "var authorityToken: UUID",
+        "var admission: MoneyUpQuickActionIngressAdmission",
+        "var records: [MoneyUpQuickActionIngressRecord]",
+        "expectedAuthorityToken: UUID?",
+        "expectedAuthorityToken: UUID",
+        "wasAbsent && expectedAuthorityToken == nil",
+        "envelope.authorityToken == expectedAuthorityToken",
+        "NSFileCoordinator(filePresenter: nil).coordinate(",
+        "writingItemAt: fileURL",
+        "options: .forReplacing",
+        "data.count <= Self.maximumPayloadByteCount",
+        "persisted == envelope",
+        "coordinationError == nil || result.didApply",
+        "func recoverOpenAfterValidatedLifecycle()",
+        "wasAbsent || envelope.admission == .closed",
+        "try encoder.encode(envelope) == data",
+        "handle.read(",
+        "let remaining = Self.maximumPayloadByteCount + 1 - data.count",
+        "handle.read(upToCount: remaining)",
+        ".atomic,",
+        ".completeFileProtectionUntilFirstUserAuthentication",
+        "resourceValues.isExcludedFromBackup = true",
+        "try fileManager.setAttributes(",
+        ".posixPermissions: 0o700",
+        "Set(root.keys) == Set([",
+        '"schemaVersion", "authorityToken", "admission", "records"',
+        'Set($0.keys) == Set(["token", "action"])',
+        "envelope.records.count <= maximumRecordCount",
+        "Set(envelope.records.map(\\.token)).count",
+        "envelope.admission == .open || envelope.records.isEmpty",
+    ]
+    if store_body is None:
+        errors.append("bounded coordinated durable ingress store is missing")
+    else:
+        for declaration in store_required:
+            if declaration not in store_body:
+                errors.append(
+                    "durable ingress store is missing reviewed contract "
+                    + declaration
+                )
+        if store_body.count("NSFileCoordinator(filePresenter: nil).coordinate(") != 2:
+            errors.append(
+                "durable ingress must coordinate exactly one load and one mutation path"
+            )
+        if store_body.count(".write(") != 1:
+            errors.append(
+                "durable ingress must have one bounded atomic replacement write path"
+            )
+        if store_body.count(
+            "envelope.authorityToken == expectedAuthorityToken"
+        ) != 2:
+            errors.append(
+                "durable ingress append and acknowledgement must compare the "
+                "producer's observed authority epoch"
+            )
+        if store_body.count("resourceValues.isExcludedFromBackup = true") != 1:
+            errors.append(
+                "durable ingress must be install-local and excluded from backup"
+            )
+        if store_body.count(".posixPermissions: 0o700") != 2:
+            errors.append(
+                "durable ingress must reassert private permissions on an existing directory"
+            )
+        recovery = declaration_body(
+            store_body,
+            "func recoverOpenAfterValidatedLifecycle()",
+        )
+        if normalized_swift_body(recovery) != (
+            "mutate(resetUnavailable: true) { envelope, wasAbsent in "
+            "guard wasAbsent || envelope.admission == .closed else { "
+            "return false } envelope = .empty(admission: .open) return true }"
+        ):
+            errors.append(
+                "validated ingress recovery must atomically preserve valid/open work "
+                "and reset only absent, closed, or unreadable state"
+            )
+        for forbidden in (
+            "UserDefaults",
+            "suiteName",
+            "SecItem",
+            "Keychain",
+            "MoneyUpPersistence",
+            "URLSession",
+            "Network.framework",
+            "UIPasteboard",
+            "NSPasteboard",
+            "amount",
+            "payee",
+            "accountID",
+            "entryID",
+            "bookID",
+            "note:",
+        ):
+            if forbidden in store_body:
+                errors.append(
+                    f"durable ingress crosses its data-free boundary: {forbidden}"
+                )
 
     broker_body = declaration_body(source, "final class MoneyUpQuickActionRouteBroker")
     if (
@@ -482,30 +635,8 @@ def validate_shared_action_source(source: str) -> list[str]:
     ):
         errors.append("quick-action route broker must be main-actor observable state")
     if broker_body is None:
-        errors.append("process-local quick-action route broker is missing")
+        errors.append("durable quick-action route broker is missing")
     else:
-        broker_members = re.findall(
-            r"(?m)^    (?:static\s+)?(?:private(?:\(set\))?\s+)?"
-            r"(?:let|var)\s+([A-Za-z][A-Za-z0-9]*)",
-            broker_body,
-        )
-        expected_broker_members = [
-            "shared",
-            "maximumPendingActionCount",
-            "pendingActions",
-            "nextBoundaryEpoch",
-            "activeBoundaryEpochs",
-            "revision",
-            "handoffGeneration",
-            "pendingAction",
-            "pendingCount",
-            "isAuthoritativeBoundaryActive",
-        ]
-        if broker_members != expected_broker_members:
-            errors.append(
-                "route broker declaration inventory drifted; "
-                f"found {broker_members}"
-            )
         broker_functions = re.findall(
             r"(?m)^    (?:@discardableResult\s*\n    )?func\s+"
             r"([A-Za-z][A-Za-z0-9]*)",
@@ -513,136 +644,115 @@ def validate_shared_action_source(source: str) -> list[str]:
         )
         if broker_functions != [
             "submit",
-            "takePendingAction",
+            "takePendingRecord",
+            "ownsActiveDelivery",
+            "needsAcknowledgementRetry",
+            "acknowledge",
+            "reloadDurableIngress",
             "discardAllPendingActions",
             "beginAuthoritativeBoundary",
             "endAuthoritativeBoundary",
+            "reopenDurableAdmissionAfterAuthoritativeRecovery",
         ]:
             errors.append(
-                "route broker may contain only the reviewed FIFO and boundary "
-                "methods"
-            )
-        properties = re.findall(
-            r"(?m)^\s*(?:private(?:\(set\))?\s+)?var\s+"
-            r"([A-Za-z][A-Za-z0-9]*)\s*:\s*([^=\n{]+)",
-            broker_body,
-        )
-        normalized_properties = [
-            (name, value.strip()) for name, value in properties
-        ]
-        expected_properties = [
-            ("pendingActions", "[MoneyUpQuickAction]"),
-            ("nextBoundaryEpoch", "UInt64"),
-            ("activeBoundaryEpochs", "Set<UInt64>"),
-            ("revision", "UInt64"),
-            ("handoffGeneration", "UInt64"),
-            ("pendingAction", "MoneyUpQuickAction?"),
-            ("pendingCount", "Int"),
-            ("isAuthoritativeBoundaryActive", "Bool"),
-        ]
-        if normalized_properties != expected_properties:
-            errors.append(
-                "route broker may store only the action FIFO, boundary epochs, "
-                "and revision; "
-                f"found {normalized_properties}"
-            )
-        stored_properties = re.findall(
-            r"(?m)^\s*(?:private(?:\(set\))?\s+)?var\s+"
-            r"([A-Za-z][A-Za-z0-9]*)\s*:\s*([^=\n{]+)\s*=",
-            broker_body,
-        )
-        normalized_stored_properties = [
-            (name, value.strip()) for name, value in stored_properties
-        ]
-        expected_stored_properties = [
-            ("pendingActions", "[MoneyUpQuickAction]"),
-            ("nextBoundaryEpoch", "UInt64"),
-            ("activeBoundaryEpochs", "Set<UInt64>"),
-            ("revision", "UInt64"),
-            ("handoffGeneration", "UInt64"),
-        ]
-        if normalized_stored_properties != expected_stored_properties:
-            errors.append(
-                "route broker stored state must be only the closed action FIFO, "
-                "boundary epochs, and revision; found "
-                f"{normalized_stored_properties}"
+                "route broker may contain only the reviewed durable delivery, "
+                "exact acknowledgement, and boundary methods"
             )
         broker_required = [
-            "static let shared = MoneyUpQuickActionRouteBroker()",
-            "static let maximumPendingActionCount = 16",
-            "private var pendingActions: [MoneyUpQuickAction] = []",
+            "ingressStore: MoneyUpQuickActionIngressFileStore(",
+            "BudgetWidgetSnapshotStore.appGroupIdentifier",
+            "MoneyUpQuickActionIngressFileStore.maximumRecordCount",
+            "private let ingressStore: (any MoneyUpQuickActionIngressStoring)?",
+            "private var pendingRecords: [MoneyUpQuickActionIngressRecord] = []",
+            "private var activeDeliveryToken: UUID?",
+            "private var acknowledgedDeliveryToken: UUID?",
+            "private var acknowledgementRetryToken: UUID?",
+            "private var durableAuthorityToken: UUID?",
+            "private var durableAdmissionBlocked = false",
             "private var nextBoundaryEpoch: UInt64 = 0",
             "private var activeBoundaryEpochs: Set<UInt64> = []",
             "private(set) var revision: UInt64 = 0",
             "private(set) var handoffGeneration: UInt64 = 0",
-            "var pendingAction: MoneyUpQuickAction? { pendingActions.first }",
-            "var pendingCount: Int { pendingActions.count }",
+            "var pendingAction: MoneyUpQuickAction? { pendingRecords.first?.action }",
+            "var pendingCount: Int { pendingRecords.count }",
+            "var activeIngressToken: UUID? { activeDeliveryToken }",
+            "var isAuthoritativeLifecycleBoundaryActive: Bool",
             "var isAuthoritativeBoundaryActive: Bool",
+            "isAuthoritativeLifecycleBoundaryActive || durableAdmissionBlocked",
+            "guard !isAuthoritativeLifecycleBoundaryActive else { return false }",
+            "if ingressStore != nil",
+            "reloadDurableIngress()",
+            "guard !durableAdmissionBlocked else { return false }",
+            "expectedAuthorityToken: durableAuthorityToken",
+            "let expectedAuthorityToken = durableAuthorityToken",
+            "snapshot.records.contains(record)",
+            "activeDeliveryToken = record.token",
+            "guard acknowledgedDeliveryToken == token else { return false }",
+            "acknowledgementRetryToken = token",
+            "acknowledgementRetryToken == token",
+            "allowingCommittedCaptureReplay: Bool = false",
+            "expectedAuthorityToken: durableAuthorityToken",
+            "if allowingCommittedCaptureReplay",
+            "return allowingCommittedCaptureReplay",
+            "previousAuthorityToken == snapshot.authorityToken",
+            "snapshot.records.first?.token == activeDeliveryToken",
+            "!snapshot.records.contains(where:",
+            "snapshot.authorityToken == nil",
+            "previousAuthorityToken != nil",
+            "let mutation = ingressStore.invalidateAndClose()",
+            "durableAdmissionBlocked = true",
+            "durableAdmissionBlocked || durableAuthorityToken == nil",
+            "ingressStore.recoverOpenAfterValidatedLifecycle()",
+            "preservingActiveDelivery: !mutation.didApply",
+            "isOpen = snapshot.admission == .open",
+            "durableAdmissionBlocked = !isOpen",
         ]
         for declaration in broker_required:
             if declaration not in broker_body:
                 errors.append(f"route broker is missing {declaration}")
-        submit = declaration_body(
-            broker_body,
-            "func submit(_ action: MoneyUpQuickAction) -> Bool",
-        )
-        if submit is None or " ".join(submit.split()) != (
-            "guard !isAuthoritativeBoundaryActive else { return false } "
-            "guard pendingActions.count < Self.maximumPendingActionCount else { "
-            "revision &+= 1 return false } "
-            "pendingActions.append(action) revision &+= 1 return true"
+        submit = declaration_body(broker_body, "func submit(")
+        if (
+            submit is None
+            or submit.count("reloadDurableIngress()") != 1
+            or submit.find("guard !isAuthoritativeLifecycleBoundaryActive")
+                > submit.find("reloadDurableIngress()")
+            or submit.find("reloadDurableIngress()")
+                > submit.find("guard !durableAdmissionBlocked")
         ):
             errors.append(
-                "route broker submit must remain bounded action-only FIFO and "
-                "wake routing after a capacity rejection"
+                "durable submission must refresh a long-lived producer before "
+                "its final admission guard and authority-CAS append"
             )
-        take = declaration_body(broker_body, "func takePendingAction()")
-        if take is None or " ".join(take.split()) != (
-            "guard !isAuthoritativeBoundaryActive, !pendingActions.isEmpty else { "
-            "return nil } "
-            "let action = pendingActions.removeFirst() revision &+= 1 return action"
-        ):
-            errors.append("route broker take must consume exactly one FIFO action")
-        discard = declaration_body(
-            broker_body,
-            "func discardAllPendingActions()",
-        )
-        if discard is None or " ".join(discard.split()) != (
-            "guard !pendingActions.isEmpty else { return } "
-            "pendingActions.removeAll(keepingCapacity: false) revision &+= 1"
-        ):
+        if broker_body.count(
+            "previousAuthorityToken == snapshot.authorityToken"
+        ) != 3:
             errors.append(
-                "route broker discard must clear the complete process-local FIFO"
+                "durable acknowledgement convergence must stay within the exact "
+                "observed authority epoch"
             )
-        begin_boundary = declaration_body(
-            broker_body,
-            "func beginAuthoritativeBoundary() -> UInt64",
-        )
-        if begin_boundary is None or " ".join(begin_boundary.split()) != (
-            "nextBoundaryEpoch &+= 1 let epoch = nextBoundaryEpoch "
-            "activeBoundaryEpochs.insert(epoch) "
-            "handoffGeneration &+= 1 "
-            "pendingActions.removeAll(keepingCapacity: false) revision &+= 1 "
-            "return epoch"
-        ):
+        if (
+            "if previousAuthorityToken != snapshot.authorityToken {\n"
+            "                acknowledgedDeliveryToken = nil\n"
+            "                acknowledgementRetryToken = nil\n"
+            "            }"
+        ) not in broker_body:
             errors.append(
-                "route broker boundary begin must synchronously advance the UI "
-                "generation and clear the FIFO"
+                "authority replacement must invalidate stale acknowledged and retry tokens"
             )
-        end_boundary = declaration_body(
+        boundary_end = declaration_body(
             broker_body,
             "func endAuthoritativeBoundary(_ epoch: UInt64)",
         )
-        if end_boundary is None or " ".join(end_boundary.split()) != (
+        if normalized_swift_body(boundary_end) != (
             "guard activeBoundaryEpochs.remove(epoch) != nil else { return } "
             "revision &+= 1"
         ):
             errors.append(
-                "route broker boundary end must balance only its exact epoch"
+                "ending a lifecycle epoch must never implicitly reopen durable admission"
             )
     for symbol, boundary in FORBIDDEN_ACTION_SYMBOLS.items():
-        if symbol in source:
-            errors.append(f"shared action source crosses {boundary}: {symbol}")
+        if symbol in intent_body:
+            errors.append(f"intent body crosses {boundary}: {symbol}")
     return errors
 
 
@@ -658,6 +768,12 @@ def validate_app_routing_source(source: str) -> list[str]:
         ".onChange(of: model.isLifecycleMutationInProgress)",
         ".onChange(of: model.goalMutationBarrierClosed)",
         ".onChange(of: model.requestedQuickLogRequest)",
+        ".task {\n                    quickActionRouteBroker.reloadDurableIngress()",
+        "case .active:\n                        quickActionRouteBroker.reloadDurableIngress()",
+        "quickActionRouteBroker.reloadDurableIngress()\n"
+        "                    model.retryPresentedQuickActionAcknowledgement()",
+        "quickActionRouteBroker.reloadDurableIngress()\n"
+        "                        model.retryPresentedQuickActionAcknowledgement()",
         "routePendingQuickAction()\n                    await model.startAfterInitialRoutingWindow()",
     ]
     for declaration in required:
@@ -690,7 +806,7 @@ def validate_app_routing_source(source: str) -> list[str]:
 def validate_root_handoff_source(source: str) -> list[str]:
     errors: list[str] = []
     required = [
-        "if model.quickActionRouteBroker.isAuthoritativeBoundaryActive",
+        ".isAuthoritativeLifecycleBoundaryActive",
         ".id(model.quickActionRouteBroker.handoffGeneration)",
         "let request = model.requestedQuickLogRequest",
         "LockedQuickCaptureView(request: request)",
@@ -705,6 +821,13 @@ def validate_root_handoff_source(source: str) -> list[str]:
             errors.append(f"RootView is missing generation-bound handoff {declaration}")
     if source.count(".id(model.quickActionRouteBroker.handoffGeneration)") != 2:
         errors.append("RootView must reset both boundary cover and ready UI by generation")
+    if (
+        "if model.quickActionRouteBroker\n"
+        "            .isAuthoritativeBoundaryActive"
+    ) in source:
+        errors.append(
+            "RootView must not hide locked/recovery UI for crash-closed ingress"
+        )
     if "quickLogLaunchMode" in source or "logRequestSequence" in source:
         errors.append("RootView must not retain an unversioned quick-log launch")
     return errors
@@ -715,6 +838,8 @@ def validate_request_identity_source(source: str) -> list[str]:
     required = [
         "struct QuickLogRouteRequest: Equatable, Identifiable, Sendable",
         "let id: UInt64",
+        "let ingressToken: UUID",
+        "let requiresIngressAcknowledgement: Bool",
         "let generation: UInt64",
         "let mode: QuickLogLaunchMode",
     ]
@@ -797,6 +922,8 @@ def validate_locked_handoff_source(source: str) -> list[str]:
         "private var mode: QuickLogLaunchMode { request.mode }",
         "model.consumeQuickLogRequest(request)",
         "request: request",
+        "resumeCommittedLockedCaptureIfPresent(",
+        "replayInspectionState = .failed",
         "guard model.requestedQuickLogRequest == request else { return }",
     ]
     for declaration in required:
@@ -804,8 +931,54 @@ def validate_locked_handoff_source(source: str) -> list[str]:
             errors.append(f"locked capture handoff is missing {declaration}")
     if source.count("model.consumeQuickLogRequest(request)") != 2:
         errors.append("locked capture must acknowledge the exact request on both exits")
-    if source.count("request: request") != 2:
-        errors.append("locked capture must bind both saves to the exact request")
+    if source.count("request: request") != 3:
+        errors.append(
+            "locked capture must bind both saves and replay inspection to the "
+            "exact request"
+        )
+    return errors
+
+
+def validate_model_quick_action_ingress_source(source: str) -> list[str]:
+    errors: list[str] = []
+    resume = declaration_body(
+        source,
+        "func resumeCommittedLockedCaptureIfPresent(",
+    )
+    normalized_resume = normalized_swift_body(resume)
+    for declaration in (
+        "request.requiresIngressAcknowledgement",
+        "requestedQuickLogRequest == request",
+        "state == .locked",
+        "canPresentLockedQuickCapture",
+        "let captures = try await lockedCaptureStore.all()",
+        "$0.id == request.ingressToken",
+        "allowingCommittedCaptureReplay: true",
+    ):
+        if declaration not in normalized_resume:
+            errors.append(
+                "locked-capture replay recovery is missing " + declaration
+            )
+    if normalized_resume.count("requestedQuickLogRequest == request") != 2:
+        errors.append(
+            "locked-capture replay must revalidate exact request ownership "
+            "after the inbox read"
+        )
+    retry = declaration_body(
+        source,
+        "func retryPresentedQuickActionAcknowledgement()",
+    )
+    if retry is None or normalized_swift_body(retry) != (
+        "guard let request = requestedQuickLogRequest, "
+        "request.requiresIngressAcknowledgement, "
+        "quickActionRouteBroker.needsAcknowledgementRetry( token: "
+        "request.ingressToken ), "
+        "presentedQuickLogRequest == request else { return } "
+        "consumeQuickLogRequest(request)"
+    ):
+        errors.append(
+            "scene retry must target only an exact acknowledgement that already failed"
+        )
     return errors
 
 
@@ -845,23 +1018,24 @@ def validate_app_router_source(source: str) -> list[str]:
         "broker.discardAllPendingActions() return .discarded } "
         "switch model.quickActionRoutingDisposition { case .denyAuthoritatively: "
         "broker.discardAllPendingActions() return .discarded case "
-        ".deferTransiently: return .deferred case .route: break } guard let action "
-        "= broker.takePendingAction() "
-        "else { return .idle } guard model.handleDeepLink(action.deepLink) else { "
-        "broker.discardAllPendingActions() return .discarded } guard "
-        "model.requestedQuickLogMode != nil else { "
+        ".deferTransiently: return .deferred case .route: break } guard let record "
+        "= broker.takePendingRecord() "
+        "else { return .idle } guard model.handleDeepLink(record.action.deepLink) "
+        "else { broker.discardAllPendingActions() return .discarded } guard "
+        "model.requestedQuickLogMode != nil, model.requestedQuickLogRequest?"
+        ".ingressToken == record.token else { "
         "broker.discardAllPendingActions() return .discarded } guard "
         "model.state == .locked, !model.isLockSafeQuickCaptureRequested else { "
         "return .routed } return .requiresStart"
     ):
         errors.append(
             "app router must discard every post-dequeue authoritative denial, "
-            "defer transient work, and take at most one FIFO action"
+            "defer transient work, and begin at most one durable delivery"
         )
-    if source.count("action.deepLink") != 1:
+    if source.count("record.action.deepLink") != 1:
         errors.append("app router must be the only consumer of the action URL mapping")
-    if source.count("broker.takePendingAction()") != 1:
-        errors.append("app router must take at most one action per routing pass")
+    if source.count("broker.takePendingRecord()") != 1:
+        errors.append("app router must begin at most one delivery per routing pass")
     if source.count("broker.discardAllPendingActions()") != 4:
         errors.append(
             "app router must clear the whole FIFO on dependency mismatch, "
@@ -905,13 +1079,17 @@ def validate_boundary_lifecycle_sources(
         "get { services.capture.requestedQuickLogMode } set { guard newValue == nil "
         "|| !quickActionRouteBroker.isAuthoritativeBoundaryActive else { return } "
         "services.capture.requestedQuickLogMode = newValue guard let newValue else { "
-        "requestedQuickLogRequest = nil return } nextQuickLogRequestID &+= 1 "
+        "requestedQuickLogRequest = nil presentedQuickLogRequest = nil return } "
+        "nextQuickLogRequestID &+= 1 "
         "requestedQuickLogRequest = QuickLogRouteRequest( id: nextQuickLogRequestID, "
+        "ingressToken: quickActionRouteBroker.activeIngressToken ?? UUID(), "
+        "requiresIngressAcknowledgement: "
+        "quickActionRouteBroker.activeIngressToken != nil, "
         "generation: quickActionRouteBroker.handoffGeneration, mode: newValue ) }"
     ):
         errors.append(
-            "AppModel request setter must remain process-local, generation-bound, "
-            "and closed during authoritative boundaries"
+            "AppModel request setter must bind the active stable token, generation, "
+            "and durable acknowledgement requirement"
         )
     if model_source.count(
         "self.quickActionRouteBroker = quickActionRouteBroker"
@@ -930,10 +1108,12 @@ def validate_boundary_lifecycle_sources(
     erase = declaration_body(settings_source, "func eraseAllDataAndRestart() async")
     normalized_erase = "" if erase is None else " ".join(erase.split())
     erase_boundary = (
-        "let quickActionBoundaryEpoch = "
-        "beginAuthoritativeQuickActionBoundary() defer { "
-        "quickActionRouteBroker.endAuthoritativeBoundary(quickActionBoundaryEpoch) "
-        "} isWorking = true"
+        "guard let quickActionBoundaryEpoch = "
+        "beginEraseQuickActionBoundary() else { return } "
+        "var quickActionRecoveryWasValidated = false defer { "
+        "finishQuickActionBoundary( quickActionBoundaryEpoch, "
+        "validatedRecovery: quickActionRecoveryWasValidated ) } "
+        "isWorking = true"
     )
     if erase is None or erase_boundary not in normalized_erase:
         errors.append(
@@ -941,11 +1121,41 @@ def validate_boundary_lifecycle_sources(
             "before lifecycle state changes"
         )
     elif (
-        erase.count("beginAuthoritativeQuickActionBoundary()") != 1
+        erase.count("beginEraseQuickActionBoundary()") != 1
         or erase.count("quickActionRouteBroker.beginAuthoritativeBoundary()") != 0
-        or erase.count("endAuthoritativeBoundary(") != 1
+        or erase.count("finishQuickActionBoundary(") != 1
+        or erase.count("quickActionRecoveryWasValidated =") != 2
+        or erase.count("endAuthoritativeBoundary(") != 0
     ):
-        errors.append("erase must own exactly one balanced broker boundary")
+        errors.append(
+            "erase must own one success-qualified broker boundary"
+        )
+    erase_boundary_helper = declaration_body(
+        settings_source,
+        "private func beginEraseQuickActionBoundary() -> UInt64?",
+    )
+    if erase_boundary_helper is None or " ".join(
+        erase_boundary_helper.split()
+    ) != (
+        "do { return try beginAuthoritativeQuickActionBoundary() } catch { "
+        "state = .failed(safeUserMessage(for: error, context: .save)) return nil }"
+    ):
+        errors.append(
+            "erase must abort before mutation if durable admission cannot close"
+        )
+    erase_restart = declaration_body(
+        settings_source,
+        "private func finishSuccessfulEraseAndRestartIfNeeded() async -> Bool",
+    )
+    if normalized_swift_body(erase_restart) != (
+        "guard restartAfterErase else { state = .onboarding "
+        "finishExclusiveDataLifecycleMutation() return true } "
+        "finishExclusiveDataLifecycleMutation() return await start()"
+    ):
+        errors.append(
+            "erase restart must carry startup validation independently of its "
+            "final ready, onboarding, or deferred-lock UI state"
+        )
 
     restore = declaration_body(
         restore_source,
@@ -953,10 +1163,11 @@ def validate_boundary_lifecycle_sources(
     )
     normalized_restore = "" if restore is None else " ".join(restore.split())
     restore_boundary = (
-        "let quickActionBoundaryEpoch = try beginRestoreMutation() defer { "
-        "finishBookReplacementMutation() "
-        "quickActionRouteBroker.endAuthoritativeBoundary( "
-        "quickActionBoundaryEpoch ) "
+        "let quickActionBoundaryEpoch = try beginRestoreMutation() "
+        "var quickActionRecoveryWasValidated = false defer { "
+        "finishBookReplacementMutation() finishQuickActionBoundary( "
+        "quickActionBoundaryEpoch, validatedRecovery: "
+        "quickActionRecoveryWasValidated ) "
         "} await finishBeginningRestoreMutation()"
     )
     if restore is None or restore_boundary not in normalized_restore:
@@ -964,17 +1175,26 @@ def validate_boundary_lifecycle_sources(
             "restore must retain its broker epoch through every success, error, "
             "and cancellation exit"
         )
+    elif (
+        restore.count("beginRestoreMutation()") != 1
+        or restore.count("finishQuickActionBoundary(") != 1
+        or restore.count("quickActionRecoveryWasValidated = true") != 1
+        or restore.count("endAuthoritativeBoundary(") != 0
+    ):
+        errors.append(
+            "restore must reopen durable admission only after successful publication"
+        )
     begin_restore = declaration_body(
         restore_source,
         "func beginRestoreMutation() throws -> UInt64",
     )
-    normalized_begin_restore = (
-        "" if begin_restore is None else " ".join(begin_restore.split())
-    )
+    normalized_begin_restore = normalized_swift_body(begin_restore)
     begin_restore_boundary = (
-        "isBookReplacementInProgress = true logicalBookRevision &+= 1 "
         "let quickActionBoundaryEpoch = "
-        "beginAuthoritativeQuickActionBoundary() isWorking = true "
+        "try beginAuthoritativeQuickActionBoundary() "
+        "cancelWidgetReportingDayRefresh() "
+        "isBookReplacementInProgress = true logicalBookRevision &+= 1 "
+        "isWorking = true "
         "goalMutationBarrierClosed = true return quickActionBoundaryEpoch"
     )
     if begin_restore is None or (
@@ -1002,18 +1222,19 @@ def validate_boundary_lifecycle_sources(
     if (
         restore_source.count("beginAuthoritativeQuickActionBoundary()") != 1
         or restore_source.count("quickActionRouteBroker.beginAuthoritativeBoundary()") != 0
-        or restore_source.count("endAuthoritativeBoundary(") != 1
+        or restore_source.count("finishQuickActionBoundary(") != 1
+        or restore_source.count("endAuthoritativeBoundary(") != 0
     ):
         errors.append("restore source must own exactly one balanced broker boundary")
 
     start = declaration_body(lifecycle_source, "func start() async")
     normalized_start = "" if start is None else " ".join(start.split())
     start_defer = (
-        "var quickActionBoundaryEpoch: UInt64? isWorking = true isStarting = true "
-        "defer { isWorking = false isStarting = false if let "
-        "quickActionBoundaryEpoch { "
-        "quickActionRouteBroker.endAuthoritativeBoundary(quickActionBoundaryEpoch) "
-        "} }"
+        "var quickActionBoundaryEpoch: UInt64? "
+        "var quickActionRecoveryWasValidated = false beginStartupWork() "
+        "defer { isWorking = false isStarting = false "
+        "finishQuickActionBoundary( quickActionBoundaryEpoch, "
+        "validatedRecovery: quickActionRecoveryWasValidated ) }"
     )
     inspect_erase = declaration_body(
         lifecycle_source,
@@ -1024,10 +1245,12 @@ def validate_boundary_lifecycle_sources(
     )
     inspect_contract = (
         "do { let isPending = try await dataEraseIntent "
-        ".isPendingWithoutBlockingLaunch() if isPending { return ( "
-        ".success(true), beginAuthoritativeQuickActionBoundary() ) } return "
-        "(.success(false), nil) } catch { return ( .failure(error), "
-        "beginAuthoritativeQuickActionBoundary() ) }"
+        ".isPendingWithoutBlockingLaunch() if isPending { do { return ( "
+        ".success(true), try beginAuthoritativeQuickActionBoundary() ) } catch { "
+        "return (.failure(error), nil) } } return (.success(false), nil) } catch { "
+        "let inspectionError = error do { return ( .failure(inspectionError), "
+        "try beginAuthoritativeQuickActionBoundary() ) } catch { return "
+        "(.failure(error), nil) } }"
     )
     nonblocking_inspection_sequence = (
         "let dataEraseInspection = await inspectDataEraseIntent() "
@@ -1039,6 +1262,38 @@ def validate_boundary_lifecycle_sources(
     inspection_offset = normalized_start.find(nonblocking_inspection_sequence)
     if start is None or start_defer not in normalized_start:
         errors.append("startup must defer-balance its broker boundary")
+    startup_work = declaration_body(
+        lifecycle_source,
+        "private func beginStartupWork()",
+    )
+    if startup_work is None or " ".join(startup_work.split()) != (
+        "isWorking = true isStarting = true"
+    ):
+        errors.append("startup must synchronously close its ordinary work gate")
+    finish_boundary = declaration_body(
+        lifecycle_source,
+        "func finishQuickActionBoundary(",
+    )
+    if normalized_swift_body(finish_boundary) != (
+        "if let epoch { quickActionRouteBroker.endAuthoritativeBoundary(epoch) } "
+        "if validatedRecovery { finishValidatedQuickActionIngressRecovery() }"
+    ):
+        errors.append(
+            "boundary completion must end first and reopen only from an explicit "
+            "validated-success signal"
+        )
+    validated_recovery = declaration_body(
+        lifecycle_source,
+        "func finishValidatedQuickActionIngressRecovery()",
+    )
+    if normalized_swift_body(validated_recovery) != (
+        "guard quickActionRouteBroker "
+        ".reopenDurableAdmissionAfterAuthoritativeRecovery() else { return } "
+        "clearOrphanedQuickActionRequestAfterDurableRecovery()"
+    ):
+        errors.append(
+            "validated recovery must explicitly reopen then clear only orphaned UI"
+        )
     if inspect_erase is None or inspect_contract not in normalized_inspect_erase:
         errors.append(
             "startup must begin a boundary for pending and unreadable "
@@ -1056,11 +1311,23 @@ def validate_boundary_lifecycle_sources(
         )
     if start is not None and (
         start.count("beginAuthoritativeBoundary()") != 0
-        or start.count("endAuthoritativeBoundary(") != 1
+        or start.count("endAuthoritativeBoundary(") != 0
+        or start.count("finishQuickActionBoundary(") != 1
+        or start.count("quickActionRecoveryWasValidated = true") != 1
+        or "return quickActionRecoveryWasValidated" not in start
     ):
         errors.append(
-            "startup must delegate exactly two tombstone boundary begins and "
-            "defer one epoch end"
+            "startup must delegate tombstone boundaries and return one explicit "
+            "validated-success signal"
+        )
+    elif normalized_start.find(
+        "quickActionRecoveryWasValidated = true"
+    ) < normalized_start.find(
+        "openAndFinishStartupIncludingKeyCliffRecovery("
+    ):
+        errors.append(
+            "startup may validate ingress recovery only after database and key-cliff "
+            "startup completes"
         )
     if inspect_erase is not None and (
         inspect_erase.count("beginAuthoritativeQuickActionBoundary()") != 2
@@ -1072,15 +1339,15 @@ def validate_boundary_lifecycle_sources(
         )
     boundary_helper = declaration_body(
         lifecycle_source,
-        "func beginAuthoritativeQuickActionBoundary() -> UInt64",
+        "func beginAuthoritativeQuickActionBoundary() throws -> UInt64",
     )
     if boundary_helper is None or " ".join(boundary_helper.split()) != (
-        "let epoch = quickActionRouteBroker.beginAuthoritativeBoundary() "
-        "requestedQuickLogMode = nil presentedQuickLogRequest = nil return epoch"
+        "let epoch = try quickActionRouteBroker.beginAuthoritativeBoundary() "
+        "requestedQuickLogMode = nil return epoch"
     ):
         errors.append(
-            "every authoritative broker begin must synchronously invalidate the "
-            "occupied UI request before suspension"
+            "every authoritative broker begin must invalidate the occupied UI "
+            "request and prove durable closure before suspension"
         )
     present_request = declaration_body(
         lifecycle_source,
@@ -1089,7 +1356,9 @@ def validate_boundary_lifecycle_sources(
     if present_request is None or " ".join(present_request.split()) != (
         "guard requestedQuickLogRequest == request, request.generation == "
         "quickActionRouteBroker.handoffGeneration, "
-        "!quickActionRouteBroker.isAuthoritativeBoundaryActive else { return false } "
+        "!quickActionRouteBroker.isAuthoritativeBoundaryActive, "
+        "presentedQuickLogRequest == nil || presentedQuickLogRequest == request "
+        "else { return false } "
         "presentedQuickLogRequest = request return true"
     ):
         errors.append(
@@ -1101,11 +1370,14 @@ def validate_boundary_lifecycle_sources(
         "func consumeQuickLogRequest(_ request: QuickLogRouteRequest)",
     )
     if consume_request is None or " ".join(consume_request.split()) != (
-        "guard requestedQuickLogRequest == request else { return } "
+        "guard requestedQuickLogRequest == request, presentedQuickLogRequest == nil "
+        "|| presentedQuickLogRequest == request else { return } "
+        "if request.requiresIngressAcknowledgement { guard quickActionRouteBroker."
+        "acknowledge( token: request.ingressToken ) else { return } } "
         "requestedQuickLogMode = nil"
     ):
         errors.append(
-            "quick-log acknowledgement must consume only the exact occupied token"
+            "quick-log acknowledgement must durably consume only the exact occupied token"
         )
     deep_link = declaration_body(
         lifecycle_source,
@@ -1145,10 +1417,12 @@ def validate_book_replacement_action_boundaries(
         "" if preview_restore is None else " ".join(preview_restore.split())
     )
     preview_boundary = (
-        "let quickActionBoundaryEpoch = try beginRestoreMutation() defer { "
-        "finishBookReplacementMutation() "
-        "quickActionRouteBroker.endAuthoritativeBoundary( "
-        "quickActionBoundaryEpoch ) } await finishBeginningRestoreMutation()"
+        "let quickActionBoundaryEpoch = try beginRestoreMutation() "
+        "var quickActionRecoveryWasValidated = false defer { "
+        "finishBookReplacementMutation() finishQuickActionBoundary( "
+        "quickActionBoundaryEpoch, validatedRecovery: "
+        "quickActionRecoveryWasValidated ) } "
+        "await finishBeginningRestoreMutation()"
     )
     if preview_restore is None or preview_boundary not in normalized_preview:
         errors.append(
@@ -1157,9 +1431,13 @@ def validate_book_replacement_action_boundaries(
         )
     elif (
         preview_restore.count("beginRestoreMutation()") != 1
-        or preview_restore.count("endAuthoritativeBoundary(") != 1
+        or preview_restore.count("finishQuickActionBoundary(") != 1
+        or preview_restore.count("quickActionRecoveryWasValidated = true") != 1
+        or preview_restore.count("endAuthoritativeBoundary(") != 0
     ):
-        errors.append("ticket restore must own exactly one balanced broker epoch")
+        errors.append(
+            "ticket restore must own one success-qualified broker epoch"
+        )
 
     resumed_startup = declaration_body(
         key_cliff_source,
@@ -1169,18 +1447,16 @@ def validate_book_replacement_action_boundaries(
         "" if resumed_startup is None else " ".join(resumed_startup.split())
     )
     resumed_startup_boundary = (
-        "let quickActionBoundaryEpoch: UInt64? if isResuming { "
-        "quickActionBoundaryEpoch = beginAuthoritativeQuickActionBoundary() "
-        "} else { quickActionBoundaryEpoch = nil } defer { if let "
-        "quickActionBoundaryEpoch { "
-        "quickActionRouteBroker.endAuthoritativeBoundary( "
-        "quickActionBoundaryEpoch ) } } if isResuming {"
+        "let quickActionBoundaryEpoch = try quickActionBoundaryForKeyCliffResume( "
+        "isResuming ) var quickActionRecoveryWasValidated = false defer { "
+        "finishQuickActionBoundary( quickActionBoundaryEpoch, validatedRecovery: "
+        "quickActionRecoveryWasValidated ) } if isResuming {"
     )
     boundary_begin_offset = (
         -1
         if resumed_startup is None
         else resumed_startup.find(
-            "quickActionBoundaryEpoch = beginAuthoritativeQuickActionBoundary()"
+            "let quickActionBoundaryEpoch = try quickActionBoundaryForKeyCliffResume("
         )
     )
     boundary_defer_offset = (
@@ -1221,11 +1497,25 @@ def validate_book_replacement_action_boundaries(
             "suspension work"
         )
     elif (
-        resumed_startup.count("beginAuthoritativeQuickActionBoundary()") != 1
-        or resumed_startup.count("endAuthoritativeBoundary(") != 1
+        resumed_startup.count("quickActionBoundaryForKeyCliffResume(") != 1
+        or resumed_startup.count("finishQuickActionBoundary(") != 1
+        or resumed_startup.count("quickActionRecoveryWasValidated = isResuming") != 1
+        or resumed_startup.count("endAuthoritativeBoundary(") != 0
     ):
         errors.append(
-            "resumed startup must own exactly one balanced broker epoch"
+            "resumed startup must own one success-qualified broker epoch"
+        )
+    resume_boundary_helper = declaration_body(
+        key_cliff_source,
+        "private func quickActionBoundaryForKeyCliffResume(",
+    )
+    if normalized_swift_body(resume_boundary_helper) != (
+        "guard isResuming else { return nil } "
+        "return try beginAuthoritativeQuickActionBoundary()"
+    ):
+        errors.append(
+            "resumed startup boundary helper must synchronously close only a "
+            "pending key-cliff epoch"
         )
 
     key_cliff_restore = declaration_body(
@@ -1236,12 +1526,12 @@ def validate_book_replacement_action_boundaries(
         "" if key_cliff_restore is None else " ".join(key_cliff_restore.split())
     )
     key_cliff_boundary = (
-        "try beginLifecycleMutation(invalidatesJournalProjection: false) "
-        "isWorking = true isBookReplacementInProgress = true let "
-        "quickActionBoundaryEpoch = beginAuthoritativeQuickActionBoundary() "
-        "defer { finishBookReplacementMutation() "
-        "quickActionRouteBroker.endAuthoritativeBoundary( "
-        "quickActionBoundaryEpoch ) } try await requireEmptyLockedCaptureInbox()"
+        "let quickActionBoundaryEpoch = try beginKeyCliffRecoveryMutation() "
+        "var quickActionRecoveryWasValidated = false defer { "
+        "finishBookReplacementMutation() finishQuickActionBoundary( "
+        "quickActionBoundaryEpoch, validatedRecovery: "
+        "quickActionRecoveryWasValidated ) } disableBudgetWidgetSnapshot() "
+        "try await requireEmptyLockedCaptureInbox()"
     )
     if key_cliff_restore is None or key_cliff_boundary not in normalized_key_cliff:
         errors.append(
@@ -1249,11 +1539,27 @@ def validate_book_replacement_action_boundaries(
             "book-replacement cleanup before its first suspension"
         )
     elif (
-        key_cliff_restore.count("beginAuthoritativeQuickActionBoundary()") != 1
-        or key_cliff_restore.count("endAuthoritativeBoundary(") != 1
+        key_cliff_restore.count("beginKeyCliffRecoveryMutation()") != 1
+        or key_cliff_restore.count("finishQuickActionBoundary(") != 1
+        or key_cliff_restore.count("quickActionRecoveryWasValidated = true") != 1
+        or key_cliff_restore.count("endAuthoritativeBoundary(") != 0
     ):
         errors.append(
-            "missing-key recovery must own exactly one balanced broker epoch"
+            "missing-key recovery must own one success-qualified broker epoch"
+        )
+    key_cliff_begin = declaration_body(
+        key_cliff_source,
+        "private func beginKeyCliffRecoveryMutation() throws -> UInt64",
+    )
+    if key_cliff_begin is None or " ".join(key_cliff_begin.split()) != (
+        "let epoch = try beginAuthoritativeQuickActionBoundary() do { try "
+        "beginLifecycleMutation(invalidatesJournalProjection: false) } catch { "
+        "quickActionRouteBroker.endAuthoritativeBoundary(epoch) throw error } "
+        "isWorking = true isBookReplacementInProgress = true return epoch"
+    ):
+        errors.append(
+            "missing-key recovery must close durable admission before state "
+            "mutation and rebalance it if lifecycle admission fails"
         )
     return errors
 
@@ -1296,6 +1602,131 @@ def validate_widget_source(source: str) -> list[str]:
     button = "Button(intent: OpenQuickLogIntent(action: action))"
     if source.count(button) != 5 or source.count("Button(intent:") != 5:
         errors.append("every quick-action widget family must use Button(intent:)")
+    if (
+        source.count("let snapshot = store.readPublishedSnapshot(now: now)") != 1
+        or source.count(
+            "BudgetWidgetSnapshotStore(allowsMaintenanceWrites: false)"
+        ) != 1
+        or "budgetSnapshot: store.read()" in source
+        or "insights: store.readInsights()" in source
+    ):
+        errors.append(
+            "widget timeline entries must read one generation without becoming a writer"
+        )
+
+    widget_view = declaration_body(source, "private struct MoneyUpWidgetView")
+    budget_status_call = re.compile(
+        r"case\s+\.budgetStatus\s*:\s*BudgetStatusWidgetView\s*\(\s*"
+        r"snapshot\s*:\s*entry\.budgetSnapshot\s*,\s*"
+        r"family\s*:\s*family\s*,\s*"
+        r"homeDensity\s*:\s*homeDensity\s*\)",
+        flags=re.DOTALL,
+    )
+    if widget_view is None or len(budget_status_call.findall(widget_view)) != 1:
+        errors.append(
+            "Budget Status must receive the current snapshot and active widget family"
+        )
+    smart_overview_call = re.compile(
+        r"case\s+\.smartOverview\s*:\s*SmartOverviewWidgetView\s*\(\s*"
+        r"snapshot\s*:\s*entry\.budgetSnapshot\s*,\s*"
+        r"insights\s*:\s*entry\.insights\s*,\s*"
+        r"family\s*:\s*family\s*,\s*"
+        r"homeDensity\s*:\s*homeDensity\s*\)",
+        flags=re.DOTALL,
+    )
+    if widget_view is None or len(smart_overview_call.findall(widget_view)) != 1:
+        errors.append(
+            "Smart Overview must receive budget and insights from the same "
+            "timeline entry together with the active widget family"
+        )
+    density_contract = (
+        "@Environment(\\.dynamicTypeSize) private var dynamicTypeSize",
+        "dynamicTypeSize.isAccessibilitySize ? .accessibility : .standard",
+        "homeDensity: homeDensity",
+    )
+    if widget_view is None or any(
+        marker not in widget_view for marker in density_contract
+    ):
+        errors.append(
+            "Home widgets must derive and pass one accessibility Dynamic Type "
+            "density policy"
+        )
+
+    small_action = declaration_body(source, "private struct SmallQuickActionView")
+    medium_actions = declaration_body(
+        source,
+        "private struct MediumQuickActionsView",
+    )
+    action_density_contract = (
+        small_action is not None
+        and "if homeDensity == .accessibility" in small_action
+        and "WidgetActionGlyph(action: action, size: 32)" in small_action
+        and medium_actions is not None
+        and ".prefix(homeDensity.mediumQuickActionLimit)" in medium_actions
+        and "if homeDensity == .accessibility" in medium_actions
+    )
+    if not action_density_contract:
+        errors.append(
+            "Home quick actions must replace fixed small/medium density at "
+            "accessibility sizes"
+        )
+
+    rectangular_action = declaration_body(
+        source,
+        "private struct AccessoryRectangularActionView",
+    )
+    rectangular_accessibility_contract = (
+        rectangular_action is not None
+        and ".frame(width: 28)\n                .accessibilityHidden(true)"
+            in rectangular_action
+        and ".accessibilityElement(children: .ignore)" in rectangular_action
+        and ".accessibilityLabel(action.titleKey)" in rectangular_action
+        and ".accessibilityHint(action.accessibilityHintKey)" in rectangular_action
+    )
+    if not rectangular_accessibility_contract:
+        errors.append(
+            "rectangular action accessibility must hide decorative imagery and "
+            "expose the explicit action label and neutral hint"
+        )
+
+    accessibility_preview = declaration_body(
+        source,
+        "private struct MoneyUpWidgetAccessibilityPreviewSurface",
+    )
+    accessibility_preview_contract = (
+        ".environment(\\.dynamicTypeSize, .accessibility5)",
+        "homeDensity: .accessibility",
+        ".environment(\\.locale, language.locale)",
+    )
+    modern_preview_contract = (
+        '#Preview("Quick action · Small", as: .systemSmall)',
+        '#Preview("Quick action · Medium", as: .systemMedium)',
+        '#Preview("Smart overview · Small", as: .systemSmall)',
+        '#Preview("Smart overview · Medium", as: .systemMedium)',
+        "MoneyUpWidgetEntry.preview(content: .quickAction)",
+        "MoneyUpWidgetEntry.preview(content: .smartOverview)",
+        "language: .english",
+        "language: .simplifiedChinese",
+    )
+    deprecated_preview_markers = (
+        "PreviewProvider",
+        "WidgetPreviewContext",
+        ".previewContext(",
+    )
+    if (
+        accessibility_preview is None
+        or any(
+            marker not in accessibility_preview
+            for marker in accessibility_preview_contract
+        )
+        or source.count("#Preview(") < 8
+        or any(marker not in source for marker in modern_preview_contract)
+        or any(marker in source for marker in deprecated_preview_markers)
+    ):
+        errors.append(
+            "widget previews must use modern macros and cover reduced-density "
+            "AX5 Home layouts in English and Simplified Chinese"
+        )
 
     configuration = declaration_body(
         source,
@@ -1327,6 +1758,579 @@ def validate_widget_source(source: str) -> list[str]:
                 errors.append(
                     "budget status must remain passive; found " + forbidden
                 )
+        body = declaration_body(budget_body, "var body: some View")
+        normalized_body = normalized_swift_body(body)
+        state_contracts = [
+            (
+                ".disabled",
+                'detail: "widget.budget_enable", '
+                'compactDetail: "widget.budget_disabled_short"',
+            ),
+            (
+                ".needsBudget(_)",
+                'detail: "widget.budget_needs_plan", '
+                'compactDetail: "widget.budget_needs_plan_short"',
+            ),
+            (
+                ".zeroBudget(_)",
+                'detail: "widget.budget_zero_plan", '
+                'compactDetail: "widget.budget_zero_plan_short"',
+            ),
+            (
+                ".negativeBudget(_)",
+                'detail: "widget.budget_negative_plan", '
+                'compactDetail: "widget.budget_negative_plan_short"',
+            ),
+            (
+                ".stale",
+                'detail: "widget.budget_stale", '
+                'compactDetail: "widget.budget_stale_short"',
+            ),
+        ]
+        expected_state_labels = [
+            "disabled", "needsBudget", "zeroBudget", "negativeBudget",
+            "stale", "available",
+        ]
+        state_labels = [] if body is None else re.findall(
+            r"case\s+(?:let\s+)?\.([A-Za-z][A-Za-z0-9]*)",
+            body,
+        )
+        state_contract_is_complete = state_labels == expected_state_labels
+        for state, arguments in state_contracts:
+            state_contract_is_complete = state_contract_is_complete and (
+                f"case {state}: statusMessage( title: \"widget.budget_status\", "
+                f"{arguments}"
+            ) in normalized_body
+        state_contract_is_complete = state_contract_is_complete and (
+            "case let .available(percentUsed, _): "
+            "availableStatus(percentUsed: percentUsed)"
+        ) in normalized_body
+        if not state_contract_is_complete:
+            errors.append(
+                "budget status must preserve distinct disabled, needs-budget, "
+                "zero-budget, negative-budget, stale, and available state guidance"
+            )
+
+        expected_available_families = [
+            "systemSmall", "systemMedium", "accessoryCircular",
+            "accessoryInline", "accessoryRectangular",
+        ]
+        available = declaration_body(budget_body, "private func availableStatus")
+        available_families = [] if available is None else re.findall(
+            r"case\s+\.([A-Za-z][A-Za-z0-9]*)\s*:",
+            available,
+        )
+        available_markers = (
+            "let isOver = percentUsed > 100",
+            "percentAccessibility(percentUsed, isOver: isOver)",
+        )
+        available_family_markers = {
+            "systemSmall": (
+                "homeDensity.usesReducedBudgetStatus",
+                "accessibilityAvailableStatus(",
+                "smallAvailableStatus(percentUsed: percentUsed, isOver: isOver)",
+            ),
+            "systemMedium": (
+                "homeDensity.usesReducedBudgetStatus",
+                "accessibilityAvailableStatus(",
+                "mediumAvailableStatus(percentUsed: percentUsed, isOver: isOver)",
+            ),
+            "accessoryCircular": (
+                "Gauge(value: min(Double(percentUsed), 100), in: 0...100)",
+                ".gaugeStyle(.accessoryCircularCapacity)",
+                "percentAccessibility(percentUsed, isOver: isOver)",
+            ),
+            "accessoryInline": (
+                "Text(visiblePercentUsed(percentUsed))",
+                "percentAccessibility(percentUsed, isOver: isOver)",
+            ),
+            "accessoryRectangular": (
+                "HStack(spacing: 8)",
+                'LocalizedStringKey("widget.budget_over")',
+                'LocalizedStringKey("widget.budget_on_plan")',
+                "percentAccessibility(percentUsed, isOver: isOver)",
+            ),
+        }
+        available_family_contract_is_complete = all(
+            (section := simple_switch_case_body(available, family)) is not None
+            and all(marker in section for marker in markers)
+            for family, markers in available_family_markers.items()
+        )
+        small_available = declaration_body(
+            budget_body,
+            "private func smallAvailableStatus",
+        )
+        medium_available = declaration_body(
+            budget_body,
+            "private func mediumAvailableStatus",
+        )
+        accessibility_available = declaration_body(
+            budget_body,
+            "private func accessibilityAvailableStatus",
+        )
+        percent_accessibility = declaration_body(
+            budget_body,
+            "private func percentAccessibility",
+        )
+        shared_available_contract_is_complete = (
+            small_available is not None
+            and 'LocalizedStringKey("widget.budget_over")' in small_available
+            and 'LocalizedStringKey("widget.budget_on_plan")' in small_available
+            and "percentAccessibility(percentUsed, isOver: isOver)"
+                in small_available
+            and medium_available is not None
+            and 'LocalizedStringKey("widget.budget_over")' in medium_available
+            and 'LocalizedStringKey("widget.budget_on_plan")' in medium_available
+            and "percentAccessibility(percentUsed, isOver: isOver)"
+                in medium_available
+            and accessibility_available is not None
+            and 'LocalizedStringKey("widget.budget_over")'
+                in accessibility_available
+            and 'LocalizedStringKey("widget.budget_on_plan")'
+                in accessibility_available
+            and ".minimumScaleFactor(" not in accessibility_available
+            and percent_accessibility is not None
+            and 'AppLocalization.string("widget.budget_over", language: language)'
+                in percent_accessibility
+            and 'AppLocalization.string("widget.budget_on_plan", language: language)'
+                in percent_accessibility
+        )
+        if (
+            available_families != expected_available_families
+            or available is None
+            or any(marker not in available for marker in available_markers)
+            or not available_family_contract_is_complete
+            or not shared_available_contract_is_complete
+        ):
+            errors.append(
+                "budget status available and over-plan states must route every "
+                "supported Home and Lock Screen family"
+            )
+
+        expected_message_families = [
+            "systemSmall", "systemMedium", "accessoryInline",
+            "accessoryCircular", "accessoryRectangular",
+        ]
+        status_message = declaration_body(budget_body, "private func statusMessage")
+        message_families = [] if status_message is None else re.findall(
+            r"case\s+\.([A-Za-z][A-Za-z0-9]*)\s*:",
+            status_message,
+        )
+        message_markers = (
+            "Text(detail)",
+            "Label(compactDetail, systemImage: systemImage)",
+            ".accessibilityLabel(compactDetail)",
+            "Text(compactDetail)",
+        )
+        message_family_markers = {
+            "systemSmall": (
+                "homeDensity.usesReducedBudgetStatus",
+                "Label(compactDetail, systemImage: systemImage)",
+                "WidgetBrandHeader()",
+                "Text(detail)",
+            ),
+            "systemMedium": (
+                "homeDensity.usesReducedBudgetStatus",
+                "Label(compactDetail, systemImage: systemImage)",
+                "HStack(spacing: 14)",
+                "Text(detail)",
+            ),
+            "accessoryInline": (
+                "Label(compactDetail, systemImage: systemImage)",
+            ),
+            "accessoryCircular": (".accessibilityLabel(compactDetail)",),
+            "accessoryRectangular": ("Text(title)", "Text(compactDetail)"),
+        }
+        message_family_contract_is_complete = all(
+            (section := simple_switch_case_body(status_message, family)) is not None
+            and all(marker in section for marker in markers)
+            for family, markers in message_family_markers.items()
+        )
+        if (
+            message_families != expected_message_families
+            or status_message is None
+            or any(marker not in status_message for marker in message_markers)
+            or not message_family_contract_is_complete
+        ):
+            errors.append(
+                "budget status nonpercentage states must route every supported "
+                "Home and Lock Screen family with full or compact guidance"
+            )
+    return errors
+
+
+def validate_smart_overview_widget_source(source: str) -> list[str]:
+    """Pin the passive family routing and state-specific recovery guidance."""
+    errors: list[str] = []
+    overview = declaration_body(source, "struct SmartOverviewWidgetView")
+    if overview is None:
+        return ["SmartOverviewWidgetView is missing or malformed"]
+
+    body = declaration_body(overview, "var body: some View")
+    expected_routes = [
+        ("systemSmall", "systemSmall"),
+        ("systemMedium", "systemMedium"),
+        ("accessoryInline", "accessoryInline"),
+        ("accessoryCircular", "accessoryCircular"),
+        ("accessoryRectangular", "accessoryRectangular"),
+    ]
+    routed_families = [] if body is None else re.findall(
+        r"case\s+\.([A-Za-z][A-Za-z0-9]*)\s*:\s*"
+        r"([A-Za-z][A-Za-z0-9]*)",
+        body,
+    )
+    if routed_families != expected_routes:
+        errors.append(
+            "Smart Overview body must explicitly route every supported Home "
+            f"and Lock Screen family; found {routed_families}"
+        )
+
+    mapping = declaration_body(overview, "private static func presentationFamily")
+    expected_mappings = [
+        ("systemSmall", "systemSmall"),
+        ("systemMedium", "systemMedium"),
+        ("accessoryInline", "accessoryInline"),
+        ("accessoryCircular", "accessoryCircular"),
+        ("accessoryRectangular", "accessoryRectangular"),
+    ]
+    mapped_families = [] if mapping is None else re.findall(
+        r"case\s+\.([A-Za-z][A-Za-z0-9]*)\s*:\s*"
+        r"return\s+\.([A-Za-z][A-Za-z0-9]*)",
+        mapping,
+    )
+    if mapped_families != expected_mappings:
+        errors.append(
+            "Smart Overview WidgetFamily mapping must preserve every reviewed "
+            f"family; found {mapped_families}"
+        )
+
+    unavailable = declaration_body(
+        overview,
+        "private var unavailableBudgetMessage: some View",
+    )
+    unavailable_contract = (
+        "presentation.budget.requiresSettingsEnablement",
+        '"widget.smart_enable"',
+        '"widget.smart_open_app"',
+        '"widget.smart_enable_short"',
+        '"widget.smart_refresh_short"',
+    )
+    if unavailable is None or any(
+        marker not in unavailable for marker in unavailable_contract
+    ):
+        errors.append(
+            "Smart Overview must distinguish disabled Settings guidance from "
+            "stale open-to-refresh guidance in every compact layout"
+        )
+
+    inline = declaration_body(overview, "private var accessoryInline: some View")
+    inline_contract = (
+        "presentation.budget.requiresSettingsEnablement",
+        "presentation.budget.canRefreshByOpeningApp",
+        '"widget.smart_enable_short"',
+        '"widget.smart_refresh_short"',
+    )
+    circular = declaration_body(
+        overview,
+        "private var accessoryCircular: some View",
+    )
+    circular_contract = (
+        "case .disabled:",
+        'accessibilityLabel("widget.smart_enable_short")',
+        "case .stale:",
+        'accessibilityLabel("widget.smart_open_app")',
+    )
+    if (
+        inline is None
+        or any(marker not in inline for marker in inline_contract)
+        or circular is None
+        or any(marker not in circular for marker in circular_contract)
+    ):
+        errors.append(
+            "Smart Overview Lock Screen layouts must keep disabled and stale "
+            "recovery guidance distinct"
+        )
+
+    budget_value = declaration_body(overview, "private var budgetValue: String")
+    nonpercentage_contract = (
+        "case .zeroBudget:",
+        'AppLocalization.string("widget.smart_budget_zero")',
+        "case .negativeBudget:",
+        'AppLocalization.string("widget.smart_budget_negative")',
+    )
+    if budget_value is None or any(
+        marker not in budget_value for marker in nonpercentage_contract
+    ):
+        errors.append(
+            "Smart Overview must distinguish zero and negative budgets without "
+            "inventing a percentage"
+        )
+
+    budget_accessibility = declaration_body(
+        overview,
+        "private var budgetAccessibilityValue: String",
+    )
+    if (
+        budget_accessibility is None
+        or re.search(
+            r"case\s+\.disabled\s*:\s*return\s+"
+            r"AppLocalization\.string\(\"widget\.smart_enable\"\)",
+            budget_accessibility,
+            flags=re.DOTALL,
+        )
+        is None
+        or re.search(
+            r"case\s+\.stale\s*:\s*return\s+"
+            r"AppLocalization\.string\(\"widget\.smart_open_app\"\)",
+            budget_accessibility,
+            flags=re.DOTALL,
+        )
+        is None
+    ):
+        errors.append(
+            "Smart Overview accessibility must expose Settings for disabled "
+            "and open-app refresh for stale data"
+        )
+
+    system_small = declaration_body(
+        overview,
+        "private var systemSmall: some View",
+    )
+    system_medium = declaration_body(
+        overview,
+        "private var systemMedium: some View",
+    )
+    accessible_small = declaration_body(
+        overview,
+        "private var systemSmallAccessibility: some View",
+    )
+    accessible_medium = declaration_body(
+        overview,
+        "private var systemMediumAccessibility: some View",
+    )
+    density_contract_is_complete = (
+        "homeDensity: MoneyUpWidgetHomeDensity = .standard" in overview
+        and "homeDensity: homeDensity" in overview
+        and system_small is not None
+        and "presentation.homeDensity == .accessibility" in system_small
+        and "systemSmallAccessibility" in system_small
+        and system_medium is not None
+        and "presentation.homeDensity == .accessibility" in system_medium
+        and "systemMediumAccessibility" in system_medium
+        and accessible_small is not None
+        and ".minimumScaleFactor(" not in accessible_small
+        and accessible_medium is not None
+        and ".minimumScaleFactor(" not in accessible_medium
+    )
+    if not density_contract_is_complete:
+        errors.append(
+            "Smart Overview must replace fixed Home grids with reduced-density "
+            "accessibility layouts"
+        )
+
+    for forbidden in ("Button(", "Link(", "OpenQuickLogIntent", ".widgetURL("):
+        if forbidden in overview:
+            errors.append(
+                "Smart Overview must remain passive; found " + forbidden
+            )
+    return errors
+
+
+def validate_app_localization_source(source: str) -> list[str]:
+    """Keep widget language reads inside the declared App Group boundary."""
+    errors: list[str] = []
+    if re.search(r"UserDefaults\.standard|\?\?\s*\.standard", source):
+        errors.append(
+            "shared localization must not fall back to extension standard defaults"
+        )
+    current = declaration_body(source, "static var current")
+    resolver = declaration_body(source, "static func resolved(")
+    if (
+        "static var defaults: UserDefaults?" not in source
+        or "suiteName: BudgetWidgetSnapshotStore.appGroupIdentifier" not in source
+        or current is None
+        or "resolved(from: defaults)" not in current
+        or resolver is None
+        or "defaults?.string(forKey: storageKey)" not in resolver
+        or "?? .system" not in resolver
+    ):
+        errors.append(
+            "unavailable App Group localization must resolve to system language"
+        )
+    return errors
+
+
+def validate_widget_snapshot_source(source: str) -> list[str]:
+    """Validate the reviewed, record-free App Group schema-v4 boundary."""
+    errors: list[str] = []
+    if source.count("static let currentSchemaVersion = 4") != 1:
+        errors.append("widget snapshot must remain schema version 4")
+    if source.count(
+        'static let payloadKey = "moneyUp.widget.snapshot.v4"'
+    ) != 1:
+        errors.append("widget snapshot must retain its single version-4 payload key")
+    if (
+        "static var allowedPersistedKeys: Set<String> { [payloadKey] }"
+        not in source
+    ):
+        errors.append("widget snapshot persisted-key allowlist must contain only payloadKey")
+    if source.count("_ snapshot: BudgetWidgetSnapshot,") != 1:
+        errors.append(
+            "widget publication must distinguish disabled, stale, no-budget, "
+            "zero/negative-budget, and percentage"
+        )
+
+    insights = declaration_body(source, "struct PersistedInsights")
+    if insights is None:
+        errors.append("widget snapshot PersistedInsights schema is missing or malformed")
+    else:
+        properties = re.findall(
+            r"(?m)^\s*var\s+([A-Za-z][A-Za-z0-9]*)\s*:\s*([^\n=]+)",
+            insights,
+        )
+        normalized = [(name, value.strip()) for name, value in properties]
+        expected = [
+            ("reviewCount", "Int?"),
+            ("allowancePercentRemaining", "Int?"),
+            ("activeCommitmentCount", "Int"),
+            ("daysUntilNextCommitment", "Int?"),
+            ("validUntil", "Date"),
+        ]
+        if normalized != expected:
+            errors.append(
+                "widget insights must retain only reviewed bounded derivatives; "
+                f"found {normalized}"
+            )
+
+    snapshot = declaration_body(source, "struct PersistedSnapshot")
+    if snapshot is None:
+        errors.append("widget PersistedSnapshot schema is missing or malformed")
+    else:
+        properties = re.findall(
+            r"(?m)^\s*var\s+([A-Za-z][A-Za-z0-9]*)\s*:\s*([^\n=]+)",
+            snapshot,
+        )
+        normalized = [(name, value.strip()) for name, value in properties]
+        expected = [
+            ("schemaVersion", "Int"),
+            ("enabled", "Bool"),
+            ("budgetState", "BudgetState"),
+            ("percentUsed", "Int?"),
+            ("periodToken", "String?"),
+            ("budgetValidUntil", "Date?"),
+            ("insights", "PersistedInsights?"),
+        ]
+        if normalized != expected:
+            errors.append(
+                "widget snapshot must retain only reviewed status and insight fields; "
+                f"found {normalized}"
+            )
+
+    write = "defaults.set(data, forKey: Self.payloadKey)"
+    if source.count("defaults.set(") != 1 or source.count(write) != 1:
+        errors.append(
+            "widget snapshot must use one version-4 App Group write through payloadKey"
+        )
+    required_migration_markers = [
+        "guard version <= 3",
+        "guard version >= 1 else { return .disabled }",
+        "guard version >= 2 else { return .stale }",
+        'key.hasPrefix("budgetStatus.") || key.hasPrefix("widget.")',
+        "daysUntilNextCommitment: nil",
+    ]
+    for marker in required_migration_markers:
+        if marker not in source:
+            errors.append(f"widget snapshot migration is missing {marker}")
+
+    publish = declaration_body(source, "func publish(")
+    sanitizer = declaration_body(source, "private static func sanitized(")
+    budget_sanitizer = declaration_body(
+        source,
+        "private static func sanitizedBudgetState",
+    )
+    count_guard = declaration_body(
+        source,
+        "private static func hasValidInsightCounts",
+    )
+    negative_contract = (
+        publish is not None
+        and "guard Self.hasValidInsightShape(insights)" in publish
+        and "percentUsed >= 0" in publish
+        and sanitizer is not None
+        and "hasValidInsightCounts(" in sanitizer
+        and budget_sanitizer is not None
+        and "percentUsed >= 0" in budget_sanitizer
+        and count_guard is not None
+        and "reviewCount.map { $0 >= 0 }" in count_guard
+        and "allowancePercentRemaining.map { $0 >= 0 }" in count_guard
+        and "activeCommitmentCount >= 0" in count_guard
+        and "daysUntilNextCommitment.map { $0 >= 0 }" in count_guard
+    )
+    if not negative_contract:
+        errors.append(
+            "widget snapshot must reject negative current derivatives before "
+            "positive overflow bounding"
+        )
+
+    current_record = declaration_body(source, "private func currentRecord")
+    migration = declaration_body(source, "func migrateIfNeeded")
+    corrupt_contract = (
+        current_record is not None
+        and "let data = defaults.data(forKey: Self.payloadKey)" in current_record
+        and "guard let decoded = decodedRecord(from: data) else" in current_record
+        and "return .stale" in current_record
+        and migration is not None
+        and "if let data = defaults.data(forKey: Self.payloadKey)" in migration
+        and "decodedRecord(from: data)" in migration
+        and "persist(.stale, to: defaults)" in migration
+    )
+    if not corrupt_contract:
+        errors.append(
+            "present corrupt or future widget payloads must be stale while an "
+            "absent payload remains disabled"
+        )
+
+    canonical_disabled_contract = (
+        sanitizer is not None
+        and "return value == .disabled ? .disabled : .stale" in sanitizer
+        and "guard value.budgetState != .disabled else { return .stale }"
+            in sanitizer
+    )
+    if not canonical_disabled_contract:
+        errors.append(
+            "only the canonical empty disabled widget record may render as opt-out"
+        )
+
+    bounded_decode = declaration_body(
+        source,
+        "private func decodedRecord(from data: Data)",
+    )
+    period_token = declaration_body(
+        source,
+        "private static func isValidPeriodToken",
+    )
+    bounded_payload_contract = (
+        "static let maximumPayloadByteCount = 4_096" in source
+        and bounded_decode is not None
+        and "data.count <= Self.maximumPayloadByteCount" in bounded_decode
+        and "decoder.decode(PersistedSnapshot.self, from: data)" in bounded_decode
+    )
+    if not bounded_payload_contract:
+        errors.append(
+            "widget payload bytes must be capped before version-4 JSON decoding"
+        )
+    bounded_period_contract = (
+        period_token is not None
+        and "token.utf8.count == 7" in period_token
+        and "(1...9_999).contains(year)" in period_token
+        and "(1...12).contains(month)" in period_token
+        and 'String(format: "%04d-%02d", year, month)' in period_token
+        and "regularExpression" not in period_token
+    )
+    if not bounded_period_contract:
+        errors.append(
+            "widget period token must be one canonical bounded YYYY-MM value"
+        )
     return errors
 
 
@@ -1518,6 +2522,14 @@ def validate_localization_catalogs(root: Path) -> list[str]:
             if values is None:
                 errors.append(f"{path.relative_to(root)}:{key} is not bilingual")
                 continue
+            if (
+                key == "platform_action.capture_without_unlock"
+                and values != PREFERENCE_NEUTRAL_CAPTURE_HINTS
+            ):
+                errors.append(
+                    f"{path.relative_to(root)}:{key} must not promise that "
+                    "capture bypasses the user's unlock preference"
+                )
             for value in values:
                 if "%" in value or "${" in value:
                     errors.append(
@@ -1632,12 +2644,34 @@ def validate_identity_and_capture_boundary(root: Path) -> list[str]:
 
     capture_path = root / "App/MoneyUp/LockedCaptureStore.swift"
     try:
+        capture_source = capture_path.read_text(encoding="utf-8")
         capture_digest = hashlib.sha256(capture_path.read_bytes()).hexdigest()
     except OSError as error:
         errors.append(f"cannot read locked-capture store: {error}")
     else:
         if capture_digest != LOCKED_CAPTURE_STORE_SHA256:
             errors.append("LockedCaptureStore.swift changed outside the reviewed W7 scope")
+        capture_required = (
+            "static let durableWriteOptions: Data.WritingOptions = [",
+            ".completeFileProtectionUntilFirstUserAuthentication",
+            "try combined.write(to: url, options: Self.durableWriteOptions)",
+            "try Self.enforceDurableFileProtection(at: url)",
+            "FileProtectionType.completeUntilFirstUserAuthentication",
+        )
+        for declaration in capture_required:
+            if declaration not in capture_source:
+                errors.append(
+                    "locked-capture first-unlock protection is missing "
+                    + declaration
+                )
+        if (
+            ".completeFileProtectionUnlessOpen" in capture_source
+            or "attributesOfItem" in capture_source
+        ):
+            errors.append(
+                "locked-capture protection must migrate without legacy writes "
+                "or production metadata reads"
+            )
     return errors
 
 
@@ -1663,11 +2697,14 @@ def validate_release_gates(root: Path) -> list[str]:
             "Budget status",
             "Control Center",
             "locked-capture",
-            "bounded 16-action process-local FIFO",
+            "durable **at-least-once ingress",
+            "4,096 bytes",
+            "first-unlock file protection",
+            "OS invocation identifier",
             "transient startup work",
-            "newest action is rejected",
-            "discards the entire in-memory",
-            "process-local boundary epoch",
+            "newest invocation is rejected",
+            "discards the entire old-book FIFO",
+            "persist a closed-admission boundary",
             "generation-bound",
             "supportedModes",
         ],
@@ -1714,6 +2751,10 @@ def validate_repository(root: Path = ROOT) -> list[str]:
             validate_model_validation_handoff_source,
         ),
         (
+            "App/MoneyUp/AppModelQuickActionIngress.swift",
+            validate_model_quick_action_ingress_source,
+        ),
+        (
             "App/MoneyUp/QuickLogSheet.swift",
             validate_log_handoff_source,
         ),
@@ -1736,6 +2777,18 @@ def validate_repository(root: Path = ROOT) -> list[str]:
         (
             "App/MoneyUpWidget/MoneyUpWidget.swift",
             validate_widget_source,
+        ),
+        (
+            "App/MoneyUpWidget/SmartOverviewWidgetView.swift",
+            validate_smart_overview_widget_source,
+        ),
+        (
+            "App/Shared/AppLocalization.swift",
+            validate_app_localization_source,
+        ),
+        (
+            "App/Shared/BudgetWidgetSnapshot.swift",
+            validate_widget_snapshot_source,
         ),
         (
             "App/MoneyUpWidget/MoneyUpQuickLogControl.swift",
@@ -1801,8 +2854,9 @@ def main() -> int:
             print(f"error: {error}", file=sys.stderr)
         return 1
     print(
-        "Validated six exact quick-log routes, bounded in-memory action-only FIFO, "
-        "passive budget status, bilingual metadata, and preserved release identity"
+        "Validated six exact quick-log routes, bounded durable data-free ingress "
+        "with exact-token acknowledgement, passive budget status, bilingual "
+        "metadata, and preserved release identity"
     )
     return 0
 

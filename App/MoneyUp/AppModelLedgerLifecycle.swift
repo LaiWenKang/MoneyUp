@@ -17,7 +17,8 @@ extension AppModel {
         defer { endJournalMutation() }
         let normalizedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedName.isEmpty else { throw AppModelError.emptyName }
-        if type.isLiabilityAccount, startingBalance < .zero {
+        if (type.isLiabilityAccount || type == .restrictedAllowance),
+           startingBalance < .zero {
             throw AppModelError.negativeAmount
         }
         let currency = try CurrencyCode(currencyCode)
@@ -183,7 +184,8 @@ extension AppModel {
 
     func compatibleLifecycleTargets(for id: UUID) -> [LedgerAccount] {
         guard let source = accounts.first(where: { $0.id == id }),
-              source.systemRole == nil else { return [] }
+              source.systemRole == nil,
+              source.accountType != .restrictedAllowance else { return [] }
         let fundsInvestmentHolding = investmentHoldings.contains {
             $0.accountID == source.id
         }
@@ -193,6 +195,7 @@ extension AppModel {
                 && !$0.isArchived
                 && $0.kind == source.kind
                 && $0.currency == source.currency
+                && $0.accountType != .restrictedAllowance
                 && (!fundsInvestmentHolding
                     || isInvestmentFundingAccountShape($0))
         }
@@ -630,13 +633,19 @@ extension AppModel {
         if account.kind == .liability, displayBalance < .zero {
             throw AppModelError.negativeAmount
         }
-        let current: Decimal
-        switch displayBalanceResult(for: account) {
-        case let .available(balance):
-            current = balance.amount
-        case let .unavailable(issue):
-            throw issue
-        }
+        let adjustmentDate = currentDateForUserAction()
+        let generation = storeGeneration
+        let bookRevision = logicalBookRevision
+        let projectionRevision = journalProjectionRevision
+        let balanceStore = try requireStore()
+        let current = try await currentBalanceForAdjustment(
+            account: account,
+            asOf: adjustmentDate,
+            store: balanceStore,
+            generation: generation,
+            bookRevision: bookRevision,
+            projectionRevision: projectionRevision
+        )
         try requireValidNewWriteAmount(
             displayBalance,
             currency: currency,
@@ -644,6 +653,11 @@ extension AppModel {
         )
         let delta = try CheckedDecimal.subtracting(displayBalance, current)
         guard delta != .zero else { return }
+        if account.accountType == .restrictedAllowance {
+            guard current >= .zero, delta >= .zero else {
+                throw AppModelError.invalidAllowance
+            }
+        }
         try requireValidNewWriteAmount(delta, currency: currency)
 
         let equity = openingBalancesAccount()
@@ -653,6 +667,7 @@ extension AppModel {
             accountID: account.id,
             equityAccountID: equity.id,
             accountIsLiability: account.kind == .liability,
+            occurredAt: adjustmentDate,
             note: AppLocalization.string("account.balance_adjustment_note")
         )
         let entry = try appAuthoredEntry(candidate)
@@ -665,17 +680,51 @@ extension AppModel {
             )
         }
 
-        let generation = storeGeneration
-        let balanceStore = try requireStore()
+        if account.accountType == .restrictedAllowance {
+            try await requireNonnegativeRestrictedBalances(
+                afterRemoving: nil,
+                adding: entry,
+                in: balanceStore
+            )
+        }
         invalidateCommittedJournalProjection()
         await lifecycleHooks.checkpoint(
             .afterJournalProjectionInvalidationBeforeCommit
         )
         try await balanceStore.write(writes)
-        guard isCurrentStoreGeneration(generation) else { return }
+        guard isCurrentStoreGeneration(generation),
+              logicalBookRevision == bookRevision,
+              journalProjectionRevision == projectionRevision else { return }
         if shouldAddEquity { accounts.append(equity) }
         if retainsCompleteJournal { entries.insert(entry, at: 0) }
         await refreshJournalAfterMutation()
+    }
+
+    private func currentBalanceForAdjustment(
+        account: LedgerAccount,
+        asOf date: Date,
+        store: EncryptedRecordStore,
+        generation: Int,
+        bookRevision: UInt64,
+        projectionRevision: UInt64
+    ) async throws -> Decimal {
+        guard account.accountType == .restrictedAllowance else {
+            switch displayBalanceResult(for: account) {
+            case let .available(balance): return balance.amount
+            case let .unavailable(issue): throw issue
+            }
+        }
+        let balance = try await restrictedAllowanceBalance(
+            for: account,
+            asOf: date,
+            in: store
+        )
+        guard ownsStoreGeneration(generation),
+              logicalBookRevision == bookRevision,
+              journalProjectionRevision == projectionRevision else {
+            throw AppModelError.locked
+        }
+        return balance.amount
     }
 
     func planningReferenceCount(to id: UUID) -> Int {
@@ -686,7 +735,11 @@ extension AppModel {
                 count += 1
             }
         } + allowancePlans.reduce(into: 0) { count, plan in
-            if plan.eligibleCategoryIDs.contains(id)
+            if plan.linkedAccountID == id
+                || plan.eligibleCategoryIDs.contains(id)
+                || plan.policyRevisions.contains(where: {
+                    $0.eligibleCategoryIDs.contains(id)
+                })
                 || plan.usages.contains(where: { $0.categoryID == id }) {
                 count += 1
             }

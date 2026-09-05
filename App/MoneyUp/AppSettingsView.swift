@@ -145,28 +145,6 @@ struct AppSettingsView: View {
             }
 
             Section {
-                Toggle(
-                    "settings.tab_swipe",
-                    isOn: Binding(
-                        get: {
-                            bindableModel.profile?.enablesTabSwipeNavigation ?? false
-                        },
-                        set: { enabled in
-                            Task {
-                                await update {
-                                    try await bindableModel.updateTabSwipeNavigation(enabled)
-                                }
-                            }
-                        }
-                    )
-                )
-            } header: {
-                Text("settings.navigation")
-            } footer: {
-                MoneyUpExplainer("settings.tab_swipe_detail")
-            }
-
-            Section {
                 Toggle("settings.hide_amounts", isOn: $hidesAmounts)
                     .accessibilityHint("settings.hide_amounts_detail")
 
@@ -241,7 +219,9 @@ struct AppSettingsView: View {
                     )
                 ) {
                     Text("settings.smart_default").tag(Optional<UUID>.none)
-                    ForEach(bindableModel.userAccounts) { account in
+                    ForEach(bindableModel.userAccounts.filter {
+                        $0.accountType != .restrictedAllowance
+                    }) { account in
                         Text(accountCurrencyLabel(account)).tag(Optional(account.id))
                     }
                 }

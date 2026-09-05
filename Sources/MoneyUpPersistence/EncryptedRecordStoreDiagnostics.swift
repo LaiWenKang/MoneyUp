@@ -5,7 +5,8 @@ import SQLCipher
 extension EncryptedRecordStore {
     public func journalLedgerIndex(
         validAccountIDs: Set<UUID>,
-        expectedAccountCurrencies: [UUID: CurrencyCode] = [:]
+        expectedAccountCurrencies: [UUID: CurrencyCode] = [:],
+        excludingEntryIDs: Set<UUID> = []
     ) throws -> JournalLedgerIndexSnapshot {
         let validIDs = Set(validAccountIDs.map(\.uuidString))
         let expectedCurrencies = Dictionary(
@@ -14,10 +15,18 @@ extension EncryptedRecordStore {
             }
         )
         let missingIndexIDs = try connection.fetchUnindexedJournalRecordIDs()
-        let invalidEntryStrings = try invalidJournalEntryStrings(
+        let structurallyInvalidEntryStrings = try invalidJournalEntryStrings(
             validAccountIDs: validIDs,
             expectedAccountCurrencies: expectedCurrencies,
             missingIndexIDs: missingIndexIDs
+        )
+        let existingExcludedEntryStrings = Set(
+            try connection.fetchExistingJournalEntryIDs(
+                excludingEntryIDs.map(\.uuidString)
+            )
+        )
+        let invalidEntryStrings = structurallyInvalidEntryStrings.union(
+            existingExcludedEntryStrings
         )
         // Exact Decimal subtraction is needed only for quarantined entries.
         // Healthy books therefore materialize zero historical posting rows.
@@ -43,7 +52,7 @@ extension EncryptedRecordStore {
         )
         let issues = missingIndexIDs.map {
             RecordDecodeIssue(collection: .journalEntries, recordID: $0)
-        } + invalidEntryStrings.sorted().map {
+        } + structurallyInvalidEntryStrings.sorted().map {
             RecordDecodeIssue(collection: .journalEntries, recordID: $0)
         }
         connection.lastJournalLedgerReadDiagnostics = JournalLedgerReadDiagnostics(
@@ -54,7 +63,7 @@ extension EncryptedRecordStore {
         return JournalLedgerIndexSnapshot(
             entryCount: try connection.count(
                 collection: RecordCollection.journalEntries.rawValue
-            ) - missingIndexIDs.count - invalidEntryStrings.count,
+            ) - Set(missingIndexIDs).union(invalidEntryStrings).count,
             balances: balances,
             referenceCounts: referenceCounts,
             issues: issues,
@@ -211,6 +220,24 @@ extension EncryptedRecordStore {
 
     public func storageMetrics() throws -> DatabaseStorageMetrics {
         try connection.storageMetrics()
+    }
+
+    /// Reduces raw records under this store actor's isolation without ever
+    /// materializing the complete database snapshot. The synchronous reducer
+    /// receives one bounded row at a time in stable physical-key order; it
+    /// cannot suspend or interleave a store mutation while its cursor is open.
+    public func reduceStoredRecords<State: Sendable>(
+        into initialState: State,
+        _ updateAccumulatingResult: @Sendable (
+            inout State,
+            StoredRecordSnapshot,
+            Int
+        ) throws -> Void
+    ) throws -> State {
+        try connection.reduceAllRecords(
+            into: initialState,
+            updateAccumulatingResult
+        )
     }
 
     /// Creates the current portable archive directly from the encrypted SQL

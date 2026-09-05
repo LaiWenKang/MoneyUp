@@ -39,18 +39,15 @@ extension AppModel {
     ) async throws {
         let isResuming = KeyCliffRecoveryTransaction
             .hasPendingManifest(for: databaseURL)
-        let quickActionBoundaryEpoch: UInt64?
-        if isResuming {
-            quickActionBoundaryEpoch = beginAuthoritativeQuickActionBoundary()
-        } else {
-            quickActionBoundaryEpoch = nil
-        }
+        let quickActionBoundaryEpoch = try quickActionBoundaryForKeyCliffResume(
+            isResuming
+        )
+        var quickActionRecoveryWasValidated = false
         defer {
-            if let quickActionBoundaryEpoch {
-                quickActionRouteBroker.endAuthoritativeBoundary(
-                    quickActionBoundaryEpoch
-                )
-            }
+            finishQuickActionBoundary(
+                quickActionBoundaryEpoch,
+                validatedRecovery: quickActionRecoveryWasValidated
+            )
         }
         if isResuming {
             // The marker is a hard old-book/new-book boundary. Clear every
@@ -117,6 +114,14 @@ extension AppModel {
             }
             throw DatabaseKeyStoreError.missingDeviceBoundKey
         }
+        quickActionRecoveryWasValidated = isResuming
+    }
+
+    private func quickActionBoundaryForKeyCliffResume(
+        _ isResuming: Bool
+    ) throws -> UInt64? {
+        guard isResuming else { return nil }
+        return try beginAuthoritativeQuickActionBoundary()
     }
 
     /// Rebuilds a live book from the exact previewed ciphertext when the old
@@ -131,18 +136,16 @@ extension AppModel {
               case .failed = state else {
             throw AppModelError.locked
         }
-        requestedQuickLogMode = nil
-        disableBudgetWidgetSnapshot()
-        try beginLifecycleMutation(invalidatesJournalProjection: false)
-        isWorking = true
-        isBookReplacementInProgress = true
-        let quickActionBoundaryEpoch = beginAuthoritativeQuickActionBoundary()
+        let quickActionBoundaryEpoch = try beginKeyCliffRecoveryMutation()
+        var quickActionRecoveryWasValidated = false
         defer {
             finishBookReplacementMutation()
-            quickActionRouteBroker.endAuthoritativeBoundary(
-                quickActionBoundaryEpoch
+            finishQuickActionBoundary(
+                quickActionBoundaryEpoch,
+                validatedRecovery: quickActionRecoveryWasValidated
             )
         }
+        disableBudgetWidgetSnapshot()
 
         try await requireEmptyLockedCaptureInbox()
         try Task.checkCancellation()
@@ -202,6 +205,20 @@ extension AppModel {
             )
         }
         try await commitTask.value
+        quickActionRecoveryWasValidated = true
+    }
+
+    private func beginKeyCliffRecoveryMutation() throws -> UInt64 {
+        let epoch = try beginAuthoritativeQuickActionBoundary()
+        do {
+            try beginLifecycleMutation(invalidatesJournalProjection: false)
+        } catch {
+            quickActionRouteBroker.endAuthoritativeBoundary(epoch)
+            throw error
+        }
+        isWorking = true
+        isBookReplacementInProgress = true
+        return epoch
     }
 
     private func buildKeyCliffCandidate(
