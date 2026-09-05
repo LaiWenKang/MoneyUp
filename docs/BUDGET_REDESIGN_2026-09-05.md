@@ -72,7 +72,9 @@ and financial/planning references require reassignment or dependency review.
 - The local validator suite executed 65 tests successfully during development.
 - Initial commit `797497f` passed the iOS build and 582 app-target tests, plus the
   simulator performance job, in CI run `33962599596`. Package-test literal errors
-  and an alert-owner source-check failure from that run were subsequently fixed.
+  from that run were subsequently fixed. An alert-owner issue found locally was
+  also corrected. The historical audit source listing is retained as documentation,
+  outside the production Swift source inventory.
 - The expanded candidate adds domain, migration, persistence, preference, hierarchy
   and filter regressions. CI exports native SwiftUI render attachments for visual QA.
 

@@ -4,19 +4,10 @@ These files characterize existing behavior at commit
 `5b0ef2078ff2c15d76145ab3cdd9411ca9727336`. They are diagnostic evidence,
 not the proposed implementation or its acceptance tests.
 
-Run from the repository root:
-
-```sh
-swiftc Sources/MoneyUpCore/CurrencyCode.swift \
-  Sources/MoneyUpCore/CheckedDecimal.swift \
-  Sources/MoneyUpCore/Money.swift \
-  Sources/MoneyUpCore/FinancialPeriodBoundary.swift \
-  Sources/MoneyUpCore/BudgetPacing.swift \
-  Sources/MoneyUpCore/BudgetTree.swift \
-  docs/review-evidence/2026-09-05/main.swift \
-  -o /tmp/moneyup-budget-audit
-/tmp/moneyup-budget-audit
-```
+The historical probe is preserved as budget-semantics-probe.swift.txt, with its
+recorded output beside it. It describes the audited commit, not the redesigned
+implementation. Current executable regressions are in Tests/MoneyUpCoreTests
+and Tests/MoneyUpAppTests.
 
 The four hierarchy cases execute the actual core. The final merge example applies
 the addition operation from `AppModelLedgerValidation.swift` to core values;

@@ -21,8 +21,10 @@ public struct BudgetMonth: Codable, Hashable, Comparable, Sendable {
     }
 
     public init(containing date: Date, calendar: Calendar) throws {
-        let parts = calendar.dateComponents([.year, .month], from: date)
-        guard let year = parts.year, let month = parts.month else {
+        guard date.timeIntervalSinceReferenceDate.isFinite,
+              calendar.identifier == .gregorian else { throw MonthlyBudgetError.invalidMonth }
+        let parts = calendar.dateComponents([.era, .year, .month], from: date)
+        guard parts.era == 1, let year = parts.year, let month = parts.month else {
             throw MonthlyBudgetError.invalidMonth
         }
         try self.init(year: year, month: month)

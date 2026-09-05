@@ -52,7 +52,7 @@ struct BudgetEditorSheet: View {
                 allocationSection
                 if hasChildren {
                     Section {
-                        Picker("budget.allocation_mode", selection: Binding(get: { mode }, set: changeMode)) {
+                        Picker("budget.allocation_mode", selection: Binding(get: { mode }, set: { value in changeMode(value) })) {
                             Text("budget.mode.automatic").tag(BudgetAllocationMode.automatic)
                             Text("budget.mode.fixed_total").tag(BudgetAllocationMode.fixedTotal)
                         }

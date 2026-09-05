@@ -7,6 +7,10 @@ public enum BudgetModeConversion {
         _ current: Money?, children: Money?, from old: BudgetAllocationMode,
         to new: BudgetAllocationMode
     ) throws -> Money? {
+        guard current.map({ $0.amount >= .zero }) ?? true,
+              children.map({ $0.amount >= .zero }) ?? true else {
+            throw MonthlyBudgetError.invalidAllocation
+        }
         guard old != new, let children else { return current }
         switch new {
         case .automatic:

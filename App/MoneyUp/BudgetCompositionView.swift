@@ -41,7 +41,7 @@ struct BudgetCompositionView: View {
     }
 
     var body: some View {
-        let segments = segments
+        let segments = self.segments
         let selected = segments.first { $0.id == selectedID } ?? segments.first
         if !segments.isEmpty {
             VStack(alignment: .leading, spacing: 12) {

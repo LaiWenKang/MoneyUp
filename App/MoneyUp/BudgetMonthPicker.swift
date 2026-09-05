@@ -30,6 +30,7 @@ struct BudgetMonthPicker: View {
     private func move(by months: Int) {
         guard let start = calendar.dateInterval(of: .month, for: selection)?.start,
               let next = calendar.date(byAdding: .month, value: months, to: start),
+              calendar.component(.era, from: next) == 1,
               (1...9999).contains(calendar.component(.year, from: next)) else { return }
         selection = next
     }

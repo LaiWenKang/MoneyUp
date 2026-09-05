@@ -175,7 +175,7 @@ struct CategoryManagementSheet: View {
                 Picker("plan.purpose", selection: $recurringPurpose) {
                     ForEach(BudgetPurpose.allCases, id: \.self) { Text($0.titleKey).tag($0) }
                 }
-                Picker("budget.allocation_mode", selection: Binding(get: { recurringMode }, set: changeRecurringMode)) {
+                Picker("budget.allocation_mode", selection: Binding(get: { recurringMode }, set: { value in changeRecurringMode(value) })) {
                     Text("budget.mode.automatic").tag(BudgetAllocationMode.automatic)
                     Text("budget.mode.fixed_total").tag(BudgetAllocationMode.fixedTotal)
                 }

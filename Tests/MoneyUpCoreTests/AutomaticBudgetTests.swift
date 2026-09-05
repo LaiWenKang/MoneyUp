@@ -59,6 +59,8 @@ final class AutomaticBudgetTests: XCTestCase {
     }
 
     func testMonthAndCurrencyOverridesAreIndependentAndRoundTrip() throws {
+        XCTAssertThrowsError(try BudgetMonth(containing: Date(timeIntervalSince1970: .infinity), calendar: Calendar(identifier: .gregorian)))
+        XCTAssertThrowsError(try BudgetMonth(year: 0, month: 1))
         let sgd = try CurrencyCode("SGD"), usd = try CurrencyCode("USD")
         let september = try BudgetMonth(year: 2026, month: 9)
         let october = try BudgetMonth(year: 2026, month: 10)

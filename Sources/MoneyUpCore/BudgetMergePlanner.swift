@@ -100,7 +100,7 @@ public enum BudgetMergePlanner {
             hierarchy: hierarchy, affectedIDs: affectedIDs, general: general,
             source: category, targetID: categoryID, combined: nil, currency: currency, isMerge: false
         )
-        try validateRolloverScopes(before: nodes, after: result, affectedIDs: affectedIDs)
+        try validateRolloverScopes(before: nodes, after: result, affectedIDs: affectedIDs, movingID: categoryID)
         let after = try BudgetTree(currency: currency, nodes: result)
         guard try before.planSummary(directSpending: [:])?.limit
             == after.planSummary(directSpending: [:])?.limit else { throw BudgetMergeError.allocationMismatch }
@@ -196,28 +196,55 @@ public enum BudgetMergePlanner {
 
     public static func validateRolloverScopes(
         before: [BudgetNode], after: [BudgetNode], affectedIDs: Set<UUID>,
-        sourceID: UUID? = nil, targetID: UUID? = nil
+        sourceID: UUID? = nil, targetID: UUID? = nil, movingID: UUID? = nil
     ) throws {
-        let beforeByID = Dictionary(uniqueKeysWithValues: before.map { ($0.id, $0) })
-        let afterByID = Dictionary(uniqueKeysWithValues: after.map { ($0.id, $0) })
-        let oldRolling = Set(before.filter { $0.rolloverRule != .none }.map(\.id))
-        let newRolling = Set(after.filter { $0.rolloverRule != .none }.map(\.id))
+        let beforeByID = Dictionary(before.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let afterByID = Dictionary(after.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        guard beforeByID.count == before.count, afterByID.count == after.count else {
+            throw BudgetMergeError.allocationMismatch
+        }
+        let oldRolling = descendantRolloverCounts(nodes: before)
+        let newRolling = descendantRolloverCounts(nodes: after)
+        guard !oldRolling.isEmpty || !newRolling.isEmpty else { return }
+        let oldMembership: Set<UUID>
+        let newMembership: Set<UUID>
+        if let sourceID, let targetID {
+            oldMembership = ancestorIDs(of: sourceID, nodes: before)
+            newMembership = ancestorIDs(of: targetID, nodes: before)
+        } else if let movingID {
+            oldMembership = ancestorIDs(of: movingID, nodes: before)
+            newMembership = ancestorIDs(of: movingID, nodes: after)
+        } else {
+            guard beforeByID.mapValues(\.parentID) == afterByID.mapValues(\.parentID) else {
+                throw BudgetMergeError.allocationMismatch
+            }
+            oldMembership = []
+            newMembership = []
+        }
         for id in affectedIDs {
             let old = beforeByID[id], new = afterByID[id]
             let wasCap = old?.allocationMode == .fixedTotal && old?.limit != nil
             let isCap = new?.allocationMode == .fixedTotal && new?.limit != nil
-            guard wasCap || isCap else { continue }
-            let oldScope = wasCap ? relatedIDs(sourceID: id, targetID: id, nodes: before) : []
-            let newScope = isCap ? relatedIDs(sourceID: id, targetID: id, nodes: after) : []
-            let overlaps = !oldScope.subtracting([id]).isDisjoint(with: oldRolling)
-                || !newScope.subtracting([id]).isDisjoint(with: newRolling)
+            let overlaps = (wasCap && oldRolling[id, default: 0] > 0)
+                || (isCap && newRolling[id, default: 0] > 0)
             guard overlaps else { continue }
-            var remapped = oldScope
-            if let sourceID, let targetID, remapped.remove(sourceID) != nil { remapped.insert(targetID) }
-            guard wasCap, isCap, old?.limit == new?.limit, remapped == newScope else {
+            guard wasCap, isCap, old?.limit == new?.limit,
+                  oldMembership.contains(id) == newMembership.contains(id) else {
                 throw BudgetMergeError.rolloverRequiresReview
             }
         }
+    }
+
+    private static func descendantRolloverCounts(nodes: [BudgetNode]) -> [UUID: Int] {
+        var counts: [UUID: Int] = [:]
+        for item in BudgetOutline.items(nodes).reversed() {
+            let ownsCarry = item.node.limit != nil && item.node.rolloverRule != .none
+            let subtreeCount = counts[item.id, default: 0] + (ownsCarry ? 1 : 0)
+            if subtreeCount > 0, let parent = item.node.parentID {
+                counts[parent, default: 0] += subtreeCount
+            }
+        }
+        return counts
     }
 
     private static func reparented(source: BudgetNode, target: BudgetNode, nodes: [BudgetNode]) -> [BudgetNode] {
