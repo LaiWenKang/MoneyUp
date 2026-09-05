@@ -66,6 +66,7 @@ struct BudgetPlanView: View {
         .scrollContentBackground(.hidden)
         .background(Color.moneyUpBackground)
         .navigationTitle("plan.budget")
+        .navigationBarTitleDisplayMode(.inline)
         .task(id: loadIdentity) { await load() }
         .toolbar { toolbar }
         .sheet(item: $editingNode) { node in
@@ -81,18 +82,33 @@ struct BudgetPlanView: View {
 
     private var scopeSection: some View {
         Section {
-            BudgetMonthPicker(selection: Binding(
-                get: { selectedDate ?? now }, set: { selectedDate = $0 }
-            ), calendar: model.reportingCalendar)
-            SearchableCurrencyPicker(
-                title: "transaction.currency",
-                selection: Binding(
-                    get: { currency?.value ?? "" }, set: { currencyCode = $0 }
-                ), existing: model.budgetCurrencies
-            )
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 12) {
+                    monthPicker
+                    currencyPicker(compact: true)
+                }.fixedSize(horizontal: true, vertical: false)
+                VStack(spacing: 8) {
+                    monthPicker
+                    currencyPicker(compact: false)
+                }
+            }
         } footer: {
             MoneyUpExplainer("budget.scope_detail")
         }
+    }
+
+    private var monthPicker: some View {
+        BudgetMonthPicker(selection: Binding(
+            get: { selectedDate ?? now }, set: { selectedDate = $0 }
+        ), calendar: model.reportingCalendar)
+    }
+
+    private func currencyPicker(compact: Bool) -> some View {
+        SearchableCurrencyPicker(
+            title: "transaction.currency",
+            selection: Binding(get: { currency?.value ?? "" }, set: { currencyCode = $0 }),
+            existing: model.budgetCurrencies, compact: compact
+        )
     }
 
     @ViewBuilder
@@ -120,8 +136,10 @@ struct BudgetPlanView: View {
                 }
             }
             Section {
-                BudgetCompositionView(progress: snapshot.progress, allowsEditing: !isClosed) { node in
-                    if !isClosed { editingNode = node }
+                DisclosureGroup("budget.composition") {
+                    BudgetCompositionView(progress: snapshot.progress, allowsEditing: !isClosed, showsTitle: false) { node in
+                        if !isClosed { editingNode = node }
+                    }
                 }
             }
         }
@@ -140,7 +158,7 @@ struct BudgetPlanView: View {
                     categoryRow(item, progress: progress[item.id], snapshot: snapshot)
                 }
             } header: {
-                Text(root.node.name).font(.title3.weight(.semibold)).foregroundStyle(.primary)
+                Text(root.node.name).font(.title3.weight(.semibold)).foregroundStyle(.primary).textCase(nil)
             }
         }
         if outline.isEmpty {
@@ -151,46 +169,64 @@ struct BudgetPlanView: View {
         }
     }
 
+    @ViewBuilder
     private func categoryRow(
         _ item: BudgetOutlineItem,
         progress: BudgetProgress?,
         snapshot: MonthlyBudgetPresentation
     ) -> some View {
-        Button { editingNode = item.node } label: {
-            VStack(alignment: .leading, spacing: 6) {
-                BudgetRow(
-                    node: item.node, depth: item.depth, progress: progress,
-                    elapsed: isCurrentMonth ? sharedSnapshot?.monthElapsed ?? 0 : isClosed ? 1 : 0,
-                    purpose: snapshot.purposes[item.id] ?? .unclassified,
-                    displayedPacingCadence: displayedPacingCadence,
-                    showsDetail: showsRowDetail, reportingDate: date,
-                    showsName: item.depth != 0, showsPacing: isCurrentMonth
-                )
-                if item.node.allocationMode == .fixedTotal, item.node.limit != nil,
-                   let child = progress?.childAllocation {
-                    Text(child.amount > (item.node.limit?.amount ?? .zero)
-                        ? "budget.children_overallocated" : "budget.fixed_total_detail")
-                        .font(.caption).foregroundStyle(.secondary)
+        if isClosed {
+            categoryRowContent(item, progress: progress, snapshot: snapshot)
+        } else {
+            Button { editingNode = item.node } label: {
+                HStack(spacing: 10) {
+                    categoryRowContent(item, progress: progress, snapshot: snapshot)
+                    Image(systemName: "pencil").font(.caption).foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
                 }
-                if snapshot.unclassifiedNodeIDs.contains(item.id), item.node.limit == nil {
-                    Label("plan.purpose.unclassified", systemImage: "questionmark.circle")
-                        .font(.caption).foregroundStyle(.orange)
-                }
-                if progress?.childAllocation != nil, let directRemaining = progress?.directRemaining, directRemaining.amount < .zero {
-                    Label("budget.direct_overspent", systemImage: "exclamationmark.triangle")
-                        .font(.caption).foregroundStyle(.red)
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("budget.edit")
+            .contextMenu {
+                Button("lifecycle.manage_categories") { isManagingCategories = true }
+                if isCurrentMonth, currency == model.profile?.baseCurrency,
+                   model.isBudgetNodePinned(item.id) || model.canPinAnotherBudgetNode {
+                    Button(model.isBudgetNodePinned(item.id) ? "plan.unpin_from_today" : "plan.pin_to_today") {
+                        Task {
+                            do { try await model.setBudgetNodePinned(item.id, isPinned: !model.isBudgetNodePinned(item.id)) }
+                            catch { errorMessage = safeUserMessage(for: error, context: .save) }
+                        }
+                    }
                 }
             }
         }
-        .buttonStyle(.plain)
-        .disabled(isClosed)
-        .contextMenu {
-            Button("lifecycle.manage_categories") { isManagingCategories = true }
-            Button(model.isBudgetNodePinned(item.id) ? "plan.unpin_from_today" : "plan.pin_to_today") {
-                Task {
-                    do { try await model.setBudgetNodePinned(item.id, isPinned: !model.isBudgetNodePinned(item.id)) }
-                    catch { errorMessage = safeUserMessage(for: error, context: .save) }
-                }
+    }
+
+    private func categoryRowContent(
+        _ item: BudgetOutlineItem, progress: BudgetProgress?, snapshot: MonthlyBudgetPresentation
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            BudgetRow(
+                node: item.node, depth: item.depth, progress: progress,
+                elapsed: isCurrentMonth ? sharedSnapshot?.monthElapsed ?? 0 : isClosed ? 1 : 0,
+                purpose: snapshot.purposes[item.id] ?? .unclassified,
+                displayedPacingCadence: displayedPacingCadence,
+                showsDetail: showsRowDetail, reportingDate: date,
+                showsName: item.depth != 0, showsPacing: isCurrentMonth
+            )
+            if item.node.allocationMode == .fixedTotal, item.node.limit != nil,
+               let child = progress?.childAllocation {
+                Text(child.amount > (item.node.limit?.amount ?? .zero)
+                    ? "budget.children_overallocated" : "budget.fixed_total_detail")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            if snapshot.unclassifiedNodeIDs.contains(item.id), item.node.limit == nil {
+                Label("plan.purpose.unclassified", systemImage: "questionmark.circle")
+                    .font(.caption).foregroundStyle(.orange)
+            }
+            if progress?.childAllocation != nil, let directRemaining = progress?.directRemaining, directRemaining.amount < .zero {
+                Label("budget.direct_overspent", systemImage: "exclamationmark.triangle")
+                    .font(.caption).foregroundStyle(.red)
             }
         }
     }

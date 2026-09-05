@@ -19,23 +19,28 @@ struct BudgetCompositionView: View {
     @AppStorage(MoneyAmountPrivacy.storageKey) private var hidesAmounts = MoneyAmountPrivacy.defaultHidesAmounts
     let progress: [BudgetProgress]
     var allowsEditing = true
+    var showsTitle = true
     let onEdit: (BudgetNode) -> Void
 
     private var segments: [Segment] {
         let roots = progress.filter { $0.node.parentID == nil && ($0.effectiveLimit?.amount ?? .zero) > .zero }
             .sorted { ($0.effectiveLimit?.amount ?? .zero) > ($1.effectiveLimit?.amount ?? .zero) }
-        var result = roots.prefix(5).compactMap { item -> Segment? in
-            guard let limit = item.effectiveLimit else { return nil }
-            let color = item.node.id.uuidString.utf8.reduce(0) { ($0 + Int($1)) % 6 }
-            return Segment(id: item.node.id.uuidString, name: item.node.name, amount: limit, node: item.node, colorIndex: color)
+        let capacity = MoneyUpChartPalette.ordered.count
+        let visibleCount = roots.count <= capacity ? roots.count : capacity - 1
+        let visible = roots.prefix(visibleCount).sorted {
+            $0.node.name == $1.node.name ? $0.node.id.uuidString < $1.node.id.uuidString : $0.node.name < $1.node.name
         }
-        if let first = roots.dropFirst(5).first?.effectiveLimit {
+        var result = visible.enumerated().compactMap { index, item -> Segment? in
+            guard let limit = item.effectiveLimit else { return nil }
+            return Segment(id: item.node.id.uuidString, name: item.node.name, amount: limit, node: item.node, colorIndex: index)
+        }
+        if let first = roots.dropFirst(visibleCount).first?.effectiveLimit {
             do {
-                let total = try roots.dropFirst(5).reduce(Money.zero(currency: first.currency)) { sum, item in
+                let total = try roots.dropFirst(visibleCount).reduce(Money.zero(currency: first.currency)) { sum, item in
                     guard let amount = item.effectiveLimit else { return sum }
                     return try sum.adding(amount)
                 }
-                result.append(Segment(id: "other", name: AppLocalization.string("insights.other_category"), amount: total, node: nil, colorIndex: 5))
+                result.append(Segment(id: "other", name: AppLocalization.string("insights.other_category"), amount: total, node: nil, colorIndex: capacity - 1))
             } catch { return [] }
         }
         return result
@@ -44,9 +49,12 @@ struct BudgetCompositionView: View {
     var body: some View {
         let segments = self.segments
         let selected = segments.first { $0.id == selectedID } ?? segments.first
-        if !segments.isEmpty {
+        if progress.contains(where: { $0.node.parentID == nil && ($0.effectiveLimit?.amount ?? .zero) < .zero }) {
+            Label("budget.composition_deficit", systemImage: "exclamationmark.circle")
+                .font(.subheadline).foregroundStyle(.secondary)
+        } else if !segments.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
-                Text("budget.composition").font(.headline)
+                if showsTitle { Text("budget.composition").font(.headline) }
                 Chart(segments) { segment in
                     BarMark(
                         x: .value(AppLocalization.string("chart.dimension.amount"), NSDecimalNumber(decimal: segment.amount.amount).doubleValue),
@@ -90,6 +98,8 @@ struct BudgetCompositionView: View {
                 Text("budget.composition_hint").font(.caption).foregroundStyle(.secondary)
             }
             .padding(.vertical, 8)
+        } else {
+            Text("budget.composition_empty").font(.subheadline).foregroundStyle(.secondary)
         }
     }
 

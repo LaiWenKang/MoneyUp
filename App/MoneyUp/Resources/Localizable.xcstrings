@@ -1,6 +1,8 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "budget.composition_empty" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"There are no positive allocations to compare. Category balances are listed below."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"目前没有正数预算可供比较。下方列出了各分类余额。"}}}},
+    "budget.composition_deficit" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"A carried deficit makes a part-to-whole chart misleading. Exact category balances remain available below."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"存在结转赤字时，比例图可能产生误导。下方仍可查看各分类的准确余额。"}}}},
     "category.move_budget_detail" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Moving transfers this allocation. Enclosing fixed budgets are adjusted to keep the combined budget unchanged; recorded history keeps its original hierarchy."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"移动会转移此分类的预算。相关上级固定预算会相应调整，以保持总预算不变；历史记录保留原分类层级。"}}}},
     "budget.merge_unavailable" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"The combined budget could not be reconciled. No changes were saved."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"无法核对合并后的预算。本次未保存任何更改。"}}}},
     "lifecycle.affected_budgets" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Affected category budgets"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"受影响的分类预算"}}}},
@@ -1085,7 +1087,7 @@
     "plan.spent_of_limit" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"%1$@ spent of %2$@"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"已用 %1$@，共 %2$@"}}}},
     "plan.tap_to_set_limit" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Tap to set a monthly limit"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"轻点设置每月限额"}}}},
     "plan.this_month" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"This month"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"本月"}}}},
-    "plan.total_left" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Remaining across all plan allocations"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"所有计划金额的剩余总额"}}}},
+    "plan.total_left" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Budget remaining"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"预算余额"}}}},
     "plan.purpose" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Purpose"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"用途"}}}},
     "plan.purpose_detail" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Only Flexible allocations contribute to Flexible Today. Bills, debt, and goals remain reserved."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"只有灵活支出会计入“今日灵活可用”；账单、债务与目标资金会保持预留。"}}}},
     "plan.purpose.unclassified" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Choose a purpose"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"选择用途"}}}},
@@ -1095,7 +1097,7 @@
     "plan.purpose.goal" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Savings and goals"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"储蓄与目标"}}}},
     "plan.purpose_review_title" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Allocations needing a purpose: %d"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"%d 个计划金额需要选择用途"}}}},
     "plan.purpose_review_detail" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Tap each limited category and classify it. Until then, MoneyUp will not present the total as discretionary money."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"请点按每个设有限额的分类并选择用途。在完成前，MoneyUp 不会把总额显示为可自由支配资金。"}}}},
-    "plan.total_over" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Over budget this month"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"本月已超出预算"}}}},
+    "plan.total_over" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Over budget"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"已超出预算"}}}},
     "privacy.cover" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Financial data hidden"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"财务数据已隐藏"}}}},
     "privacy.amounts_hidden" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Amounts hidden"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"金额已隐藏"}}}},
     "privacy.amounts_visible" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Amounts visible"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"金额可见"}}}},

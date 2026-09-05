@@ -9,7 +9,7 @@ struct DisplaySettingsView: View {
             Section {
                 Toggle("display.daily_guidance", isOn: preference(\.showsDailyGuidance))
             } footer: {
-                Text("display.guidance_detail")
+                MoneyUpExplainer("display.guidance_detail")
             }
             Section {
                 ForEach(model.budgetNodeOutline) { item in
@@ -32,7 +32,7 @@ struct DisplaySettingsView: View {
             } header: {
                 Text("display.category_guidance")
             } footer: {
-                Text(model.displayPreferences.showsDailyGuidance
+                MoneyUpExplainer(model.displayPreferences.showsDailyGuidance
                     ? "display.category_guidance_detail" : "display.guidance_hidden_detail")
             }
             Section("display.appearance") {

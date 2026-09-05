@@ -56,6 +56,7 @@ struct SearchableCurrencyPicker: View {
     let title: LocalizedStringKey
     @Binding var selection: String
     var existing: [CurrencyCode] = []
+    var compact = false
 
     @State private var isPresented = false
 
@@ -63,13 +64,21 @@ struct SearchableCurrencyPicker: View {
         Button {
             isPresented = true
         } label: {
-            LabeledContent {
-                Text(selection).monospaced().foregroundStyle(.primary)
-            } label: {
-                Text(title)
+            if compact {
+                HStack(spacing: 4) {
+                    Text(selection).font(.subheadline.monospaced().weight(.semibold))
+                    Image(systemName: "chevron.down").font(.caption2).accessibilityHidden(true)
+                }
+                .frame(minHeight: 44)
+            } else {
+                LabeledContent {
+                    Text(selection).monospaced().foregroundStyle(.primary)
+                } label: { Text(title) }
             }
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(Text(title))
+        .accessibilityValue(Text(selection))
         .sheet(isPresented: $isPresented) {
             CurrencySelectionSheet(
                 title: title,

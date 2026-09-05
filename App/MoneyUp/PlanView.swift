@@ -115,7 +115,7 @@ struct PlanView: View {
     }
 
     private var compactSectionStrip: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 4) {
             ForEach(PlanSection.ordered, id: \.self) { section in
                 sectionButton(section)
             }
@@ -144,7 +144,11 @@ struct PlanView: View {
                 )
             }
         } label: {
-            Label(selection.title, systemImage: selection.systemImage)
+            HStack {
+                Label(selection.title, systemImage: selection.systemImage)
+                Spacer()
+                Image(systemName: "chevron.down").font(.caption).accessibilityHidden(true)
+            }
                 .font(.headline)
                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 .padding(.horizontal, 14)
@@ -165,8 +169,8 @@ struct PlanView: View {
                     for: section,
                     selection: selection
                 ) {
-                    Label(section.title, systemImage: section.systemImage)
-                        .padding(.horizontal, 14)
+                    Text(section.title)
+                        .padding(.horizontal, 12)
                 } else {
                     Image(systemName: section.systemImage)
                         .frame(width: 44)
@@ -375,9 +379,7 @@ struct BudgetSummaryCard: View {
             .font(.caption)
             .foregroundStyle(.secondary)
 
-            Label("plan.pace_hint", systemImage: "line.diagonal")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
+            MoneyUpExplainer("plan.pace_hint")
         }
         .padding(.vertical, 6)
         .accessibilityElement(children: .combine)

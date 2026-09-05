@@ -69,8 +69,14 @@ struct CategoryManagementList: View {
     }
 
     private func categorySection(kind: LedgerAccountKind, title: LocalizedStringKey) -> some View {
-        Section(title) {
-            ForEach(outline(kind: kind)) { item in
+        let items = outline(kind: kind)
+        return Section(title) {
+            if items.isEmpty {
+                Button(kind == .expense ? "lifecycle.add_expense_category" : "lifecycle.add_income_category") {
+                    add(kind: kind)
+                }
+            }
+            ForEach(items) { item in
                 if let category = model.accountsByID[item.id] {
                     HStack(spacing: 8) {
                         Button { selectedCategory = category } label: {

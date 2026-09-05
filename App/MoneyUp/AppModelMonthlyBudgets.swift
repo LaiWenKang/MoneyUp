@@ -35,7 +35,12 @@ extension AppModel {
         guard let index = budgetNodes.firstIndex(where: { $0.id == categoryID }) else {
             throw AppModelError.missingRecord
         }
-        if let amount { try requireValidNewWriteAmount(amount, currency: currency) }
+        if let amount {
+            try requireValidNewWriteAmount(
+                amount, currency: currency,
+                preserving: budgetNodes[index].resolved(for: month, currency: currency).limit?.amount
+            )
+        }
         let allocation = try MonthlyBudgetAllocation(
             month: month, currency: currency,
             limit: amount.map { try Money($0, currency: currency) },

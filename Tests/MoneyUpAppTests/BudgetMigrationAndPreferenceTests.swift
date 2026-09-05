@@ -19,8 +19,9 @@ final class BudgetMigrationAndPreferenceTests: XCTestCase {
         let calendar = FinancialPeriodBoundary.gregorianCalendar()
         let augustStart = try XCTUnwrap(calendar.dateInterval(of: .month, for: august)?.start)
         let child = LedgerAccount(name: "Dining", kind: .expense, parentID: fixture.food.id)
+        let legacyAmount = try XCTUnwrap(Decimal(string: "200.001"))
         let nodes = [BudgetNode(id: fixture.food.id, name: fixture.food.name),
-                     BudgetNode(id: child.id, parentID: fixture.food.id, name: child.name, limit: try Money(200, currency: fixture.sgd))]
+                     BudgetNode(id: child.id, parentID: fixture.food.id, name: child.name, limit: try Money(legacyAmount, currency: fixture.sgd))]
         let timeline = try BudgetConfigurationTimeline(currency: fixture.sgd, revisions: [BudgetConfigurationRevision(effectiveMonth: augustStart, nodes: nodes)])
         let profile = UserProfile(baseCurrency: fixture.sgd, reportingTimeZoneIdentifier: "GMT")
         try await fixture.seed(profile: profile, accounts: [fixture.wallet, fixture.food, child], budgetNodes: nodes, budgetConfigurationTimeline: timeline)
@@ -32,6 +33,12 @@ final class BudgetMigrationAndPreferenceTests: XCTestCase {
         let once = model.budgetConfigurationTimeline
         try await model.prepareBudgetConfigurationTimelineAfterLoad(in: fixture.store, persistsMigration: true)
         XCTAssertEqual(model.budgetConfigurationTimeline, once)
+        // Classification must not round or reject an unchanged legacy amount.
+        try await model.setMonthlyBudget(categoryID: child.id, date: now, currency: fixture.sgd,
+            amount: legacyAmount, mode: .fixedTotal, purpose: .flexible)
+        let saved = model.budgetNodes.first { $0.id == child.id }
+        let month = try BudgetMonth(containing: now, calendar: calendar)
+        XCTAssertEqual(saved?.resolved(for: month, currency: fixture.sgd).limit?.amount, legacyAmount)
         let older = try await model.monthlyBudgetPresentation(asOf: date(7), currency: fixture.sgd)
         guard case .unavailable(.budgetHistoryUnavailable) = older else { return XCTFail("No invented historical budget") }
         await fixture.store.close()
