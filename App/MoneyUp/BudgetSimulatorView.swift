@@ -306,7 +306,9 @@ struct BudgetSimulatorView: View {
                 }
                 .frame(height: 240)
                 .chartLegend(.hidden)
+                .chartYAxis(hidesAmounts ? .hidden : .automatic)
                 .accessibilityLabel(Text("simulator.chart_accessibility"))
+                .accessibilityHidden(hidesAmounts)
                 .animation(
                     MoneyUpMotion.animation(
                         for: .stateChange,

@@ -16,6 +16,7 @@ struct BudgetCompositionView: View {
     @Environment(\.moneyUpReduceMotion) private var reduceMotion
     @State private var selectedPosition: Double?
     @State private var selectedID: String?
+    @AppStorage(MoneyAmountPrivacy.storageKey) private var hidesAmounts = MoneyAmountPrivacy.defaultHidesAmounts
     let progress: [BudgetProgress]
     var allowsEditing = true
     let onEdit: (BudgetNode) -> Void
@@ -62,6 +63,7 @@ struct BudgetCompositionView: View {
                 .chartXSelection(value: $selectedPosition)
                 .frame(height: 40)
                 .accessibilityLabel("budget.composition")
+                .accessibilityHidden(hidesAmounts)
                 .animation(MoneyUpMotion.animation(for: .stateChange, reduceMotion: reduceMotion), value: segments.map { $0.amount.amount })
                 .onChange(of: selectedPosition) { _, value in
                     guard let value else { return }

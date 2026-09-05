@@ -328,6 +328,7 @@ struct InsightsView: View {
         .chartYSelection(value: $selectedCategoryKey)
         .frame(height: max(190, CGFloat(points.count) * 34))
         .accessibilityLabel(Text("insights.category_chart"))
+        .accessibilityHidden(hidesAmounts)
         .accessibilityValue(Text(categoryChartSummary(points)))
         .accessibilityHint(Text("insights.chart_accessibility_hint"))
     }
