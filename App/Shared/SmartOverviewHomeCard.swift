@@ -21,9 +21,12 @@ struct SmartOverviewHomeCard: View {
                 }.foregroundStyle(.secondary)
             }
             HStack(alignment: .center, spacing: 16) {
-                headline
+                Group {
+                    if isAccessible { accessibleHeadline }
+                    else { headline }
+                }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                if isMedium && !isAccessible {
+                if isMedium && !isAccessible && !presentation.supportingComponents(for: focus).isEmpty {
                     VStack(alignment: .leading, spacing: 10) {
                         ForEach(Array(presentation.supportingComponents(for: focus).prefix(2)), id: \.self) { component in
                             metric(component)
@@ -37,6 +40,45 @@ struct SmartOverviewHomeCard: View {
             .frame(maxHeight: .infinity, alignment: .center)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+    }
+
+    private var accessibleHeadline: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Image(systemName: symbol(primary))
+                .font(.title3).foregroundStyle(accent)
+            Text(accessibleVisibleValue)
+                .font(.caption.bold()).monospacedDigit()
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title(primary))
+        .accessibilityValue(accessibleSpokenValue)
+        .accessibilityHint(detail(primary))
+    }
+
+    private var accessibleSpokenValue: String {
+        if primary == .commitment, case let .days(days) = presentation.commitmentDayDistance {
+            return String(format: AppLocalization.string("widget.smart.days_long"), days)
+        }
+        return value(primary)
+    }
+
+    private var accessibleVisibleValue: String {
+        if primary == .commitment {
+            switch presentation.commitmentDayDistance {
+            case .oneDay: return String(format: AppLocalization.string("widget.smart.days"), 1)
+            default: break
+            }
+        }
+        if primary == .budget {
+            switch presentation.budget {
+            case .needsBudget: return AppLocalization.string("widget.focus.add_short")
+            case .zeroBudget: return AppLocalization.string("widget.focus.zero_short")
+            case .negativeBudget: return AppLocalization.string("widget.focus.check_short")
+            default: break
+            }
+        }
+        return value(primary)
     }
 
     private var headline: some View {
@@ -69,7 +111,8 @@ struct SmartOverviewHomeCard: View {
     @ViewBuilder
     private var supportingDetail: some View {
         if primary == .commitment, case let .active(count, .some(_)) = presentation.commitment {
-            Text(String(format: AppLocalization.string("widget.focus.scheduled_count"), count))
+            Text(count == 1 ? AppLocalization.string("widget.focus.scheduled_one")
+                : String(format: AppLocalization.string("widget.focus.scheduled_count"), count))
         } else {
             Text(detail(primary))
         }
@@ -118,13 +161,13 @@ struct SmartOverviewHomeCard: View {
     private func title(_ component: SmartOverviewWidgetPresentation.Component) -> LocalizedStringKey {
         switch component {
         case .budget:
-            if !isAccessible, case .available = presentation.budget { return "widget.focus.budget_used" }
+            if case .available = presentation.budget { return "widget.focus.budget_used" }
             return "widget.smart_budget"
-        case .review: return isAccessible ? "widget.smart_review_short" : "widget.smart_review"
-        case .allowance: return isAccessible ? "widget.smart_allowance_short" : "widget.smart_allowance"
+        case .review: return "widget.smart_review"
+        case .allowance: return "widget.smart_allowance"
         case .commitment:
             if case .active(_, daysUntilNext: nil) = presentation.commitment { return "widget.focus.scheduled" }
-            return isAccessible ? "widget.focus.due" : "widget.focus.next_payment"
+            return "widget.focus.next_payment"
         }
     }
 

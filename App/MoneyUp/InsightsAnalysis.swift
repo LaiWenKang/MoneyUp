@@ -131,6 +131,7 @@ extension InsightsView {
             AppLocalization.string("transaction.expense"): MoneyUpChartPalette.expense
         ])
         .chartLegend(.hidden)
+        .chartXScale(range: .plotDimension(padding: 16))
         .chartXAxis { reportingMonthAxis(report) }
         .chartYAxis(hidesAmounts ? .hidden : .automatic)
         .chartXSelection(value: $selectedFlowMonth)
@@ -145,6 +146,7 @@ extension InsightsView {
             AxisValueLabel {
                 if let date = value.as(Date.self) {
                     Text(date.formattedForReporting(.dateTime.month(.abbreviated), calendar: model.reportingCalendar))
+                        .fixedSize()
                 }
             }
         }

@@ -113,6 +113,7 @@ struct AssetsSnapshotTrend: View {
             AxisValueLabel {
                 if let date = value.as(Date.self) {
                     Text(date.formattedForReporting(.dateTime.month(.abbreviated).day(), calendar: model.reportingCalendar))
+                        .fixedSize()
                 }
             }
         }

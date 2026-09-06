@@ -40,6 +40,19 @@ final class SmartOverviewRenderTests: XCTestCase {
         }
         await capture(SmartOverviewHomeCard(presentation: large, focus: .automatic, isMedium: false)
             .environment(\.dynamicTypeSize, .accessibility5), name: "widget-large-chinese", width: 170, scheme: .light, language: .simplifiedChinese)
+        let emptyStates: [(BudgetWidgetSnapshot, String)] = [(.needsBudget(validUntil: expiry), "needs-budget"),
+            (.zeroBudget(validUntil: expiry), "zero-budget"), (.negativeBudget(validUntil: expiry), "negative-budget"),
+            (.available(percentUsed: 999, validUntil: expiry), "over-budget")]
+        for (budget, name) in emptyStates {
+            let state = SmartOverviewWidgetPresentation.make(budget: budget, insights: nil, family: .systemSmall, homeDensity: .accessibility)
+            await capture(SmartOverviewHomeCard(presentation: state, focus: .budget, isMedium: false)
+                .environment(\.dynamicTypeSize, .accessibility5), name: "widget-large-\(name)", width: 158, scheme: .light)
+        }
+        let dueNext = SmartOverviewWidgetPresentation.make(budget: snapshot,
+            insights: MoneyUpWidgetInsights(reviewCount: nil, allowancePercentRemaining: nil,
+                activeCommitmentCount: 1, daysUntilNextCommitment: 1, validUntil: expiry), family: .systemSmall, homeDensity: .accessibility)
+        await capture(SmartOverviewHomeCard(presentation: dueNext, focus: .commitments, isMedium: false)
+            .environment(\.dynamicTypeSize, .accessibility5), name: "widget-large-tomorrow", width: 158, scheme: .light)
     }
 
     @MainActor

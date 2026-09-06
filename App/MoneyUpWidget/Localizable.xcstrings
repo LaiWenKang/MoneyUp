@@ -1,6 +1,10 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "widget.focus.scheduled_one" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"1 scheduled expense"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"1 项计划支出"}}}},
+    "widget.focus.add_short" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Add"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"设置"}}}},
+    "widget.focus.zero_short" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Zero"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"零预算"}}}},
+    "widget.focus.check_short" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Check"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"检查"}}}},
     "widget.focus.scheduled_count" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"%d scheduled expenses"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"%d 项计划支出"}}}},
     "widget.focus.set_limit" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Set a limit in Plan"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"在计划中设置限额"}}}},
     "widget.focus.zero_limit" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"No percentage for a zero limit"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"限额为零，无法计算百分比"}}}},

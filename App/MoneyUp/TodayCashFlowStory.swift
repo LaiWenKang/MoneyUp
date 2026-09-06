@@ -33,11 +33,13 @@ struct TodayCashFlowStory: View {
                 AppLocalization.string("history.income"): Color.moneyUpChartSeries1,
                 AppLocalization.string("history.spent"): Color.moneyUpChartSeries2
             ])
+            .chartXScale(range: .plotDimension(padding: 16))
             .chartXAxis {
                 AxisMarks(values: report.monthlyFlows.suffix(6).map { $0.month.reportingMonthMidpoint(calendar: calendar) }) { value in
                     AxisValueLabel {
                         if let date = value.as(Date.self) {
                             Text(date.formattedForReporting(.dateTime.month(.abbreviated), calendar: calendar))
+                                .fixedSize()
                         }
                     }
                 }
