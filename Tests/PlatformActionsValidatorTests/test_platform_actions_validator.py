@@ -107,6 +107,23 @@ class PlatformActionsValidatorTests(unittest.TestCase):
                 errors,
             )
 
+    def test_rejects_overview_payloads_and_permissive_url_decoding(self) -> None:
+        source = self.source("App/Shared/MoneyUpOverviewRoute.swift")
+        for mutated in [
+            source.replace("moneyup://overview/today", "moneyup://overview/today?amount=20"),
+            source.replace("$0.url?.absoluteString == url.absoluteString", "url.absoluteString.hasPrefix($0.url?.absoluteString ?? \"\")"),
+        ]:
+            self.assertTrue(VALIDATOR.validate_overview_route_source(mutated))
+
+    def test_rejects_starting_protected_work_without_the_scene_gate(self) -> None:
+        source = self.source("App/MoneyUp/MoneyUpApp.swift")
+        mutations = [
+            source.replace("allowProtectedStart: { launchState.isActive }", "allowProtectedStart: { true }"),
+            source.replace("guard launchState.isActive else { return }", "", 1),
+        ]
+        for mutated in mutations:
+            self.assertTrue(VALIDATOR.validate_app_routing_source(mutated))
+
     def test_rejects_on_open_url_bypassing_the_closed_app_route(self) -> None:
         source = self.source("App/MoneyUp/MoneyUpApp.swift")
         mutated = source.replace(
@@ -478,12 +495,13 @@ class PlatformActionsValidatorTests(unittest.TestCase):
         )
         app = self.source("App/MoneyUp/MoneyUpApp.swift")
         mutated_app = app.replace(
-            "        Task { await model.start() }\n",
-            "        _ = model.saveLockedCapture\n"
-            "        Task { await model.start() }\n",
+            "            await model.start()\n",
+            "            _ = model.saveLockedCapture\n"
+            "            await model.start()\n",
             1,
         )
 
+        self.assertNotEqual(app, mutated_app)
         self.assertTrue(
             any(
                 "defaults writes" in error

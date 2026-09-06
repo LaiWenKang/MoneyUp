@@ -157,10 +157,17 @@ private struct MoneyUpWidgetView: View {
             }
         }
         .environment(\.locale, AppLanguagePreference.current.locale)
-        .widgetURL(entry.content == .quickAction || entry.budgetSnapshot.usesQuickActionFallback
-            ? entry.action.deepLink : nil)
+        .widgetURL(destinationURL)
         .containerBackground(Color.moneyUpWidgetBackground, for: .widget)
         .tint(.moneyUpSoftGreen)
+    }
+
+    private var destinationURL: URL? {
+        if entry.content == .quickAction || entry.budgetSnapshot.usesQuickActionFallback {
+            return entry.action.deepLink
+        }
+        return entry.content == .smartOverview
+            ? MoneyUpOverviewRoute.today.url : MoneyUpOverviewRoute.budget.url
     }
 
     @ViewBuilder

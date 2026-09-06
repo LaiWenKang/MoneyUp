@@ -89,12 +89,18 @@ struct CalendarView: View {
     }
 
     private var calendarDatePicker: some View {
-        DatePicker(
+        VStack(alignment: .leading, spacing: 8) {
+            if !model.reportingCalendar.isDate(selectedDate, inSameDayAs: model.currentDateForUserAction()) {
+                Button("history.scope.today") { workspace.calendarDate = model.currentDateForUserAction() }
+                    .font(.subheadline.weight(.semibold))
+            }
+            DatePicker(
             "calendar.select_date",
             selection: $workspace.calendarDate,
             displayedComponents: .date
         )
-        .datePickerStyle(.graphical)
+            .datePickerStyle(.graphical)
+        }
     }
 
     private var calendarMoneyFlowSection: some View {
@@ -273,6 +279,7 @@ struct CalendarView: View {
                   !flows.isEmpty {
             Section("calendar.money_flow") {
                 ForEach(flows) { flow in
+                    MoneyUpCashFlowGraphic(income: flow.income, expense: flow.expense)
                     LabeledContent {
                         Text(formattedMoney(flow.income))
                     } label: {

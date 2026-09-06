@@ -41,11 +41,26 @@ jobs:
             -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
             -resultBundlePath "$RUNNER_TEMP/MoneyUpUI26.xcresult" \
             -parallel-testing-enabled NO \
+            -only-testing:MoneyUpTests/AppwideExperienceTests \
+            -only-testing:MoneyUpTests/AppwideRenderEvidenceTests \
             -only-testing:MoneyUpTests/Feedback1039RegressionTests \
             -only-testing:MoneyUpTests/NavigationPresentationTests \
             -only-testing:MoneyUpTests/RedesignRenderEvidenceTests \
             -only-testing:MoneyUpTests/PlatformQuickLogActionTests \
             SWIFT_TREAT_WARNINGS_AS_ERRORS=YES CODE_SIGNING_ALLOWED=NO test
+          xcrun simctl terminate "$SIMULATOR_ID" com.laiwenkang.MoneyUp || true
+          xcrun simctl openurl "$SIMULATOR_ID" moneyup://overview/today
+          python3 - "$SIMULATOR_ID" <<'PYCODE'
+          import subprocess, sys, time
+          simulator = sys.argv[1]
+          time.sleep(3)
+          lines = subprocess.check_output(["xcrun", "simctl", "spawn", simulator, "launchctl", "list"], text=True).splitlines()
+          live = [line for line in lines if "UIKitApplication:com.laiwenkang.MoneyUp[" in line and line.split()[0].isdigit()]
+          if not live:
+              raise SystemExit("MoneyUp did not remain running after the cold overview URL")
+          print("Cold Smart Overview URL: app process remained alive on the clean simulator book")
+          PYCODE
+          xcrun simctl io "$SIMULATOR_ID" screenshot "$RUNNER_TEMP/ui26-cold-overview.png"
       - name: Export review evidence
         if: ${{ always() }}
         run: |
@@ -60,4 +75,5 @@ jobs:
           path: |
             ${{ runner.temp }}/ui26-images
             ${{ runner.temp }}/ui26-summary.json
+            ${{ runner.temp }}/ui26-cold-overview.png
           retention-days: 14

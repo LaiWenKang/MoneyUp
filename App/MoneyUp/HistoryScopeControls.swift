@@ -160,7 +160,11 @@ struct HistoryScopeSelector: View {
                 )
             }
         } label: {
-            Label(selectedTitle, systemImage: selectedSystemImage)
+            HStack(spacing: 10) {
+                Label(selectedTitle, systemImage: selectedSystemImage).labelStyle(.titleAndIcon)
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.down").font(.caption).accessibilityHidden(true)
+            }
                 .font(.headline)
                 .frame(
                     maxWidth: .infinity,

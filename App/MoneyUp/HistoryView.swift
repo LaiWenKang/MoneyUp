@@ -787,9 +787,9 @@ extension HistoryView {
         return layout {
             Button { showingFilters = true } label: {
                 Label {
-                    Text(filters.activeFilterCount == 0
+                    Text(filters.advancedFilterCount(quickRange: quickRange) == 0
                         ? AppLocalization.string("history.filter")
-                        : String(format: AppLocalization.string("history.filter_count"), filters.activeFilterCount))
+                        : String(format: AppLocalization.string("history.filter_count"), filters.advancedFilterCount(quickRange: quickRange)))
                 } icon: { Image(systemName: "line.3.horizontal.decrease.circle") }
             }
             .labelStyle(.titleAndIcon)

@@ -69,6 +69,7 @@ class ArchitectureFitnessTests(unittest.TestCase):
             "App/MoneyUp/QuickLogOnDeviceOrdinalModel.swift",
             "App/MoneyUp/QuickLogSheet.swift",
             "App/MoneyUp/QuickLogEntryBody.swift",
+            "App/MoneyUp/QuickLogEntryChrome.swift",
             "App/MoneyUp/QuickLogEntryCommit.swift",
             "App/MoneyUp/QuickLogEntryComponents.swift",
             "App/MoneyUp/QuickLogEntryDraft.swift",

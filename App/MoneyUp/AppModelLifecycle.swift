@@ -235,12 +235,15 @@ extension AppModel {
     /// before any protected key access can request authentication. A basic
     /// widget action can therefore enter the separate capture inbox without
     /// racing the normal encrypted-book startup path.
-    func startAfterInitialRoutingWindow() async {
+    func startAfterInitialRoutingWindow(
+        allowProtectedStart: @MainActor () -> Bool = { true }
+    ) async {
         do {
             try await Task.sleep(for: .milliseconds(350))
         } catch {
             return
         }
+        guard allowProtectedStart(), !Task.isCancelled else { return }
         guard !routeLockSafeRequestIfPossible() else { return }
         await start()
     }

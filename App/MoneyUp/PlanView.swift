@@ -43,11 +43,11 @@ enum PlanSectionSelectorPolicy {
 }
 
 struct PlanView: View {
-    @State private var selection: PlanSection
-    @State private var workspace = PlanWorkspaceState()
+    @State private var workspace: PlanWorkspaceState
+    private var selection: PlanSection { workspace.section }
 
-    init(initialSection: PlanSection = .budget) {
-        _selection = State(initialValue: initialSection)
+    init(initialSection: PlanSection = .budget, workspace: PlanWorkspaceState? = nil) {
+        _workspace = State(initialValue: workspace ?? PlanWorkspaceState(section: initialSection))
     }
     @Environment(AppModel.self) private var model
     @Environment(\.appReportingSnapshot) private var sharedReportingSnapshot
@@ -177,7 +177,7 @@ struct PlanView: View {
                 reduceMotion: reduceMotion
             )
         ) {
-            selection = section
+            workspace.section = section
         }
     }
 }

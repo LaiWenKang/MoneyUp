@@ -158,7 +158,7 @@ private struct RecoveryView: View {
                     } label: {
                         Label(
                             recoveryActionKey,
-                            systemImage: "externaldrive.badge.shield.checkmark"
+                            systemImage: "externaldrive.badge.checkmark"
                         )
                     }
                     .buttonStyle(.bordered)
@@ -262,10 +262,16 @@ struct HistoryCrossTabNavigationState: Equatable {
     }
 }
 
-private struct MainTabView: View {
+struct MainTabView: View {
+    @Environment(MoneyUpOverviewNavigation.self) private var overviewNavigation
+    @State private var planWorkspace: PlanWorkspaceState
     @Environment(AppModel.self) private var model
     @Environment(\.scenePhase) private var scenePhase
-    @State private var selectedSection: MoneyUpSection = .today
+    @State private var navigation: MoneyUpTabNavigation
+    private var selectedSection: MoneyUpSection {
+        get { navigation.section }
+        nonmutating set { navigation.section = newValue }
+    }
     @State private var quickLogKind: QuickLogKind = .expense
     @State private var historyReviewDate: Date?
     @State private var historyReviewSequence = 0
@@ -274,7 +280,14 @@ private struct MainTabView: View {
     @State private var isShowingWhatsNew = false
     @State private var hasCheckedForUpdate = false
 
-    init(initialReportingSnapshot: AppReportingSnapshot) {
+    init(
+        initialReportingSnapshot: AppReportingSnapshot,
+        initialSection: MoneyUpSection = .today,
+        initialPlanSection: PlanSection = .budget,
+        navigation: MoneyUpTabNavigation? = nil
+    ) {
+        _navigation = State(initialValue: navigation ?? MoneyUpTabNavigation(section: initialSection))
+        _planWorkspace = State(initialValue: PlanWorkspaceState(section: initialPlanSection))
         _reportingClock = State(
             initialValue: AppReportingClockState(
                 snapshot: initialReportingSnapshot
@@ -333,7 +346,7 @@ private struct MainTabView: View {
                 .tabItem { Label("tab.log", systemImage: "plus.circle.fill") }
                 .tag(MoneyUpSection.log)
 
-            PlanView()
+            PlanView(workspace: planWorkspace)
                 .tabItem { Label("tab.plan", systemImage: "chart.pie.fill") }
                 .tag(MoneyUpSection.plan)
 
@@ -349,8 +362,16 @@ private struct MainTabView: View {
             WhatsNewSheet()
         }
         .onAppear {
-            checkForUpdate(suppressPresentation: openRequestedLog())
+            let openedLog = openRequestedLog()
+            let openedOverview = openRequestedOverview()
+            checkForUpdate(suppressPresentation: openedLog || openedOverview)
             announcePendingRestoreCompletionAfterAppearance()
+        }
+        .onChange(of: overviewNavigation.pending) { _, _ in
+            openRequestedOverview()
+        }
+        .onChange(of: model.requiresAuthenticationPrivacyCover) { _, _ in
+            openRequestedOverview()
         }
         .onChange(of: model.requestedQuickLogRequest) { _, _ in
             openRequestedLog()
@@ -364,6 +385,7 @@ private struct MainTabView: View {
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
+                openRequestedOverview()
                 rearmReportingClock()
             } else {
                 reportingClock.cancelForInactivity()
@@ -398,6 +420,26 @@ private struct MainTabView: View {
                 selectedSection = destination
             }
         )
+    }
+
+    @discardableResult
+    private func openRequestedOverview() -> Bool {
+        guard let destination = overviewNavigation.consume(
+            isReady: model.state == .ready,
+            isActive: scenePhase == .active,
+            isCovered: model.requiresAuthenticationPrivacyCover
+        ) else { return false }
+        MoneyUpKeyboard.dismiss()
+        isShowingWhatsNew = false
+        switch destination {
+        case .today: selectedSection = .today
+        case .budget:
+            planWorkspace.section = .budget
+            planWorkspace.budgetDate = nil
+            planWorkspace.budgetCurrencyCode = nil
+            selectedSection = .plan
+        }
+        return true
     }
 
     private func returnFromHistory() {

@@ -201,7 +201,7 @@ struct AppSettingsView: View {
 
                 Label(
                     "settings.security.key_cliff_warning",
-                    systemImage: "externaldrive.badge.shield.checkmark"
+                    systemImage: "externaldrive.badge.checkmark"
                 )
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -342,7 +342,7 @@ struct AppSettingsView: View {
                 NavigationLink {
                     DataSafetyView()
                 } label: {
-                    Label("backup.data_safety", systemImage: "externaldrive.badge.shield.checkmark")
+                    Label("backup.data_safety", systemImage: "externaldrive.badge.checkmark")
                 }
 
                 NavigationLink {

@@ -31,6 +31,10 @@ struct HistorySummaryView: View {
                         Text(currency.value)
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
+                        if let income = try? Money(summary.incomeByCurrency[currency] ?? .zero, currency: currency),
+                           let spent = try? Money(summary.spendingByCurrency[currency] ?? .zero, currency: currency) {
+                            MoneyUpCashFlowGraphic(income: income, expense: spent)
+                        }
                         summaryAmount(
                             "history.spent",
                             amount: summary.spendingByCurrency[currency] ?? .zero,

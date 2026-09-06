@@ -288,6 +288,7 @@ COMPILED_REFERENCE_INVENTORY = {
     },
     r"moneyup://": {
         "App/Shared/MoneyUpQuickAction.swift": 6,
+        "App/Shared/MoneyUpOverviewRoute.swift": 2,
     },
     r"\bLink\s*\(": {
         "App/MoneyUp/PrivacyAndBetaView.swift": 2,
@@ -772,7 +773,10 @@ def validate_app_routing_source(source: str) -> list[str]:
         "                    model.retryPresentedQuickActionAcknowledgement()",
         "quickActionRouteBroker.reloadDurableIngress()\n"
         "                        model.retryPresentedQuickActionAcknowledgement()",
-        "routePendingQuickAction()\n                    await model.startAfterInitialRoutingWindow()",
+        "routePendingQuickAction()\n                    await startInitialModelIfNeeded()",
+        "launchState.isActive = scenePhase == .active",
+        "launchState.isActive = newPhase == .active",
+        "await model.startAfterInitialRoutingWindow(allowProtectedStart: { launchState.isActive })",
     ]
     for declaration in required:
         if declaration not in source:
@@ -780,13 +784,17 @@ def validate_app_routing_source(source: str) -> list[str]:
 
     route = declaration_body(source, "private func routePendingQuickAction()")
     if route is None or " ".join(route.split()) != (
+        "guard launchState.isActive else { return } "
         "let result = MoneyUpQuickActionRouting.routeNext( "
         "from: quickActionRouteBroker, into: model ) "
-        "guard result == .requiresStart else { return } Task { await model.start() }"
+        "guard result == .requiresStart else { return } Task { "
+        "guard launchState.isActive else { return } await model.start() }"
     ):
         errors.append("main scene must drain at most one action through the strict router")
     deep_route = declaration_body(source, "private func routeDeepLink(_ url: URL)")
     if deep_route is None or " ".join(deep_route.split()) != (
+        "if let destination = MoneyUpOverviewRoute(exactDeepLink: url) { "
+        "overviewNavigation.request(destination) return } "
         "guard let action = MoneyUpQuickAction(exactDeepLink: url) else { return } "
         "_ = quickActionRouteBroker.submit(action) "
         "routePendingQuickAction()"
@@ -798,6 +806,26 @@ def validate_app_routing_source(source: str) -> list[str]:
     for symbol, boundary in FORBIDDEN_ACTION_SYMBOLS.items():
         if symbol in source:
             errors.append(f"main scene route crosses {boundary}: {symbol}")
+    return errors
+
+
+def validate_overview_route_source(source: str) -> list[str]:
+    errors: list[str] = []
+    url = declaration_body(source, "var url: URL?")
+    expected_url = (
+        'switch self { case .today: URL(string: "moneyup://overview/today") '
+        'case .budget: URL(string: "moneyup://overview/budget") }'
+    )
+    decoder = declaration_body(source, "init?(exactDeepLink url: URL)")
+    expected_decoder = (
+        "guard url.baseURL == nil, url.relativeString == url.absoluteString, "
+        "let route = Self.allCases.first(where: { $0.url?.absoluteString == url.absoluteString }) "
+        "else { return nil } self = route"
+    )
+    if url is None or " ".join(url.split()) != expected_url:
+        errors.append("overview URL mapping must remain two exact passive destinations")
+    if decoder is None or " ".join(decoder.split()) != expected_decoder:
+        errors.append("overview decoder must reject every non-canonical URL and payload")
     return errors
 
 
@@ -1597,9 +1625,17 @@ def validate_widget_source(source: str) -> list[str]:
         errors.append("WidgetBundle does not include the iOS 18 quick-log control")
     if source.count("Link(destination: action.deepLink)") != 5 or source.count("Link(") != 5:
         errors.append("every quick-action widget family must use an allowlisted navigation link")
-    url = ".widgetURL(entry.content == .quickAction || entry.budgetSnapshot.usesQuickActionFallback ? entry.action.deepLink : nil)"
+    url = ".widgetURL(destinationURL)"
     if url not in re.sub(r"\s+", " ", source) or source.count(".widgetURL(") != 1:
         errors.append("widget background taps must use the same allowlisted fallback route")
+    destination = declaration_body(source, "private var destinationURL: URL?")
+    expected_destination = (
+        "if entry.content == .quickAction || entry.budgetSnapshot.usesQuickActionFallback { "
+        "return entry.action.deepLink } return entry.content == .smartOverview "
+        "? MoneyUpOverviewRoute.today.url : MoneyUpOverviewRoute.budget.url"
+    )
+    if destination is None or " ".join(destination.split()) != expected_destination:
+        errors.append("passive widgets must use their exact, data-free overview destination")
     if source.count(".deepLink") != 6 or "Button(intent:" in source:
         errors.append("widget navigation must not perform an intent or construct a payload")
     if (
@@ -2726,6 +2762,7 @@ def validate_repository(root: Path = ROOT) -> list[str]:
     errors: list[str] = []
     errors.extend(validate_compiled_surface_inventory(root))
     source_contract = [
+        ("App/Shared/MoneyUpOverviewRoute.swift", validate_overview_route_source),
         (
             "App/Shared/MoneyUpQuickAction.swift",
             validate_shared_action_source,

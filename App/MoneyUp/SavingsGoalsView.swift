@@ -48,6 +48,8 @@ struct SavingsGoalsView: View {
             }
         }
         .navigationTitle("plan.goals")
+        .moneyUpNavigationSurface()
+        .contentMargins(.top, 8, for: .scrollContent)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -67,7 +69,7 @@ struct SavingsGoalsView: View {
             )
         ) {
             if let selectedGoalID {
-                GoalManagementSheet(goalID: selectedGoalID)
+                GoalDetailView(goalID: selectedGoalID)
             }
         }
     }
@@ -76,20 +78,23 @@ struct SavingsGoalsView: View {
         Button { selectedGoalID = goal.id } label: {
             GoalProgressRow(goal: goal)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(MoneyUpPressableButtonStyle())
     }
 }
 
-private struct GoalProgressRow: View {
+struct GoalProgressRow: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.appReportingSnapshot) private var reportingSnapshot
+    @AppStorage(MoneyAmountPrivacy.storageKey) private var hidesAmounts = MoneyAmountPrivacy.defaultHidesAmounts
     let goal: SavingsGoal
 
     private var summary: DerivedValue<SavingsGoalSummary> {
-        model.savingsGoalSummary(goal)
+        model.savingsGoalSummary(goal, asOf: reportingSnapshot?.instant ?? model.currentDateForUserAction())
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let _ = hidesAmounts
+        VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
                 Label(goal.name, systemImage: goal.kind.systemImage)
                     .font(.headline)
@@ -105,9 +110,15 @@ private struct GoalProgressRow: View {
             case let .available(summary):
                 let progress = NSDecimalNumber(decimal: summary.progress).doubleValue
                 let isOverdue = summary.isPastDue
-                ProgressView(value: min(max(progress, 0), 1))
-                    .tint(summary.isComplete ? .moneyUpAction : .accentColor)
-                    .accessibilityHidden(true)
+                HStack(spacing: 14) {
+                    MoneyUpProgressDial(fraction: progress, systemImage: goal.kind.systemImage)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("goal.remaining").font(.caption).foregroundStyle(.secondary)
+                        Text(formattedMoney(summary.remaining)).moneyUpFinancialValue(.prominent)
+                    }
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary).accessibilityHidden(true)
+                }
                 HStack {
                     Text(
                         String(
@@ -277,7 +288,7 @@ private struct GoalEditorSheet: View {
     }
 }
 
-private struct GoalManagementSheet: View {
+struct GoalManagementSheet: View {
     private enum PendingAction: Equatable { case reset, delete }
 
     @Environment(\.dismiss) private var dismiss
@@ -509,7 +520,7 @@ private struct GoalManagementSheet: View {
     }
 }
 
-private struct GoalMovementSheet: View {
+struct GoalMovementSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AppModel.self) private var model
     @FocusState private var amountFocused: Bool
@@ -577,7 +588,7 @@ private struct GoalMovementSheet: View {
     }
 }
 
-private extension SavingsGoalKind {
+extension SavingsGoalKind {
     var titleKey: LocalizedStringKey {
         switch self {
         case .savingsGoal: "goal.kind.savings"
@@ -593,7 +604,7 @@ private extension SavingsGoalKind {
     }
 }
 
-private extension SavingsGoalResetRule {
+extension SavingsGoalResetRule {
     var titleKey: LocalizedStringKey {
         switch self {
         case .never: "goal.reset.never"
@@ -603,7 +614,7 @@ private extension SavingsGoalResetRule {
     }
 }
 
-private extension SavingsGoalMovementKind {
+extension SavingsGoalMovementKind {
     var titleKey: LocalizedStringKey {
         switch self {
         case .contribution: "goal.contribute"
