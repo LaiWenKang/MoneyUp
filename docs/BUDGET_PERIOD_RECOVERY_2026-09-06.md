@@ -73,11 +73,17 @@ five regression methods pass with standalone Swift assertions on this Mac;
 this is separate from native XCTest execution.
 
 App regressions cover both screens after an in-place database load, unchanged
-non-budget record bytes and drafts, reopen idempotence, archived recovery
+transaction/account/draft record bytes, reopen idempotence, archived recovery
 evidence, malformed-history quarantine, rollback preservation, cancellation,
 failed-store recovery, Gift/Others hierarchy operations, existing-draft safety,
 and backup after promoting the last locked capture. The iOS 26 review workflow
 includes this regression class.
+
+The existing normal loader re-encodes the profile to persist legacy defaults on
+every open. Integration coverage checks unchanged profile values separately
+from its refreshed storage timestamp. A direct repair-transaction regression
+requires every non-budget record, including the profile and its timestamp, to
+remain byte-for-byte unchanged.
 
 Native XCTest and simulator evidence must come from the exact candidate CI
 because this Mac has Command Line Tools without XCTest/Xcode. Passing checks do

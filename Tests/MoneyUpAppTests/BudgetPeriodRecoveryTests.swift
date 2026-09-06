@@ -56,9 +56,15 @@ final class BudgetPeriodRecoveryTests: XCTestCase {
             XCTAssertEqual(storedEntry, entry)
             let recordsAfter = try await fixture.store.snapshot().records
             for record in recordsBefore where record.collection != RecordCollection.budgetNodes.rawValue
-                && record.collection != RecordCollection.budgetConfigurationTimelines.rawValue {
-                XCTAssertTrue(recordsAfter.contains(record), "Non-budget records must remain byte-for-byte unchanged")
+                && record.collection != RecordCollection.budgetConfigurationTimelines.rawValue
+                && record.collection != RecordCollection.profile.rawValue {
+                XCTAssertTrue(recordsAfter.contains(record), "Stored \(record.collection) records must remain byte-for-byte unchanged")
             }
+            // Normal load re-encodes even current profiles to persist legacy
+            // defaults. Its storage timestamp can change, but no profile value may.
+            let storedProfile = try await fixture.store.fetch(UserProfile.self,
+                id: UserProfile.primaryRecordID, from: .profile)
+            XCTAssertEqual(storedProfile, profile)
 
             let archive = try await model.encryptedBackup(password: "Synthetic recovery password")
             let snapshot = try PortableArchive.open(archive, password: "Synthetic recovery password")
@@ -108,6 +114,36 @@ final class BudgetPeriodRecoveryTests: XCTestCase {
             id: BudgetPeriodRecoveryOriginal.recordID, from: .budgetConfigurationTimelines)
         XCTAssertEqual(stored, history)
         XCTAssertNil(original)
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testRecoveryTransactionPreservesEveryNonBudgetRecordByte() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let now = try date(day: 6)
+        let node = BudgetNode(id: fixture.food.id, name: fixture.food.name, limit: try Money(100, currency: fixture.sgd))
+        let history = try BudgetConfigurationTimeline(currency: fixture.sgd, revisions: [
+            BudgetConfigurationRevision(effectiveMonth: date(), nodes: [node])
+        ])
+        let profile = UserProfile(baseCurrency: fixture.sgd, reportingTimeZoneIdentifier: "GMT")
+        let entry = try fixture.expense(amount: 20, occurredAt: now)
+        let draft = QuickLogDraft(kind: .expense, amountText: "12.34", destinationAmountText: "",
+            accountID: fixture.wallet.id, destinationAccountID: nil, categoryID: fixture.food.id,
+            occurredAt: now, dateWasEdited: true, payee: "Keep", note: "Keep", smartText: "")
+        try await fixture.seed(profile: profile, accounts: [fixture.wallet, fixture.food], entries: [entry],
+            budgetNodes: [node], budgetConfigurationTimeline: history, quickLogDraft: draft)
+        let model = fixture.model(profile: profile, entries: [entry], budgetNodes: [node], quickLogDraft: draft,
+            budgetConfigurationTimeline: history, currentDate: { now })
+        let before = try await fixture.store.snapshot().records
+        try await model.recoverLegacyBudgetPeriods(in: fixture.store)
+        let after = try await fixture.store.snapshot().records
+        for record in before where record.collection != RecordCollection.budgetNodes.rawValue
+            && record.collection != RecordCollection.budgetConfigurationTimelines.rawValue {
+            XCTAssertTrue(after.contains(record), "Repair must not rewrite \(record.collection), including its timestamp")
+        }
+        XCTAssertEqual(model.profile, profile)
+        XCTAssertEqual(model.quickLogDraft, draft)
         await fixture.store.close()
     }
 
