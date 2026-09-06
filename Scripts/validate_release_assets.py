@@ -1872,6 +1872,13 @@ def chart_render_guard_errors(
             if re.search(pattern, source):
                 errors.append(f"{label} contains an uncertified {effect}")
 
+    reviewed_flow_range = ".chartXScale(range: .plotDimension(padding: 16))"
+    if (
+        flow_chart.count(reviewed_flow_range) != 1
+        or flow_chart.count(".chartXScale(") != 1
+    ):
+        errors.append("cash-flow chart must retain its reviewed date-label padding")
+
     allowed_chart_calls = {
         "accessibilityHidden",
         "accessibilityHint",
@@ -1902,6 +1909,8 @@ def chart_render_guard_errors(
         ("cash-flow", reviewed_flow),
         ("category", category_chart),
     ):
+        if label == "cash-flow":
+            source = source.replace(reviewed_flow_range, "")
         calls = set(re.findall(r"\.([A-Za-z_]\w*)\s*\(", source))
         unknown_calls = sorted(calls - allowed_chart_calls)
         if unknown_calls:
@@ -3713,6 +3722,15 @@ def validate_brand_palette() -> None:
             flow_frame_anchor,
             ".modifier(UncertifiedChartModifier())\n        " + flow_frame_anchor,
             "cash-flow parent modifier",
+        ),
+    )
+    require_mutation_rejected(
+        "cash-flow date-label scale drift",
+        analysis=mutated(
+            insights_analysis_source,
+            ".chartXScale(range: .plotDimension(padding: 16))",
+            ".chartXScale(range: .plotDimension(padding: 0))",
+            "cash-flow date-label scale drift",
         ),
     )
 
