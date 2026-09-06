@@ -99,17 +99,27 @@ extension AppModel {
         ) != nil else {
             throw AppModelError.invalidBook
         }
-        try beginLifecycleMutation()
+        try beginLifecycleMutation(invalidatesJournalProjection:
+            !Self.preservesFinancialProjection(previous: profile, updated: updatedProfile))
         defer { endLifecycleMutation() }
+        let budgetChange = try budgetChangeForReportingTimeZone(updatedProfile: updatedProfile)
         let generation = storeGeneration
         let profileStore = try requireStore()
+        var writes = [try RecordWrite(updatedProfile, id: UserProfile.primaryRecordID, in: .profile)]
+        if let budgetChange {
+            let originals = Dictionary(uniqueKeysWithValues: budgetNodes.map { ($0.id, $0) })
+            writes += try budgetChange.nodes.filter { originals[$0.id] != $0 }.map {
+                try RecordWrite($0, id: $0.id.uuidString, in: .budgetNodes)
+            }
+            writes.append(try budgetConfigurationTimelineWrite(budgetChange.timeline))
+        }
         await lifecycleHooks.checkpoint(.beforeProfileWrite)
-        try await profileStore.upsert(
-            updatedProfile,
-            id: UserProfile.primaryRecordID,
-            in: .profile
-        )
+        try await profileStore.write(writes)
         guard isCurrentStoreGeneration(generation) else { return }
+        if let budgetChange {
+            budgetConfigurationTimeline = budgetChange.timeline
+            budgetNodes = budgetChange.nodes
+        }
         profile = updatedProfile
     }
 

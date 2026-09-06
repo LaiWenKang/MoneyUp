@@ -151,18 +151,18 @@ extension AppModel {
             reportCacheDay = today
             if !retainsCompleteJournal {
                 scheduleJournalDerivedRefresh()
-                return .unavailable(.appNotReady)
+                return .unavailable(journalDerivedRefreshIssue ?? .appNotReady)
             }
         }
         if let cached = reportCache[period] { return cached }
 
         guard retainsCompleteJournal else {
             scheduleJournalDerivedRefresh()
-            return .unavailable(.appNotReady)
+            return .unavailable(journalDerivedRefreshIssue ?? .appNotReady)
         }
 
         guard let currency = profile?.baseCurrency else {
-            return .unavailable(.appNotReady)
+            return .unavailable(journalDerivedRefreshIssue ?? .appNotReady)
         }
         guard let interval = period.interval(containing: now, calendar: calendar) else {
             DerivedValueDiagnostics.record(
@@ -303,10 +303,10 @@ extension AppModel {
     func validatedBudgetConfigurationTimeline(
         asOf: Date
     ) throws -> BudgetConfigurationTimeline {
-        guard !budgetConfigurationTimelineInvalid,
-              let currency = profile?.baseCurrency else {
-            throw AppModelError.invalidBook
+        guard !budgetConfigurationTimelineInvalid else {
+            throw budgetConfigurationTimelineIssue ?? .budgetHistoryQuarantined
         }
+        guard let currency = profile?.baseCurrency else { throw DerivedValueIssue.appNotReady }
         let timeline: BudgetConfigurationTimeline
         if let existing = budgetConfigurationTimeline {
             timeline = existing
@@ -317,24 +317,10 @@ extension AppModel {
                 asOf: asOf
             )
         }
-        guard timeline.currency == currency else { throw AppModelError.invalidBook }
-        for revision in timeline.revisions {
-            guard reportingCalendar.dateInterval(
-                of: .month,
-                for: revision.effectiveMonth
-            )?.start == revision.effectiveMonth else {
-                throw AppModelError.invalidBook
-            }
-        }
-        let currentMonth = try reportingMonthStart(containing: asOf)
-        let currentTree = try timeline.tree(effectiveAt: currentMonth)
-        let timelineNodes = Dictionary(
-            uniqueKeysWithValues: currentTree.nodes.map { ($0.id, $0) }
+        try timeline.validateCurrentConfiguration(
+            nodes: budgetNodes, baseCurrency: currency,
+            asOf: asOf, calendar: reportingCalendar
         )
-        let loadedNodes = Dictionary(
-            uniqueKeysWithValues: budgetNodes.map { ($0.id, $0) }
-        )
-        guard timelineNodes == loadedNodes else { throw AppModelError.invalidBook }
         return timeline
     }
 
@@ -417,23 +403,12 @@ extension AppModel {
         }
 
         do {
-            let now = currentDate()
-            let timeline = try validatedBudgetConfigurationTimeline(
-                asOf: now
-            )
-            let month = try reportingMonthStart(containing: now)
-            let currentTree = try timeline.tree(effectiveAt: month)
-            let persistedByID = Dictionary(
-                uniqueKeysWithValues: currentTree.nodes.map { ($0.id, $0) }
-            )
-            let loadedByID = Dictionary(
-                uniqueKeysWithValues: budgetNodes.map { ($0.id, $0) }
-            )
-            guard persistedByID == loadedByID else {
-                throw AppModelError.invalidBook
-            }
+            _ = try validatedBudgetConfigurationTimeline(asOf: currentDate())
+        } catch is CancellationError {
+            throw CancellationError()
         } catch {
             budgetConfigurationTimelineInvalid = true
+            budgetConfigurationTimelineIssue = .budgetFailure(error, operation: "budget-history-validation")
             recoveryIssues.append("budget_configuration_timelines/inconsistent-primary")
         }
     }

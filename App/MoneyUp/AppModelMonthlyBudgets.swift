@@ -70,6 +70,9 @@ extension AppModel {
         asOf date: Date,
         currency: CurrencyCode
     ) async -> DerivedValue<MonthlyBudgetPresentation> {
+        guard !isLifecycleMutationInProgress, !isJournalMutationInProgress else {
+            return .unavailable(.budgetRefreshPending)
+        }
         do {
             let read = try beginLogicalBookRead()
             let timeline = try validatedBudgetConfigurationTimeline(asOf: currentDate())
@@ -109,7 +112,7 @@ extension AppModel {
                 unclassifiedNodeIDs: tree.nodesNeedingPurpose(directSpending: spending)
             ))
         } catch {
-            return .unavailable(.budgetCalculationFailed)
+            return .unavailable(.budgetFailure(error, operation: "monthly-budget-presentation"))
         }
     }
 

@@ -60,6 +60,7 @@ func safeUserMessage(
          is BudgetTreeError,
          is BudgetMergeError,
          is MonthlyBudgetError,
+         is BudgetReportingConfigurationError,
          is DecimalCalculationError,
          is CurrencyCodeError,
          is MoneyError,
@@ -120,7 +121,9 @@ func safeRecoveryIssueSummaries(_ internalDetails: [String]) -> [String] {
         if detail.hasPrefix("accounts/") {
             area = .accounts
         } else if detail.hasPrefix("budgets/")
-                    || detail.hasPrefix("budget_nodes/") {
+                    || detail.hasPrefix("budget_nodes/")
+                    || detail.hasPrefix("budget_configuration_timelines/")
+                    || detail.hasPrefix("budget_entry_attributions/") {
             area = .budgets
         } else if detail.hasPrefix("journal_entries/") {
             area = .journal
@@ -329,6 +332,18 @@ extension MoneyError: @retroactive LocalizedError {
             )
         case .exceedsNewWriteMaximum:
             AppLocalization.string("error.amount_too_large")
+        }
+    }
+}
+
+
+extension BudgetReportingConfigurationError: @retroactive LocalizedError {
+    public var errorDescription: String? {
+        switch self {
+        case .currentMonthWouldChange:
+            AppLocalization.string("error.reporting_time_zone_month")
+        case .currencyMismatch, .invalidCalendar, .invalidMonthBoundary, .currentConfigurationMismatch:
+            AppLocalization.string("derived.reason.budget_history_review")
         }
     }
 }

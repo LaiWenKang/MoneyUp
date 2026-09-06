@@ -135,8 +135,9 @@ extension AppModel {
               projection.currency == currency else {
             // Closed months still require the complete SQL projection. The
             // deliberately bounded recent-entry cache cannot replace it.
+            if let issue = budgetProjectionIssue ?? journalDerivedRefreshIssue { throw issue }
             scheduleJournalDerivedRefresh()
-            throw AppModelError.invalidBook
+            throw DerivedValueIssue.budgetRefreshPending
         }
         return projection.monthlySpending
     }

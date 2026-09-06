@@ -121,15 +121,10 @@ extension AppModel {
                     effectiveLimits: rollover.effectiveLimits
                 ))
             case let .unavailable(issue):
-                return .unavailable(issue)
+                return .unavailable(budgetSourceIssue(issue))
             }
         } catch {
-            DerivedValueDiagnostics.record(
-                .budgetCalculationFailed,
-                operation: "budget-progress",
-                error: error
-            )
-            return .unavailable(.budgetCalculationFailed)
+            return .unavailable(.budgetFailure(error, operation: "budget-progress"))
         }
     }
 
@@ -150,15 +145,10 @@ extension AppModel {
                     effectiveLimits: rollover.effectiveLimits
                 ))
             case let .unavailable(issue):
-                return .unavailable(issue)
+                return .unavailable(budgetSourceIssue(issue))
             }
         } catch {
-            DerivedValueDiagnostics.record(
-                .budgetCalculationFailed,
-                operation: "budget-summary",
-                error: error
-            )
-            return .unavailable(.budgetCalculationFailed)
+            return .unavailable(.budgetFailure(error, operation: "budget-summary"))
         }
     }
 
@@ -174,14 +164,14 @@ extension AppModel {
         case let .available(values):
             spending = values
         case let .unavailable(issue):
-            return .unavailable(issue)
+            return .unavailable(budgetSourceIssue(issue))
         }
         let foreignSpending: [Money]
         switch excludedForeignSpendingThisMonthResult(asOf: date) {
         case let .available(values):
             foreignSpending = values
         case let .unavailable(issue):
-            return .unavailable(issue)
+            return .unavailable(budgetSourceIssue(issue))
         }
 
         do {
@@ -217,13 +207,12 @@ extension AppModel {
             }
             return .available(.available(breakdown))
         } catch {
-            DerivedValueDiagnostics.record(
-                .budgetCalculationFailed,
-                operation: "flexible-today",
-                error: error
-            )
-            return .unavailable(.budgetCalculationFailed)
+            return .unavailable(.budgetFailure(error, operation: "flexible-today"))
         }
+    }
+
+    private func budgetSourceIssue(_ issue: DerivedValueIssue) -> DerivedValueIssue {
+        issue == .appNotReady && state == .ready ? .budgetRefreshPending : issue
     }
 
     /// An expense account can legitimately exist without a configured budget

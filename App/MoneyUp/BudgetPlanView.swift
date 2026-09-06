@@ -11,6 +11,7 @@ struct BudgetPlanView: View {
         self.workspace = workspace
     }
     @State private var presentation: DerivedValue<MonthlyBudgetPresentation>?
+    @State private var loadRequestID = UUID()
     @State private var editingNode: BudgetNode?
     @State private var isAddingCategory = false
     @State private var isManagingCategories = false
@@ -38,7 +39,7 @@ struct BudgetPlanView: View {
         let parts = model.reportingCalendar.dateComponents([.year, .month], from: date)
         return "\(parts.year ?? 0)-\(parts.month ?? 0)-\(currency?.value ?? "")-"
             + "\(model.budgetNodesRevision)-\(model.journalProjectionRevision)-"
-            + "\(model.logicalBookRevision)-\(model.isJournalMutationInProgress)"
+            + "\(model.logicalBookRevision)-\(model.isJournalMutationInProgress)-\(model.isLifecycleMutationInProgress)"
     }
 
     private var pacingSelection: Binding<BudgetPacingCadence> {
@@ -63,8 +64,13 @@ struct BudgetPlanView: View {
                         DerivedValueUnavailableView(issue: issue, prominent: true)
                         if issue == .budgetHistoryUnavailable {
                             Button("history.scope.month") { workspace.budgetDate = nil }
+                        } else if issue.needsBudgetHistoryReview {
+                            NavigationLink { DataSafetyView() } label: { Text("backup.data_safety") }
                         } else {
-                            Button("action.retry") { Task { await load() } }
+                            Button("action.retry") {
+                                model.retryUnavailableJournalProjection()
+                                Task { await load() }
+                            }
                         }
                     }
                 }
@@ -286,10 +292,14 @@ struct BudgetPlanView: View {
     }
 
     private func load() async {
+        let request = UUID()
+        loadRequestID = request
+        let identity = loadIdentity
         presentation = nil
-        guard let currency, !model.isJournalMutationInProgress else { return }
+        guard let currency, !model.isJournalMutationInProgress,
+              !model.isLifecycleMutationInProgress else { return }
         let result = await model.monthlyBudgetPresentation(asOf: date, currency: currency)
-        guard !Task.isCancelled else { return }
+        guard !Task.isCancelled, loadRequestID == request, loadIdentity == identity else { return }
         presentation = result
     }
 }

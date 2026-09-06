@@ -36,7 +36,7 @@ extension AppModel {
     }
 
     func refreshBudgetWidgetSnapshot() {
-        guard !manualJournalMutationIsActive else {
+        guard !manualJournalMutationIsActive, !isLifecycleMutationInProgress else {
             widgetSnapshotRefreshWasDeferred = true
             return
         }

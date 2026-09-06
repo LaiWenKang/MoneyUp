@@ -44,6 +44,11 @@ struct PinnedBudgetBoard: View {
                     }
                 case let .unavailable(issue):
                     DerivedValueUnavailableView(issue: issue, prominent: true)
+                    if issue.needsBudgetHistoryReview {
+                        NavigationLink { DataSafetyView() } label: { Text("backup.data_safety") }
+                    } else {
+                        Button("action.retry") { model.retryUnavailableJournalProjection() }
+                    }
                 }
             }
         }

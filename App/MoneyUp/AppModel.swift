@@ -175,14 +175,17 @@ final class AppModel {
     var requiresAuthenticationPrivacyCover = false
     var profile: UserProfile? {
         didSet {
-            journalProjectionRevision &+= 1
-            if oldValue?.baseCurrency != profile?.baseCurrency
-                || oldValue?.reportingTimeZoneIdentifier
-                    != profile?.reportingTimeZoneIdentifier {
-                closedMonthBudgetProjection = nil
+            if !Self.preservesFinancialProjection(previous: oldValue, updated: profile) {
+                journalProjectionRevision &+= 1
+                journalDerivedRefreshIssue = nil
+                budgetProjectionIssue = nil
+                if oldValue?.baseCurrency != profile?.baseCurrency
+                    || oldValue?.reportingTimeZoneIdentifier != profile?.reportingTimeZoneIdentifier {
+                    closedMonthBudgetProjection = nil
+                }
+                invalidateDerivedData()
+                budgetTreeCache = nil
             }
-            invalidateDerivedData()
-            budgetTreeCache = nil
             refreshMoneyDisplayPolicy()
             refreshBudgetWidgetSnapshot()
         }
@@ -412,6 +415,8 @@ final class AppModel {
     var journalDerivedRefreshTask: Task<Void, Never>?
     var journalDerivedRefreshTaskToken: UUID?
     var journalDerivedRefreshWasDeferred = false
+    var journalDerivedRefreshIssue: DerivedValueIssue?
+    var budgetProjectionIssue: DerivedValueIssue?
     var journalProjectionRevision: UInt64 = 0
     var widgetIntelligencePublication = WidgetIntelligencePublicationState()
     var exchangeRateMutationIsActive = false
@@ -424,6 +429,7 @@ final class AppModel {
     var budgetTreeCache: BudgetTreeCacheEntry?
     var budgetConfigurationTimeline: BudgetConfigurationTimeline?
     var budgetConfigurationTimelineInvalid = false
+    var budgetConfigurationTimelineIssue: DerivedValueIssue?
     var budgetEntryAttributions: [UUID: BudgetEntryAttribution] = [:]
     var budgetAttributionCacheIsComplete = false
     var closedMonthBudgetProjection: ClosedMonthBudgetProjection?
