@@ -31,6 +31,9 @@ Build 1039 feedback now has a source follow-up: bounded navigation backgrounds,
 horizontally expanding selected sections, denser History and Budget layouts,
 allowances in Assets, useful widget capture fallbacks, and draft-safe editors.
 See [feedback implementation and verification](docs/FEEDBACK_1039_REVIEW.md).
+The app-wide follow-up adds exact goal contribution previews, snapshot-history
+charts, Log direction graphics, further draft/keyboard fixes, and explicit
+Smart Overview cold routing. See [app-wide review and evidence](docs/APPWIDE_EXPERIENCE_REVIEW.md).
 The prior merged baseline passed release,
 architecture, recovery, privacy, core/app-model, unsigned app/widget Simulator,
 and serial performance CI; build 11 must repeat those exact-head gates. Physical iPhone migration,

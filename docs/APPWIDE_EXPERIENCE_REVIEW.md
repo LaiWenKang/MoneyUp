@@ -30,8 +30,18 @@ Source checks cover structure, localization, architecture, launch safety, access
 
 Native tests cover cold-start deferral and one-time startup, gated overview consumption, exact URL rejection, contribution precision/overflow/calendar dates, currency-separated snapshot history, entry direction, ordinary keyboard dismissal, system-symbol availability, and a real edited Log draft across all five tabs. Render evidence includes full Today/History/Log/Plan/Assets tabs, Calendar, Goals, large-text Log, small Chinese Assets, goal detail and contribution preview, net-worth history, and the exchange-rate editor.
 
-The iOS 26 workflow also terminates the app, opens the Smart Overview URL, and verifies that the app process remains alive on a clean simulator book. This checks cold launch stability; it does not reproduce the tester's encrypted book or prove the original physical-device crash fixed. Physical-device reproduction, VoiceOver interaction, and signed-binary acceptance remain distinct from simulator evidence.
+The dedicated MoneyUpColdLaunch UI-test scheme terminates the app, opens the Smart Overview URL using XCUIApplication.open, and verifies its foreground state and window on a clean simulator book. This checks cold launch stability; it does not reproduce the tester's encrypted book or prove the original physical-device crash fixed. Physical-device reproduction, VoiceOver interaction, and signed-binary acceptance remain distinct from simulator evidence.
 
-Final candidate results will be recorded after native verification.
+Verified implementation: `d6dc4c4b430959af33580848be86e1b6ae803354`.
+
+- [CI 34014510756](https://github.com/LaiWenKang/MoneyUp/actions/runs/34014510756): all four jobs passed, including the unsigned iOS 18.5 app/widget build, 606 app tests, domain tests, source/privacy checks, and the serial 10,000-entry performance baseline.
+- [iOS 26 review 34014510787](https://github.com/LaiWenKang/MoneyUp/actions/runs/34014510787): 82 interaction/component tests and one isolated cold-launch UI test passed, with no failures or skips, on iPhone 17 Pro / iOS 26.5.
+- The artifact contains 25 native screen/component previews and the cold-launch screen. Full-tab views include the actual bottom navigation. English/Chinese, light/dark, small width, and accessibility text were inspected.
+- The cold UI test reaches a controlled data-recovery screen in the clean unsigned simulator and remains in the foreground. This proves URL-launch survival and controlled failure handling, not successful physical-device authentication or reproduction of the tester's original encrypted book.
+- The earlier bare simctl URL check stopped at the system's unanswered “Open in MoneyUp?” dialog; its failed runs are not app-crash evidence. The final test uses Apple's application-specific UI automation URL launch.
+- A reporting-clock refresh after goal/ledger updates keeps newly saved activity current. The synthetic goal movement predates the fixture's exclusive as-of boundary, so the rendered balance matches its expected SGD 2,000 contribution.
+- The following documentation commit records evidence only; app, test, widget, and build inputs match the verified implementation.
 
 Apple reference: [Linking widgets to app scenes](https://developer.apple.com/documentation/widgetkit/linking-to-specific-app-scenes-from-your-widget-or-live-activity).
+
+UI automation reference: [Launching an application by URL](https://developer.apple.com/documentation/xcuiautomation/xcuiapplication/open(_:)).
