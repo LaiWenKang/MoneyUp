@@ -20,7 +20,9 @@ budget categories with month/week/day remaining, removed the parts of Today
 that another tab already owned, and gave every swapped Plan section an
 explicit way back. A density pass then moved routine explanation behind a
 single glyph, gave Today's cards a headline figure with their supporting rows
-one tap away, and replaced captions that named a figure with the symbol for it.
+one tap away, and initially replaced figure captions with symbols. Build 1039 feedback
+restores short labels on financial figures and collapsed Today cards so their
+meaning stays visible.
 The current feedback pass defaults exact amounts to glance-private masking,
 replaces generic History chips with actual hot categories, surfaces the budget
 simulator and interactive chart preview, removes duplicate navigation, and adds
