@@ -3,6 +3,19 @@ import MoneyUpCore
 import XCTest
 
 final class AutomaticBudgetTests: XCTestCase {
+    func testPacingPreferencesDecodeOlderProfilesAndRoundTripEveryCadence() throws {
+        let legacy = Data(#"{"showsDailyGuidance":false,"hiddenGuidanceCategoryIDs":[],"showsIllustrations":false,"showsTodayTrend":false,"reducesMotion":true}"#.utf8)
+        var preferences = try JSONDecoder().decode(MoneyUpDisplayPreferences.self, from: legacy)
+        XCTAssertEqual(preferences.preferredGuidanceCadence, .daily)
+        XCTAssertFalse(preferences.showsDailyGuidance)
+        XCTAssertFalse(preferences.showsIllustrations)
+        XCTAssertTrue(preferences.reducesMotion)
+        for cadence in BudgetPacingCadence.allCases {
+            preferences.preferredGuidanceCadence = cadence
+            XCTAssertEqual(try JSONDecoder().decode(MoneyUpDisplayPreferences.self, from: JSONEncoder().encode(preferences)), preferences)
+        }
+    }
+
     func testDirectUnallocatedSpendingReducesFlexibleGuidance() throws {
         let sgd = try CurrencyCode("SGD")
         let parent = BudgetNode(name: "Food", purpose: .flexible, allocationMode: .automatic)

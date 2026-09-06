@@ -1,11 +1,44 @@
 import Foundation
 @testable import MoneyUp
 import MoneyUpCore
+import Observation
 import SwiftUI
 import UIKit
 import XCTest
 
 final class AppwideRenderEvidenceTests: XCTestCase {
+    @MainActor
+    func testPlanToolbarSurvivesRetainedTabAndAppearanceChanges() async throws {
+        let (fixture, model, snapshot) = try await makeFixture()
+        defer { fixture.removeFiles() }
+        let navigation = MoneyUpTabNavigation(section: .plan)
+        let appearance = ReviewAppearance()
+        let controller = UIHostingController(rootView: RetainedPlanReview(model: model, snapshot: snapshot,
+            navigation: navigation, appearance: appearance))
+        let window = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first.map(UIWindow.init(windowScene:))
+            ?? UIWindow(frame: .zero)
+        window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+        window.rootViewController = controller
+        window.isHidden = false
+        defer { window.isHidden = true; window.rootViewController = nil }
+        controller.view.frame = window.bounds
+        for (index, scheme) in [ColorScheme.dark, .light, .dark, .light].enumerated() {
+            navigation.section = .today
+            appearance.scheme = scheme
+            try? await Task.sleep(for: .milliseconds(200))
+            navigation.section = .plan
+            try? await Task.sleep(for: .milliseconds(500))
+            controller.view.layoutIfNeeded()
+            XCTAssertEqual(navigation.section, .plan)
+            let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in window.drawHierarchy(in: window.bounds, afterScreenUpdates: true) }
+            let attachment = XCTAttachment(image: image)
+            attachment.name = "plan-appearance-cycle-\(index)-\(scheme == .light ? "light" : "dark")"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+        }
+        await fixture.store.close()
+    }
+
     @MainActor
     func testRenderEveryPrimaryTabAndPlanningTool() async throws {
         let (fixture, model, snapshot) = try await makeFixture()
@@ -20,6 +53,8 @@ final class AppwideRenderEvidenceTests: XCTestCase {
         for (tab, name) in tabs {
             await capture(MainTabView(initialReportingSnapshot: snapshot, initialSection: tab).environment(model)
                 .environment(MoneyUpOverviewNavigation()).preferredColorScheme(.dark), name: "full-" + name)
+            await capture(MainTabView(initialReportingSnapshot: snapshot, initialSection: tab).environment(model)
+                .environment(MoneyUpOverviewNavigation()).preferredColorScheme(.light), name: "full-light-" + name)
         }
         await capture(MainTabView(initialReportingSnapshot: snapshot, initialSection: .plan, initialPlanSection: .calendar)
             .environment(model).environment(MoneyUpOverviewNavigation()).preferredColorScheme(.light), name: "full-calendar")
@@ -104,5 +139,22 @@ final class AppwideRenderEvidenceTests: XCTestCase {
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
+    }
+}
+
+@MainActor @Observable private final class ReviewAppearance {
+    var scheme = ColorScheme.dark
+}
+
+private struct RetainedPlanReview: View {
+    let model: AppModel
+    let snapshot: AppReportingSnapshot
+    let navigation: MoneyUpTabNavigation
+    let appearance: ReviewAppearance
+
+    var body: some View {
+        MainTabView(initialReportingSnapshot: snapshot, navigation: navigation)
+            .environment(model).environment(MoneyUpOverviewNavigation())
+            .preferredColorScheme(appearance.scheme)
     }
 }

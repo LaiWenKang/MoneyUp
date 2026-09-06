@@ -8,6 +8,14 @@ struct DisplaySettingsView: View {
         Form {
             Section {
                 Toggle("display.daily_guidance", isOn: preference(\.showsDailyGuidance))
+                Picker("display.guidance_cadence", selection: Binding(
+                    get: { model.displayPreferences.preferredGuidanceCadence },
+                    set: { cadence in model.changeDisplayPreferences { $0.preferredGuidanceCadence = cadence } }
+                )) {
+                    Text("plan.pacing.today").tag(BudgetPacingCadence.daily)
+                    Text("plan.pacing.this_week").tag(BudgetPacingCadence.weekly)
+                    Text("plan.pacing.rest_of_month").tag(BudgetPacingCadence.monthly)
+                }
             } footer: {
                 MoneyUpExplainer("display.guidance_detail")
             }

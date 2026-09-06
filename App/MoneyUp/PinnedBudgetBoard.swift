@@ -187,7 +187,13 @@ struct PinnedBudgetRow: View {
     @ViewBuilder
     private var cadences: some View {
         if let spread = summary.spread {
-            if dynamicTypeSize.isAccessibilitySize {
+            if !showsDetail {
+                switch model.displayPreferences.preferredGuidanceCadence {
+                case .daily: cadence("today.pinned.day", spread.daily.available)
+                case .weekly: cadence("today.pinned.week", spread.weekly.available)
+                case .monthly: cadence("today.pinned.month", spread.monthly.available)
+                }
+            } else if dynamicTypeSize.isAccessibilitySize {
                 VStack(alignment: .leading, spacing: 3) {
                     cadence("today.pinned.month", spread.monthly.available)
                     cadence("today.pinned.week", spread.weekly.available)
@@ -204,7 +210,7 @@ struct PinnedBudgetRow: View {
     }
 
     private func cadence(_ titleKey: LocalizedStringKey, _ money: Money) -> some View {
-        let layout = dynamicTypeSize.isAccessibilitySize
+        let layout = dynamicTypeSize.isAccessibilitySize || !showsDetail
             ? AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: 8))
             : AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
         return layout {

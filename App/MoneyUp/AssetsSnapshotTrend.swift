@@ -9,6 +9,11 @@ struct NetWorthHistoryPoint: Identifiable, Equatable {
 }
 
 enum NetWorthHistoryPresentation {
+    static func change(to selected: NetWorthHistoryPoint, in points: [NetWorthHistoryPoint]) throws -> Money? {
+        guard let index = points.firstIndex(where: { $0.id == selected.id }), index > 0 else { return nil }
+        return try selected.money.subtracting(points[index - 1].money)
+    }
+
     static func points(_ snapshots: [NetWorthSnapshot], currency: CurrencyCode, limit: Int = 60) -> [NetWorthHistoryPoint] {
         guard limit > 0 else { return [] }
         let values = snapshots.compactMap { snapshot -> NetWorthHistoryPoint? in
@@ -60,6 +65,18 @@ struct AssetsSnapshotTrend: View {
                         .disabled(selected.id == points.last?.id).accessibilityLabel("assets.snapshot_next")
                 }
                 .buttonStyle(.borderless)
+                if let index = points.firstIndex(where: { $0.id == selected.id }), index > 0,
+                   let change = try? NetWorthHistoryPresentation.change(to: selected, in: points) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Label(formattedMoneyWithCurrencyCode(change), systemImage: change.amount > .zero
+                            ? "arrow.up.right" : change.amount < .zero ? "arrow.down.right" : "equal")
+                            .font(.subheadline.weight(.semibold).monospacedDigit())
+                        Text(String(format: AppLocalization.string("assets.snapshot_change_since"),
+                            points[index - 1].date.formattedForReporting(.dateTime.year().month().day(), calendar: model.reportingCalendar)))
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    .accessibilityElement(children: .combine)
+                }
                 Chart(points) { point in
                     LineMark(x: .value(AppLocalization.string("chart.dimension.date"), point.date), y: .value(AppLocalization.string("chart.dimension.amount"), NSDecimalNumber(decimal: point.money.amount).doubleValue))
                         .foregroundStyle(Color.moneyUpChartSeries1)

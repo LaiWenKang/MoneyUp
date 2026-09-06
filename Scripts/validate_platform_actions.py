@@ -1667,7 +1667,8 @@ def validate_widget_source(source: str) -> list[str]:
         r"snapshot\s*:\s*entry\.budgetSnapshot\s*,\s*"
         r"insights\s*:\s*entry\.insights\s*,\s*"
         r"family\s*:\s*family\s*,\s*"
-        r"homeDensity\s*:\s*homeDensity\s*\)",
+        r"homeDensity\s*:\s*homeDensity\s*,\s*"
+        r"focus\s*:\s*entry\.focus\s*\)",
         flags=re.DOTALL,
     )
     if widget_view is None or len(smart_overview_call.findall(widget_view)) != 1:
@@ -1779,10 +1780,11 @@ def validate_widget_source(source: str) -> list[str]:
         expected_parameters = [
             ("content", "MoneyUpWidgetContent"),
             ("defaultAction", "MoneyUpQuickAction"),
+            ("focus", "SmartOverviewFocus"),
         ]
-        if configuration.count("@Parameter") != 2 or parameters != expected_parameters:
+        if configuration.count("@Parameter") != 3 or parameters != expected_parameters:
             errors.append(
-                "widget configuration must retain only its two closed enum parameters"
+                "widget configuration must retain only its three closed enum parameters"
             )
 
     budget_body = declaration_body(source, "private struct BudgetStatusWidgetView")
@@ -2472,7 +2474,7 @@ def validate_compiled_surface_inventory(root: Path) -> list[str]:
         r"\bAppShortcutsProvider\b": 1,
         r"\bControlWidget\b": 1,
         r"\bAppIntentControlConfiguration\s*\(": 1,
-        r"@Parameter\b": 3,
+        r"@Parameter\b": 4,
     }
     for pattern, expected_count in declaration_patterns.items():
         count = len(re.findall(pattern, combined))

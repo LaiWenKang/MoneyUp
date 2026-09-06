@@ -27,6 +27,17 @@ enum MoneyUpWidgetContent: String, AppEnum, CaseIterable, Identifiable, Sendable
     var id: String { rawValue }
 }
 
+extension SmartOverviewFocus: AppEnum {
+    static let typeDisplayRepresentation: TypeDisplayRepresentation = "widget.configuration.focus"
+    static let caseDisplayRepresentations: [SmartOverviewFocus: DisplayRepresentation] = [
+        .automatic: "widget.focus.automatic",
+        .budget: "widget.smart_budget",
+        .review: "widget.smart_review",
+        .allowance: "widget.smart_allowance",
+        .commitments: "widget.smart_commitments_next"
+    ]
+}
+
 struct MoneyUpWidgetConfigurationIntent: WidgetConfigurationIntent {
     static let title: LocalizedStringResource = "widget.configuration.title"
     static let description = IntentDescription("widget.configuration.description")
@@ -42,11 +53,15 @@ struct MoneyUpWidgetConfigurationIntent: WidgetConfigurationIntent {
         default: MoneyUpQuickAction.expense
     )
     var defaultAction: MoneyUpQuickAction
+
+    @Parameter(title: "widget.configuration.focus", default: SmartOverviewFocus.automatic)
+    var focus: SmartOverviewFocus
 }
 
 private struct MoneyUpWidgetEntry: TimelineEntry {
     let date: Date
     let content: MoneyUpWidgetContent
+    var focus: SmartOverviewFocus = .automatic
     let action: MoneyUpQuickAction
     let budgetSnapshot: BudgetWidgetSnapshot
     let insights: MoneyUpWidgetInsights?
@@ -92,6 +107,7 @@ private struct MoneyUpWidgetProvider: AppIntentTimelineProvider {
             MoneyUpWidgetEntry(
                 date: generation.date,
                 content: entry.content,
+                focus: entry.focus,
                 action: entry.action,
                 budgetSnapshot: generation.snapshot.budget,
                 insights: generation.snapshot.insights
@@ -116,6 +132,7 @@ private struct MoneyUpWidgetProvider: AppIntentTimelineProvider {
         return MoneyUpWidgetEntry(
             date: now,
             content: configuration.content,
+            focus: configuration.focus,
             action: configuration.defaultAction,
             budgetSnapshot: snapshot.budget,
             insights: snapshot.insights
@@ -150,7 +167,8 @@ private struct MoneyUpWidgetView: View {
                     snapshot: entry.budgetSnapshot,
                     insights: entry.insights,
                     family: family,
-                    homeDensity: homeDensity
+                    homeDensity: homeDensity,
+                    focus: entry.focus
                 )
             case .quickAction:
                 quickActionContent

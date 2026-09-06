@@ -5,6 +5,7 @@ import UIKit
 
 struct HistorySummaryView: View {
     let summary: HistorySummary
+    @State private var showsDetails = false
 
     private var currencies: [CurrencyCode] {
         Set(
@@ -16,11 +17,23 @@ struct HistorySummaryView: View {
     }
 
     var body: some View {
+        if summary.transactionCount == 0 {
+            summaryLabel
+        } else {
+            DisclosureGroup(isExpanded: $showsDetails) {
+                details.padding(.top, 8)
+            } label: { summaryLabel }
+        }
+    }
+
+    private var summaryLabel: some View {
+        LabeledContent("history.transactions") {
+            Text(summary.transactionCount, format: .number).monospacedDigit()
+        }
+    }
+
+    private var details: some View {
         VStack(alignment: .leading, spacing: 8) {
-            LabeledContent("history.transactions") {
-                Text(summary.transactionCount, format: .number)
-                    .monospacedDigit()
-            }
             if currencies.isEmpty && summary.transactionCount > 0 {
                 Text("history.no_filtered_total")
                     .font(.subheadline)

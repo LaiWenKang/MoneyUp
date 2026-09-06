@@ -112,26 +112,39 @@ enum TodayPeriodContextFormatter {
 /// even before a budget has been configured.
 struct TodayPeriodContextView: View {
     @Environment(\.locale) private var locale
+    @State private var showsContext = false
     let reportingDate: Date
     let reportingCalendar: Calendar
 
     var body: some View {
-        if let contextDescription {
-            Label(contextDescription, systemImage: "calendar")
+        if let presentation {
+            Button { showsContext.toggle() } label: {
+                HStack(spacing: 8) {
+                    Label(presentation.reportingDayDescription, systemImage: "calendar")
+                    Spacer(minLength: 8)
+                    Image(systemName: "info.circle")
+                }
                 .font(.footnote.weight(.medium))
                 .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .accessibilityElement(children: .combine)
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(presentation.contextDescription)
+            .popover(isPresented: $showsContext) {
+                Text(presentation.contextDescription)
+                    .padding().presentationCompactAdaptation(.popover)
+            }
         }
     }
 
-    private var contextDescription: String? {
+    private var presentation: TodayPeriodContextPresentation? {
         TodayPeriodContextFormatter.presentation(
             reportingDate: reportingDate,
             reportingCalendar: reportingCalendar,
             locale: locale,
             deviceTimeZone: .autoupdatingCurrent,
             localizedString: { AppLocalization.string($0) }
-        )?.contextDescription
+        )
     }
 }

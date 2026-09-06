@@ -12,5 +12,6 @@ final class PlanWorkspaceState {
     var budgetDate: Date?
     var budgetCurrencyCode: String?
     var pacingCadence: BudgetPacingCadence = .daily
+    var hasChosenPacingCadence = false
     var calendarDate = Date()
 }

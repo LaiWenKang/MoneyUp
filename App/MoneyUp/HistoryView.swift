@@ -401,89 +401,13 @@ struct HistoryView: View {
             .listRowSeparator(.hidden)
 
             Section {
-                HStack(spacing: 8) {
-                    Menu {
-                        Button {
-                            setCategoryFilter(nil)
-                        } label: {
-                            Label(
-                                "history.filter.any_category",
-                                systemImage: filters.categoryIDs == nil
-                                    ? "checkmark"
-                                    : "square.grid.2x2"
-                            )
-                        }
-
-                        if !hotCategories.isEmpty {
-                            Section("history.hot_categories") {
-                                ForEach(hotCategories) { hotCategory in
-                                    let selectedIDs = Set([hotCategory.id])
-                                    Button {
-                                        setCategoryFilter(selectedIDs)
-                                    } label: {
-                                        Label(
-                                            model.categoryPathName(for: hotCategory.id),
-                                            systemImage: filters.categoryIDs == selectedIDs
-                                                ? "checkmark"
-                                                : "clock.arrow.circlepath"
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        Divider()
-                        Button {
-                            showingFilters = true
-                        } label: {
-                            Label(
-                                "history.filter.more_categories",
-                                systemImage: "line.3.horizontal.decrease.circle"
-                            )
-                        }
-                    } label: {
-                        HStack(spacing: 12) {
-                            Image(systemName: "square.grid.2x2")
-                                .foregroundStyle(Color.accentColor)
-                                .accessibilityHidden(true)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("history.filter.category")
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(.primary)
-                                Text(categoryFilterValue)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(2)
-                            }
-                            Spacer(minLength: 8)
-                            Image(systemName: "chevron.up.chevron.down")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                                .accessibilityHidden(true)
-                        }
-                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("history.filter.category")
-                    .accessibilityValue(categoryFilterValue)
-                    .accessibilityHint("history.filter.category_hint")
-
-                    if filters.categoryIDs != nil {
-                        Button {
-                            setCategoryFilter(nil)
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .frame(width: 44, height: 44)
-                        }
-                        .buttonStyle(.borderless)
-                        .accessibilityLabel("history.filter.clear_category")
-                    }
-                }
-
                 ViewThatFits(in: .horizontal) {
                     filterActions(horizontal: true)
                     filterActions(horizontal: false)
+                }
+                if filters.categoryIDs != nil {
+                    LabeledContent("history.filter.category", value: categoryFilterValue)
+                        .font(.subheadline)
                 }
             }
 
@@ -788,7 +712,7 @@ extension HistoryView {
             Button { showingFilters = true } label: {
                 Label {
                     Text(filters.advancedFilterCount(quickRange: quickRange) == 0
-                        ? AppLocalization.string("history.filter")
+                        ? AppLocalization.string("history.filter_short")
                         : String(format: AppLocalization.string("history.filter_count"), filters.advancedFilterCount(quickRange: quickRange)))
                 } icon: { Image(systemName: "line.3.horizontal.decrease.circle") }
             }

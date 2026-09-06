@@ -41,6 +41,13 @@ struct BudgetPlanView: View {
             + "\(model.logicalBookRevision)-\(model.isJournalMutationInProgress)"
     }
 
+    private var pacingSelection: Binding<BudgetPacingCadence> {
+        Binding(
+            get: { workspace.hasChosenPacingCadence ? workspace.pacingCadence : model.displayPreferences.preferredGuidanceCadence },
+            set: { workspace.pacingCadence = $0; workspace.hasChosenPacingCadence = true }
+        )
+    }
+
     var body: some View {
         List {
             scopeSection
@@ -183,7 +190,7 @@ struct BudgetPlanView: View {
     }
 
     private var pacingPicker: some View {
-        Picker("plan.pacing_view", selection: $workspace.pacingCadence) {
+        Picker("plan.pacing_view", selection: pacingSelection) {
             Text("plan.pacing.today").tag(BudgetPacingCadence.daily)
             Text("plan.pacing.this_week").tag(BudgetPacingCadence.weekly)
             Text("plan.pacing.rest_of_month").tag(BudgetPacingCadence.monthly)
@@ -231,7 +238,7 @@ struct BudgetPlanView: View {
                 node: item.node, depth: item.depth, progress: progress,
                 elapsed: isCurrentMonth ? sharedSnapshot?.monthElapsed ?? 0 : isClosed ? 1 : 0,
                 purpose: snapshot.purposes[item.id] ?? .unclassified,
-                displayedPacingCadence: workspace.pacingCadence,
+                displayedPacingCadence: pacingSelection.wrappedValue,
                 showsDetail: showsRowDetail, reportingDate: date,
                 showsName: true, showsPacing: isCurrentMonth
             )

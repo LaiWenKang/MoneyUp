@@ -43,6 +43,8 @@ jobs:
             -derivedDataPath "$RUNNER_TEMP/MoneyUpUI26DerivedData" \
             -parallel-testing-enabled NO \
             -only-testing:MoneyUpTests/AppwideExperienceTests \
+            -only-testing:MoneyUpTests/OverviewInsightTests \
+            -only-testing:MoneyUpTests/SmartOverviewRenderTests \
             -only-testing:MoneyUpTests/AppwideRenderEvidenceTests \
             -only-testing:MoneyUpTests/Feedback1039RegressionTests \
             -only-testing:MoneyUpTests/NavigationPresentationTests \

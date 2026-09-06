@@ -47,8 +47,20 @@ extension View {
     /// Navigation owns the title; scroll content and decorative surfaces stay
     /// below it, including on OS versions with translucent navigation chrome.
     func moneyUpNavigationSurface() -> some View {
-        navigationBarTitleDisplayMode(.inline)
+        modifier(MoneyUpNavigationSurfaceModifier())
+    }
+}
+
+private struct MoneyUpNavigationSurfaceModifier: ViewModifier {
+    @Environment(\.colorScheme) private var colorScheme
+
+    func body(content: Content) -> some View {
+        content.navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Color.moneyUpBackground, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
+            // The navigation controller survives tab and appearance changes.
+            // Resolve its foreground from the same scheme as its opaque canvas.
+            .toolbarColorScheme(colorScheme, for: .navigationBar)
+            .tint(Color.accentColor)
     }
 }
