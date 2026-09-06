@@ -131,7 +131,30 @@ targets:
         SKIP_INSTALL: true
         CODE_SIGN_ENTITLEMENTS: App/MoneyUpWidget/MoneyUpWidget.entitlements
 
+  MoneyUpUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: Tests/MoneyUpUITests
+    dependencies:
+      - target: MoneyUp
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.laiwenkang.MoneyUpUITests
+        GENERATE_INFOPLIST_FILE: true
+        TEST_TARGET_NAME: MoneyUp
+
 schemes:
+  MoneyUpColdLaunch:
+    build:
+      targets:
+        MoneyUp: [test]
+        MoneyUpUITests: [test]
+    test:
+      config: Debug
+      targets:
+        - name: MoneyUpUITests
+          parallelizable: false
   MoneyUpPerformance:
     build:
       targets:

@@ -2612,6 +2612,7 @@ def validate_identity_and_capture_boundary(root: Path) -> list[str]:
     expected_target_sources = {
         "MoneyUp": ["App/MoneyUp", "App/Shared"],
         "MoneyUpTests": ["Tests/MoneyUpAppTests"],
+        "MoneyUpUITests": ["Tests/MoneyUpUITests"],
         "MoneyUpWidget": ["App/MoneyUpWidget", "App/Shared"],
     }
     for target, expected_sources in expected_target_sources.items():
@@ -2630,6 +2631,7 @@ def validate_identity_and_capture_boundary(root: Path) -> list[str]:
         TEST_BUNDLE_ID,
         PERFORMANCE_TEST_BUNDLE_ID,
         WIDGET_BUNDLE_ID,
+        "com.laiwenkang.MoneyUpUITests",
     ]
     if bundle_ids != expected_bundle_ids:
         errors.append(

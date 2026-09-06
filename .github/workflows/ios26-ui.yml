@@ -49,43 +49,22 @@ jobs:
             -only-testing:MoneyUpTests/RedesignRenderEvidenceTests \
             -only-testing:MoneyUpTests/PlatformQuickLogActionTests \
             SWIFT_TREAT_WARNINGS_AS_ERRORS=YES CODE_SIGNING_ALLOWED=NO test
-          xcrun simctl boot "$SIMULATOR_ID" || true
-          xcrun simctl bootstatus "$SIMULATOR_ID" -b
-          xcrun simctl install "$SIMULATOR_ID" "$RUNNER_TEMP/MoneyUpUI26DerivedData/Build/Products/Debug-iphonesimulator/MoneyUp.app"
-          xcrun simctl terminate "$SIMULATOR_ID" com.laiwenkang.MoneyUp || true
-          xcrun simctl openurl "$SIMULATOR_ID" moneyup://overview/today
-          python3 - "$SIMULATOR_ID" <<'PYCODE'
-          import json, os, shutil, subprocess, sys, time
-          from pathlib import Path
-          simulator = sys.argv[1]
-          output = Path(os.environ["RUNNER_TEMP"]) / "cold-overview-diagnostics"
-          output.mkdir(exist_ok=True)
-          time.sleep(5)
-          process_list = subprocess.check_output(["xcrun", "simctl", "spawn", simulator, "launchctl", "list"], text=True)
-          (output / "launch-services.txt").write_text(process_list)
-          subprocess.run(["xcrun", "simctl", "io", simulator, "screenshot", str(output / "screen.png")], check=False)
-          predicate = 'process == "MoneyUp" OR eventMessage CONTAINS "com.laiwenkang.MoneyUp"'
-          try:
-              log = subprocess.run(["xcrun", "simctl", "spawn", simulator, "log", "show", "--last", "3m", "--style", "compact", "--predicate", predicate], capture_output=True, text=True, timeout=45)
-              (output / "launch.log").write_text(log.stdout + log.stderr)
-          except subprocess.TimeoutExpired:
-              (output / "launch.log").write_text("Log collection timed out")
-          reports = Path.home() / "Library/Logs/DiagnosticReports"
-          for report in reports.glob("MoneyUp*.ips"):
-              shutil.copy2(report, output / report.name)
-          lines = process_list.splitlines()
-          live = [line for line in lines if "UIKitApplication:com.laiwenkang.MoneyUp[" in line and line.split()[0].isdigit()]
-          (output / "result.json").write_text(json.dumps({"simulator": simulator, "alive": bool(live), "matching_processes": live}, indent=2))
-          if not live:
-              raise SystemExit("MoneyUp did not remain running after the cold overview URL; diagnostics preserved")
-          print("Cold Smart Overview URL: app process remained alive on the clean simulator book")
-          PYCODE
+          xcodebuild -project MoneyUp.xcodeproj -scheme MoneyUpColdLaunch -configuration Debug \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
+            -derivedDataPath "$RUNNER_TEMP/MoneyUpUI26DerivedData" \
+            -resultBundlePath "$RUNNER_TEMP/MoneyUpColdLaunch.xcresult" \
+            -parallel-testing-enabled NO \
+            SWIFT_TREAT_WARNINGS_AS_ERRORS=YES CODE_SIGNING_ALLOWED=NO test
       - name: Export review evidence
         if: ${{ always() }}
         run: |
           if test -d "$RUNNER_TEMP/MoneyUpUI26.xcresult"; then
             xcrun xcresulttool export attachments --path "$RUNNER_TEMP/MoneyUpUI26.xcresult" --output-path "$RUNNER_TEMP/ui26-images"
             xcrun xcresulttool get test-results summary --path "$RUNNER_TEMP/MoneyUpUI26.xcresult" --compact > "$RUNNER_TEMP/ui26-summary.json"
+          fi
+          if test -d "$RUNNER_TEMP/MoneyUpColdLaunch.xcresult"; then
+            xcrun xcresulttool export attachments --path "$RUNNER_TEMP/MoneyUpColdLaunch.xcresult" --output-path "$RUNNER_TEMP/ui26-cold-images"
+            xcrun xcresulttool get test-results summary --path "$RUNNER_TEMP/MoneyUpColdLaunch.xcresult" --compact > "$RUNNER_TEMP/ui26-cold-summary.json"
           fi
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: ${{ always() }}
@@ -94,5 +73,6 @@ jobs:
           path: |
             ${{ runner.temp }}/ui26-images
             ${{ runner.temp }}/ui26-summary.json
-            ${{ runner.temp }}/cold-overview-diagnostics
+            ${{ runner.temp }}/ui26-cold-images
+            ${{ runner.temp }}/ui26-cold-summary.json
           retention-days: 14
