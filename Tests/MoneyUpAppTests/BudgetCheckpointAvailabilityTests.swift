@@ -167,10 +167,11 @@ final class BudgetCheckpointAvailabilityTests: XCTestCase {
             XCTAssertEqual(model.budgetNodes.first { $0.id == fixture.food.id }?.allocationMode, .automatic)
             XCTAssertEqual(model.pinnedBudgetSummariesResult().value?.first?.remaining?.amount, 50)
             await gate.arm()
-            _ = try await model.addCategory(name: "New category", kind: .expense)
+            let newParentID = try await model.addCategory(name: "New category", kind: .expense)
             XCTAssertNil(model.closedMonthBudgetProjection)
             try await model.updateCategoryMetadata(categoryID: child.id, name: "Meals",
-                amount: 120, purpose: .flexible, rolloverRule: .fullBalance)
+                amount: 120, purpose: .flexible, rolloverRule: .fullBalance,
+                parentChange: .set(newParentID))
             try await model.setBudgetNodePinned(child.id, isPinned: false)
             try await model.setBudgetNodePinned(child.id, isPinned: true)
             let tree = try model.reportingBudgetTree(currency: fixture.sgd)
@@ -178,6 +179,9 @@ final class BudgetCheckpointAvailabilityTests: XCTestCase {
             await gate.release()
             while let refresh = model.journalDerivedRefreshTask { await refresh.value }
             XCTAssertEqual(model.pinnedBudgetSummariesResult().value?.first?.remaining?.amount, 70)
+            let plan = await model.monthlyBudgetPresentation(asOf: now, currency: fixture.sgd)
+            XCTAssertEqual(plan.value?.summary?.remaining.amount, 70)
+            XCTAssertEqual(plan.value?.progress.first { $0.node.id == child.id }?.node.parentID, newParentID)
             XCTAssertTrue(model.recoveryIssues.isEmpty)
         } catch {
             await gate.release()
@@ -191,6 +195,8 @@ final class BudgetCheckpointAvailabilityTests: XCTestCase {
         try await restored.reloadPersistedBookForTesting()
         XCTAssertEqual(restored.profile?.pinnedBudgetNodeIDs, [child.id])
         XCTAssertEqual(restored.pinnedBudgetSummariesResult().value?.first?.remaining?.amount, 70)
+        let restoredPlan = await restored.monthlyBudgetPresentation(asOf: now, currency: fixture.sgd)
+        XCTAssertEqual(restoredPlan.value?.summary?.remaining.amount, 70)
         XCTAssertEqual(restored.accountsByID[child.id]?.name, "Meals")
         XCTAssertTrue(restored.recoveryIssues.isEmpty)
         let storedEntries = try await reopened.fetchAll(JournalEntry.self, from: .journalEntries)
