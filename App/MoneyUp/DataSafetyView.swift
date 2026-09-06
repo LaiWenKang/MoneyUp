@@ -125,6 +125,12 @@ struct DataSafetyView: View {
                         systemImage: "tray.full.fill"
                     )
                     .foregroundStyle(.orange)
+                    if model.state == .ready {
+                        Button("backup.review_pending_captures") {
+                            Task { await reviewPendingCaptures() }
+                        }
+                        .disabled(isWorking)
+                    }
                     if model.startupFailureKind == .missingDeviceBoundKey {
                         Button(
                             "recovery.key_cliff.discard_pending",
@@ -299,12 +305,7 @@ struct DataSafetyView: View {
                 } label: {
                     Label("backup.create", systemImage: "lock.doc")
                 }
-                .disabled(
-                    isWorking
-                        || model.pendingLockedCaptureCount > 0
-                        || backupPassword.count < 10
-                        || backupPassword != backupConfirmation
-                )
+                .disabled(isWorking)
                 } header: {
                     Text("backup.title")
                 } footer: {
@@ -461,12 +462,36 @@ struct DataSafetyView: View {
 }
 
 extension DataSafetyView {
-    private func createBackup() async {
-        guard backupPassword == backupConfirmation else { return }
-        clearRestoreSuccessPresentation()
+    private func reviewPendingCaptures() async {
+        guard !isWorking else { return }
         isWorking = true
         errorMessage = nil
+        defer { isWorking = false }
+        do {
+            try await model.reviewPendingLockedCapturesForBackup()
+        } catch {
+            errorMessage = safeUserMessage(for: error, context: .exportData)
+        }
+    }
+
+    private func createBackup() async {
+        guard !isWorking else { return }
+        clearRestoreSuccessPresentation()
+        errorMessage = nil
         message = nil
+        if model.pendingLockedCaptureCount > 0 {
+            errorMessage = AppLocalization.string("backup.error.pending_captures")
+            return
+        }
+        guard backupPassword.count >= 10 else {
+            errorMessage = AppLocalization.string("backup.error.password_short")
+            return
+        }
+        guard backupPassword == backupConfirmation else {
+            errorMessage = AppLocalization.string("backup.error.password_mismatch")
+            return
+        }
+        isWorking = true
         var createdArchiveURL: URL?
         defer { isWorking = false }
         do {

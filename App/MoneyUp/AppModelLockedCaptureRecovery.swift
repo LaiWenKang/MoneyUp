@@ -7,6 +7,22 @@ import UIKit
 import WidgetKit
 
 extension AppModel {
+    func reviewPendingLockedCapturesForBackup() async throws {
+        let generation = storeGeneration
+        try await promotePendingLockedCapture()
+        guard ownsStoreGeneration(generation), state == .ready else { throw AppModelError.locked }
+        // Promotion preserves an existing draft. Route to that draft's type so
+        // reviewing the inbox cannot replace an unfinished income or transfer.
+        guard let draft = quickLogDraft else { return }
+        let mode: QuickLogLaunchMode = switch draft.kind {
+        case .expense: .expense
+        case .income: .income
+        case .transfer: .transfer
+        case .refund: .refund
+        }
+        requestedQuickLogMode = mode
+    }
+
     func promotePendingLockedCapture() async throws {
         try beginLockedCapturePromotion()
         defer { endLockedCapturePromotion() }
