@@ -448,7 +448,8 @@ extension RestoreCandidateValidator {
         _ record: StoredRecordSnapshot,
         decoder: JSONDecoder
     ) throws {
-        guard record.recordID == BudgetConfigurationTimeline.primaryRecordID else {
+        guard record.recordID == BudgetConfigurationTimeline.primaryRecordID
+            || record.recordID == BudgetPeriodRecoveryOriginal.recordID else {
             throw AppModelError.invalidBook
         }
         let shape = try decoder.decode(
@@ -466,6 +467,9 @@ extension RestoreCandidateValidator {
             BudgetConfigurationTimeline.self,
             from: record.payload
         )
+        if record.recordID == BudgetPeriodRecoveryOriginal.recordID {
+            try decoder.decode(BudgetPeriodRecoveryOriginal.self, from: record.payload).validate()
+        }
     }
 
     static func decodeAttributionIdentity(
@@ -810,7 +814,7 @@ extension RestoreCandidateValidator {
         let nodeCounts: [Int]
         let totalNodeCount: Int
 
-        enum CodingKeys: String, CodingKey { case revisions }
+        enum CodingKeys: String, CodingKey { case revisions, originalNodes }
 
         struct RevisionShape: Decodable {
             let nodeCount: Int
@@ -833,6 +837,12 @@ extension RestoreCandidateValidator {
 
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
+            if container.contains(.originalNodes) {
+                let originals = try container.nestedUnkeyedContainer(forKey: .originalNodes)
+                guard let count = originals.count, count <= maximumBudgetNodesPerRevision else {
+                    throw AppModelError.invalidBook
+                }
+            }
             let revisions = try container.decode(
                 [RevisionShape].self,
                 forKey: .revisions

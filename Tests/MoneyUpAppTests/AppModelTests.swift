@@ -17055,7 +17055,7 @@ private actor AsyncGate {
     }
 }
 
-private actor InMemoryLockedCaptureStore: LockedCaptureStoring {
+actor InMemoryLockedCaptureStore: LockedCaptureStoring {
     private var captures: [LockedCapture]
     private let capturesBeginningAtAllRead: Int?
     private let delayedCaptures: [LockedCapture]

@@ -49,6 +49,7 @@ jobs:
             -only-testing:MoneyUpTests/Feedback1039RegressionTests \
             -only-testing:MoneyUpTests/BudgetCheckpointAvailabilityTests \
             -only-testing:MoneyUpTests/BudgetResilienceTests \
+            -only-testing:MoneyUpTests/BudgetPeriodRecoveryTests \
             -only-testing:MoneyUpTests/NavigationPresentationTests \
             -only-testing:MoneyUpTests/RedesignRenderEvidenceTests \
             -only-testing:MoneyUpTests/PlatformQuickLogActionTests \

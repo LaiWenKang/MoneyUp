@@ -403,9 +403,15 @@ extension AppModel {
         }
 
         do {
-            _ = try validatedBudgetConfigurationTimeline(asOf: currentDate())
+            do {
+                _ = try validatedBudgetConfigurationTimeline(asOf: currentDate())
+            } catch BudgetReportingConfigurationError.invalidMonthBoundary where persistsMigration {
+                try await recoverLegacyBudgetPeriods(in: store)
+            }
         } catch is CancellationError {
             throw CancellationError()
+        } catch AppModelError.locked {
+            throw AppModelError.locked
         } catch {
             budgetConfigurationTimelineInvalid = true
             budgetConfigurationTimelineIssue = .budgetFailure(error, operation: "budget-history-validation")
