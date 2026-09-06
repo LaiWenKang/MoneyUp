@@ -50,21 +50,29 @@ final class Feedback1039RegressionTests: XCTestCase {
     @MainActor
     func testDraftProtectionBlocksSwipeOnlyForEditsOrAnActiveSave() async throws {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
-        let window = UIWindow(windowScene: scene)
-        let presenter = UIViewController()
-        window.rootViewController = presenter
-        window.isHidden = false
-        defer { window.isHidden = true; window.rootViewController = nil }
-
         for (changed, saving) in [(false, false), (true, false), (false, true)] {
-            let editor = UIHostingController(rootView: NavigationStack {
-                Text("Draft")
-                    .moneyUpProtectDraft(hasChanges: changed, isSaving: saving)
-            })
-            presenter.present(editor, animated: false)
-            try await Task.sleep(for: .milliseconds(150))
-            XCTAssertEqual(editor.isModalInPresentation, changed || saving)
-            presenter.dismiss(animated: false)
+            let window = UIWindow(windowScene: scene)
+            let presenter = UIHostingController(rootView: DraftSheetProbe(changed: changed, saving: saving))
+            window.rootViewController = presenter
+            window.isHidden = false
+            defer { window.isHidden = true; window.rootViewController = nil }
+            for _ in 0..<100 {
+                if let sheet = presenter.presentedViewController,
+                   !sheet.isBeingPresented, sheet.view.window != nil { break }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            let sheet = try XCTUnwrap(presenter.presentedViewController)
+            let presentation = try XCTUnwrap(sheet.presentationController)
+            XCTAssertFalse(sheet.isBeingPresented)
+            // SwiftUI can enforce dismissal through its presentation delegate
+            // rather than UIKit's isModalInPresentation flag.
+            let delegateAllowsDismissal = presentation.delegate?
+                .presentationControllerShouldDismiss?(presentation) ?? true
+            let blocksDismissal = sheet.isModalInPresentation || !delegateAllowsDismissal
+            XCTAssertEqual(blocksDismissal, changed || saving)
+            await withCheckedContinuation { continuation in
+                presenter.dismiss(animated: false) { continuation.resume() }
+            }
         }
     }
 
@@ -77,5 +85,22 @@ final class Feedback1039RegressionTests: XCTestCase {
                 .labelStyle(.iconOnly)
         )
         return host.sizeThatFits(in: CGSize(width: 320, height: 1_000))
+    }
+}
+
+private struct DraftSheetProbe: View {
+    let changed: Bool
+    let saving: Bool
+    @State private var isPresented = false
+
+    var body: some View {
+        Color.clear
+            .sheet(isPresented: $isPresented) {
+                NavigationStack {
+                    Form { Text("Draft") }
+                        .moneyUpProtectDraft(hasChanges: changed, isSaving: saving)
+                }
+            }
+            .onAppear { isPresented = true }
     }
 }

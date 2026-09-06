@@ -227,10 +227,7 @@ private struct GoalEditorSheet: View {
                     Button("action.save") { Task { await save() } }
                         .disabled(!canSave || isSaving)
                 }
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("action.done") { amountFocused = false }
-                }
+                MoneyUpKeyboardDoneToolbar()
             }
             .onAppear {
                 guard initialDraftSignature == nil else { return }
@@ -404,10 +401,7 @@ private struct GoalManagementSheet: View {
                     Button("action.save") { Task { await saveMetadata() } }
                         .disabled(isSaving || name.isEmpty || decimalAmount(from: targetText) == nil)
                 }
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("action.done") { amountFocused = false }
-                }
+                MoneyUpKeyboardDoneToolbar()
             }
             .onAppear {
                 guard initialDraftSignature == nil else { return }
@@ -551,10 +545,7 @@ private struct GoalMovementSheet: View {
                     Button("action.save") { Task { await save() } }
                         .disabled((decimalAmount(from: amountText) ?? .zero) <= .zero || isSaving)
                 }
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("action.done") { amountFocused = false }
-                }
+                MoneyUpKeyboardDoneToolbar()
             }
             .onAppear { if initialDraftSignature == nil { initialDraftSignature = draftSignature } }
             .moneyUpProtectDraft(
