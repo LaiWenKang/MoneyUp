@@ -391,6 +391,12 @@ struct MainTabView: View {
                 reportingClock.cancelForInactivity()
             }
         }
+        .onChange(of: model.savingsGoals) { _, _ in
+            rearmReportingClockIfActive()
+        }
+        .onChange(of: model.journalProjectionRevision) { _, _ in
+            rearmReportingClockIfActive()
+        }
         .onChange(of: model.scheduledTransactions) { _, _ in
             rearmReportingClockIfActive()
         }

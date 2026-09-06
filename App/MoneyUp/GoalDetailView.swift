@@ -22,7 +22,7 @@ struct GoalDetailView: View {
                         case let .available(summary):
                             progressCard(goal, summary: summary)
                             if !goal.isArchived, goal.resetRule == .never {
-                                GoalContributionSimulator(summary: summary, calendar: model.reportingCalendar)
+                                GoalContributionSimulator(summary: summary, calendar: FinancialPeriodBoundary.gregorianCalendar(timeZoneIdentifier: goal.reportingTimeZoneIdentifier))
                             }
                         case let .unavailable(issue):
                             MoneyUpCard { DerivedValueUnavailableView(issue: issue, prominent: true) }
@@ -60,7 +60,7 @@ struct GoalDetailView: View {
                 LabeledContent("goal.target", value: formattedMoney(summary.target))
                 LabeledContent("goal.reset_rule") { Text(goal.resetRule.titleKey) }
                 LabeledContent("goal.target_date") {
-                    Text(goal.targetDate, format: .dateTime.year().month().day())
+                    Text(goal.targetDate.formattedForReporting(.dateTime.year().month().day(), calendar: FinancialPeriodBoundary.gregorianCalendar(timeZoneIdentifier: goal.reportingTimeZoneIdentifier)))
                 }
                 if !goal.isArchived {
                     ViewThatFits(in: .horizontal) {
@@ -149,7 +149,7 @@ struct GoalContributionSimulator: View {
             )
             Label(String(format: AppLocalization.string("goal.simulator.deposits"), preview.periods), systemImage: "calendar")
                 .font(.subheadline.weight(.semibold))
-            Text(preview.completionDate, format: .dateTime.year().month().day())
+            Text(preview.completionDate.formattedForReporting(.dateTime.year().month().day(), calendar: calendar))
                 .font(.subheadline).foregroundStyle(.secondary)
             if preview.completionDate > summary.targetDate {
                 Label("goal.simulator.after_target", systemImage: "exclamationmark.triangle")

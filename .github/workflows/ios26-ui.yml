@@ -40,6 +40,7 @@ jobs:
           xcodebuild -project MoneyUp.xcodeproj -scheme MoneyUp -configuration Debug \
             -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
             -resultBundlePath "$RUNNER_TEMP/MoneyUpUI26.xcresult" \
+            -derivedDataPath "$RUNNER_TEMP/MoneyUpUI26DerivedData" \
             -parallel-testing-enabled NO \
             -only-testing:MoneyUpTests/AppwideExperienceTests \
             -only-testing:MoneyUpTests/AppwideRenderEvidenceTests \
@@ -48,6 +49,9 @@ jobs:
             -only-testing:MoneyUpTests/RedesignRenderEvidenceTests \
             -only-testing:MoneyUpTests/PlatformQuickLogActionTests \
             SWIFT_TREAT_WARNINGS_AS_ERRORS=YES CODE_SIGNING_ALLOWED=NO test
+          xcrun simctl boot "$SIMULATOR_ID" || true
+          xcrun simctl bootstatus "$SIMULATOR_ID" -b
+          xcrun simctl install "$SIMULATOR_ID" "$RUNNER_TEMP/MoneyUpUI26DerivedData/Build/Products/Debug-iphonesimulator/MoneyUp.app"
           xcrun simctl terminate "$SIMULATOR_ID" com.laiwenkang.MoneyUp || true
           xcrun simctl openurl "$SIMULATOR_ID" moneyup://overview/today
           python3 - "$SIMULATOR_ID" <<'PYCODE'

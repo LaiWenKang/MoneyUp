@@ -62,7 +62,7 @@ struct AssetsOverviewSection: View {
                 Text("≈ \(formattedMoney(value.total))").moneyUpFinancialValue(.standard)
                 HStack(spacing: 4) {
                     Text("fx.rates_as_of")
-                    Text(value.conversionAsOf, format: .dateTime.year().month().day())
+                    Text(value.conversionAsOf.formattedForReporting(.dateTime.year().month().day(), calendar: model.reportingCalendar))
                 }.font(.caption)
             }.foregroundStyle(.secondary)
         case .available(nil):

@@ -58,7 +58,7 @@ final class AppwideRenderEvidenceTests: XCTestCase {
         let nodes = [BudgetNode(id: fixture.food.id, name: "Food", limit: try Money(600, currency: fixture.sgd), purpose: .flexible)]
         let goal = try SavingsGoal(name: "Home reserve", kind: .savingsGoal, target: Money(6_000, currency: fixture.sgd),
             targetDate: calendar.date(byAdding: .year, value: 1, to: now)!, createdAt: now.addingTimeInterval(-86_400 * 90),
-            movements: [SavingsGoalMovement(kind: .contribution, money: Money(2_000, currency: fixture.sgd), occurredAt: now, originTimeZoneIdentifier: calendar.timeZone.identifier)],
+            movements: [SavingsGoalMovement(kind: .contribution, money: Money(2_000, currency: fixture.sgd), occurredAt: now.addingTimeInterval(-1), originTimeZoneIdentifier: calendar.timeZone.identifier)],
             reportingTimeZoneIdentifier: calendar.timeZone.identifier)
         let allowance = try AllowancePlan(name: "Meal benefit", amount: Money(15, currency: fixture.sgd), cadence: .daily,
             startsAt: calendar.startOfDay(for: now), timeZoneIdentifier: calendar.timeZone.identifier, eligibleCategoryIDs: [fixture.food.id])

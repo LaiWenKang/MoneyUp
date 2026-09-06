@@ -50,7 +50,8 @@ struct AssetsSnapshotTrend: View {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(formattedMoneyWithCurrencyCode(selected.money)).moneyUpFinancialValue(.prominent)
-                        Text(selected.date, format: .dateTime.year().month().day().hour().minute()).font(.caption).foregroundStyle(.secondary)
+                        Text(selected.date.formattedForReporting(.dateTime.year().month().day().hour().minute(), calendar: model.reportingCalendar))
+                            .font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer(minLength: 8)
                     Button { step(-1) } label: { Image(systemName: "chevron.left").frame(width: 44, height: 44) }
@@ -71,10 +72,13 @@ struct AssetsSnapshotTrend: View {
                             .foregroundStyle(Color.primary)
                     }
                 }
+                .chartXScale(range: .plotDimension(padding: 16))
                 .chartXSelection(value: $selectedDate)
                 .chartYAxis(hidesAmounts ? .hidden : .automatic)
                 .frame(height: 150)
                 .accessibilityHidden(true)
+                .environment(\.calendar, model.reportingCalendar)
+                .environment(\.timeZone, model.reportingCalendar.timeZone)
                 .onChange(of: selectedDate) { _, date in
                     guard let date else { return }
                     selectedID = points.min { abs($0.date.timeIntervalSince(date)) < abs($1.date.timeIntervalSince(date)) }?.id

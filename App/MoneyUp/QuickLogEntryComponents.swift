@@ -12,7 +12,7 @@ extension QuickLogEntryView {
             text: amountText,
             currency: selectedAccountCurrency
         )
-        HStack {
+        HStack(alignment: .firstTextBaseline) {
             TextField(
                 "quick_log.amount",
                 text: trackedBinding(
@@ -22,14 +22,14 @@ extension QuickLogEntryView {
                 )
             )
             .moneyAmountKeyboard(currency: selectedAccountCurrency)
-            .font(.title2.monospacedDigit())
+            .moneyUpFinancialValue(.hero)
             .focused($focusedField, equals: .amount)
             .id(QuickLogFieldFocus.amount)
             .moneyUpFieldValidation(amountValidationMessage)
             .moneyUpPrivateAmountInput(
                 masked: masksPrimaryAmount,
                 accessibilityLabel: Text("quick_log.amount"),
-                placeholderFont: .title2.monospacedDigit()
+                placeholderFont: MoneyUpTypography.financialValueFont(for: .hero)
             ) {
                 focusedField = .amount
             }
