@@ -194,25 +194,27 @@ struct PinnedBudgetRow: View {
                     cadence("today.pinned.day", spread.daily.available)
                 }
             } else {
-                HStack(spacing: 12) {
+                HStack(alignment: .top, spacing: 12) {
                     cadence("today.pinned.month", spread.monthly.available)
                     cadence("today.pinned.week", spread.weekly.available)
                     cadence("today.pinned.day", spread.daily.available)
-                    Spacer(minLength: 0)
                 }
             }
         }
     }
 
     private func cadence(_ titleKey: LocalizedStringKey, _ money: Money) -> some View {
-        HStack(spacing: 3) {
-            Text(titleKey)
-                .foregroundStyle(.secondary)
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: 8))
+            : AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
+        return layout {
+            Text(titleKey).font(.caption2).foregroundStyle(.secondary)
             Text(formattedMoney(money))
-                .monospacedDigit()
-                .fontWeight(.semibold)
+                .font(.caption.monospacedDigit().weight(.semibold))
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .font(.caption2)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
     }
 
     /// Names the category's purpose beside the spend so an even split shown for

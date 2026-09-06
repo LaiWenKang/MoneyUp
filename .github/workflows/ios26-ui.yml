@@ -55,16 +55,31 @@ jobs:
           xcrun simctl terminate "$SIMULATOR_ID" com.laiwenkang.MoneyUp || true
           xcrun simctl openurl "$SIMULATOR_ID" moneyup://overview/today
           python3 - "$SIMULATOR_ID" <<'PYCODE'
-          import subprocess, sys, time
+          import json, os, shutil, subprocess, sys, time
+          from pathlib import Path
           simulator = sys.argv[1]
-          time.sleep(3)
-          lines = subprocess.check_output(["xcrun", "simctl", "spawn", simulator, "launchctl", "list"], text=True).splitlines()
+          output = Path(os.environ["RUNNER_TEMP"]) / "cold-overview-diagnostics"
+          output.mkdir(exist_ok=True)
+          time.sleep(5)
+          process_list = subprocess.check_output(["xcrun", "simctl", "spawn", simulator, "launchctl", "list"], text=True)
+          (output / "launch-services.txt").write_text(process_list)
+          subprocess.run(["xcrun", "simctl", "io", simulator, "screenshot", str(output / "screen.png")], check=False)
+          predicate = 'process == "MoneyUp" OR eventMessage CONTAINS "com.laiwenkang.MoneyUp"'
+          try:
+              log = subprocess.run(["xcrun", "simctl", "spawn", simulator, "log", "show", "--last", "3m", "--style", "compact", "--predicate", predicate], capture_output=True, text=True, timeout=45)
+              (output / "launch.log").write_text(log.stdout + log.stderr)
+          except subprocess.TimeoutExpired:
+              (output / "launch.log").write_text("Log collection timed out")
+          reports = Path.home() / "Library/Logs/DiagnosticReports"
+          for report in reports.glob("MoneyUp*.ips"):
+              shutil.copy2(report, output / report.name)
+          lines = process_list.splitlines()
           live = [line for line in lines if "UIKitApplication:com.laiwenkang.MoneyUp[" in line and line.split()[0].isdigit()]
+          (output / "result.json").write_text(json.dumps({"simulator": simulator, "alive": bool(live), "matching_processes": live}, indent=2))
           if not live:
-              raise SystemExit("MoneyUp did not remain running after the cold overview URL")
+              raise SystemExit("MoneyUp did not remain running after the cold overview URL; diagnostics preserved")
           print("Cold Smart Overview URL: app process remained alive on the clean simulator book")
           PYCODE
-          xcrun simctl io "$SIMULATOR_ID" screenshot "$RUNNER_TEMP/ui26-cold-overview.png"
       - name: Export review evidence
         if: ${{ always() }}
         run: |
@@ -79,5 +94,5 @@ jobs:
           path: |
             ${{ runner.temp }}/ui26-images
             ${{ runner.temp }}/ui26-summary.json
-            ${{ runner.temp }}/ui26-cold-overview.png
+            ${{ runner.temp }}/cold-overview-diagnostics
           retention-days: 14
