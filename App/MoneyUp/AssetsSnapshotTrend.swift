@@ -90,6 +90,7 @@ struct AssetsSnapshotTrend: View {
                     }
                 }
                 .chartXScale(range: .plotDimension(padding: 16))
+                .chartXAxis { snapshotDateAxis }
                 .chartXSelection(value: $selectedDate)
                 .chartYAxis(hidesAmounts ? .hidden : .automatic)
                 .frame(height: 150)
@@ -104,6 +105,17 @@ struct AssetsSnapshotTrend: View {
             }
         }
         .padding(.vertical, 8)
+    }
+
+    private var snapshotDateAxis: some AxisContent {
+        AxisMarks(values: .automatic) { value in
+            AxisGridLine()
+            AxisValueLabel {
+                if let date = value.as(Date.self) {
+                    Text(date.formattedForReporting(.dateTime.month(.abbreviated).day(), calendar: model.reportingCalendar))
+                }
+            }
+        }
     }
 
     private func step(_ direction: Int) {

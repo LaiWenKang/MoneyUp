@@ -17,13 +17,13 @@ struct TodayCashFlowStory: View {
                 .font(.caption).foregroundStyle(.secondary)
             Chart(Array(report.monthlyFlows.suffix(6)), id: \.month) { flow in
                 BarMark(
-                    x: .value(AppLocalization.string("chart.dimension.month"), flow.month, unit: .month),
+                    x: .value(AppLocalization.string("chart.dimension.month"), flow.month, unit: .month, calendar: calendar),
                     y: .value(AppLocalization.string("chart.dimension.amount"), NSDecimalNumber(decimal: flow.income.amount).doubleValue)
                 )
                 .foregroundStyle(by: .value(AppLocalization.string("history.income"), AppLocalization.string("history.income")))
                 .position(by: .value(AppLocalization.string("chart.dimension.kind"), AppLocalization.string("history.income")))
                 BarMark(
-                    x: .value(AppLocalization.string("chart.dimension.month"), flow.month, unit: .month),
+                    x: .value(AppLocalization.string("chart.dimension.month"), flow.month, unit: .month, calendar: calendar),
                     y: .value(AppLocalization.string("chart.dimension.amount"), NSDecimalNumber(decimal: flow.expense.amount).doubleValue)
                 )
                 .foregroundStyle(by: .value(AppLocalization.string("history.spent"), AppLocalization.string("history.spent")))
@@ -33,7 +33,15 @@ struct TodayCashFlowStory: View {
                 AppLocalization.string("history.income"): Color.moneyUpChartSeries1,
                 AppLocalization.string("history.spent"): Color.moneyUpChartSeries2
             ])
-            .chartXAxis { AxisMarks(values: .stride(by: .month)) { _ in AxisValueLabel(format: .dateTime.month(.abbreviated)) } }
+            .chartXAxis {
+                AxisMarks(values: report.monthlyFlows.suffix(6).map { $0.month.reportingMonthMidpoint(calendar: calendar) }) { value in
+                    AxisValueLabel {
+                        if let date = value.as(Date.self) {
+                            Text(date.formattedForReporting(.dateTime.month(.abbreviated), calendar: calendar))
+                        }
+                    }
+                }
+            }
             .chartYAxis(hidesAmounts ? .hidden : .automatic)
             .chartLegend(position: .bottom, alignment: .leading)
             .frame(height: 130)

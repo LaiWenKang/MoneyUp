@@ -83,7 +83,7 @@ extension InsightsView {
                     x: .value(
                         AppLocalization.string("chart.dimension.month"),
                         point.month,
-                        unit: .month
+                        unit: .month, calendar: model.reportingCalendar
                     ),
                     y: .value(
                         AppLocalization.string("chart.dimension.amount"),
@@ -112,7 +112,7 @@ extension InsightsView {
                     x: .value(
                         AppLocalization.string("chart.dimension.month"),
                         selectedFlowMonth,
-                        unit: .month
+                        unit: .month, calendar: model.reportingCalendar
                     )
                 )
                 .lineStyle(
@@ -131,12 +131,23 @@ extension InsightsView {
             AppLocalization.string("transaction.expense"): MoneyUpChartPalette.expense
         ])
         .chartLegend(.hidden)
+        .chartXAxis { reportingMonthAxis(report) }
         .chartYAxis(hidesAmounts ? .hidden : .automatic)
         .chartXSelection(value: $selectedFlowMonth)
         .accessibilityLabel(Text("insights.flow_chart"))
         .accessibilityHidden(hidesAmounts)
         .accessibilityValue(Text(flowChartSummary(report)))
         .accessibilityHint(Text("insights.chart_accessibility_hint"))
+    }
+
+    private func reportingMonthAxis(_ report: PeriodReport) -> some AxisContent {
+        AxisMarks(values: report.monthlyFlows.map { $0.month.reportingMonthMidpoint(calendar: model.reportingCalendar) }) { value in
+            AxisValueLabel {
+                if let date = value.as(Date.self) {
+                    Text(date.formattedForReporting(.dateTime.month(.abbreviated), calendar: model.reportingCalendar))
+                }
+            }
+        }
     }
 
     func flowAccessibilityLabel(_ point: FlowPoint) -> String {

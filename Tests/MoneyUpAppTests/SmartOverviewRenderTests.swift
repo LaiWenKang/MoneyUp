@@ -24,8 +24,20 @@ final class SmartOverviewRenderTests: XCTestCase {
             insights: nil, family: .systemSmall)
         await capture(SmartOverviewHomeCard(presentation: overspent, focus: .automatic, isMedium: false),
             name: "widget-over-budget-small", width: 158, scheme: .light)
+        let tomorrow = SmartOverviewWidgetPresentation.make(budget: snapshot,
+            insights: MoneyUpWidgetInsights(reviewCount: nil, allowancePercentRemaining: nil,
+                activeCommitmentCount: 1, daysUntilNextCommitment: 1, validUntil: expiry), family: .systemSmall)
+        await capture(SmartOverviewHomeCard(presentation: tomorrow, focus: .commitments, isMedium: false),
+            name: "widget-tomorrow-small", width: 158, scheme: .light)
+        let noBudget = SmartOverviewWidgetPresentation.make(budget: .needsBudget(validUntil: expiry), insights: nil, family: .systemSmall)
+        await capture(SmartOverviewHomeCard(presentation: noBudget, focus: .automatic, isMedium: false),
+            name: "widget-needs-budget-small", width: 158, scheme: .light)
         let large = SmartOverviewWidgetPresentation.make(budget: snapshot, insights: insights,
             family: .systemSmall, homeDensity: .accessibility)
+        for focus in [SmartOverviewFocus.automatic, .budget, .review, .allowance] {
+            await capture(SmartOverviewHomeCard(presentation: large, focus: focus, isMedium: false)
+                .environment(\.dynamicTypeSize, .accessibility5), name: "widget-large-\(focus.rawValue)", width: 158, scheme: .light)
+        }
         await capture(SmartOverviewHomeCard(presentation: large, focus: .automatic, isMedium: false)
             .environment(\.dynamicTypeSize, .accessibility5), name: "widget-large-chinese", width: 170, scheme: .light, language: .simplifiedChinese)
     }

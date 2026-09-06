@@ -1,6 +1,14 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "widget.smart_allowance_short" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Allowance"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"津贴"}}}},
+    "widget.smart_review_short" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Review"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"检查"}}}},
+    "widget.focus.scheduled_count" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"%d scheduled expenses"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"%d 项计划支出"}}}},
+    "widget.focus.set_limit" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Set a limit in Plan"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"在计划中设置限额"}}}},
+    "widget.focus.zero_limit" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"No percentage for a zero limit"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"限额为零，无法计算百分比"}}}},
+    "widget.focus.negative_limit" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Check this month’s allocations"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"检查本月的预算分配"}}}},
+    "widget.focus.scheduled" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Scheduled expenses"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"计划支出"}}}},
+    "widget.focus.date_unavailable" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Next date unavailable"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"下一次日期暂不可用"}}}},
     "widget.smart_budget" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Budget"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"预算"}}}},
     "widget.focus.due" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Due"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"到期"}}}},
     "display.guidance_cadence" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Preferred pacing"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"首选预算节奏"}}}},

@@ -72,7 +72,7 @@ final class AppwideRenderEvidenceTests: XCTestCase {
         await capture(GoalContributionSimulator(summary: summary, calendar: snapshot.calendar, initialContributionText: "250")
             .padding().background(Color.moneyUpBackground).preferredColorScheme(.light), name: "goal-contribution-preview", height: 600)
         await capture(AssetsSnapshotTrend().environment(model).padding().background(Color.moneyUpBackground)
-            .preferredColorScheme(.dark), name: "assets-snapshot-chart", height: 360)
+            .preferredColorScheme(.dark), name: "assets-snapshot-chart", height: 480)
         await capture(ExchangeRateEditorSheet().environment(model).preferredColorScheme(.light), name: "exchange-rate-editor")
         await fixture.store.close()
     }

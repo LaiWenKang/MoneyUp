@@ -41,7 +41,10 @@ struct SmartOverviewHomeCard: View {
 
     private var headline: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Label(title(primary), systemImage: symbol(primary))
+            Group {
+                if isAccessible { Text(title(primary)) }
+                else { Label(title(primary), systemImage: symbol(primary)) }
+            }
                 .font(.caption.weight(.medium))
                 .foregroundStyle(.primary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -55,7 +58,7 @@ struct SmartOverviewHomeCard: View {
                 primaryValue
             }
             if !isAccessible {
-                Text(detail(primary))
+                supportingDetail
                     .font(.caption2).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -63,11 +66,31 @@ struct SmartOverviewHomeCard: View {
         .accessibilityElement(children: .combine)
     }
 
+    @ViewBuilder
+    private var supportingDetail: some View {
+        if primary == .commitment, case let .active(count, .some(_)) = presentation.commitment {
+            Text(String(format: AppLocalization.string("widget.focus.scheduled_count"), count))
+        } else {
+            Text(detail(primary))
+        }
+    }
+
     private var primaryValue: some View {
         Text(value(primary))
-            .font(isAccessible ? .title3.bold() : .system(.largeTitle, design: .rounded, weight: .semibold))
+            .font(valueFont)
             .monospacedDigit()
             .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var valueFont: Font {
+        if isAccessible { return .caption.bold() }
+        switch primary {
+        case .budget:
+            if case .available = presentation.budget { return .system(.largeTitle, design: .rounded, weight: .semibold) }
+            return .title3.weight(.semibold)
+        case .commitment: return .title2.weight(.semibold)
+        case .review, .allowance: return .system(.largeTitle, design: .rounded, weight: .semibold)
+        }
     }
 
     private func budgetDial(_ percent: Int) -> some View {
@@ -94,10 +117,14 @@ struct SmartOverviewHomeCard: View {
 
     private func title(_ component: SmartOverviewWidgetPresentation.Component) -> LocalizedStringKey {
         switch component {
-        case .budget: isAccessible ? "widget.smart_budget" : "widget.focus.budget_used"
-        case .review: "widget.smart_review"
-        case .allowance: "widget.smart_allowance"
-        case .commitment: isAccessible ? "widget.focus.due" : "widget.focus.next_payment"
+        case .budget:
+            if !isAccessible, case .available = presentation.budget { return "widget.focus.budget_used" }
+            return "widget.smart_budget"
+        case .review: return isAccessible ? "widget.smart_review_short" : "widget.smart_review"
+        case .allowance: return isAccessible ? "widget.smart_allowance_short" : "widget.smart_allowance"
+        case .commitment:
+            if case .active(_, daysUntilNext: nil) = presentation.commitment { return "widget.focus.scheduled" }
+            return isAccessible ? "widget.focus.due" : "widget.focus.next_payment"
         }
     }
 
@@ -124,6 +151,7 @@ struct SmartOverviewHomeCard: View {
         case .allowance: return presentation.allowancePercentRemaining.map { "\($0)%" } ?? "—"
         case .commitment:
             if case .none = presentation.commitment { return AppLocalization.string("widget.smart_none") }
+            if case let .active(count, daysUntilNext: nil) = presentation.commitment { return String(count) }
             switch presentation.commitmentDayDistance {
             case .today: return AppLocalization.string("widget.smart.today")
             case .oneDay: return AppLocalization.string("widget.focus.tomorrow")
@@ -136,11 +164,18 @@ struct SmartOverviewHomeCard: View {
     private func detail(_ component: SmartOverviewWidgetPresentation.Component) -> LocalizedStringKey {
         switch component {
         case .budget:
-            if case let .available(percentUsed) = presentation.budget, percentUsed > 100 { return "widget.focus.over_limit" }
-            return "widget.focus.monthly_plan"
+            switch presentation.budget {
+            case let .available(percentUsed): return percentUsed > 100 ? "widget.focus.over_limit" : "widget.focus.monthly_plan"
+            case .needsBudget: return "widget.focus.set_limit"
+            case .zeroBudget: return "widget.focus.zero_limit"
+            case .negativeBudget: return "widget.focus.negative_limit"
+            case .disabled, .stale: return "widget.focus.monthly_plan"
+            }
         case .review: return presentation.reviewCount == 0 ? "widget.focus.review_clear" : "widget.focus.review_detail"
         case .allowance: return "widget.focus.allowance_detail"
-        case .commitment: return "widget.focus.scheduled_detail"
+        case .commitment:
+            if case .active(_, daysUntilNext: nil) = presentation.commitment { return "widget.focus.date_unavailable" }
+            return "widget.focus.scheduled_detail"
         }
     }
 }

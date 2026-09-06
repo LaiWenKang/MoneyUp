@@ -4,6 +4,20 @@ import MoneyUpCore
 import XCTest
 
 final class OverviewInsightTests: XCTestCase {
+    func testChartMonthMidpointStaysInTheReportingMonthAcrossUTCAndDSTBoundaries() throws {
+        for (zone, stamp, month) in [("Asia/Singapore", "2026-08-31T16:00:00Z", 9),
+                                     ("America/New_York", "2026-03-01T05:00:00Z", 3)] {
+            var calendar = Calendar(identifier: .gregorian)
+            calendar.timeZone = try XCTUnwrap(TimeZone(identifier: zone))
+            let start = try XCTUnwrap(ISO8601DateFormatter().date(from: stamp))
+            let midpoint = start.reportingMonthMidpoint(calendar: calendar)
+            XCTAssertEqual(calendar.component(.month, from: midpoint), month)
+            XCTAssertEqual(midpoint.formattedForReporting(.dateTime.month(.twoDigits).locale(Locale(identifier: "en_US_POSIX")), calendar: calendar), String(format: "%02d", month))
+            XCTAssertGreaterThan(midpoint, start)
+            XCTAssertLessThan(midpoint, try XCTUnwrap(calendar.date(byAdding: .month, value: 1, to: start)))
+        }
+    }
+
     private let expiry = Date(timeIntervalSince1970: 2_000_000_000)
 
     private func presentation(
