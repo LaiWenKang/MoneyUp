@@ -8,8 +8,12 @@ import WidgetKit
 
 extension AppModel {
     func reviewPendingLockedCapturesForBackup() async throws {
+        try beginLockedCapturePromotion()
+        defer { endLockedCapturePromotion() }
         let generation = storeGeneration
-        try await promotePendingLockedCapture()
+        try await promoteLockedCaptureIfPossible(
+            to: requireStore(), generation: generation, requestLogRoute: false
+        )
         guard ownsStoreGeneration(generation), state == .ready else { throw AppModelError.locked }
         // Promotion preserves an existing draft. Route to that draft's type so
         // reviewing the inbox cannot replace an unfinished income or transfer.

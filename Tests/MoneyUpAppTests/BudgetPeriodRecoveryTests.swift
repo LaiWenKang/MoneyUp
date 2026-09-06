@@ -76,6 +76,12 @@ final class BudgetPeriodRecoveryTests: XCTestCase {
             let reopenedOriginal = try await reopened.fetch(BudgetPeriodRecoveryOriginal.self,
                 id: BudgetPeriodRecoveryOriginal.recordID, from: .budgetConfigurationTimelines)
             XCTAssertEqual(reopenedOriginal, expectedOriginal)
+            try await restored.restoreEncryptedBackup(archive, password: "Synthetic recovery password")
+            XCTAssertTrue(restored.recoveryIssues.isEmpty)
+            XCTAssertEqual(restored.quickLogDraft, draft)
+            let restoredOriginal = try await reopened.fetch(BudgetPeriodRecoveryOriginal.self,
+                id: BudgetPeriodRecoveryOriginal.recordID, from: .budgetConfigurationTimelines)
+            XCTAssertEqual(restoredOriginal, expectedOriginal)
             await reopened.close()
         }
     }
@@ -226,6 +232,7 @@ final class BudgetPeriodRecoveryTests: XCTestCase {
         XCTAssertEqual(model.pendingLockedCaptureCount, 0)
         XCTAssertEqual(model.quickLogDraft?.sourceCaptureID, capture.id)
         XCTAssertEqual(model.requestedQuickLogMode, .expense)
+        XCTAssertEqual(model.requestedQuickLogRequest?.id, 1, "Review must publish only one navigation request")
         let archive = try await model.encryptedBackup(password: "Synthetic recovery password")
         let snapshot = try PortableArchive.open(archive, password: "Synthetic recovery password")
         let record = try XCTUnwrap(snapshot.records.first { $0.collection == RecordCollection.quickLogDrafts.rawValue })
