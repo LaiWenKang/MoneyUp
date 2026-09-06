@@ -103,7 +103,9 @@ struct MoneyUpBackdrop: View {
                     .offset(x: -170, y: 310)
             }
         }
+        .clipped()
         .ignoresSafeArea()
+        .allowsHitTesting(false)
         .accessibilityHidden(true)
     }
 }
@@ -267,6 +269,7 @@ struct MoneyUpCard<Content: View>: View {
             )
             .overlay {
                 MoneyUpCardBorder(appearance: appearance)
+                    .allowsHitTesting(false)
             }
             .modifier(MoneyUpCardShadowModifier(appearance: appearance))
             .accessibilityElement(children: .contain)

@@ -31,6 +31,7 @@ struct SavingsGoalsView: View {
                 }
             }
         }
+        .scrollDismissesKeyboard(.interactively)
         .scrollContentBackground(.hidden)
         .background(Color.moneyUpBackground)
         .overlay {
@@ -47,6 +48,8 @@ struct SavingsGoalsView: View {
             }
         }
         .navigationTitle("plan.goals")
+        .moneyUpNavigationSurface()
+        .contentMargins(.top, 8, for: .scrollContent)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -66,7 +69,7 @@ struct SavingsGoalsView: View {
             )
         ) {
             if let selectedGoalID {
-                GoalManagementSheet(goalID: selectedGoalID)
+                GoalDetailView(goalID: selectedGoalID)
             }
         }
     }
@@ -75,20 +78,23 @@ struct SavingsGoalsView: View {
         Button { selectedGoalID = goal.id } label: {
             GoalProgressRow(goal: goal)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(MoneyUpPressableButtonStyle())
     }
 }
 
-private struct GoalProgressRow: View {
+struct GoalProgressRow: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.appReportingSnapshot) private var reportingSnapshot
+    @AppStorage(MoneyAmountPrivacy.storageKey) private var hidesAmounts = MoneyAmountPrivacy.defaultHidesAmounts
     let goal: SavingsGoal
 
     private var summary: DerivedValue<SavingsGoalSummary> {
-        model.savingsGoalSummary(goal)
+        model.savingsGoalSummary(goal, asOf: reportingSnapshot?.instant ?? model.currentDateForUserAction())
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let _ = hidesAmounts
+        VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
                 Label(goal.name, systemImage: goal.kind.systemImage)
                     .font(.headline)
@@ -104,9 +110,15 @@ private struct GoalProgressRow: View {
             case let .available(summary):
                 let progress = NSDecimalNumber(decimal: summary.progress).doubleValue
                 let isOverdue = summary.isPastDue
-                ProgressView(value: min(max(progress, 0), 1))
-                    .tint(summary.isComplete ? .moneyUpAction : .accentColor)
-                    .accessibilityHidden(true)
+                HStack(spacing: 14) {
+                    MoneyUpProgressDial(fraction: progress, systemImage: goal.kind.systemImage)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("goal.remaining").font(.caption).foregroundStyle(.secondary)
+                        Text(formattedMoney(summary.remaining)).moneyUpFinancialValue(.prominent)
+                    }
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary).accessibilityHidden(true)
+                }
                 HStack {
                     Text(
                         String(
@@ -163,6 +175,7 @@ private struct GoalEditorSheet: View {
     ) ?? Date()
     @State private var resetRule: SavingsGoalResetRule = .never
     @State private var currency: CurrencyCode?
+    @State private var initialDraftSignature: [String]?
     @State private var isSaving = false
     @State private var errorMessage: String?
 
@@ -215,26 +228,35 @@ private struct GoalEditorSheet: View {
                     MoneyUpExplainer("goal.reset_rule_detail")
                 }
             }
+            .scrollDismissesKeyboard(.interactively)
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
             .navigationTitle("goal.add")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("action.cancel") { dismiss() }
-                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("action.save") { Task { await save() } }
                         .disabled(!canSave || isSaving)
                 }
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("action.done") { amountFocused = false }
-                }
+                MoneyUpKeyboardDoneToolbar()
             }
-            .onAppear { currency = currency ?? availableCurrencies.first }
+            .onAppear {
+                guard initialDraftSignature == nil else { return }
+                currency = currency ?? availableCurrencies.first
+                initialDraftSignature = draftSignature
+            }
+            .moneyUpProtectDraft(
+                hasChanges: initialDraftSignature.map { $0 != draftSignature } ?? false,
+                isSaving: isSaving
+            )
+            .disabled(isSaving)
             .moneyUpOperationErrorAlert(message: $errorMessage)
         }
+    }
+
+    private var draftSignature: [String] {
+        [name, kind.rawValue, targetText, String(targetDate.timeIntervalSinceReferenceDate),
+         resetRule.rawValue, currency?.value ?? ""]
     }
 
     private func save() async {
@@ -266,7 +288,7 @@ private struct GoalEditorSheet: View {
     }
 }
 
-private struct GoalManagementSheet: View {
+struct GoalManagementSheet: View {
     private enum PendingAction: Equatable { case reset, delete }
 
     @Environment(\.dismiss) private var dismiss
@@ -281,6 +303,7 @@ private struct GoalManagementSheet: View {
     @State private var resetRule: SavingsGoalResetRule = .never
     @State private var movementKind: SavingsGoalMovementKind?
     @State private var pendingAction: PendingAction?
+    @State private var initialDraftSignature: [String]?
     @State private var isSaving = false
     @State private var errorMessage: String?
 
@@ -379,24 +402,23 @@ private struct GoalManagementSheet: View {
                 }
 
             }
+            .scrollDismissesKeyboard(.interactively)
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
             .navigationTitle(goal?.name ?? AppLocalization.string("plan.goals"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("action.cancel") { dismiss() }
-                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("action.save") { Task { await saveMetadata() } }
                         .disabled(isSaving || name.isEmpty || decimalAmount(from: targetText) == nil)
                 }
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("action.done") { amountFocused = false }
-                }
+                MoneyUpKeyboardDoneToolbar()
             }
-            .onAppear { load() }
+            .onAppear {
+                guard initialDraftSignature == nil else { return }
+                load()
+                initialDraftSignature = draftSignature
+            }
             .sheet(item: $movementKind) { movementKind in
                 GoalMovementSheet(goalID: goalID, kind: movementKind)
             }
@@ -421,8 +443,17 @@ private struct GoalManagementSheet: View {
             } message: {
                 Text(confirmationMessage)
             }
+            .moneyUpProtectDraft(
+                hasChanges: initialDraftSignature.map { $0 != draftSignature } ?? false,
+                isSaving: isSaving
+            )
+            .disabled(isSaving)
             .moneyUpOperationErrorAlert(message: $errorMessage)
         }
+    }
+
+    private var draftSignature: [String] {
+        [name, kind.rawValue, targetText, String(targetDate.timeIntervalSinceReferenceDate), resetRule.rawValue]
     }
 
     private func load() {
@@ -489,7 +520,7 @@ private struct GoalManagementSheet: View {
     }
 }
 
-private struct GoalMovementSheet: View {
+struct GoalMovementSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AppModel.self) private var model
     @FocusState private var amountFocused: Bool
@@ -498,6 +529,7 @@ private struct GoalMovementSheet: View {
 
     @State private var amountText = ""
     @State private var occurredAt = Date()
+    @State private var initialDraftSignature: [String]?
     @State private var isSaving = false
     @State private var errorMessage: String?
 
@@ -514,25 +546,30 @@ private struct GoalMovementSheet: View {
                     displayedComponents: .date
                 )
             }
+            .scrollDismissesKeyboard(.interactively)
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
             .navigationTitle(kind.titleKey)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("action.cancel") { dismiss() }
-                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("action.save") { Task { await save() } }
                         .disabled((decimalAmount(from: amountText) ?? .zero) <= .zero || isSaving)
                 }
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("action.done") { amountFocused = false }
-                }
+                MoneyUpKeyboardDoneToolbar()
             }
+            .onAppear { if initialDraftSignature == nil { initialDraftSignature = draftSignature } }
+            .moneyUpProtectDraft(
+                hasChanges: initialDraftSignature.map { $0 != draftSignature } ?? false,
+                isSaving: isSaving
+            )
+            .disabled(isSaving)
             .moneyUpOperationErrorAlert(message: $errorMessage)
         }
+    }
+
+    private var draftSignature: [String] {
+        [amountText, String(occurredAt.timeIntervalSinceReferenceDate)]
     }
 
     private func save() async {
@@ -551,7 +588,7 @@ private struct GoalMovementSheet: View {
     }
 }
 
-private extension SavingsGoalKind {
+extension SavingsGoalKind {
     var titleKey: LocalizedStringKey {
         switch self {
         case .savingsGoal: "goal.kind.savings"
@@ -567,7 +604,7 @@ private extension SavingsGoalKind {
     }
 }
 
-private extension SavingsGoalResetRule {
+extension SavingsGoalResetRule {
     var titleKey: LocalizedStringKey {
         switch self {
         case .never: "goal.reset.never"
@@ -577,7 +614,7 @@ private extension SavingsGoalResetRule {
     }
 }
 
-private extension SavingsGoalMovementKind {
+extension SavingsGoalMovementKind {
     var titleKey: LocalizedStringKey {
         switch self {
         case .contribution: "goal.contribute"

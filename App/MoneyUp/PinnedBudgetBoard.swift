@@ -54,35 +54,37 @@ struct PinnedBudgetBoard: View {
             Label("today.pinned.title", systemImage: "pin.fill")
                 .font(.headline)
             Spacer(minLength: 8)
-            Button {
-                withAnimation(
-                    MoneyUpMotion.animation(
-                        for: .stateChange,
-                        reduceMotion: reduceMotion
-                    )
-                ) {
-                    showsDetail.toggle()
-                }
-            } label: {
-                Label("display.details", systemImage: "text.alignleft")
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(.tint)
-            .accessibilityLabel("today.pinned.toggle_detail")
-            .accessibilityValue(
-                showsDetail ? "state.expanded" : "state.collapsed"
-            )
-
-            Button {
-                isEditingPins = true
-            } label: {
-                Image(systemName: "slider.horizontal.3")
+            if !model.pinnedBudgetNodes.isEmpty {
+                Button {
+                    withAnimation(
+                        MoneyUpMotion.animation(
+                            for: .stateChange,
+                            reduceMotion: reduceMotion
+                        )
+                    ) {
+                        showsDetail.toggle()
+                    }
+                } label: {
+                    Label("display.details", systemImage: "text.alignleft")
                     .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.tint)
+                .accessibilityLabel("today.pinned.toggle_detail")
+                .accessibilityValue(
+                    showsDetail ? "state.expanded" : "state.collapsed"
+                )
+
+                Button {
+                    isEditingPins = true
+                } label: {
+                    Image(systemName: "slider.horizontal.3")
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.tint)
+                .accessibilityLabel("today.pinned.edit")
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(.tint)
-            .accessibilityLabel("today.pinned.edit")
         }
         .font(.subheadline)
     }
@@ -185,32 +187,40 @@ struct PinnedBudgetRow: View {
     @ViewBuilder
     private var cadences: some View {
         if let spread = summary.spread {
-            if dynamicTypeSize.isAccessibilitySize {
+            if !showsDetail {
+                switch model.displayPreferences.preferredGuidanceCadence {
+                case .daily: cadence("today.pinned.day", spread.daily.available)
+                case .weekly: cadence("today.pinned.week", spread.weekly.available)
+                case .monthly: cadence("today.pinned.month", spread.monthly.available)
+                }
+            } else if dynamicTypeSize.isAccessibilitySize {
                 VStack(alignment: .leading, spacing: 3) {
                     cadence("today.pinned.month", spread.monthly.available)
                     cadence("today.pinned.week", spread.weekly.available)
                     cadence("today.pinned.day", spread.daily.available)
                 }
             } else {
-                HStack(spacing: 12) {
+                HStack(alignment: .top, spacing: 12) {
                     cadence("today.pinned.month", spread.monthly.available)
                     cadence("today.pinned.week", spread.weekly.available)
                     cadence("today.pinned.day", spread.daily.available)
-                    Spacer(minLength: 0)
                 }
             }
         }
     }
 
     private func cadence(_ titleKey: LocalizedStringKey, _ money: Money) -> some View {
-        HStack(spacing: 3) {
-            Text(titleKey)
-                .foregroundStyle(.secondary)
+        let layout = dynamicTypeSize.isAccessibilitySize || !showsDetail
+            ? AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: 8))
+            : AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
+        return layout {
+            Text(titleKey).font(.caption2).foregroundStyle(.secondary)
             Text(formattedMoney(money))
-                .monospacedDigit()
-                .fontWeight(.semibold)
+                .font(.caption.monospacedDigit().weight(.semibold))
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .font(.caption2)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
     }
 
     /// Names the category's purpose beside the spend so an even split shown for

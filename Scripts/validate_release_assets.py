@@ -38,6 +38,7 @@ SWIFT_TEST_TARGETS = (
     ("MoneyUpIntelligenceTests", "intelligence"),
     ("MoneyUpAppTests", "app-target"),
     ("MoneyUpPerformanceTests", "performance-target"),
+    ("MoneyUpUITests", "ui-target"),
 )
 EXPECTED_PERFORMANCE_XCTESTS = (
     "testFixtureContract",
@@ -1871,6 +1872,13 @@ def chart_render_guard_errors(
             if re.search(pattern, source):
                 errors.append(f"{label} contains an uncertified {effect}")
 
+    reviewed_flow_range = ".chartXScale(range: .plotDimension(padding: 16))"
+    if (
+        flow_chart.count(reviewed_flow_range) != 1
+        or flow_chart.count(".chartXScale(") != 1
+    ):
+        errors.append("cash-flow chart must retain its reviewed date-label padding")
+
     allowed_chart_calls = {
         "accessibilityHidden",
         "accessibilityHint",
@@ -1901,6 +1909,8 @@ def chart_render_guard_errors(
         ("cash-flow", reviewed_flow),
         ("category", category_chart),
     ):
+        if label == "cash-flow":
+            source = source.replace(reviewed_flow_range, "")
         calls = set(re.findall(r"\.([A-Za-z_]\w*)\s*\(", source))
         unknown_calls = sorted(calls - allowed_chart_calls)
         if unknown_calls:
@@ -2703,6 +2713,7 @@ def validate_test_declaration_accounting() -> None:
         "MoneyUpIntelligenceTests",
         "MoneyUpAppTests",
         "MoneyUpPerformanceTests",
+        "MoneyUpUITests",
     )
     xctest_pattern = re.compile(r"^\s*func\s+test[A-Za-z0-9_]*\s*\(", re.MULTILINE)
     swift_test_pattern = re.compile(r"^\s*@Test(?:\s|\()", re.MULTILINE)
@@ -2726,8 +2737,8 @@ def validate_test_declaration_accounting() -> None:
     accounting = re.search(
         r"Declared automated tests in source after this review: \*\*(\d+)\*\* "
         r"\((\d+)\s+core,\s+(\d+)\s+persistence,\s+"
-        r"(\d+)\s+intelligence,\s+(\d+)\s+app-target, and\s+"
-        r"(\d+)\s+performance-target\s+declarations;.*?"
+        r"(\d+)\s+intelligence,\s+(\d+)\s+app-target,\s+"
+        r"(\d+)\s+performance-target, and\s+(\d+)\s+ui-target\s+declarations;.*?"
         r"\*\*(\d+)\*\* are XCTest.*?remaining (\d+) are Swift Testing",
         matrix,
         re.DOTALL,
@@ -2742,6 +2753,7 @@ def validate_test_declaration_accounting() -> None:
         totals["MoneyUpIntelligenceTests"],
         totals["MoneyUpAppTests"],
         totals["MoneyUpPerformanceTests"],
+        totals["MoneyUpUITests"],
         xctest_total,
         swift_test_total,
     )
@@ -2752,7 +2764,7 @@ def validate_test_declaration_accounting() -> None:
         )
     print(
         f"Validated dynamic test accounting: {actual[0]} declarations "
-        f"({actual[6]} XCTest, {actual[7]} Swift Testing)"
+        f"({actual[7]} XCTest, {actual[8]} Swift Testing)"
     )
 
 
@@ -3712,6 +3724,15 @@ def validate_brand_palette() -> None:
             "cash-flow parent modifier",
         ),
     )
+    require_mutation_rejected(
+        "cash-flow date-label scale drift",
+        analysis=mutated(
+            insights_analysis_source,
+            ".chartXScale(range: .plotDimension(padding: 16))",
+            ".chartXScale(range: .plotDimension(padding: 0))",
+            "cash-flow date-label scale drift",
+        ),
+    )
 
     group_mutation = mutated(
         insights_analysis_source,
@@ -3944,6 +3965,7 @@ def validate_release_traceability() -> None:
         "MoneyUpIntelligenceTests",
         "MoneyUpAppTests",
         "MoneyUpPerformanceTests",
+        "MoneyUpUITests",
     )
     actual: dict[str, tuple[int, int]] = {}
     for target in targets:
@@ -3962,7 +3984,7 @@ def validate_release_traceability() -> None:
     declared = re.search(
         r"Declared automated tests in source after this review: \*\*(\d+)\*\* "
         r"\((\d+) core, (\d+)\s+persistence, (\d+) intelligence, (\d+) "
-        r"app-target, and (\d+) performance-target\s+declarations",
+        r"app-target, (\d+) performance-target, and (\d+)\s+ui-target\s+declarations",
         matrix,
     )
     declaration_kinds = re.search(
@@ -4562,8 +4584,8 @@ def validate_test_declaration_inventory() -> None:
     declared = re.search(
         r"Declared automated tests in source after this review: \*\*(\d+)\*\* "
         r"\((\d+)\s+core,\s+(\d+)\s+persistence,\s+"
-        r"(\d+)\s+intelligence,\s+(\d+)\s+app-target, and\s+"
-        r"(\d+)\s+performance-target\s+declarations;",
+        r"(\d+)\s+intelligence,\s+(\d+)\s+app-target,\s+"
+        r"(\d+)\s+performance-target, and\s+(\d+)\s+ui-target\s+declarations;",
         document,
     )
     kinds = re.search(
@@ -4582,6 +4604,7 @@ def validate_test_declaration_inventory() -> None:
         target_totals["intelligence"],
         target_totals["app-target"],
         target_totals["performance-target"],
+        target_totals["ui-target"],
         xctest_total,
         swift_testing_total,
     )

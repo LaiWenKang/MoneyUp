@@ -8,19 +8,37 @@ public struct MoneyUpDisplayPreferences: Codable, Equatable, Sendable {
     public var showsIllustrations: Bool
     public var showsTodayTrend: Bool
     public var reducesMotion: Bool
+    public var preferredGuidanceCadence: BudgetPacingCadence
 
     public init(
         showsDailyGuidance: Bool = true,
         hiddenGuidanceCategoryIDs: Set<UUID> = [],
         showsIllustrations: Bool = true,
         showsTodayTrend: Bool = true,
-        reducesMotion: Bool = false
+        reducesMotion: Bool = false,
+        preferredGuidanceCadence: BudgetPacingCadence = .daily
     ) {
         self.showsDailyGuidance = showsDailyGuidance
         self.hiddenGuidanceCategoryIDs = hiddenGuidanceCategoryIDs
         self.showsIllustrations = showsIllustrations
         self.showsTodayTrend = showsTodayTrend
         self.reducesMotion = reducesMotion
+        self.preferredGuidanceCadence = preferredGuidanceCadence
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case showsDailyGuidance, hiddenGuidanceCategoryIDs, showsIllustrations
+        case showsTodayTrend, reducesMotion, preferredGuidanceCadence
+    }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        showsDailyGuidance = try values.decodeIfPresent(Bool.self, forKey: .showsDailyGuidance) ?? true
+        hiddenGuidanceCategoryIDs = try values.decodeIfPresent(Set<UUID>.self, forKey: .hiddenGuidanceCategoryIDs) ?? []
+        showsIllustrations = try values.decodeIfPresent(Bool.self, forKey: .showsIllustrations) ?? true
+        showsTodayTrend = try values.decodeIfPresent(Bool.self, forKey: .showsTodayTrend) ?? true
+        reducesMotion = try values.decodeIfPresent(Bool.self, forKey: .reducesMotion) ?? false
+        preferredGuidanceCadence = try values.decodeIfPresent(BudgetPacingCadence.self, forKey: .preferredGuidanceCadence) ?? .daily
     }
 
     public func showsGuidance(for categoryID: UUID) -> Bool {

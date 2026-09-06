@@ -82,11 +82,13 @@ struct MoneyUpIllustration: View {
                 .resizable()
                 .scaledToFit()
                 .frame(
-                    maxWidth: role.maximumWidth,
-                    maxHeight: dynamicTypeSize.isAccessibilitySize
+                    width: role.maximumWidth,
+                    height: dynamicTypeSize.isAccessibilitySize
                         ? min(role.height, 84)
                         : role.height
                 )
+                .clipped()
+                .allowsHitTesting(false)
                 .accessibilityHidden(true)
         }
     }

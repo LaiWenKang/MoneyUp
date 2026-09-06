@@ -14,6 +14,7 @@ struct AddHoldingSheet: View {
     @State private var priceText = ""
     @State private var currencyCode = SupportedCurrencies.regionalDefault
     @State private var openingTreatment: AppModel.InvestmentOpeningTreatment?
+    @State private var didInitialize = false
     @State private var isSaving = false
     @State private var errorMessage: String?
 
@@ -76,14 +77,12 @@ struct AddHoldingSheet: View {
                 }
 
             }
+            .scrollDismissesKeyboard(.interactively)
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
             .navigationTitle("holding.add")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("action.cancel") { dismiss() }
-                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("action.save") { Task { await save() } }
                         .disabled(!canSave || isSaving)
@@ -91,6 +90,8 @@ struct AddHoldingSheet: View {
                 MoneyUpKeyboardDoneToolbar()
             }
             .onAppear {
+                guard !didInitialize else { return }
+                didInitialize = true
                 accountID = accounts.first?.id
                 currencyCode = accounts.first?.currency?.value
                     ?? model.profile?.baseCurrency.value ?? "SGD"
@@ -100,6 +101,14 @@ struct AddHoldingSheet: View {
                     currencyCode = code
                 }
             }
+            .moneyUpProtectDraft(
+                hasChanges: !name.isEmpty || !symbol.isEmpty || !quantityText.isEmpty
+                    || !priceText.isEmpty || openingTreatment != nil
+                    || (didInitialize && (accountID != accounts.first?.id
+                        || currencyCode != (accounts.first?.currency?.value ?? model.profile?.baseCurrency.value ?? "SGD"))),
+                isSaving: isSaving
+            )
+            .disabled(isSaving)
             .moneyUpOperationErrorAlert(message: $errorMessage)
         }
     }
@@ -170,6 +179,7 @@ struct HoldingManagementSheet: View {
     @State private var quantityText = ""
     @State private var priceText = ""
     @State private var asOf = Date()
+    @State private var initialDraftSignature: [String]?
     @State private var isSaving = false
     @State private var errorMessage: String?
     @State private var resultMessage: String?
@@ -305,19 +315,26 @@ struct HoldingManagementSheet: View {
                 }
                 if let resultMessage { Section { Text(resultMessage).foregroundStyle(.green) } }
             }
+            .scrollDismissesKeyboard(.interactively)
+            .scrollContentBackground(.hidden)
+            .background(Color.moneyUpBackground)
             .navigationTitle(holding?.symbol.isEmpty == false ? holding?.symbol ?? "" : holding?.name ?? "")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("action.done") { dismiss() }
-                }
                 MoneyUpKeyboardDoneToolbar()
             }
+            .moneyUpProtectDraft(
+                hasChanges: initialDraftSignature.map { $0 != draftSignature } ?? false,
+                isSaving: isSaving,
+                cancellationTitle: "action.done"
+            )
             .onAppear {
+                guard initialDraftSignature == nil else { return }
                 if let price = holding?.price { priceText = editableAmount(price.amount) }
                 migrationAccountID = migrationAccounts.first(where: {
                     $0.id == holding?.accountID
                 })?.id ?? migrationAccounts.first?.id
+                initialDraftSignature = draftSignature
             }
             .confirmationDialog(
                 "holding.connect_ledger",
@@ -336,6 +353,10 @@ struct HoldingManagementSheet: View {
             }
             .moneyUpOperationErrorAlert(message: $errorMessage)
         }
+    }
+
+    private var draftSignature: [String] {
+        [quantityText, priceText, String(asOf.timeIntervalSinceReferenceDate)]
     }
 
     private func save() async {
@@ -369,6 +390,7 @@ struct HoldingManagementSheet: View {
                 )
             }
             quantityText = ""
+            initialDraftSignature = draftSignature
         } catch {
             errorMessage = safeUserMessage(for: error, context: .save)
         }

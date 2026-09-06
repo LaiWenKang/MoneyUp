@@ -206,9 +206,7 @@ PLATFORM_SURFACE_INVENTORY = {
     r"\bControlWidgetButton\s*\(": {
         "App/MoneyUpWidget/MoneyUpQuickLogControl.swift": 1,
     },
-    r"\bButton\s*\(\s*intent\s*:": {
-        "App/MoneyUpWidget/MoneyUpWidget.swift": 5,
-    },
+    r"\bButton\s*\(\s*intent\s*:": {},
     r"\bAppShortcut\s*\(": {
         "App/MoneyUp/MoneyUpAppShortcuts.swift": 6,
     },
@@ -244,7 +242,6 @@ COMPILED_REFERENCE_INVENTORY = {
         "App/MoneyUp/MoneyUpAppShortcuts.swift": 6,
         "App/Shared/MoneyUpQuickAction.swift": 2,
         "App/MoneyUpWidget/MoneyUpQuickLogControl.swift": 1,
-        "App/MoneyUpWidget/MoneyUpWidget.swift": 5,
     },
     r"\bQuickLogRouteRequest\b": {
         "App/MoneyUp/AppModel.swift": 3,
@@ -291,11 +288,13 @@ COMPILED_REFERENCE_INVENTORY = {
     },
     r"moneyup://": {
         "App/Shared/MoneyUpQuickAction.swift": 6,
+        "App/Shared/MoneyUpOverviewRoute.swift": 2,
     },
     r"\bLink\s*\(": {
         "App/MoneyUp/PrivacyAndBetaView.swift": 2,
+        "App/MoneyUpWidget/MoneyUpWidget.swift": 5,
     },
-    r"\.widgetURL\s*\(": {},
+    r"\.widgetURL\s*\(": {"App/MoneyUpWidget/MoneyUpWidget.swift": 1},
     r"\.onOpenURL\s*\{": {
         "App/MoneyUp/MoneyUpApp.swift": 1,
     },
@@ -774,7 +773,10 @@ def validate_app_routing_source(source: str) -> list[str]:
         "                    model.retryPresentedQuickActionAcknowledgement()",
         "quickActionRouteBroker.reloadDurableIngress()\n"
         "                        model.retryPresentedQuickActionAcknowledgement()",
-        "routePendingQuickAction()\n                    await model.startAfterInitialRoutingWindow()",
+        "routePendingQuickAction()\n                    await startInitialModelIfNeeded()",
+        "launchState.isActive = scenePhase == .active",
+        "launchState.isActive = newPhase == .active",
+        "await model.startAfterInitialRoutingWindow(allowProtectedStart: { launchState.isActive })",
     ]
     for declaration in required:
         if declaration not in source:
@@ -782,13 +784,17 @@ def validate_app_routing_source(source: str) -> list[str]:
 
     route = declaration_body(source, "private func routePendingQuickAction()")
     if route is None or " ".join(route.split()) != (
+        "guard launchState.isActive else { return } "
         "let result = MoneyUpQuickActionRouting.routeNext( "
         "from: quickActionRouteBroker, into: model ) "
-        "guard result == .requiresStart else { return } Task { await model.start() }"
+        "guard result == .requiresStart else { return } Task { "
+        "guard launchState.isActive else { return } await model.start() }"
     ):
         errors.append("main scene must drain at most one action through the strict router")
     deep_route = declaration_body(source, "private func routeDeepLink(_ url: URL)")
     if deep_route is None or " ".join(deep_route.split()) != (
+        "if let destination = MoneyUpOverviewRoute(exactDeepLink: url) { "
+        "overviewNavigation.request(destination) return } "
         "guard let action = MoneyUpQuickAction(exactDeepLink: url) else { return } "
         "_ = quickActionRouteBroker.submit(action) "
         "routePendingQuickAction()"
@@ -800,6 +806,26 @@ def validate_app_routing_source(source: str) -> list[str]:
     for symbol, boundary in FORBIDDEN_ACTION_SYMBOLS.items():
         if symbol in source:
             errors.append(f"main scene route crosses {boundary}: {symbol}")
+    return errors
+
+
+def validate_overview_route_source(source: str) -> list[str]:
+    errors: list[str] = []
+    url = declaration_body(source, "var url: URL?")
+    expected_url = (
+        'switch self { case .today: URL(string: "moneyup://overview/today") '
+        'case .budget: URL(string: "moneyup://overview/budget") }'
+    )
+    decoder = declaration_body(source, "init?(exactDeepLink url: URL)")
+    expected_decoder = (
+        "guard url.baseURL == nil, url.relativeString == url.absoluteString, "
+        "let route = Self.allCases.first(where: { $0.url?.absoluteString == url.absoluteString }) "
+        "else { return nil } self = route"
+    )
+    if url is None or " ".join(url.split()) != expected_url:
+        errors.append("overview URL mapping must remain two exact passive destinations")
+    if decoder is None or " ".join(decoder.split()) != expected_decoder:
+        errors.append("overview decoder must reject every non-canonical URL and payload")
     return errors
 
 
@@ -1591,17 +1617,27 @@ def validate_shortcuts_source(source: str) -> list[str]:
 
 def validate_widget_source(source: str) -> list[str]:
     errors: list[str] = []
-    if "moneyup://" in source or ".deepLink" in source:
-        errors.append("widgets must not open a custom scheme directly")
+    if "moneyup://" in source or "URL(string:" in source:
+        errors.append("widgets must obtain URLs only from the closed quick-action enum")
     if source.count('let kind = "MoneyUpQuickLog"') != 1:
         errors.append("persisted MoneyUpQuickLog widget kind drifted")
     if "MoneyUpQuickLogControl()" not in source:
         errors.append("WidgetBundle does not include the iOS 18 quick-log control")
-    if "Link(" in source or ".widgetURL(" in source:
-        errors.append("quick widgets must use OpenQuickLogIntent, not raw links/widgetURL")
-    button = "Button(intent: OpenQuickLogIntent(action: action))"
-    if source.count(button) != 5 or source.count("Button(intent:") != 5:
-        errors.append("every quick-action widget family must use Button(intent:)")
+    if source.count("Link(destination: action.deepLink)") != 5 or source.count("Link(") != 5:
+        errors.append("every quick-action widget family must use an allowlisted navigation link")
+    url = ".widgetURL(destinationURL)"
+    if url not in re.sub(r"\s+", " ", source) or source.count(".widgetURL(") != 1:
+        errors.append("widget background taps must use the same allowlisted fallback route")
+    destination = declaration_body(source, "private var destinationURL: URL?")
+    expected_destination = (
+        "if entry.content == .quickAction || entry.budgetSnapshot.usesQuickActionFallback { "
+        "return entry.action.deepLink } return entry.content == .smartOverview "
+        "? MoneyUpOverviewRoute.today.url : MoneyUpOverviewRoute.budget.url"
+    )
+    if destination is None or " ".join(destination.split()) != expected_destination:
+        errors.append("passive widgets must use their exact, data-free overview destination")
+    if source.count(".deepLink") != 6 or "Button(intent:" in source:
+        errors.append("widget navigation must not perform an intent or construct a payload")
     if (
         source.count("let snapshot = store.readPublishedSnapshot(now: now)") != 1
         or source.count(
@@ -1631,7 +1667,8 @@ def validate_widget_source(source: str) -> list[str]:
         r"snapshot\s*:\s*entry\.budgetSnapshot\s*,\s*"
         r"insights\s*:\s*entry\.insights\s*,\s*"
         r"family\s*:\s*family\s*,\s*"
-        r"homeDensity\s*:\s*homeDensity\s*\)",
+        r"homeDensity\s*:\s*homeDensity\s*,\s*"
+        r"focus\s*:\s*entry\.focus\s*\)",
         flags=re.DOTALL,
     )
     if widget_view is None or len(smart_overview_call.findall(widget_view)) != 1:
@@ -1743,10 +1780,11 @@ def validate_widget_source(source: str) -> list[str]:
         expected_parameters = [
             ("content", "MoneyUpWidgetContent"),
             ("defaultAction", "MoneyUpQuickAction"),
+            ("focus", "SmartOverviewFocus"),
         ]
-        if configuration.count("@Parameter") != 2 or parameters != expected_parameters:
+        if configuration.count("@Parameter") != 3 or parameters != expected_parameters:
             errors.append(
-                "widget configuration must retain only its two closed enum parameters"
+                "widget configuration must retain only its three closed enum parameters"
             )
 
     budget_body = declaration_body(source, "private struct BudgetStatusWidgetView")
@@ -2436,7 +2474,7 @@ def validate_compiled_surface_inventory(root: Path) -> list[str]:
         r"\bAppShortcutsProvider\b": 1,
         r"\bControlWidget\b": 1,
         r"\bAppIntentControlConfiguration\s*\(": 1,
-        r"@Parameter\b": 3,
+        r"@Parameter\b": 4,
     }
     for pattern, expected_count in declaration_patterns.items():
         count = len(re.findall(pattern, combined))
@@ -2576,6 +2614,7 @@ def validate_identity_and_capture_boundary(root: Path) -> list[str]:
     expected_target_sources = {
         "MoneyUp": ["App/MoneyUp", "App/Shared"],
         "MoneyUpTests": ["Tests/MoneyUpAppTests"],
+        "MoneyUpUITests": ["Tests/MoneyUpUITests"],
         "MoneyUpWidget": ["App/MoneyUpWidget", "App/Shared"],
     }
     for target, expected_sources in expected_target_sources.items():
@@ -2594,6 +2633,7 @@ def validate_identity_and_capture_boundary(root: Path) -> list[str]:
         TEST_BUNDLE_ID,
         PERFORMANCE_TEST_BUNDLE_ID,
         WIDGET_BUNDLE_ID,
+        "com.laiwenkang.MoneyUpUITests",
     ]
     if bundle_ids != expected_bundle_ids:
         errors.append(
@@ -2726,6 +2766,7 @@ def validate_repository(root: Path = ROOT) -> list[str]:
     errors: list[str] = []
     errors.extend(validate_compiled_surface_inventory(root))
     source_contract = [
+        ("App/Shared/MoneyUpOverviewRoute.swift", validate_overview_route_source),
         (
             "App/Shared/MoneyUpQuickAction.swift",
             validate_shared_action_source,

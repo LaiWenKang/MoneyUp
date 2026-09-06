@@ -48,6 +48,7 @@ struct MoneyUpAmountPrivacyButton: View {
             }
         } label: {
             Image(systemName: hidesAmounts ? "eye.slash.fill" : "eye.fill")
+                .foregroundStyle(Color.accentColor)
                 .contentTransition(.symbolEffect(.replace))
         }
         .accessibilityLabel(

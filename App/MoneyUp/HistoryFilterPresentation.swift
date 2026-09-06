@@ -16,6 +16,13 @@ enum HistoryCategoryScope {
 }
 
 extension HistoryFilterDraft {
+    /// The visible scope already explains preset dates. The Filter badge
+    /// counts predicates that require opening the advanced filter sheet.
+    func advancedFilterCount(quickRange: HistoryQuickRange?) -> Int {
+        let visibleDateScope = quickRange?.isRolling == true && (includesStartDate || includesEndDate)
+        return activeFilterCount - (visibleDateScope ? 1 : 0)
+    }
+
     var activeFilterCount: Int {
         [
             kind != .all, accountID != nil, categoryIDs != nil,

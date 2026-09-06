@@ -3,27 +3,30 @@ import SwiftUI
 
 struct BudgetPlanView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.appReportingSnapshot) private var sharedSnapshot
-    @State private var selectedDate: Date?
-    @State private var currencyCode: String?
+    @Bindable var workspace: PlanWorkspaceState
+
+    init(workspace: PlanWorkspaceState = PlanWorkspaceState()) {
+        self.workspace = workspace
+    }
     @State private var presentation: DerivedValue<MonthlyBudgetPresentation>?
     @State private var editingNode: BudgetNode?
     @State private var isAddingCategory = false
     @State private var isManagingCategories = false
     @State private var errorMessage: String?
-    @State private var displayedPacingCadence: BudgetPacingCadence = .daily
     @AppStorage(MoneyUpDisclosureSection.planBudgetDetail.rawValue)
     private var showsRowDetail = false
 
     private var now: Date { sharedSnapshot?.instant ?? model.currentDateForUserAction() }
     private var date: Date {
-        guard let selectedDate,
+        guard let selectedDate = workspace.budgetDate,
               !model.reportingCalendar.isDate(selectedDate, equalTo: now, toGranularity: .month)
         else { return now }
         return model.reportingCalendar.dateInterval(of: .month, for: selectedDate)?.start ?? selectedDate
     }
     private var currency: CurrencyCode? {
-        currencyCode.flatMap { try? CurrencyCode($0) } ?? model.profile?.baseCurrency
+        workspace.budgetCurrencyCode.flatMap { try? CurrencyCode($0) } ?? model.profile?.baseCurrency
     }
     private var isCurrentMonth: Bool {
         model.reportingCalendar.isDate(date, equalTo: now, toGranularity: .month)
@@ -36,6 +39,13 @@ struct BudgetPlanView: View {
         return "\(parts.year ?? 0)-\(parts.month ?? 0)-\(currency?.value ?? "")-"
             + "\(model.budgetNodesRevision)-\(model.journalProjectionRevision)-"
             + "\(model.logicalBookRevision)-\(model.isJournalMutationInProgress)"
+    }
+
+    private var pacingSelection: Binding<BudgetPacingCadence> {
+        Binding(
+            get: { workspace.hasChosenPacingCadence ? workspace.pacingCadence : model.displayPreferences.preferredGuidanceCadence },
+            set: { workspace.pacingCadence = $0; workspace.hasChosenPacingCadence = true }
+        )
     }
 
     var body: some View {
@@ -52,7 +62,7 @@ struct BudgetPlanView: View {
                     Section {
                         DerivedValueUnavailableView(issue: issue, prominent: true)
                         if issue == .budgetHistoryUnavailable {
-                            Button("history.scope.month") { selectedDate = nil }
+                            Button("history.scope.month") { workspace.budgetDate = nil }
                         } else {
                             Button("action.retry") { Task { await load() } }
                         }
@@ -61,8 +71,10 @@ struct BudgetPlanView: View {
             } else {
                 Section { ProgressView("budget.loading") }
             }
-            if isCurrentMonth { exploreSection }
+            if isCurrentMonth, model.profile?.intelligenceEnabled == true { exploreSection }
         }
+        .listSectionSpacing(16)
+        .contentMargins(.top, 8, for: .scrollContent)
         .scrollContentBackground(.hidden)
         .background(Color.moneyUpBackground)
         .navigationTitle("plan.budget")
@@ -92,21 +104,19 @@ struct BudgetPlanView: View {
                     currencyPicker(compact: false)
                 }
             }
-        } footer: {
-            MoneyUpExplainer("budget.scope_detail")
         }
     }
 
     private var monthPicker: some View {
         BudgetMonthPicker(selection: Binding(
-            get: { selectedDate ?? now }, set: { selectedDate = $0 }
+            get: { workspace.budgetDate ?? now }, set: { workspace.budgetDate = $0 }
         ), calendar: model.reportingCalendar)
     }
 
     private func currencyPicker(compact: Bool) -> some View {
         SearchableCurrencyPicker(
             title: "transaction.currency",
-            selection: Binding(get: { currency?.value ?? "" }, set: { currencyCode = $0 }),
+            selection: Binding(get: { currency?.value ?? "" }, set: { workspace.budgetCurrencyCode = $0 }),
             existing: model.budgetCurrencies, compact: compact
         )
     }
@@ -134,31 +144,41 @@ struct BudgetPlanView: View {
                 if !summary.unbudgetedSpent.isZero {
                     LabeledContent("budget.unbudgeted_spending", value: formattedMoney(summary.unbudgetedSpent))
                 }
-            }
-            Section {
                 DisclosureGroup("budget.composition") {
                     BudgetCompositionView(progress: snapshot.progress, allowsEditing: !isClosed, showsTitle: false) { node in
                         if !isClosed { editingNode = node }
+                    }
+                }
+                if isCurrentMonth {
+                    NavigationLink { BudgetSimulatorView() } label: {
+                        Label("simulator.title", systemImage: "slider.horizontal.3")
                     }
                 }
             }
         }
         if isCurrentMonth, model.displayPreferences.showsDailyGuidance {
             Section {
-                Picker("plan.pacing_view", selection: $displayedPacingCadence) {
-                    Text("plan.pacing.today").tag(BudgetPacingCadence.daily)
-                    Text("plan.pacing.this_week").tag(BudgetPacingCadence.weekly)
-                    Text("plan.pacing.rest_of_month").tag(BudgetPacingCadence.monthly)
-                }.pickerStyle(.segmented)
+                if dynamicTypeSize.isAccessibilitySize {
+                    pacingPicker.pickerStyle(.menu)
+                } else {
+                    pacingPicker.pickerStyle(.segmented)
+                }
             }
         }
         ForEach(outline.filter { $0.depth == 0 }) { root in
             Section {
-                ForEach(groups[root.id] ?? []) { item in
-                    categoryRow(item, progress: progress[item.id], snapshot: snapshot)
+                categoryRow(root, progress: progress[root.id], snapshot: snapshot)
+                let children = (groups[root.id] ?? []).filter { $0.id != root.id }
+                if !children.isEmpty {
+                    DisclosureGroup {
+                        ForEach(children) { item in
+                            categoryRow(item, progress: progress[item.id], snapshot: snapshot)
+                        }
+                    } label: {
+                        Text(String(format: AppLocalization.string("budget.subcategory_count"), children.count))
+                            .font(.subheadline)
+                    }
                 }
-            } header: {
-                Text(root.node.name).font(.title3.weight(.semibold)).foregroundStyle(.primary).textCase(nil)
             }
         }
         if outline.isEmpty {
@@ -166,6 +186,14 @@ struct BudgetPlanView: View {
                 ContentUnavailableView("plan.empty", systemImage: "square.grid.2x2")
                 Button("category.add") { isAddingCategory = true }
             }
+        }
+    }
+
+    private var pacingPicker: some View {
+        Picker("plan.pacing_view", selection: pacingSelection) {
+            Text("plan.pacing.today").tag(BudgetPacingCadence.daily)
+            Text("plan.pacing.this_week").tag(BudgetPacingCadence.weekly)
+            Text("plan.pacing.rest_of_month").tag(BudgetPacingCadence.monthly)
         }
     }
 
@@ -210,9 +238,9 @@ struct BudgetPlanView: View {
                 node: item.node, depth: item.depth, progress: progress,
                 elapsed: isCurrentMonth ? sharedSnapshot?.monthElapsed ?? 0 : isClosed ? 1 : 0,
                 purpose: snapshot.purposes[item.id] ?? .unclassified,
-                displayedPacingCadence: displayedPacingCadence,
+                displayedPacingCadence: pacingSelection.wrappedValue,
                 showsDetail: showsRowDetail, reportingDate: date,
-                showsName: item.depth != 0, showsPacing: isCurrentMonth
+                showsName: true, showsPacing: isCurrentMonth
             )
             if item.node.allocationMode == .fixedTotal, item.node.limit != nil,
                let child = progress?.childAllocation {
@@ -233,9 +261,6 @@ struct BudgetPlanView: View {
 
     private var exploreSection: some View {
         Section("simulator.explore") {
-            NavigationLink { BudgetSimulatorView() } label: {
-                Label("simulator.title", systemImage: "slider.horizontal.3")
-            }
             if model.profile?.intelligenceEnabled == true {
                 NavigationLink { BudgetSuggestionReviewView() } label: {
                     Label("intelligence.budget.review_title", systemImage: "wand.and.stars")
@@ -248,14 +273,12 @@ struct BudgetPlanView: View {
     private var toolbar: some ToolbarContent {
         ToolbarItem(placement: .primaryAction) {
             Menu {
+                Button { isManagingCategories = true } label: {
+                    Label("lifecycle.manage_categories", systemImage: "square.grid.2x2")
+                }
                 Toggle("budget.show_details", isOn: $showsRowDetail)
                 NavigationLink { DisplaySettingsView() } label: { Text("display.title") }
-            } label: { Label("display.short_title", systemImage: "slider.horizontal.3") }
-        }
-        ToolbarItem(placement: .primaryAction) {
-            Button { isManagingCategories = true } label: {
-                Label("lifecycle.manage_categories", systemImage: "square.grid.2x2")
-            }
+            } label: { Label("display.short_title", systemImage: "ellipsis.circle") }
         }
         ToolbarItem(placement: .primaryAction) {
             Button { isAddingCategory = true } label: { Label("category.add", systemImage: "plus") }

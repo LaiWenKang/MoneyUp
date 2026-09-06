@@ -20,11 +20,20 @@ budget categories with month/week/day remaining, removed the parts of Today
 that another tab already owned, and gave every swapped Plan section an
 explicit way back. A density pass then moved routine explanation behind a
 single glyph, gave Today's cards a headline figure with their supporting rows
-one tap away, and replaced captions that named a figure with the symbol for it.
+one tap away, and initially replaced figure captions with symbols. Build 1039 feedback
+restores short labels on financial figures and collapsed Today cards so their
+meaning stays visible.
 The current feedback pass defaults exact amounts to glance-private masking,
 replaces generic History chips with actual hot categories, surfaces the budget
 simulator and interactive chart preview, removes duplicate navigation, and adds
 Reduce-Motion-safe spring, selection, and press feedback.
+Build 1039 feedback now has a source follow-up: bounded navigation backgrounds,
+horizontally expanding selected sections, denser History and Budget layouts,
+allowances in Assets, useful widget capture fallbacks, and draft-safe editors.
+See [feedback implementation and verification](docs/FEEDBACK_1039_REVIEW.md).
+The app-wide follow-up adds exact goal contribution previews, snapshot-history
+charts, Log direction graphics, further draft/keyboard fixes, and explicit
+Smart Overview cold routing. See [app-wide review and evidence](docs/APPWIDE_EXPERIENCE_REVIEW.md).
 The prior merged baseline passed release,
 architecture, recovery, privacy, core/app-model, unsigned app/widget Simulator,
 and serial performance CI; build 11 must repeat those exact-head gates. Physical iPhone migration,
@@ -119,7 +128,8 @@ The beta includes:
   set of keys that cannot carry book content;
 - a permanent five-tab layout for Today, History, center Log, Plan, and Assets;
   the fixed tab bar is the only global tab-navigation control, while Plan uses
-  one adaptive icon/label selector for Budget, Calendar, Goals, and Allowances
+  one horizontal icon/label selector for Budget, Calendar, and Goals; allowance
+  and benefit management lives beside accounts in Assets
   and contextual screens expose a named top-left Back route only when a real
   origin exists; the retired swipe preference is type-checked when present,
   normalized off even if an initializer requests it, and omitted on rewrite;
@@ -155,8 +165,8 @@ The beta includes:
   read-only, the app canonicalizes stale storage, accessibility text sizes
   reduce Home-widget information density, and ready-scene/reporting-day
   lifecycle work publishes only one coherent current generation;
-- six bilingual, action-only App Shortcuts, interactive quick-action widget
-  buttons, and a configurable iOS 18 Control Widget that open only the existing
+- six bilingual, action-only App Shortcuts, direct-navigation quick-action
+  widget links, and a configurable iOS 18 Control Widget that open only the existing
   allowlisted routes; Budget Status and Smart Overview remain passive and no
   platform action carries or returns transaction details;
 - file-backed password-protected `.moneyup` v2 backup with bounded authenticated

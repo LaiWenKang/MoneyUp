@@ -5,17 +5,15 @@ enum PlanSection: String, CaseIterable, Hashable {
     case budget
     case calendar
     case goals
-    case allowances
 
     static let ordered: [PlanSection] = [
-        .budget, .calendar, .goals, .allowances
+        .budget, .calendar, .goals
     ]
 
     var titleKeyString: String {
         switch self {
         case .budget: "plan.budget"
         case .goals: "plan.goals"
-        case .allowances: "allowance.short_title"
         case .calendar: "tab.calendar"
         }
     }
@@ -26,7 +24,6 @@ enum PlanSection: String, CaseIterable, Hashable {
         switch self {
         case .budget: "chart.pie.fill"
         case .goals: "target"
-        case .allowances: "giftcard.fill"
         case .calendar: "calendar"
         }
     }
@@ -41,12 +38,17 @@ enum PlanSectionSelectorPolicy {
         for section: PlanSection,
         selection: PlanSection
     ) -> Bool {
-        true
+        section == selection
     }
 }
 
 struct PlanView: View {
-    @State private var selection: PlanSection = .budget
+    @State private var workspace: PlanWorkspaceState
+    private var selection: PlanSection { workspace.section }
+
+    init(initialSection: PlanSection = .budget, workspace: PlanWorkspaceState? = nil) {
+        _workspace = State(initialValue: workspace ?? PlanWorkspaceState(section: initialSection))
+    }
     @Environment(AppModel.self) private var model
     @Environment(\.appReportingSnapshot) private var sharedReportingSnapshot
     @Environment(\.moneyUpReduceMotion) private var reduceMotion
@@ -58,13 +60,13 @@ struct PlanView: View {
         let _ = hidesAmounts
         let snapshot = reportingSnapshot
         return NavigationStack {
-            sectionRoot
-                // This modifier belongs to the stack's root screen. Pushed
-                // destinations replace it and therefore receive the native
-                // Back control without carrying the peer-section selector.
-                .safeAreaInset(edge: .top, spacing: 0) {
-                    sectionSwitcher
-                }
+            VStack(spacing: 0) {
+                sectionSwitcher
+                sectionRoot
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+                .background(Color.moneyUpBackground)
+                .moneyUpNavigationSurface()
                 .toolbar {
                     ToolbarItem(placement: .primaryAction) {
                         MoneyUpAmountPrivacyButton()
@@ -87,13 +89,11 @@ struct PlanView: View {
     private var sectionRoot: some View {
         switch selection {
         case .budget:
-            BudgetPlanView()
+            BudgetPlanView(workspace: workspace)
         case .goals:
             SavingsGoalsView()
-        case .allowances:
-            AllowanceCenterView()
         case .calendar:
-            CalendarView(providesNavigationStack: false)
+            CalendarView(providesNavigationStack: false, workspace: workspace)
         }
     }
 
@@ -111,7 +111,9 @@ struct PlanView: View {
         }
         .padding(.vertical, 8)
         .padding(.horizontal, 16)
-        .background(.bar)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background { Color.moneyUpBackground }
+        .clipped()
     }
 
     private var compactSectionStrip: some View {
@@ -160,34 +162,11 @@ struct PlanView: View {
     }
 
     private func sectionButton(_ section: PlanSection) -> some View {
-        let isSelected = selection == section
-        return Button {
-            select(section)
-        } label: {
-            Group {
-                if PlanSectionSelectorPolicy.showsTitle(
-                    for: section,
-                    selection: selection
-                ) {
-                    Text(section.title)
-                        .padding(.horizontal, 12)
-                } else {
-                    Image(systemName: section.systemImage)
-                        .frame(width: 44)
-                }
-            }
-            .font(.subheadline.weight(.semibold))
-            .frame(minHeight: 44)
-            .background(
-                isSelected
-                    ? Color.accentColor.opacity(0.18)
-                    : Color.secondary.opacity(0.10),
-                in: Capsule()
-            )
-        }
-        .buttonStyle(MoneyUpPressableButtonStyle())
-        .accessibilityLabel(Text(section.title))
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        MoneyUpSectionChip(
+            title: section.title,
+            systemImage: section.systemImage,
+            isSelected: PlanSectionSelectorPolicy.showsTitle(for: section, selection: selection)
+        ) { select(section) }
     }
 
     private func select(_ section: PlanSection) {
@@ -198,7 +177,7 @@ struct PlanView: View {
                 reduceMotion: reduceMotion
             )
         ) {
-            selection = section
+            workspace.section = section
         }
     }
 }
@@ -336,6 +315,7 @@ struct BudgetRow: View {
 }
 
 struct BudgetSummaryCard: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let limit: Money
     let spent: Money
     let remaining: Money
@@ -354,13 +334,20 @@ struct BudgetSummaryCard: View {
     var body: some View {
         let ratioResult = ratio
         VStack(alignment: .leading, spacing: 12) {
-            Text(isOverspent ? "plan.total_over" : "plan.total_left")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-
-            Text(formattedMoney(isOverspent ? remaining.negated : remaining))
-                .moneyUpFinancialValue(.hero)
-                .foregroundStyle(isOverspent ? Color.red : Color.primary)
+            HStack(alignment: .center, spacing: 16) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(isOverspent ? "plan.total_over" : "plan.total_left")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Text(formattedMoney(isOverspent ? remaining.negated : remaining))
+                        .moneyUpFinancialValue(.hero)
+                        .foregroundStyle(isOverspent ? Color.red : Color.primary)
+                }
+                Spacer(minLength: 0)
+                if !dynamicTypeSize.isAccessibilitySize, case let .available(ratio) = ratioResult {
+                    MoneyUpBudgetOrbit(ratio: ratio, elapsed: elapsed)
+                }
+            }
 
             switch ratioResult {
             case let .available(ratio):
@@ -379,7 +366,16 @@ struct BudgetSummaryCard: View {
             .font(.caption)
             .foregroundStyle(.secondary)
 
-            MoneyUpExplainer("plan.pace_hint")
+            ViewThatFits(in: .horizontal) {
+                HStack {
+                    Label("budget.spending_progress", systemImage: "circle.lefthalf.filled")
+                    Spacer()
+                    MoneyUpExplainer("plan.pace_hint")
+                }
+                MoneyUpExplainer("plan.pace_hint")
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
         .padding(.vertical, 6)
         .accessibilityElement(children: .combine)

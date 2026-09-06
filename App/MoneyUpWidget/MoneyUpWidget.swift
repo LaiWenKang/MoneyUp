@@ -27,6 +27,17 @@ enum MoneyUpWidgetContent: String, AppEnum, CaseIterable, Identifiable, Sendable
     var id: String { rawValue }
 }
 
+extension SmartOverviewFocus: AppEnum {
+    static let typeDisplayRepresentation: TypeDisplayRepresentation = "widget.configuration.focus"
+    static let caseDisplayRepresentations: [SmartOverviewFocus: DisplayRepresentation] = [
+        .automatic: "widget.focus.automatic",
+        .budget: "widget.smart_budget",
+        .review: "widget.smart_review",
+        .allowance: "widget.smart_allowance",
+        .commitments: "widget.smart_commitments_next"
+    ]
+}
+
 struct MoneyUpWidgetConfigurationIntent: WidgetConfigurationIntent {
     static let title: LocalizedStringResource = "widget.configuration.title"
     static let description = IntentDescription("widget.configuration.description")
@@ -42,11 +53,15 @@ struct MoneyUpWidgetConfigurationIntent: WidgetConfigurationIntent {
         default: MoneyUpQuickAction.expense
     )
     var defaultAction: MoneyUpQuickAction
+
+    @Parameter(title: "widget.configuration.focus", default: SmartOverviewFocus.automatic)
+    var focus: SmartOverviewFocus
 }
 
 private struct MoneyUpWidgetEntry: TimelineEntry {
     let date: Date
     let content: MoneyUpWidgetContent
+    var focus: SmartOverviewFocus = .automatic
     let action: MoneyUpQuickAction
     let budgetSnapshot: BudgetWidgetSnapshot
     let insights: MoneyUpWidgetInsights?
@@ -92,6 +107,7 @@ private struct MoneyUpWidgetProvider: AppIntentTimelineProvider {
             MoneyUpWidgetEntry(
                 date: generation.date,
                 content: entry.content,
+                focus: entry.focus,
                 action: entry.action,
                 budgetSnapshot: generation.snapshot.budget,
                 insights: generation.snapshot.insights
@@ -116,6 +132,7 @@ private struct MoneyUpWidgetProvider: AppIntentTimelineProvider {
         return MoneyUpWidgetEntry(
             date: now,
             content: configuration.content,
+            focus: configuration.focus,
             action: configuration.defaultAction,
             budgetSnapshot: snapshot.budget,
             insights: snapshot.insights
@@ -135,6 +152,10 @@ private struct MoneyUpWidgetView: View {
     var body: some View {
         Group {
             switch entry.content {
+            case .budgetStatus where entry.budgetSnapshot.usesQuickActionFallback,
+                 .smartOverview where entry.budgetSnapshot.usesQuickActionFallback:
+                quickActionContent
+
             case .budgetStatus:
                 BudgetStatusWidgetView(
                     snapshot: entry.budgetSnapshot,
@@ -146,15 +167,25 @@ private struct MoneyUpWidgetView: View {
                     snapshot: entry.budgetSnapshot,
                     insights: entry.insights,
                     family: family,
-                    homeDensity: homeDensity
+                    homeDensity: homeDensity,
+                    focus: entry.focus
                 )
             case .quickAction:
                 quickActionContent
             }
         }
         .environment(\.locale, AppLanguagePreference.current.locale)
+        .widgetURL(destinationURL)
         .containerBackground(Color.moneyUpWidgetBackground, for: .widget)
         .tint(.moneyUpSoftGreen)
+    }
+
+    private var destinationURL: URL? {
+        if entry.content == .quickAction || entry.budgetSnapshot.usesQuickActionFallback {
+            return entry.action.deepLink
+        }
+        return entry.content == .smartOverview
+            ? MoneyUpOverviewRoute.today.url : MoneyUpOverviewRoute.budget.url
     }
 
     @ViewBuilder
@@ -527,7 +558,7 @@ private struct SmallQuickActionView: View {
     let homeDensity: MoneyUpWidgetHomeDensity
 
     var body: some View {
-        Button(intent: OpenQuickLogIntent(action: action)) {
+        Link(destination: action.deepLink) {
             if homeDensity == .accessibility {
                 HStack(spacing: 10) {
                     WidgetActionGlyph(action: action, size: 32)
@@ -601,7 +632,7 @@ private struct MediumQuickActionsView: View {
 
             HStack(spacing: 8) {
                 ForEach(actions) { action in
-                    Button(intent: OpenQuickLogIntent(action: action)) {
+                    Link(destination: action.deepLink) {
                         if homeDensity == .accessibility {
                             HStack(spacing: 10) {
                                 WidgetActionGlyph(action: action, size: 32)
@@ -658,7 +689,7 @@ private struct AccessoryCircularActionView: View {
     let action: MoneyUpQuickAction
 
     var body: some View {
-        Button(intent: OpenQuickLogIntent(action: action)) {
+        Link(destination: action.deepLink) {
             ZStack {
                 AccessoryWidgetBackground()
                 Image("MoneyUpBrandMark")
@@ -682,7 +713,7 @@ private struct AccessoryRectangularActionView: View {
     let action: MoneyUpQuickAction
 
     var body: some View {
-        Button(intent: OpenQuickLogIntent(action: action)) {
+        Link(destination: action.deepLink) {
             HStack(spacing: 8) {
                 ZStack {
                     Image("MoneyUpBrandMark")
@@ -832,7 +863,7 @@ private struct AccessoryInlineActionView: View {
     let action: MoneyUpQuickAction
 
     var body: some View {
-        Button(intent: OpenQuickLogIntent(action: action)) {
+        Link(destination: action.deepLink) {
             Label {
                 Text(action.titleKey)
             } icon: {

@@ -4,10 +4,10 @@ import SwiftUI
 import XCTest
 
 final class NavigationPresentationTests: XCTestCase {
-    func testPlanSelectorKeepsAllPeerSectionsVisibleAndUnambiguous() {
+    func testPlanSelectorExpandsOnlyTheCurrentSection() {
         XCTAssertEqual(PlanSection.ordered, PlanSection.allCases)
-        XCTAssertEqual(Set(PlanSection.ordered.map(\.systemImage)).count, 4)
-        XCTAssertEqual(Set(PlanSection.ordered.map(\.titleKeyString)).count, 4)
+        XCTAssertEqual(Set(PlanSection.ordered.map(\.systemImage)).count, 3)
+        XCTAssertEqual(Set(PlanSection.ordered.map(\.titleKeyString)).count, 3)
 
         for selection in PlanSection.ordered {
             let expanded = PlanSection.ordered.filter {
@@ -16,7 +16,7 @@ final class NavigationPresentationTests: XCTestCase {
                     selection: selection
                 )
             }
-            XCTAssertEqual(expanded, PlanSection.ordered)
+            XCTAssertEqual(expanded, [selection])
         }
     }
 

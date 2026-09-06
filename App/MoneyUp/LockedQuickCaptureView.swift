@@ -219,6 +219,7 @@ struct LockedQuickCaptureView: View {
 
                 }
             }
+            .scrollDismissesKeyboard(.interactively)
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
             .scrollDismissesKeyboard(.interactively)

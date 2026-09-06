@@ -3,13 +3,16 @@ import WidgetKit
 
 struct SmartOverviewWidgetView: View {
     let presentation: SmartOverviewWidgetPresentation
+    let focus: SmartOverviewFocus
 
     init(
         snapshot: BudgetWidgetSnapshot,
         insights: MoneyUpWidgetInsights?,
         family: WidgetFamily,
-        homeDensity: MoneyUpWidgetHomeDensity = .standard
+        homeDensity: MoneyUpWidgetHomeDensity = .standard,
+        focus: SmartOverviewFocus = .automatic
     ) {
+        self.focus = focus
         presentation = SmartOverviewWidgetPresentation.make(
             budget: snapshot,
             insights: insights,
@@ -183,44 +186,7 @@ struct SmartOverviewWidgetView: View {
         } else if presentation.homeDensity == .accessibility {
             systemSmallAccessibility
         } else {
-            VStack(alignment: .leading, spacing: 6) {
-                WidgetBrandHeader()
-                HStack(spacing: 5) {
-                    Image(systemName: budgetSymbol).foregroundStyle(.tint)
-                    Text("widget.smart_budget")
-                    Spacer(minLength: 4)
-                    Text(budgetValue)
-                        .fontWeight(.semibold)
-                        .monospacedDigit()
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                }
-                .font(.caption)
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("widget.smart_budget")
-                .accessibilityValue(budgetAccessibilityValue)
-                Divider()
-                HStack(alignment: .top, spacing: 5) {
-                    compactInsight(
-                        value: reviewValue,
-                        label: "widget.smart_review_short",
-                        symbol: "exclamationmark.magnifyingglass",
-                        accessibilityValue: reviewAccessibilityValue
-                    )
-                    compactInsight(
-                        value: allowanceValue,
-                        label: "widget.smart_allowance_short",
-                        symbol: "giftcard",
-                        accessibilityValue: allowanceAccessibilityValue
-                    )
-                    compactInsight(
-                        value: commitmentSummaryValue,
-                        label: "widget.smart_commitment_short",
-                        symbol: "calendar.badge.clock",
-                        accessibilityValue: commitmentAccessibilityValue
-                    )
-                }
-            }
+            SmartOverviewHomeCard(presentation: presentation, focus: focus, isMedium: false, accent: .moneyUpSoftGreen)
         }
     }
 
@@ -231,74 +197,16 @@ struct SmartOverviewWidgetView: View {
         } else if presentation.homeDensity == .accessibility {
             systemMediumAccessibility
         } else {
-            VStack(alignment: .leading, spacing: 9) {
-                WidgetBrandHeader()
-                VStack(spacing: 6) {
-                    HStack(spacing: 6) {
-                        mediumInsightTile(
-                            value: budgetValue,
-                            label: "widget.smart_budget",
-                            symbol: budgetSymbol,
-                            accessibilityValue: budgetAccessibilityValue
-                        )
-                        mediumInsightTile(
-                            value: reviewValue,
-                            label: "widget.smart_review",
-                            symbol: "exclamationmark.magnifyingglass",
-                            accessibilityValue: reviewAccessibilityValue
-                        )
-                    }
-                    HStack(spacing: 6) {
-                        mediumInsightTile(
-                            value: allowanceValue,
-                            label: "widget.smart_allowance",
-                            symbol: "giftcard",
-                            accessibilityValue: allowanceAccessibilityValue
-                        )
-                        mediumInsightTile(
-                            value: commitmentSummaryValue,
-                            label: "widget.smart_commitments_next",
-                            symbol: "calendar.badge.clock",
-                            accessibilityValue: commitmentAccessibilityValue
-                        )
-                    }
-                }
-            }
+            SmartOverviewHomeCard(presentation: presentation, focus: focus, isMedium: true, accent: .moneyUpSoftGreen)
         }
     }
 
     private var systemSmallAccessibility: some View {
-        Label {
-            Text(budgetValue)
-                .font(.body.weight(.bold))
-        } icon: {
-            Image(systemName: budgetSymbol)
-                .foregroundStyle(.tint)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("widget.smart_budget")
-        .accessibilityValue(budgetAccessibilityValue)
+        SmartOverviewHomeCard(presentation: presentation, focus: focus, isMedium: false, accent: .moneyUpSoftGreen)
     }
 
     private var systemMediumAccessibility: some View {
-        HStack(alignment: .center, spacing: 12) {
-            accessibilityMetric(
-                value: budgetValue,
-                label: "widget.smart_budget",
-                symbol: budgetSymbol,
-                accessibilityValue: budgetAccessibilityValue
-            )
-            if presentation.components.contains(.review) {
-                accessibilityMetric(
-                    value: reviewValue,
-                    label: "widget.smart_review",
-                    symbol: "exclamationmark.magnifyingglass",
-                    accessibilityValue: reviewAccessibilityValue
-                )
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        SmartOverviewHomeCard(presentation: presentation, focus: focus, isMedium: true, accent: .moneyUpSoftGreen)
     }
 
     @ViewBuilder

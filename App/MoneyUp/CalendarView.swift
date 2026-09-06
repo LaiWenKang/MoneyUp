@@ -19,12 +19,14 @@ struct CalendarView: View {
     /// standalone stack while sheets continue to own their own containers.
     let providesNavigationStack: Bool
 
-    init(providesNavigationStack: Bool = true) {
+    init(providesNavigationStack: Bool = true, workspace: PlanWorkspaceState = PlanWorkspaceState()) {
+        self.workspace = workspace
         self.providesNavigationStack = providesNavigationStack
     }
 
     @Environment(AppModel.self) private var model
-    @State private var selectedDate = Date()
+    @Bindable private var workspace: PlanWorkspaceState
+    private var selectedDate: Date { workspace.calendarDate }
     @State private var isAddingSchedule = false
     @State private var errorMessage: String?
     @State private var entryPendingDeletion: JournalEntry?
@@ -87,12 +89,18 @@ struct CalendarView: View {
     }
 
     private var calendarDatePicker: some View {
-        DatePicker(
+        VStack(alignment: .leading, spacing: 8) {
+            if !model.reportingCalendar.isDate(selectedDate, inSameDayAs: model.currentDateForUserAction()) {
+                Button("history.scope.today") { workspace.calendarDate = model.currentDateForUserAction() }
+                    .font(.subheadline.weight(.semibold))
+            }
+            DatePicker(
             "calendar.select_date",
-            selection: $selectedDate,
+            selection: $workspace.calendarDate,
             displayedComponents: .date
         )
-        .datePickerStyle(.graphical)
+            .datePickerStyle(.graphical)
+        }
     }
 
     private var calendarMoneyFlowSection: some View {
@@ -110,9 +118,12 @@ struct CalendarView: View {
 
     private var styledCalendarList: some View {
         calendarListContent
+        .scrollDismissesKeyboard(.interactively)
         .scrollContentBackground(.hidden)
+        .contentMargins(.top, 8, for: .scrollContent)
         .background(Color.moneyUpBackground)
         .navigationTitle("tab.calendar")
+            .moneyUpNavigationSurface()
     }
 
     private var loadingCalendarList: some View {
@@ -268,6 +279,7 @@ struct CalendarView: View {
                   !flows.isEmpty {
             Section("calendar.money_flow") {
                 ForEach(flows) { flow in
+                    MoneyUpCashFlowGraphic(income: flow.income, expense: flow.expense)
                     LabeledContent {
                         Text(formattedMoney(flow.income))
                     } label: {
@@ -697,6 +709,7 @@ private struct AddScheduleSheet: View {
     @State private var categoryID: UUID?
     @State private var nextOccurrence = Date()
     @State private var frequency: RecurrenceFrequency = .monthly
+    @State private var initialDraftSignature: [String]?
     @State private var isSaving = false
     @State private var errorMessage: String?
 
@@ -771,6 +784,7 @@ private struct AddScheduleSheet: View {
                 }
 
             }
+            .scrollDismissesKeyboard(.interactively)
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
             .navigationTitle(
@@ -780,21 +794,32 @@ private struct AddScheduleSheet: View {
             )
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("action.cancel") { dismiss() }
-                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("action.save") { Task { await save() } }
                         .disabled(!canSave || isSaving)
                 }
                 MoneyUpKeyboardDoneToolbar()
             }
-            .onAppear { selectDefaults() }
+            .onAppear {
+                guard initialDraftSignature == nil else { return }
+                selectDefaults()
+                initialDraftSignature = draftSignature
+            }
+            .moneyUpProtectDraft(
+                hasChanges: initialDraftSignature.map { $0 != draftSignature } ?? false,
+                isSaving: isSaving
+            )
+            .disabled(isSaving)
             .onChange(of: kind) { _, _ in selectDefaults() }
             .moneyUpOperationErrorAlert(message: $errorMessage)
         }
         .environment(\.calendar, model.reportingCalendar)
         .environment(\.timeZone, model.reportingCalendar.timeZone)
+    }
+
+    private var draftSignature: [String] {
+        [kind.rawValue, name, amountText, accountID?.uuidString ?? "",
+         categoryID?.uuidString ?? "", String(nextOccurrence.timeIntervalSinceReferenceDate), frequency.rawValue]
     }
 
     private func selectDefaults() {

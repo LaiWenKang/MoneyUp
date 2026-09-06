@@ -8,6 +8,25 @@ struct IntelligenceSummaryLink: View {
 
     var body: some View {
         if model.profile?.intelligenceEnabled == true {
+            if model.intelligenceIsUnavailable || !model.intelligenceFindings.isEmpty {
+                attentionCard
+            } else {
+                NavigationLink { IntelligenceView() } label: {
+                    HStack(spacing: 8) {
+                        Label("intelligence.title", systemImage: "sparkles")
+                        Spacer(minLength: 8)
+                        Text(summaryKey).font(.caption).foregroundStyle(.secondary)
+                        Image(systemName: "chevron.right").font(.caption2)
+                    }
+                    .font(.subheadline).frame(minHeight: 44)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private var attentionCard: some View {
             MoneyUpCard {
                 NavigationLink {
                     IntelligenceView()
@@ -41,7 +60,6 @@ struct IntelligenceSummaryLink: View {
                 }
                 .buttonStyle(.plain)
             }
-        }
     }
 
     private var summaryKey: LocalizedStringKey {

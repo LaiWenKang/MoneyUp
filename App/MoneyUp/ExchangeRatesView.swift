@@ -3,70 +3,17 @@ import SwiftUI
 
 struct ExchangeRatesView: View {
     @Environment(AppModel.self) private var model
-    @State private var baseCode = "SGD"
-    @State private var quoteCode = "MYR"
-    @State private var rateText = ""
-    @State private var effectiveAt = Date()
-    @State private var isSaving = false
+    @State private var isAdding = false
     @State private var errorMessage: String?
     @State private var pendingDeletionID: UUID?
     @State private var isConfirmingDeletion = false
 
-    private var knownCurrencies: [CurrencyCode] {
-        var currencies = Set(model.accounts.compactMap(\.currency))
-        if let base = model.profile?.baseCurrency { currencies.insert(base) }
-        for holding in model.investmentHoldings {
-            if let currency = holding.price?.currency { currencies.insert(currency) }
-        }
-        for rate in model.exchangeRates {
-            currencies.insert(rate.baseCurrency)
-            currencies.insert(rate.quoteCurrency)
-        }
-        return currencies.sorted()
-    }
-
-    private var canSave: Bool {
-        guard let base = try? CurrencyCode(baseCode),
-              let quote = try? CurrencyCode(quoteCode),
-              SupportedCurrencies.isSelectable(base.value, existing: knownCurrencies),
-              SupportedCurrencies.isSelectable(quote.value, existing: knownCurrencies),
-              base != quote,
-              let rate = decimalAmount(from: rateText),
-              rate > .zero else { return false }
-        return true
-    }
-
     var body: some View {
         Form {
             Section {
-                SearchableCurrencyPicker(
-                    title: "fx.base_currency",
-                    selection: $baseCode,
-                    existing: knownCurrencies
-                )
-                SearchableCurrencyPicker(
-                    title: "fx.quote_currency",
-                    selection: $quoteCode,
-                    existing: knownCurrencies
-                )
-                TextField("fx.quote_per_base", text: $rateText)
-                    .keyboardType(.decimalPad)
-                DatePicker("fx.effective_date", selection: $effectiveAt, displayedComponents: .date)
-
-                Button {
-                    Task { await save() }
-                } label: {
-                    if isSaving {
-                        HStack { ProgressView(); Text("action.working") }
-                    } else {
-                        Label("fx.save_rate", systemImage: "plus.circle.fill")
-                    }
+                Button { isAdding = true } label: {
+                    Label("fx.add_rate", systemImage: "plus.circle.fill")
                 }
-                .disabled(!canSave || isSaving)
-            } header: {
-                Text("fx.add_rate")
-            } footer: {
-                MoneyUpExplainer("fx.rate_detail")
             }
 
             Section {
@@ -113,14 +60,13 @@ struct ExchangeRatesView: View {
             }
 
         }
+        .scrollDismissesKeyboard(.interactively)
         .scrollContentBackground(.hidden)
         .background(Color.moneyUpBackground)
         .navigationTitle("fx.title")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { MoneyUpKeyboardDoneToolbar() }
-        .onAppear {
-            if let base = model.profile?.baseCurrency.value { baseCode = base }
-        }
+        .sheet(isPresented: $isAdding) { ExchangeRateEditorSheet() }
         .confirmationDialog(
             "fx.delete_title",
             isPresented: $isConfirmingDeletion,
@@ -137,28 +83,6 @@ struct ExchangeRatesView: View {
         .moneyUpOperationErrorAlert(message: $errorMessage)
         .environment(\.calendar, model.reportingCalendar)
         .environment(\.timeZone, model.reportingCalendar.timeZone)
-    }
-
-    private func save() async {
-        guard let base = try? CurrencyCode(baseCode),
-              let quote = try? CurrencyCode(quoteCode),
-              SupportedCurrencies.isSelectable(base.value, existing: knownCurrencies),
-              SupportedCurrencies.isSelectable(quote.value, existing: knownCurrencies),
-              let rate = decimalAmount(from: rateText) else { return }
-        isSaving = true
-        defer { isSaving = false }
-        do {
-            try await model.saveExchangeRate(
-                baseCurrency: base,
-                quoteCurrency: quote,
-                rate: rate,
-                effectiveAt: effectiveAt
-            )
-            rateText = ""
-            errorMessage = nil
-        } catch {
-            errorMessage = safeUserMessage(for: error, context: .save)
-        }
     }
 
     private func delete(_ id: UUID) async {

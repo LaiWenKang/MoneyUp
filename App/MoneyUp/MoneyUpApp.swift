@@ -6,6 +6,8 @@ import WidgetKit
 @MainActor
 struct MoneyUpApp: App {
     @State private var model = AppModel()
+    @State private var overviewNavigation = MoneyUpOverviewNavigation()
+    @State private var launchState = MoneyUpSceneLaunchState()
     @State private var quickActionRouteBroker =
         MoneyUpQuickActionRouteBroker.shared
     @AppStorage(
@@ -24,6 +26,7 @@ struct MoneyUpApp: App {
             ZStack {
                 RootView()
                     .environment(model)
+                    .environment(overviewNavigation)
                     .environment(\.locale, appLanguage.locale)
                     .tint(.accentColor)
                     // The opaque cover protects pixels. These modifiers also
@@ -61,6 +64,7 @@ struct MoneyUpApp: App {
                 .task {
                     quickActionRouteBroker.reloadDurableIngress()
                     model.retryPresentedQuickActionAcknowledgement()
+                    launchState.isActive = scenePhase == .active
                     if scenePhase == .active {
                         // SwiftUI need not emit an initial scenePhase change.
                         // Register the already-active launch before startup so
@@ -68,7 +72,7 @@ struct MoneyUpApp: App {
                         model.sceneDidBecomeActive()
                     }
                     routePendingQuickAction()
-                    await model.startAfterInitialRoutingWindow()
+                    await startInitialModelIfNeeded()
                 }
                 .onOpenURL { url in
                     routeDeepLink(url)
@@ -90,6 +94,7 @@ struct MoneyUpApp: App {
                     routePendingQuickAction()
                 }
                 .onChange(of: scenePhase) { _, newPhase in
+                    launchState.isActive = newPhase == .active
                     switch newPhase {
                     case .background:
                         model.sceneDidEnterBackground()
@@ -98,6 +103,7 @@ struct MoneyUpApp: App {
                         model.retryPresentedQuickActionAcknowledgement()
                         model.sceneDidBecomeActive()
                         routePendingQuickAction()
+                        Task { await startInitialModelIfNeeded() }
                     case .inactive:
                         model.sceneDidBecomeInactive()
                     @unknown default:
@@ -110,16 +116,33 @@ struct MoneyUpApp: App {
         }
     }
 
+    private func startInitialModelIfNeeded() async {
+        while launchState.claim(isLaunching: model.state == .launching && !model.isWorking) {
+            await model.startAfterInitialRoutingWindow(allowProtectedStart: { launchState.isActive })
+            let wasDeferred = model.state == .launching && !model.isWorking
+            launchState.finish(wasDeferred: wasDeferred)
+            if !wasDeferred { WidgetCenter.shared.reloadAllTimelines() }
+        }
+    }
+
     private func routePendingQuickAction() {
+        guard launchState.isActive else { return }
         let result = MoneyUpQuickActionRouting.routeNext(
             from: quickActionRouteBroker,
             into: model
         )
         guard result == .requiresStart else { return }
-        Task { await model.start() }
+        Task {
+            guard launchState.isActive else { return }
+            await model.start()
+        }
     }
 
     private func routeDeepLink(_ url: URL) {
+        if let destination = MoneyUpOverviewRoute(exactDeepLink: url) {
+            overviewNavigation.request(destination)
+            return
+        }
         guard let action = MoneyUpQuickAction(exactDeepLink: url) else { return }
         _ = quickActionRouteBroker.submit(action)
         routePendingQuickAction()

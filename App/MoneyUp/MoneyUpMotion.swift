@@ -114,7 +114,7 @@ struct MoneyUpPressableButtonStyle: ButtonStyle {
             .scaleEffect(
                 configuration.isPressed && !reduceMotion ? 0.985 : 1
             )
-            .opacity(configuration.isPressed && !reduceMotion ? 0.88 : 1)
+            .opacity(configuration.isPressed ? 0.88 : 1)
             .animation(
                 MoneyUpMotion.animation(
                     for: .press,

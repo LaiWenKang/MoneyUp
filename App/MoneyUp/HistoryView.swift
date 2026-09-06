@@ -381,12 +381,12 @@ struct HistoryView: View {
     }
 
     private var unavailableTitle: LocalizedStringKey {
-        !model.hasJournalEntries && appliedSearchText.isEmpty && !filters.hasActiveFilters
+        !model.hasJournalEntries
             ? "history.empty" : "history.no_results"
     }
 
     private var unavailableDetail: LocalizedStringKey {
-        !model.hasJournalEntries && appliedSearchText.isEmpty && !filters.hasActiveFilters
+        !model.hasJournalEntries
             ? "history.empty_detail" : "history.no_results_detail"
     }
 
@@ -395,110 +395,19 @@ struct HistoryView: View {
         return List {
             Section {
                 HistoryScopeSelector(selection: $quickRange)
+                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
             }
             .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
 
             Section {
-                HStack(spacing: 8) {
-                    Menu {
-                        Button {
-                            setCategoryFilter(nil)
-                        } label: {
-                            Label(
-                                "history.filter.any_category",
-                                systemImage: filters.categoryIDs == nil
-                                    ? "checkmark"
-                                    : "square.grid.2x2"
-                            )
-                        }
-
-                        if !hotCategories.isEmpty {
-                            Section("history.hot_categories") {
-                                ForEach(hotCategories) { hotCategory in
-                                    let selectedIDs = Set([hotCategory.id])
-                                    Button {
-                                        setCategoryFilter(selectedIDs)
-                                    } label: {
-                                        Label(
-                                            model.categoryPathName(for: hotCategory.id),
-                                            systemImage: filters.categoryIDs == selectedIDs
-                                                ? "checkmark"
-                                                : "clock.arrow.circlepath"
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        Divider()
-                        Button {
-                            showingFilters = true
-                        } label: {
-                            Label(
-                                "history.filter.more_categories",
-                                systemImage: "line.3.horizontal.decrease.circle"
-                            )
-                        }
-                    } label: {
-                        HStack(spacing: 12) {
-                            Image(systemName: "square.grid.2x2")
-                                .foregroundStyle(Color.accentColor)
-                                .accessibilityHidden(true)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("history.filter.category")
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(.primary)
-                                Text(categoryFilterValue)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(2)
-                            }
-                            Spacer(minLength: 8)
-                            Image(systemName: "chevron.up.chevron.down")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                                .accessibilityHidden(true)
-                        }
-                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("history.filter.category")
-                    .accessibilityValue(categoryFilterValue)
-                    .accessibilityHint("history.filter.category_hint")
-
-                    if filters.categoryIDs != nil {
-                        Button {
-                            setCategoryFilter(nil)
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .frame(width: 44, height: 44)
-                        }
-                        .buttonStyle(.borderless)
-                        .accessibilityLabel("history.filter.clear_category")
-                    }
+                ViewThatFits(in: .horizontal) {
+                    filterActions(horizontal: true)
+                    filterActions(horizontal: false)
                 }
-            }
-
-            Section {
-                HStack(spacing: 12) {
-                    Button { showingFilters = true } label: {
-                        Label {
-                            Text(filters.activeFilterCount == 0
-                                ? AppLocalization.string("history.filter")
-                                : String(format: AppLocalization.string("history.filter_count"), filters.activeFilterCount))
-                        } icon: { Image(systemName: "line.3.horizontal.decrease.circle") }
-                    }
-                    .labelStyle(.titleAndIcon)
-                    Spacer(minLength: 8)
-                    Button("history.clear_filters") {
-                        let snapshot = reportingSnapshot
-                        filters = HistoryFilterDraft(now: snapshot.instant, calendar: snapshot.calendar)
-                        quickRange = .all
-                    }.disabled(!filters.hasActiveFilters)
-                }
-                if !searchText.isEmpty {
-                    Button("history.clear_search") { searchText = ""; appliedSearchText = "" }
+                if filters.categoryIDs != nil {
+                    LabeledContent("history.filter.category", value: categoryFilterValue)
+                        .font(.subheadline)
                 }
             }
 
@@ -564,9 +473,7 @@ struct HistoryView: View {
                                 Spacer()
                             }
                             .listRowBackground(Color.clear)
-                        } else if !model.hasJournalEntries,
-                           appliedSearchText.isEmpty,
-                           !filters.hasActiveFilters {
+                        } else if !model.hasJournalEntries {
                             VStack(spacing: 10) {
                                 MoneyUpIllustration("MoneyUpMoneyWorld", role: .empty)
                                 Text(unavailableTitle)
@@ -580,11 +487,14 @@ struct HistoryView: View {
                             .padding(.vertical, 16)
                             .listRowBackground(Color.clear)
                         } else {
-                            ContentUnavailableView(
-                                unavailableTitle,
-                                systemImage: "clock.arrow.circlepath",
-                                description: Text(unavailableDetail)
-                            )
+                            ContentUnavailableView {
+                                Label(unavailableTitle, systemImage: "line.3.horizontal.decrease.circle")
+                            } description: {
+                                Text(unavailableDetail)
+                            } actions: {
+                                Button("history.clear_filters") { clearHistoryFilters() }
+                                    .buttonStyle(.bordered)
+                            }
                             .listRowBackground(Color.clear)
                         }
                     } else {
@@ -655,9 +565,13 @@ struct HistoryView: View {
                 }
             }
             .listStyle(.insetGrouped)
+            .listSectionSpacing(16)
+            .contentMargins(.top, 8, for: .scrollContent)
+            .scrollDismissesKeyboard(.interactively)
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
             .navigationTitle("tab.history")
+            .moneyUpNavigationSurface()
             .searchable(text: $searchText, prompt: "history.search")
             .onAppear {
                 let snapshot = reportingSnapshot
@@ -792,6 +706,36 @@ struct HistoryView: View {
 }
 
 extension HistoryView {
+    private func filterActions(horizontal: Bool) -> some View {
+        let layout = horizontal ? AnyLayout(HStackLayout(spacing: 12)) : AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
+        return layout {
+            Button { showingFilters = true } label: {
+                Label {
+                    Text(filters.advancedFilterCount(quickRange: quickRange) == 0
+                        ? AppLocalization.string("history.filter_short")
+                        : String(format: AppLocalization.string("history.filter_count"), filters.advancedFilterCount(quickRange: quickRange)))
+                } icon: { Image(systemName: "line.3.horizontal.decrease.circle") }
+            }
+            .labelStyle(.titleAndIcon)
+            .fixedSize(horizontal: true, vertical: false)
+            .frame(minHeight: 44)
+            if horizontal { Spacer(minLength: 8) }
+            Button("history.clear_filters") { clearHistoryFilters() }
+                .fixedSize(horizontal: true, vertical: false)
+                .frame(minHeight: 44)
+                .disabled(!filters.hasActiveFilters && searchText.isEmpty)
+        }
+        .buttonStyle(.borderless)
+    }
+
+    private func clearHistoryFilters() {
+        let snapshot = reportingSnapshot
+        filters = HistoryFilterDraft(now: snapshot.instant, calendar: snapshot.calendar)
+        quickRange = .all
+        searchText = ""
+        appliedSearchText = ""
+    }
+
     private func setCategoryFilter(_ categoryIDs: Set<UUID>?) {
         withAnimation(
             MoneyUpMotion.animation(

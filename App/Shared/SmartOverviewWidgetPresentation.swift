@@ -31,7 +31,7 @@ struct SmartOverviewWidgetPresentation: Equatable, Sendable {
         case accessoryRectangular
     }
 
-    enum Component: Equatable, Sendable {
+    enum Component: Equatable, Hashable, Sendable {
         case budget
         case review
         case allowance

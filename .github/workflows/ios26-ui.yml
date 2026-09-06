@@ -1,0 +1,80 @@
+name: iOS 26 interaction review
+
+on:
+  push:
+    branches: [main, "codex/**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios26-ui-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-review:
+    runs-on: macos-26
+    timeout-minutes: 30
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Install checksum-verified XcodeGen
+        run: |
+          curl --fail --location --silent --show-error -o "$RUNNER_TEMP/xcodegen.zip" https://github.com/yonaskolb/XcodeGen/releases/download/2.46.0/xcodegen.zip
+          printf '%s  %s\n' 4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806 "$RUNNER_TEMP/xcodegen.zip" | shasum -a 256 -c -
+          ditto -x -k "$RUNNER_TEMP/xcodegen.zip" "$RUNNER_TEMP/xcodegen-release"
+          echo "$RUNNER_TEMP/xcodegen-release/xcodegen/bin" >> "$GITHUB_PATH"
+      - name: Render and test on iOS 26
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          xcodegen generate
+          xcrun simctl list devices available -j > "$RUNNER_TEMP/devices.json"
+          SIMULATOR_ID="$(python3 -c 'import json,os; data=json.load(open(os.environ["RUNNER_TEMP"]+"/devices.json")); print(next(d["udid"] for r,ds in sorted(data["devices"].items(),reverse=True) if ".iOS-26-" in r for d in ds if d["name"].startswith("iPhone") and d.get("isAvailable",True)))')"
+          xcodebuild -project MoneyUp.xcodeproj -scheme MoneyUp -configuration Debug \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
+            -resultBundlePath "$RUNNER_TEMP/MoneyUpUI26.xcresult" \
+            -derivedDataPath "$RUNNER_TEMP/MoneyUpUI26DerivedData" \
+            -parallel-testing-enabled NO \
+            -only-testing:MoneyUpTests/AppwideExperienceTests \
+            -only-testing:MoneyUpTests/OverviewInsightTests \
+            -only-testing:MoneyUpTests/SmartOverviewRenderTests \
+            -only-testing:MoneyUpTests/AppwideRenderEvidenceTests \
+            -only-testing:MoneyUpTests/Feedback1039RegressionTests \
+            -only-testing:MoneyUpTests/NavigationPresentationTests \
+            -only-testing:MoneyUpTests/RedesignRenderEvidenceTests \
+            -only-testing:MoneyUpTests/PlatformQuickLogActionTests \
+            SWIFT_TREAT_WARNINGS_AS_ERRORS=YES CODE_SIGNING_ALLOWED=NO test
+          xcodebuild -project MoneyUp.xcodeproj -scheme MoneyUpColdLaunch -configuration Debug \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
+            -derivedDataPath "$RUNNER_TEMP/MoneyUpUI26DerivedData" \
+            -resultBundlePath "$RUNNER_TEMP/MoneyUpColdLaunch.xcresult" \
+            -parallel-testing-enabled NO \
+            SWIFT_TREAT_WARNINGS_AS_ERRORS=YES CODE_SIGNING_ALLOWED=NO test
+      - name: Export review evidence
+        if: ${{ always() }}
+        run: |
+          if test -d "$RUNNER_TEMP/MoneyUpUI26.xcresult"; then
+            xcrun xcresulttool export attachments --path "$RUNNER_TEMP/MoneyUpUI26.xcresult" --output-path "$RUNNER_TEMP/ui26-images"
+            xcrun xcresulttool get test-results summary --path "$RUNNER_TEMP/MoneyUpUI26.xcresult" --compact > "$RUNNER_TEMP/ui26-summary.json"
+          fi
+          if test -d "$RUNNER_TEMP/MoneyUpColdLaunch.xcresult"; then
+            xcrun xcresulttool export attachments --path "$RUNNER_TEMP/MoneyUpColdLaunch.xcresult" --output-path "$RUNNER_TEMP/ui26-cold-images"
+            xcrun xcresulttool get test-results summary --path "$RUNNER_TEMP/MoneyUpColdLaunch.xcresult" --compact > "$RUNNER_TEMP/ui26-cold-summary.json"
+          fi
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: ${{ always() }}
+        with:
+          name: native-ios26-review
+          path: |
+            ${{ runner.temp }}/ui26-images
+            ${{ runner.temp }}/ui26-summary.json
+            ${{ runner.temp }}/ui26-cold-images
+            ${{ runner.temp }}/ui26-cold-summary.json
+          retention-days: 14

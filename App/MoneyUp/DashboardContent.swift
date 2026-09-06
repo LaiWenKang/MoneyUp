@@ -17,17 +17,20 @@ extension DashboardView {
                         reportingCalendar: reportingSnapshot.calendar
                     )
                     headline
+                    upcomingCard
                     IntelligenceSummaryLink()
+                    if model.displayPreferences.showsTodayTrend { insightsCard }
                     positionCard
                     monthlyBudgetCard
-                    upcomingCard
-                    if model.displayPreferences.showsTodayTrend { insightsCard }
+                    if !model.pinnedBudgetNodes.isEmpty,
+                       model.displayPreferences.showsDailyGuidance { safeToSpendSummary }
                     firstRunCard
                 }
                 .padding()
             }
             .background { MoneyUpBackdrop() }
             .navigationTitle("tab.today")
+            .moneyUpNavigationSurface()
             .sheet(isPresented: $isShowingFlexibleTodayBreakdown) {
                 if case let .available(.available(breakdown)) = model.flexibleTodayResult(
                     asOf: reportingDate
@@ -82,7 +85,6 @@ extension DashboardView {
             pinnedBoard
         } else {
             pinnedBoard
-            if model.displayPreferences.showsDailyGuidance { safeToSpendSummary }
         }
     }
 
@@ -371,79 +373,7 @@ extension DashboardView {
                                 .accessibilityHidden(true)
                         }
 
-                        Chart(Array(report.monthlyFlows.suffix(6)), id: \.month) { flow in
-                            AreaMark(
-                                x: .value(
-                                    AppLocalization.string("chart.dimension.month"),
-                                    flow.month,
-                                    unit: .month
-                                ),
-                                yStart: .value(
-                                    AppLocalization.string("insights.net"),
-                                    0
-                                ),
-                                yEnd: .value(
-                                    AppLocalization.string("insights.net"),
-                                    NSDecimalNumber(
-                                        decimal: flow.net.amount
-                                    ).doubleValue
-                                )
-                            )
-                            .foregroundStyle(
-                                LinearGradient(
-                                    colors: [
-                                        Color.accentColor.opacity(0.30),
-                                        Color.accentColor.opacity(0.02)
-                                    ],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                )
-                            )
-                            .interpolationMethod(.catmullRom)
-
-                            LineMark(
-                                x: .value(
-                                    AppLocalization.string("chart.dimension.month"),
-                                    flow.month,
-                                    unit: .month
-                                ),
-                                y: .value(
-                                    AppLocalization.string("insights.net"),
-                                    NSDecimalNumber(
-                                        decimal: flow.net.amount
-                                    ).doubleValue
-                                )
-                            )
-                            .foregroundStyle(Color.accentColor)
-                            .lineStyle(
-                                StrokeStyle(
-                                    lineWidth: 2.5,
-                                    lineCap: .round,
-                                    lineJoin: .round
-                                )
-                            )
-                            .interpolationMethod(.catmullRom)
-
-                            PointMark(
-                                x: .value(
-                                    AppLocalization.string("chart.dimension.month"),
-                                    flow.month,
-                                    unit: .month
-                                ),
-                                y: .value(
-                                    AppLocalization.string("insights.net"),
-                                    NSDecimalNumber(
-                                        decimal: flow.net.amount
-                                    ).doubleValue
-                                )
-                            )
-                            .foregroundStyle(Color.accentColor)
-                            .symbolSize(24)
-                        }
-                        .chartXAxis(.hidden)
-                        .chartYAxis(.hidden)
-                        .frame(height: 96)
-                        .accessibilityHidden(true)
+                        TodayCashFlowStory(report: report, calendar: reportingSnapshot.calendar)
                     }
                     .contentShape(Rectangle())
                 }

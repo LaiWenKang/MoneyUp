@@ -50,13 +50,17 @@ struct MoneyUpKeyboardDoneToolbar: ToolbarContent {
         ToolbarItemGroup(placement: .keyboard) {
             Spacer()
             Button("action.done") {
-                UIApplication.shared.sendAction(
-                    #selector(UIResponder.resignFirstResponder),
-                    to: nil,
-                    from: nil,
-                    for: nil
-                )
+                MoneyUpKeyboard.dismiss()
             }
         }
+    }
+}
+
+@MainActor
+enum MoneyUpKeyboard {
+    static func dismiss() {
+        UIApplication.shared.sendAction(
+            #selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil
+        )
     }
 }

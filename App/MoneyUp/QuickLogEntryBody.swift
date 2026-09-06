@@ -19,7 +19,7 @@ extension QuickLogEntryView {
     }
 
     @ViewBuilder
-    private var quickLogFormContent: some View {
+    var quickLogFormContent: some View {
         let historicalFXConversionResult = historicalFXConversion
         Form {
                 if dynamicTypeSize.isAccessibilitySize {
@@ -147,6 +147,15 @@ extension QuickLogEntryView {
 
                         categoryAndAllowanceControls
                     }
+                } footer: {
+                    MoneyUpEntryRoutePreview(
+                        kind: kind,
+                        account: selectedSourceAccount?.name,
+                        destination: model.userAccounts.first { $0.id == destinationAccountID }?.name,
+                        category: splitLines.isEmpty
+                            ? categoryID.map { model.categoryPathName(for: $0) }
+                            : AppLocalization.string("flow.split_categories")
+                    )
                 }
 
                 if kind != .transfer {
@@ -209,69 +218,6 @@ extension QuickLogEntryView {
 
     private func quickLogForm(scrollProxy: ScrollViewProxy) -> some View {
         quickLogFinalForm(scrollProxy: scrollProxy)
-    }
-
-    private var quickLogFormChrome: some View {
-        quickLogFormContent
-            .scrollContentBackground(.hidden)
-            .background(Color.moneyUpBackground)
-            .disabled(isSaving || isUndoing)
-            .navigationTitle(title)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    MoneyUpAmountPrivacyButton()
-                }
-                if dismissAfterSave {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("action.cancel") { dismiss() }
-                            .disabled(isSaving)
-                    }
-                }
-                ToolbarItemGroup(placement: .keyboard) {
-                    if !dismissAfterSave {
-                        Menu {
-                            Button {
-                                navigate(to: .today)
-                            } label: {
-                                Label("tab.today", systemImage: "house.fill")
-                            }
-                            Button {
-                                navigate(to: .history(nil))
-                            } label: {
-                                Label("tab.history", systemImage: "clock.arrow.circlepath")
-                            }
-                            Button {
-                                navigate(to: .plan)
-                            } label: {
-                                Label("tab.plan", systemImage: "chart.pie.fill")
-                            }
-                            Button {
-                                navigate(to: .assets)
-                            } label: {
-                                Label("tab.assets", systemImage: "wallet.bifold.fill")
-                            }
-                        } label: {
-                            Label("quick_log.switch_tab", systemImage: "square.grid.2x2")
-                        }
-                    }
-
-                    Button {
-                        Task { await attemptSave() }
-                    } label: {
-                        Label("action.save", systemImage: "checkmark.circle.fill")
-                    }
-                    .disabled(!canSave || isSaving || isUndoing || isPreparingEvidence)
-
-                    Spacer()
-                    Button {
-                        dismissKeyboard()
-                    } label: {
-                        Label("action.done", systemImage: "keyboard.chevron.compact.down")
-                    }
-                    .fontWeight(.semibold)
-                }
-            }
     }
 
     private var quickLogPrimaryLifecycle: some View {
@@ -519,7 +465,7 @@ extension QuickLogEntryView {
                 .disabled(!canSave || isSaving || isUndoing || isPreparingEvidence)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
-                .background(.bar)
+                .background { Color.moneyUpBackground }
             }
         }
         .moneyUpFeedback(

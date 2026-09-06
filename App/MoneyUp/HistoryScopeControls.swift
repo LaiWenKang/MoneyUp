@@ -160,7 +160,11 @@ struct HistoryScopeSelector: View {
                 )
             }
         } label: {
-            Label(selectedTitle, systemImage: selectedSystemImage)
+            HStack(spacing: 10) {
+                Label(selectedTitle, systemImage: selectedSystemImage).labelStyle(.titleAndIcon)
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.down").font(.caption).accessibilityHidden(true)
+            }
                 .font(.headline)
                 .frame(
                     maxWidth: .infinity,
@@ -176,34 +180,11 @@ struct HistoryScopeSelector: View {
     }
 
     private func scopeButton(_ range: HistoryQuickRange) -> some View {
-        let isSelected = selection == range
-        return Button {
-            select(range)
-        } label: {
-            Group {
-                if HistoryScopeSelectorPolicy.showsTitle(
-                    for: range,
-                    selection: selection
-                ) {
-                    Label(range.title, systemImage: range.systemImage)
-                        .padding(.horizontal, 14)
-                } else {
-                    Image(systemName: range.systemImage)
-                        .frame(width: HistoryScopeSelectorPolicy.minimumTapDimension)
-                }
-            }
-            .font(.subheadline.weight(.semibold))
-            .frame(minHeight: HistoryScopeSelectorPolicy.minimumTapDimension)
-            .background(
-                isSelected
-                    ? Color.accentColor.opacity(0.18)
-                    : Color.secondary.opacity(0.10),
-                in: Capsule()
-            )
-        }
-        .buttonStyle(MoneyUpPressableButtonStyle())
-        .accessibilityLabel(Text(range.title))
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        MoneyUpSectionChip(
+            title: range.title,
+            systemImage: range.systemImage,
+            isSelected: HistoryScopeSelectorPolicy.showsTitle(for: range, selection: selection)
+        ) { select(range) }
     }
 
     private func select(_ range: HistoryQuickRange) {

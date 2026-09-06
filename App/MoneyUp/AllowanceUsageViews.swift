@@ -209,6 +209,7 @@ struct AllowanceUsageSheet: View {
     @State private var categoryID: UUID?
     @State private var occurredAt: Date
     @State private var note: String
+    @State private var initialDraftSignature: [String]?
     @State private var isSaving = false
     @State private var errorMessage: String?
 
@@ -281,14 +282,14 @@ struct AllowanceUsageSheet: View {
                     axis: .vertical
                 )
             }
+            .scrollDismissesKeyboard(.interactively)
+            .scrollContentBackground(.hidden)
+            .background(Color.moneyUpBackground)
             .navigationTitle(usage == nil
                 ? LocalizedStringKey("allowance.record_use")
                 : LocalizedStringKey("allowance.usage.edit"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("action.cancel") { dismiss() }
-                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("action.save") { Task { await save() } }
                         .disabled(!canSave || isSaving)
@@ -296,12 +297,23 @@ struct AllowanceUsageSheet: View {
                 MoneyUpKeyboardDoneToolbar()
             }
             .onAppear {
+                guard initialDraftSignature == nil else { return }
                 if usage == nil { occurredAt = model.currentDateForUserAction() }
                 normalizeCategorySelection()
+                initialDraftSignature = draftSignature
             }
+            .moneyUpProtectDraft(
+                hasChanges: initialDraftSignature.map { $0 != draftSignature } ?? false,
+                isSaving: isSaving
+            )
+            .disabled(isSaving)
             .onChange(of: occurredAt) { _, _ in normalizeCategorySelection() }
             .moneyUpOperationErrorAlert(message: $errorMessage)
         }
+    }
+
+    private var draftSignature: [String] {
+        [amountText, categoryID?.uuidString ?? "", String(occurredAt.timeIntervalSinceReferenceDate), note]
     }
 
     private func normalizeCategorySelection() {

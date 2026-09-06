@@ -8,6 +8,7 @@ struct AssetsView: View {
     @AppStorage(MoneyAmountPrivacy.storageKey)
     private var hidesAmounts = MoneyAmountPrivacy.defaultHidesAmounts
     @State private var isAddingAccount = false
+    @State private var isAddingAllowance = false
     @State private var isAddingHolding = false
     @State private var editingAccount: LedgerAccount?
     @State private var editingHolding: InvestmentHolding?
@@ -74,121 +75,13 @@ struct AssetsView: View {
         }
     }
 
-    private func value(for holding: InvestmentHolding) -> DerivedValue<Money> {
-        do {
-            guard let value = try holding.marketValue() else {
-                DerivedValueDiagnostics.record(
-                    .holdingValuationFailed,
-                    operation: "assets-holding-row-missing-price"
-                )
-                return .unavailable(.holdingValuationFailed)
-            }
-            return .available(value)
-        } catch {
-            DerivedValueDiagnostics.record(
-                .holdingValuationFailed,
-                operation: "assets-holding-row",
-                error: error
-            )
-            return .unavailable(.holdingValuationFailed)
-        }
-    }
-
     var body: some View {
         let now = sharedReportingSnapshot?.instant
             ?? model.currentDateForUserAction()
         let _ = hidesAmounts
         return NavigationStack {
             List {
-                Section {
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text("assets.account_net_worth")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                        switch model.netWorthByCurrencyResult() {
-                        case let .available(amounts):
-                            ForEach(amounts, id: \.currency) { netWorth in
-                                Text(formattedMoney(netWorth))
-                                    .font(.title.bold().monospacedDigit())
-                            }
-                            switch model.estimatedNetWorthResult() {
-                            case let .available(estimate):
-                                if let estimate {
-                                    let conversionDate = estimate.conversionAsOf
-                                        .formattedForReporting(
-                                            .dateTime.year().month().day(),
-                                            calendar: model.reportingCalendar
-                                        )
-                                    HStack(spacing: 4) {
-                                        Text("≈ \(formattedMoney(estimate.total))")
-                                            .font(.headline.monospacedDigit())
-                                        Text("·")
-                                        Text("fx.rates_as_of")
-                                        Text(conversionDate)
-                                    }
-                                    .foregroundStyle(.secondary)
-                                    .accessibilityElement(children: .combine)
-                                    .accessibilityLabel("fx.net_worth_estimated")
-                                    .accessibilityValue(
-                                        "\(formattedMoney(estimate.total)), \(conversionDate)"
-                                    )
-                                } else if amounts.filter({ !$0.isZero }).count > 1 {
-                                    Text("fx.net_worth_complete_rate_needed")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                            case let .unavailable(issue):
-                                DerivedValueUnavailableView(issue: issue)
-                            }
-                        case let .unavailable(issue):
-                            DerivedValueUnavailableView(
-                                issue: issue,
-                                prominent: true
-                            )
-                        }
-                        RestrictedStoredValueSummary(
-                            result: model.restrictedAllowanceValueByCurrencyResult(
-                                asOf: now
-                            )
-                        )
-                        if let oldestPositionPriceDate {
-                            HStack(spacing: 4) {
-                                Text("assets.oldest_position_price")
-                                Text(
-                                    oldestPositionPriceDate,
-                                    format: .dateTime.year().month().day()
-                                )
-                                if model.investmentHoldings.contains(where: {
-                                    $0.positionAccountID != nil
-                                        && $0.quantity > .zero
-                                        && $0.isPriceStale(
-                                            relativeTo: now,
-                                            calendar: model.reportingCalendar
-                                        )
-                                }) {
-                                    Text("holding.stale").foregroundStyle(.orange)
-                                }
-                            }
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        }
-                        Button("assets.capture_snapshot") {
-                            Task {
-                                do { try await model.captureNetWorthSnapshot() }
-                                catch {
-                                    errorMessage = safeUserMessage(
-                                        for: error,
-                                        context: .save
-                                    )
-                                }
-                            }
-                        }
-                        .font(.subheadline)
-                    }
-                    .padding(.vertical, 8)
-                } footer: {
-                    MoneyUpExplainer("assets.account_net_worth_note")
-                }
+                AssetsOverviewSection(oldestPositionPriceDate: oldestPositionPriceDate)
 
                 Section("assets.accounts") {
                     ForEach(model.userAccounts) { account in
@@ -237,6 +130,8 @@ struct AssetsView: View {
                         Label("account.add", systemImage: "plus.circle")
                     }
                 }
+
+                AssetAllowancesSection()
 
                 Section {
                     NavigationLink {
@@ -402,6 +297,8 @@ struct AssetsView: View {
 
                 if !model.netWorthSnapshots.isEmpty {
                     Section("assets.net_worth_history") {
+                        AssetsSnapshotTrend()
+                        DisclosureGroup("assets.snapshot_details") {
                         ForEach(model.netWorthSnapshots.prefix(12)) { snapshot in
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(snapshot.capturedAt, format: .dateTime.year().month().day().hour().minute())
@@ -453,6 +350,7 @@ struct AssetsView: View {
                                 }
                             }
                         }
+                        }
                     }
                 }
 
@@ -460,7 +358,7 @@ struct AssetsView: View {
                     NavigationLink {
                         DataSafetyView()
                     } label: {
-                        Label("backup.data_safety", systemImage: "externaldrive.badge.shield.checkmark")
+                        Label("backup.data_safety", systemImage: "externaldrive.badge.checkmark")
                     }
 
                     NavigationLink {
@@ -496,13 +394,23 @@ struct AssetsView: View {
 
             }
             .scrollContentBackground(.hidden)
+            .contentMargins(.top, 8, for: .scrollContent)
             .background(Color.moneyUpBackground)
             .navigationTitle("tab.assets")
+            .moneyUpNavigationSurface()
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     MoneyUpAmountPrivacyButton()
                 }
+                ToolbarItem(placement: .primaryAction) {
+                    Menu {
+                        Button { isAddingAccount = true } label: { Label("account.add", systemImage: "wallet.bifold") }
+                        Button { isAddingAllowance = true } label: { Label("allowance.add", systemImage: "giftcard") }
+                        Button { isAddingHolding = true } label: { Label("holding.add", systemImage: "chart.line.uptrend.xyaxis") }
+                    } label: { Label("assets.add", systemImage: "plus") }
+                }
             }
+            .sheet(isPresented: $isAddingAllowance) { AllowanceEditorSheet(plan: nil) }
             .sheet(isPresented: $isAddingAccount) {
                 AddAccountSheet()
             }
@@ -611,4 +519,27 @@ private extension AssetsView {
     var archivedFinancialAccounts: [LedgerAccount] {
         model.allUserAccounts.filter { $0.isArchived && $0.systemRole == nil }
     }
+}
+
+extension AssetsView {
+    func value(for holding: InvestmentHolding) -> DerivedValue<Money> {
+        do {
+            guard let value = try holding.marketValue() else {
+                DerivedValueDiagnostics.record(
+                    .holdingValuationFailed,
+                    operation: "assets-holding-row-missing-price"
+                )
+                return .unavailable(.holdingValuationFailed)
+            }
+            return .available(value)
+        } catch {
+            DerivedValueDiagnostics.record(
+                .holdingValuationFailed,
+                operation: "assets-holding-row",
+                error: error
+            )
+            return .unavailable(.holdingValuationFailed)
+        }
+    }
+
 }

@@ -15,9 +15,19 @@ struct AddAccountSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AppModel.self) private var model
     @State private var name = ""
-    @State private var type: FinancialAccountType = .bank
+    @State private var type: FinancialAccountType
+    private let initialType: FinancialAccountType
+    private let initialCurrencyCode: String?
+
+    init(initialType: FinancialAccountType = .bank, initialCurrencyCode: String? = nil) {
+        self.initialCurrencyCode = initialCurrencyCode
+        self.initialType = initialType
+        _type = State(initialValue: initialType)
+    }
     @State private var currencyCode = SupportedCurrencies.regionalDefault
     @State private var startingBalanceText = ""
+    @State private var didInitialize = false
+    @State private var isShowingAllowanceEditor = false
     @State private var isSaving = false
     @State private var nameValidationMessage: String?
     @State private var balanceValidationMessage: String?
@@ -40,6 +50,11 @@ struct AddAccountSheet: View {
                         ForEach(FinancialAccountType.allCases, id: \.self) { item in
                             Label(item.localizedTitle, systemImage: item.systemImage)
                                 .tag(item)
+                        }
+                    }
+                    if initialType != .restrictedAllowance {
+                        Button { isShowingAllowanceEditor = true } label: {
+                            Label("account.type_allowance", systemImage: "giftcard")
                         }
                     }
                 } header: {
@@ -71,14 +86,12 @@ struct AddAccountSheet: View {
                 }
 
             }
+            .scrollDismissesKeyboard(.interactively)
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
             .navigationTitle("account.add")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("action.cancel") { dismiss() }
-                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("action.save") { Task { await save() } }
                         .disabled(isSaving)
@@ -86,13 +99,22 @@ struct AddAccountSheet: View {
                 MoneyUpKeyboardDoneToolbar()
             }
             .onAppear {
-                currencyCode = model.profile?.baseCurrency.value ?? "SGD"
+                guard !didInitialize else { return }
+                didInitialize = true
+                currencyCode = initialCurrencyCode ?? model.profile?.baseCurrency.value ?? "SGD"
             }
             .onChange(of: type) { _, _ in
                 nameValidationMessage = nil
                 balanceValidationMessage = nil
                 errorMessage = nil
             }
+            .moneyUpProtectDraft(
+                hasChanges: !name.isEmpty || !startingBalanceText.isEmpty || type != initialType
+                    || (didInitialize && currencyCode != (initialCurrencyCode ?? model.profile?.baseCurrency.value ?? "SGD")),
+                isSaving: isSaving
+            )
+            .disabled(isSaving)
+            .sheet(isPresented: $isShowingAllowanceEditor) { AllowanceEditorSheet(plan: nil) }
             .moneyUpOperationErrorAlert(message: $errorMessage)
         }
     }
@@ -146,6 +168,7 @@ struct AccountManagementSheet: View {
     @State private var initialDisplayBalance: Decimal?
     @State private var targetID: UUID?
     @State private var pendingLifecycleAction: PendingLifecycleAction?
+    @State private var initialDraftSignature: [String]?
     @State private var isSaving = false
     @State private var nameValidationMessage: String?
     @State private var balanceValidationMessage: String?
@@ -305,22 +328,24 @@ struct AccountManagementSheet: View {
                     Task { await loadRestrictedFunding() }
                 }
             }
+            .scrollDismissesKeyboard(.interactively)
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
             .navigationTitle(currentAccount.name)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("action.cancel") { dismiss() }
-                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("action.save") { Task { await save() } }
                         .disabled(isSaving)
                 }
                 MoneyUpKeyboardDoneToolbar()
             }
+            .moneyUpProtectDraft(
+                hasChanges: initialDraftSignature.map { $0 != [name, balanceText] } ?? false,
+                isSaving: isSaving
+            )
             .onAppear {
-                guard balanceText.isEmpty else { return }
+                guard initialDraftSignature == nil else { return }
                 targetID = targets.first?.id
                 switch model.accountBalanceResultForPresentation(
                     for: currentAccount,
@@ -332,6 +357,7 @@ struct AccountManagementSheet: View {
                 case let .unavailable(issue):
                     errorMessage = issue.localizedDescription
                 }
+                initialDraftSignature = [name, balanceText]
             }
             .confirmationDialog(
                 "lifecycle.confirm_title",

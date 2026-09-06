@@ -5,6 +5,7 @@ import UIKit
 
 struct HistorySummaryView: View {
     let summary: HistorySummary
+    @State private var showsDetails = false
 
     private var currencies: [CurrencyCode] {
         Set(
@@ -16,12 +17,24 @@ struct HistorySummaryView: View {
     }
 
     var body: some View {
+        if summary.transactionCount == 0 {
+            summaryLabel
+        } else {
+            DisclosureGroup(isExpanded: $showsDetails) {
+                details.padding(.top, 8)
+            } label: { summaryLabel }
+        }
+    }
+
+    private var summaryLabel: some View {
+        LabeledContent("history.transactions") {
+            Text(summary.transactionCount, format: .number).monospacedDigit()
+        }
+    }
+
+    private var details: some View {
         VStack(alignment: .leading, spacing: 8) {
-            LabeledContent("history.transactions") {
-                Text(summary.transactionCount, format: .number)
-                    .monospacedDigit()
-            }
-            if currencies.isEmpty {
+            if currencies.isEmpty && summary.transactionCount > 0 {
                 Text("history.no_filtered_total")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -31,6 +44,10 @@ struct HistorySummaryView: View {
                         Text(currency.value)
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
+                        if let income = try? Money(summary.incomeByCurrency[currency] ?? .zero, currency: currency),
+                           let spent = try? Money(summary.spendingByCurrency[currency] ?? .zero, currency: currency) {
+                            MoneyUpCashFlowGraphic(income: income, expense: spent)
+                        }
                         summaryAmount(
                             "history.spent",
                             amount: summary.spendingByCurrency[currency] ?? .zero,
@@ -56,9 +73,9 @@ struct HistorySummaryView: View {
                     }
                 }
             }
-            Text("history.total_explanation")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            if summary.transactionCount > 0 {
+                MoneyUpExplainer("history.total_explanation")
+            }
         }
         .accessibilityElement(children: .contain)
     }
@@ -254,6 +271,7 @@ struct HistoryFilterSheet: View {
                     }
                 }
             }
+            .scrollDismissesKeyboard(.interactively)
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
             .navigationTitle("history.filter")
