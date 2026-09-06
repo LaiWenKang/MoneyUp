@@ -479,6 +479,7 @@ struct AssetsView: View {
 
             }
             .scrollContentBackground(.hidden)
+            .contentMargins(.top, 8, for: .scrollContent)
             .background(Color.moneyUpBackground)
             .navigationTitle("tab.assets")
             .moneyUpNavigationSurface()

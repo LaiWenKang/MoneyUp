@@ -54,35 +54,37 @@ struct PinnedBudgetBoard: View {
             Label("today.pinned.title", systemImage: "pin.fill")
                 .font(.headline)
             Spacer(minLength: 8)
-            Button {
-                withAnimation(
-                    MoneyUpMotion.animation(
-                        for: .stateChange,
-                        reduceMotion: reduceMotion
-                    )
-                ) {
-                    showsDetail.toggle()
-                }
-            } label: {
-                Label("display.details", systemImage: "text.alignleft")
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(.tint)
-            .accessibilityLabel("today.pinned.toggle_detail")
-            .accessibilityValue(
-                showsDetail ? "state.expanded" : "state.collapsed"
-            )
-
-            Button {
-                isEditingPins = true
-            } label: {
-                Image(systemName: "slider.horizontal.3")
+            if !model.pinnedBudgetNodes.isEmpty {
+                Button {
+                    withAnimation(
+                        MoneyUpMotion.animation(
+                            for: .stateChange,
+                            reduceMotion: reduceMotion
+                        )
+                    ) {
+                        showsDetail.toggle()
+                    }
+                } label: {
+                    Label("display.details", systemImage: "text.alignleft")
                     .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.tint)
+                .accessibilityLabel("today.pinned.toggle_detail")
+                .accessibilityValue(
+                    showsDetail ? "state.expanded" : "state.collapsed"
+                )
+
+                Button {
+                    isEditingPins = true
+                } label: {
+                    Image(systemName: "slider.horizontal.3")
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.tint)
+                .accessibilityLabel("today.pinned.edit")
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(.tint)
-            .accessibilityLabel("today.pinned.edit")
         }
         .font(.subheadline)
     }

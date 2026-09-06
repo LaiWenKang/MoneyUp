@@ -5,13 +5,14 @@ private struct MoneyUpDraftProtection: ViewModifier {
     @State private var isConfirmingDiscard = false
     let hasChanges: Bool
     let isSaving: Bool
+    let cancellationTitle: LocalizedStringKey
 
     func body(content: Content) -> some View {
         content
             .interactiveDismissDisabled(hasChanges || isSaving)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("action.cancel") {
+                    Button(cancellationTitle) {
                         if hasChanges { isConfirmingDiscard = true }
                         else { dismiss() }
                     }
@@ -26,7 +27,9 @@ private struct MoneyUpDraftProtection: ViewModifier {
 }
 
 extension View {
-    func moneyUpProtectDraft(hasChanges: Bool, isSaving: Bool) -> some View {
-        modifier(MoneyUpDraftProtection(hasChanges: hasChanges, isSaving: isSaving))
+    func moneyUpProtectDraft(
+        hasChanges: Bool, isSaving: Bool, cancellationTitle: LocalizedStringKey = "action.cancel"
+    ) -> some View {
+        modifier(MoneyUpDraftProtection(hasChanges: hasChanges, isSaving: isSaving, cancellationTitle: cancellationTitle))
     }
 }

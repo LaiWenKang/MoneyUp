@@ -114,6 +114,7 @@ struct CalendarView: View {
         calendarListContent
         .scrollDismissesKeyboard(.interactively)
         .scrollContentBackground(.hidden)
+        .contentMargins(.top, 8, for: .scrollContent)
         .background(Color.moneyUpBackground)
         .navigationTitle("tab.calendar")
             .moneyUpNavigationSurface()

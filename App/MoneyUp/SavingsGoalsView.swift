@@ -295,6 +295,7 @@ private struct GoalManagementSheet: View {
     @State private var resetRule: SavingsGoalResetRule = .never
     @State private var movementKind: SavingsGoalMovementKind?
     @State private var pendingAction: PendingAction?
+    @State private var initialDraftSignature: [String]?
     @State private var isSaving = false
     @State private var errorMessage: String?
 
@@ -399,9 +400,6 @@ private struct GoalManagementSheet: View {
             .navigationTitle(goal?.name ?? AppLocalization.string("plan.goals"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("action.cancel") { dismiss() }
-                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("action.save") { Task { await saveMetadata() } }
                         .disabled(isSaving || name.isEmpty || decimalAmount(from: targetText) == nil)
@@ -411,7 +409,11 @@ private struct GoalManagementSheet: View {
                     Button("action.done") { amountFocused = false }
                 }
             }
-            .onAppear { load() }
+            .onAppear {
+                guard initialDraftSignature == nil else { return }
+                load()
+                initialDraftSignature = draftSignature
+            }
             .sheet(item: $movementKind) { movementKind in
                 GoalMovementSheet(goalID: goalID, kind: movementKind)
             }
@@ -436,8 +438,17 @@ private struct GoalManagementSheet: View {
             } message: {
                 Text(confirmationMessage)
             }
+            .moneyUpProtectDraft(
+                hasChanges: initialDraftSignature.map { $0 != draftSignature } ?? false,
+                isSaving: isSaving
+            )
+            .disabled(isSaving)
             .moneyUpOperationErrorAlert(message: $errorMessage)
         }
+    }
+
+    private var draftSignature: [String] {
+        [name, kind.rawValue, targetText, String(targetDate.timeIntervalSinceReferenceDate), resetRule.rawValue]
     }
 
     private func load() {
@@ -513,6 +524,7 @@ private struct GoalMovementSheet: View {
 
     @State private var amountText = ""
     @State private var occurredAt = Date()
+    @State private var initialDraftSignature: [String]?
     @State private var isSaving = false
     @State private var errorMessage: String?
 
@@ -535,9 +547,6 @@ private struct GoalMovementSheet: View {
             .navigationTitle(kind.titleKey)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("action.cancel") { dismiss() }
-                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("action.save") { Task { await save() } }
                         .disabled((decimalAmount(from: amountText) ?? .zero) <= .zero || isSaving)
@@ -547,8 +556,18 @@ private struct GoalMovementSheet: View {
                     Button("action.done") { amountFocused = false }
                 }
             }
+            .onAppear { if initialDraftSignature == nil { initialDraftSignature = draftSignature } }
+            .moneyUpProtectDraft(
+                hasChanges: initialDraftSignature.map { $0 != draftSignature } ?? false,
+                isSaving: isSaving
+            )
+            .disabled(isSaving)
             .moneyUpOperationErrorAlert(message: $errorMessage)
         }
+    }
+
+    private var draftSignature: [String] {
+        [amountText, String(occurredAt.timeIntervalSinceReferenceDate)]
     }
 
     private func save() async {

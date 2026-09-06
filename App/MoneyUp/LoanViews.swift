@@ -308,6 +308,7 @@ private struct AddLoanPlanSheet: View {
     @State private var interestCategoryID: UUID?
     @State private var feeCategoryID: UUID?
     @State private var purpose: LoanPurpose = .other
+    @State private var initialDraftSignature: [String]?
     @State private var errorMessage: String?
     @State private var isSaving = false
 
@@ -346,9 +347,6 @@ private struct AddLoanPlanSheet: View {
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("action.cancel") { dismiss() }
-                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("action.save") { Task { await save() } }
                         .disabled(!canSave || isSaving)
@@ -356,15 +354,22 @@ private struct AddLoanPlanSheet: View {
                 MoneyUpKeyboardDoneToolbar()
             }
             .onAppear {
+                guard initialDraftSignature == nil else { return }
                 openedAt = model.currentDateForUserAction()
                 accountID = accountID ?? accounts.first?.id
                 if name.isEmpty { name = selectedAccount?.name ?? "" }
                 interestCategoryID = interestCategoryID ?? model.expenseCategories.first?.id
                 feeCategoryID = feeCategoryID ?? model.expenseCategories.first?.id
+                initialDraftSignature = draftSignature
             }
             .onChange(of: accountID) { _, _ in
                 if name.isEmpty { name = selectedAccount?.name ?? "" }
             }
+            .moneyUpProtectDraft(
+                hasChanges: initialDraftSignature.map { $0 != draftSignature } ?? false,
+                isSaving: isSaving
+            )
+            .disabled(isSaving)
             .moneyUpOperationErrorAlert(message: $errorMessage)
         }
     }
@@ -375,6 +380,10 @@ private struct AddLoanPlanSheet: View {
             && decimalAmount(from: principalText).map { $0 > .zero } == true
             && (aprText.isEmpty || decimalAmount(from: aprText) != nil)
             && (termText.isEmpty || Int(termText) != nil)
+    }
+
+    private var draftSignature: [String] {
+        [accountID?.uuidString ?? "", name, principalText, aprText, termText, String(openedAt.timeIntervalSinceReferenceDate), String(includeInDebt), interestCategoryID?.uuidString ?? "", feeCategoryID?.uuidString ?? "", purpose.rawValue]
     }
 
     private func expenseCategoryPicker(
@@ -423,6 +432,7 @@ private struct LoanPaymentSheet: View {
     @State private var fees = ""
     @State private var occurredAt = Date()
     @State private var note = ""
+    @State private var initialDraftSignature: [String]?
     @State private var errorMessage: String?
     @State private var isSaving = false
 
@@ -457,9 +467,6 @@ private struct LoanPaymentSheet: View {
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("action.cancel") { dismiss() }
-                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("action.save") { Task { await save() } }
                         .disabled(!canSave || isSaving)
@@ -467,9 +474,16 @@ private struct LoanPaymentSheet: View {
                 MoneyUpKeyboardDoneToolbar()
             }
             .onAppear {
+                guard initialDraftSignature == nil else { return }
                 accountID = accounts.first?.id
                 occurredAt = model.currentDateForUserAction()
+                initialDraftSignature = draftSignature
             }
+            .moneyUpProtectDraft(
+                hasChanges: initialDraftSignature.map { $0 != draftSignature } ?? false,
+                isSaving: isSaving
+            )
+            .disabled(isSaving)
             .moneyUpOperationErrorAlert(message: $errorMessage)
         }
     }
@@ -485,6 +499,10 @@ private struct LoanPaymentSheet: View {
     }
 
     private var canSave: Bool { accountID != nil && parsed != nil }
+
+    private var draftSignature: [String] {
+        [accountID?.uuidString ?? "", principal, interest, fees, String(occurredAt.timeIntervalSinceReferenceDate), note]
+    }
 
     private func amountField(_ title: LocalizedStringKey, text: Binding<String>) -> some View {
         TextField(title, text: text).moneyAmountKeyboard(currency: currency)
@@ -526,6 +544,7 @@ private struct LoanDrawdownSheet: View {
     @State private var amount = ""
     @State private var occurredAt = Date()
     @State private var note = ""
+    @State private var initialDraftSignature: [String]?
     @State private var errorMessage: String?
     @State private var isSaving = false
 
@@ -556,9 +575,6 @@ private struct LoanDrawdownSheet: View {
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("action.cancel") { dismiss() }
-                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("action.save") { Task { await save() } }
                         .disabled(
@@ -570,11 +586,22 @@ private struct LoanDrawdownSheet: View {
                 MoneyUpKeyboardDoneToolbar()
             }
             .onAppear {
+                guard initialDraftSignature == nil else { return }
                 accountID = accounts.first?.id
                 occurredAt = model.currentDateForUserAction()
+                initialDraftSignature = draftSignature
             }
+            .moneyUpProtectDraft(
+                hasChanges: initialDraftSignature.map { $0 != draftSignature } ?? false,
+                isSaving: isSaving
+            )
+            .disabled(isSaving)
             .moneyUpOperationErrorAlert(message: $errorMessage)
         }
+    }
+
+    private var draftSignature: [String] {
+        [accountID?.uuidString ?? "", amount, String(occurredAt.timeIntervalSinceReferenceDate), note]
     }
 
     private func save() async {
@@ -607,6 +634,8 @@ private struct LoanEditSheet: View {
     @State private var interestCategoryID: UUID?
     @State private var feeCategoryID: UUID?
     @State private var purpose: LoanPurpose
+    @State private var initialDraftSignature: [String]?
+    @State private var isSaving = false
     @State private var errorMessage: String?
 
     init(plan: LoanPlan) {
@@ -640,16 +669,23 @@ private struct LoanEditSheet: View {
             .navigationTitle("action.edit")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("action.cancel") { dismiss() }
-                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("action.save") { Task { await save() } }
                 }
                 MoneyUpKeyboardDoneToolbar()
             }
+            .onAppear { if initialDraftSignature == nil { initialDraftSignature = draftSignature } }
+            .moneyUpProtectDraft(
+                hasChanges: initialDraftSignature.map { $0 != draftSignature } ?? false,
+                isSaving: isSaving
+            )
+            .disabled(isSaving)
             .moneyUpOperationErrorAlert(message: $errorMessage)
         }
+    }
+
+    private var draftSignature: [String] {
+        [name, apr, term, String(includeInDebt), interestCategoryID?.uuidString ?? "", feeCategoryID?.uuidString ?? "", purpose.rawValue]
     }
 
     private func categoryPicker(
@@ -665,6 +701,9 @@ private struct LoanEditSheet: View {
     }
 
     private func save() async {
+        guard !isSaving else { return }
+        isSaving = true
+        defer { isSaving = false }
         do {
             try await model.updateLoanPlan(
                 id: plan.id,

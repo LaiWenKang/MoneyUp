@@ -3,6 +3,7 @@ import SwiftUI
 
 struct BudgetPlanView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.appReportingSnapshot) private var sharedSnapshot
     @Bindable var workspace: PlanWorkspaceState
 
@@ -66,6 +67,7 @@ struct BudgetPlanView: View {
             if isCurrentMonth, model.profile?.intelligenceEnabled == true { exploreSection }
         }
         .listSectionSpacing(16)
+        .contentMargins(.top, 8, for: .scrollContent)
         .scrollContentBackground(.hidden)
         .background(Color.moneyUpBackground)
         .navigationTitle("plan.budget")
@@ -149,11 +151,11 @@ struct BudgetPlanView: View {
         }
         if isCurrentMonth, model.displayPreferences.showsDailyGuidance {
             Section {
-                Picker("plan.pacing_view", selection: $workspace.pacingCadence) {
-                    Text("plan.pacing.today").tag(BudgetPacingCadence.daily)
-                    Text("plan.pacing.this_week").tag(BudgetPacingCadence.weekly)
-                    Text("plan.pacing.rest_of_month").tag(BudgetPacingCadence.monthly)
-                }.pickerStyle(.segmented)
+                if dynamicTypeSize.isAccessibilitySize {
+                    pacingPicker.pickerStyle(.menu)
+                } else {
+                    pacingPicker.pickerStyle(.segmented)
+                }
             }
         }
         ForEach(outline.filter { $0.depth == 0 }) { root in
@@ -177,6 +179,14 @@ struct BudgetPlanView: View {
                 ContentUnavailableView("plan.empty", systemImage: "square.grid.2x2")
                 Button("category.add") { isAddingCategory = true }
             }
+        }
+    }
+
+    private var pacingPicker: some View {
+        Picker("plan.pacing_view", selection: $workspace.pacingCadence) {
+            Text("plan.pacing.today").tag(BudgetPacingCadence.daily)
+            Text("plan.pacing.this_week").tag(BudgetPacingCadence.weekly)
+            Text("plan.pacing.rest_of_month").tag(BudgetPacingCadence.monthly)
         }
     }
 

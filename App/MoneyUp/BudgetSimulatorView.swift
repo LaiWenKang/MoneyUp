@@ -87,6 +87,7 @@ struct BudgetSimulatorView: View {
             }
             .padding()
         }
+        .scrollDismissesKeyboard(.interactively)
         .background { MoneyUpBackdrop() }
         .navigationTitle("simulator.title")
         .navigationBarTitleDisplayMode(.inline)
@@ -105,9 +106,7 @@ struct BudgetSimulatorView: View {
                 .foregroundStyle(.tint)
             Text("simulator.title")
                 .font(.title2.bold())
-            Text("simulator.detail")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+            MoneyUpExplainer("simulator.detail")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

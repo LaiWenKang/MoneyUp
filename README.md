@@ -25,6 +25,10 @@ The current feedback pass defaults exact amounts to glance-private masking,
 replaces generic History chips with actual hot categories, surfaces the budget
 simulator and interactive chart preview, removes duplicate navigation, and adds
 Reduce-Motion-safe spring, selection, and press feedback.
+Build 1039 feedback now has a source follow-up: bounded navigation backgrounds,
+horizontally expanding selected sections, denser History and Budget layouts,
+allowances in Assets, useful widget capture fallbacks, and draft-safe editors.
+See [feedback implementation and verification](docs/FEEDBACK_1039_REVIEW.md).
 The prior merged baseline passed release,
 architecture, recovery, privacy, core/app-model, unsigned app/widget Simulator,
 and serial performance CI; build 11 must repeat those exact-head gates. Physical iPhone migration,
@@ -119,7 +123,8 @@ The beta includes:
   set of keys that cannot carry book content;
 - a permanent five-tab layout for Today, History, center Log, Plan, and Assets;
   the fixed tab bar is the only global tab-navigation control, while Plan uses
-  one adaptive icon/label selector for Budget, Calendar, Goals, and Allowances
+  one horizontal icon/label selector for Budget, Calendar, and Goals; allowance
+  and benefit management lives beside accounts in Assets
   and contextual screens expose a named top-left Back route only when a real
   origin exists; the retired swipe preference is type-checked when present,
   normalized off even if an initializer requests it, and omitted on rewrite;
@@ -155,8 +160,8 @@ The beta includes:
   read-only, the app canonicalizes stale storage, accessibility text sizes
   reduce Home-widget information density, and ready-scene/reporting-day
   lifecycle work publishes only one coherent current generation;
-- six bilingual, action-only App Shortcuts, interactive quick-action widget
-  buttons, and a configurable iOS 18 Control Widget that open only the existing
+- six bilingual, action-only App Shortcuts, direct-navigation quick-action
+  widget links, and a configurable iOS 18 Control Widget that open only the existing
   allowlisted routes; Budget Status and Smart Overview remain passive and no
   platform action carries or returns transaction details;
 - file-backed password-protected `.moneyup` v2 backup with bounded authenticated

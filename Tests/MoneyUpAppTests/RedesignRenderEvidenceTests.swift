@@ -10,6 +10,12 @@ import XCTest
 final class RedesignRenderEvidenceTests: XCTestCase {
     @MainActor
     func testRenderBudgetAndCategoryReviewEvidence() async throws {
+        let previousPrivacy = UserDefaults.standard.object(forKey: MoneyAmountPrivacy.storageKey)
+        UserDefaults.standard.set(false, forKey: MoneyAmountPrivacy.storageKey)
+        defer {
+            if let previousPrivacy { UserDefaults.standard.set(previousPrivacy, forKey: MoneyAmountPrivacy.storageKey) }
+            else { UserDefaults.standard.removeObject(forKey: MoneyAmountPrivacy.storageKey) }
+        }
         let fixture = try AppModelFixture()
         defer { fixture.removeFiles() }
         let now = Date()
@@ -24,8 +30,14 @@ final class RedesignRenderEvidenceTests: XCTestCase {
             BudgetNode(id: transport.id, name: transport.name, limit: try Money(200, currency: fixture.sgd), purpose: .flexible, allocationMode: .automatic)
         ]
         let profile = UserProfile(baseCurrency: fixture.sgd, reportingTimeZoneIdentifier: "GMT")
-        try await fixture.seed(profile: profile, accounts: accounts, budgetNodes: nodes)
-        let model = fixture.model(profile: profile, accounts: accounts, budgetNodes: nodes, currentDate: { now })
+        let entries = [try fixture.expense(amount: Decimal(string: "48.50")!, occurredAt: now, payee: "Neighbourhood café")]
+        let allowance = try AllowancePlan(
+            name: "Meal benefit", amount: Money(15, currency: fixture.sgd), cadence: .daily,
+            fundingMode: .benefitLimit, startsAt: Calendar.current.startOfDay(for: now),
+            timeZoneIdentifier: "GMT", eligibleCategoryIDs: [fixture.food.id]
+        )
+        try await fixture.seed(profile: profile, accounts: accounts, entries: entries, budgetNodes: nodes, allowancePlans: [allowance])
+        let model = fixture.model(profile: profile, accounts: accounts, entries: entries, budgetNodes: nodes, allowancePlans: [allowance], currentDate: { now })
         let progress = try XCTUnwrap(model.budgetProgressThisMonthResult().value)
         await capture(PlanView().environment(model).preferredColorScheme(.light), name: "budget-light")
         await capture(PlanView().environment(model).preferredColorScheme(.dark), name: "budget-dark")

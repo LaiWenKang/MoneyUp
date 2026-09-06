@@ -48,6 +48,27 @@ final class Feedback1039RegressionTests: XCTestCase {
     }
 
     @MainActor
+    func testDraftProtectionBlocksSwipeOnlyForEditsOrAnActiveSave() async throws {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        let presenter = UIViewController()
+        window.rootViewController = presenter
+        window.isHidden = false
+        defer { window.isHidden = true; window.rootViewController = nil }
+
+        for (changed, saving) in [(false, false), (true, false), (false, true)] {
+            let editor = UIHostingController(rootView: NavigationStack {
+                Text("Draft")
+                    .moneyUpProtectDraft(hasChanges: changed, isSaving: saving)
+            })
+            presenter.present(editor, animated: false)
+            try await Task.sleep(for: .milliseconds(150))
+            XCTAssertEqual(editor.isModalInPresentation, changed || saving)
+            presenter.dismiss(animated: false)
+        }
+    }
+
+    @MainActor
     private func chipSize(selected: Bool, language: String) -> CGSize {
         let host = UIHostingController(rootView:
             MoneyUpSectionChip(title: "history.scope.today", systemImage: "sun.max.fill", isSelected: selected) {}

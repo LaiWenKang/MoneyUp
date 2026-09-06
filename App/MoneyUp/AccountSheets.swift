@@ -168,6 +168,7 @@ struct AccountManagementSheet: View {
     @State private var initialDisplayBalance: Decimal?
     @State private var targetID: UUID?
     @State private var pendingLifecycleAction: PendingLifecycleAction?
+    @State private var initialDraftSignature: [String]?
     @State private var isSaving = false
     @State private var nameValidationMessage: String?
     @State private var balanceValidationMessage: String?
@@ -333,17 +334,18 @@ struct AccountManagementSheet: View {
             .navigationTitle(currentAccount.name)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("action.cancel") { dismiss() }
-                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("action.save") { Task { await save() } }
                         .disabled(isSaving)
                 }
                 MoneyUpKeyboardDoneToolbar()
             }
+            .moneyUpProtectDraft(
+                hasChanges: initialDraftSignature.map { $0 != [name, balanceText] } ?? false,
+                isSaving: isSaving
+            )
             .onAppear {
-                guard balanceText.isEmpty else { return }
+                guard initialDraftSignature == nil else { return }
                 targetID = targets.first?.id
                 switch model.accountBalanceResultForPresentation(
                     for: currentAccount,
@@ -355,6 +357,7 @@ struct AccountManagementSheet: View {
                 case let .unavailable(issue):
                     errorMessage = issue.localizedDescription
                 }
+                initialDraftSignature = [name, balanceText]
             }
             .confirmationDialog(
                 "lifecycle.confirm_title",

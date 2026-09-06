@@ -315,6 +315,7 @@ struct BudgetRow: View {
 }
 
 struct BudgetSummaryCard: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let limit: Money
     let spent: Money
     let remaining: Money
@@ -343,7 +344,7 @@ struct BudgetSummaryCard: View {
                         .foregroundStyle(isOverspent ? Color.red : Color.primary)
                 }
                 Spacer(minLength: 0)
-                if case let .available(ratio) = ratioResult {
+                if !dynamicTypeSize.isAccessibilitySize, case let .available(ratio) = ratioResult {
                     MoneyUpBudgetOrbit(ratio: ratio, elapsed: elapsed)
                 }
             }

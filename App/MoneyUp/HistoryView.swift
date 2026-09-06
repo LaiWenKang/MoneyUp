@@ -381,12 +381,12 @@ struct HistoryView: View {
     }
 
     private var unavailableTitle: LocalizedStringKey {
-        !model.hasJournalEntries && appliedSearchText.isEmpty && !filters.hasActiveFilters
+        !model.hasJournalEntries
             ? "history.empty" : "history.no_results"
     }
 
     private var unavailableDetail: LocalizedStringKey {
-        !model.hasJournalEntries && appliedSearchText.isEmpty && !filters.hasActiveFilters
+        !model.hasJournalEntries
             ? "history.empty_detail" : "history.no_results_detail"
     }
 
@@ -395,8 +395,12 @@ struct HistoryView: View {
         return List {
             Section {
                 HistoryScopeSelector(selection: $quickRange)
-                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+            }
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
 
+            Section {
                 HStack(spacing: 8) {
                     Menu {
                         Button {
@@ -545,9 +549,7 @@ struct HistoryView: View {
                                 Spacer()
                             }
                             .listRowBackground(Color.clear)
-                        } else if !model.hasJournalEntries,
-                           appliedSearchText.isEmpty,
-                           !filters.hasActiveFilters {
+                        } else if !model.hasJournalEntries {
                             VStack(spacing: 10) {
                                 MoneyUpIllustration("MoneyUpMoneyWorld", role: .empty)
                                 Text(unavailableTitle)
@@ -640,6 +642,7 @@ struct HistoryView: View {
             }
             .listStyle(.insetGrouped)
             .listSectionSpacing(16)
+            .contentMargins(.top, 8, for: .scrollContent)
             .scrollDismissesKeyboard(.interactively)
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)

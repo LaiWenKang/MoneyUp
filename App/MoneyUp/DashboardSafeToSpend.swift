@@ -8,79 +8,79 @@ import SwiftUI
 /// line that keeps the number and its arithmetic one tap away.
 extension DashboardView {
     var safeToSpendHero: some View {
-            VStack(alignment: .leading, spacing: 14) {
-                switch model.flexibleTodayResult(asOf: reportingDate) {
-                case let .available(.available(breakdown)):
-                    Group {
-                        if dynamicTypeSize.isAccessibilitySize {
-                            VStack(alignment: .leading, spacing: 12) {
-                                heroIllustration
-                                flexibleTodayCopy(breakdown)
-                            }
-                        } else {
-                            HStack(alignment: .center, spacing: 12) {
-                                flexibleTodayCopy(breakdown)
-                                heroIllustration
-                            }
+        VStack(alignment: .leading, spacing: 14) {
+            switch model.flexibleTodayResult(asOf: reportingDate) {
+            case let .available(.available(breakdown)):
+                Group {
+                    if dynamicTypeSize.isAccessibilitySize {
+                        VStack(alignment: .leading, spacing: 12) {
+                            heroIllustration
+                            flexibleTodayCopy(breakdown)
+                        }
+                    } else {
+                        HStack(alignment: .center, spacing: 12) {
+                            flexibleTodayCopy(breakdown)
+                            heroIllustration
                         }
                     }
-
-                    Button {
-                        isShowingFlexibleTodayBreakdown = true
-                    } label: {
-                        Label(
-                            "dashboard.safe_to_spend.show_math",
-                            systemImage: "function"
-                        )
-                    }
-                    .buttonStyle(.bordered)
-                    .tint(.accentColor)
-                case .available(.needsBudget):
-                    heroIllustration
-                    Label("dashboard.safe_to_spend", systemImage: "sun.max.fill")
-                        .font(.headline)
-                        .foregroundStyle(.tint)
-                    Text("dashboard.safe_to_spend.needs_budget")
-                        .font(.title3.weight(.semibold))
-                    Text("dashboard.safe_to_spend.needs_budget_detail")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                    Button {
-                        onOpenPlan()
-                    } label: {
-                        Label("dashboard.set_budget", systemImage: "chart.pie.fill")
-                    }
-                    .buttonStyle(.bordered)
-                    .tint(.accentColor)
-                case let .available(.needsClassification(count)):
-                    setupGuidance(
-                        title: String(
-                            format: AppLocalization.string("dashboard.flexible_today.classify_title"),
-                            count
-                        ),
-                        detail: "dashboard.flexible_today.classify_detail"
-                    )
-                case .available(.needsFlexibleBudget):
-                    setupGuidance(
-                        title: AppLocalization.string("dashboard.flexible_today.needs_flexible"),
-                        detail: "dashboard.flexible_today.needs_flexible_detail"
-                    )
-                case let .unavailable(issue):
-                    Label("dashboard.safe_to_spend", systemImage: "sun.max.fill")
-                        .font(.headline)
-                        .foregroundStyle(.tint)
-                    DerivedValueUnavailableView(issue: issue, prominent: true)
                 }
-            }
-            .padding(20)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background {
-                LinearGradient(
-                    colors: [Color.accentColor.opacity(0.16), Color.moneyUpSurfaceElevated],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
+
+                Button {
+                    isShowingFlexibleTodayBreakdown = true
+                } label: {
+                    Label(
+                        "dashboard.safe_to_spend.show_math",
+                        systemImage: "function"
+                    )
+                }
+                .buttonStyle(.bordered)
+                .tint(.accentColor)
+            case .available(.needsBudget):
+                heroIllustration
+                Label("dashboard.safe_to_spend", systemImage: "sun.max.fill")
+                    .font(.headline)
+                    .foregroundStyle(.tint)
+                Text("dashboard.safe_to_spend.needs_budget")
+                    .font(.title3.weight(.semibold))
+                Text("dashboard.safe_to_spend.needs_budget_detail")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                Button {
+                    onOpenPlan()
+                } label: {
+                    Label("dashboard.set_budget", systemImage: "chart.pie.fill")
+                }
+                .buttonStyle(.bordered)
+                .tint(.accentColor)
+            case let .available(.needsClassification(count)):
+                setupGuidance(
+                    title: String(
+                        format: AppLocalization.string("dashboard.flexible_today.classify_title"),
+                        count
+                    ),
+                    detail: "dashboard.flexible_today.classify_detail"
                 )
+            case .available(.needsFlexibleBudget):
+                setupGuidance(
+                    title: AppLocalization.string("dashboard.flexible_today.needs_flexible"),
+                    detail: "dashboard.flexible_today.needs_flexible_detail"
+                )
+            case let .unavailable(issue):
+                Label("dashboard.safe_to_spend", systemImage: "sun.max.fill")
+                    .font(.headline)
+                    .foregroundStyle(.tint)
+                DerivedValueUnavailableView(issue: issue, prominent: true)
             }
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            LinearGradient(
+                colors: [Color.accentColor.opacity(0.16), Color.moneyUpSurfaceElevated],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
         .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 26, style: .continuous)

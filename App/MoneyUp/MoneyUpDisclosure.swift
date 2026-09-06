@@ -131,7 +131,13 @@ struct MoneyUpDisclosureCard<Summary: View, Detail: View>: View {
         } label: {
             HStack(alignment: .center, spacing: 12) {
                 MoneyUpSymbolBadge(systemImage: systemImage)
-                summary
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    summary
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 Spacer(minLength: 8)
                 Image(systemName: "chevron.down")
                     .font(.caption.weight(.semibold))
@@ -144,41 +150,27 @@ struct MoneyUpDisclosureCard<Summary: View, Detail: View>: View {
         }
         .buttonStyle(MoneyUpPressableButtonStyle())
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(title)
         .accessibilityValue(isExpanded ? "state.expanded" : "state.collapsed")
         .accessibilityAddTraits(.isButton)
     }
 }
 
-/// One figure with a symbol instead of a caption naming it.
-///
-/// The symbol carries the meaning on screen and the name is preserved for
-/// VoiceOver, which is how a row of positions fits on one line without
-/// becoming a list of labelled sentences.
+/// The label stays visible so financial meaning never relies on recognizing
+/// an icon. Exact values remain native text and are combined for VoiceOver.
 struct MoneyUpFigure: View {
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-
     let title: LocalizedStringKey
     let value: String
     let systemImage: String
     var tint: Color = .accentColor
 
     var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: systemImage)
+        VStack(alignment: .leading, spacing: 4) {
+            Label(title, systemImage: systemImage)
                 .font(.caption)
                 .foregroundStyle(tint)
-                .accessibilityHidden(true)
             Text(value)
                 .font(.subheadline.monospacedDigit().weight(.semibold))
-                .lineLimit(1)
-            // At accessibility sizes the symbol alone stops being a reliable
-            // label, so the name it stands for comes back on screen.
-            if dynamicTypeSize.isAccessibilitySize {
-                Text(title)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+                .fixedSize(horizontal: false, vertical: true)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(title)
