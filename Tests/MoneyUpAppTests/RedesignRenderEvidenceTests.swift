@@ -38,25 +38,33 @@ final class RedesignRenderEvidenceTests: XCTestCase {
         )
         try await fixture.seed(profile: profile, accounts: accounts, entries: entries, budgetNodes: nodes, allowancePlans: [allowance])
         let model = fixture.model(profile: profile, accounts: accounts, entries: entries, budgetNodes: nodes, allowancePlans: [allowance], currentDate: { now })
+        let snapshot = AppReportingSnapshot(instant: now, calendar: model.reportingCalendar)
         let progress = try XCTUnwrap(model.budgetProgressThisMonthResult().value)
-        await capture(PlanView().environment(model).preferredColorScheme(.light), name: "budget-light")
-        await capture(PlanView().environment(model).preferredColorScheme(.dark), name: "budget-dark")
-        await capture(CategoryManagementList().environment(model).preferredColorScheme(.light), name: "categories-light")
-        await capture(NavigationStack { DisplaySettingsView() }.environment(model).environment(\.dynamicTypeSize, .accessibility2).preferredColorScheme(.dark), name: "display-large-text")
+        await capture(PlanView().environment(model).environment(\.appReportingSnapshot, snapshot).preferredColorScheme(.light), name: "budget-light")
+        await capture(PlanView().environment(model).environment(\.appReportingSnapshot, snapshot).preferredColorScheme(.dark), name: "budget-dark")
+        await capture(CategoryManagementList().environment(model).environment(\.appReportingSnapshot, snapshot).preferredColorScheme(.light), name: "categories-light")
+        await capture(NavigationStack { DisplaySettingsView() }.environment(model).environment(\.appReportingSnapshot, snapshot).environment(\.dynamicTypeSize, .accessibility2).preferredColorScheme(.dark), name: "display-large-text")
         await capture(BudgetCompositionView(progress: progress, onEdit: { _ in }).padding(24).background(Color.moneyUpBackground).ignoresSafeArea().preferredColorScheme(.light), name: "composition-detail", height: 280)
-        await capture(PlanView(initialSection: .calendar).environment(model).preferredColorScheme(.dark), name: "calendar-dark")
-        await capture(NavigationStack { HistoryView() }.environment(model).preferredColorScheme(.dark), name: "history-dark")
-        await capture(DashboardView().environment(model).preferredColorScheme(.dark), name: "today-dark")
-        await capture(AssetsView().environment(model).preferredColorScheme(.light), name: "assets-light")
-        await capture(PlanView().environment(model).environment(\.dynamicTypeSize, .accessibility2).preferredColorScheme(.dark), name: "budget-large-text", height: 900, width: 390)
-        await capture(PlanView().environment(model).environment(\.locale, Locale(identifier: "zh-Hans")).preferredColorScheme(.light), name: "budget-small-chinese", height: 740, width: 320)
-        await capture(NavigationStack { HistoryView() }.environment(model).environment(\.dynamicTypeSize, .accessibility2).preferredColorScheme(.light), name: "history-large-text", height: 900)
+        await capture(PlanView(initialSection: .calendar).environment(model).environment(\.appReportingSnapshot, snapshot).preferredColorScheme(.dark), name: "calendar-dark")
+        await capture(NavigationStack { HistoryView() }.environment(model).environment(\.appReportingSnapshot, snapshot).preferredColorScheme(.dark), name: "history-dark")
+        await capture(DashboardView().environment(model).environment(\.appReportingSnapshot, snapshot).preferredColorScheme(.dark), name: "today-dark")
+        await capture(AssetsView().environment(model).environment(\.appReportingSnapshot, snapshot).preferredColorScheme(.light), name: "assets-light")
+        await capture(PlanView().environment(model).environment(\.appReportingSnapshot, snapshot).environment(\.dynamicTypeSize, .accessibility2).preferredColorScheme(.dark), name: "budget-large-text", height: 900, width: 390)
+        await capture(PlanView().environment(model).environment(\.appReportingSnapshot, snapshot).environment(\.locale, Locale(identifier: "zh-Hans")).preferredColorScheme(.light), name: "budget-small-chinese", height: 740, width: 320, language: .simplifiedChinese)
+        await capture(NavigationStack { HistoryView() }.environment(model).environment(\.appReportingSnapshot, snapshot).environment(\.dynamicTypeSize, .accessibility2).preferredColorScheme(.light), name: "history-large-text", height: 900)
         await fixture.store.close()
     }
 
     @MainActor
-    private func capture<Content: View>(_ content: Content, name: String, height: CGFloat = 844, width: CGFloat = 390) async {
-        let controller = UIHostingController(rootView: content)
+    private func capture<Content: View>(_ content: Content, name: String, height: CGFloat = 844, width: CGFloat = 390, language: AppLanguagePreference = .english) async {
+        let defaults = AppLanguagePreference.defaults
+        let previousLanguage = defaults?.object(forKey: AppLanguagePreference.storageKey)
+        defaults?.set(language.rawValue, forKey: AppLanguagePreference.storageKey)
+        defer {
+            if let previousLanguage { defaults?.set(previousLanguage, forKey: AppLanguagePreference.storageKey) }
+            else { defaults?.removeObject(forKey: AppLanguagePreference.storageKey) }
+        }
+        let controller = UIHostingController(rootView: content.environment(\.locale, language.locale))
         let window: UIWindow
         if let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first {
             window = UIWindow(windowScene: scene)
