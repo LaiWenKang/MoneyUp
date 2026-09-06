@@ -292,6 +292,7 @@ struct BudgetPlanView: View {
     }
 
     private func load() async {
+        guard !Task.isCancelled else { return }
         let request = UUID()
         loadRequestID = request
         let identity = loadIdentity

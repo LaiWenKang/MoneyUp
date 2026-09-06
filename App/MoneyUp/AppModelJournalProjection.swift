@@ -218,7 +218,7 @@ extension AppModel {
         if let balanceCache { return balanceCache }
         guard retainsCompleteJournal else {
             scheduleJournalDerivedRefresh()
-            return .unavailable(.appNotReady)
+            return .unavailable(journalDerivedRefreshIssue ?? .appNotReady)
         }
         let result: DerivedValue<[UUID: [CurrencyCode: Money]]>
         do {

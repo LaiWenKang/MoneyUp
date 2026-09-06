@@ -74,6 +74,7 @@ extension AppModel {
             return .unavailable(.budgetRefreshPending)
         }
         do {
+            try Task.checkCancellation()
             let read = try beginLogicalBookRead()
             let timeline = try validatedBudgetConfigurationTimeline(asOf: currentDate())
             let revision = budgetNodesRevision
