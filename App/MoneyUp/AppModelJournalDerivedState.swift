@@ -82,7 +82,7 @@ extension AppModel {
             quarantinedEntryIDs: quarantinedJournalEntryIDs,
             generation: authority.generation
         )
-        let preparedBudgetProjection = try await makePreparedBudgetProjection(
+        let preparedBudgetProjection = try await prepareBudgetProjectionResult(
             from: currentStore,
             now: now,
             quarantinedEntryIDs: quarantinedJournalEntryIDs,
@@ -98,7 +98,8 @@ extension AppModel {
             recentEntries: recentEntries,
             loadRecentEntries: loadRecentEntries,
             restrictedBalanceProjection: restrictedBalanceProjection,
-            budgetProjection: preparedBudgetProjection,
+            budgetProjection: preparedBudgetProjection.projection,
+            budgetIssue: preparedBudgetProjection.issue,
             reports: preparedReports,
             now: now,
             calendar: reportCalendar
@@ -272,6 +273,27 @@ extension AppModel {
         }.value
     }
 
+    private func prepareBudgetProjectionResult(
+        from store: EncryptedRecordStore, now: Date,
+        quarantinedEntryIDs: Set<UUID>, generation: Int
+    ) async throws -> (projection: ClosedMonthBudgetProjection?, issue: DerivedValueIssue?) {
+        guard !budgetConfigurationTimelineInvalid else {
+            return (nil, budgetConfigurationTimelineIssue ?? .budgetHistoryQuarantined)
+        }
+        do {
+            return (try await makePreparedBudgetProjection(
+                from: store, now: now, quarantinedEntryIDs: quarantinedEntryIDs,
+                generation: generation
+            ), nil)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            // Budget history is a separate derivative. Its failure must not
+            // prevent publishing valid balances and current spending reports.
+            return (nil, .budgetFailure(error, operation: "budget-history-projection"))
+        }
+    }
+
     private func makePreparedBudgetProjection(
         from store: EncryptedRecordStore,
         now: Date,
@@ -332,6 +354,7 @@ extension AppModel {
         loadRecentEntries: Bool,
         restrictedBalanceProjection: RestrictedAllowanceBalanceProjection,
         budgetProjection: ClosedMonthBudgetProjection?,
+        budgetIssue: DerivedValueIssue?,
         reports: PreparedJournalReports?,
         now: Date,
         calendar: Calendar
@@ -348,6 +371,8 @@ extension AppModel {
         // below are installed. The one coherent publication remains at the end.
         if loadRecentEntries { services.ledger.entries = recentEntries }
         closedMonthBudgetProjection = budgetProjection
+        budgetProjectionIssue = budgetIssue
+        journalDerivedRefreshIssue = nil
         services.ledger.restrictedAllowanceBalanceProjection =
             restrictedBalanceProjection
         balanceCache = .available(ledgerIndex.balances)
@@ -381,6 +406,7 @@ extension AppModel {
     func scheduleJournalDerivedRefresh() {
         guard store != nil,
               state == .ready || state == .onboarding else { return }
+        guard journalDerivedRefreshIssue == nil else { return }
         guard !isWorking,
               !isLifecycleMutationInProgress,
               !manualJournalMutationIsActive,
@@ -414,10 +440,16 @@ extension AppModel {
                 try await self.refreshJournalDerivedState(
                     expectedProjectionRevision: scheduledRevision
                 )
-            } catch {
+            } catch is CancellationError {
                 // A mutation invalidates the revision before its durable
                 // write. Its end path observes the retained deferred marker
                 // and starts one coherent successor refresh.
+            } catch {
+                if self.journalDerivedRefreshTaskToken == token,
+                   self.journalProjectionRevision == scheduledRevision {
+                    self.journalDerivedRefreshIssue = .budgetFailure(error, operation: "journal-derived-refresh")
+                    self.journalDerivedRefreshWasDeferred = false
+                }
             }
             guard self.journalDerivedRefreshTaskToken == token else { return }
             self.journalDerivedRefreshTask = nil
@@ -450,8 +482,9 @@ extension AppModel {
     /// A retry is deliberately user driven after a standalone read failure so
     /// persistent store errors cannot create a tight background retry loop.
     func retryUnavailableJournalProjection() {
-        guard !retainsCompleteJournal,
-              !journalRecentEntriesAreCurrent else { return }
+        guard !retainsCompleteJournal else { return }
+        journalDerivedRefreshIssue = nil
+        budgetProjectionIssue = nil
         scheduleJournalDerivedRefresh()
     }
 
@@ -461,6 +494,8 @@ extension AppModel {
     /// yielding again. This separation keeps balance and rollover validation
     /// available to the mutation without allowing an older async read to win.
     func invalidateInFlightJournalProjection() {
+        journalDerivedRefreshIssue = nil
+        budgetProjectionIssue = nil
         journalProjectionRevision &+= 1
         journalDerivedRefreshWasDeferred = true
         invalidateWidgetIntelligencePublication()

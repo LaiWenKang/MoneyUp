@@ -87,7 +87,9 @@ extension AppModel {
             from: store,
             mode: mode
         )
-        await loadBudgetConfigurationTimeline(from: store)
+        try await loadBudgetConfigurationTimeline(
+            from: store, observesCancellation: mode.observesCancellationWhileLoading
+        )
         try applyRecoveredBookRecords(recovered, mode: mode)
         let relationships = try await loadRecoveryRelationships(
             from: store,
@@ -119,6 +121,9 @@ extension AppModel {
         closedMonthBudgetProjection = nil
         budgetConfigurationTimeline = nil
         budgetConfigurationTimelineInvalid = false
+        budgetConfigurationTimelineIssue = nil
+        journalDerivedRefreshIssue = nil
+        budgetProjectionIssue = nil
     }
 
     func loadRecoveryProfile(
@@ -218,16 +223,21 @@ extension AppModel {
     }
 
     func loadBudgetConfigurationTimeline(
-        from store: EncryptedRecordStore
-    ) async {
+        from store: EncryptedRecordStore,
+        observesCancellation: Bool = true
+    ) async throws {
+        if observesCancellation { try Task.checkCancellation() }
         do {
             budgetConfigurationTimeline = try await store.fetch(
                 BudgetConfigurationTimeline.self,
                 id: BudgetConfigurationTimeline.primaryRecordID,
                 from: .budgetConfigurationTimelines
             )
+        } catch is CancellationError {
+            throw CancellationError()
         } catch {
             budgetConfigurationTimelineInvalid = true
+            budgetConfigurationTimelineIssue = .budgetFailure(error, operation: "budget-history-read")
             recoveryIssues.append(
                 "budget_configuration_timelines/\(BudgetConfigurationTimeline.primaryRecordID)"
             )
@@ -540,12 +550,15 @@ extension AppModel {
         from store: EncryptedRecordStore,
         mode: BookLoadMode
     ) async throws {
+        if mode.observesCancellationWhileLoading { try Task.checkCancellation() }
         do {
             quickLogDraft = try await store.fetch(
                 QuickLogDraft.self,
                 id: QuickLogDraft.primaryRecordID,
                 from: .quickLogDrafts
             )
+        } catch is CancellationError {
+            throw CancellationError()
         } catch {
             if mode.rejectsRecoveryIssues {
                 throw AppModelError.invalidBook

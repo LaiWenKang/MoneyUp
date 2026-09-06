@@ -7322,14 +7322,14 @@ final class AppModelTests: XCTestCase {
         case .available:
             XCTFail("Expected an explicit unavailable budget state")
         case let .unavailable(issue):
-            XCTAssertEqual(issue, .budgetCalculationFailed)
+            XCTAssertEqual(issue, .budgetHierarchyInvalid)
         }
 
         switch model.budgetPlanSummaryThisMonthResult() {
         case .available:
             XCTFail("Expected an explicit unavailable budget summary")
         case let .unavailable(issue):
-            XCTAssertEqual(issue, .budgetCalculationFailed)
+            XCTAssertEqual(issue, .budgetHierarchyInvalid)
         }
         await fixture.store.close()
     }
@@ -8206,7 +8206,7 @@ final class AppModelTests: XCTestCase {
             currentDate: { now }
         )
 
-        guard case .unavailable(.budgetCalculationFailed) =
+        guard case .unavailable(.budgetHierarchyInvalid) =
                 model.budgetPlanSummaryThisMonthResult(asOf: now) else {
             await fixture.store.close()
             return XCTFail("Expected the invalid budget derivative to be unavailable")
@@ -13893,7 +13893,7 @@ extension AppModelTests {
 
         guard case let .unavailable(issue) = model.budgetProgressThisMonthResult()
         else { return XCTFail("Malformed timeline must never use today's tree") }
-        XCTAssertEqual(issue, .budgetCalculationFailed)
+        XCTAssertEqual(issue, .budgetHistoryPeriodMismatch)
         await fixture.store.close()
     }
 

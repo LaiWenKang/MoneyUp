@@ -43,6 +43,9 @@ extension AppModel {
         budgetNodes = []
         budgetConfigurationTimeline = nil
         budgetConfigurationTimelineInvalid = false
+        budgetConfigurationTimelineIssue = nil
+        journalDerivedRefreshIssue = nil
+        budgetProjectionIssue = nil
         budgetEntryAttributions = [:]
         budgetAttributionCacheIsComplete = false
         closedMonthBudgetProjection = nil

@@ -59,21 +59,26 @@ extension AppModel {
             )
         }
 
-        let rawPeriods: [MonthlyBudgetSpending]
-        if let journalEntries {
-            rawPeriods = try closedMonthBudgetSpending(
-                entries: journalEntries,
-                attributions: attributions ?? budgetEntryAttributions,
-                currency: tree.currency,
-                replayStart: replayStart,
-                currentMonthStart: currentMonth.start,
-                calendar: calendar,
-                excludingEntryIDs: invalidJournalEntryIDs
+        // A current-month checkpoint already contains the complete opening
+        // carry. Category edits can invalidate the background projection, but
+        // no closed-month spending is needed to apply this checkpoint. Keep
+        // using the timeline so signed carry and merge mappings are preserved.
+        if replayStart >= currentMonth.start {
+            return try BudgetRolloverEngine.snapshot(
+                timeline: timeline,
+                monthlySpending: [],
+                asOf: asOf,
+                calendar: calendar
             )
-        } else if retainsCompleteJournal {
+        }
+
+        let rawPeriods: [MonthlyBudgetSpending]
+        if let sourceEntries = journalEntries ?? (retainsCompleteJournal ? entries : nil) {
+            let sourceAttributions = journalEntries == nil
+                ? budgetEntryAttributions : attributions ?? budgetEntryAttributions
             rawPeriods = try closedMonthBudgetSpending(
-                entries: entries,
-                attributions: budgetEntryAttributions,
+                entries: sourceEntries,
+                attributions: sourceAttributions,
                 currency: tree.currency,
                 replayStart: replayStart,
                 currentMonthStart: currentMonth.start,
@@ -81,19 +86,12 @@ extension AppModel {
                 excludingEntryIDs: invalidJournalEntryIDs
             )
         } else {
-            guard let projection = closedMonthBudgetProjection,
-                  projection.reportingTimeZoneIdentifier
-                    == calendar.timeZone.identifier,
-                  projection.currentMonthStart == currentMonth.start,
-                  projection.coverageStart <= replayStart,
-                  projection.currency == tree.currency else {
-                // Never substitute the deliberately bounded recent-entry UI
-                // cache. Make the result unavailable until the complete SQL
-                // projection for the new boundary has published.
-                scheduleJournalDerivedRefresh()
-                throw AppModelError.invalidBook
-            }
-            rawPeriods = projection.monthlySpending
+            rawPeriods = try projectedClosedMonthBudgetSpending(
+                currency: tree.currency,
+                replayStart: replayStart,
+                currentMonthStart: currentMonth.start,
+                calendar: calendar
+            )
         }
 
         let periods = rawPeriods.compactMap { period -> MonthlyBudgetSpending? in
@@ -122,6 +120,26 @@ extension AppModel {
             asOf: asOf,
             calendar: calendar
         )
+    }
+
+    private func projectedClosedMonthBudgetSpending(
+        currency: CurrencyCode,
+        replayStart: Date,
+        currentMonthStart: Date,
+        calendar: Calendar
+    ) throws -> [MonthlyBudgetSpending] {
+        guard let projection = closedMonthBudgetProjection,
+              projection.reportingTimeZoneIdentifier == calendar.timeZone.identifier,
+              projection.currentMonthStart == currentMonthStart,
+              projection.coverageStart <= replayStart,
+              projection.currency == currency else {
+            // Closed months still require the complete SQL projection. The
+            // deliberately bounded recent-entry cache cannot replace it.
+            if let issue = budgetProjectionIssue ?? journalDerivedRefreshIssue { throw issue }
+            scheduleJournalDerivedRefresh()
+            throw DerivedValueIssue.budgetRefreshPending
+        }
+        return projection.monthlySpending
     }
 
     func budgetRolloverReplayStart(

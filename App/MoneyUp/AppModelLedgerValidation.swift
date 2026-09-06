@@ -474,6 +474,7 @@ extension AppModel {
 
     func endLifecycleMutation() {
         isLifecycleMutationInProgress = false
+        if widgetSnapshotRefreshWasDeferred { refreshBudgetWidgetSnapshot() }
         applyDeferredLockIfPossible()
         resumeDeferredJournalDerivedRefreshIfPossible()
     }

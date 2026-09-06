@@ -65,6 +65,11 @@ struct DataSafetyView: View {
     @State private var restorePresentation = RestoreOperationPresentationState()
     @AccessibilityFocusState private var successMessageIsFocused: Bool
 
+    private var budgetDiagnosticIssue: DerivedValueIssue? {
+        let issue = model.budgetConfigurationTimelineIssue ?? model.budgetProjectionIssue
+        return issue?.needsBudgetHistoryReview == true ? issue : nil
+    }
+
     private var restoreDetailKey: LocalizedStringKey {
         model.startupFailureKind == .missingDeviceBoundKey
             ? "recovery.key_cliff.restore_detail"
@@ -132,25 +137,31 @@ struct DataSafetyView: View {
                 }
             }
 
-            if model.recoveryIssueCount > 0 {
+            if model.recoveryIssueCount > 0 || budgetDiagnosticIssue != nil {
                 Section {
-                    Label(
-                        String(
-                            format: AppLocalization.string("recovery.quarantined_count"),
-                            model.recoveryIssueCount
-                        ),
-                        systemImage: "exclamationmark.shield"
-                    )
-                    DisclosureGroup("recovery.details") {
-                        ForEach(model.recoveryIssueSummaries, id: \.self) { summary in
-                            Text(summary)
-                                .font(.caption)
+                    if model.recoveryIssueCount > 0 {
+                        Label(
+                            String(
+                                format: AppLocalization.string("recovery.quarantined_count"),
+                                model.recoveryIssueCount
+                            ),
+                            systemImage: "exclamationmark.shield"
+                        )
+                        DisclosureGroup("recovery.details") {
+                            ForEach(model.recoveryIssueSummaries, id: \.self) { summary in
+                                Text(summary)
+                                    .font(.caption)
+                            }
                         }
+                    }
+                    if let issue = budgetDiagnosticIssue {
+                        Text(String(format: AppLocalization.string("derived.diagnostic_format"), issue.rawValue))
+                            .font(.caption)
                     }
                 } header: {
                     Text("recovery.integrity")
                 } footer: {
-                    Text("recovery.quarantined_detail")
+                    if model.recoveryIssueCount > 0 { Text("recovery.quarantined_detail") }
                 }
             }
 

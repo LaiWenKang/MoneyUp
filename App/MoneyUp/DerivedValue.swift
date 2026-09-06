@@ -1,5 +1,6 @@
 import Foundation
 import MoneyUpCore
+import MoneyUpPersistence
 import OSLog
 import SwiftUI
 
@@ -25,8 +26,26 @@ enum DerivedValueIssue: String, Equatable, Error, Identifiable, Sendable {
     case intelligenceProjectionUnavailable = "DV-009"
     case intelligenceBudgetUnavailable = "DV-010"
     case budgetHistoryUnavailable = "DV-011"
+    case budgetHistoryQuarantined = "DV-012"
+    case budgetHistoryConfigurationMismatch = "DV-013"
+    case budgetHistoryPeriodMismatch = "DV-014"
+    case budgetHistoryCurrencyMismatch = "DV-015"
+    case budgetHierarchyInvalid = "DV-016"
+    case budgetArithmeticFailed = "DV-017"
+    case budgetReadFailed = "DV-018"
+    case budgetRefreshPending = "DV-019"
 
     var id: String { rawValue }
+
+    var needsBudgetHistoryReview: Bool {
+        switch self {
+        case .budgetHistoryQuarantined, .budgetHistoryConfigurationMismatch,
+             .budgetHistoryPeriodMismatch, .budgetHistoryCurrencyMismatch,
+             .budgetHierarchyInvalid, .budgetArithmeticFailed:
+            true
+        default: false
+        }
+    }
 
     var errorDescription: String? {
         switch self {
@@ -38,6 +57,17 @@ enum DerivedValueIssue: String, Equatable, Error, Identifiable, Sendable {
             AppLocalization.string("derived.reason.ledger")
         case .budgetCalculationFailed:
             AppLocalization.string("derived.reason.budget")
+        case .budgetHistoryQuarantined, .budgetHistoryConfigurationMismatch,
+             .budgetHistoryPeriodMismatch, .budgetHistoryCurrencyMismatch:
+            AppLocalization.string("derived.reason.budget_history_review")
+        case .budgetHierarchyInvalid:
+            AppLocalization.string("derived.reason.budget_hierarchy")
+        case .budgetArithmeticFailed:
+            AppLocalization.string("derived.reason.budget")
+        case .budgetReadFailed:
+            AppLocalization.string("error.read_failed_safe")
+        case .budgetRefreshPending:
+            AppLocalization.string("budget.loading")
         case .amountCalculationFailed:
             AppLocalization.string("derived.reason.amount")
         case .holdingValuationFailed:
@@ -53,6 +83,39 @@ enum DerivedValueIssue: String, Equatable, Error, Identifiable, Sendable {
         case .budgetHistoryUnavailable:
             AppLocalization.string("budget.history_unavailable")
         }
+    }
+
+    static func budgetFailure(_ error: Error, operation: String) -> DerivedValueIssue {
+        let issue: DerivedValueIssue
+        switch error {
+        case let existing as DerivedValueIssue: issue = existing
+        case let configuration as BudgetReportingConfigurationError:
+            switch configuration {
+            case .currencyMismatch: issue = .budgetHistoryCurrencyMismatch
+            case .invalidCalendar, .invalidMonthBoundary, .currentMonthWouldChange:
+                issue = .budgetHistoryPeriodMismatch
+            case .currentConfigurationMismatch: issue = .budgetHistoryConfigurationMismatch
+            }
+        case is BudgetTreeError: issue = .budgetHierarchyInvalid
+        case let monthly as MonthlyBudgetError:
+            issue = monthly == .invalidMonth ? .budgetHistoryPeriodMismatch : .budgetHierarchyInvalid
+        case let rollover as BudgetRolloverError:
+            switch rollover {
+            case .invalidMonth, .duplicateMonth, .duplicateConfigurationMonth:
+                issue = .budgetHistoryPeriodMismatch
+            case .configurationCurrencyMismatch: issue = .budgetHistoryCurrencyMismatch
+            default: issue = .budgetHistoryQuarantined
+            }
+        case is DecimalCalculationError, is MoneyError: issue = .budgetArithmeticFailed
+        case is PersistenceError: issue = .budgetReadFailed
+        case AppModelError.locked: issue = .appNotReady
+        case is CancellationError: issue = .budgetRefreshPending
+        default: issue = .budgetCalculationFailed
+        }
+        if issue != .budgetRefreshPending {
+            DerivedValueDiagnostics.record(issue, operation: operation, error: error)
+        }
+        return issue
     }
 }
 
@@ -108,18 +171,22 @@ struct DerivedValueUnavailableView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("—")
-                .font(prominent ? .largeTitle.bold() : .headline)
-                .monospacedDigit()
+            if issue == .budgetRefreshPending {
+                ProgressView("budget.loading")
+            } else {
+                Text("—")
+                    .font(prominent ? .largeTitle.bold() : .headline)
+                    .monospacedDigit()
 
-            Text(issue.localizedDescription)
+                Text(issue.localizedDescription)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+
+                Button("derived.show_diagnostic") {
+                    isShowingDiagnostic = true
+                }
                 .font(.footnote)
-                .foregroundStyle(.secondary)
-
-            Button("derived.show_diagnostic") {
-                isShowingDiagnostic = true
             }
-            .font(.footnote)
         }
         .alert("derived.unavailable_title", isPresented: $isShowingDiagnostic) {
             Button("action.okay", role: .cancel) {}
