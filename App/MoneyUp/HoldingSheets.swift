@@ -14,6 +14,7 @@ struct AddHoldingSheet: View {
     @State private var priceText = ""
     @State private var currencyCode = SupportedCurrencies.regionalDefault
     @State private var openingTreatment: AppModel.InvestmentOpeningTreatment?
+    @State private var didInitialize = false
     @State private var isSaving = false
     @State private var errorMessage: String?
 
@@ -76,14 +77,12 @@ struct AddHoldingSheet: View {
                 }
 
             }
+            .scrollDismissesKeyboard(.interactively)
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
             .navigationTitle("holding.add")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("action.cancel") { dismiss() }
-                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("action.save") { Task { await save() } }
                         .disabled(!canSave || isSaving)
@@ -91,6 +90,8 @@ struct AddHoldingSheet: View {
                 MoneyUpKeyboardDoneToolbar()
             }
             .onAppear {
+                guard !didInitialize else { return }
+                didInitialize = true
                 accountID = accounts.first?.id
                 currencyCode = accounts.first?.currency?.value
                     ?? model.profile?.baseCurrency.value ?? "SGD"
@@ -100,6 +101,13 @@ struct AddHoldingSheet: View {
                     currencyCode = code
                 }
             }
+            .moneyUpProtectDraft(
+                hasChanges: !name.isEmpty || !symbol.isEmpty || !quantityText.isEmpty
+                    || !priceText.isEmpty || openingTreatment != nil
+                    || (didInitialize && accountID != accounts.first?.id),
+                isSaving: isSaving
+            )
+            .disabled(isSaving)
             .moneyUpOperationErrorAlert(message: $errorMessage)
         }
     }

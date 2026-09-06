@@ -8,6 +8,7 @@ struct AssetsView: View {
     @AppStorage(MoneyAmountPrivacy.storageKey)
     private var hidesAmounts = MoneyAmountPrivacy.defaultHidesAmounts
     @State private var isAddingAccount = false
+    @State private var isAddingAllowance = false
     @State private var isAddingHolding = false
     @State private var editingAccount: LedgerAccount?
     @State private var editingHolding: InvestmentHolding?
@@ -71,26 +72,6 @@ struct AssetsView: View {
             })
         } catch {
             return .unavailable(.amountCalculationFailed)
-        }
-    }
-
-    private func value(for holding: InvestmentHolding) -> DerivedValue<Money> {
-        do {
-            guard let value = try holding.marketValue() else {
-                DerivedValueDiagnostics.record(
-                    .holdingValuationFailed,
-                    operation: "assets-holding-row-missing-price"
-                )
-                return .unavailable(.holdingValuationFailed)
-            }
-            return .available(value)
-        } catch {
-            DerivedValueDiagnostics.record(
-                .holdingValuationFailed,
-                operation: "assets-holding-row",
-                error: error
-            )
-            return .unavailable(.holdingValuationFailed)
         }
     }
 
@@ -237,6 +218,8 @@ struct AssetsView: View {
                         Label("account.add", systemImage: "plus.circle")
                     }
                 }
+
+                AssetAllowancesSection()
 
                 Section {
                     NavigationLink {
@@ -498,11 +481,20 @@ struct AssetsView: View {
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
             .navigationTitle("tab.assets")
+            .moneyUpNavigationSurface()
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     MoneyUpAmountPrivacyButton()
                 }
+                ToolbarItem(placement: .primaryAction) {
+                    Menu {
+                        Button { isAddingAccount = true } label: { Label("account.add", systemImage: "wallet.bifold") }
+                        Button { isAddingAllowance = true } label: { Label("allowance.add", systemImage: "giftcard") }
+                        Button { isAddingHolding = true } label: { Label("holding.add", systemImage: "chart.line.uptrend.xyaxis") }
+                    } label: { Label("assets.add", systemImage: "plus") }
+                }
             }
+            .sheet(isPresented: $isAddingAllowance) { AllowanceEditorSheet(plan: nil) }
             .sheet(isPresented: $isAddingAccount) {
                 AddAccountSheet()
             }
@@ -611,4 +603,27 @@ private extension AssetsView {
     var archivedFinancialAccounts: [LedgerAccount] {
         model.allUserAccounts.filter { $0.isArchived && $0.systemRole == nil }
     }
+}
+
+extension AssetsView {
+    func value(for holding: InvestmentHolding) -> DerivedValue<Money> {
+        do {
+            guard let value = try holding.marketValue() else {
+                DerivedValueDiagnostics.record(
+                    .holdingValuationFailed,
+                    operation: "assets-holding-row-missing-price"
+                )
+                return .unavailable(.holdingValuationFailed)
+            }
+            return .available(value)
+        } catch {
+            DerivedValueDiagnostics.record(
+                .holdingValuationFailed,
+                operation: "assets-holding-row",
+                error: error
+            )
+            return .unavailable(.holdingValuationFailed)
+        }
+    }
+
 }

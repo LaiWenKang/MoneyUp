@@ -32,19 +32,26 @@ final class RedesignRenderEvidenceTests: XCTestCase {
         await capture(CategoryManagementList().environment(model).preferredColorScheme(.light), name: "categories-light")
         await capture(NavigationStack { DisplaySettingsView() }.environment(model).environment(\.dynamicTypeSize, .accessibility2).preferredColorScheme(.dark), name: "display-large-text")
         await capture(BudgetCompositionView(progress: progress, onEdit: { _ in }).padding(24).background(Color.moneyUpBackground).ignoresSafeArea().preferredColorScheme(.light), name: "composition-detail", height: 280)
+        await capture(PlanView(initialSection: .calendar).environment(model).preferredColorScheme(.dark), name: "calendar-dark")
+        await capture(NavigationStack { HistoryView() }.environment(model).preferredColorScheme(.dark), name: "history-dark")
+        await capture(DashboardView().environment(model).preferredColorScheme(.dark), name: "today-dark")
+        await capture(AssetsView().environment(model).preferredColorScheme(.light), name: "assets-light")
+        await capture(PlanView().environment(model).environment(\.dynamicTypeSize, .accessibility2).preferredColorScheme(.dark), name: "budget-large-text", height: 900, width: 390)
+        await capture(PlanView().environment(model).environment(\.locale, Locale(identifier: "zh-Hans")).preferredColorScheme(.light), name: "budget-small-chinese", height: 740, width: 320)
+        await capture(NavigationStack { HistoryView() }.environment(model).environment(\.dynamicTypeSize, .accessibility2).preferredColorScheme(.light), name: "history-large-text", height: 900)
         await fixture.store.close()
     }
 
     @MainActor
-    private func capture<Content: View>(_ content: Content, name: String, height: CGFloat = 844) async {
+    private func capture<Content: View>(_ content: Content, name: String, height: CGFloat = 844, width: CGFloat = 390) async {
         let controller = UIHostingController(rootView: content)
         let window: UIWindow
         if let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first {
             window = UIWindow(windowScene: scene)
         } else {
-            window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: height))
+            window = UIWindow(frame: CGRect(x: 0, y: 0, width: width, height: height))
         }
-        window.frame = CGRect(x: 0, y: 0, width: 390, height: height)
+        window.frame = CGRect(x: 0, y: 0, width: width, height: height)
         window.rootViewController = controller
         window.isHidden = false
         defer { window.isHidden = true; window.rootViewController = nil }

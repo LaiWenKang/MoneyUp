@@ -8,20 +8,6 @@ import SwiftUI
 /// line that keeps the number and its arithmetic one tap away.
 extension DashboardView {
     var safeToSpendHero: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 26, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color.accentColor.opacity(0.22),
-                            Color.moneyUpMist.opacity(0.40),
-                            Color.moneyUpSurfaceElevated
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-
             VStack(alignment: .leading, spacing: 14) {
                 switch model.flexibleTodayResult(asOf: reportingDate) {
                 case let .available(.available(breakdown)):
@@ -87,11 +73,19 @@ extension DashboardView {
                 }
             }
             .padding(20)
-        }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background {
+                LinearGradient(
+                    colors: [Color.accentColor.opacity(0.16), Color.moneyUpSurfaceElevated],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            }
         .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 26, style: .continuous)
                 .stroke(Color.accentColor.opacity(0.18), lineWidth: 1)
+                .allowsHitTesting(false)
         }
         .accessibilityElement(children: .contain)
     }

@@ -31,6 +31,7 @@ struct SavingsGoalsView: View {
                 }
             }
         }
+        .scrollDismissesKeyboard(.interactively)
         .scrollContentBackground(.hidden)
         .background(Color.moneyUpBackground)
         .overlay {
@@ -163,6 +164,7 @@ private struct GoalEditorSheet: View {
     ) ?? Date()
     @State private var resetRule: SavingsGoalResetRule = .never
     @State private var currency: CurrencyCode?
+    @State private var initialDraftSignature: [String]?
     @State private var isSaving = false
     @State private var errorMessage: String?
 
@@ -215,14 +217,12 @@ private struct GoalEditorSheet: View {
                     MoneyUpExplainer("goal.reset_rule_detail")
                 }
             }
+            .scrollDismissesKeyboard(.interactively)
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
             .navigationTitle("goal.add")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("action.cancel") { dismiss() }
-                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("action.save") { Task { await save() } }
                         .disabled(!canSave || isSaving)
@@ -232,9 +232,23 @@ private struct GoalEditorSheet: View {
                     Button("action.done") { amountFocused = false }
                 }
             }
-            .onAppear { currency = currency ?? availableCurrencies.first }
+            .onAppear {
+                guard initialDraftSignature == nil else { return }
+                currency = currency ?? availableCurrencies.first
+                initialDraftSignature = draftSignature
+            }
+            .moneyUpProtectDraft(
+                hasChanges: initialDraftSignature.map { $0 != draftSignature } ?? false,
+                isSaving: isSaving
+            )
+            .disabled(isSaving)
             .moneyUpOperationErrorAlert(message: $errorMessage)
         }
+    }
+
+    private var draftSignature: [String] {
+        [name, kind.rawValue, targetText, String(targetDate.timeIntervalSinceReferenceDate),
+         resetRule.rawValue, currency?.value ?? ""]
     }
 
     private func save() async {
@@ -379,6 +393,7 @@ private struct GoalManagementSheet: View {
                 }
 
             }
+            .scrollDismissesKeyboard(.interactively)
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
             .navigationTitle(goal?.name ?? AppLocalization.string("plan.goals"))
@@ -514,6 +529,7 @@ private struct GoalMovementSheet: View {
                     displayedComponents: .date
                 )
             }
+            .scrollDismissesKeyboard(.interactively)
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
             .navigationTitle(kind.titleKey)

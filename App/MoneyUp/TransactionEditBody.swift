@@ -259,6 +259,7 @@ extension TransactionEditView {
                 }
 
             }
+            .scrollDismissesKeyboard(.interactively)
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
             .scrollDismissesKeyboard(.interactively)
@@ -270,9 +271,6 @@ extension TransactionEditView {
             .navigationTitle("history.edit")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("action.cancel") { dismiss() }
-                }
                 if isEditable {
                     ToolbarItem(placement: .confirmationAction) {
                         Button("action.save") { Task { await save() } }
@@ -284,11 +282,17 @@ extension TransactionEditView {
                 }
                 MoneyUpKeyboardDoneToolbar()
             }
+            .moneyUpProtectDraft(
+                hasChanges: initialDraftSignature.map { $0 != draftSignature } ?? false,
+                isSaving: isSaving || isPreparingEvidence
+            )
             .task {
+                guard initialDraftSignature == nil else { return }
                 userActionTimeContext = UserActionTimeContext(
                     timeZone: .autoupdatingCurrent
                 )
                 loadValues()
+                initialDraftSignature = draftSignature
             }
             .onUserActionTimeChange {
                 userActionTimeContext = UserActionTimeContext(

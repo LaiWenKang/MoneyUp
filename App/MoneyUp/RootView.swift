@@ -393,6 +393,7 @@ private struct MainTabView: View {
         Binding(
             get: { selectedSection },
             set: { destination in
+                MoneyUpKeyboard.dismiss()
                 historyCrossTabNavigation.clearForDirectTabSelection()
                 selectedSection = destination
             }

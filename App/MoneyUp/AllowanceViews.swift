@@ -37,6 +37,7 @@ struct AllowanceCenterView: View {
                 }
             }
         }
+        .scrollDismissesKeyboard(.interactively)
         .scrollContentBackground(.hidden)
         .background(Color.moneyUpBackground)
         .navigationTitle("allowance.title")
@@ -55,7 +56,7 @@ struct AllowanceCenterView: View {
     }
 }
 
-private struct AllowanceRow: View {
+struct AllowanceRow: View {
     @Environment(AppModel.self) private var model
     @Environment(\.appReportingSnapshot) private var sharedReportingSnapshot
     let plan: AllowancePlan
@@ -131,7 +132,7 @@ private struct AllowanceRow: View {
     }
 }
 
-private struct AllowanceDetailView: View {
+struct AllowanceDetailView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.appReportingSnapshot) private var sharedReportingSnapshot
     let planID: UUID
@@ -355,6 +356,7 @@ private struct AllowanceDetailView: View {
                 }
             }
         }
+        .scrollDismissesKeyboard(.interactively)
         .scrollContentBackground(.hidden)
         .background(Color.moneyUpBackground)
         .navigationTitle(plan?.name ?? AppLocalization.string("allowance.title"))
@@ -509,7 +511,7 @@ private struct AllowanceReconciliationSheet: View {
     }
 }
 
-private struct AllowanceEditorSheet: View {
+struct AllowanceEditorSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AppModel.self) private var model
     let plan: AllowancePlan?
@@ -527,6 +529,8 @@ private struct AllowanceEditorSheet: View {
     @State private var rollover: AllowanceRolloverRule
     @State private var rolloverCapText: String
     @State private var isArchived: Bool
+    @State private var initialDraftSignature: [String]?
+    @State private var isAddingPrepaidAccount = false
     @State private var isSaving = false
     @State private var errorMessage: String?
 
@@ -675,6 +679,7 @@ private struct AllowanceEditorSheet: View {
                             Text("allowance.restricted_account_required")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
+                            Button("allowance.create_prepaid_account") { isAddingPrepaidAccount = true }
                         }
                     }
                     DatePicker("allowance.starts", selection: $startsAt, displayedComponents: .date)
@@ -763,6 +768,7 @@ private struct AllowanceEditorSheet: View {
                     Toggle("lifecycle.archived", isOn: $isArchived)
                 }
             }
+            .scrollDismissesKeyboard(.interactively)
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
             .navigationTitle(
@@ -772,9 +778,6 @@ private struct AllowanceEditorSheet: View {
             )
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("action.cancel") { dismiss() }
-                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("action.save") { Task { await save() } }
                         .disabled(!canSave || isSaving)
@@ -782,6 +785,7 @@ private struct AllowanceEditorSheet: View {
                 MoneyUpKeyboardDoneToolbar()
             }
             .onAppear {
+                guard initialDraftSignature == nil else { return }
                 if plan == nil {
                     let currentDate = model.currentDateForUserAction()
                     timeZoneIdentifier = model.reportingCalendar.timeZone.identifier
@@ -797,6 +801,7 @@ private struct AllowanceEditorSheet: View {
                     }
                     currencyCode = model.profile?.baseCurrency.value ?? currencyCode
                 }
+                initialDraftSignature = draftSignature
             }
             .onChange(of: fundingMode) { _, mode in
                 if mode != .prepaidAsset {
@@ -811,8 +816,27 @@ private struct AllowanceEditorSheet: View {
                         ? nil : eligibleLinkedAccounts.first?.id
                 }
             }
+            .moneyUpProtectDraft(
+                hasChanges: initialDraftSignature.map { $0 != draftSignature } ?? false,
+                isSaving: isSaving
+            )
+            .disabled(isSaving)
+            .sheet(isPresented: $isAddingPrepaidAccount, onDismiss: {
+                if linkedAccountID == nil { linkedAccountID = eligibleLinkedAccounts.first?.id }
+            }) {
+                AddAccountSheet(initialType: .restrictedAllowance, initialCurrencyCode: currencyCode)
+            }
             .moneyUpOperationErrorAlert(message: $errorMessage)
         }
+    }
+
+    private var draftSignature: [String] {
+        [name, amountText, currencyCode, cadence.rawValue, fundingMode.rawValue,
+         linkedAccountID?.uuidString ?? "", timeZoneIdentifier,
+         String(startsAt.timeIntervalSinceReferenceDate), String(hasEndDate),
+         String(endsAt.timeIntervalSinceReferenceDate),
+         eligibleCategoryIDs.map(\.uuidString).sorted().joined(separator: ","),
+         rollover.rawValue, rolloverCapText, String(isArchived)]
     }
 
     private var canSave: Bool {

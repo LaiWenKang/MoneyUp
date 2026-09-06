@@ -395,10 +395,8 @@ struct HistoryView: View {
         return List {
             Section {
                 HistoryScopeSelector(selection: $quickRange)
-            }
-            .listRowBackground(Color.clear)
+                    .listRowBackground(Color.clear)
 
-            Section {
                 HStack(spacing: 8) {
                     Menu {
                         Button {
@@ -478,27 +476,10 @@ struct HistoryView: View {
                         .accessibilityLabel("history.filter.clear_category")
                     }
                 }
-            }
 
-            Section {
-                HStack(spacing: 12) {
-                    Button { showingFilters = true } label: {
-                        Label {
-                            Text(filters.activeFilterCount == 0
-                                ? AppLocalization.string("history.filter")
-                                : String(format: AppLocalization.string("history.filter_count"), filters.activeFilterCount))
-                        } icon: { Image(systemName: "line.3.horizontal.decrease.circle") }
-                    }
-                    .labelStyle(.titleAndIcon)
-                    Spacer(minLength: 8)
-                    Button("history.clear_filters") {
-                        let snapshot = reportingSnapshot
-                        filters = HistoryFilterDraft(now: snapshot.instant, calendar: snapshot.calendar)
-                        quickRange = .all
-                    }.disabled(!filters.hasActiveFilters)
-                }
-                if !searchText.isEmpty {
-                    Button("history.clear_search") { searchText = ""; appliedSearchText = "" }
+                ViewThatFits(in: .horizontal) {
+                    filterActions(horizontal: true)
+                    filterActions(horizontal: false)
                 }
             }
 
@@ -580,11 +561,14 @@ struct HistoryView: View {
                             .padding(.vertical, 16)
                             .listRowBackground(Color.clear)
                         } else {
-                            ContentUnavailableView(
-                                unavailableTitle,
-                                systemImage: "clock.arrow.circlepath",
-                                description: Text(unavailableDetail)
-                            )
+                            ContentUnavailableView {
+                                Label(unavailableTitle, systemImage: "line.3.horizontal.decrease.circle")
+                            } description: {
+                                Text(unavailableDetail)
+                            } actions: {
+                                Button("history.clear_filters") { clearHistoryFilters() }
+                                    .buttonStyle(.bordered)
+                            }
                             .listRowBackground(Color.clear)
                         }
                     } else {
@@ -655,9 +639,12 @@ struct HistoryView: View {
                 }
             }
             .listStyle(.insetGrouped)
+            .listSectionSpacing(16)
+            .scrollDismissesKeyboard(.interactively)
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
             .navigationTitle("tab.history")
+            .moneyUpNavigationSurface()
             .searchable(text: $searchText, prompt: "history.search")
             .onAppear {
                 let snapshot = reportingSnapshot
@@ -792,6 +779,36 @@ struct HistoryView: View {
 }
 
 extension HistoryView {
+    private func filterActions(horizontal: Bool) -> some View {
+        let layout = horizontal ? AnyLayout(HStackLayout(spacing: 12)) : AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
+        return layout {
+            Button { showingFilters = true } label: {
+                Label {
+                    Text(filters.activeFilterCount == 0
+                        ? AppLocalization.string("history.filter")
+                        : String(format: AppLocalization.string("history.filter_count"), filters.activeFilterCount))
+                } icon: { Image(systemName: "line.3.horizontal.decrease.circle") }
+            }
+            .labelStyle(.titleAndIcon)
+            .fixedSize(horizontal: true, vertical: false)
+            .frame(minHeight: 44)
+            if horizontal { Spacer(minLength: 8) }
+            Button("history.clear_filters") { clearHistoryFilters() }
+                .fixedSize(horizontal: true, vertical: false)
+                .frame(minHeight: 44)
+                .disabled(!filters.hasActiveFilters && searchText.isEmpty)
+        }
+        .buttonStyle(.borderless)
+    }
+
+    private func clearHistoryFilters() {
+        let snapshot = reportingSnapshot
+        filters = HistoryFilterDraft(now: snapshot.instant, calendar: snapshot.calendar)
+        quickRange = .all
+        searchText = ""
+        appliedSearchText = ""
+    }
+
     private func setCategoryFilter(_ categoryIDs: Set<UUID>?) {
         withAnimation(
             MoneyUpMotion.animation(

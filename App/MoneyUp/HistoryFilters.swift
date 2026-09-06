@@ -21,7 +21,7 @@ struct HistorySummaryView: View {
                 Text(summary.transactionCount, format: .number)
                     .monospacedDigit()
             }
-            if currencies.isEmpty {
+            if currencies.isEmpty && summary.transactionCount > 0 {
                 Text("history.no_filtered_total")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -56,9 +56,9 @@ struct HistorySummaryView: View {
                     }
                 }
             }
-            Text("history.total_explanation")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            if summary.transactionCount > 0 {
+                MoneyUpExplainer("history.total_explanation")
+            }
         }
         .accessibilityElement(children: .contain)
     }
@@ -254,6 +254,7 @@ struct HistoryFilterSheet: View {
                     }
                 }
             }
+            .scrollDismissesKeyboard(.interactively)
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
             .navigationTitle("history.filter")

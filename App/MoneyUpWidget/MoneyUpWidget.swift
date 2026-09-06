@@ -135,6 +135,10 @@ private struct MoneyUpWidgetView: View {
     var body: some View {
         Group {
             switch entry.content {
+            case .budgetStatus where entry.budgetSnapshot.usesQuickActionFallback,
+                 .smartOverview where entry.budgetSnapshot.usesQuickActionFallback:
+                quickActionContent
+
             case .budgetStatus:
                 BudgetStatusWidgetView(
                     snapshot: entry.budgetSnapshot,
@@ -153,6 +157,8 @@ private struct MoneyUpWidgetView: View {
             }
         }
         .environment(\.locale, AppLanguagePreference.current.locale)
+        .widgetURL(entry.content == .quickAction || entry.budgetSnapshot.usesQuickActionFallback
+            ? entry.action.deepLink : nil)
         .containerBackground(Color.moneyUpWidgetBackground, for: .widget)
         .tint(.moneyUpSoftGreen)
     }
@@ -527,7 +533,7 @@ private struct SmallQuickActionView: View {
     let homeDensity: MoneyUpWidgetHomeDensity
 
     var body: some View {
-        Button(intent: OpenQuickLogIntent(action: action)) {
+        Link(destination: action.deepLink) {
             if homeDensity == .accessibility {
                 HStack(spacing: 10) {
                     WidgetActionGlyph(action: action, size: 32)
@@ -601,7 +607,7 @@ private struct MediumQuickActionsView: View {
 
             HStack(spacing: 8) {
                 ForEach(actions) { action in
-                    Button(intent: OpenQuickLogIntent(action: action)) {
+                    Link(destination: action.deepLink) {
                         if homeDensity == .accessibility {
                             HStack(spacing: 10) {
                                 WidgetActionGlyph(action: action, size: 32)
@@ -658,7 +664,7 @@ private struct AccessoryCircularActionView: View {
     let action: MoneyUpQuickAction
 
     var body: some View {
-        Button(intent: OpenQuickLogIntent(action: action)) {
+        Link(destination: action.deepLink) {
             ZStack {
                 AccessoryWidgetBackground()
                 Image("MoneyUpBrandMark")
@@ -682,7 +688,7 @@ private struct AccessoryRectangularActionView: View {
     let action: MoneyUpQuickAction
 
     var body: some View {
-        Button(intent: OpenQuickLogIntent(action: action)) {
+        Link(destination: action.deepLink) {
             HStack(spacing: 8) {
                 ZStack {
                     Image("MoneyUpBrandMark")
@@ -832,7 +838,7 @@ private struct AccessoryInlineActionView: View {
     let action: MoneyUpQuickAction
 
     var body: some View {
-        Button(intent: OpenQuickLogIntent(action: action)) {
+        Link(destination: action.deepLink) {
             Label {
                 Text(action.titleKey)
             } icon: {

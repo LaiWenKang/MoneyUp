@@ -1,6 +1,13 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "allowance.manage_all" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"All allowances and benefits"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"全部津贴与福利"}}}},
+    "allowance.assets_detail" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Benefits and reimbursement claims stay separate from cash. Only prepaid value in a linked account is stored value."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"福利额度和报销申请与现金分开。只有关联账户中已充值的金额才属于储值资产。"}}}},
+    "assets.add" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Add asset or allowance"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"添加资产或津贴"}}}},
+    "account.type_allowance" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Allowance or benefit…"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"津贴或福利…"}}}},
+    "allowance.create_prepaid_account" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Create prepaid account"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"创建预付账户"}}}},
+    "budget.subcategory_count" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"%d subcategories"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"%d 个子分类"}}}},
+    "budget.spending_progress" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Spending · month marker"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"支出进度 · 月份标记"}}}},
     "budget.composition_empty" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"There are no positive allocations to compare. Category balances are listed below."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"目前没有正数预算可供比较。下方列出了各分类余额。"}}}},
     "budget.composition_deficit" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"A carried deficit makes a part-to-whole chart misleading. Exact category balances remain available below."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"存在结转赤字时，比例图可能产生误导。下方仍可查看各分类的准确余额。"}}}},
     "category.move_budget_detail" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Moving transfers this allocation. Enclosing fixed budgets are adjusted to keep the combined budget unchanged; recorded history keeps its original hierarchy."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"移动会转移此分类的预算。相关上级固定预算会相应调整，以保持总预算不变；历史记录保留原分类层级。"}}}},

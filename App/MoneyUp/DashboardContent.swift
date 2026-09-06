@@ -28,6 +28,7 @@ extension DashboardView {
             }
             .background { MoneyUpBackdrop() }
             .navigationTitle("tab.today")
+            .moneyUpNavigationSurface()
             .sheet(isPresented: $isShowingFlexibleTodayBreakdown) {
                 if case let .available(.available(breakdown)) = model.flexibleTodayResult(
                     asOf: reportingDate

@@ -97,6 +97,7 @@ struct LoanCenterView: View {
                 }
             }
         }
+        .scrollDismissesKeyboard(.interactively)
         .scrollContentBackground(.hidden)
         .background(Color.moneyUpBackground)
         .navigationTitle("loan.title")
@@ -256,6 +257,7 @@ private struct LoanDetailView: View {
                 }
             }
         }
+        .scrollDismissesKeyboard(.interactively)
         .scrollContentBackground(.hidden)
         .background(Color.moneyUpBackground)
         .navigationTitle(plan?.name ?? AppLocalization.string("loan.title"))
@@ -340,6 +342,7 @@ private struct AddLoanPlanSheet: View {
             }
             .navigationTitle("loan.configure")
             .navigationBarTitleDisplayMode(.inline)
+            .scrollDismissesKeyboard(.interactively)
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
             .toolbar {
@@ -450,6 +453,7 @@ private struct LoanPaymentSheet: View {
             }
             .navigationTitle("loan.repayment")
             .navigationBarTitleDisplayMode(.inline)
+            .scrollDismissesKeyboard(.interactively)
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
             .toolbar {
@@ -548,6 +552,7 @@ private struct LoanDrawdownSheet: View {
             }
             .navigationTitle("loan.drawdown")
             .navigationBarTitleDisplayMode(.inline)
+            .scrollDismissesKeyboard(.interactively)
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
             .toolbar {

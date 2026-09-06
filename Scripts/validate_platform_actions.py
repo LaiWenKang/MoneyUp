@@ -206,9 +206,7 @@ PLATFORM_SURFACE_INVENTORY = {
     r"\bControlWidgetButton\s*\(": {
         "App/MoneyUpWidget/MoneyUpQuickLogControl.swift": 1,
     },
-    r"\bButton\s*\(\s*intent\s*:": {
-        "App/MoneyUpWidget/MoneyUpWidget.swift": 5,
-    },
+    r"\bButton\s*\(\s*intent\s*:": {},
     r"\bAppShortcut\s*\(": {
         "App/MoneyUp/MoneyUpAppShortcuts.swift": 6,
     },
@@ -244,7 +242,6 @@ COMPILED_REFERENCE_INVENTORY = {
         "App/MoneyUp/MoneyUpAppShortcuts.swift": 6,
         "App/Shared/MoneyUpQuickAction.swift": 2,
         "App/MoneyUpWidget/MoneyUpQuickLogControl.swift": 1,
-        "App/MoneyUpWidget/MoneyUpWidget.swift": 5,
     },
     r"\bQuickLogRouteRequest\b": {
         "App/MoneyUp/AppModel.swift": 3,
@@ -294,8 +291,9 @@ COMPILED_REFERENCE_INVENTORY = {
     },
     r"\bLink\s*\(": {
         "App/MoneyUp/PrivacyAndBetaView.swift": 2,
+        "App/MoneyUpWidget/MoneyUpWidget.swift": 5,
     },
-    r"\.widgetURL\s*\(": {},
+    r"\.widgetURL\s*\(": {"App/MoneyUpWidget/MoneyUpWidget.swift": 1},
     r"\.onOpenURL\s*\{": {
         "App/MoneyUp/MoneyUpApp.swift": 1,
     },
@@ -1591,17 +1589,19 @@ def validate_shortcuts_source(source: str) -> list[str]:
 
 def validate_widget_source(source: str) -> list[str]:
     errors: list[str] = []
-    if "moneyup://" in source or ".deepLink" in source:
-        errors.append("widgets must not open a custom scheme directly")
+    if "moneyup://" in source or "URL(string:" in source:
+        errors.append("widgets must obtain URLs only from the closed quick-action enum")
     if source.count('let kind = "MoneyUpQuickLog"') != 1:
         errors.append("persisted MoneyUpQuickLog widget kind drifted")
     if "MoneyUpQuickLogControl()" not in source:
         errors.append("WidgetBundle does not include the iOS 18 quick-log control")
-    if "Link(" in source or ".widgetURL(" in source:
-        errors.append("quick widgets must use OpenQuickLogIntent, not raw links/widgetURL")
-    button = "Button(intent: OpenQuickLogIntent(action: action))"
-    if source.count(button) != 5 or source.count("Button(intent:") != 5:
-        errors.append("every quick-action widget family must use Button(intent:)")
+    if source.count("Link(destination: action.deepLink)") != 5 or source.count("Link(") != 5:
+        errors.append("every quick-action widget family must use an allowlisted navigation link")
+    url = ".widgetURL(entry.content == .quickAction || entry.budgetSnapshot.usesQuickActionFallback ? entry.action.deepLink : nil)"
+    if url not in re.sub(r"\s+", " ", source) or source.count(".widgetURL(") != 1:
+        errors.append("widget background taps must use the same allowlisted fallback route")
+    if source.count(".deepLink") != 6 or "Button(intent:" in source:
+        errors.append("widget navigation must not perform an intent or construct a payload")
     if (
         source.count("let snapshot = store.readPublishedSnapshot(now: now)") != 1
         or source.count(

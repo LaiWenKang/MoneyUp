@@ -113,6 +113,7 @@ struct ExchangeRatesView: View {
             }
 
         }
+        .scrollDismissesKeyboard(.interactively)
         .scrollContentBackground(.hidden)
         .background(Color.moneyUpBackground)
         .navigationTitle("fx.title")

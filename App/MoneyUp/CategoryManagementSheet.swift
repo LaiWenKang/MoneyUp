@@ -84,6 +84,7 @@ struct CategoryManagementSheet: View {
                 footer: { Text("lifecycle.archive_budget_detail") }
             }
             .disabled(isSaving)
+            .scrollDismissesKeyboard(.interactively)
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
             .scrollDismissesKeyboard(.interactively)

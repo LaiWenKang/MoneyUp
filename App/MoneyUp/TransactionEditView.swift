@@ -120,6 +120,7 @@ struct TransactionEditView: View {
     @State var userActionTimeContext = UserActionTimeContext()
     @State var payee: String
     @State var note: String
+    @State var initialDraftSignature: [String]?
     @State var isSaving = false
     @State var errorMessage: String?
     @State var isConfirmingDelete = false
@@ -510,5 +511,16 @@ struct TransactionEditView: View {
             splitLines[index].amountText = editableAmount(amounts[index].amount)
         }
         errorMessage = nil
+    }
+}
+
+extension TransactionEditView {
+    var draftSignature: [String] {
+        [kind.rawValue, amountText, destinationAmountText,
+         accountID?.uuidString ?? "", destinationAccountID?.uuidString ?? "",
+         categoryID?.uuidString ?? "", String(isSplitTransaction),
+         String(occurredAt.timeIntervalSinceReferenceDate), payee, note]
+        + splitLines.flatMap { [$0.id.uuidString, $0.categoryID?.uuidString ?? "", $0.amountText, $0.memo] }
+        + pendingEvidence.map { $0.id.uuidString }
     }
 }
