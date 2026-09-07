@@ -24,7 +24,7 @@ enum TransactionPreparationPolicy {
         return QuickLogDraft(
             kind: action == .refund ? .refund : values.kind,
             amountText: editableAmount(values.amount),
-            destinationAmountText: values.destinationAmount.map(editableAmount) ?? "",
+            destinationAmountText: values.destinationAmount.map { editableAmount($0) } ?? "",
             accountID: values.accountID, destinationAccountID: values.destinationAccountID,
             categoryID: values.categoryID, occurredAt: now, dateWasEdited: false,
             payee: entry.payee ?? "", note: entry.note ?? "", smartText: "",
