@@ -73,6 +73,7 @@ struct MoneyUpApp: App {
                     }
                     routePendingQuickAction()
                     await startInitialModelIfNeeded()
+                    await model.unlockAutomaticallyIfNeeded()
                 }
                 .onOpenURL { url in
                     routeDeepLink(url)
@@ -82,6 +83,10 @@ struct MoneyUpApp: App {
                 }
                 .onChange(of: model.isWorking) { _, _ in
                     routePendingQuickAction()
+                    Task { await model.unlockAutomaticallyIfNeeded() }
+                }
+                .onChange(of: model.state) { _, _ in
+                    Task { await model.unlockAutomaticallyIfNeeded() }
                 }
                 .onChange(of: model.isLifecycleMutationInProgress) { _, _ in
                     routePendingQuickAction()
@@ -103,7 +108,10 @@ struct MoneyUpApp: App {
                         model.retryPresentedQuickActionAcknowledgement()
                         model.sceneDidBecomeActive()
                         routePendingQuickAction()
-                        Task { await startInitialModelIfNeeded() }
+                        Task {
+                            await startInitialModelIfNeeded()
+                            await model.unlockAutomaticallyIfNeeded()
+                        }
                     case .inactive:
                         model.sceneDidBecomeInactive()
                     @unknown default:

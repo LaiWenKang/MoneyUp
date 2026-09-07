@@ -110,6 +110,7 @@ extension AppModel {
     }
 
     private func beginStartupWork() {
+        automaticUnlockIsPending = false
         isWorking = true
         isStarting = true
     }
@@ -183,6 +184,7 @@ extension AppModel {
     /// a startup failure. Kept as one transition so lifecycle tests can cover
     /// the background/foreground race without invoking process Keychain UI.
     func finishCancelledAuthentication() {
+        automaticUnlockIsPending = false
         finishUnlockToFirstUsefulContentMeasurement(outcome: .cancelled)
         autoLockTask?.cancel()
         autoLockTask = nil
@@ -346,6 +348,9 @@ extension AppModel {
     }
 
     func sceneDidLeaveActive(at date: Date) {
+        if widgetLifecycleRefresh.isSceneActive {
+            prepareAutomaticUnlockAfterInactivity()
+        }
         widgetLifecycleRefresh.isSceneActive = false
         cancelWidgetReportingDayRefresh()
         // Startup can already hold a decrypted key/store while domain loading

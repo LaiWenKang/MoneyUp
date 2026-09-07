@@ -55,22 +55,22 @@ private struct LaunchingView: View {
 
 private struct LockedView: View {
     @Environment(AppModel.self) private var model
-    private let method = UnlockMethod.current
+    @State private var method: UnlockMethod?
 
     var body: some View {
         GeometryReader { proxy in
             ScrollView {
                 VStack(spacing: 20) {
-                    Image(systemName: method.systemImage)
+                    Image(systemName: method?.systemImage ?? "lock.fill")
                         .font(.system(size: 52))
                         .foregroundStyle(
-                            method.isAvailable ? Color.accentColor : Color.orange
+                            method == .unavailable ? Color.orange : Color.accentColor
                         )
                         .accessibilityHidden(true)
                     Text("lock.title")
                         .font(.largeTitle.bold())
 
-                    if method.isAvailable {
+                    if let method, method.isAvailable {
                         Text("lock.detail")
                             .multilineTextAlignment(.center)
                             .foregroundStyle(.secondary)
@@ -84,12 +84,14 @@ private struct LockedView: View {
                         .tint(.moneyUpAction)
                         .controlSize(.large)
                         .disabled(model.isWorking)
-                    } else {
+                    } else if method == .unavailable {
                         // The database key is stored WhenPasscodeSetThisDeviceOnly, so
                         // without a device passcode there is nothing to unlock with.
                         Text("lock.no_passcode")
                             .multilineTextAlignment(.center)
                             .foregroundStyle(.secondary)
+                    } else {
+                        ProgressView()
                     }
                 }
                 .padding(32)
@@ -98,6 +100,11 @@ private struct LockedView: View {
             }
         }
         .background { MoneyUpBackdrop() }
+        .task {
+            method = await Task.detached(priority: .userInitiated) {
+                UnlockMethod.current
+            }.value
+        }
     }
 }
 
