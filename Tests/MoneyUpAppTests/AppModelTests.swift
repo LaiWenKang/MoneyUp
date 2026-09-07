@@ -7363,7 +7363,13 @@ final class AppModelTests: XCTestCase {
 
         try await model.updateAutoLockDelay(300)
         _ = model.budgetPurposeOverview()
-        XCTAssertEqual(model.budgetTreeCacheBuildCount, 3)
+        XCTAssertEqual(model.budgetTreeCacheBuildCount, 2, "Authentication preferences do not change budgets")
+
+        let changedZone = model.profile?.reportingTimeZoneIdentifier == "Asia/Singapore"
+            ? "GMT" : "Asia/Singapore"
+        try await model.updateReportingTimeZone(changedZone)
+        _ = model.budgetPurposeOverview()
+        XCTAssertEqual(model.budgetTreeCacheBuildCount, 3, "Financial reporting context must invalidate the cache")
         await fixture.store.close()
     }
 
