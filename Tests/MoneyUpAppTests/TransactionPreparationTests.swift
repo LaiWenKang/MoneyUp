@@ -97,6 +97,30 @@ final class TransactionPreparationTests: XCTestCase {
         await reopened.close()
     }
 
+    func testExplicitChoicesSurviveRoundTripWithoutFreezingFreshTime() throws {
+        var entry = draft(amount: "")
+        entry.accountID = UUID()
+        entry.categoryID = UUID()
+        XCTAssertFalse(entry.hasUserEdits, "Automatic defaults alone are replaceable")
+        entry.accountWasEdited = true
+        entry.categoryWasEdited = true
+        XCTAssertTrue(entry.hasUserEdits)
+        XCTAssertFalse(entry.hasTransactionContent)
+        XCTAssertTrue(QuickLogOccurrencePolicy.shouldRefresh(
+            hasTransactionContent: entry.hasTransactionContent,
+            dateWasEdited: entry.dateWasEdited, sourceCaptureID: entry.sourceCaptureID))
+        let encoded = try JSONEncoder().encode(entry)
+        XCTAssertEqual(try JSONDecoder().decode(QuickLogDraft.self, from: encoded), entry)
+        var legacy = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        legacy.removeValue(forKey: "accountWasEdited")
+        legacy.removeValue(forKey: "categoryWasEdited")
+        let restored = try JSONDecoder().decode(QuickLogDraft.self,
+            from: JSONSerialization.data(withJSONObject: legacy))
+        XCTAssertTrue(restored.accountWasEdited)
+        XCTAssertTrue(restored.categoryWasEdited)
+        XCTAssertTrue(restored.hasUserEdits)
+    }
+
     private func draft(amount: String) -> QuickLogDraft {
         QuickLogDraft(kind: .expense, amountText: amount, destinationAmountText: "",
             accountID: nil, destinationAccountID: nil, categoryID: nil,

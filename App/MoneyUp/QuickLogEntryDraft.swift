@@ -21,7 +21,9 @@ extension QuickLogEntryView {
             smartText: smartText,
             splitLines: splitLines,
             selectedAllowanceID: selectedAllowanceID,
-            sourceCaptureID: sourceCaptureID
+            sourceCaptureID: sourceCaptureID,
+            accountWasEdited: accountWasEdited,
+            categoryWasEdited: categoryWasEdited
         )
     }
 
@@ -151,8 +153,8 @@ extension QuickLogEntryView {
         accountID = draft.accountID
         destinationAccountID = draft.destinationAccountID
         categoryID = draft.categoryID
-        accountWasEdited = draft.accountID != nil
-        categoryWasEdited = draft.categoryID != nil
+        accountWasEdited = draft.accountWasEdited
+        categoryWasEdited = draft.categoryWasEdited
         occurredAt = draft.hasTransactionContent
             ? draft.occurredAt : model.currentDateForUserAction()
         dateWasEdited = draft.dateWasEdited
@@ -180,7 +182,7 @@ extension QuickLogEntryView {
             focusedField = .amount
             return
         }
-        if draftSnapshot.hasTransactionContent {
+        if draftSnapshot.hasUserEdits {
             // Every external action means “start or focus an entry.” Protect
             // even same-kind drafts: Smart Entry and receipt parsing can
             // otherwise overwrite an unfinished expense in place.

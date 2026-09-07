@@ -30,7 +30,8 @@ enum TransactionPreparationPolicy {
             payee: entry.payee ?? "", note: entry.note ?? "", smartText: "",
             splitLines: values.splitLines.map {
                 QuickLogSplitDraftLine(categoryID: $0.categoryID, amountText: $0.amountText, memo: $0.memo)
-            }
+            },
+            accountWasEdited: true, categoryWasEdited: values.categoryID != nil
         )
     }
 }

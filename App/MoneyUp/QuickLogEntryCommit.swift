@@ -12,7 +12,7 @@ private enum QuickLogSaveOutcome {
 
 extension QuickLogEntryView {
     func commitSave() async {
-        guard !isSaving, canSave else { return }
+        guard !isSaving, !isUndoing, canSave else { return }
         guard let amount, let accountID else { return }
         var performanceInterval = MoneyUpPerformanceSignposts.begin(
             .transactionSaveToPublication
@@ -232,7 +232,7 @@ extension QuickLogEntryView {
 
         Task {
             try? await Task.sleep(for: .seconds(6))
-            guard lastSavedEntryID == entryID else { return }
+            guard !isUndoing, !isSaving, lastSavedEntryID == entryID else { return }
             // VoiceOver users dismiss the persistent correction affordance
             // explicitly, so it cannot vanish before they navigate to Undo.
             guard !isVoiceOverEnabled else { return }
@@ -241,7 +241,7 @@ extension QuickLogEntryView {
     }
 
     func undo(entryID: UUID) async {
-        guard lastSavedEntryID == entryID else { return }
+        guard !isUndoing, !isSaving, lastSavedEntryID == entryID else { return }
         isUndoing = true
         errorMessage = nil
         defer { isUndoing = false }

@@ -37,6 +37,14 @@ struct TransactionPreparationActions: View {
 }
 
 struct TransactionPreparationPresenter: ViewModifier {
+    let openLog: @MainActor () -> Void
+
+    func body(content: Content) -> some View {
+        TransactionPreparationContent(content: content, openLog: openLog)
+    }
+}
+
+private struct TransactionPreparationContent<Content: View>: View {
     private struct Request {
         let entry: JournalEntry
         let action: TransactionPreparationAction
@@ -47,15 +55,16 @@ struct TransactionPreparationPresenter: ViewModifier {
     @State private var pending: Request?
     @State private var isPreparing = false
     @State private var errorMessage: String?
+    let content: Content
     let openLog: @MainActor () -> Void
 
-    func body(content: Content) -> some View {
+    var body: some View {
         content
             .disabled(isPreparing)
             .environment(\.prepareTransaction, { entry, action in
                 guard !isPreparing else { return }
                 let request = Request(entry: entry, action: action, expectedDraft: model.quickLogDraft)
-                if model.quickLogDraft?.hasTransactionContent == true {
+                if model.quickLogDraft?.hasUserEdits == true {
                     pending = request
                 } else {
                     prepare(request)

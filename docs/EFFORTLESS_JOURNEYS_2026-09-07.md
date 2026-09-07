@@ -79,3 +79,10 @@ The architecture validator hashes for the three changed Quick Log extensions
 were refreshed after inspecting their new input protection and UI wiring. The
 Foundation Models input/output, availability, cancellation, and mutation tests
 remain enabled; no model authority or network boundary changed.
+
+A follow-up draft audit found that an account/category choice made before typing
+an amount was indistinguishable from an automatic default. Two optional,
+backward-compatible encrypted draft fields now retain that provenance. New
+external/contextual actions protect explicit choices without freezing a fresh
+entry's timestamp; legacy drafts conservatively retain their selected values.
+Rapid Save/Undo actions also share explicit in-flight guards.
