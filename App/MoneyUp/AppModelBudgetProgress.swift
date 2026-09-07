@@ -232,7 +232,7 @@ extension AppModel {
     /// dramatic but misleading “spending down” sentence early in the month.
     func monthToDateExpenseComparisonResult() -> DerivedValue<MonthToDateExpenseComparison> {
         let calendar = reportingCalendar
-        let now = Date()
+        let now = currentDate()
         let today = calendar.startOfDay(for: now)
         if monthToDateComparisonCacheDay == today,
            let cached = monthToDateComparisonCache {

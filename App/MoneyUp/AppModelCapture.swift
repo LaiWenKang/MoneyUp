@@ -192,6 +192,7 @@ extension AppModel {
             accountID: mainAccount.id,
             equityAccountID: equity.id,
             accountIsLiability: mainAccount.kind == .liability,
+            occurredAt: currentDate(),
             note: AppLocalization.string("account.opening_balance_note")
         )
         return try appAuthoredEntry(

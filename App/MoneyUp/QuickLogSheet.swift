@@ -377,6 +377,8 @@ struct QuickLogEntryView: View {
         let queryFingerprint: String
         let match: CaptureDuplicateMatch
         let historyDate: Date?
+        let projectionRevision: UInt64
+        let draft: QuickLogDraft
     }
 
     @Environment(\.dismiss) var dismiss
@@ -407,6 +409,8 @@ struct QuickLogEntryView: View {
     @State var dateWasEdited = false
     @State var payee = ""
     @State var note = ""
+    @State var isAddingAccount = false
+    @State var isCheckingDuplicates = false
     @State var isSaving = false
     @State var errorMessage: String?
     @State var smartText = ""
@@ -430,6 +434,7 @@ struct QuickLogEntryView: View {
     @State var receiptScanTask: Task<Void, Never>?
     @State var receiptScanGeneration = 0
     @State var receiptScanBaseline: ReceiptScanBaseline?
+    @State var receiptProtectedFields = Set<PartialKeyPath<QuickLogDraft>>()
     @State var receiptResult: ReceiptParseResult?
     @State var captureSuggestionResult: CaptureSuggestionResult?
     @State var captureSuggestionTask: Task<Void, Never>?
@@ -605,7 +610,7 @@ struct QuickLogEntryView: View {
     }
 
     var canSave: Bool {
-        guard !isScanning,
+        guard !isScanning, !isCheckingDuplicates,
               let amount,
               let accountID,
               let sourceAccount = selectedSourceAccount else {

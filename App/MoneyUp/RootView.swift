@@ -306,7 +306,12 @@ struct MainTabView: View {
         TabView(selection: directTabSelection) {
             DashboardView(
                 onOpenLog: { selectedSection = .log },
-                onOpenPlan: { selectedSection = .plan }
+                onOpenPlan: { selectedSection = .plan },
+                onReviewSchedule: { date in
+                    planWorkspace.section = .calendar
+                    planWorkspace.calendarDate = date
+                    selectedSection = .plan
+                }
             )
                 .tabItem { Label("tab.today", systemImage: "house.fill") }
                 .tag(MoneyUpSection.today)
@@ -361,6 +366,7 @@ struct MainTabView: View {
                 .tabItem { Label("tab.assets", systemImage: "wallet.bifold.fill") }
                 .tag(MoneyUpSection.assets)
         }
+        .modifier(TransactionPreparationPresenter(openLog: { selectedSection = .log }))
         .environment(\.appReportingSnapshot, reportingClock.snapshot)
         .environment(\.moneyUpReduceMotion, model.displayPreferences.reducesMotion)
         .environment(\.moneyUpShowsIllustrations, model.displayPreferences.showsIllustrations)

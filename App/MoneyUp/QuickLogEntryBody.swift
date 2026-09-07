@@ -202,12 +202,14 @@ extension QuickLogEntryView {
 
                 if model.userAccounts.isEmpty {
                     Section {
+                        Button("account.add") { isAddingAccount = true }
                         Text("transaction.no_accounts")
                             .foregroundStyle(.secondary)
                     }
                 } else if kind == .transfer
                             && (sourceAccounts.isEmpty || model.userAccounts.count < 2) {
                     Section {
+                        Button("account.add") { isAddingAccount = true }
                         Text("transaction.need_two_accounts")
                             .foregroundStyle(.secondary)
                     }
@@ -240,6 +242,11 @@ extension QuickLogEntryView {
                 handleActiveStateChange(newValue)
             }
             .onUserActionTimeChange(perform: refreshUserActionTimeContext)
+            .onChange(of: model.quickLogPreparationRevision) { _, _ in
+                cancelReceiptProcessing()
+                restoreDraftIfAvailable()
+                selectDefaults()
+            }
             .onChange(of: model.logicalBookRevision) { _, _ in
                 reloadDraftForLogicalBookReplacement()
             }
@@ -285,6 +292,9 @@ extension QuickLogEntryView {
             .onChange(of: launchRequest) { _, _ in
                 handleRequestedLaunch()
             }
+            .onChange(of: isCheckingDuplicates) { _, checking in
+                if !checking { handleRequestedLaunch() }
+            }
             .onChange(of: isSaving) { _, newValue in
                 if !newValue { handleRequestedLaunch() }
             }
@@ -321,6 +331,11 @@ extension QuickLogEntryView {
                     note: note,
                     accountID: accountID,
                     categoryID: categoryID
+                )
+                receiptProtectedFields = QuickLogReceiptPrefillPolicy.protectedFields(
+                    draft: draftSnapshot,
+                    accountWasEdited: accountWasEdited,
+                    categoryWasEdited: categoryWasEdited
                 )
                 isScanning = true
                 smartMessage = nil
@@ -405,6 +420,10 @@ extension QuickLogEntryView {
             }
             .scrollDismissesKeyboard(.interactively)
             .contentMargins(.bottom, focusedField == nil ? 72 : 200, for: .scrollContent)
+            .sheet(isPresented: $isAddingAccount, onDismiss: {
+                selectDefaults()
+                if isActive { focusedField = .amount }
+            }) { AddAccountSheet() }
             .sheet(isPresented: $isAddingCategory) {
                 AddCategorySheet(kind: categoryKind) { categoryID in
                     cancelOnDeviceAssistance()
@@ -422,6 +441,7 @@ extension QuickLogEntryView {
     private var quickLogBase: some View {
         quickLogNavigation
         .safeAreaInset(edge: .bottom) {
+            VStack(spacing: 0) {
             if let lastSavedEntryID {
                 HStack(spacing: 12) {
                     Label("quick_log.saved", systemImage: "checkmark.circle.fill")
@@ -452,7 +472,7 @@ extension QuickLogEntryView {
                         reduceMotion: accessibilityReduceMotion
                     )
                 )
-            } else {
+            }
                 Button {
                     Task { await attemptSave() }
                 } label: {

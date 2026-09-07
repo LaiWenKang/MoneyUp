@@ -50,3 +50,32 @@ the exact feature-branch source. Record tap paths separately from actual user
 measurements. Physical biometric/passcode, interruption, keyboard occlusion,
 VoiceOver, travel, upgrade/restore and device performance require device evidence;
 source inspection or Simulator success must not be reported as those passes.
+
+## Implemented preparation and navigation increment
+
+- Existing receipt values and explicit choices are protected before recognition;
+  edits during recognition add field protection even if text returns to its
+  earlier value. Candidate buttons remain explicit replacement actions.
+- Notes is one keyboard action away. Bottom Save remains present during the
+  acknowledgement/Undo interval; account creation opens directly from blocked
+  Log states. Search stays exposed in History's navigation drawer.
+- Duplicate review scans 200-row encrypted pages across the inclusive 24-hour
+  window on each side and, when present, the indexed source fingerprint. Ranking
+  still uses the existing exact-money detector. Only the strongest match stays
+  in memory. Draft/book/projection changes invalidate the response; lookup
+  failures preserve the draft and request retry.
+- History's leading swipe/context menu offers Repeat and expense Refund for
+  supported active ordinary accounts. Preparation verifies the source still
+  exists unchanged, checks exact replacement consent, persists the draft, and
+  opens Log. It never copies posting/replay/receipt ownership or posts money.
+  Archived/protected/restricted sources require their established review path.
+- Today prioritizes the earliest unresolved active recurrence, including overdue
+  items, and opens its Calendar date for explicit Post/Match/Skip. No notification
+  permissions, background service, or automatic financial posting was introduced.
+- Onboarding opening-balance timestamps and month-to-date comparison use the
+  injected user-action clock. Parent/subcategory financial rules are unchanged.
+
+The architecture validator hashes for the three changed Quick Log extensions
+were refreshed after inspecting their new input protection and UI wiring. The
+Foundation Models input/output, availability, cancellation, and mutation tests
+remain enabled; no model authority or network boundary changed.

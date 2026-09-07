@@ -38,6 +38,7 @@ extension QuickLogEntryView {
             get: { binding.wrappedValue },
             set: { newValue in
                 cancelOnDeviceAssistance()
+                receiptProtectedFields.insert(keyPath)
                 if refreshesOccurrenceDate {
                     refreshUntouchedOccurrenceDate(persist: false)
                 }
@@ -167,6 +168,7 @@ extension QuickLogEntryView {
     func handleRequestedLaunch() {
         guard !dismissAfterSave,
               !isSaving,
+              !isCheckingDuplicates,
               !isScanning,
               let launchRequest,
               launchRequest.id != handledRequestID else { return }

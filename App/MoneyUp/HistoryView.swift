@@ -513,6 +513,10 @@ struct HistoryView: View {
                                             .contentShape(Rectangle())
                                     }
                                     .buttonStyle(.plain)
+                                    .contextMenu { TransactionPreparationActions(entry: entry) }
+                                    .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                                        TransactionPreparationActions(entry: entry)
+                                    }
                                     .onAppear {
                                         guard entry.id == loadedEntries.last?.id else {
                                             return
@@ -572,7 +576,7 @@ struct HistoryView: View {
             .background(Color.moneyUpBackground)
             .navigationTitle("tab.history")
             .moneyUpNavigationSurface()
-            .searchable(text: $searchText, prompt: "history.search")
+            .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "history.search")
             .onAppear {
                 let snapshot = reportingSnapshot
                 if !didInitializeReportingDates {

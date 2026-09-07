@@ -43,13 +43,16 @@ struct DashboardView: View {
     @State var isEditingPins = false
     let onOpenLog: () -> Void
     let onOpenPlan: () -> Void
+    let onReviewSchedule: (Date) -> Void
 
     init(
         onOpenLog: @escaping () -> Void = {},
-        onOpenPlan: @escaping () -> Void = {}
+        onOpenPlan: @escaping () -> Void = {},
+        onReviewSchedule: @escaping (Date) -> Void = { _ in }
     ) {
         self.onOpenLog = onOpenLog
         self.onOpenPlan = onOpenPlan
+        self.onReviewSchedule = onReviewSchedule
     }
 
     var cashAndDebtAccounts: [LedgerAccount] {
@@ -146,18 +149,9 @@ struct DashboardView: View {
     }
 
     var nextScheduledTransaction: UpcomingSchedule? {
-        let snapshot = reportingSnapshot
-        let now = snapshot.instant
-        return model.scheduledTransactions
-            .compactMap { transaction in
-                transaction.occurrence(
-                    onOrAfter: now,
-                    calendar: snapshot.calendar
-                ).map {
-                    UpcomingSchedule(transaction: transaction, occurrence: $0)
-                }
-            }
-            .min { $0.occurrence < $1.occurrence }
+        ScheduledReviewPolicy.next(in: model.scheduledTransactions).map {
+            UpcomingSchedule(transaction: $0, occurrence: $0.nextOccurrence)
+        }
     }
 
     var budgetSummary: DerivedValue<BudgetPlanSummary?> {

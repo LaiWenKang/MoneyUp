@@ -607,18 +607,18 @@ W3_SOURCE_FUNCTION_DIGESTS: tuple[
 )
 
 W3_PATH_TYPE_DIGESTS: tuple[tuple[str, str, str, str], ...] = (
-    ("App/MoneyUp/QuickLogEntryChrome.swift", "extension", "QuickLogEntryView", "3106eeb581b8a6cf19be0908f990993ef3c9b202822635be8ec612a076987ea0"),
+    ("App/MoneyUp/QuickLogEntryChrome.swift", "extension", "QuickLogEntryView", "ab0593091dcbfd67ad29a22a81578b39520a78654715368153e0fa0898794544"),
     (
         "App/MoneyUp/QuickLogEntryBody.swift",
         "extension",
         "QuickLogEntryView",
-        "69c5cf11ce460a88bb7824e9b38f776114ff8e446f2db438140f0a62f1b122cc",
+        "abee08d97f0860646208d0d9c2b30df5332caaea905381ede801d72460d7d795",
     ),
     (
         "App/MoneyUp/QuickLogEntryReceipt.swift",
         "extension",
         "QuickLogEntryView",
-        "55c72d73441cfbc6e65e9b007faeca4f36897c3732294b4c7c3abda9901b20b4",
+        "ca6350c3e97a9d4b150e9bbc80b241f09cc5c4bdc3f891f1cb44d55767c45837",
     ),
     (
         W3_REVIEWED_ENTRY_ASSISTANCE_PATH,

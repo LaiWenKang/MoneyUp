@@ -625,6 +625,7 @@ public actor EncryptedRecordStore {
         endDateExclusive: Date? = nil,
         startDayKey: Int? = nil,
         endDayKeyExclusive: Int? = nil,
+        sourceFingerprint: String? = nil,
         after cursor: JournalEntryPageCursor? = nil,
         limit: Int = 80
     ) throws -> JournalEntryPage {
@@ -637,6 +638,7 @@ public actor EncryptedRecordStore {
             endDateExclusive: endDateExclusive,
             startDayKey: startDayKey,
             endDayKeyExclusive: endDayKeyExclusive,
+            sourceFingerprint: sourceFingerprint,
             after: cursor,
             limit: boundedLimit
         )

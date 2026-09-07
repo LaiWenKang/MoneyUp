@@ -48,6 +48,13 @@ extension QuickLogEntryView {
                     }
 
                     Button {
+                        focusedField = .note
+                    } label: {
+                        Label("transaction.notes", systemImage: "note.text")
+                    }
+                    .accessibilityIdentifier("quick-log-keyboard-notes")
+
+                    Button {
                         Task { await attemptSave() }
                     } label: {
                         Label("action.save", systemImage: "checkmark.circle.fill")
