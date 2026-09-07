@@ -24,15 +24,22 @@ enum ReceiptScannerError: Error, LocalizedError {
 /// This keeps the form responsive even when receiptDraft was entered on the
 /// main actor. Work is cancellable, the image is never persisted or uploaded,
 /// and only recognized strings survive the operation.
+enum ReceiptRecognitionStage: String, Sendable {
+    case decode, fastStarted, fastFinished, fastAccepted, accurateStarted, accurateFinished, timedOut
+}
+
 enum ReceiptScanner {
     /// Leaves roughly half a second inside the Golden <8 s capture budget for
     /// PhotosPicker transfer and main-actor form population.
     private static let timeoutNanoseconds: UInt64 = 7_500_000_000
 
-    static func recognize(inImageData data: Data) async throws
+    static func recognize(
+        inImageData data: Data,
+        trace: @escaping @Sendable (ReceiptRecognitionStage) -> Void = { _ in }
+    ) async throws
         -> ReceiptRecognitionResult {
         try Task.checkCancellation()
-        let operation = ReceiptRecognitionOperation(imageData: data)
+        let operation = ReceiptRecognitionOperation(imageData: data, trace: trace)
         let race = ReceiptRecognitionRace()
         let recognitionTask = Task.detached(priority: .userInitiated) {
             let result: Result<ReceiptRecognitionResult, Error>
@@ -50,6 +57,7 @@ enum ReceiptScanner {
                 )
                 // Retain any bounded fast candidates for explicit review. A
                 // timeout must not promote them or discard useful preparation.
+                trace(.timedOut)
                 let fallback = operation.fastReviewResult()
                 let result: Result<ReceiptRecognitionResult, Error> = fallback.map { .success($0) }
                     ?? .failure(ReceiptScannerError.noTextFound)
@@ -205,13 +213,15 @@ private final class ReceiptRecognitionOperation: @unchecked Sendable {
     ]
 
     private let imageData: Data
+    private let trace: @Sendable (ReceiptRecognitionStage) -> Void
     private let lock = NSLock()
     private var activeRequest: VNRecognizeTextRequest?
     private var wasCancelled = false
     private var cachedFastResult: ReceiptRecognitionResult?
 
-    init(imageData: Data) {
+    init(imageData: Data, trace: @escaping @Sendable (ReceiptRecognitionStage) -> Void) {
         self.imageData = imageData
+        self.trace = trace
     }
 
     func cancel() {
@@ -224,6 +234,7 @@ private final class ReceiptRecognitionOperation: @unchecked Sendable {
 
     func run() throws -> ReceiptRecognitionResult {
         try checkCancellation()
+        trace(.decode)
         guard let image = Self.preparedImage(from: imageData) else {
             throw ReceiptScannerError.unreadableImage
         }
@@ -234,7 +245,9 @@ private final class ReceiptRecognitionOperation: @unchecked Sendable {
         // populate an amount.
         let fast: OCRResult?
         do {
+            trace(.fastStarted)
             fast = try recognize(in: image, level: .fast)
+            trace(.fastFinished)
         } catch is CancellationError {
             throw CancellationError()
         } catch {
@@ -246,6 +259,7 @@ private final class ReceiptRecognitionOperation: @unchecked Sendable {
             cacheFastResult(fast)
         }
         if let fast, Self.isActionable(fast) {
+            trace(.fastAccepted)
             return ReceiptRecognitionResult(
                 lines: fast.lines,
                 meanConfidence: fast.meanConfidence,
@@ -254,7 +268,9 @@ private final class ReceiptRecognitionOperation: @unchecked Sendable {
         }
 
         try checkCancellation()
+        trace(.accurateStarted)
         let accurate = try recognize(in: image, level: .accurate)
+        trace(.accurateFinished)
         return ReceiptRecognitionResult(
             lines: accurate.lines,
             meanConfidence: accurate.meanConfidence,

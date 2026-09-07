@@ -749,7 +749,9 @@ extension AppModel {
             from: imageData,
             prefersDayFirst: prefersDayFirst
         )
-        return result?.draft
+        // This compatibility value cannot carry explicit-review authority.
+        guard let result, !result.requiresExplicitReview else { return nil }
+        return result.draft
     }
 
     /// Produces one exact History result page while keeping SQLCipher reads

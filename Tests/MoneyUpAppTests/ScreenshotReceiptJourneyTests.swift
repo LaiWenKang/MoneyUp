@@ -11,7 +11,14 @@ final class ScreenshotReceiptJourneyTests: XCTestCase {
         for style in ScreenshotReceiptFixture.Style.allCases {
             let data = try ScreenshotReceiptFixture.png(style: style)
             let started = ContinuousClock.now
-            let recognition = try await ReceiptScanner.recognize(inImageData: data)
+            let trace = ScreenshotRecognitionTrace()
+            let recognition: ReceiptRecognitionResult
+            do {
+                recognition = try await ReceiptScanner.recognize(inImageData: data, trace: { trace.append($0) })
+            } catch {
+                XCTFail("\(style.rawValue): \(trace.stages) / \(error)")
+                continue
+            }
             let result = ReceiptTextParser.analyze(fromLines: recognition.lines, now: now, calendar: calendar,
                 ocrConfidence: recognition.meanConfidence, ocrLineConfidences: recognition.lineConfidences,
                 requiresExplicitReview: recognition.requiresExplicitReview)
@@ -57,6 +64,8 @@ final class ScreenshotReceiptJourneyTests: XCTestCase {
         XCTAssertEqual(result?.draft.amount, Decimal(string: "12.34"))
         XCTAssertEqual(result?.requiresExplicitReview, true)
         XCTAssertEqual(result?.ocrConfidence, 0.5, "Review authority must not falsify observed confidence")
+        let compatibilityDraft = try await model.receiptDraft(from: Data([0]), prefersDayFirst: true)
+        XCTAssertNil(compatibilityDraft, "A legacy draft cannot discard explicit-review authority")
         await fixture.store.close()
     }
 
@@ -66,5 +75,18 @@ final class ScreenshotReceiptJourneyTests: XCTestCase {
         XCTAssertEqual(result.draft.amount, Decimal(string: "23.45"))
         XCTAssertFalse(result.amountCandidates.contains(Decimal(string: "9876.54")!))
         XCTAssertFalse(result.amountCandidates.contains(Decimal(4_829_103_756)))
+    }
+}
+
+private final class ScreenshotRecognitionTrace: @unchecked Sendable {
+    private let lock = NSLock()
+    private var values: [String] = []
+    func append(_ stage: ReceiptRecognitionStage) {
+        lock.lock(); defer { lock.unlock() }
+        values.append(stage.rawValue)
+    }
+    var stages: [String] {
+        lock.lock(); defer { lock.unlock() }
+        return values
     }
 }

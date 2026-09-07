@@ -46,20 +46,20 @@ final class DailyJourneyAcceptanceTests: XCTestCase {
             draft.amountText = "12."; draft.note = "Unfinished screenshot review"
             model.updateQuickLogDraft(draft)
             let expected = Decimal(1000 - (dailyCount - 1) * 10 + 5)
-            try assertBook(model, fixture: fixture, balance: expected, draft: draft)
+            try assertBook(model, fixture: fixture, balance: expected, draft: draft, stage: "before backup")
             let archive = fixture.directoryURL.appendingPathComponent("daily.moneyup")
             let password = "daily-journey-acceptance-password"
             try await model.encryptedBackup(to: archive, password: password)
             try await model.updateAutoLockDelay(60)
             let ticket = try await model.prepareEncryptedRestorePreview(from: archive, password: password)
             try await model.restoreEncryptedBackup(ticket, password: password)
-            try assertBook(model, fixture: fixture, balance: expected, draft: draft)
+            try assertBook(model, fixture: fixture, balance: expected, draft: draft, stage: "after reviewed restore")
             model.lockManually()
             await model.waitForPendingStoreClose()
             let reopened = try fixture.reopenStore()
             let restored = fixture.model(store: reopened, retainsCompleteJournal: false, currentDate: { now })
             try await restored.reloadPersistedBookForTesting()
-            try assertBook(restored, fixture: fixture, balance: expected, draft: draft)
+            try assertBook(restored, fixture: fixture, balance: expected, draft: draft, stage: "after reopen")
             await reopened.close()
         }
     }
@@ -98,10 +98,11 @@ final class DailyJourneyAcceptanceTests: XCTestCase {
     }
 
     @MainActor
-    private func assertBook(_ model: AppModel, fixture: AppModelFixture, balance: Decimal, draft: QuickLogDraft) throws {
-        XCTAssertEqual(model.displayBalanceResult(for: fixture.wallet).value?.amount, balance)
-        XCTAssertEqual(model.displayBalanceResult(for: fixture.usAccount).value?.amount, Decimal(string: "-7.25"))
-        let budget = try XCTUnwrap(model.budgetPlanSummaryThisMonthResult().value.flatMap { $0 })
+    private func assertBook(_ model: AppModel, fixture: AppModelFixture, balance: Decimal, draft: QuickLogDraft, stage: String) throws {
+        XCTAssertEqual(model.displayBalanceResult(for: fixture.wallet).value?.amount, balance, stage)
+        XCTAssertEqual(model.state, .ready, stage)
+        XCTAssertEqual(model.displayBalanceResult(for: fixture.usAccount).value?.amount, Decimal(string: "-7.25"), stage)
+        let budget = try XCTUnwrap(model.budgetPlanSummaryThisMonthResult().value.flatMap { $0 }, stage)
         XCTAssertEqual(budget.remaining.amount, balance)
         XCTAssertEqual(model.quickLogDraft, draft)
         XCTAssertEqual(model.profile?.autoLockDelay, 300)
