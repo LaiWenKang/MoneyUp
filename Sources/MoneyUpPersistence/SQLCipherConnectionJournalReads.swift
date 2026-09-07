@@ -102,6 +102,7 @@ extension SQLCipherConnection {
         startDayKey: Int?,
         endDayKeyExclusive: Int?,
         sourceFingerprint: String?,
+        matchingPosting: JournalPostingMatch?,
         after cursor: JournalEntryPageCursor?,
         limit: Int
     ) throws -> IndexedPayloadPage {
@@ -112,6 +113,7 @@ extension SQLCipherConnection {
             startDayKey: startDayKey,
             endDayKeyExclusive: endDayKeyExclusive,
             sourceFingerprint: sourceFingerprint,
+            matchingPosting: matchingPosting,
             cursor: cursor
         )
         let sql = """
@@ -131,6 +133,7 @@ extension SQLCipherConnection {
                 startDayKey: startDayKey,
                 endDayKeyExclusive: endDayKeyExclusive,
                 sourceFingerprint: sourceFingerprint,
+                matchingPosting: matchingPosting,
                 cursor: cursor,
                 limit: limit,
                 to: statement
@@ -145,6 +148,7 @@ extension SQLCipherConnection {
         startDayKey: Int?,
         endDayKeyExclusive: Int?,
         sourceFingerprint: String?,
+        matchingPosting: JournalPostingMatch?,
         cursor: JournalEntryPageCursor?
     ) -> [String] {
         var predicates = ["records.collection = ?", "records.indexed_at IS NOT NULL"]
@@ -158,6 +162,14 @@ extension SQLCipherConnection {
         }
         if sourceFingerprint != nil {
             predicates.append("journal_entry_index.source_fingerprint = ?")
+        }
+        if matchingPosting != nil {
+            predicates.append("""
+                EXISTS (SELECT 1 FROM journal_posting_index AS candidate
+                    WHERE candidate.entry_id = journal_entry_index.entry_id
+                      AND candidate.account_id = ? AND candidate.currency = ?
+                      AND candidate.amount_text = ?)
+                """)
         }
         if cursor != nil {
             predicates.append(
@@ -174,6 +186,7 @@ extension SQLCipherConnection {
         startDayKey: Int?,
         endDayKeyExclusive: Int?,
         sourceFingerprint: String?,
+        matchingPosting: JournalPostingMatch?,
         cursor: JournalEntryPageCursor?,
         limit: Int,
         to statement: OpaquePointer
@@ -205,6 +218,15 @@ extension SQLCipherConnection {
         }
         if let sourceFingerprint {
             try bindText(sourceFingerprint, at: binding, to: statement)
+            binding += 1
+        }
+        if let matchingPosting {
+            try bindText(matchingPosting.accountID.uuidString, at: binding, to: statement)
+            binding += 1
+            try bindText(matchingPosting.money.currency.value, at: binding, to: statement)
+            binding += 1
+            try bindText(NSDecimalNumber(decimal: matchingPosting.money.amount).stringValue,
+                         at: binding, to: statement)
             binding += 1
         }
         if let cursor {

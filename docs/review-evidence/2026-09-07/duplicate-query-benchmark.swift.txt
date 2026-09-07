@@ -1,0 +1,63 @@
+import Foundation
+import MoneyUpCore
+import MoneyUpPersistence
+
+/// Standalone storage/detector probe; intentionally excludes UI and biometric
+/// latency. Link against this checkout's MoneyUp package build products.
+@main struct DuplicateQueryBenchmark {
+    static func main() async throws {
+        let iterations = 20
+        let count = 10_000
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let store = try EncryptedRecordStore(databaseURL: directory.appendingPathComponent("fixture.db"),
+            key: Data(repeating: 0x42, count: 32))
+        let currency = try CurrencyCode("SGD")
+        let wallet = LedgerAccount(name: "Fixture", kind: .asset, currency: currency)
+        let category = LedgerAccount(name: "Fixture", kind: .expense)
+        let start = Date(timeIntervalSince1970: 1_783_411_200)
+        guard let matchingAmount = Decimal(string: "7.25"),
+              let otherAmount = Decimal(string: "8.50") else { preconditionFailure("Invalid fixture") }
+        let entries = try (0..<count).map { index in
+            try TransactionFactory.expense(amount: Money(index == 0 ? matchingAmount : otherAmount, currency: currency),
+                paidFrom: wallet.id, category: category.id, occurredAt: start.addingTimeInterval(Double(index)), payee: "Fixture")
+        }
+        try await store.write(entries.map { try RecordWrite($0, id: $0.id.uuidString, in: .journalEntries) })
+        let query = try CaptureDuplicateQuery.expense(amount: Money(matchingAmount, currency: currency),
+            paidFrom: wallet.id, category: category.id, occurredAt: start, payee: "Fixture")
+        var samples: [String: [Double]] = ["unfiltered": [], "posting_filtered": []]
+        for _ in 0..<iterations {
+            for filtered in [false, true] {
+                let clock = ContinuousClock()
+                let began = clock.now
+                let matches = try await findMatches(store: store, query: query, filtered: filtered)
+                let elapsed = began.duration(to: clock.now).components
+                samples[filtered ? "posting_filtered" : "unfiltered", default: []].append(
+                    Double(elapsed.seconds) * 1_000 + Double(elapsed.attoseconds) / 1e15)
+                precondition(matches == [entries[0].id], "Results must remain equivalent")
+            }
+        }
+        await store.close()
+        try FileManager.default.removeItem(at: directory)
+        let result: [String: Any] = ["entry_count": count, "page_size": 200, "iterations": iterations,
+            "configuration": "Debug libraries, macOS arm64 standalone storage/detector probe",
+            "os": ProcessInfo.processInfo.operatingSystemVersionString,
+            "samples_ms": samples, "same_result_in_every_sample": true]
+        print(String(decoding: try JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys]), as: UTF8.self))
+    }
+
+    static func findMatches(store: EncryptedRecordStore, query: CaptureDuplicateQuery, filtered: Bool) async throws -> [UUID] {
+        var cursor: JournalEntryPageCursor?
+        var matches: [UUID] = []
+        repeat {
+            let page = try await store.fetchJournalEntryPage(
+                startDate: query.occurredAt.addingTimeInterval(-86_400),
+                endDateExclusive: query.occurredAt.addingTimeInterval(86_401),
+                matchingPosting: filtered ? JournalPostingMatch(accountID: query.sourceAccountID, money: query.sourceAmount.negated) : nil,
+                after: cursor, limit: 200)
+            precondition(page.issues.isEmpty)
+            matches += CaptureDuplicateDetector.matches(for: query, in: page.entries).matches.map(\.entryID)
+            cursor = page.nextCursor
+        } while cursor != nil
+        return matches
+    }
+}

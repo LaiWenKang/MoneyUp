@@ -41,6 +41,14 @@ private enum CaptureDuplicateReviewReader {
         excluding excludedIDs: Set<UUID>, calendar: Calendar,
         projectionRevision: UInt64
     ) async throws -> CaptureDuplicateReview? {
+        // This is exactly the source-posting prerequisite in the domain
+        // detector. Prefiltering never changes its final advisory decision.
+        let sourceMoney: Money
+        switch query.kind {
+        case .income, .refund: sourceMoney = query.sourceAmount
+        case .expense, .transfer, .foreignCurrencyTransfer: sourceMoney = query.sourceAmount.negated
+        }
+        let posting = JournalPostingMatch(accountID: query.sourceAccountID, money: sourceMoney)
         let window = CaptureDuplicateDetector.defaultMaximumTimeInterval
         let start = query.occurredAt.addingTimeInterval(-window)
         // The detector's upper bound is inclusive. Advance one representable
@@ -59,7 +67,7 @@ private enum CaptureDuplicateReviewReader {
                 let page = try await store.fetchJournalEntryPage(
                     startDate: source == nil ? start : nil,
                     endDateExclusive: source == nil ? end : nil,
-                    sourceFingerprint: source, after: cursor, limit: 200
+                    sourceFingerprint: source, matchingPosting: posting, after: cursor, limit: 200
                 )
                 guard page.issues.allSatisfy({ issue in
                     UUID(uuidString: issue.recordID).map { excludedIDs.contains($0) } ?? false
