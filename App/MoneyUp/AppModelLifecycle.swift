@@ -667,7 +667,8 @@ extension AppModel {
                 prefersDayFirst: prefersDayFirst,
                 accounts: accountsSnapshot,
                 ocrConfidence: boundedRecognition.meanConfidence,
-                ocrLineConfidences: boundedRecognition.lineConfidences
+                ocrLineConfidences: boundedRecognition.lineConfidences,
+                requiresExplicitReview: boundedRecognition.requiresExplicitReview
             )
         }
         let result = await withTaskCancellationHandler {
@@ -732,7 +733,8 @@ extension AppModel {
             lines: boundedLines,
             meanConfidence: recognition.meanConfidence,
             lineConfidences: alignedLineConfidences == nil
-                ? nil : boundedLineConfidences
+                ? nil : boundedLineConfidences,
+            requiresExplicitReview: recognition.requiresExplicitReview
         )
     }
 

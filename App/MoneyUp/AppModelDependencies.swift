@@ -216,13 +216,16 @@ struct ReceiptRecognitionResult: Equatable, Sendable,
     /// `nil` preserves compatibility with injected recognizers that only
     /// provide document-wide quality.
     let lineConfidences: [Float]?
+    let requiresExplicitReview: Bool
 
     init(
         lines: [String],
         meanConfidence: Float? = nil,
-        lineConfidences: [Float]? = nil
+        lineConfidences: [Float]? = nil,
+        requiresExplicitReview: Bool = false
     ) {
         self.lines = lines
+        self.requiresExplicitReview = requiresExplicitReview
         self.meanConfidence = meanConfidence
         self.lineConfidences = lineConfidences?.count == lines.count
             ? lineConfidences : nil

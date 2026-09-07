@@ -618,7 +618,7 @@ W3_PATH_TYPE_DIGESTS: tuple[tuple[str, str, str, str], ...] = (
         "App/MoneyUp/QuickLogEntryReceipt.swift",
         "extension",
         "QuickLogEntryView",
-        "ca6350c3e97a9d4b150e9bbc80b241f09cc5c4bdc3f891f1cb44d55767c45837",
+        "99650618749eb55d0f7a35be6d100960b873e74831123a8515d96fcb2f019dd6",
     ),
     (
         W3_REVIEWED_ENTRY_ASSISTANCE_PATH,
@@ -630,7 +630,7 @@ W3_PATH_TYPE_DIGESTS: tuple[tuple[str, str, str, str], ...] = (
         "App/MoneyUp/QuickLogEntryReceiptCandidates.swift",
         "extension",
         "QuickLogEntryView",
-        "e7b54d7a64d35f6e294f0aae0a9e8206dbcfcd94039db1b84068fc9f9cc30420",
+        "c6a3343f7606ccd2d72fd03b38dde8ee35abc96edc5a544f4670e33f49459748",
     ),
 )
 W3_PATH_TYPE_ATTRIBUTES = {

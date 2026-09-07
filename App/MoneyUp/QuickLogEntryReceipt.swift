@@ -243,14 +243,14 @@ extension QuickLogEntryView {
             suggestsLearnedCategory: true
         )
 
-        if !receiptProtectedFields.contains(\.note), note == baseline.note,
+        if !result.requiresExplicitReview, !receiptProtectedFields.contains(\.note), note == baseline.note,
            note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
            let overallConfidence = result.overallConfidence,
            overallConfidence != .low,
            let noteCandidate = result.noteCandidate {
             note = noteCandidate
         }
-        if result.draft.occurredAt != nil {
+        if result.draft.occurredAt != nil || result.dateCandidates.isEmpty {
             isShowingOptionalDetails = true
         }
 
@@ -266,10 +266,12 @@ extension QuickLogEntryView {
         _ result: ReceiptParseResult,
         baseline: ReceiptScanBaseline
     ) -> TransactionDraft {
+        guard !result.requiresExplicitReview else { return TransactionDraft(source: .receipt) }
         var reviewDraft = result.draft
         if !QuickLogSuggestionPolicy.shouldPrefillReceiptCandidate(
             confidence: result.amountCandidateDetails.first?.confidence,
-            fieldIsUnchanged: !receiptProtectedFields.contains(\.amountText)
+            fieldIsUnchanged: result.currencyEvidence.permitsAutomaticFill(in: selectedAccountCurrency)
+                && !receiptProtectedFields.contains(\.amountText)
                 && amountText == baseline.amountText
                 && accountID == baseline.accountID
         ) {

@@ -1,6 +1,12 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "quick_log.scan_date_review" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Receipt date not read. Check the transaction date before saving."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"未能识别凭证日期。保存前请核对交易日期。"}}}},
+    "quick_log.scan_partial_review" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Partial recognition. Choose the fields you want to use; no suggestions were filled automatically."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"仅识别出部分内容。请选择要使用的字段；未自动填入建议内容。"}}}},
+    "quick_log.receipt_currency_detected" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Currency read from receipt"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"从截图识别的币种"}}}},
+    "quick_log.receipt_currency_ambiguous" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"The currency symbol is ambiguous. Check the account currency before choosing an amount below."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"货币符号可能代表多个币种。选择下方金额前，请先核对账户币种。"}}}},
+    "quick_log.receipt_multiple_currencies" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Multiple currencies found. Check the screenshot and enter the amount charged in your account currency."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"发现多个币种。请核对截图，并按账户币种输入实际扣款金额。"}}}},
+    "quick_log.receipt_currency_mismatch" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Receipt currency: %@. Choose an account in this currency, or enter the actual amount charged to your account."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"截图币种：%@。请选择相同币种的账户，或手动输入账户的实际扣款金额。"}}}},
     "dashboard.review_schedule" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Review in Calendar"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"在日历中处理"}}}},
     "dashboard.due_for_review" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Due for review"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"待处理的定期项目"}}}},
     "transaction.prepare_draft_detail" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Keep working on your unfinished entry, or replace it with a new editable draft. Nothing is posted until you tap Save."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"可继续编辑未完成的交易，或将其替换为新的可编辑草稿。轻点储存后才会记入账本。"}}}},

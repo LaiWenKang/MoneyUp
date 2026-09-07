@@ -48,10 +48,12 @@ enum ReceiptScanner {
                 try await Task<Never, Never>.sleep(
                     nanoseconds: Self.timeoutNanoseconds
                 )
-                // Reuse the existing localized recovery message. To the user,
-                // a scan with no usable text in the bounded window has the same
-                // recovery: retake or crop it.
-                if race.resolve(with: .failure(ReceiptScannerError.noTextFound)) {
+                // Retain any bounded fast candidates for explicit review. A
+                // timeout must not promote them or discard useful preparation.
+                let fallback = operation.fastReviewResult()
+                let result: Result<ReceiptRecognitionResult, Error> = fallback.map { .success($0) }
+                    ?? .failure(ReceiptScannerError.noTextFound)
+                if race.resolve(with: result) {
                     operation.cancel()
                     recognitionTask.cancel()
                 }
@@ -206,6 +208,7 @@ private final class ReceiptRecognitionOperation: @unchecked Sendable {
     private let lock = NSLock()
     private var activeRequest: VNRecognizeTextRequest?
     private var wasCancelled = false
+    private var cachedFastResult: ReceiptRecognitionResult?
 
     init(imageData: Data) {
         self.imageData = imageData
@@ -239,6 +242,9 @@ private final class ReceiptRecognitionOperation: @unchecked Sendable {
             // accurate pass is the authoritative fallback for those cases.
             fast = nil
         }
+        if let fast {
+            cacheFastResult(fast)
+        }
         if let fast, Self.isActionable(fast) {
             return ReceiptRecognitionResult(
                 lines: fast.lines,
@@ -253,6 +259,24 @@ private final class ReceiptRecognitionOperation: @unchecked Sendable {
             lines: accurate.lines,
             meanConfidence: accurate.meanConfidence,
             lineConfidences: accurate.lineConfidences
+        )
+    }
+
+    /// A timed-out accurate pass can still provide explicit-review candidates.
+    /// Keep the observed confidence intact and carry separate preparation authority.
+    func fastReviewResult() -> ReceiptRecognitionResult? {
+        lock.lock()
+        defer { lock.unlock() }
+        return cachedFastResult
+    }
+
+    private func cacheFastResult(_ result: OCRResult) {
+        guard !result.lines.isEmpty else { return }
+        lock.lock()
+        defer { lock.unlock() }
+        cachedFastResult = ReceiptRecognitionResult(
+            lines: result.lines, meanConfidence: result.meanConfidence,
+            lineConfidences: result.lineConfidences, requiresExplicitReview: true
         )
     }
 
@@ -458,46 +482,9 @@ private final class ReceiptRecognitionOperation: @unchecked Sendable {
     }
 
     private static func isActionable(_ result: OCRResult) -> Bool {
-        guard result.lines.count >= 2, result.meanConfidence >= 0.82 else { return false }
-        // Use the authoritative parser as the quality gate so fast OCR and the
-        // final parse cannot disagree about decimal commas, grouping, or safe
-        // OCR digit repair.
-        let parsed = ReceiptTextParser.analyze(
-            fromLines: result.lines,
-            ocrConfidence: result.meanConfidence,
-            ocrLineConfidences: result.lineConfidences
-        )
-        guard let amountConfidence = parsed.amountCandidateDetails.first?.confidence,
-              amountConfidence != .low else {
-            return false
-        }
-
-        let strongLabels = [
-            "grand total", "amount due", "amount payable", "amount paid", "you paid",
-            "payment amount", "transfer amount", "jumlah besar", "jumlah bayaran", "jumlah",
-            "合计", "合計", "总计", "總計", "应付", "應付", "实付", "實付"
-        ]
-        let excludedLabelLines = [
-            "subtotal", "sub total", "sub-total", "total items", "total qty",
-            "total savings", "total discount", "total points", "available balance",
-            "account balance", "cash tendered", "change", "subjumlah", "jumlah kecil",
-            "jumlah diskaun", "baki", "total gst", "gst total", "total sst",
-            "sst total", "total vat", "vat total", "total tax", "tax total",
-            "total service charge", "jumlah cukai", "jumlah caj perkhidmatan",
-            "税额", "稅額", "服务费", "服務費"
-        ]
-        if result.lines.contains(where: { rawLine in
-            let line = rawLine.lowercased()
-            if excludedLabelLines.contains(where: { line.contains($0) }) { return false }
-            if strongLabels.contains(where: { line.contains($0) }) { return true }
-            return line.contains("total")
-        }) {
-            return true
-        }
-
-        let text = result.lines.joined(separator: " ").lowercased()
-        return ["payment successful", "transaction successful", "transfer successful",
-                "paid to", "payment to", "transferred to", "sent to"]
-            .contains(where: { text.contains($0) })
+        ReceiptRecognitionAcceptancePolicy.accepts(ReceiptRecognitionResult(
+            lines: result.lines, meanConfidence: result.meanConfidence,
+            lineConfidences: result.lineConfidences
+        ))
     }
 }
