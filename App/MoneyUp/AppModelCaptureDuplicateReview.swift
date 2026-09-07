@@ -51,10 +51,14 @@ private enum CaptureDuplicateReviewReader {
         let posting = JournalPostingMatch(accountID: query.sourceAccountID, money: sourceMoney)
         let window = CaptureDuplicateDetector.defaultMaximumTimeInterval
         let start = query.occurredAt.addingTimeInterval(-window)
-        // The detector's upper bound is inclusive. Advance one representable
-        // Unix timestamp so the storage half-open bound retains that endpoint.
-        let end = Date(timeIntervalSince1970:
-            query.occurredAt.addingTimeInterval(window).timeIntervalSince1970.nextUp)
+        // Date and SQL use different epochs. Advance by a representable unit
+        // in both, so subtraction of the epoch offset cannot erase the step
+        // near 1970 or 2001 and exclude the detector's inclusive upper bound.
+        let boundary = query.occurredAt.addingTimeInterval(window)
+        let end = boundary.addingTimeInterval(max(
+            boundary.timeIntervalSince1970.ulp,
+            boundary.timeIntervalSinceReferenceDate.ulp
+        ))
         var best: (match: CaptureDuplicateMatch, entry: JournalEntry)?
         // Source-identified replay can be older than the ordinary time window.
         // Both reads use existing indexes; source-system/movement still pass

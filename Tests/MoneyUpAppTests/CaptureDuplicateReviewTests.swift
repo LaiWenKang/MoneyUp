@@ -7,24 +7,26 @@ import XCTest
 final class CaptureDuplicateReviewTests: XCTestCase {
     @MainActor
     func testIndexedReviewFindsBackdatedMatchOutsideRecentCacheAndExactUpperBoundary() async throws {
-        let fixture = try AppModelFixture()
-        defer { fixture.removeFiles() }
-        let now = Date(timeIntervalSince1970: 1_783_411_200)
-        let queryDate = now.addingTimeInterval(-90 * 86_400)
-        let boundary = try fixture.expense(amount: 12.34, occurredAt: queryDate.addingTimeInterval(86_400))
-        let outside = try fixture.expense(amount: 12.34, occurredAt: queryDate.addingTimeInterval(86_401))
-        let recent = try fixture.expense(amount: 12.34, occurredAt: now)
-        let profile = UserProfile(baseCurrency: fixture.sgd, reportingTimeZoneIdentifier: "Asia/Singapore")
-        try await fixture.seed(profile: profile, accounts: [fixture.wallet, fixture.food], entries: [boundary, outside, recent])
-        let model = fixture.model(profile: profile, entries: [recent], retainsCompleteJournal: false, currentDate: { now })
-        let query = try CaptureDuplicateQuery.expense(amount: Money(12.34, currency: fixture.sgd),
-            paidFrom: fixture.wallet.id, category: fixture.food.id, occurredAt: queryDate, payee: "Cafe")
-        XCTAssertTrue(CaptureDuplicateDetector.matches(for: query, in: model.entries).matches.isEmpty)
-        let review = try await model.captureDuplicateReview(for: query)
-        XCTAssertEqual(review?.match.entryID, boundary.id)
-        XCTAssertEqual(review?.historyDate, boundary.originContext.attributedDate(in: model.reportingCalendar))
-        XCTAssertEqual(model.entries, [recent], "Review must not expand or replace the UI cache")
-        await fixture.store.close()
+        for timestamp: TimeInterval in [7_776_000, 1_783_411_200] {
+            let fixture = try AppModelFixture()
+            defer { fixture.removeFiles() }
+            let now = Date(timeIntervalSince1970: timestamp)
+            let queryDate = now.addingTimeInterval(-90 * 86_400)
+            let boundary = try fixture.expense(amount: 12.34, occurredAt: queryDate.addingTimeInterval(86_400))
+            let outside = try fixture.expense(amount: 12.34, occurredAt: queryDate.addingTimeInterval(86_401))
+            let recent = try fixture.expense(amount: 12.34, occurredAt: now)
+            let profile = UserProfile(baseCurrency: fixture.sgd, reportingTimeZoneIdentifier: "Asia/Singapore")
+            try await fixture.seed(profile: profile, accounts: [fixture.wallet, fixture.food], entries: [boundary, outside, recent])
+            let model = fixture.model(profile: profile, entries: [recent], retainsCompleteJournal: false, currentDate: { now })
+            let query = try CaptureDuplicateQuery.expense(amount: Money(12.34, currency: fixture.sgd),
+                paidFrom: fixture.wallet.id, category: fixture.food.id, occurredAt: queryDate, payee: "Cafe")
+            XCTAssertTrue(CaptureDuplicateDetector.matches(for: query, in: model.entries).matches.isEmpty)
+            let review = try await model.captureDuplicateReview(for: query)
+            XCTAssertEqual(review?.match.entryID, boundary.id)
+            XCTAssertEqual(review?.historyDate, boundary.originContext.attributedDate(in: model.reportingCalendar))
+            XCTAssertEqual(model.entries, [recent], "Review must not expand or replace the UI cache")
+            await fixture.store.close()
+        }
     }
 
     @MainActor
