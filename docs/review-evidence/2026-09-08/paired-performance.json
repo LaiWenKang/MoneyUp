@@ -1,0 +1,142 @@
+[
+  {
+    "version": "main",
+    "pair": 0,
+    "load_ms": 283.905875,
+    "open_ms": 95.889791,
+    "restore_ms": 6334.000291
+  },
+  {
+    "version": "candidate",
+    "pair": 0,
+    "load_ms": 283.311833,
+    "open_ms": 110.256,
+    "restore_ms": 6200.917333
+  },
+  {
+    "version": "candidate",
+    "pair": 1,
+    "load_ms": 285.895583,
+    "open_ms": 91.324,
+    "restore_ms": 6352.415458
+  },
+  {
+    "version": "main",
+    "pair": 1,
+    "load_ms": 284.256333,
+    "open_ms": 102.866958,
+    "restore_ms": 6495.676042
+  },
+  {
+    "version": "main",
+    "pair": 2,
+    "load_ms": 286.82,
+    "open_ms": 92.684917,
+    "restore_ms": 6260.117292
+  },
+  {
+    "version": "candidate",
+    "pair": 2,
+    "load_ms": 310.494667,
+    "open_ms": 90.572166,
+    "restore_ms": 6051.387833
+  },
+  {
+    "version": "candidate",
+    "pair": 3,
+    "load_ms": 266.617,
+    "open_ms": 90.626833,
+    "restore_ms": 6048.176417
+  },
+  {
+    "version": "main",
+    "pair": 3,
+    "load_ms": 280.4395,
+    "open_ms": 89.631833,
+    "restore_ms": 6135.167333
+  },
+  {
+    "version": "main",
+    "pair": 4,
+    "load_ms": 276.155875,
+    "open_ms": 92.807792,
+    "restore_ms": 6355.330125
+  },
+  {
+    "version": "candidate",
+    "pair": 4,
+    "load_ms": 281.4265,
+    "open_ms": 104.372958,
+    "restore_ms": 6131.584375
+  },
+  {
+    "version": "candidate",
+    "pair": 5,
+    "load_ms": 284.127542,
+    "open_ms": 90.570959,
+    "restore_ms": 6087.972208
+  },
+  {
+    "version": "main",
+    "pair": 5,
+    "load_ms": 277.333875,
+    "open_ms": 89.899625,
+    "restore_ms": 6198.794
+  },
+  {
+    "version": "main",
+    "pair": 6,
+    "load_ms": 280.474292,
+    "open_ms": 88.337042,
+    "restore_ms": 6169.402292
+  },
+  {
+    "version": "candidate",
+    "pair": 6,
+    "load_ms": 272.555875,
+    "open_ms": 92.037042,
+    "restore_ms": 6119.995916
+  },
+  {
+    "version": "candidate",
+    "pair": 7,
+    "load_ms": 254.855291,
+    "open_ms": 89.093208,
+    "restore_ms": 6149.913417
+  },
+  {
+    "version": "main",
+    "pair": 7,
+    "load_ms": 254.804417,
+    "open_ms": 104.251,
+    "restore_ms": 6352.518584
+  },
+  {
+    "version": "main",
+    "pair": 8,
+    "load_ms": 275.042375,
+    "open_ms": 91.89675,
+    "restore_ms": 6141.432792
+  },
+  {
+    "version": "candidate",
+    "pair": 8,
+    "load_ms": 259.973625,
+    "open_ms": 90.854083,
+    "restore_ms": 6368.990166
+  },
+  {
+    "version": "candidate",
+    "pair": 9,
+    "load_ms": 272.054916,
+    "open_ms": 92.789666,
+    "restore_ms": 6081.007833
+  },
+  {
+    "version": "main",
+    "pair": 9,
+    "load_ms": 260.647542,
+    "open_ms": 89.64225,
+    "restore_ms": 6380.136708
+  }
+]

@@ -48,6 +48,10 @@ final class QuickLogKeyboardJourneyTests: XCTestCase {
                 if model.quickLogDraft?.amountText == expected { break }
                 try await Task.sleep(for: .milliseconds(10))
             }
+            try await Task.sleep(for: .milliseconds(50))
+            if let selection = amount.selectedTextRange {
+                XCTAssertEqual(amount.offset(from: amount.beginningOfDocument, to: selection.start), expected.count, "Cursor must stay after the typed amount")
+            }
             XCTAssertNotNil(amount.window, "Validation must not detach the focused input")
             XCTAssertTrue(amount.isFirstResponder)
             XCTAssertEqual(amount.text, expected)
