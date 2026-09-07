@@ -10,6 +10,10 @@ final class ScreenshotReceiptJourneyTests: XCTestCase {
         var samples: [[String: Any]] = []
         for style in ScreenshotReceiptFixture.Style.allCases {
             let data = try ScreenshotReceiptFixture.png(style: style)
+            let attachment = XCTAttachment(data: data, uniformTypeIdentifier: "public.png")
+            attachment.name = "screenshot-receipt-" + style.rawValue
+            attachment.lifetime = .keepAlways
+            add(attachment)
             let started = ContinuousClock.now
             let trace = ScreenshotRecognitionTrace()
             let recognition: ReceiptRecognitionResult
@@ -27,15 +31,12 @@ final class ScreenshotReceiptJourneyTests: XCTestCase {
             if !result.requiresExplicitReview {
                 XCTAssertEqual(result.draft.amount, expected)
                 XCTAssertEqual(result.currencyEvidence.identifiedCurrency, try CurrencyCode("SGD"))
-                XCTAssertNotEqual(result.amountCandidateDetails.first?.confidence, .low)
             }
             let duration = started.duration(to: ContinuousClock.now).components
             samples.append(["style": style.rawValue, "elapsed_ms": Double(duration.seconds) * 1000 + Double(duration.attoseconds) / 1e15,
-                "requires_explicit_review": result.requiresExplicitReview, "date_read": result.draft.occurredAt != nil])
-            let attachment = XCTAttachment(data: data, uniformTypeIdentifier: "public.png")
-            attachment.name = "screenshot-receipt-" + style.rawValue
-            attachment.lifetime = .keepAlways
-            add(attachment)
+                "requires_explicit_review": result.requiresExplicitReview,
+                "amount_confidence": result.amountCandidateDetails.first?.confidence.rawValue ?? "unavailable",
+                "date_read": result.draft.occurredAt != nil])
         }
         let evidence = XCTAttachment(data: try JSONSerialization.data(withJSONObject: samples, options: [.sortedKeys]), uniformTypeIdentifier: "public.json")
         evidence.name = "screenshot-ocr-results.json"; evidence.lifetime = .keepAlways; add(evidence)

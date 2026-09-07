@@ -49,6 +49,11 @@ flowchart LR
 - Missing receipt dates are called out and the date controls are exposed. Chinese
   account-balance and transaction-reference labels are excluded from payable
   amount candidates.
+- The daily story reproduced balances becoming unavailable after changing
+  auto-lock. The shared profile rule now preserves financial projections across
+  known nonfinancial authentication, capture-default and widget preferences.
+  Unknown future fields and financial-context changes still invalidate
+  conservatively. The settings/restore/reopen story passed after this fix.
 - The keyboard test now waits for a rendered frame and checks insertion position,
   in addition to field identity, raw decimals, focus and safe dismissal.
 
