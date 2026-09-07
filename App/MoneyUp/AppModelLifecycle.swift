@@ -110,9 +110,9 @@ extension AppModel {
     }
 
     private func beginStartupWork() {
-        automaticUnlockIsPending = false
         isWorking = true
         isStarting = true
+        automaticUnlockIsPending = false
     }
 
     private func finishDeferredStartupLockIfNeeded() {

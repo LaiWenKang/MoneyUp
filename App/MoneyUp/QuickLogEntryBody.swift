@@ -53,7 +53,8 @@ extension QuickLogEntryView {
                             "transaction.to_account",
                             selection: trackedBinding(
                                 $destinationAccountID,
-                                \.destinationAccountID
+                                \.destinationAccountID,
+                                onUserEdit: { accountWasEdited = true }
                             )
                         ) {
                             ForEach(model.userAccounts.filter { $0.id != accountID }) { account in

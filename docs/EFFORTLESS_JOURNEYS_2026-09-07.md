@@ -86,3 +86,55 @@ backward-compatible encrypted draft fields now retain that provenance. New
 external/contextual actions protect explicit choices without freezing a fresh
 entry's timestamp; legacy drafts conservatively retain their selected values.
 Rapid Save/Undo actions also share explicit in-flight guards.
+
+## Measured local query improvement
+
+The dense 10,000-entry experiment compares the first complete-window reader
+with the final exact-posting prefilter, using the same Debug libraries and
+interleaved trials on this Mac. It does **not** compare against main's faster but
+incomplete recent-cache-only review and does not measure end-to-end iPhone Save.
+The existing index's canonical Decimal strings permit account/currency/amount
+filtering without SQL floating-point conversion or a schema change.
+
+| Storage + detector path | Median | Empirical p95 | Samples |
+|---|---:|---:|---:|
+| Complete window, decode every row | 1,682.10 ms | 1,744.32 ms | 20 |
+| Exact posting prefilter, then domain detector | 152.89 ms | 161.86 ms | 20 |
+
+Every trial found the same one expected entry. The raw measurements and probe
+source are in `review-evidence/2026-09-07/`. The p95 is the nearest-rank sample;
+it is an observation, not a physical-device Golden-budget pass.
+
+## Keyboard root cause reproduced during native validation
+
+The iOS 26 keyboard test at `391149f` reproduced loss of input identity at the
+transition from `12` to `12.`. `MoneyUpFieldValidationModifier` conditionally
+returned either an accessibility-modified input or the original input, causing
+SwiftUI to replace the field when validation appeared. The shared modifier now
+keeps one structural type. The regression checks the same field remains attached
+and first responder through decimal typing, then verifies draft-safe dismissal.
+This shared fix also applies to account and other forms using field validation.
+
+## Platform references
+
+- [Apple: SecItemCopyMatching](https://developer.apple.com/documentation/security/secitemcopymatching(_:_:)) documents synchronous Keychain reads; MoneyUp retains its detached opener.
+- [Apple: device-owner authentication](https://developer.apple.com/documentation/localauthentication/lapolicy/deviceownerauthentication) describes biometric/passcode fallback and cancellation. MoneyUp reuses its existing protected-key policy.
+- [Apple: ScenePhase](https://developer.apple.com/documentation/swiftui/scenephase) distinguishes active, inactive, and background lifecycle states. MoneyUp's model-level attempt gate prevents prompt-driven inactivity from creating a retry loop.
+
+## Source-counted interaction paths
+
+These counts are control-path inspection, not an observed user study; typing and
+OS authentication interactions are excluded.
+
+| Outcome | Before | After |
+|---|---|---|
+| Begin authentication on a locked return | Unlock tap | Automatic (1 → 0 app taps) |
+| Reach Notes while editing an amount | Scroll to Notes, then tap | Notes keyboard button (1 tap) |
+| Save another entry while acknowledgement is visible | Dismiss acknowledgement or use keyboard Save | Bottom Save stays available (up to 2 → 1 taps) |
+| Prepare Repeat/Refund | Re-enter known transaction context | Swipe and choose action, review prefilled draft |
+| Resolve Today reminder | Open Plan, choose Calendar, locate date | Review in Calendar (1 tap to exact date) |
+| Log with a missing payment account | Leave Log and find account creation | Add account in place (1 tap to editor) |
+
+Native CI results, review images, Simulator baseline comparisons, and remaining
+physical gates are reported in the task's final review report. No merge or
+release is part of this work.

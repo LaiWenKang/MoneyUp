@@ -166,6 +166,7 @@ PLATFORM_REFERENCE_ALLOWLIST = APP_INTENTS_SOURCE_ALLOWLIST | {
     "App/MoneyUp/AppModel.swift",
     "App/MoneyUp/AppModelBackupRestore.swift",
     "App/MoneyUp/AppModelKeyCliffRecovery.swift",
+    "App/MoneyUp/AppModelAutomaticUnlock.swift",
     "App/MoneyUp/AppModelLifecycle.swift",
     "App/MoneyUp/AppModelQuickActionIngress.swift",
     "App/MoneyUp/AppModelRestorePreview.swift",
@@ -227,6 +228,7 @@ COMPILED_REFERENCE_INVENTORY = {
     },
     r"\bquickActionRouteBroker\b": {
         "App/MoneyUp/AppModel.swift": 12,
+        "App/MoneyUp/AppModelAutomaticUnlock.swift": 1,
         "App/MoneyUp/AppModelKeyCliffRecovery.swift": 1,
         "App/MoneyUp/AppModelLifecycle.swift": 10,
         "App/MoneyUp/AppModelQuickActionIngress.swift": 2,
@@ -1293,7 +1295,7 @@ def validate_boundary_lifecycle_sources(
         "private func beginStartupWork()",
     )
     if startup_work is None or " ".join(startup_work.split()) != (
-        "isWorking = true isStarting = true"
+        "isWorking = true isStarting = true automaticUnlockIsPending = false"
     ):
         errors.append("startup must synchronously close its ordinary work gate")
     finish_boundary = declaration_body(

@@ -12,7 +12,8 @@ private enum QuickLogSaveOutcome {
 
 extension QuickLogEntryView {
     func commitSave() async {
-        guard !isSaving, !isUndoing, canSave else { return }
+        guard !isUndoing else { return }
+        guard !isSaving, canSave else { return }
         guard let amount, let accountID else { return }
         var performanceInterval = MoneyUpPerformanceSignposts.begin(
             .transactionSaveToPublication

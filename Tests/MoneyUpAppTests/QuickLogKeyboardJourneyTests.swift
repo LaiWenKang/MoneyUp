@@ -40,7 +40,16 @@ final class QuickLogKeyboardJourneyTests: XCTestCase {
         XCTAssertEqual(amount.keyboardType, .decimalPad)
         for (key, expected) in [("1", "1"), ("2", "12"), (".", "12."), ("0", "12.0"), ("0", "12.00")] {
             amount.insertText(key)
-            await Task.yield()
+            amount.sendActions(for: .editingChanged)
+            // UIKit programmatic insertion and SwiftUI's binding publication
+            // can span a render turn; wait for the observable result, not just
+            // one executor yield (which need not run a UI transaction).
+            for _ in 0..<20 {
+                if model.quickLogDraft?.amountText == expected { break }
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            XCTAssertNotNil(amount.window, "Validation must not detach the focused input")
+            XCTAssertTrue(amount.isFirstResponder)
             XCTAssertEqual(amount.text, expected)
             XCTAssertEqual(model.quickLogDraft?.amountText, expected)
         }
