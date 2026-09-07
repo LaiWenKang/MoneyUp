@@ -25,7 +25,7 @@ enum ReceiptScannerError: Error, LocalizedError {
 /// main actor. Work is cancellable, the image is never persisted or uploaded,
 /// and only recognized strings survive the operation.
 enum ReceiptRecognitionStage: String, Sendable {
-    case decode, fastStarted, fastFinished, fastAccepted, accurateStarted, accurateFinished, timedOut
+    case decode, imageSourceOpened, imagePropertiesRead, imageDecoded, fastStarted, fastFinished, fastAccepted, accurateStarted, accurateFinished, timedOut
 }
 
 enum ReceiptScanner {
@@ -235,7 +235,7 @@ private final class ReceiptRecognitionOperation: @unchecked Sendable {
     func run() throws -> ReceiptRecognitionResult {
         try checkCancellation()
         trace(.decode)
-        guard let image = Self.preparedImage(from: imageData) else {
+        guard let image = Self.preparedImage(from: imageData, trace: trace) else {
             throw ReceiptScannerError.unreadableImage
         }
         try checkCancellation()
@@ -358,7 +358,9 @@ private final class ReceiptRecognitionOperation: @unchecked Sendable {
         if isCancelled || Task.isCancelled { throw CancellationError() }
     }
 
-    private static func preparedImage(from data: Data) -> CGImage? {
+    private static func preparedImage(
+        from data: Data, trace: @Sendable (ReceiptRecognitionStage) -> Void
+    ) -> CGImage? {
         let sourceOptions: [CFString: Any] = [
             kCGImageSourceShouldCache: false
         ]
@@ -368,17 +370,34 @@ private final class ReceiptRecognitionOperation: @unchecked Sendable {
         ) else {
             return nil
         }
+        trace(.imageSourceOpened)
+        let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, sourceOptions as CFDictionary)
+            as? [CFString: Any]
+        trace(.imagePropertiesRead)
+        // Upright, already-bounded screenshots need decoding, not thumbnail
+        // rendering. Other inputs retain ImageIO's bounded orientation transform.
+        if let width = properties?[kCGImagePropertyPixelWidth] as? Int,
+           let height = properties?[kCGImagePropertyPixelHeight] as? Int,
+           width > 0, height > 0,
+           max(width, height) <= maximumPixelDimension,
+           (properties?[kCGImagePropertyOrientation] as? Int ?? 1) == 1 {
+            let image = CGImageSourceCreateImageAtIndex(source, 0, [
+                kCGImageSourceShouldCacheImmediately: true
+            ] as CFDictionary)
+            trace(.imageDecoded)
+            return image
+        }
         let thumbnailOptions: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
             kCGImageSourceThumbnailMaxPixelSize: maximumPixelDimension,
             kCGImageSourceShouldCacheImmediately: true
         ]
-        return CGImageSourceCreateThumbnailAtIndex(
-            source,
-            0,
-            thumbnailOptions as CFDictionary
+        let image = CGImageSourceCreateThumbnailAtIndex(
+            source, 0, thumbnailOptions as CFDictionary
         )
+        trace(.imageDecoded)
+        return image
     }
 
     /// Vision observations can split a single visual row into label and amount
