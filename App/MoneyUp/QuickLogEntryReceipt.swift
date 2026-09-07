@@ -243,14 +243,14 @@ extension QuickLogEntryView {
             suggestsLearnedCategory: true
         )
 
-        if note == baseline.note,
+        if !result.requiresExplicitReview, !receiptProtectedFields.contains(\.note), note == baseline.note,
            note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
            let overallConfidence = result.overallConfidence,
            overallConfidence != .low,
            let noteCandidate = result.noteCandidate {
             note = noteCandidate
         }
-        if result.draft.occurredAt != nil {
+        if result.draft.occurredAt != nil || result.dateCandidates.isEmpty {
             isShowingOptionalDetails = true
         }
 
@@ -266,35 +266,44 @@ extension QuickLogEntryView {
         _ result: ReceiptParseResult,
         baseline: ReceiptScanBaseline
     ) -> TransactionDraft {
+        guard !result.requiresExplicitReview else { return TransactionDraft(source: .receipt) }
         var reviewDraft = result.draft
         if !QuickLogSuggestionPolicy.shouldPrefillReceiptCandidate(
             confidence: result.amountCandidateDetails.first?.confidence,
-            fieldIsUnchanged: amountText == baseline.amountText
+            fieldIsUnchanged: result.currencyEvidence.permitsAutomaticFill(in: selectedAccountCurrency)
+                && !receiptProtectedFields.contains(\.amountText)
+                && amountText == baseline.amountText
                 && accountID == baseline.accountID
         ) {
             reviewDraft.amount = nil
         }
         if !QuickLogSuggestionPolicy.shouldPrefillReceiptCandidate(
             confidence: result.merchantCandidateDetails.first?.confidence,
-            fieldIsUnchanged: payee == baseline.payee
+            fieldIsUnchanged: !receiptProtectedFields.contains(\.payee)
+                && payee == baseline.payee
         ) {
             reviewDraft.payee = nil
         }
         if !QuickLogSuggestionPolicy.shouldPrefillReceiptCandidate(
             confidence: result.dateCandidateDetails.first?.confidence,
-            fieldIsUnchanged: occurredAt == baseline.occurredAt
+            fieldIsUnchanged: !receiptProtectedFields.contains(\.occurredAt)
+                && occurredAt == baseline.occurredAt
                 && dateWasEdited == baseline.dateWasEdited
         ) {
             reviewDraft.occurredAt = nil
         }
         if !QuickLogSuggestionPolicy.shouldPrefillReceiptCandidate(
             confidence: result.categoryCandidateDetails.first?.confidence,
-            fieldIsUnchanged: splitLines.isEmpty
+            fieldIsUnchanged: !receiptProtectedFields.contains(\.categoryID)
+                && !categoryWasEdited && splitLines.isEmpty
                 && categoryID == baseline.categoryID
         ) {
             reviewDraft.categoryID = nil
         }
-        if accountID != baseline.accountID { reviewDraft.accountID = nil }
+        if receiptProtectedFields.contains(\.accountID)
+            || accountWasEdited || accountID != baseline.accountID {
+            reviewDraft.accountID = nil
+        }
         if let parsedCategoryID = reviewDraft.categoryID,
            let category = model.accountsByID[parsedCategoryID],
            !QuickLogSuggestionPolicy.receiptCategoryIsCompatible(

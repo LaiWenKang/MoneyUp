@@ -1,0 +1,56 @@
+import Foundation
+import MoneyUpCore
+import MoneyUpPersistence
+
+@main struct PairedBench {
+    static func main() throws {
+        let args = CommandLine.arguments
+        guard args.count == 3 else { throw BenchError.arguments }
+        let root = URL(fileURLWithPath: args[2], isDirectory: true)
+        let manager = FileManager.default
+        let key = Data((0..<32).map { UInt8($0) })
+        if args[1] == "seed" {
+            try manager.createDirectory(at: root, withIntermediateDirectories: true)
+            let fixture = try MoneyUpPerformanceFixture.makeSeeded()
+            try manager.copyItem(at: fixture.databaseURL, to: root.appendingPathComponent("master.sqlite"))
+            try JSONEncoder().encode(fixture.accounts).write(to: root.appendingPathComponent("accounts.json"))
+            let store = try fixture.openStore()
+            try waitForPerformanceOperation { try await store.exportPortableArchive(to: root.appendingPathComponent("source.moneyup"), password: MoneyUpPerformanceFixture.archivePassword) }
+            try waitForPerformanceOperation { await store.close() }
+            print("seeded")
+            return
+        }
+        guard args[1] == "measure" else { throw BenchError.arguments }
+        let sample = root.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try manager.createDirectory(at: sample, withIntermediateDirectories: true)
+        defer { try? manager.removeItem(at: sample) }
+        let database = sample.appendingPathComponent("book.sqlite")
+        try manager.copyItem(at: root.appendingPathComponent("master.sqlite"), to: database)
+        let accounts = try JSONDecoder().decode([LedgerAccount].self, from: Data(contentsOf: root.appendingPathComponent("accounts.json")))
+        let clock = ContinuousClock()
+        var start = clock.now
+        let opened = try EncryptedRecordStore(databaseURL: database, key: key)
+        try waitForPerformanceOperation { await opened.close() }
+        let open = milliseconds(start.duration(to: clock.now))
+        let store = try EncryptedRecordStore(databaseURL: database, key: key)
+        start = clock.now
+        let result = try waitForPerformanceOperation { try await PerformanceOperations.loadBook(store: store, accounts: accounts) }
+        let load = milliseconds(start.duration(to: clock.now))
+        precondition(result.ledgerEntryCount == 10_000 && result.scheduleCount == 20)
+        try waitForPerformanceOperation { await store.close() }
+        let restoreStore = try EncryptedRecordStore(databaseURL: sample.appendingPathComponent("restored.sqlite"), key: key)
+        start = clock.now
+        try waitForPerformanceOperation { try await restoreStore.restorePortableArchive(from: root.appendingPathComponent("source.moneyup"), password: MoneyUpPerformanceFixture.archivePassword) }
+        let restore = milliseconds(start.duration(to: clock.now))
+        let count = try waitForPerformanceOperation { try await restoreStore.count(in: .journalEntries) }
+        precondition(count == 10_000)
+        try waitForPerformanceOperation { await restoreStore.close() }
+        let output = ["open_ms": open, "load_ms": load, "restore_ms": restore]
+        print(String(decoding: try JSONSerialization.data(withJSONObject: output, options: .sortedKeys), as: UTF8.self))
+    }
+    static func milliseconds(_ duration: Duration) -> Double {
+        let value = duration.components
+        return Double(value.seconds) * 1000 + Double(value.attoseconds) / 1e15
+    }
+    enum BenchError: Error { case arguments }
+}

@@ -83,6 +83,8 @@ public struct ReceiptParseResult: Equatable, Sendable {
     /// Bounded OCR text for an explicitly retained attachment search index.
     /// Callers must discard it unless the user chooses encrypted retention.
     public let recognizedText: String?
+    public let currencyEvidence: ReceiptCurrencyEvidence
+    public let requiresExplicitReview: Bool
 
     public init(
         draft: TransactionDraft,
@@ -97,7 +99,9 @@ public struct ReceiptParseResult: Equatable, Sendable {
         merchantCandidateDetails: [ReceiptCandidate<String>]? = nil,
         dateCandidateDetails: [ReceiptCandidate<Date>]? = nil,
         categoryCandidateDetails: [ReceiptCandidate<ReceiptCategoryHint>]? = nil,
-        recognizedText: String? = nil
+        recognizedText: String? = nil,
+        currencyEvidence: ReceiptCurrencyEvidence = ReceiptCurrencyEvidence(),
+        requiresExplicitReview: Bool = false
     ) {
         self.draft = draft
         self.amountCandidates = amountCandidates
@@ -124,6 +128,8 @@ public struct ReceiptParseResult: Equatable, Sendable {
             self.categoryCandidateDetails = []
         }
         self.recognizedText = recognizedText
+        self.currencyEvidence = currencyEvidence
+        self.requiresExplicitReview = requiresExplicitReview
     }
 
     private static func compatibilityCandidate<Value: Equatable & Sendable>(
@@ -223,6 +229,7 @@ public enum ReceiptTextParser {
         ("rounding", -160), ("round off", -160),
         ("points", -220), ("积分", -220), ("積分", -220),
         ("available balance", -250), ("account balance", -250),
+        ("账户余额", -250), ("帳戶餘額", -250), ("可用余额", -250), ("可用餘額", -250),
         ("opening balance", -250), ("closing balance", -250),
         ("total items", -260), ("total item", -260), ("total qty", -260),
         ("total quantity", -260)
@@ -233,7 +240,7 @@ public enum ReceiptTextParser {
         "invoice #", "receipt no", "receipt #", "transaction id", "txn id",
         "reference", "ref no", "auth", "approval", "terminal", "merchant id",
         "member", "loyalty", "table no", "queue no", "pager", "card no",
-        "acct", "account no", "电话", "電話", "订单", "訂單", "单号", "單號"
+        "acct", "account no", "电话", "電話", "订单", "訂單", "单号", "單號", "交易编号", "交易編號"
     ]
 
     static let currencyMarkers = [
@@ -287,7 +294,8 @@ public enum ReceiptTextParser {
         locale: Locale = .current,
         accounts: [LedgerAccount] = [],
         ocrConfidence: Float? = nil,
-        ocrLineConfidences: [Float]? = nil
+        ocrLineConfidences: [Float]? = nil,
+        requiresExplicitReview: Bool = false
     ) -> ReceiptParseResult {
         let performanceInterval = MoneyUpPerformanceSignposts.begin(
             .receiptProcessing
@@ -349,7 +357,9 @@ public enum ReceiptTextParser {
             merchantCandidateDetails: details.merchants,
             dateCandidateDetails: details.dates,
             categoryCandidateDetails: details.categories,
-            recognizedText: input.lines.joined(separator: "\n")
+            recognizedText: input.lines.joined(separator: "\n"),
+            currencyEvidence: currencyEvidence(in: input.lines),
+            requiresExplicitReview: requiresExplicitReview
         )
     }
 

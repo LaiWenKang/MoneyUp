@@ -3,37 +3,48 @@ import MoneyUpCore
 
 extension QuickLogEntryView {
     func attemptSave() async {
-        guard !isSaving, canSave else { return }
+        guard !isSaving, !isUndoing, !isCheckingDuplicates, isActive, canSave else { return }
         pendingDuplicateReview = nil
-        if model.journalRecentEntriesAreCurrent,
-           let query = duplicateQuery() {
-            let result = CaptureDuplicateDetector.matches(
-                for: query,
-                in: model.entries
-            )
-            if let match = result.matches.first {
-                let historyDate = model.entries.first(where: {
-                    $0.id == match.entryID
-                }).map { entry in
-                    QuickLogDuplicateReviewPolicy.historyDate(
-                        for: entry,
-                        calendar: model.reportingCalendar
-                    )
-                }
+        guard let query = duplicateQuery() else {
+            await commitSave()
+            return
+        }
+        let snapshot = draftSnapshot
+        let bookRevision = model.logicalBookRevision
+        isCheckingDuplicates = true
+        errorMessage = nil
+        defer { isCheckingDuplicates = false }
+        do {
+            let review = try await model.captureDuplicateReview(for: query)
+            guard isActive, model.state == .ready,
+                  bookRevision == model.logicalBookRevision,
+                  snapshot == draftSnapshot else { return }
+            isCheckingDuplicates = false
+            if let review {
                 dismissKeyboard()
                 pendingDuplicateReview = PendingDuplicateReview(
-                    queryFingerprint: result.queryFingerprint,
-                    match: match,
-                    historyDate: historyDate
+                    queryFingerprint: review.queryFingerprint,
+                    match: review.match, historyDate: review.historyDate,
+                    projectionRevision: review.projectionRevision,
+                    draft: snapshot
                 )
-                return
+            } else {
+                await commitSave()
             }
+        } catch {
+            guard model.state == .ready, isActive,
+                  bookRevision == model.logicalBookRevision else { return }
+            // Failure is not evidence of no duplicates. Preserve the draft and
+            // offer a deliberate retry instead of silently bypassing review.
+            errorMessage = AppLocalization.string("quick_log.duplicate_check_retry")
         }
-        await commitSave()
     }
 
     func confirmDuplicateSave(_ pending: PendingDuplicateReview) async {
-        guard duplicateQuery()?.fingerprint == pending.queryFingerprint else {
+        guard isActive, model.state == .ready else { return }
+        guard draftSnapshot == pending.draft,
+              model.journalProjectionRevision == pending.projectionRevision,
+              duplicateQuery()?.fingerprint == pending.queryFingerprint else {
             await attemptSave()
             return
         }

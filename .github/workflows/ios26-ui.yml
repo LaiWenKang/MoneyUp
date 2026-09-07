@@ -47,6 +47,12 @@ jobs:
             -only-testing:MoneyUpTests/SmartOverviewRenderTests \
             -only-testing:MoneyUpTests/AppwideRenderEvidenceTests \
             -only-testing:MoneyUpTests/Feedback1039RegressionTests \
+            -only-testing:MoneyUpTests/AutomaticUnlockTests \
+            -only-testing:MoneyUpTests/QuickLogKeyboardJourneyTests \
+            -only-testing:MoneyUpTests/ScreenshotReceiptJourneyTests \
+            -only-testing:MoneyUpTests/DailyJourneyAcceptanceTests \
+            -only-testing:MoneyUpTests/TransactionPreparationTests \
+            -only-testing:MoneyUpTests/JourneyRecalculationTests \
             -only-testing:MoneyUpTests/BudgetCheckpointAvailabilityTests \
             -only-testing:MoneyUpTests/BudgetResilienceTests \
             -only-testing:MoneyUpTests/BudgetPeriodRecoveryTests \

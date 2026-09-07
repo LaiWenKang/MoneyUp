@@ -49,6 +49,8 @@ struct QuickLogDraft: Codable, Equatable, Sendable {
     var accountID: UUID?
     var destinationAccountID: UUID?
     var categoryID: UUID?
+    var accountWasEdited: Bool
+    var categoryWasEdited: Bool
     var occurredAt: Date
     var dateWasEdited: Bool
     var payee: String
@@ -74,7 +76,9 @@ struct QuickLogDraft: Codable, Equatable, Sendable {
         smartText: String,
         splitLines: [QuickLogSplitDraftLine] = [],
         selectedAllowanceID: UUID? = nil,
-        sourceCaptureID: UUID? = nil
+        sourceCaptureID: UUID? = nil,
+        accountWasEdited: Bool = false,
+        categoryWasEdited: Bool = false
     ) {
         self.kind = kind
         self.amountText = amountText
@@ -90,6 +94,8 @@ struct QuickLogDraft: Codable, Equatable, Sendable {
         self.splitLines = splitLines
         self.selectedAllowanceID = selectedAllowanceID
         self.sourceCaptureID = sourceCaptureID
+        self.accountWasEdited = accountWasEdited
+        self.categoryWasEdited = categoryWasEdited
     }
 
     var hasTransactionContent: Bool {
@@ -107,7 +113,14 @@ struct QuickLogDraft: Codable, Equatable, Sendable {
             || dateWasEdited
     }
 
+    /// An explicit account/category selection is worth preserving even before
+    /// an amount is typed. It does not freeze an otherwise fresh timestamp.
+    var hasUserEdits: Bool {
+        hasTransactionContent || accountWasEdited || categoryWasEdited || sourceCaptureID != nil
+    }
+
     private enum CodingKeys: String, CodingKey {
+        case accountWasEdited, categoryWasEdited
         case kind, amountText, destinationAmountText, accountID, destinationAccountID
         case categoryID, occurredAt, dateWasEdited, payee, note, smartText
         case splitLines, selectedAllowanceID, sourceCaptureID
@@ -121,6 +134,12 @@ struct QuickLogDraft: Codable, Equatable, Sendable {
         accountID = try container.decodeIfPresent(UUID.self, forKey: .accountID)
         destinationAccountID = try container.decodeIfPresent(UUID.self, forKey: .destinationAccountID)
         categoryID = try container.decodeIfPresent(UUID.self, forKey: .categoryID)
+        // Legacy drafts did not record provenance. Conservatively retain
+        // their selected values; new drafts distinguish defaults from choices.
+        accountWasEdited = try container.decodeIfPresent(Bool.self, forKey: .accountWasEdited)
+            ?? (accountID != nil)
+        categoryWasEdited = try container.decodeIfPresent(Bool.self, forKey: .categoryWasEdited)
+            ?? (categoryID != nil)
         occurredAt = try container.decode(Date.self, forKey: .occurredAt)
         dateWasEdited = try container.decode(Bool.self, forKey: .dateWasEdited)
         payee = try container.decode(String.self, forKey: .payee)

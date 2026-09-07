@@ -24,15 +24,22 @@ enum ReceiptScannerError: Error, LocalizedError {
 /// This keeps the form responsive even when receiptDraft was entered on the
 /// main actor. Work is cancellable, the image is never persisted or uploaded,
 /// and only recognized strings survive the operation.
+enum ReceiptRecognitionStage: String, Sendable {
+    case decode, imageSourceOpened, imagePropertiesRead, imageDecoded, fastStarted, fastFinished, fastAccepted, accurateStarted, accurateFinished, timedOut
+}
+
 enum ReceiptScanner {
     /// Leaves roughly half a second inside the Golden <8 s capture budget for
     /// PhotosPicker transfer and main-actor form population.
     private static let timeoutNanoseconds: UInt64 = 7_500_000_000
 
-    static func recognize(inImageData data: Data) async throws
+    static func recognize(
+        inImageData data: Data,
+        trace: @escaping @Sendable (ReceiptRecognitionStage) -> Void = { _ in }
+    ) async throws
         -> ReceiptRecognitionResult {
         try Task.checkCancellation()
-        let operation = ReceiptRecognitionOperation(imageData: data)
+        let operation = ReceiptRecognitionOperation(imageData: data, trace: trace)
         let race = ReceiptRecognitionRace()
         let recognitionTask = Task.detached(priority: .userInitiated) {
             let result: Result<ReceiptRecognitionResult, Error>
@@ -48,10 +55,13 @@ enum ReceiptScanner {
                 try await Task<Never, Never>.sleep(
                     nanoseconds: Self.timeoutNanoseconds
                 )
-                // Reuse the existing localized recovery message. To the user,
-                // a scan with no usable text in the bounded window has the same
-                // recovery: retake or crop it.
-                if race.resolve(with: .failure(ReceiptScannerError.noTextFound)) {
+                // Retain any bounded fast candidates for explicit review. A
+                // timeout must not promote them or discard useful preparation.
+                trace(.timedOut)
+                let fallback = operation.fastReviewResult()
+                let result: Result<ReceiptRecognitionResult, Error> = fallback.map { .success($0) }
+                    ?? .failure(ReceiptScannerError.noTextFound)
+                if race.resolve(with: result) {
                     operation.cancel()
                     recognitionTask.cancel()
                 }
@@ -203,12 +213,15 @@ private final class ReceiptRecognitionOperation: @unchecked Sendable {
     ]
 
     private let imageData: Data
+    private let trace: @Sendable (ReceiptRecognitionStage) -> Void
     private let lock = NSLock()
     private var activeRequest: VNRecognizeTextRequest?
     private var wasCancelled = false
+    private var cachedFastResult: ReceiptRecognitionResult?
 
-    init(imageData: Data) {
+    init(imageData: Data, trace: @escaping @Sendable (ReceiptRecognitionStage) -> Void) {
         self.imageData = imageData
+        self.trace = trace
     }
 
     func cancel() {
@@ -221,7 +234,8 @@ private final class ReceiptRecognitionOperation: @unchecked Sendable {
 
     func run() throws -> ReceiptRecognitionResult {
         try checkCancellation()
-        guard let image = Self.preparedImage(from: imageData) else {
+        trace(.decode)
+        guard let image = Self.preparedImage(from: imageData, trace: trace) else {
             throw ReceiptScannerError.unreadableImage
         }
         try checkCancellation()
@@ -231,7 +245,9 @@ private final class ReceiptRecognitionOperation: @unchecked Sendable {
         // populate an amount.
         let fast: OCRResult?
         do {
+            trace(.fastStarted)
             fast = try recognize(in: image, level: .fast)
+            trace(.fastFinished)
         } catch is CancellationError {
             throw CancellationError()
         } catch {
@@ -239,7 +255,11 @@ private final class ReceiptRecognitionOperation: @unchecked Sendable {
             // accurate pass is the authoritative fallback for those cases.
             fast = nil
         }
+        if let fast {
+            cacheFastResult(fast)
+        }
         if let fast, Self.isActionable(fast) {
+            trace(.fastAccepted)
             return ReceiptRecognitionResult(
                 lines: fast.lines,
                 meanConfidence: fast.meanConfidence,
@@ -248,11 +268,31 @@ private final class ReceiptRecognitionOperation: @unchecked Sendable {
         }
 
         try checkCancellation()
+        trace(.accurateStarted)
         let accurate = try recognize(in: image, level: .accurate)
+        trace(.accurateFinished)
         return ReceiptRecognitionResult(
             lines: accurate.lines,
             meanConfidence: accurate.meanConfidence,
             lineConfidences: accurate.lineConfidences
+        )
+    }
+
+    /// A timed-out accurate pass can still provide explicit-review candidates.
+    /// Keep the observed confidence intact and carry separate preparation authority.
+    func fastReviewResult() -> ReceiptRecognitionResult? {
+        lock.lock()
+        defer { lock.unlock() }
+        return cachedFastResult
+    }
+
+    private func cacheFastResult(_ result: OCRResult) {
+        guard !result.lines.isEmpty else { return }
+        lock.lock()
+        defer { lock.unlock() }
+        cachedFastResult = ReceiptRecognitionResult(
+            lines: result.lines, meanConfidence: result.meanConfidence,
+            lineConfidences: result.lineConfidences, requiresExplicitReview: true
         )
     }
 
@@ -318,7 +358,9 @@ private final class ReceiptRecognitionOperation: @unchecked Sendable {
         if isCancelled || Task.isCancelled { throw CancellationError() }
     }
 
-    private static func preparedImage(from data: Data) -> CGImage? {
+    private static func preparedImage(
+        from data: Data, trace: @Sendable (ReceiptRecognitionStage) -> Void
+    ) -> CGImage? {
         let sourceOptions: [CFString: Any] = [
             kCGImageSourceShouldCache: false
         ]
@@ -328,17 +370,34 @@ private final class ReceiptRecognitionOperation: @unchecked Sendable {
         ) else {
             return nil
         }
+        trace(.imageSourceOpened)
+        let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, sourceOptions as CFDictionary)
+            as? [CFString: Any]
+        trace(.imagePropertiesRead)
+        // Upright, already-bounded screenshots need decoding, not thumbnail
+        // rendering. Other inputs retain ImageIO's bounded orientation transform.
+        if let width = properties?[kCGImagePropertyPixelWidth] as? Int,
+           let height = properties?[kCGImagePropertyPixelHeight] as? Int,
+           width > 0, height > 0,
+           max(width, height) <= maximumPixelDimension,
+           (properties?[kCGImagePropertyOrientation] as? Int ?? 1) == 1 {
+            let image = CGImageSourceCreateImageAtIndex(source, 0, [
+                kCGImageSourceShouldCacheImmediately: true
+            ] as CFDictionary)
+            trace(.imageDecoded)
+            return image
+        }
         let thumbnailOptions: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
             kCGImageSourceThumbnailMaxPixelSize: maximumPixelDimension,
             kCGImageSourceShouldCacheImmediately: true
         ]
-        return CGImageSourceCreateThumbnailAtIndex(
-            source,
-            0,
-            thumbnailOptions as CFDictionary
+        let image = CGImageSourceCreateThumbnailAtIndex(
+            source, 0, thumbnailOptions as CFDictionary
         )
+        trace(.imageDecoded)
+        return image
     }
 
     /// Vision observations can split a single visual row into label and amount
@@ -458,46 +517,9 @@ private final class ReceiptRecognitionOperation: @unchecked Sendable {
     }
 
     private static func isActionable(_ result: OCRResult) -> Bool {
-        guard result.lines.count >= 2, result.meanConfidence >= 0.82 else { return false }
-        // Use the authoritative parser as the quality gate so fast OCR and the
-        // final parse cannot disagree about decimal commas, grouping, or safe
-        // OCR digit repair.
-        let parsed = ReceiptTextParser.analyze(
-            fromLines: result.lines,
-            ocrConfidence: result.meanConfidence,
-            ocrLineConfidences: result.lineConfidences
-        )
-        guard let amountConfidence = parsed.amountCandidateDetails.first?.confidence,
-              amountConfidence != .low else {
-            return false
-        }
-
-        let strongLabels = [
-            "grand total", "amount due", "amount payable", "amount paid", "you paid",
-            "payment amount", "transfer amount", "jumlah besar", "jumlah bayaran", "jumlah",
-            "合计", "合計", "总计", "總計", "应付", "應付", "实付", "實付"
-        ]
-        let excludedLabelLines = [
-            "subtotal", "sub total", "sub-total", "total items", "total qty",
-            "total savings", "total discount", "total points", "available balance",
-            "account balance", "cash tendered", "change", "subjumlah", "jumlah kecil",
-            "jumlah diskaun", "baki", "total gst", "gst total", "total sst",
-            "sst total", "total vat", "vat total", "total tax", "tax total",
-            "total service charge", "jumlah cukai", "jumlah caj perkhidmatan",
-            "税额", "稅額", "服务费", "服務費"
-        ]
-        if result.lines.contains(where: { rawLine in
-            let line = rawLine.lowercased()
-            if excludedLabelLines.contains(where: { line.contains($0) }) { return false }
-            if strongLabels.contains(where: { line.contains($0) }) { return true }
-            return line.contains("total")
-        }) {
-            return true
-        }
-
-        let text = result.lines.joined(separator: " ").lowercased()
-        return ["payment successful", "transaction successful", "transfer successful",
-                "paid to", "payment to", "transferred to", "sent to"]
-            .contains(where: { text.contains($0) })
+        ReceiptRecognitionAcceptancePolicy.accepts(ReceiptRecognitionResult(
+            lines: result.lines, meanConfidence: result.meanConfidence,
+            lineConfidences: result.lineConfidences
+        ))
     }
 }

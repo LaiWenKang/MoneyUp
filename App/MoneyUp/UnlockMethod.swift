@@ -5,7 +5,7 @@ import SwiftUI
 ///
 /// The lock screen used to promise Face ID on every device. A Touch ID phone,
 /// or one with only a passcode, was told to use hardware it does not have.
-enum UnlockMethod {
+enum UnlockMethod: Sendable {
     case faceID
     case touchID
     case opticID

@@ -318,7 +318,10 @@ extension DashboardView {
         if let upcoming = nextScheduledTransaction {
             MoneyUpCard {
                 VStack(alignment: .leading, spacing: 12) {
-                    Label("dashboard.upcoming", systemImage: "calendar.badge.clock")
+                    Label(
+                        upcoming.occurrence <= reportingDate ? "dashboard.due_for_review" : "dashboard.upcoming",
+                        systemImage: "calendar.badge.clock"
+                    )
                         .font(.headline)
                     HStack(alignment: .firstTextBaseline, spacing: 12) {
                         VStack(alignment: .leading, spacing: 3) {
@@ -341,8 +344,12 @@ extension DashboardView {
                                     : Color.primary
                             )
                     }
+                    Button { onReviewSchedule(upcoming.occurrence) } label: {
+                        Label("dashboard.review_schedule", systemImage: "arrow.right.circle")
+                    }
+                    .buttonStyle(.bordered)
                 }
-                .accessibilityElement(children: .combine)
+                .accessibilityElement(children: .contain)
             }
         }
     }

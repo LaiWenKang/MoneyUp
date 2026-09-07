@@ -112,6 +112,7 @@ extension AppModel {
     private func beginStartupWork() {
         isWorking = true
         isStarting = true
+        automaticUnlockIsPending = false
     }
 
     private func finishDeferredStartupLockIfNeeded() {
@@ -183,6 +184,7 @@ extension AppModel {
     /// a startup failure. Kept as one transition so lifecycle tests can cover
     /// the background/foreground race without invoking process Keychain UI.
     func finishCancelledAuthentication() {
+        automaticUnlockIsPending = false
         finishUnlockToFirstUsefulContentMeasurement(outcome: .cancelled)
         autoLockTask?.cancel()
         autoLockTask = nil
@@ -346,6 +348,9 @@ extension AppModel {
     }
 
     func sceneDidLeaveActive(at date: Date) {
+        if widgetLifecycleRefresh.isSceneActive {
+            prepareAutomaticUnlockAfterInactivity()
+        }
         widgetLifecycleRefresh.isSceneActive = false
         cancelWidgetReportingDayRefresh()
         // Startup can already hold a decrypted key/store while domain loading
@@ -662,7 +667,8 @@ extension AppModel {
                 prefersDayFirst: prefersDayFirst,
                 accounts: accountsSnapshot,
                 ocrConfidence: boundedRecognition.meanConfidence,
-                ocrLineConfidences: boundedRecognition.lineConfidences
+                ocrLineConfidences: boundedRecognition.lineConfidences,
+                requiresExplicitReview: boundedRecognition.requiresExplicitReview
             )
         }
         let result = await withTaskCancellationHandler {
@@ -727,7 +733,8 @@ extension AppModel {
             lines: boundedLines,
             meanConfidence: recognition.meanConfidence,
             lineConfidences: alignedLineConfidences == nil
-                ? nil : boundedLineConfidences
+                ? nil : boundedLineConfidences,
+            requiresExplicitReview: recognition.requiresExplicitReview
         )
     }
 
@@ -742,7 +749,9 @@ extension AppModel {
             from: imageData,
             prefersDayFirst: prefersDayFirst
         )
-        return result?.draft
+        // This compatibility value cannot carry explicit-review authority.
+        guard let result, !result.requiresExplicitReview else { return nil }
+        return result.draft
     }
 
     /// Produces one exact History result page while keeping SQLCipher reads

@@ -2,6 +2,18 @@ import Foundation
 import MoneyUpCore
 import SQLCipher
 
+/// Exact posting predicate. Amount text uses the same canonical Decimal
+/// serialization as RecordWrite's index; SQL never converts money to REAL.
+public struct JournalPostingMatch: Sendable {
+    public let accountID: UUID
+    public let money: Money
+
+    public init(accountID: UUID, money: Money) {
+        self.accountID = accountID
+        self.money = money
+    }
+}
+
 /// Stable keyset cursor for chronological journal paging.
 ///
 /// The record identifier disambiguates entries with identical timestamps, so
@@ -625,6 +637,8 @@ public actor EncryptedRecordStore {
         endDateExclusive: Date? = nil,
         startDayKey: Int? = nil,
         endDayKeyExclusive: Int? = nil,
+        sourceFingerprint: String? = nil,
+        matchingPosting: JournalPostingMatch? = nil,
         after cursor: JournalEntryPageCursor? = nil,
         limit: Int = 80
     ) throws -> JournalEntryPage {
@@ -637,6 +651,8 @@ public actor EncryptedRecordStore {
             endDateExclusive: endDateExclusive,
             startDayKey: startDayKey,
             endDayKeyExclusive: endDayKeyExclusive,
+            sourceFingerprint: sourceFingerprint,
+            matchingPosting: matchingPosting,
             after: cursor,
             limit: boundedLimit
         )

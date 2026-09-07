@@ -378,6 +378,8 @@ final class AppModel {
     var lockedCaptureWriteInProgress = false
     var storeCloseTask: Task<Void, Never>?
     var autoLockTask: Task<Void, Never>?
+    var automaticUnlockIsPending = true
+    var quickLogPreparationRevision: UInt64 = 0
     @ObservationIgnored var widgetLifecycleRefresh = WidgetLifecycleRefreshState()
     /// First instant the scene stopped being active. iOS normally sends
     /// `.inactive` before `.background`; retaining the first instant prevents

@@ -9,6 +9,12 @@ extension QuickLogEntryView {
             Label("quick_log.scan_ready", systemImage: "checkmark.circle.fill")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.tint)
+            if result.requiresExplicitReview {
+                Text("quick_log.scan_partial_review").font(.footnote).foregroundStyle(.orange)
+            }
+            if result.dateCandidates.isEmpty {
+                Text("quick_log.scan_date_review").font(.footnote).foregroundStyle(.secondary)
+            }
             Text("quick_log.scan_review")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
@@ -21,7 +27,8 @@ extension QuickLogEntryView {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
             }
-            receiptAmountCandidates(result.amountCandidateDetails)
+            receiptCurrencyNotice(result.currencyEvidence)
+            receiptAmountCandidates(result)
             receiptMerchantCandidates(result.merchantCandidateDetails)
             receiptDateCandidates(result.dateCandidateDetails)
             receiptCategoryCandidate(result)
@@ -31,8 +38,9 @@ extension QuickLogEntryView {
 
     @ViewBuilder
     private func receiptAmountCandidates(
-        _ candidates: [ReceiptCandidate<Decimal>]
+        _ result: ReceiptParseResult
     ) -> some View {
+        let candidates = result.amountCandidateDetails
         if !candidates.isEmpty {
             Text("quick_log.scan_amount_candidates")
                 .font(.caption.weight(.semibold))
@@ -45,9 +53,10 @@ extension QuickLogEntryView {
                             amountText = editableAmount(candidate.value)
                             persistUserDraftChange { $0.amountText = amountText }
                         } label: {
-                            receiptAmountCandidateLabel(candidate)
+                            receiptAmountCandidateLabel(candidate, receiptCurrency: result.currencyEvidence.identifiedCurrency)
                         }
                         .buttonStyle(.bordered)
+                        .disabled(!result.currencyEvidence.permitsExplicitUse(in: selectedAccountCurrency))
                     }
                 }
             }
@@ -55,23 +64,40 @@ extension QuickLogEntryView {
     }
 
     private func receiptAmountCandidateLabel(
-        _ candidate: ReceiptCandidate<Decimal>
+        _ candidate: ReceiptCandidate<Decimal>, receiptCurrency: CurrencyCode?
     ) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            if let currency = selectedAccountCurrency {
+            if let currency = receiptCurrency ?? selectedAccountCurrency {
                 Text(
                     "\(MoneyAmountPrivacy.protected(editableAmount(candidate.value))) "
                         + currency.value
                 )
                     .font(.body.monospacedDigit())
-                Text("quick_log.scan_amount_account_currency")
-                    .font(.caption2)
+                if receiptCurrency == nil {
+                    Text("quick_log.scan_amount_account_currency").font(.caption2)
+                } else {
+                    Text("quick_log.receipt_currency_detected").font(.caption2)
+                }
             } else {
                 Text(MoneyAmountPrivacy.protected(editableAmount(candidate.value)))
                     .font(.body.monospacedDigit())
             }
             Text(receiptCandidateDetail(candidate))
                 .font(.caption2)
+        }
+    }
+
+    @ViewBuilder
+    private func receiptCurrencyNotice(_ evidence: ReceiptCurrencyEvidence) -> some View {
+        if evidence.codes.count > 1 {
+            Text("quick_log.receipt_multiple_currencies")
+                .font(.footnote).foregroundStyle(.orange)
+        } else if let currency = evidence.identifiedCurrency, currency != selectedAccountCurrency {
+            Text(String(format: AppLocalization.string("quick_log.receipt_currency_mismatch"), currency.value))
+                .font(.footnote).foregroundStyle(.orange)
+        } else if evidence.hasAmbiguousSymbol, evidence.identifiedCurrency == nil {
+            Text("quick_log.receipt_currency_ambiguous")
+                .font(.footnote).foregroundStyle(.secondary)
         }
     }
 

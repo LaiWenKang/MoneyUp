@@ -374,7 +374,7 @@ struct AssetsView: View {
                     }
 
                     Button {
-                        model.lock()
+                        model.lockManually()
                     } label: {
                         Label("lock.lock_now", systemImage: "lock.fill")
                     }

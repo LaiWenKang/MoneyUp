@@ -118,13 +118,12 @@ private struct MoneyUpFieldValidationModifier: ViewModifier {
     let message: String?
 
     func body(content: Content) -> some View {
-        if let message,
-           !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            content.accessibilityHint(message)
-        } else {
-            content
-        }
+        // A conditional around `content` replaces TextField's structural
+        // identity when validation changes (for example while typing "12.").
+        // Keep the input and first responder alive across both states.
+        content.accessibilityHint(message?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "")
     }
+
 }
 
 extension View {
