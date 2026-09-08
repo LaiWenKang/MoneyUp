@@ -21,6 +21,7 @@ extension RestoreCandidateValidator {
         var allowanceReconciliationCount = 0
         var allowancePeriodWorkCount = 0
         var allowanceArchiveTransitionCount = 0
+        var pendingCapturePositions = Set<Int>()
     }
 
     static func validateSnapshotIdentities(
@@ -219,6 +220,13 @@ extension RestoreCandidateValidator {
         case .quickLogDrafts:
             try validateQuickLogDraft(record, decoder: decoder)
             return nil
+        case .pendingLockedCaptures:
+            let archived = try decoder.decode(ArchivedLockedCapture.self, from: record.payload)
+            guard archived.isStructurallyValid,
+                  state.pendingCapturePositions.insert(archived.position).inserted else {
+                throw AppModelError.invalidBook
+            }
+            return archived.capture.id
         case .accountLifecycleAudit:
             return try decodeLifecycleIdentity(record, decoder: decoder, state: &state)
         case .receiptAttachments:

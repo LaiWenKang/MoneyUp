@@ -284,6 +284,7 @@ private extension RecordCollection {
         case .investmentHoldings: "restore.collection.investment_holdings"
         case .netWorthSnapshots: "restore.collection.net_worth_snapshots"
         case .quickLogDrafts: "restore.collection.quick_log_drafts"
+        case .pendingLockedCaptures: "restore.collection.pending_locked_captures"
         case .accountLifecycleAudit:
             "restore.collection.account_lifecycle_audit"
         case .receiptAttachments: "restore.collection.receipt_attachments"

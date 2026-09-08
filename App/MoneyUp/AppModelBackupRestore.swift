@@ -42,12 +42,11 @@ extension AppModel {
             endLifecycleMutation()
         }
 
-        // A portable archive contains the SQLCipher snapshot but not the
-        // separately encrypted, book-agnostic locked-capture inbox. Refuse to
-        // label an incomplete recovery point as ready.
+        // Preserve unfinished inbox entries in the encrypted book before the
+        // snapshot, without requiring review or consuming the device copy.
         let backupStore = try requireStore()
         try await flushQuickLogDraftForBackup(to: backupStore)
-        try await requireEmptyLockedCaptureInbox()
+        try await preserveLockedCapturesForBackup(in: backupStore)
         try Task.checkCancellation()
         let metrics = try await backupStore.storageMetrics()
         guard metrics.recordCount
@@ -271,7 +270,7 @@ extension AppModel {
     ) async throws -> RestorePreparation {
         let restoreStore = try requireStore()
         // The redacted inbox cannot safely cross book replacement.
-        try await requireEmptyLockedCaptureInbox()
+        try await requireNoPendingCapturesForBookReplacement()
         do {
             try Self.removeRestoreValidationDirectory(
                 restoreValidationDirectoryURL

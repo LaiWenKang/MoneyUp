@@ -121,7 +121,9 @@ struct DataSafetyView: View {
             if model.pendingLockedCaptureCount > 0 {
                 Section {
                     Label(
-                        "backup.pending_captures_blocked",
+                        model.startupFailureKind == .missingDeviceBoundKey
+                            ? "backup.pending_captures_blocked"
+                            : "backup.pending_captures_included",
                         systemImage: "tray.full.fill"
                     )
                     .foregroundStyle(.orange)
@@ -479,10 +481,6 @@ extension DataSafetyView {
         clearRestoreSuccessPresentation()
         errorMessage = nil
         message = nil
-        if model.pendingLockedCaptureCount > 0 {
-            errorMessage = AppLocalization.string("backup.error.pending_captures")
-            return
-        }
         guard backupPassword.count >= 10 else {
             errorMessage = AppLocalization.string("backup.error.password_short")
             return

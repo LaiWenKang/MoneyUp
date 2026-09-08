@@ -64,7 +64,7 @@ extension AppModel {
         let inventoryStore = try requireStore()
         let snapshot = try await inventoryStore.recordCountSnapshot()
         try Task.checkCancellation()
-        let pendingLockedCaptures = try await lockedCaptureStore.all()
+        let pendingLockedCaptures = try await pendingLockedCaptures(in: inventoryStore)
         let currentPendingLockedCaptureCount = pendingLockedCaptures.count
         pendingLockedCaptureCount = currentPendingLockedCaptureCount
         try Task.checkCancellation()

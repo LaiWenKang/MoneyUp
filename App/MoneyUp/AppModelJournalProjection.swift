@@ -463,7 +463,7 @@ extension AppModel {
             id: QuickLogDraft.primaryRecordID,
             in: .quickLogDrafts
         )
-        let remainingCaptureCount = try await lockedCaptureStore.remove(id: id)
+        let remainingCaptureCount = try await removePendingLockedCapture(id: id, in: store)
         guard ownsStoreGeneration(generation) else {
             throw AppModelError.locked
         }
