@@ -30,7 +30,7 @@ extension AppModel {
         }
 
         let current = try await restorePreviewCurrentBook()
-        try await requireEmptyLockedCaptureInbox()
+        try await requireNoPendingCapturesForBookReplacement()
         try Self.removeLegacyRestoreValidationDirectories()
         try Self.removeRestoreTemporaryArchive(
             restorePreviewValidationArchiveURL

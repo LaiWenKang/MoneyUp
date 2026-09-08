@@ -399,6 +399,7 @@ extension AppModel {
         deleteDatabaseKey: @Sendable () throws -> Void,
         lockedCaptureStore: any LockedCaptureStoring,
         removeKeyCliffRecoveryArtifacts: @Sendable () throws -> Void = {},
+        eraseCloudBackupState: @Sendable () async throws -> Void = {},
         clearEraseIntent: @Sendable () throws -> Void
     ) async throws {
         try deleteDatabaseKey()
@@ -409,6 +410,7 @@ extension AppModel {
         }
         try removeKeyCliffRecoveryArtifacts()
         try await lockedCaptureStore.eraseAll()
+        try await eraseCloudBackupState()
         try clearEraseIntent()
     }
 

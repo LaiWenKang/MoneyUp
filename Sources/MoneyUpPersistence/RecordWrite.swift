@@ -16,7 +16,7 @@ private extension RecordCollection {
              .loanPlans, .allowancePlans, .budgetEntryAttributions:
             return true
         case .profile, .journalEntryRevisions, .quickLogDrafts,
-             .budgetConfigurationTimelines:
+             .budgetConfigurationTimelines, .pendingLockedCaptures, .cloudBackupIdentity:
             return false
         }
     }

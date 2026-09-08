@@ -67,12 +67,12 @@ extension AppModel {
         generation: Int,
         requestLogRoute: Bool = true
     ) async throws {
-        var captures = try await lockedCaptureStore.all()
+        var captures = try await pendingLockedCaptures(in: store)
         guard ownsStoreGeneration(generation) else { return }
         pendingLockedCaptureCount = captures.count
 
         if let sourceID = quickLogDraft?.sourceCaptureID {
-            let remainingCaptureCount = try await lockedCaptureStore.remove(id: sourceID)
+            let remainingCaptureCount = try await removePendingLockedCapture(id: sourceID, in: store)
             guard ownsStoreGeneration(generation) else { return }
             pendingLockedCaptureCount = remainingCaptureCount
             recoveryIssues.removeAll { $0.hasPrefix("locked_captures/") }
@@ -87,8 +87,8 @@ extension AppModel {
               try await store.containsJournalEntry(
                 sourceFingerprint: Self.lockedCaptureFingerprint(replay.id)
               ) {
-            pendingLockedCaptureCount = try await lockedCaptureStore.remove(
-                id: replay.id
+            pendingLockedCaptureCount = try await removePendingLockedCapture(
+                id: replay.id, in: store
             )
             captures.removeFirst()
             guard ownsStoreGeneration(generation) else { return }
@@ -136,7 +136,7 @@ extension AppModel {
         await lifecycleHooks.checkpoint(.afterCaptureDraftPersisted)
         guard ownsStoreGeneration(generation) else { return }
         quickLogDraft = draft
-        let remainingCaptureCount = try await lockedCaptureStore.remove(id: capture.id)
+        let remainingCaptureCount = try await removePendingLockedCapture(id: capture.id, in: store)
         guard ownsStoreGeneration(generation) else { return }
         pendingLockedCaptureCount = remainingCaptureCount
         recoveryIssues.removeAll { $0.hasPrefix("locked_captures/") }

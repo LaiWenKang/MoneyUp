@@ -2678,7 +2678,7 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
-    func testBackupAndRestoreBlockWhileLockedCaptureInboxIsPending() async throws {
+    func testBackupIncludesPendingCaptureWhileRestoreProtectsCurrentInbox() async throws {
         let fixture = try AppModelFixture()
         defer { fixture.removeFiles() }
         let capture = LockedCapture(
@@ -2689,13 +2689,12 @@ final class AppModelTests: XCTestCase {
         let inbox = InMemoryLockedCaptureStore(captures: [capture])
         let model = fixture.model(lockedCaptureStore: inbox)
 
-        do {
-            _ = try await model.encryptedBackup(password: "backup-password")
-            XCTFail("Expected backup to reject an omitted locked-capture row")
-        } catch AppModelError.pendingLockedCaptures {
-            // The current archive format intentionally does not claim to
-            // contain this separately encrypted inbox.
-        }
+        let firstArchive = try await model.encryptedBackup(password: "backup-password")
+        let snapshot = try PortableArchive.open(firstArchive, password: "backup-password")
+        let record = try XCTUnwrap(snapshot.records.first {
+            $0.collection == RecordCollection.pendingLockedCaptures.rawValue
+        })
+        XCTAssertEqual(try JSONDecoder().decode(ArchivedLockedCapture.self, from: record.payload).capture, capture)
         XCTAssertEqual(model.pendingLockedCaptureCount, 1)
         XCTAssertFalse(model.isWorking)
 
@@ -2715,7 +2714,11 @@ final class AppModelTests: XCTestCase {
         try await inbox.eraseAll()
         let archive = try await model.encryptedBackup(password: "backup-password")
         XCTAssertFalse(archive.isEmpty)
-        XCTAssertEqual(model.pendingLockedCaptureCount, 0)
+        XCTAssertEqual(model.pendingLockedCaptureCount, 1, "The encrypted book copy survives losing the device inbox")
+        do {
+            try await model.requireNoPendingCapturesForBookReplacement()
+            XCTFail("The book-owned pending capture must also block replacement")
+        } catch AppModelError.pendingLockedCaptures {}
         await fixture.store.close()
     }
 

@@ -15,7 +15,7 @@ import tempfile
 import zlib
 from pathlib import Path
 
-from validate_architecture_fitness import scan_swift, type_declarations
+from validate_architecture_fitness import OPTIONAL_CLOUD_TRANSPORT, scan_swift, type_declarations
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -2117,13 +2117,26 @@ def validate_offline_runtime_boundary() -> None:
             text = source.read_text(encoding="utf-8")
             matches = [
                 symbol for symbol in forbidden_runtime_symbols if symbol in text
+                and not (source.relative_to(ROOT).as_posix() == OPTIONAL_CLOUD_TRANSPORT and symbol == "URLSession")
             ]
             if matches:
                 fail(
                     f"{source.relative_to(ROOT)} crosses the reviewed offline "
                     f"runtime boundary: {', '.join(matches)}"
                 )
-    print("Validated offline runtime boundary")
+    transport = (ROOT / OPTIONAL_CLOUD_TRANSPORT).read_text(encoding="utf-8")
+    configuration = (ROOT / "App/MoneyUp/CloudBackup/CloudBackupTypes.swift").read_text(encoding="utf-8")
+    client = (ROOT / "App/MoneyUp/CloudBackup/CloudKitWebClient.swift").read_text(encoding="utf-8")
+    for token in ("URLSessionConfiguration.ephemeral", "configuration.httpCookieStorage = nil",
+                  "configuration.urlCredentialStorage = nil", "configuration.urlCache = nil",
+                  "completionHandler(nil)", "maximumResponseBytes", "CloudBackupConfiguration.isSecureURL(url)"):
+        if token not in transport:
+            fail(f"optional cloud transport lost its reviewed boundary: {token}")
+    if 'MoneyUpCloudBackupEnabled") as? Bool == true' not in configuration:
+        fail("cloud backup must require explicit build configuration")
+    if '/private/\\(operation.rawValue)' not in client or 'components.host = "api.apple-cloudkit.com"' not in client:
+        fail("cloud backup requests must use the private Apple CloudKit endpoint")
+    print("Validated local runtime and the bounded opt-in cloud transport exception")
 
 
 def validate_key_cliff_recovery_boundary() -> None:

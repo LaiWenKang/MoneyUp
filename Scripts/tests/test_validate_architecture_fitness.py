@@ -17,6 +17,16 @@ import validate_release_assets as release_assets
 
 
 class ArchitectureFitnessTests(unittest.TestCase):
+    def test_optional_cloud_transport_exception_does_not_allow_network_elsewhere(self) -> None:
+        self.write(fitness.OPTIONAL_CLOUD_TRANSPORT, "let session: URLSessionConfiguration?\n")
+        self.assertEqual(fitness.validate_offline_boundary(self.root), [])
+        self.write("App/MoneyUp/UnreviewedCloud.swift", "let session: URLSessionConfiguration?\n")
+        self.assertIn("offline-boundary", self.rules(fitness.validate_offline_boundary(self.root)))
+
+    def test_optional_cloud_transport_still_rejects_raw_sockets_and_webviews(self) -> None:
+        self.write(fitness.OPTIONAL_CLOUD_TRANSPORT, "import WebKit\nlet view = WKWebView()\nsocket(1, 2, 3)\n")
+        self.assertIn("offline-boundary", self.rules(fitness.validate_offline_boundary(self.root)))
+
     def setUp(self) -> None:
         self.temporary_directory = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary_directory.name)

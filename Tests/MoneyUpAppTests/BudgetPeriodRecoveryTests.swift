@@ -262,8 +262,8 @@ final class BudgetPeriodRecoveryTests: XCTestCase {
         try await fixture.seed(profile: profile, accounts: [fixture.wallet, fixture.food])
         let model = fixture.model(profile: profile, lockedCaptureStore: inbox)
         model.pendingLockedCaptureCount = 1
-        do { _ = try await model.encryptedBackup(password: "Synthetic recovery password"); XCTFail("Pending inbox must remain protected") }
-        catch AppModelError.pendingLockedCaptures {}
+        _ = try await model.encryptedBackup(password: "Synthetic recovery password")
+        XCTAssertEqual(model.pendingLockedCaptureCount, 1, "Backup preserves unfinished capture state")
         try await model.reviewPendingLockedCapturesForBackup()
         XCTAssertEqual(model.pendingLockedCaptureCount, 0)
         XCTAssertEqual(model.quickLogDraft?.sourceCaptureID, capture.id)

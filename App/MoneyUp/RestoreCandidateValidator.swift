@@ -268,6 +268,9 @@ enum RestoreCandidateValidator {
             guard shape.splitCount <= maximumQuickLogSplitCount else {
                 throw AppModelError.invalidBook
             }
+        case .pendingLockedCaptures:
+            let archived = try decoder.decode(ArchivedLockedCapture.self, from: record.payload)
+            guard archived.isStructurallyValid else { throw AppModelError.invalidBook }
         case .accountLifecycleAudit:
             let shape = try decoder.decode(
                 LifecycleAuditWorkShape.self,
@@ -304,7 +307,7 @@ enum RestoreCandidateValidator {
                 perRecordLimit: maximumJournalPostingsPerEntry,
                 aggregateLimit: maximumJournalPostingCount
             )
-        case .profile, .accounts, .budgetNodes, .netWorthSnapshots,
+        case .profile, .accounts, .budgetNodes, .netWorthSnapshots, .cloudBackupIdentity,
              .receiptAttachments, .exchangeRates:
             break
         }

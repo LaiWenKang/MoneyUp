@@ -631,6 +631,27 @@ def validate_deferred_restore_failure_route(
     )
 
 
+def validate_cloud_backup_failure_route(documents: list[SwiftSource]) -> bool:
+    """Prove the controller's observable messages reach its bound native view."""
+    views = [d for d in documents if d.path.name == "CloudBackupView.swift"]
+    models = [d for d in documents if d.path.name == "CloudBackupController.swift"]
+    if len(views) != 1 or len(models) != 1:
+        return False
+    view, model = views[0], models[0]
+    reachable = reachable_view_scopes(documents).get("CloudBackupView", set())
+    body = "\n".join(view.masked[s.body_start + 1:s.end] for s in view.view_scopes
+                     if s.name in reachable and view.owner_at(s.body_start + 1) == "CloudBackupView")
+    forwarding = owned_function_body(model, "CloudBackupController", "recordFailure") or ""
+    return all(re.search(pattern, body) for pattern in (
+        r"\.moneyUpOperationErrorAlert\s*\(\s*message\s*:\s*\$controller\.errorMessage\s*\)",
+        r"if\s+let\s+detail\s*=\s*controller\.failureDetail\s*\{\s*Text\s*\(\s*detail\s*\)",
+        r"controller\.backUpNow\s*\(\s*model\s*:\s*model\s*\)",
+        r"controller\.connectAccount\s*\(",
+    )) and re.search(r"@Bindable\s+var\s+controller\s*:\s*CloudBackupController", view.masked) is not None \
+        and re.search(r"failureDetail\s*=\s*message", forwarding) is not None \
+        and re.search(r"if\s+showAlert\s*\{\s*errorMessage\s*=\s*message", forwarding) is not None
+
+
 def validate_safe_messages(
     documents: list[SwiftSource],
     operation_owners: dict[str, set[str]],
@@ -644,6 +665,7 @@ def validate_safe_messages(
         documents,
         operation_owners,
     )
+    cloud_backup_route_is_verified = validate_cloud_backup_failure_route(documents)
 
     for document in documents:
         for match in SAFE_MESSAGE.finditer(document.masked):
@@ -673,6 +695,11 @@ def validate_safe_messages(
             prefix = document.masked[prefix_start:match.start()]
             target = direct_assignment_target(document, match.start())
             if target is not None:
+                if owner == "CloudBackupController" and cloud_backup_route_is_verified and (
+                    target in {"errorMessage", "failureDetail"}
+                    or (target == "message" and document.function_at(match.start()) == "recordFailure")
+                ):
+                    continue
                 if target not in operation_owners.get(owner, set()):
                     violations.append(
                         f"{source_label(document, match.start())} publishes .{context} "

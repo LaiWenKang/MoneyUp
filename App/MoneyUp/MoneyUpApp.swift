@@ -78,6 +78,10 @@ struct MoneyUpApp: App {
                 .onOpenURL { url in
                     routeDeepLink(url)
                 }
+                .task(id: scenePhase == .active && model.state == .ready) {
+                    guard scenePhase == .active, model.state == .ready else { return }
+                    await model.cloudBackupController?.runAutomaticBackups(model: model)
+                }
                 .onChange(of: quickActionRouteBroker.revision) { _, _ in
                     routePendingQuickAction()
                 }
@@ -86,6 +90,7 @@ struct MoneyUpApp: App {
                     Task { await model.unlockAutomaticallyIfNeeded() }
                 }
                 .onChange(of: model.state) { _, _ in
+                    if model.state != .ready { model.cloudBackupController?.cancelTransfers() }
                     Task { await model.unlockAutomaticallyIfNeeded() }
                 }
                 .onChange(of: model.isLifecycleMutationInProgress) { _, _ in
@@ -99,6 +104,7 @@ struct MoneyUpApp: App {
                     routePendingQuickAction()
                 }
                 .onChange(of: scenePhase) { _, newPhase in
+                    if newPhase != .active { model.cloudBackupController?.cancelTransfers() }
                     launchState.isActive = newPhase == .active
                     switch newPhase {
                     case .background:

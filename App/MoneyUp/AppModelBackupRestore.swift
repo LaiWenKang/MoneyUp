@@ -31,10 +31,11 @@ extension AppModel {
 
     /// Production backup entry point. The returned artifact stays file-backed
     /// from the SQL cursor through SwiftUI's export handoff.
+    @discardableResult
     func encryptedBackup(
         to destinationURL: URL,
         password: String
-    ) async throws {
+    ) async throws -> Int64 {
         try beginLifecycleMutation(invalidatesJournalProjection: false)
         isWorking = true
         defer {
@@ -42,12 +43,11 @@ extension AppModel {
             endLifecycleMutation()
         }
 
-        // A portable archive contains the SQLCipher snapshot but not the
-        // separately encrypted, book-agnostic locked-capture inbox. Refuse to
-        // label an incomplete recovery point as ready.
+        // Preserve unfinished inbox entries in the encrypted book before the
+        // snapshot, without requiring review or consuming the device copy.
         let backupStore = try requireStore()
         try await flushQuickLogDraftForBackup(to: backupStore)
-        try await requireEmptyLockedCaptureInbox()
+        try await preserveLockedCapturesForBackup(in: backupStore)
         try Task.checkCancellation()
         let metrics = try await backupStore.storageMetrics()
         guard metrics.recordCount
@@ -61,7 +61,7 @@ extension AppModel {
             throw PortableArchiveError.archiveTooLarge
         }
         try Task.checkCancellation()
-        try await backupStore.exportPortableArchive(
+        return try await backupStore.exportPortableArchiveWithRevision(
             to: destinationURL,
             password: password
         )
@@ -271,7 +271,7 @@ extension AppModel {
     ) async throws -> RestorePreparation {
         let restoreStore = try requireStore()
         // The redacted inbox cannot safely cross book replacement.
-        try await requireEmptyLockedCaptureInbox()
+        try await requireNoPendingCapturesForBookReplacement()
         do {
             try Self.removeRestoreValidationDirectory(
                 restoreValidationDirectoryURL

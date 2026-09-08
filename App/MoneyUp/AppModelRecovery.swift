@@ -103,6 +103,7 @@ extension AppModel {
             mode: mode
         )
         try await loadQuickLogDraft(from: store, mode: mode)
+        pendingLockedCaptureCount = try await store.count(in: .pendingLockedCaptures)
         try await persistCurrentMonthBudgetCheckpointIfNeeded(
             in: store,
             persistsCheckpoint: mode.persistsBudgetTimelineMigration

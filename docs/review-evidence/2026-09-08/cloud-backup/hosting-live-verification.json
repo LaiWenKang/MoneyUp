@@ -1,0 +1,39 @@
+{
+  "provider": "Cloudflare Pages",
+  "project": "moneyup-signin",
+  "origin": "https://moneyup-signin.pages.dev",
+  "callbackURL": "https://moneyup-signin.pages.dev/auth/icloud/callback",
+  "appID": "3ZPDTY7ZRS.com.laiwenkang.MoneyUp",
+  "deploymentID": "633c0e3c-4494-47f6-ab43-2c9600ab9d89",
+  "deploymentURL": "https://633c0e3c.moneyup-signin.pages.dev",
+  "environment": "production",
+  "sourceCommit": "786fb8a",
+  "verifiedAt": "2026-09-08T09:41:58.551143+00:00",
+  "httpsVerified": true,
+  "association": "passed",
+  "noRedirect": "passed",
+  "privacyHeaders": "passed",
+  "queryNotReflected": "passed",
+  "unknownRoute404": "passed",
+  "nativeAppleSignIn": "not verified by this check",
+  "deploymentContent": "four public static assets plus _headers; no Functions or backup data",
+  "authorizationScopes": [
+    "account:read",
+    "user:read",
+    "pages:write",
+    "offline_access"
+  ],
+  "credentialStorage": "Wrangler encrypted file with encryption key in macOS Keychain",
+  "appleDeveloperPreflight": {
+    "observedAt": "2026-09-08T09:57:44.986578+00:00",
+    "appIDPrefix": "3ZPDTY7ZRS",
+    "bundleID": "com.laiwenkang.MoneyUp",
+    "matchesHostedAssociation": true,
+    "appGroupsEnabled": true,
+    "associatedDomainsEnabled": false,
+    "iCloudEnabled": false,
+    "permissionChanges": "awaiting explicit user approval",
+    "cloudKitContainers": []
+  },
+  "subsequentAppleProvisioningEvidence": "apple-development-verification.json; supersedes the historical preflight above"
+}

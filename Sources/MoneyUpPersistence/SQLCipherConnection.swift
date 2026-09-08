@@ -23,6 +23,9 @@ final class SQLCipherConnection: @unchecked Sendable {
     }
 
     var database: OpaquePointer?
+    /// Connection-local monotonic change counter; useful for detecting any
+    /// durable-row change without loading financial payloads or trusting clocks.
+    var changeRevision: Int64 { sqlite3_total_changes64(database) }
     #if DEBUG
     var shouldFailNextRestoreRollbackForTesting = false
     var shouldFailNextWriteRollbackForTesting = false

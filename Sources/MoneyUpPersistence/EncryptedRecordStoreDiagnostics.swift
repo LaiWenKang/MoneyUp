@@ -255,6 +255,15 @@ extension EncryptedRecordStore {
         )
     }
 
+    /// The actor cannot interleave a store mutation between the synchronous
+    /// export and this revision read. Preserve the original export API.
+    public func exportPortableArchiveWithRevision(to destinationURL: URL, password: String) throws -> Int64 {
+        try exportPortableArchive(to: destinationURL, password: password)
+        return connection.changeRevision
+    }
+
+    public func changeRevision() -> Int64 { connection.changeRevision }
+
     /// Replaces the complete logical store from an authenticated archive in
     /// one SQLite transaction. Every version-2 record is decoded and indexed
     /// incrementally; any authentication, validation, cancellation, or write
