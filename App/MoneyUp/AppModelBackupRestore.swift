@@ -31,10 +31,11 @@ extension AppModel {
 
     /// Production backup entry point. The returned artifact stays file-backed
     /// from the SQL cursor through SwiftUI's export handoff.
+    @discardableResult
     func encryptedBackup(
         to destinationURL: URL,
         password: String
-    ) async throws {
+    ) async throws -> Int64 {
         try beginLifecycleMutation(invalidatesJournalProjection: false)
         isWorking = true
         defer {
@@ -60,7 +61,7 @@ extension AppModel {
             throw PortableArchiveError.archiveTooLarge
         }
         try Task.checkCancellation()
-        try await backupStore.exportPortableArchive(
+        return try await backupStore.exportPortableArchiveWithRevision(
             to: destinationURL,
             password: password
         )

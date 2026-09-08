@@ -7,7 +7,10 @@ and later accepted founder decisions.
 The Golden PRD is the functional/release authority. Security and accounting
 invariants remain non-negotiable. The earlier PRD is supporting evidence only
 where it does not conflict. Its StoreKit and CloudKit requirements are
-superseded: the approved first public release is free and local-only.
+superseded by the free local-first release. On 8 September 2026 the owner
+approved optional separate-account iCloud backup; implementation and live
+acceptance are tracked in `SEPARATE_ICLOUD_BACKUP_2026-09-08.md`. Multi-device
+live sync remains deferred. This approval does not claim cloud support is live.
 
 Checked source items describe the build-11 0.7.1 candidate. Exact PR-head CI
 run 300 and merged implementation CI run 301 cover the prior build-10 baseline;

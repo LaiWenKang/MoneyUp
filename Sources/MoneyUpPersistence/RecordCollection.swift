@@ -9,6 +9,7 @@ public enum RecordCollection: String, CaseIterable, Sendable {
     case netWorthSnapshots = "net_worth_snapshots"
     case quickLogDrafts = "quick_log_drafts"
     case pendingLockedCaptures = "pending_locked_captures"
+    case cloudBackupIdentity = "cloud_backup_identity"
     case accountLifecycleAudit = "account_lifecycle_audit"
     case receiptAttachments = "receipt_attachments"
     case exchangeRates = "exchange_rates"

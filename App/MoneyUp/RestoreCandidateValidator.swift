@@ -307,7 +307,7 @@ enum RestoreCandidateValidator {
                 perRecordLimit: maximumJournalPostingsPerEntry,
                 aggregateLimit: maximumJournalPostingCount
             )
-        case .profile, .accounts, .budgetNodes, .netWorthSnapshots,
+        case .profile, .accounts, .budgetNodes, .netWorthSnapshots, .cloudBackupIdentity,
              .receiptAttachments, .exchangeRates:
             break
         }

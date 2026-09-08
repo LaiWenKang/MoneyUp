@@ -160,6 +160,7 @@ final class AppModel {
     }
 
     let services: AppModelServices
+    var cloudBackupController: CloudBackupController? = CloudBackupController.configured()
 
     var state: State = .launching
     /// Semantic startup failure used to expose only the recovery operations

@@ -22,6 +22,7 @@ class LaunchSafetyValidatorTests(unittest.TestCase):
         "App/MoneyUp/AppModelKeyCliffRecovery.swift",
         "App/MoneyUp/DatabaseKeyStore.swift",
         "App/MoneyUp/LockedCaptureStore.swift",
+        "App/MoneyUp/CloudBackup/CloudBackupVault.swift",
         "Tests/MoneyUpAppTests/DatabaseStoreOpenerTests.swift",
     )
 
@@ -101,6 +102,11 @@ class LaunchSafetyValidatorTests(unittest.TestCase):
         )
         errors = launch_safety.validate(self.root)
         self.assertTrue(any("executable regression coverage" in error for error in errors))
+
+    def test_rejects_cloud_keychain_moved_to_main_actor(self) -> None:
+        self.mutate("App/MoneyUp/CloudBackup/CloudBackupVault.swift",
+                    "actor CloudBackupKeychainVault", "@MainActor final class CloudBackupKeychainVault")
+        self.assertTrue(any("non-main actor" in error for error in launch_safety.validate(self.root)))
 
 
 if __name__ == "__main__":

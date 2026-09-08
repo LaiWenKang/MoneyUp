@@ -558,6 +558,7 @@ extension AppModel {
     /// external widget state. Candidate decoding remains suppressed, while a
     /// failed unrecoverable replacement cannot leave old-book data visible.
     func finishBookReplacementMutation() {
+        cloudBackupController?.pauseForBookReplacement()
         isBookReplacementInProgress = false
         // Trigger retained views to reload only after the authoritative old or
         // replacement book can accept reads again.

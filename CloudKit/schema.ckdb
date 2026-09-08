@@ -1,0 +1,22 @@
+DEFINE SCHEMA
+
+RECORD TYPE MoneyUpBackup (
+    "___recordID" REFERENCE QUERYABLE,
+    bookID STRING QUERYABLE,
+    createdAt TIMESTAMP QUERYABLE SORTABLE,
+    manifest STRING,
+    GRANT CREATE TO "_icloud",
+    GRANT READ TO "_creator",
+    GRANT WRITE TO "_creator"
+);
+
+RECORD TYPE MoneyUpBackupChunk (
+    "___recordID" REFERENCE QUERYABLE,
+    backupID STRING QUERYABLE,
+    index INT64,
+    payload ASSET,
+    sha256 STRING,
+    GRANT CREATE TO "_icloud",
+    GRANT READ TO "_creator",
+    GRANT WRITE TO "_creator"
+);

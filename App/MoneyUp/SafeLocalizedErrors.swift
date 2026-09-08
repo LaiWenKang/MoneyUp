@@ -49,6 +49,7 @@ func safeUserMessage(
 ) -> String {
     switch error {
     case is AppModelError,
+         is CloudBackupError,
          is DatabaseKeyStoreError,
          is ReceiptScannerError,
          is LockedCaptureStoreError,

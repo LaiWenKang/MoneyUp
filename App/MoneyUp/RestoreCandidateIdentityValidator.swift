@@ -220,6 +220,10 @@ extension RestoreCandidateValidator {
         case .quickLogDrafts:
             try validateQuickLogDraft(record, decoder: decoder)
             return nil
+        case .cloudBackupIdentity:
+            guard record.recordID == CloudBackupBookIdentity.recordID else { throw AppModelError.invalidBook }
+            _ = try decoder.decode(CloudBackupBookIdentity.self, from: record.payload)
+            return nil
         case .pendingLockedCaptures:
             let archived = try decoder.decode(ArchivedLockedCapture.self, from: record.payload)
             guard archived.isStructurallyValid,

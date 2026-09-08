@@ -167,6 +167,7 @@ OFFLINE_FORBIDDEN_SYMBOLS = (
     "Alamofire",
     "Moya",
 )
+OPTIONAL_CLOUD_TRANSPORT = "App/MoneyUp/CloudBackup/CloudBackupHTTPTransport.swift"
 RAW_SOCKET_CALL_PATTERN = re.compile(
     r"(?<![A-Za-z0-9_.])(?:socket|connect|send|recv|getaddrinfo)\s*\(|"
     r"\b(?:Darwin|Glibc)\s*\.\s*"
@@ -1621,6 +1622,8 @@ def validate_offline_boundary(
                     )
                 )
         for symbol in OFFLINE_FORBIDDEN_SYMBOLS:
+            if relative == OPTIONAL_CLOUD_TRANSPORT and symbol == "URLSession":
+                continue
             pattern = rf"\b{re.escape(symbol)}[A-Za-z0-9_]*\b"
             for match in re.finditer(pattern, scan.masked):
                 violations.append(

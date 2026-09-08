@@ -94,7 +94,9 @@ ambiguous transaction-title payload.
   transaction.
 - The app database is the source of truth. Spreadsheets are exports or reviewed
   imports, not live writable replicas.
-- The first public version is free. StoreKit, CloudKit sync, automatic market
+- The first public version is free. The owner approved optional separate-account
+  iCloud backup on 8 September 2026, subject to live account/recovery validation;
+  local operation remains available. StoreKit, live CloudKit sync, automatic market
   prices, bank aggregation, shared books, remote AI, and two-way spreadsheet
   editing are outside the approved 1.0 boundary.
 

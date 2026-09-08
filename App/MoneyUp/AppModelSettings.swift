@@ -161,6 +161,7 @@ extension AppModel {
             return
         }
         await waitForGoalMutationDrain()
+        cloudBackupController?.pauseForBookReplacement()
         invalidateInFlightJournalProjection()
         state = .launching
         lockAfterStart = false
@@ -190,6 +191,7 @@ extension AppModel {
                 deleteDatabaseKey: deleteDatabaseKey,
                 lockedCaptureStore: lockedCaptureStore,
                 removeKeyCliffRecoveryArtifacts: { try KeyCliffRecoveryTransaction.removeAll(for: databaseURL) },
+                eraseCloudBackupState: { try await self.eraseCloudBackupLocalStateIfProduction() },
                 clearEraseIntent: dataEraseIntent.clear
             )
             finishSuccessfulEraseRecoveryState()

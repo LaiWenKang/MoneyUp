@@ -1,0 +1,78 @@
+MoneyUp separate-account iCloud backup — local prototype evidence
+Branch: codex/separate-icloud-backup; base: c371bef
+Xcode 27.0 (27A5252f), iOS 27.0 Simulator. No live Apple sign-in, private-book upload, or signed-release claim.
+
+Broad native backup/recovery run:
+
+moneyup-cloud-regressions.log
+Test Suite 'AppModelTests' passed at 2026-09-08 15:12:44.038.
+	 Executed 100 tests, with 0 failures (0 unexpected) in 74.218 (74.249) seconds
+Test Suite 'BudgetPeriodRecoveryTests' passed at 2026-09-08 15:12:51.077.
+	 Executed 8 tests, with 0 failures (0 unexpected) in 7.031 (7.033) seconds
+Test Suite 'CloudBackupRenderTests' passed at 2026-09-08 15:12:57.531.
+	 Executed 1 test, with 0 failures (0 unexpected) in 6.453 (6.453) seconds
+Test Suite 'CloudBackupTests' passed at 2026-09-08 15:13:01.413.
+	 Executed 13 tests, with 0 failures (0 unexpected) in 3.879 (3.882) seconds
+Test Suite 'PendingCaptureBackupTests' passed at 2026-09-08 15:13:06.874.
+	 Executed 5 tests, with 0 failures (0 unexpected) in 5.459 (5.460) seconds
+Test Suite 'MoneyUpTests.xctest' passed at 2026-09-08 15:13:06.874.
+	 Executed 127 tests, with 0 failures (0 unexpected) in 97.040 (97.085) seconds
+Test Suite 'Selected tests' passed at 2026-09-08 15:13:06.874.
+	 Executed 127 tests, with 0 failures (0 unexpected) in 97.040 (97.088) seconds
+	/tmp/moneyup-backup-derived/Logs/Test/Test-MoneyUp-2026.09.08_15-11-06-+0800.xcresult
+** TEST SUCCEEDED **
+
+moneyup-cloud-final-tests.log
+Test Suite 'CloudBackupRenderTests' passed at 2026-09-08 15:26:51.931.
+	 Executed 1 test, with 0 failures (0 unexpected) in 3.996 (3.999) seconds
+Test Suite 'CloudBackupTests' passed at 2026-09-08 15:26:55.819.
+	 Executed 13 tests, with 0 failures (0 unexpected) in 3.885 (3.888) seconds
+Test Suite 'MoneyUpTests.xctest' passed at 2026-09-08 15:26:55.819.
+	 Executed 14 tests, with 0 failures (0 unexpected) in 7.881 (7.888) seconds
+Test Suite 'Selected tests' passed at 2026-09-08 15:26:55.819.
+	 Executed 14 tests, with 0 failures (0 unexpected) in 7.881 (7.889) seconds
+	/tmp/moneyup-backup-derived/Logs/Test/Test-MoneyUp-2026.09.08_15-26-23-+0800.xcresult
+** TEST SUCCEEDED **
+
+Persistence tests:
+	 Executed 60 tests, with 0 failures (0 unexpected) in 28.215 (28.221) seconds
+	 Executed 60 tests, with 0 failures (0 unexpected) in 28.215 (28.223) seconds
+
+Python: 57 architecture-validator tests, 7 launch-validator tests, 6 cloud setup/accessibility tests passed.
+
+Release validation:
+Validated 1730 bilingual strings in 3 catalogs
+Validated literal Swift localization references
+Validated local runtime and the bounded opt-in cloud transport exception
+Validated security recovery invariants against 28 adversarial mutations
+Validated logical-book boundary against 27 adversarial mutations
+Validated key-cliff recovery and rollback boundary
+Validated read-only, byte-bound, private restore preview boundary
+Validated dynamic test accounting: 1185 declarations (1132 XCTest, 53 Swift Testing)
+Validated app and widget PrivacyInfo.xcprivacy files
+Validated bilingual Info.plist user-facing strings
+Validated default, dark, and tinted app icons
+Validated shared horned-money brand mark
+Validated adaptive 3D illustration assets and widget brand mark
+Validated appearance/contrast-keyed semantic and chart palette
+Validated governed visual, motion, and feedback primitive usage
+Validated exact test accounting and W6 acceptance traceability
+Validated public policy, support, launch, and tester documents
+Validated deterministic 10,000-entry release fixture and runbook
+Validated app/widget signing and the serial Release performance target
+Validated logical/domain performance fixture and observational measurement contract
+Validated 1185 declared Swift tests: 1132 XCTest and 53 Swift Testing declarations
+Validated Swift structure limits: file <= 1200, type body <= 600, function body <= 80 lines
+Validated architecture fitness: reviewed Core SHA-256 and OSLog seams, view posting boundary, declared colorsets, bilingual static UI keys, offline runtime, conditional Foundation Models boundary, and safe Swift
+Validated detached launch Keychain/SQLCipher access, dSYM output, and executable main-thread regressions
+Validated 18 static performance names, 19 reviewed begin sites, 20 owned ends, fixed outcomes, and the closed global signpost primitive/identifier inventory; physical-device evidence remains required
+Validated accessible errors: every safe operation route has scoped ownership and every field message is associated with its input
+Validated six exact quick-log routes, bounded durable data-free ingress with exact-token acknowledgement, passive budget status, bilingual metadata, and preserved release identity
+Validated exact CI toolchain, immutable tools, warnings-as-errors, serial performance execution, and test evidence
+Validated protected, pinned TestFlight distribution workflow structure
+Validated owner-only, SHA-pinned TestFlight command workflow
+Validated approved-rework authority, 28 requirements, 38 designed tests, and exact-SHA release gate
+Release asset validation passed
+
+Generated a separate Xcode project with synthetic development settings. Verified enable flag, environment, callback URL and associated-domain entitlement. No network, portal mutation or deployment performed.
+/var/folders/41/9y86p_j93r9407kd7hn91cwc0000gn/T/moneyup-cloud-config-5051ftv0

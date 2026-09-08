@@ -176,6 +176,12 @@ struct OnboardingView: View {
                         title: "onboarding.recovery_title",
                         detail: "onboarding.recovery_detail"
                     )
+                    if model.cloudBackupController != nil {
+                        NavigationLink("cloud.restore_existing") {
+                            DataSafetyView().environment(model)
+                                .toolbar(.visible, for: .navigationBar)
+                        }
+                    }
                 }
             }
         }

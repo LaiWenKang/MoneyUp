@@ -62,6 +62,8 @@ struct DataSafetyView: View {
     @State private var isWorking = false
     @State private var message: String?
     @State private var errorMessage: String?
+    @State private var isShowingCloudBackup = false
+    @State private var cloudRestoreTicket: RestorePreviewTicket?
     @State private var restorePresentation = RestoreOperationPresentationState()
     @AccessibilityFocusState private var successMessageIsFocused: Bool
 
@@ -78,6 +80,14 @@ struct DataSafetyView: View {
 
     var body: some View {
         Form {
+            if model.cloudBackupController != nil {
+                Section {
+                    Button { isShowingCloudBackup = true } label: {
+                        Label("cloud.title", systemImage: "icloud")
+                    }
+                    .disabled(isWorking)
+                }
+            }
             if model.startupFailureKind == .missingDeviceBoundKey {
                 Section {
                     Label(
@@ -364,6 +374,26 @@ struct DataSafetyView: View {
         .background(Color.moneyUpBackground)
         .navigationTitle("backup.data_safety")
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $isShowingCloudBackup, onDismiss: {
+            if let ticket = cloudRestoreTicket {
+                cloudRestoreTicket = nil
+                pendingRestoreTicket = ticket
+            }
+        }) {
+            if let controller = model.cloudBackupController {
+                NavigationStack {
+                    CloudBackupView(controller: controller) { url, password in
+                        restorePassword = password
+                        await stageRestoreArchive(from: url, presentImmediately: false)
+                        if let message = errorMessage {
+                            errorMessage = nil
+                            controller.errorMessage = message
+                        } else if cloudRestoreTicket != nil { isShowingCloudBackup = false }
+                    }
+                    .environment(model)
+                }
+            }
+        }
         .fileExporter(
             isPresented: $isExporting,
             item: archiveTransfer,
@@ -458,6 +488,7 @@ struct DataSafetyView: View {
             archiveTransfer = nil
             pendingRestoreURL = nil
             pendingRestoreTicket = nil
+            cloudRestoreTicket = nil
             restorePassword = ""
         }
     }
@@ -600,7 +631,7 @@ extension DataSafetyView {
         }
     }
 
-    private func stageRestoreArchive(from sourceURL: URL) async {
+    private func stageRestoreArchive(from sourceURL: URL, presentImmediately: Bool = true) async {
         clearRestoreSuccessPresentation()
         isWorking = true
         errorMessage = nil
@@ -658,7 +689,8 @@ extension DataSafetyView {
             try Task.checkCancellation()
             removeTemporaryFile(pendingRestoreURL)
             pendingRestoreURL = importedURL
-            pendingRestoreTicket = ticket
+            if presentImmediately { pendingRestoreTicket = ticket }
+            else { cloudRestoreTicket = ticket }
         } catch is CancellationError {
             removeTemporaryFile(importedURL)
         } catch {

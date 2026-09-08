@@ -72,6 +72,7 @@ extension AppModel {
                     removeKeyCliffRecoveryArtifacts: {
                         try KeyCliffRecoveryTransaction.removeAll(for: databaseURL)
                     },
+                    eraseCloudBackupState: { try await self.eraseCloudBackupLocalStateIfProduction() },
                     clearEraseIntent: dataEraseIntent.clear
                 )
                 pendingDataEraseIsIncomplete = false

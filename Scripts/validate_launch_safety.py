@@ -136,12 +136,18 @@ def validate(root: Path = ROOT) -> list[str]:
     expected_keychain_sites = {
         "DatabaseKeyStore.swift": 2,
         "LockedCaptureStore.swift": 2,
+        "CloudBackupVault.swift": 1,
     }
     if keychain_sites != expected_keychain_sites:
         errors.append(
             "SecItemCopyMatching inventory drifted: expected "
             f"{expected_keychain_sites}, found {keychain_sites}"
         )
+    cloud_vault = mask_comments_and_strings(read(root,
+        Path("App/MoneyUp/CloudBackup/CloudBackupVault.swift"), errors))
+    if ("actor CloudBackupKeychainVault" not in cloud_vault or "@MainActor" in cloud_vault
+            or "nonisolated func load" in cloud_vault):
+        errors.append("cloud backup Keychain reads must remain isolated to their non-main actor")
 
     forbidden_launch_fragments = (
         "DatabaseKeyStore.loadOrCreateKey(",

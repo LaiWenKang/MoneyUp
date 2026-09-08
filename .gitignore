@@ -26,6 +26,7 @@ Package.resolved
 *.key
 *.csr
 *.mobileprovision
+CloudKit/Local.*
 
 # Financial exports and backups must never enter source control
 *.moneyup
