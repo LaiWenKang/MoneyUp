@@ -54,8 +54,9 @@ flowchart LR
 - CloudKit Console is signed into the developer team `3ZPDTY7ZRS` and reports
   **No Containers** on 8 September 2026.
 - `cktool` is installed, but no management token is configured.
-- No MoneyUp callback domain is recorded in the checkout. The owner was asked
-  for an existing domain while independent implementation continues.
+- The owner confirmed there is no existing domain and approved free Cloudflare
+  Pages hosting. The five-file static bundle is prepared; Cloudflare account
+  sign-in is required before deployment.
 - A container, web API token, associated callback domain, live separate-account
   authentication, and production schema verification are outstanding.
 
@@ -108,8 +109,10 @@ Validation on 8 September 2026:
 
 ## Remaining live acceptance
 
-The owner's callback-domain question remains unanswered. There is no configured
-CloudKit container or web API token. The schema, HTTPS return, separate-account
+The owner selected free Cloudflare Pages hosting. The public support files and
+local routing checks are ready, but Cloudflare is not signed in, so no hosted
+domain has been assigned. There is still no configured CloudKit container or
+web API token. See [hosting setup](../CloudKit/HOSTING.md). The schema, HTTPS return, separate-account
 selection, real token expiry/reconnection, Apple quota behavior, and physical
 replacement-device recovery therefore remain unverified. Production App Store
 privacy disclosures must also be reviewed for the optional cloud feature.

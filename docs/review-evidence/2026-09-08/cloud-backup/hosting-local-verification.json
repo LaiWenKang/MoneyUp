@@ -1,0 +1,20 @@
+{
+  "origin": "http://127.0.0.1:8789",
+  "callbackURL": "http://127.0.0.1:8789/auth/icloud/callback",
+  "appID": "3ZPDTY7ZRS.com.laiwenkang.MoneyUp",
+  "httpsVerified": false,
+  "association": "passed",
+  "noRedirect": "passed",
+  "privacyHeaders": "passed",
+  "queryNotReflected": "passed",
+  "unknownRoute404": "passed",
+  "nativeAppleSignIn": "not verified by this check",
+  "provider": "Cloudflare Pages",
+  "wranglerVersion": "4.129.1",
+  "functions": false,
+  "staticFileCount": 5,
+  "pythonTestsPassed": 10,
+  "cloudflareDashboard": "sign-in required",
+  "cloudflareCLI": "not authenticated",
+  "deployment": "not created"
+}

@@ -14,6 +14,8 @@ import plistlib
 import re
 from urllib.parse import unquote, urlsplit
 
+from build_cloud_callback_site import site_files
+
 
 ROOT = Path(__file__).resolve().parents[1]
 LIVE_CHECKS = (
@@ -67,21 +69,14 @@ def configuration_files(*, container: str, environment: str, api_token: str,
             }},
         }},
     }
-    association = {"webcredentials": {"apps": [team_id + ".com.laiwenkang.MoneyUp"]}}
-    callback = b'''<!doctype html><html lang="en"><meta charset="utf-8">
-<meta name="referrer" content="no-referrer"><meta name="robots" content="noindex">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Return to MoneyUp</title><style>body{font:18px system-ui;max-width:36rem;margin:12vh auto;padding:24px}</style>
-<h1>Return to MoneyUp</h1><p>If the connection did not complete, return to MoneyUp and try again.</p>
-<p>This page does not read or display sign-in information.</p></html>'''
     cloud = root / "CloudKit"
-    return {
+    files = {
         cloud / "Local.project.yml": (json.dumps(spec, indent=2) + "\n").encode(),
         cloud / "Local.entitlements": plistlib.dumps(entitlement),
-        cloud / "Local.site/.well-known/apple-app-site-association": (json.dumps(association) + "\n").encode(),
-        cloud / "Local.site" / parts.path.lstrip("/") / "index.html": callback,
     }
+    files.update({cloud / "Local.site" / relative: content
+                  for relative, content in site_files(team_id, parts.path).items()})
+    return files
 
 
 def main() -> int:

@@ -3,6 +3,9 @@
 The standard project remains local-only until a configured cloud build is
 deliberately generated. No production configuration is checked in.
 
+The owner selected free Cloudflare Pages hosting. The static deployment bundle
+and verified routing are described in [HOSTING.md](HOSTING.md).
+
 ## Apple setup
 
 1. Register `iCloud.com.laiwenkang.MoneyUp` in the existing developer team and
