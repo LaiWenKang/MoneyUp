@@ -188,6 +188,12 @@ actor CloudKitWebClient {
         var request = URLRequest(url: url)
         request.httpMethod = operation == .currentUser ? "GET" : "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        // CloudKit checks the API token's allowed origin even for native requests.
+        var origin = URLComponents()
+        origin.scheme = "https"
+        origin.host = configuration.callbackURL.host
+        guard let originValue = origin.string else { throw CloudBackupError.unavailable }
+        request.setValue(originValue, forHTTPHeaderField: "Origin")
         if let payload { request.httpBody = try JSONEncoder().encode(payload) }
         return request
     }

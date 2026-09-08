@@ -76,3 +76,13 @@ Release asset validation passed
 
 Generated a separate Xcode project with synthetic development settings. Verified enable flag, environment, callback URL and associated-domain entitlement. No network, portal mutation or deployment performed.
 /var/folders/41/9y86p_j93r9407kd7hn91cwc0000gn/T/moneyup-cloud-config-5051ftv0
+
+Apple provisioning follow-up, 8 September 2026:
+Real development bundle configuration generated, compiled and inspected.
+Origin enforcement and HTTP 421 sign-in regression cases exercised.
+14 selected cloud/render tests passed with 0 failures at 22:50:13 +0800.
+Result bundle: /tmp/moneyup-cloud-provisioned-tests.xcresult
+10 cloud setup/hosting Python tests passed. Full release-asset validation passed.
+Live callback hosting and unauthenticated Apple API checks passed.
+Default generated project restored to unconfigured cloud-disabled settings.
+No signed-device sign-in or real private-book backup/restore was performed.

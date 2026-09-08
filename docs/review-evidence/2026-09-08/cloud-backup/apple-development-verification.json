@@ -1,0 +1,93 @@
+{
+  "observedAt": "2026-09-08T14:53:11.678627+00:00",
+  "teamID": "3ZPDTY7ZRS",
+  "bundleID": "com.laiwenkang.MoneyUp",
+  "container": "iCloud.com.laiwenkang.MoneyUp",
+  "environment": "development",
+  "authorization": "Owner explicitly approved Apple setup; resumed after Mac unlock",
+  "appID": {
+    "resourceID": "2C6BML5LQ6",
+    "associatedDomainsEnabled": true,
+    "iCloudEnabled": true,
+    "cloudKitSupportEnabled": true,
+    "assignedContainerCount": 1,
+    "existingAppGroupPreserved": true,
+    "widgetChanged": false,
+    "signInWithAppleEnabled": false
+  },
+  "schema": {
+    "appleValidation": "passed",
+    "appleImport": "successfully imported",
+    "sha256": "797fb7a20c1ca00351717a86d064c473f7848fcb9b6dadfd7ff95e984b66cd09",
+    "recordTypes": [
+      "MoneyUpBackup",
+      "MoneyUpBackupChunk"
+    ],
+    "builtInUsersPreserved": true,
+    "recordNameQueryable": true,
+    "bookIDQueryable": true,
+    "createdAtQueryableAndSortable": true,
+    "backupIDQueryable": true,
+    "creatorReadWriteVerified": true,
+    "productionDeployed": false
+  },
+  "webAPIToken": {
+    "name": "MoneyUp Development Backup",
+    "environment": "development",
+    "callbackMode": "URL Redirect",
+    "callbackURL": "https://moneyup-signin.pages.dev/auth/icloud/callback",
+    "allowedOrigins": [
+      "https://moneyup-signin.pages.dev"
+    ],
+    "discoverability": false,
+    "valueIncludedInEvidence": false,
+    "localConfigMode": "0600; ignored by git",
+    "managementTokenCreated": false,
+    "serverToServerKeyCreated": false
+  },
+  "liveUnauthenticatedCheck": {
+    "endpoint": "/database/1/iCloud.com.laiwenkang.MoneyUp/development/private/users/current",
+    "withoutOrigin": {
+      "httpStatus": 401,
+      "serverErrorCode": "AUTHENTICATION_FAILED"
+    },
+    "withApprovedOrigin": {
+      "httpStatus": 421,
+      "serverErrorCode": "AUTHENTICATION_REQUIRED",
+      "redirectHost": "idmsa.apple.com",
+      "redirectPath": "/IDMSWebAuth/auth"
+    },
+    "completedUserSignIn": false,
+    "privateBookUploaded": false
+  },
+  "localValidation": {
+    "xcodeGenVersion": "2.46.0",
+    "realDevelopmentProjectGeneration": "passed",
+    "compiledBundleConfiguration": "matched local development settings and token",
+    "nativeTests": {
+      "passed": 14,
+      "failed": 0,
+      "resultBundle": "/tmp/moneyup-cloud-provisioned-tests.xcresult"
+    },
+    "defaultProjectRegeneratedUnconfigured": true,
+    "cloudSetupPythonTests": {
+      "passed": 10,
+      "failed": 0
+    },
+    "liveCallbackHostChecks": "passed",
+    "releaseAssetValidation": "passed",
+    "gitDiffCheck": "passed"
+  },
+  "deviceAndRelease": {
+    "validSigningIdentitiesInDefaultKeychainSearch": 0,
+    "provisioningProfileRefresh": "pending for future signed builds",
+    "signedDeviceBuild": "not performed",
+    "nativeHTTPSCallback": "not verified",
+    "differentAppleAccountOnPhone": "not verified",
+    "realEncryptedUploadDownloadRestore": "not verified",
+    "realSessionReconnectQuotaAndInterruption": "not verified",
+    "productionConfiguration": "not performed",
+    "testFlightUpload": "not performed",
+    "installedOwnerAppAndBook": "not accessed or changed"
+  }
+}

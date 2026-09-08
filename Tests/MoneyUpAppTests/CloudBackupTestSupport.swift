@@ -89,11 +89,14 @@ actor TestCloudBackupServer: CloudBackupHTTPTransporting {
         guard url.host == "api.apple-cloudkit.com", url.path.contains("/private/") else {
             throw CloudBackupError.invalidResponse
         }
+        guard request.value(forHTTPHeaderField: "Origin") == "https://moneyup.example" else {
+            return try response(.object(["serverErrorCode": .string("AUTHENTICATION_FAILED")]), status: 401)
+        }
         let token = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?
             .first { $0.name == "ckWebAuthToken" }?.value
         guard let token, let user = tokens.removeValue(forKey: token) else {
             return try response(.object(["serverErrorCode": .string("AUTHENTICATION_REQUIRED"),
-                "redirectURL": .string("https://idmsa.apple.com/appleauth/auth/signin")]), status: 401)
+                "redirectURL": .string("https://idmsa.apple.com/IDMSWebAuth/auth")]), status: 421)
         }
         sequence += 1
         let nextToken = "rotated-\(sequence)-\(user)"

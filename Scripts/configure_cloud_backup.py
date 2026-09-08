@@ -54,10 +54,10 @@ def configuration_files(*, container: str, environment: str, api_token: str,
         "com.apple.security.application-groups": ["group.com.laiwenkang.MoneyUp"],
         "com.apple.developer.associated-domains": ["webcredentials:" + parts.hostname],
     }
-    # JSON objects are valid YAML. The parent spec is merged first, then this
-    # local override supplies only app-side cloud settings.
+    # Includes resolve from XcodeGen's --project-root, which must be the repo
+    # root even though this local spec lives in CloudKit/. JSON is valid YAML.
     spec = {
-        "include": [{"path": "../project.yml", "relativePaths": True}],
+        "include": [{"path": "project.yml", "relativePaths": True}],
         "targets": {"MoneyUp": {
             "settings": {"base": {"CODE_SIGN_ENTITLEMENTS": "CloudKit/Local.entitlements"}},
             "info": {"properties": {

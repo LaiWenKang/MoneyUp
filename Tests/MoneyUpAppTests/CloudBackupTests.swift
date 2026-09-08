@@ -39,6 +39,8 @@ final class CloudBackupTests: XCTestCase {
     func testSessionTokensRotateDurablyBeforeTheNextRequest() async throws {
         let configuration = try cloudBackupTestConfiguration()
         let server = TestCloudBackupServer()
+        let signInURL = try await CloudKitWebClient(configuration: configuration, transport: server).signInURL()
+        XCTAssertEqual(signInURL.host, "idmsa.apple.com")
         let account = CloudBackupAccount(configurationID: configuration.identity, userRecordName: "user-A", webToken: "token-A")
         let vault = TestCloudBackupVault(account)
         let client = client(configuration, server: server, vault: vault, account: account)
@@ -53,6 +55,7 @@ final class CloudBackupTests: XCTestCase {
         }
         XCTAssertEqual(Set(tokens).count, tokens.count)
         XCTAssertTrue(requests.allSatisfy { $0.url?.path.contains("/private/") == true })
+        XCTAssertTrue(requests.allSatisfy { $0.value(forHTTPHeaderField: "Origin") == "https://moneyup.example" })
     }
 
     func testRotationStorageFailureStopsTheOperation() async throws {
@@ -120,6 +123,8 @@ final class CloudBackupTests: XCTestCase {
         XCTAssertEqual(target.quickLogDraft?.sourceCaptureID, capture.id)
         let requests = await server.capturedRequests()
         for request in requests {
+            let expectedOrigin = request.url?.host == "api.apple-cloudkit.com" ? "https://moneyup.example" : nil
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Origin"), expectedOrigin)
             let body = request.httpBody ?? Data()
             for secret in [password, "Private cafe", "Private note", "Unfinished private capture"] {
                 XCTAssertNil(body.range(of: Data(secret.utf8)))

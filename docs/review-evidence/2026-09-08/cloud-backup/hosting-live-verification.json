@@ -34,5 +34,6 @@
     "iCloudEnabled": false,
     "permissionChanges": "awaiting explicit user approval",
     "cloudKitContainers": []
-  }
+  },
+  "subsequentAppleProvisioningEvidence": "apple-development-verification.json; supersedes the historical preflight above"
 }

@@ -101,12 +101,17 @@ References: [Pages pricing](https://developers.cloudflare.com/pages/functions/pr
 [route matching](https://developers.cloudflare.com/pages/configuration/serving-pages/),
 [response headers](https://developers.cloudflare.com/pages/configuration/headers/).
 
-## Apple setup preflight after deployment
+## Apple setup after deployment
 
 The Apple Developer portal reauthenticated successfully. MoneyUp's registered
 App ID prefix is `3ZPDTY7ZRS`, matching the hosted association file. Its existing
-App Groups capability is enabled; Associated Domains and iCloud are off.
-Enabling the two new capabilities, provisioning the MoneyUp CloudKit container,
-and creating its development web API token are awaiting explicit approval for
-those Apple-side security permissions. No Apple capability changes have been
-saved and no private book has been uploaded.
+App Group is preserved. After the owner's explicit approval, Associated Domains
+and iCloud/CloudKit were enabled and saved, the MoneyUp container was associated,
+and the development schema and web API token were configured. The token permits
+only this site's origin and redirects to the exact verified callback path.
+The live unauthenticated API returns Apple's expected sign-in URL when supplied
+with that origin. Signed-device sign-in and encrypted backup/restore acceptance
+remain pending; no private book has been uploaded.
+
+[Apple setup and remaining device checks](README.md)
+[Token-free provisioning evidence](../docs/review-evidence/2026-09-08/cloud-backup/apple-development-verification.json)

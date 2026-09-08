@@ -51,14 +51,25 @@ flowchart LR
 
 ## Current provisioning evidence
 
-- CloudKit Console is signed into the developer team `3ZPDTY7ZRS` and reports
-  **No Containers** on 8 September 2026.
-- `cktool` is installed, but no management token is configured.
+- The owner approved Apple setup on 8 September 2026. Container
+  `iCloud.com.laiwenkang.MoneyUp` is registered under team `3ZPDTY7ZRS` and
+  associated with MoneyUp. The App ID has iCloud/CloudKit and Associated Domains
+  enabled; its existing App Group is preserved and the widget is unchanged.
+- Apple validated and imported the development schema. Both backup record
+  types, fields, query/sort indexes, and creator read/write permissions were
+  inspected. The built-in Users schema remains present.
+- The development API token has the exact HTTPS callback and only its origin
+  allowed. User discoverability is off. No management token or server key was
+  created; `cktool` management access remains unconfigured.
 - The owner confirmed there is no existing domain and approved free Cloudflare
   Pages hosting. The static site is now deployed and its HTTPS return address
   is verified at `https://moneyup-signin.pages.dev/auth/icloud/callback`.
-- A container, web API token, associated callback domain, live separate-account
-  authentication, and production schema verification are outstanding.
+- A live `users/current` request with the approved Origin returns Apple's
+  `421 AUTHENTICATION_REQUIRED` and an `idmsa.apple.com` sign-in URL. Omitting
+  Origin returns `401 AUTHENTICATION_FAILED`. The client now sends the required
+  origin on API requests; asset requests retain their independent signed URLs.
+- Live separate-account authentication, signed-device callback acceptance,
+  encrypted recovery, and production provisioning remain outstanding.
 
 Source and simulated HTTP tests cannot establish that account B authentication
 works on a phone using account A. The feature must remain unavailable in
@@ -102,8 +113,15 @@ Validation on 8 September 2026:
   supplies automatic-backup change tracking.
 - A separate Xcode project was generated using synthetic development settings;
   its enable flag, environment, callback URL, and associated-domain entitlement
-  were inspected. No token, domain, container, or website was provisioned.
+  were inspected during the initial implementation, before provisioning.
 - Four native English/Chinese setup screens were rendered and visually reviewed.
+
+After Apple provisioning, the 14 cloud/render tests passed again using the real
+development bundle configuration, including origin enforcement in the simulated
+protocol. XcodeGen's local include path was corrected to resolve from the repo
+project root, and generation plus the compiled bundle settings were verified.
+The ten cloud setup/hosting Python tests and live callback-host checks were
+rerun. These checks neither sign into a private iCloud account nor upload a book.
 
 [Native previews and evidence](review-evidence/2026-09-08/cloud-backup/README.md).
 
@@ -112,12 +130,14 @@ Validation on 8 September 2026:
 The owner selected free Cloudflare Pages hosting and completed phone device
 authorization. Hosting is deployed at `https://moneyup-signin.pages.dev`; live
 HTTPS, exact association, callback routing, and privacy checks passed. Apple
-Developer access has recovered, and the live app ID prefix matches the hosted
-association. iCloud and Associated Domains remain off; approval for enabling
-them and creating the development web API token is pending. See
-[hosting setup and live evidence](../CloudKit/HOSTING.md). The schema, HTTPS return, separate-account
-selection, real token expiry/reconnection, Apple quota behavior, and physical
-replacement-device recovery therefore remain unverified. Production App Store
+Developer access and the live app ID prefix match the hosted association. The
+approved development container, schema, capabilities, and web API token are
+configured. See [Apple provisioning evidence](review-evidence/2026-09-08/cloud-backup/apple-development-verification.json)
+and [hosting setup](../CloudKit/HOSTING.md). Future signed profiles need refreshing
+after the capability change. The default keychain search found no usable signing
+identity, so a signed device build has not been produced. Native HTTPS callback
+interception, separate-account selection, real token expiry/reconnection, Apple
+quota behavior, and physical replacement-device recovery remain unverified. Production App Store
 privacy disclosures must also be reviewed for the optional cloud feature.
 Neither this prototype nor the preceding manual-backup fix has been uploaded
 to TestFlight in this work. The owner's installed app and private book have

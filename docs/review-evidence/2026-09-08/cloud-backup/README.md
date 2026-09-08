@@ -6,6 +6,11 @@ password setup, and clear separation of connection from backup enablement.
 
 [Validation details](validation.txt)
 
+Apple development provisioning subsequently completed. See the separate
+[live setup evidence](apple-development-verification.json) for saved capabilities,
+schema, token restrictions, and the unauthenticated API check. The screenshots
+below remain fictional previews; they are not device sign-in evidence.
+
 ## Connect — English
 
 ![Connect an iCloud account](cloud-connect-en.png)

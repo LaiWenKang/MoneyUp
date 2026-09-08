@@ -6,6 +6,38 @@ deliberately generated. No production configuration is checked in.
 The owner selected free Cloudflare Pages hosting. The static deployment bundle
 and verified routing are described in [HOSTING.md](HOSTING.md).
 
+## Verified development setup — 8 September 2026
+
+The owner approved Apple setup. Team `3ZPDTY7ZRS` now has container
+`iCloud.com.laiwenkang.MoneyUp`, associated with the MoneyUp App ID.
+iCloud with CloudKit support and Associated Domains are saved and enabled.
+The existing App Group is retained; the widget was not changed.
+
+Apple validated and imported `schema.ckdb` into development. Both backup record
+types, their fields, and query/sort indexes were inspected in CloudKit Console.
+The development web API token uses URL Redirect to
+`https://moneyup-signin.pages.dev/auth/icloud/callback`, with only origin
+`https://moneyup-signin.pages.dev` allowed and user discoverability off.
+
+A live unauthenticated `users/current` check returned Apple's expected
+`421 AUTHENTICATION_REQUIRED` and an `idmsa.apple.com` sign-in URL. The same
+request without the allowed Origin header returned `401 AUTHENTICATION_FAILED`;
+the native client now supplies the callback origin on CloudKit API requests.
+This verifies the start of authentication, not a completed account connection.
+
+Ignored, owner-readable `Local.*` configuration files are prepared. The real
+development configuration generated successfully and passed 14 native simulator
+tests. The ordinary generated project was then returned to its unconfigured
+default. No production schema, token, app release, or private-book upload was
+performed. No management token or server-to-server key was created.
+
+Future signed builds need refreshed provisioning profiles after the capability
+change. No usable signing identity was available in the Mac's default keychain
+search during this check, so profile refresh and a signed iPhone build remain
+pending, along with the native acceptance checks below.
+
+[Provisioning evidence](../docs/review-evidence/2026-09-08/cloud-backup/apple-development-verification.json)
+
 ## Apple setup
 
 1. Register `iCloud.com.laiwenkang.MoneyUp` in the existing developer team and
@@ -15,7 +47,8 @@ and verified routing are described in [HOSTING.md](HOSTING.md).
    once management access has been explicitly authorized. Never reset a
    container as part of setup.
 3. Create a web API token for this container and configure its Sign In Callback
-   to the chosen app-associated HTTPS callback. An API token is app
+   to the chosen app-associated HTTPS callback. Restrict Allowed Origins to the
+   callback origin; native API requests must send that exact Origin. An API token is app
    configuration, not an end-user session or a server-to-server private key.
 4. Host the generated `apple-app-site-association` file at the callback domain's
    `/.well-known/apple-app-site-association` with JSON content type and no
