@@ -60,7 +60,7 @@ actor TestCloudBackupServer: CloudBackupHTTPTransporting {
 
     func capturedRequests() -> [URLRequest] { requests }
     func setFailChunk(_ index: Int?) { failChunk = index }
-    func setCorruptDownloads() { corruptDownloads = true }
+    func setCorruptDownloads(_ value: Bool = true) { corruptDownloads = value }
     func setQuotaExceeded() { quotaExceeded = true }
     func expireSessions() { tokens = [:] }
     func manifestCount(for user: String) -> Int {

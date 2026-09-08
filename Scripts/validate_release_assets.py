@@ -5132,13 +5132,41 @@ def validate_testflight_workflow() -> None:
     )
     for declaration in [
         "App/MoneyUpWidget/MoneyUpWidget.entitlements",
-        "App/MoneyUp/MoneyUp.entitlements",
+        '--entitlements "$CLOUD_APP_ENTITLEMENTS"',
         "codesign --force --sign -",
         "codesign --verify",
         "com.apple.security.application-groups",
     ]:
         if declaration not in entitlement_body:
             fail(f"archive entitlement seed step is missing {declaration}")
+
+    cloud_generation = workflow_step(workflow, "Generate the Xcode project and build number")
+    for declaration in (
+        'if [[ "$CLOUD_BACKUP_MODE" == "internal-beta" ]]; then',
+        "--environment production --internal-beta",
+        "--api-token-file",
+        "CloudKit/Local.internal-beta.project.yml",
+        "Scripts/verify_cloud_auth_start.py --configuration CloudKit/Local.internal-beta.project.yml",
+        '--deployed-schema-sha256 "$CLOUDKIT_SCHEMA_SHA256"',
+        "CLOUD_APP_ENTITLEMENTS=CloudKit/Local.internal-beta.entitlements",
+        "CLOUD_APP_ENTITLEMENTS=App/MoneyUp/MoneyUp.entitlements",
+    ):
+        if declaration not in cloud_generation:
+            fail(f"configured internal cloud beta generation is missing {declaration}")
+    cloud_export = workflow_step(workflow, "Export an App Store Connect IPA")
+    for declaration in (
+        'if [[ "$CLOUD_BACKUP_MODE" == "internal-beta" ]]; then',
+        'testFlightInternalTestingOnly -bool true "$EXPORT_OPTIONS_PATH"',
+        "Scripts/validate_cloud_release.py",
+        '--mode "$CLOUD_BACKUP_MODE" --export-options "$EXPORT_OPTIONS_PATH"',
+    ):
+        if declaration not in cloud_export:
+            fail(f"cloud beta internal-only export boundary is missing {declaration}")
+    cloud_signed = workflow_step(workflow, "Inspect distribution signing and contents")
+    for declaration in ("Scripts/validate_cloud_release.py", '--mode "$CLOUD_BACKUP_MODE"',
+                        '--signed-entitlements "$SIGNED_ENTITLEMENTS" --profile "$PROFILE_PLIST"'):
+        if declaration not in cloud_signed:
+            fail(f"signed cloud callback validation is missing {declaration}")
 
     debug_symbols_body = workflow_step(workflow, "Verify archive debug symbols")
     for declaration in [

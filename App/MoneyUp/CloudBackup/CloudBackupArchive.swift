@@ -3,6 +3,20 @@ import Foundation
 import MoneyUpPersistence
 
 enum CloudBackupArchive {
+    static func verifyUploadedArchive(_ manifest: CloudBackupManifest, using client: CloudKitWebClient,
+        password: String) async throws {
+        let downloaded = FileManager.default.temporaryDirectory
+            .appendingPathComponent("MoneyUp-Cloud-Verification-\(UUID().uuidString).moneyup")
+        defer { try? FileManager.default.removeItem(at: downloaded) }
+        try await client.download(manifest, to: downloaded)
+        let verification = Task.detached(priority: .utility) {
+            try PortableArchive.verify(from: downloaded, password: password)
+        }
+        try await withTaskCancellationHandler {
+            try await verification.value
+        } onCancel: { verification.cancel() }
+    }
+
     static func manifest(for fileURL: URL, bookID: UUID, id: UUID = UUID(),
         createdAt: Date = Date()) throws -> CloudBackupManifest {
         guard fileURL.isFileURL else { throw CloudBackupError.localStorage }

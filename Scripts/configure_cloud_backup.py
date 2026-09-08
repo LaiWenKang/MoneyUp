@@ -27,12 +27,18 @@ LIVE_CHECKS = (
 
 def configuration_files(*, container: str, environment: str, api_token: str,
                         callback_url: str, team_id: str, root: Path = ROOT,
-                        live_evidence: dict | None = None) -> dict[Path, bytes]:
+                        live_evidence: dict | None = None,
+                        internal_beta: bool = False,
+                        output_prefix: str = "Local") -> dict[Path, bytes]:
     parts = urlsplit(callback_url)
     if not re.fullmatch(r"iCloud\.[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+", container):
         raise ValueError("Use the exact registered iCloud container identifier")
     if environment not in {"development", "production"}:
         raise ValueError("Choose development or production")
+    if not re.fullmatch(r"Local(?:\.[a-z0-9-]+)?", output_prefix):
+        raise ValueError("Use an ignored Local configuration prefix")
+    if internal_beta and environment != "production":
+        raise ValueError("An internal TestFlight beta must use the production CloudKit environment")
     if (parts.scheme != "https" or not parts.hostname or parts.username or parts.password
             or parts.port not in {None, 443} or not parts.path or parts.path == "/"
             or parts.query or parts.fragment):
@@ -45,7 +51,7 @@ def configuration_files(*, container: str, environment: str, api_token: str,
         raise ValueError("Use the ten-character Apple Developer team ID")
     if not api_token or len(api_token.encode()) > 4096 or any(ord(c) < 32 for c in api_token):
         raise ValueError("The CloudKit web API token is missing or malformed")
-    if environment == "production" and not (
+    if environment == "production" and not internal_beta and not (
         live_evidence and all(live_evidence.get(check) is True for check in LIVE_CHECKS)
         and re.fullmatch(r"[a-f0-9]{40}", live_evidence.get("source_commit", ""))
     ):
@@ -59,22 +65,24 @@ def configuration_files(*, container: str, environment: str, api_token: str,
     spec = {
         "include": [{"path": "project.yml", "relativePaths": True}],
         "targets": {"MoneyUp": {
-            "settings": {"base": {"CODE_SIGN_ENTITLEMENTS": "CloudKit/Local.entitlements"}},
+            "settings": {"base": {"CODE_SIGN_ENTITLEMENTS": f"CloudKit/{output_prefix}.entitlements"}},
             "info": {"properties": {
                 "MoneyUpCloudBackupEnabled": True,
                 "MoneyUpCloudContainer": container,
                 "MoneyUpCloudEnvironment": environment,
                 "MoneyUpCloudAPIToken": api_token,
                 "MoneyUpCloudCallbackURL": callback_url,
+                "MoneyUpCloudBackupReleaseChannel": "internal-beta" if internal_beta else "validated",
+                "MoneyUpCloudBackupDeviceValidationPending": internal_beta,
             }},
         }},
     }
     cloud = root / "CloudKit"
     files = {
-        cloud / "Local.project.yml": (json.dumps(spec, indent=2) + "\n").encode(),
-        cloud / "Local.entitlements": plistlib.dumps(entitlement),
+        cloud / f"{output_prefix}.project.yml": (json.dumps(spec, indent=2) + "\n").encode(),
+        cloud / f"{output_prefix}.entitlements": plistlib.dumps(entitlement),
     }
-    files.update({cloud / "Local.site" / relative: content
+    files.update({cloud / f"{output_prefix}.site" / relative: content
                   for relative, content in site_files(team_id, parts.path).items()})
     return files
 
@@ -87,12 +95,16 @@ def main() -> int:
     parser.add_argument("--callback-url", required=True)
     parser.add_argument("--team-id", required=True)
     parser.add_argument("--live-acceptance-evidence", type=Path)
+    parser.add_argument("--internal-beta", action="store_true",
+                        help="Prepare a TestFlight-internal-only candidate with device validation explicitly pending")
+    parser.add_argument("--output-prefix", default="Local")
     args = parser.parse_args()
     try:
         evidence = json.loads(args.live_acceptance_evidence.read_text()) if args.live_acceptance_evidence else None
         files = configuration_files(container=args.container, environment=args.environment,
             api_token=args.api_token_file.read_text().strip(), callback_url=args.callback_url,
-            team_id=args.team_id, live_evidence=evidence)
+            team_id=args.team_id, live_evidence=evidence, internal_beta=args.internal_beta,
+            output_prefix=args.output_prefix)
         if any(path.exists() for path in files):
             raise ValueError("Local configuration already exists; review it before replacing any files")
         for path, content in files.items():

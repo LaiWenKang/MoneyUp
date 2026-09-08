@@ -1,0 +1,12 @@
+{
+  "origin": "https://moneyup-signin.pages.dev",
+  "callbackURL": "https://moneyup-signin.pages.dev/auth/icloud/callback",
+  "appID": "3ZPDTY7ZRS.com.laiwenkang.MoneyUp",
+  "httpsVerified": true,
+  "association": "passed",
+  "noRedirect": "passed",
+  "privacyHeaders": "passed",
+  "queryNotReflected": "passed",
+  "unknownRoute404": "passed",
+  "nativeAppleSignIn": "not verified by this check"
+}

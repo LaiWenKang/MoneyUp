@@ -19,6 +19,14 @@ on:
         description: Optional exact main commit required by an owner-command dispatch
         required: false
         type: string
+      cloud_backup:
+        description: Include iCloud backup only in an internal TestFlight candidate
+        required: true
+        default: 'off'
+        type: choice
+        options:
+          - 'off'
+          - internal-beta
 
 permissions:
   contents: read
@@ -39,6 +47,7 @@ env:
   APP_BUNDLE_ID: com.laiwenkang.MoneyUp
   WIDGET_BUNDLE_ID: com.laiwenkang.MoneyUp.Widget
   APP_GROUP_ID: group.com.laiwenkang.MoneyUp
+  CLOUD_BACKUP_MODE: ${{ inputs.cloud_backup || 'off' }}
 
 jobs:
   preflight:
@@ -71,6 +80,10 @@ jobs:
           fi
           if [[ "$OPERATION" == "upload" && "$CONFIRMATION" != "UPLOAD" ]]; then
             echo "::error::Choose upload and type UPLOAD to authorize the upload."
+            exit 1
+          fi
+          if [[ "$CLOUD_BACKUP_MODE" != "off" && "$CLOUD_BACKUP_MODE" != "internal-beta" ]]; then
+            echo "::error::Cloud backup must be off or restricted to an internal beta."
             exit 1
           fi
 
@@ -136,6 +149,8 @@ jobs:
 
       - name: Validate release assets
         run: python3 Scripts/validate_release_assets.py
+      - name: Test cloud configuration and release boundaries
+        run: python3 -m unittest discover -s Scripts/tests -p 'test_*cloud*.py'
 
       - name: Verify source candidate identity and App Group contract
         shell: bash
@@ -320,6 +335,7 @@ jobs:
       APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
       ASC_KEY_ID: ${{ vars.ASC_KEY_ID }}
       ASC_ISSUER_ID: ${{ vars.ASC_ISSUER_ID }}
+      CLOUDKIT_SCHEMA_SHA256: ${{ vars.CLOUDKIT_SCHEMA_SHA256 }}
     steps:
       - name: Check out the preflighted commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -400,10 +416,29 @@ jobs:
 
       - name: Generate the Xcode project and build number
         shell: bash
+        env:
+          CLOUDKIT_WEB_API_TOKEN: ${{ secrets.CLOUDKIT_WEB_API_TOKEN }}
         run: |
           set -euo pipefail
           xcodegen --version
-          xcodegen generate
+          if [[ "$CLOUD_BACKUP_MODE" == "internal-beta" ]]; then
+            umask 077
+            CLOUD_TOKEN_PATH="$RUNNER_TEMP/MoneyUp-CloudKit-token.txt"
+            printf '%s' "$CLOUDKIT_WEB_API_TOKEN" > "$CLOUD_TOKEN_PATH"
+            python3 Scripts/configure_cloud_backup.py \
+              --container iCloud.com.laiwenkang.MoneyUp \
+              --environment production --internal-beta --output-prefix Local.internal-beta \
+              --api-token-file "$CLOUD_TOKEN_PATH" \
+              --callback-url https://moneyup-signin.pages.dev/auth/icloud/callback \
+              --team-id "$APPLE_TEAM_ID"
+            python3 Scripts/verify_cloud_auth_start.py --configuration CloudKit/Local.internal-beta.project.yml \
+              --deployed-schema-sha256 "$CLOUDKIT_SCHEMA_SHA256"
+            xcodegen generate --spec CloudKit/Local.internal-beta.project.yml --project-root . --project .
+            echo "CLOUD_APP_ENTITLEMENTS=CloudKit/Local.internal-beta.entitlements" >> "$GITHUB_ENV"
+          else
+            xcodegen generate
+            echo "CLOUD_APP_ENTITLEMENTS=App/MoneyUp/MoneyUp.entitlements" >> "$GITHUB_ENV"
+          fi
           xcodebuild \
             -resolvePackageDependencies \
             -project MoneyUp.xcodeproj \
@@ -427,6 +462,10 @@ jobs:
             echo "- Commit: \`$GITHUB_SHA\`"
             echo "- Version: $MARKETING_VERSION ($BUILD_NUMBER)"
             echo "- Operation: ${{ inputs.operation }}"
+            echo "- Cloud backup: $CLOUD_BACKUP_MODE"
+            if [[ "$CLOUD_BACKUP_MODE" == "internal-beta" ]]; then
+              echo "- Device sign-in/recovery acceptance: pending; internal TestFlight only"
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Create an unsigned release archive
@@ -464,14 +503,15 @@ jobs:
           APP_PATH="$ARCHIVE_PATH/Products/Applications/MoneyUp.app"
           WIDGET_PATH="$APP_PATH/PlugIns/MoneyUpWidget.appex"
           # exportArchive preserves requested capabilities from archive
-          # signatures. Seed only the reviewed App Group without requiring a
-          # development profile; Apple Distribution replaces these ad-hoc
+          # signatures. Preserve the App Group and, for the cloud beta, its
+          # associated callback domain from the generated app entitlement file.
+          # No development profile is required; Apple Distribution replaces these ad-hoc
           # signatures during export.
           codesign --force --sign - \
             --entitlements App/MoneyUpWidget/MoneyUpWidget.entitlements \
             "$WIDGET_PATH"
           codesign --force --sign - \
-            --entitlements App/MoneyUp/MoneyUp.entitlements \
+            --entitlements "$CLOUD_APP_ENTITLEMENTS" \
             "$APP_PATH"
           for BUNDLE_PATH in "$WIDGET_PATH" "$APP_PATH"; do
             codesign --verify --strict --verbose=2 "$BUNDLE_PATH"
@@ -540,6 +580,12 @@ jobs:
           plutil -insert manageAppVersionAndBuildNumber -bool false "$EXPORT_OPTIONS_PATH"
           plutil -insert stripSwiftSymbols -bool true "$EXPORT_OPTIONS_PATH"
           plutil -insert uploadSymbols -bool true "$EXPORT_OPTIONS_PATH"
+          if [[ "$CLOUD_BACKUP_MODE" == "internal-beta" ]]; then
+            plutil -insert testFlightInternalTestingOnly -bool true "$EXPORT_OPTIONS_PATH"
+          fi
+          python3 Scripts/validate_cloud_release.py \
+            --info "$ARCHIVE_PATH/Products/Applications/MoneyUp.app/Info.plist" \
+            --mode "$CLOUD_BACKUP_MODE" --export-options "$EXPORT_OPTIONS_PATH"
           xcodebuild \
             -exportArchive \
             -archivePath "$ARCHIVE_PATH" \
@@ -621,6 +667,12 @@ jobs:
             SIGNED_ENTITLEMENTS="$IPA_EXPANDED_DIRECTORY/$(basename "$BUNDLE_PATH").signed-entitlements.plist"
             codesign -d --entitlements :- "$BUNDLE_PATH" > "$SIGNED_ENTITLEMENTS"
             plutil -lint "$SIGNED_ENTITLEMENTS"
+            if [[ "$BUNDLE_PATH" == "$APP_PATH" ]]; then
+              python3 Scripts/validate_cloud_release.py \
+                --info "$APP_PATH/Info.plist" --mode "$CLOUD_BACKUP_MODE" \
+                --signed-entitlements "$SIGNED_ENTITLEMENTS" --profile "$PROFILE_PLIST" \
+                --export-options "$EXPORT_OPTIONS_PATH"
+            fi
             SIGNED_APPLICATION_IDENTIFIER="$(/usr/libexec/PlistBuddy -c 'Print :application-identifier' "$SIGNED_ENTITLEMENTS")"
             SIGNED_TEAM="$(/usr/libexec/PlistBuddy -c 'Print :com.apple.developer.team-identifier' "$SIGNED_ENTITLEMENTS")"
             if [[ "$SIGNED_APPLICATION_IDENTIFIER" != "$PROFILE_APPLICATION_IDENTIFIER" || "$SIGNED_TEAM" != "$APPLE_TEAM_ID" ]]; then
@@ -902,6 +954,8 @@ jobs:
             rm -f -- "$EXPORT_OPTIONS_PATH"
           fi
           rm -f -- \
+            "$RUNNER_TEMP/MoneyUp-CloudKit-token.txt" \
+            CloudKit/Local.internal-beta.project.yml \
             "$RUNNER_TEMP/MoneyUp-Release-Recovery-Manifest.txt" \
             "$RUNNER_TEMP/MoneyUp-Release-Recovery-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.tar.gz.enc"
           for RELEASE_PATH in "${ARCHIVE_PATH:-}" "${EXPORT_DIRECTORY:-}" "${IPA_EXPANDED_DIRECTORY:-}" "$RUNNER_TEMP/MoneyUp-recovery-verify"; do

@@ -17,6 +17,12 @@ struct CloudBackupView: View {
 
     var body: some View {
         Form {
+            if controller.configuration.isInternalBeta {
+                Section {
+                    Label("cloud.beta.detail", systemImage: "info.circle")
+                        .font(.callout)
+                }
+            }
             Section {
                 Text("cloud.detail")
                 Label(LocalizedStringKey(controller.phase.rawValue), systemImage: "icloud")

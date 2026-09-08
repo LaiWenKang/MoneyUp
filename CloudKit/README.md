@@ -3,6 +3,27 @@
 The standard project remains local-only until a configured cloud build is
 deliberately generated. No production configuration is checked in.
 
+## Combined internal beta — 9 September 2026
+
+The owner requested the backup crash fix and iCloud backup together and has no
+spare test devices. The protected TestFlight workflow now accepts
+`cloud_backup=internal-beta`. It generates the configured app, verifies the
+production token can start Apple authentication, preserves the signed callback
+domain, and sets Apple's `testFlightInternalTestingOnly` export option. These
+builds cannot be used for external testing or App Store submission.
+
+The app shows the beta status. Every new cloud backup is downloaded again and
+cryptographically authenticated before the app records a successful backup.
+Failed verification retains the existing outbox for retry. This does not replace
+physical sign-in, account-isolation, or full application restore acceptance.
+
+`--internal-beta` records device validation as pending in the generated bundle;
+it does not mark the checks below passed. Use that configuration only through
+the protected internal-only export path. Full-release production configuration
+still requires all live-acceptance evidence. Production schema deployment and a
+production API token are separate actions; neither follows from generating a
+local configuration. See the [combined beta readiness record](../docs/INTERNAL_CLOUD_BETA_2026-09-09.md).
+
 The owner selected free Cloudflare Pages hosting. The static deployment bundle
 and verified routing are described in [HOSTING.md](HOSTING.md).
 
@@ -73,8 +94,9 @@ xcodegen generate --spec CloudKit/Local.project.yml --project-root . --project .
 
 The ordinary `xcodegen generate` command regenerates the standard project with
 cloud backup disabled. Never use a placeholder domain or synthetic token for
-live acceptance. A production override requires a reviewed live-acceptance JSON
-file with the source commit and every check named in the helper.
+live acceptance. A full-release production override requires a reviewed
+live-acceptance JSON file with the source commit and every check named in the
+helper. The internal-only beta path above preserves their pending status.
 
 ## Native acceptance
 

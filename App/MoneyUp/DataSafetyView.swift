@@ -87,6 +87,19 @@ struct DataSafetyView: View {
                     }
                     .disabled(isWorking)
                 }
+            } else {
+                Section {
+                    Label("cloud.title", systemImage: "icloud.slash")
+                    Text(CloudBackupConfiguration.bundled() == nil
+                        ? LocalizedStringKey("cloud.unavailable.build")
+                        : LocalizedStringKey("cloud.error.unavailable"))
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                } footer: {
+                    if model.startupFailureKind != .missingDeviceBoundKey {
+                        Text("cloud.unavailable.files_backup")
+                    }
+                }
             }
             if model.startupFailureKind == .missingDeviceBoundKey {
                 Section {
@@ -398,7 +411,7 @@ struct DataSafetyView: View {
             isPresented: $isExporting,
             item: archiveTransfer,
             contentTypes: [.moneyUpArchive],
-            defaultFilename: "MoneyUp-Backup.moneyup"
+            defaultFilename: MoneyUpArchiveTransfer.defaultFilename
         ) { result in
             removeTemporaryFile(archiveTransfer?.fileURL)
             archiveTransfer = nil

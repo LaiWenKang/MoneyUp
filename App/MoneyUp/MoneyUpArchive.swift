@@ -59,11 +59,15 @@ struct MoneyUpArchiveDocument: FileDocument {
 /// destination provider instead of asking `FileDocument` to materialize its
 /// complete contents as `Data` and `FileWrapper` copies.
 struct MoneyUpArchiveTransfer: Transferable {
+    static let defaultFilename = "MoneyUp-Backup.moneyup"
     let fileURL: URL
 
     static var transferRepresentation: some TransferRepresentation {
         FileRepresentation(exportedContentType: .moneyUpArchive) { archive in
             SentTransferredFile(archive.fileURL)
         }
+        // The Transferable bridge creates its file wrapper before applying the
+        // dialog's defaultFilename. An absent name can abort inside Foundation.
+        .suggestedFileName(defaultFilename)
     }
 }

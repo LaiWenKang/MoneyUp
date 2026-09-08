@@ -42,6 +42,25 @@ class CloudBackupConfigurationTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 setup.configuration_files(**(self.options() | {"callback_url": "https://moneyup.example" + path}))
 
+    def test_internal_beta_records_pending_device_acceptance_without_relaxing_full_release(self):
+        options = self.options() | {"environment": "production", "internal_beta": True,
+                                  "output_prefix": "Local.internal-beta"}
+        files = setup.configuration_files(**options)
+        spec = json.loads(files[Path("/synthetic/CloudKit/Local.internal-beta.project.yml")])
+        info = spec["targets"]["MoneyUp"]["info"]["properties"]
+        self.assertEqual(info["MoneyUpCloudBackupReleaseChannel"], "internal-beta")
+        self.assertTrue(info["MoneyUpCloudBackupDeviceValidationPending"])
+        self.assertTrue(info["MoneyUpCloudBackupEnabled"])
+        with self.assertRaises(ValueError):
+            setup.configuration_files(**(options | {"internal_beta": False}))
+        with self.assertRaises(ValueError):
+            setup.configuration_files(**(options | {"environment": "development"}))
+
+    def test_output_prefix_cannot_escape_ignored_local_files(self):
+        for prefix in ("../project", "Production", "Local/../file", "Local..secret"):
+            with self.assertRaises(ValueError):
+                setup.configuration_files(**(self.options() | {"output_prefix": prefix}))
+
 
 if __name__ == "__main__":
     unittest.main()
