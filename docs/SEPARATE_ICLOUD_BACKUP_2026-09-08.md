@@ -55,8 +55,8 @@ flowchart LR
   **No Containers** on 8 September 2026.
 - `cktool` is installed, but no management token is configured.
 - The owner confirmed there is no existing domain and approved free Cloudflare
-  Pages hosting. The five-file static bundle is prepared; Cloudflare account
-  sign-in is required before deployment.
+  Pages hosting. The static site is now deployed and its HTTPS return address
+  is verified at `https://moneyup-signin.pages.dev/auth/icloud/callback`.
 - A container, web API token, associated callback domain, live separate-account
   authentication, and production schema verification are outstanding.
 
@@ -109,10 +109,13 @@ Validation on 8 September 2026:
 
 ## Remaining live acceptance
 
-The owner selected free Cloudflare Pages hosting. The public support files and
-local routing checks are ready, but Cloudflare is not signed in, so no hosted
-domain has been assigned. There is still no configured CloudKit container or
-web API token. See [hosting setup](../CloudKit/HOSTING.md). The schema, HTTPS return, separate-account
+The owner selected free Cloudflare Pages hosting and completed phone device
+authorization. Hosting is deployed at `https://moneyup-signin.pages.dev`; live
+HTTPS, exact association, callback routing, and privacy checks passed. Apple
+Developer access has recovered, and the live app ID prefix matches the hosted
+association. iCloud and Associated Domains remain off; approval for enabling
+them and creating the development web API token is pending. See
+[hosting setup and live evidence](../CloudKit/HOSTING.md). The schema, HTTPS return, separate-account
 selection, real token expiry/reconnection, Apple quota behavior, and physical
 replacement-device recovery therefore remain unverified. Production App Store
 privacy disclosures must also be reviewed for the optional cloud feature.

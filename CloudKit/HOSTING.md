@@ -16,15 +16,32 @@ upload can be created with `--zip /path/to/new-archive.zip`. The archive contain
 only the generated site assets, never the repository, app configuration, keys,
 or financial records.
 
-The intended project name is `moneyup-signin`. Use the actual hostname returned
-by Cloudflare, since availability has not yet been established. The callback
-path is `/auth/icloud/callback`.
+The deployed project is `moneyup-signin`, with the stable origin
+`https://moneyup-signin.pages.dev` and callback
+`https://moneyup-signin.pages.dev/auth/icloud/callback`.
 
 The extensionless callback is backed by `auth/icloud/callback.html` so Pages
 serves the exact path without redirecting to a trailing slash. The root 404
 file prevents SPA fallback from silently treating an incorrect callback as
 valid. The Apple association file has an explicit JSON content type. Global
 headers disable response caching, referrers, framing, forms, and scripts.
+
+## Phone-compatible authorization
+
+When using Codex Remote from a phone, authorize the Mac with a short-lived
+Cloudflare device code rather than trying to sign into the Mac browser:
+
+```sh
+WRANGLER_SEND_METRICS=false npx --yes wrangler@4.129.1 login --device --browser=false --use-keyring --scopes account:read user:read pages:write
+```
+
+Open the exact verification URL printed by Wrangler on the phone, enter its
+current code, and approve Wrangler. Keep the request running until it reports
+success, then verify with `wrangler whoami`. Expired codes must be regenerated;
+ordinary phone-browser sign-in alone does not authorize the Mac CLI. Never
+send passwords or access tokens through chat. Do not expand to unrelated
+Workers, database, or account-administration scopes merely to silence
+Wrangler's generic missing-scope warning.
 
 ## Deploy after signing in
 
@@ -46,7 +63,7 @@ Apple association must remain under the owner's control.
 
 ```sh
 python3 Scripts/verify_cloud_callback_host.py \
-  --base-url https://ACTUAL-PROJECT.pages.dev \
+  --base-url https://moneyup-signin.pages.dev \
   --team-id 3ZPDTY7ZRS
 ```
 
@@ -68,11 +85,28 @@ merely because this static site contains no logging code.
 - Local routing, JSON association, security headers, query non-reflection, and
   404 checks passed. This local HTTP check does not establish deployed HTTPS.
 - Ten cloud configuration/site/accessibility Python tests passed.
-- Cloudflare Dashboard and Wrangler both report no authenticated account.
-  The owner was asked to sign in or create a free account. No Pages project,
-  domain, credentials, or deployment has been created in this step yet.
+- The owner approved Wrangler through the phone-compatible device authorization
+  flow. The Mac now has account-read and Pages-write access; credentials are
+  encrypted with their encryption key in macOS Keychain. The Mac browser
+  session is separate and is not required for CLI deployment.
+- Deployed the five-file static bundle from `786fb8a` to the production Pages
+  project. Deployment: `633c0e3c-4494-47f6-ab43-2c9600ab9d89`.
+- Live HTTPS, direct callback response, exact Apple app association, privacy
+  headers, query non-reflection, and unknown-route 404 checks all passed.
+- [Live verification evidence](../docs/review-evidence/2026-09-08/cloud-backup/hosting-live-verification.json).
+  This proves the hosting surface, not native Apple account sign-in or backup.
 
 References: [Pages pricing](https://developers.cloudflare.com/pages/functions/pricing/),
 [Direct Upload](https://developers.cloudflare.com/pages/get-started/direct-upload/),
 [route matching](https://developers.cloudflare.com/pages/configuration/serving-pages/),
 [response headers](https://developers.cloudflare.com/pages/configuration/headers/).
+
+## Apple setup preflight after deployment
+
+The Apple Developer portal reauthenticated successfully. MoneyUp's registered
+App ID prefix is `3ZPDTY7ZRS`, matching the hosted association file. Its existing
+App Groups capability is enabled; Associated Domains and iCloud are off.
+Enabling the two new capabilities, provisioning the MoneyUp CloudKit container,
+and creating its development web API token are awaiting explicit approval for
+those Apple-side security permissions. No Apple capability changes have been
+saved and no private book has been uploaded.
