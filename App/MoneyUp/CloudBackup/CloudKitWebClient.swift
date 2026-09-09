@@ -205,7 +205,9 @@ actor CloudKitWebClient {
             throw CloudBackupError.reconnectRequired
         case "QUOTA_EXCEEDED": throw CloudBackupError.quotaExceeded
         case "NOT_FOUND": throw CloudBackupError.missingBackup
-        case "THROTTLED", "TRY_AGAIN_LATER", "SERVICE_UNAVAILABLE":
+        case "BAD_REQUEST", "ATOMIC_ERROR", "VALIDATING_REFERENCE_ERROR":
+            throw CloudBackupError.requestRejected
+        case "THROTTLED", "TRY_AGAIN_LATER", "SERVICE_UNAVAILABLE", "INTERNAL_ERROR":
             let retry = min(86_400, max(60, json["retryAfter"].integer ?? 60))
             throw CloudBackupError.retryLater(TimeInterval(retry))
         default: throw CloudBackupError.invalidResponse

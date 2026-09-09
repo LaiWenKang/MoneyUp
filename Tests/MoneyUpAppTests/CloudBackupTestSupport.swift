@@ -57,11 +57,13 @@ actor TestCloudBackupServer: CloudBackupHTTPTransporting {
     private var failChunk: Int?
     private var corruptDownloads = false
     private var quotaExceeded = false
+    private var modifyError: String?
 
     func capturedRequests() -> [URLRequest] { requests }
     func setFailChunk(_ index: Int?) { failChunk = index }
     func setCorruptDownloads(_ value: Bool = true) { corruptDownloads = value }
     func setQuotaExceeded() { quotaExceeded = true }
+    func setModifyError(_ code: String?) { modifyError = code }
     func expireSessions() { tokens = [:] }
     func manifestCount(for user: String) -> Int {
         (records[user] ?? [:]).values.filter { $0["recordType"].string == "MoneyUpBackup" }.count
@@ -139,6 +141,21 @@ actor TestCloudBackupServer: CloudBackupHTTPTransporting {
     }
 
     private func modify(_ payload: JSON, user: String, headers: [String: String]) throws -> CloudBackupHTTPResponse {
+        if let modifyError {
+            return try response(.object(["serverErrorCode": .string(modifyError),
+                "reason": .string("Private server detail must never reach the UI")]), status: 400, headers: headers)
+        }
+        // CloudKit's wire types differ from schema types. In particular, ASSET
+        // is rejected before saving; upload receipts omit type or use ASSETID.
+        let wireTypes: Set<String> = ["STRING", "INT64", "DOUBLE", "TIMESTAMP", "REFERENCE", "ASSETID", "LOCATION", "BYTES"]
+        for operation in payload["operations"].array ?? [] {
+            for field in operation["record"]["fields"].object?.values ?? [:].values {
+                if let type = field["type"].string, !wireTypes.contains(type) {
+                    return try response(.object(["serverErrorCode": .string("BAD_REQUEST"),
+                        "reason": .string("BadRequestException: Unexpected input")]), status: 400, headers: headers)
+                }
+            }
+        }
         var output: [JSON] = []
         for operation in payload["operations"].array ?? [] {
             var record = operation["record"].object ?? [:]
@@ -156,7 +173,7 @@ actor TestCloudBackupServer: CloudBackupHTTPTransporting {
             if let asset = fields["payload"]?["value"].object {
                 var stored = asset
                 stored["downloadURL"] = .string("https://download.icloud-content.com/\(user)/\(name)")
-                fields["payload"] = .field(.object(stored), type: "ASSET")
+                fields["payload"] = .field(.object(stored), type: "ASSETID")
             }
             record["fields"] = .object(fields)
             record["recordChangeTag"] = .string("change-\(sequence)")
