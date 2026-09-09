@@ -11,6 +11,7 @@ final class CloudBackupController {
         case verifying = "cloud.status.verifying"
         case downloading = "cloud.status.downloading", paused = "cloud.status.paused"
         case reconnect = "cloud.status.reconnect", waiting = "cloud.status.waiting"
+        case attention = "cloud.status.attention"
         case backedUp = "cloud.status.backed_up"
     }
     let configuration: CloudBackupConfiguration
@@ -20,6 +21,7 @@ final class CloudBackupController {
     private var work: Task<Void, Never>?
     private var epoch: UInt64 = 0
     private var requiresBackupConsent = false
+    private var automaticRetryBlocked = false
     private var lastRevision: (generation: Int, revision: Int64)?
     private var nextAutomaticAttempt: Date = .distantPast
     private var lastAutomaticObservation: Date?
@@ -79,6 +81,7 @@ final class CloudBackupController {
             try await vault.save(account)
             publish(account)
             requiresBackupConsent = true
+            automaticRetryBlocked = false
             lastRevision = nil
             backups = []
             continuation = nil
@@ -122,6 +125,7 @@ final class CloudBackupController {
     }
 
     func backUpNow(model: AppModel, automatic: Bool = false) async {
+        if !automatic && !isWorking { automaticRetryBlocked = false }
         await perform(phase: .uploading, reportError: !automatic) { [self] in
             let account = try await requireAccount()
             guard !requiresBackupConsent, account.automaticEnabled,
@@ -245,7 +249,7 @@ final class CloudBackupController {
     func automaticTick(model: AppModel, now: Date) async {
         if let lastAutomaticObservation, now < lastAutomaticObservation { nextAutomaticAttempt = .distantPast }
         lastAutomaticObservation = now
-        guard automaticEnabled, !requiresBackupConsent, !isWorking,
+        guard automaticEnabled, !requiresBackupConsent, !automaticRetryBlocked, !isWorking,
               now >= nextAutomaticAttempt, model.state == .ready,
               !model.isWorking, !model.isLifecycleMutationInProgress, !model.isJournalMutationInProgress else { return }
         do {
@@ -286,8 +290,9 @@ final class CloudBackupController {
         automaticEnabled = (account?.automaticEnabled ?? false) && !requiresBackupConsent
         lastSuccessfulBackup = account?.lastSuccessfulBackup
         if !isWorking {
-            phase = account == nil ? .disconnected
-                : (automaticEnabled || account?.recoveryPassword == nil ? .connected : .paused)
+            if account == nil { phase = .disconnected }
+            else if automaticRetryBlocked && automaticEnabled { phase = .attention }
+            else { phase = automaticEnabled || account?.recoveryPassword == nil ? .connected : .paused }
         }
     }
 
@@ -316,6 +321,10 @@ final class CloudBackupController {
         failureDetail = message
         phase = .waiting
         if let cloud = error as? CloudBackupError {
+            if cloud == .requestRejected || cloud == .invalidResponse {
+                phase = .attention
+                automaticRetryBlocked = true
+            }
             if cloud == .reconnectRequired || cloud == .accountChanged {
                 phase = .reconnect
                 automaticEnabled = false

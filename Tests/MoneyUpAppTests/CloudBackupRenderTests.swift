@@ -5,6 +5,32 @@ import XCTest
 
 final class CloudBackupRenderTests: XCTestCase {
     @MainActor
+    func testRenderRejectedRequestWithConnectedAccountInBothLanguages() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let configuration = try cloudBackupTestConfiguration()
+        let model = fixture.model()
+        for language in [AppLanguagePreference.english, .simplifiedChinese] {
+            let server = TestCloudBackupServer()
+            await server.setModifyError("BAD_REQUEST")
+            let vault = TestCloudBackupVault(CloudBackupAccount(configurationID: configuration.identity,
+                userRecordName: "user-A", webToken: "token-A", label: "Personal backup"))
+            let cloud = CloudBackupController(configuration: configuration, vault: vault,
+                transport: server, outboxRoot: fixture.directoryURL)
+            await cloud.loadStatus()
+            await capture(cloud: cloud, model: model, language: language, connected: true,
+                scenario: "request-rejected") {
+                await cloud.enableBackup(model: model, password: "Synthetic password", confirmation: "Synthetic password",
+                    savedRecoveryPassword: true)
+                XCTAssertEqual(cloud.phase, .attention)
+                XCTAssertEqual(cloud.errorMessage, AppLocalization.string("cloud.error.request_rejected"))
+                XCTAssertNotEqual(cloud.errorMessage, AppLocalization.string("cloud.error.connection"))
+            }
+        }
+        await fixture.store.close()
+    }
+
+    @MainActor
     func testRenderInternalBetaCloudConnection() async throws {
         let fixture = try AppModelFixture()
         defer { fixture.removeFiles() }
@@ -81,7 +107,8 @@ final class CloudBackupRenderTests: XCTestCase {
 
     @MainActor
     private func capture(cloud: CloudBackupController, model: AppModel,
-        language: AppLanguagePreference, connected: Bool) async {
+        language: AppLanguagePreference, connected: Bool, scenario: String? = nil,
+        prepare: (@MainActor () async -> Void)? = nil) async {
         let defaults = AppLanguagePreference.defaults
         let previous = defaults?.object(forKey: AppLanguagePreference.storageKey)
         defaults?.set(language.rawValue, forKey: AppLanguagePreference.storageKey)
@@ -102,12 +129,13 @@ final class CloudBackupRenderTests: XCTestCase {
         defer { window.isHidden = true; window.rootViewController = nil }
         host.view.frame = window.bounds
         host.view.layoutIfNeeded()
+        await prepare?()
         try? await Task.sleep(for: .milliseconds(600))
         let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
             window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
         }
         let attachment = XCTAttachment(image: image)
-        attachment.name = "cloud-\(cloud.configuration.isInternalBeta ? "beta-" : "")\(connected ? "recovery-setup" : "connect")-\(language.rawValue)"
+        attachment.name = "cloud-\(cloud.configuration.isInternalBeta ? "beta-" : "")\(scenario ?? (connected ? "recovery-setup" : "connect"))-\(language.rawValue)"
         attachment.lifetime = .keepAlways
         add(attachment)
     }

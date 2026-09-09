@@ -43,7 +43,9 @@ extension CloudKitWebClient {
         }
         let asset = try await uploadAsset(data, recordName: name)
         try await create(recordName: name, recordType: "MoneyUpBackupChunk", fields: [
-            "payload": .field(asset, type: "ASSET"),
+            // The upload receipt is already a complete web-service asset value.
+            // ASSET is a schema type, not an accepted wire discriminator.
+            "payload": .field(asset),
             "sha256": .field(.string(manifest.chunks[index].sha256)),
             "backupID": .field(.string(manifest.id.uuidString)),
             "index": .field(.integer(Int64(index)))])

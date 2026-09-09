@@ -5,7 +5,7 @@ import MoneyUpPersistence
 enum CloudBackupError: Error, Equatable, Sendable {
     case unavailable, invalidResponse, invalidCallback, reconnectRequired
     case accountChanged, busy, offline, quotaExceeded, missingBackup
-    case damagedBackup, localStorage, recoveryPasswordRequired
+    case damagedBackup, localStorage, recoveryPasswordRequired, requestRejected
     case retryLater(TimeInterval)
 }
 
@@ -13,7 +13,9 @@ extension CloudBackupError: LocalizedError {
     var errorDescription: String? {
         let key: String = switch self {
         case .unavailable: "cloud.error.unavailable"
-        case .invalidResponse, .invalidCallback: "cloud.error.connection"
+        case .invalidCallback: "cloud.error.connection"
+        case .invalidResponse: "cloud.error.response"
+        case .requestRejected: "cloud.error.request_rejected"
         case .reconnectRequired: "cloud.error.reconnect"
         case .accountChanged: "cloud.error.account_changed"
         case .busy: "cloud.error.busy"
