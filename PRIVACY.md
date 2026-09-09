@@ -97,6 +97,10 @@ integrity hashes. Apple also processes the network and account information
 needed to operate iCloud. No financial names, amounts, currencies, notes, or
 receipt content are sent as readable backup metadata.
 
+Before reporting a backup as successful, MoneyUp downloads its encrypted file
+and authenticates it locally with the recovery password. This verification uses
+additional data transfer and does not restore or overwrite the current book.
+
 Backups are versioned. Interrupted uploads are retained locally in encrypted
 form for retry and are not shown as completed recovery points. Sessions can
 expire; backup pauses until the user reconnects. Connecting a different account
@@ -225,6 +229,9 @@ Apple，更换设备后需要该密码才能恢复备份。
 加密文件之外的元数据仅包含不透明的备份／账本标识、创建时间、密文大小及完整性哈希。
 Apple 还会处理提供 iCloud 服务所需的账户及网络信息。备份元数据不会以明文发送金融名称、
 金额、币种、备注或收据内容。
+
+MoneyUp 会在报告备份成功前下载其加密文件，并使用恢复密码在本机验证。
+此过程会产生额外的数据传输，不会恢复或覆盖当前账本。
 
 备份按版本保留。未完成的上传会以加密形式留在本机等待重试，不会显示为已完成的恢复时间点。
 会话过期时会暂停备份，直到用户重新连接。连接其他账户后必须重新同意备份。断开连接会停止

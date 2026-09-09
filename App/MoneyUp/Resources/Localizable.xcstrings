@@ -1,6 +1,10 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "cloud.status.verifying" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Verifying the downloaded backup"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"正在验证下载的备份"}}}},
+    "cloud.beta.detail" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"iCloud backup is in beta. MoneyUp downloads and checks each backup before reporting success. Keep a separate encrypted file until you have tested recovery."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"iCloud 备份目前为测试功能。MoneyUp 会下载并验证每份备份后才报告成功。在完成恢复验证前，请另外保存一份加密备份文件。"}}}},
+    "cloud.unavailable.build" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"iCloud backup is not available in this version of MoneyUp."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"此版本的 MoneyUp 尚不支持 iCloud 备份。"}}}},
+    "cloud.unavailable.files_backup" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"You can still create an encrypted backup below and choose iCloud Drive in Files when saving it."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"你仍可在下方创建加密备份，并在保存时通过“文件”选择 iCloud 云盘。"}}}},
     "quick_log.scan_date_review" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Receipt date not read. Check the transaction date before saving."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"未能识别凭证日期。保存前请核对交易日期。"}}}},
     "quick_log.scan_partial_review" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Partial recognition. Choose the fields you want to use; no suggestions were filled automatically."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"仅识别出部分内容。请选择要使用的字段；未自动填入建议内容。"}}}},
     "quick_log.receipt_currency_detected" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Currency read from receipt"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"从截图识别的币种"}}}},

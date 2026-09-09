@@ -8,6 +8,7 @@ final class CloudBackupController {
     enum Phase: String {
         case disconnected = "cloud.status.disconnected", connected = "cloud.status.connected"
         case signingIn = "cloud.status.signing_in", uploading = "cloud.status.uploading"
+        case verifying = "cloud.status.verifying"
         case downloading = "cloud.status.downloading", paused = "cloud.status.paused"
         case reconnect = "cloud.status.reconnect", waiting = "cloud.status.waiting"
         case backedUp = "cloud.status.backed_up"
@@ -144,7 +145,11 @@ final class CloudBackupController {
             }
             try Task.checkCancellation()
             guard model.logicalBookRevision == logicalRevision, model.state == .ready else { throw AppModelError.locked }
-            try await client(for: account).upload(manifest, archiveURL: archiveURL)
+            let cloud = client(for: account)
+            try await cloud.upload(manifest, archiveURL: archiveURL)
+            try Task.checkCancellation()
+            phase = .verifying
+            try await CloudBackupArchive.verifyUploadedArchive(manifest, using: cloud, password: password)
             try Task.checkCancellation()
             guard model.logicalBookRevision == logicalRevision else { throw CloudBackupError.accountChanged }
             let latest = try await vault.recordSuccess(manifest.createdAt, connectionID: account.connectionID,

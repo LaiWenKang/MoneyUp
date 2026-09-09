@@ -34,10 +34,13 @@ struct CloudBackupConfiguration: Equatable, Sendable {
     let environment: Environment
     let apiToken: String
     let callbackURL: URL
+    let isInternalBeta: Bool
 
-    init(container: String, environment: Environment, apiToken: String, callbackURL: URL) throws {
+    init(container: String, environment: Environment, apiToken: String, callbackURL: URL,
+        isInternalBeta: Bool = false) throws {
         let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-")
-        guard container.hasPrefix("iCloud."), container.utf8.count <= 255,
+        guard !isInternalBeta || environment == .production,
+              container.hasPrefix("iCloud."), container.utf8.count <= 255,
               container.unicodeScalars.allSatisfy(allowed.contains),
               !apiToken.isEmpty, apiToken.utf8.count <= 4_096,
               Self.isSecureURL(callbackURL), !callbackURL.path.isEmpty,
@@ -48,6 +51,7 @@ struct CloudBackupConfiguration: Equatable, Sendable {
         self.environment = environment
         self.apiToken = apiToken
         self.callbackURL = callbackURL
+        self.isInternalBeta = isInternalBeta
     }
 
     var identity: String {
@@ -62,8 +66,12 @@ struct CloudBackupConfiguration: Equatable, Sendable {
               let apiToken = bundle.object(forInfoDictionaryKey: "MoneyUpCloudAPIToken") as? String,
               let rawCallback = bundle.object(forInfoDictionaryKey: "MoneyUpCloudCallbackURL") as? String,
               let callbackURL = URL(string: rawCallback) else { return nil }
+        let channel = bundle.object(forInfoDictionaryKey: "MoneyUpCloudBackupReleaseChannel") as? String ?? "validated"
+        guard ["validated", "internal-beta"].contains(channel) else { return nil }
+        guard channel != "internal-beta"
+                || bundle.object(forInfoDictionaryKey: "MoneyUpCloudBackupDeviceValidationPending") as? Bool == true else { return nil }
         return try? Self(container: container, environment: environment,
-            apiToken: apiToken, callbackURL: callbackURL)
+            apiToken: apiToken, callbackURL: callbackURL, isInternalBeta: channel == "internal-beta")
     }
 
     static func isSecureURL(_ url: URL) -> Bool {

@@ -270,6 +270,37 @@ final class CloudBackupTests: XCTestCase {
     }
 
     @MainActor
+    func testBackupIsSuccessfulOnlyAfterVerifiedDownloadAndRetryReusesTheSameArchive() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let model = fixture.model()
+        let configuration = try cloudBackupTestConfiguration()
+        let server = TestCloudBackupServer()
+        await server.setCorruptDownloads()
+        let vault = TestCloudBackupVault(CloudBackupAccount(configurationID: configuration.identity,
+            userRecordName: "user-A", webToken: "token-A"))
+        let controller = CloudBackupController(configuration: configuration, vault: vault,
+            transport: server, outboxRoot: fixture.directoryURL)
+        await controller.enableBackup(model: model, password: password, confirmation: password,
+            savedRecoveryPassword: true)
+        XCTAssertNotNil(controller.errorMessage)
+        XCTAssertNil(controller.lastSuccessfulBackup)
+        let failedAccount = await vault.load()
+        XCTAssertNil(failedAccount?.lastSuccessfulBackup)
+        let uploadedCount = await server.manifestCount(for: "user-A")
+        XCTAssertEqual(uploadedCount, 1, "Upload alone must not be reported as verified recovery")
+
+        await server.setCorruptDownloads(false)
+        await controller.backUpNow(model: model)
+        XCTAssertNil(controller.errorMessage)
+        XCTAssertNotNil(controller.lastSuccessfulBackup)
+        let retriedCount = await server.manifestCount(for: "user-A")
+        XCTAssertEqual(retriedCount, uploadedCount, "Retry verifies the retained archive without duplicating it")
+        XCTAssertEqual(controller.phase, .backedUp)
+        await fixture.store.close()
+    }
+
+    @MainActor
     func testEnableBackupUsesRecoveryPasswordAndOnlyBacksUpChanges() async throws {
         let fixture = try AppModelFixture()
         defer { fixture.removeFiles() }
