@@ -30,7 +30,7 @@ extension QuickLogEntryView {
 
                 Section { primaryAmountControl }
 
-                if kind != .transfer { smartEntrySection }
+                smartEntrySection
 
                 Section {
                     TextField(
@@ -80,6 +80,7 @@ extension QuickLogEntryView {
                             }
                         )
                     ) {
+                        Text("quick_log.choose_account").tag(UUID?.none)
                         ForEach(sourceAccounts) { account in
                             Text(accountCurrencyLabel(account)).tag(Optional(account.id))
                         }
@@ -94,6 +95,7 @@ extension QuickLogEntryView {
                                 onUserEdit: { accountWasEdited = true }
                             )
                         ) {
+                            Text("quick_log.choose_account").tag(UUID?.none)
                             ForEach(model.userAccounts.filter { $0.id != accountID }) { account in
                                 Text(accountCurrencyLabel(account)).tag(Optional(account.id))
                             }
@@ -104,6 +106,7 @@ extension QuickLogEntryView {
                             if case let .available(.some(conversion)) =
                                 historicalFXConversionResult {
                                 Button {
+                                    smartState.edited(.receivedAmount)
                                     destinationAmountText = editableAmount(
                                         conversion.converted.amount
                                     )
@@ -141,6 +144,8 @@ extension QuickLogEntryView {
                             isOn: Binding(
                                 get: { !splitLines.isEmpty },
                                 set: { enabled in
+                                    cancelSmartParsing()
+                                    smartState.edited(.splits)
                                     cancelOnDeviceAssistance()
                                     if enabled {
                                         refreshUntouchedOccurrenceDate()
@@ -174,6 +179,7 @@ extension QuickLogEntryView {
                                     }
                                 )
                             ) {
+                                Text("quick_log.choose_category").tag(UUID?.none)
                                 ForEach(categories) { category in
                                     Text(model.categoryPathName(for: category.id))
                                         .tag(Optional(category.id))
@@ -253,6 +259,8 @@ extension QuickLogEntryView {
             }
             .onChange(of: model.state) { _, state in
                 guard state != .ready else { return }
+                cancelSmartParsing()
+                clearedEvidence = nil
                 cancelReceiptProcessing()
                 invalidateCaptureSuggestions(restoresDefaults: false)
             }
@@ -309,7 +317,7 @@ extension QuickLogEntryView {
                 guard let item = QuickLogInputAuthority.receiptItemThatMayBegin(
                     item,
                     isActive: isActive,
-                    cancelAssistance: { cancelOnDeviceAssistance() }
+                    cancelAssistance: { cancelSmartParsing(); cancelOnDeviceAssistance() }
                 ) else {
                     receiptScanTask = nil
                     receiptScanBaseline = nil
@@ -323,6 +331,9 @@ extension QuickLogEntryView {
                     return
                 }
                 refreshUntouchedOccurrenceDate()
+                smartState.hasPreview = false
+                smartState.issues = []
+                smartState.automaticFields = []
                 receiptScanBaseline = ReceiptScanBaseline(
                     kind: kind,
                     amountText: amountText,
@@ -404,6 +415,8 @@ extension QuickLogEntryView {
     private func quickLogFinalForm(scrollProxy: ScrollViewProxy) -> some View {
         quickLogFocusLifecycle(scrollProxy: scrollProxy)
             .onDisappear {
+                cancelSmartParsing()
+                clearedEvidence = nil
                 cancelReceiptProcessing()
                 cancelCaptureSuggestionLookup()
                 cancelOnDeviceAssistance()
@@ -428,6 +441,7 @@ extension QuickLogEntryView {
             .sheet(isPresented: $isAddingCategory) {
                 AddCategorySheet(kind: categoryKind) { categoryID in
                     cancelOnDeviceAssistance()
+                    smartState.edited(.category)
                     self.categoryID = categoryID
                     categoryWasEdited = true
                     autoAppliedCategorySuggestionID = nil
@@ -443,6 +457,7 @@ extension QuickLogEntryView {
         quickLogNavigation
         .safeAreaInset(edge: .bottom) {
             VStack(spacing: 0) {
+            if clearRecovery != nil, !draftSnapshot.hasUserEdits { clearRecoveryBanner }
             if let lastSavedEntryID {
                 HStack(spacing: 12) {
                     Label("quick_log.saved", systemImage: "checkmark.circle.fill")

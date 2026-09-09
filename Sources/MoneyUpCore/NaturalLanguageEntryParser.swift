@@ -10,11 +10,14 @@ public struct ParsedNaturalLanguageEntry: Equatable, Sendable {
     public let currencyEvidence: ReceiptCurrencyEvidence
     public let needsAmountReview: Bool
     public let needsDateReview: Bool
+    public let needsAccountReview: Bool
+    public let needsCategoryReview: Bool
 
     public init(
         draft: TransactionDraft, context: String?, note: String? = nil,
         currencyEvidence: ReceiptCurrencyEvidence = .init(),
-        needsAmountReview: Bool = false, needsDateReview: Bool = false
+        needsAmountReview: Bool = false, needsDateReview: Bool = false,
+        needsAccountReview: Bool = false, needsCategoryReview: Bool = false
     ) {
         self.draft = draft
         self.context = context
@@ -22,6 +25,8 @@ public struct ParsedNaturalLanguageEntry: Equatable, Sendable {
         self.currencyEvidence = currencyEvidence
         self.needsAmountReview = needsAmountReview
         self.needsDateReview = needsDateReview
+        self.needsAccountReview = needsAccountReview
+        self.needsCategoryReview = needsCategoryReview
     }
 }
 
@@ -113,12 +118,12 @@ public enum NaturalLanguageEntryParser {
 
         // Exact local names may contain digits or date words. Resolve them
         // before scanning money and dates so "Card 1234" stays one name.
-        let account = consumeName(
+        let account = consumeNames(
             from: &remainder,
             in: accounts.filter { ($0.kind == .asset || $0.kind == .liability) && !$0.isArchived }
         )
         let categoryKind: LedgerAccountKind = kind == .income ? .income : .expense
-        let category = consumeName(
+        let category = consumeNames(
             from: &remainder,
             in: accounts.filter { $0.kind == categoryKind && !$0.isArchived }
         )
@@ -138,13 +143,16 @@ public enum NaturalLanguageEntryParser {
             remove(fragment, from: &remainder)
         }
 
+        for token in incomeKeywords + refundKeywords {
+            _ = consumeToken(token, from: &remainder)
+        }
         let draft = TransactionDraft(
             kind: kind,
             amount: amount,
             occurredAt: dateResult.date,
             payee: payee(from: remainder),
-            accountID: account,
-            categoryID: category,
+            accountID: account.id,
+            categoryID: category.id,
             source: .naturalLanguage
         )
         let currencyCodes = Set(
@@ -160,7 +168,9 @@ public enum NaturalLanguageEntryParser {
             note: parts.note,
             currencyEvidence: currencyEvidence,
             needsAmountReview: reading.needsReview,
-            needsDateReview: dateResult.invalidExplicitDate
+            needsDateReview: dateResult.invalidExplicitDate,
+            needsAccountReview: account.ambiguous,
+            needsCategoryReview: category.ambiguous
         )
     }
 
@@ -274,7 +284,13 @@ public enum NaturalLanguageEntryParser {
         calendar: Calendar,
         prefersDayFirst: Bool
     ) -> (date: Date?, invalidExplicitDate: Bool) {
+        let relative = SmartEntryRelativeDate(text: text, now: now, calendar: calendar)
         let explicitDateShapeCount = TextScanner.explicitDateShapeCount(in: text)
+        if relative.found {
+            guard explicitDateShapeCount == 0, !relative.isAmbiguous else { return (nil, true) }
+            text = relative.remainder
+            return (relative.date, false)
+        }
         guard explicitDateShapeCount <= 1 else {
             // Multiple explicit dates are ambiguous. Do not choose one by
             // pattern priority or let any remaining date become the amount.
@@ -364,44 +380,13 @@ public enum NaturalLanguageEntryParser {
 
     /// Matches the longest account or category name present in the text, so a
     /// book containing both "Cash" and "Cash back" resolves the specific one.
-    private static func consumeName(
-        from text: inout String,
-        in accounts: [LedgerAccount]
-    ) -> UUID? {
-        let matches = accounts.compactMap { account -> NameMatch? in
-            let name = TextScanner.normalized(account.name)
-            guard !name.isEmpty,
-                  let range = firstTokenRange(of: name, in: text) else {
-                return nil
-            }
-            return NameMatch(
-                accountID: account.id,
-                normalizedName: name,
-                range: range,
-                location: text.distance(from: text.startIndex, to: range.lowerBound)
-            )
-        }.sorted { first, second in
-            if first.normalizedName.count != second.normalizedName.count {
-                return first.normalizedName.count > second.normalizedName.count
-            }
-            if first.location != second.location {
-                return first.location < second.location
-            }
-            if first.normalizedName != second.normalizedName {
-                return first.normalizedName < second.normalizedName
-            }
-            return first.accountID.uuidString < second.accountID.uuidString
-        }
-        guard let best = matches.first else { return nil }
-        text.replaceSubrange(best.range, with: " ")
-        return best.accountID
-    }
-
-    private struct NameMatch {
-        let accountID: UUID
-        let normalizedName: String
-        let range: Range<String.Index>
-        let location: Int
+    private static func consumeNames(
+        from text: inout String, in accounts: [LedgerAccount]
+    ) -> (id: UUID?, ambiguous: Bool) {
+        let reading = SmartEntryNames(text: text, accounts: accounts)
+        guard !reading.matches.isEmpty else { return (nil, false) }
+        text = reading.removingNames(from: text)
+        return (reading.uniqueID, reading.isAmbiguous)
     }
 
     /// Latin tokens must be complete Unicode words, looking through combining

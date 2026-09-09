@@ -1,0 +1,297 @@
+[
+  {
+    "id": "english",
+    "text": "lunch 12.50 Cash yesterday",
+    "expected": {
+      "kind": "expense",
+      "amount": "12.5",
+      "account": "Cash",
+      "merchant": "lunch",
+      "dayOffset": "-1"
+    }
+  },
+  {
+    "id": "chinese",
+    "text": "昨天 支付宝 午餐 12.50",
+    "expected": {
+      "kind": "expense",
+      "amount": "12.5",
+      "account": "支付宝",
+      "merchant": "午餐",
+      "dayOffset": "-1"
+    }
+  },
+  {
+    "id": "mixed",
+    "text": "昨天 lunch SGD12.50 支付宝",
+    "expected": {
+      "amount": "12.5",
+      "currency": "SGD",
+      "account": "支付宝",
+      "merchant": "lunch",
+      "dayOffset": "-1"
+    }
+  },
+  {
+    "id": "numbered-account",
+    "text": "Card 1234 lunch 12.50",
+    "expected": {
+      "amount": "12.5",
+      "account": "Card 1234"
+    }
+  },
+  {
+    "id": "fullwidth",
+    "text": "午餐 ＳＧＤ１２.５０；和小林",
+    "expected": {
+      "amount": "12.5",
+      "currency": "SGD",
+      "note": "和小林"
+    }
+  },
+  {
+    "id": "explicit-total",
+    "text": "2 coffees total 8.40",
+    "expected": {
+      "amount": "8.4",
+      "review": "false"
+    }
+  },
+  {
+    "id": "amount-ambiguity",
+    "text": "lunch 12 dinner 18",
+    "expected": {
+      "amount": "-",
+      "review": "true"
+    }
+  },
+  {
+    "id": "malformed",
+    "text": "coffee 12,3",
+    "expected": {
+      "amount": "-",
+      "review": "true"
+    }
+  },
+  {
+    "id": "negative",
+    "text": "coffee -12",
+    "expected": {
+      "amount": "-",
+      "review": "true"
+    }
+  },
+  {
+    "id": "numeric-merchant",
+    "text": "7-Eleven H2O 12.50",
+    "expected": {
+      "amount": "12.5",
+      "merchant": "7-Eleven H2O"
+    }
+  },
+  {
+    "id": "note-isolation",
+    "text": "lunch 12; refund USD99 tomorrow",
+    "expected": {
+      "kind": "expense",
+      "amount": "12",
+      "dayOffset": "-",
+      "note": "refund USD99 tomorrow"
+    }
+  },
+  {
+    "id": "income",
+    "text": "received Salary 5000 Bank today",
+    "expected": {
+      "kind": "income",
+      "amount": "5000",
+      "account": "Bank",
+      "category": "Salary",
+      "dayOffset": "0",
+      "merchant": "-"
+    }
+  },
+  {
+    "id": "refund",
+    "text": "received refund Shopee 12 Cash",
+    "expected": {
+      "kind": "refund",
+      "amount": "12",
+      "account": "Cash",
+      "merchant": "Shopee"
+    }
+  },
+  {
+    "id": "refund-cn",
+    "text": "支付宝 退款 淘宝 12",
+    "expected": {
+      "kind": "refund",
+      "amount": "12",
+      "merchant": "淘宝"
+    }
+  },
+  {
+    "id": "days-ago",
+    "text": "lunch 12 Cash 3 days ago",
+    "expected": {
+      "amount": "12",
+      "dayOffset": "-3"
+    }
+  },
+  {
+    "id": "days-ago-cn",
+    "text": "3天前 支付宝 午餐12",
+    "expected": {
+      "amount": "12",
+      "dayOffset": "-3"
+    }
+  },
+  {
+    "id": "last-weekday",
+    "text": "coffee 4 Cash last monday",
+    "expected": {
+      "amount": "4",
+      "dayOffset": "-2"
+    }
+  },
+  {
+    "id": "last-week-cn",
+    "text": "上周三 支付宝 咖啡4",
+    "expected": {
+      "amount": "4",
+      "dayOffset": "-7"
+    }
+  },
+  {
+    "id": "next-weekday",
+    "text": "coffee 4 Cash next friday",
+    "expected": {
+      "amount": "4",
+      "dayOffset": "2"
+    }
+  },
+  {
+    "id": "conflicting-dates",
+    "text": "lunch 12 yesterday tomorrow",
+    "expected": {
+      "amount": "-",
+      "review": "true",
+      "dayOffset": "-"
+    }
+  },
+  {
+    "id": "chinese-currency",
+    "text": "午餐12新币 支付宝",
+    "expected": {
+      "amount": "12",
+      "currency": "SGD",
+      "merchant": "午餐"
+    }
+  },
+  {
+    "id": "mixed-name-boundary",
+    "text": "用Alipay午餐12.50",
+    "expected": {
+      "amount": "12.5",
+      "account": "Alipay",
+      "merchant": "午餐"
+    }
+  },
+  {
+    "id": "ambiguous-account",
+    "text": "Shared coffee 4",
+    "expected": {
+      "account": "-",
+      "review": "true"
+    }
+  },
+  {
+    "id": "transfer",
+    "text": "transfer 20 from Cash to Bank",
+    "expected": {
+      "kind": "transfer",
+      "shape": "transfer",
+      "amount": "20",
+      "account": "Cash",
+      "destination": "Bank",
+      "review": "false"
+    }
+  },
+  {
+    "id": "transfer-reverse",
+    "text": "transfer 20 to Bank from Cash",
+    "expected": {
+      "kind": "transfer",
+      "amount": "20",
+      "account": "Cash",
+      "destination": "Bank",
+      "review": "false"
+    }
+  },
+  {
+    "id": "transfer-cn",
+    "text": "从支付宝转账到Bank 20",
+    "expected": {
+      "kind": "transfer",
+      "amount": "20",
+      "account": "支付宝",
+      "destination": "Bank",
+      "review": "false"
+    }
+  },
+  {
+    "id": "transfer-fx",
+    "text": "transfer SGD10 from Cash to USD Wallet received USD7.50",
+    "expected": {
+      "kind": "transfer",
+      "amount": "10",
+      "received": "7.5",
+      "account": "Cash",
+      "destination": "USD Wallet",
+      "review": "false"
+    }
+  },
+  {
+    "id": "transfer-missing-fx",
+    "text": "transfer 10 from Cash to USD Wallet",
+    "expected": {
+      "kind": "transfer",
+      "received": "-",
+      "review": "true"
+    }
+  },
+  {
+    "id": "split",
+    "text": "split Cash Food12 + Transport8",
+    "expected": {
+      "shape": "split",
+      "amount": "20",
+      "review": "false"
+    }
+  },
+  {
+    "id": "split-total",
+    "text": "split Cash Food12 + Transport8 total20",
+    "expected": {
+      "shape": "split",
+      "amount": "20",
+      "review": "false"
+    }
+  },
+  {
+    "id": "split-mismatch",
+    "text": "split Cash Food12 + Transport8 total25",
+    "expected": {
+      "shape": "split",
+      "review": "true"
+    }
+  },
+  {
+    "id": "multiple",
+    "text": "Cash lunch12\nBank taxi8",
+    "expected": {
+      "shape": "multiple",
+      "review": "true"
+    }
+  }
+]

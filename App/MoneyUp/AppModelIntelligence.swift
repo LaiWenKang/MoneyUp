@@ -129,6 +129,7 @@ extension AppModel {
         guard state == .ready,
               !isBookReplacementInProgress,
               profile?.intelligenceEnabled == true,
+              profile?.merchantSuggestionsEnabled != false,
               let read = try? beginLogicalBookRead() else { return empty }
         let suggestionStore = read.store
         do {
@@ -137,6 +138,9 @@ extension AppModel {
                 currency: query.currency
             )
             try requireLogicalBookRead(read.token)
+            guard profile?.merchantSuggestionsEnabled != false else {
+                return try await finishLogicalBookRead(empty, token: read.token)
+            }
             guard let ranked = PayeeAffinityRanker.suggestion(
                       from: candidates,
                       currency: query.currency,

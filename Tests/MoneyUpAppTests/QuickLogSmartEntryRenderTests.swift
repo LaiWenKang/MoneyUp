@@ -21,9 +21,22 @@ final class QuickLogSmartEntryRenderTests: XCTestCase {
             priorWindow?.makeKey()
         }
         let scenarios: [(String, CGFloat, DynamicTypeSize)] = [
-            ("en", 390, .large), ("zh-Hans", 320, .large), ("en", 390, .accessibility2)
+            ("en", 390, .large), ("zh-Hans", 320, .large), ("en", 390, .accessibility2),
+            ("en", 390, .large), ("en", 390, .large)
         ]
         for (index, scenario) in scenarios.enumerated() {
+            if index == 3 {
+                let phrase = "lunch USD12 Wallet yesterday"
+                let now = Date(timeIntervalSince1970: 1_788_933_600)
+                let draft = QuickLogDraft(kind: .expense, amountText: "", destinationAmountText: "",
+                    accountID: fixture.wallet.id, destinationAccountID: nil, categoryID: fixture.food.id,
+                    occurredAt: now, dateWasEdited: false, payee: "", note: "", smartText: phrase)
+                model.updateQuickLogDraft(QuickLogUnderstandingFill.fill(
+                    SmartEntryInterpreter.interpret(phrase, accounts: model.accounts, now: now),
+                    current: draft, accounts: model.accounts, now: now))
+            } else if index == 4, let draft = model.quickLogDraft {
+                try await model.clearQuickLogDraft(replacing: draft)
+            }
             window.frame = CGRect(x: 0, y: 0, width: scenario.1, height: 844)
             let view = QuickLogEntryView(kind: .constant(.expense), dismissAfterSave: false, isActive: false,
                 launchRequest: nil, onRequestHandled: { _ in }, onNavigate: { _ in })

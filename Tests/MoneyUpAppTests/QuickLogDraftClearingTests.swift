@@ -31,7 +31,10 @@ final class QuickLogDraftClearingTests: XCTestCase {
         model.updateQuickLogDraft(edited)
         try await model.clearQuickLogDraft(replacing: edited)
         let cleared = try XCTUnwrap(model.quickLogDraft)
-        XCTAssertEqual(cleared, current.cleared(at: now))
+        var expectedCleared = current.cleared(at: now)
+        expectedCleared.clearRecovery = cleared.clearRecovery
+        XCTAssertEqual(cleared, expectedCleared)
+        XCTAssertEqual(try cleared.clearRecovery?.restoredDraft(), edited)
         XCTAssertFalse(cleared.hasUserEdits)
         XCTAssertEqual(cleared.kind, current.kind)
         XCTAssertEqual(cleared.accountID, current.accountID)

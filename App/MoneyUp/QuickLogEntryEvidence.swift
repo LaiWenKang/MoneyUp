@@ -5,13 +5,17 @@ import SwiftUI
 
 extension QuickLogEntryView {
     func addEvidencePhotos(_ items: [PhotosPickerItem]) async {
-        guard !items.isEmpty else { return }
+        guard !items.isEmpty, !Task.isCancelled else { return }
+        evidencePreparationGeneration &+= 1
+        let generation = evidencePreparationGeneration
         isPreparingEvidence = true
         evidenceMessage = nil
         defer {
-            isPreparingEvidence = false
-            evidencePhotoItems = []
-            evidencePreparationTask = nil
+            if generation == evidencePreparationGeneration {
+                isPreparingEvidence = false
+                evidencePhotoItems = []
+                evidencePreparationTask = nil
+            }
         }
 
         do {
@@ -29,22 +33,29 @@ extension QuickLogEntryView {
                     )
                 )
                 try Task.checkCancellation()
+                guard generation == evidencePreparationGeneration else { return }
                 try appendEvidence(draft)
             }
             evidenceMessage = AppLocalization.string("evidence.ready")
         } catch is CancellationError {
             return
         } catch {
+            guard generation == evidencePreparationGeneration else { return }
             evidenceMessage = evidenceErrorMessage(error)
         }
     }
 
     func addEvidencePDFs(_ result: Result<[URL], Error>) async {
+        guard !Task.isCancelled else { return }
+        evidencePreparationGeneration &+= 1
+        let generation = evidencePreparationGeneration
         isPreparingEvidence = true
         evidenceMessage = nil
         defer {
-            isPreparingEvidence = false
-            evidencePreparationTask = nil
+            if generation == evidencePreparationGeneration {
+                isPreparingEvidence = false
+                evidencePreparationTask = nil
+            }
         }
         do {
             for url in try result.get().prefix(remainingEvidenceCapacity) {
@@ -66,12 +77,14 @@ extension QuickLogEntryView {
                     displayName: url.lastPathComponent
                 )
                 try Task.checkCancellation()
+                guard generation == evidencePreparationGeneration else { return }
                 try appendEvidence(draft)
             }
             evidenceMessage = AppLocalization.string("evidence.ready")
         } catch is CancellationError {
             return
         } catch {
+            guard generation == evidencePreparationGeneration else { return }
             evidenceMessage = evidenceErrorMessage(error)
         }
     }

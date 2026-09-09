@@ -311,6 +311,16 @@ W3_PRODUCTION_TYPES = {
     "QuickLogPromptBoundary": (W3_REVIEWED_REQUEST_PATH, "enum"),
     "QuickLogPromptComponent": (W3_REVIEWED_REQUEST_PATH, "struct"),
     "NaturalLanguageEntryParser": (W3_REVIEWED_PARSER_PATH, "enum"),
+    'SmartEntryNames': ('Sources/MoneyUpCore/SmartEntryNames.swift', 'struct'),
+    'SmartEntryRelativeDate': ('Sources/MoneyUpCore/SmartEntryRelativeDate.swift', 'struct'),
+    'SmartEntryCurrencyText': ('Sources/MoneyUpCore/SmartEntryCurrencyText.swift', 'enum'),
+    'SmartEntryInterpreter': ('Sources/MoneyUpCore/SmartEntryInterpreter.swift', 'enum'),
+    'SmartEntryInterpretation': ('Sources/MoneyUpCore/SmartEntryInterpreter.swift', 'struct'),
+    'SmartEntryShape': ('Sources/MoneyUpCore/SmartEntryInterpreter.swift', 'enum'),
+    'SmartEntryIssue': ('Sources/MoneyUpCore/SmartEntryInterpreter.swift', 'enum'),
+    'SmartEntrySplit': ('Sources/MoneyUpCore/SmartEntryInterpreter.swift', 'struct'),
+    'QuickLogParseCoordinator': ('App/MoneyUp/QuickLogSmartState.swift', 'class'),
+    'QuickLogUnderstandingFill': ('App/MoneyUp/QuickLogUnderstandingFill.swift', 'enum'),
 }
 
 # These headers and executable digests freeze the complete reviewed production
@@ -358,12 +368,23 @@ W3_TYPE_DECLARATION_INVENTORIES = {
     "QuickLogAssistancePrompt": "enum QuickLogAssistancePrompt",
     "QuickLogAssistanceResolver": "enum QuickLogAssistanceResolver",
     "QuickLogAssistanceCoordinator": "final class QuickLogAssistanceCoordinator",
+    'SmartEntryNames': 'struct SmartEntryNames',
+    'SmartEntryRelativeDate': 'struct SmartEntryRelativeDate',
+    'SmartEntryCurrencyText': 'enum SmartEntryCurrencyText',
+    'SmartEntryInterpreter': 'public enum SmartEntryInterpreter',
+    'SmartEntryInterpretation': 'public struct SmartEntryInterpretation: Equatable, Sendable',
+    'SmartEntryShape': 'public enum SmartEntryShape: String, Codable, Sendable',
+    'SmartEntryIssue': 'public enum SmartEntryIssue: String, Codable, Sendable',
+    'SmartEntrySplit': 'public struct SmartEntrySplit: Equatable, Sendable',
+    'QuickLogParseCoordinator': 'final class QuickLogParseCoordinator',
+    'QuickLogUnderstandingFill': 'enum QuickLogUnderstandingFill',
 }
 W3_TYPE_ATTRIBUTE_INVENTORIES = {
     "LocalOrdinalSelection": ("@available(iOS 26.0, *)", "@Generable"),
     "QuickLogOnDeviceOrdinalModel": ("@available(iOS 26.0, *)",),
     "QuickLogInputAuthority": ("@MainActor",),
     "QuickLogAssistanceCoordinator": ("@MainActor",),
+    'QuickLogParseCoordinator': ('@MainActor',),
 }
 W3_TYPE_EXECUTABLE_DIGESTS = {
     "LocalOrdinalSelection": (
@@ -373,10 +394,10 @@ W3_TYPE_EXECUTABLE_DIGESTS = {
         "92fe2760d24d21c4af2fab73c73d7e51202003db1aa591882c14ec7aedc75d2d"
     ),
     "ParsedNaturalLanguageEntry": (
-        "2909819bbd2c15eca7677f13577f7bf4a9ab587213f0e0e95bc36280ba770823"
+        "46f8c2b7ce06423a809d733a4a81fb24db68732c8481fba76fa7ce62799aaaae"
     ),
     "NaturalLanguageEntryParser": (
-        "d76cc7431f98bb5edb0b535b2c895672125c2ee88e30f4a10210107dba5df395"
+        "0d01c39a48ff5029511c338e2e8bcb6751a21a99157817786213dea1dab15172"
     ),
     "QuickLogInputAuthority": (
         "973c735265e2cc2bff6e170ce3d45fcc19655792ce9c0ee4397687fa4c6068b1"
@@ -426,6 +447,16 @@ W3_TYPE_EXECUTABLE_DIGESTS = {
     "QuickLogAssistanceCoordinator": (
         "f5e7e2dd344244c6adf33e29fc8e8efc8a0d7da3ef1a11e60402d73adfca7e82"
     ),
+    'SmartEntryNames': '1981a94f31d91eec1eeb140789f2b72d09232b3ba2fd721ab0b3ad57d6a35adc',
+    'SmartEntryRelativeDate': '9d11da787d5bcfd52b3b5acec61bf0b7249e4b512ba87aac45de32ca44743286',
+    'SmartEntryCurrencyText': '9a5d0f16109a79a22979eeafadf4f516e78a35f77598ec6d21dff09b6f8d66b2',
+    'SmartEntryInterpreter': 'd0384be226d7cf3e475dcac2fe5edfe3e5028daf83cf1de7ebd137d3cb28dc84',
+    'SmartEntryInterpretation': 'efac65a64510d6acb929e701ce4fbca09f40d39ca6048af2a10945c7b2906bb6',
+    'SmartEntryShape': '47ab13cea59459ecce453f43a342d0c7592e69205aa49764655c581beec20cb1',
+    'SmartEntryIssue': '29f8a164feb7d5549a4f953ee3317ea11f13f066d78b6cdd4f16f719041a3921',
+    'SmartEntrySplit': 'c753882639298dc7400b152164c520382b4b70fc0b0057e281a00c9f929bdf3b',
+    'QuickLogParseCoordinator': 'cd5ca74881736d81ee984e0e933dce972c1cdae6fadeb78cc76619a5cb8b1a9c',
+    'QuickLogUnderstandingFill': '14610ec31b8c565a0e857211ea1e39bfbce5eefda7bb663042cd3447d5db5767',
 }
 
 W3_TOP_LEVEL_TYPE_INVENTORIES = {
@@ -462,22 +493,16 @@ W3_TOP_LEVEL_TYPE_INVENTORIES = {
 # Any new reference is a new construction, alias, consumer, or extension of a
 # reviewed boundary type. Legitimate additions must be reviewed and counted.
 W3_TYPE_REFERENCE_INVENTORIES = {
-    "QuickLogInputAuthority": (
-        ("App/MoneyUp/QuickLogEntryBody.swift", 1),
-        (W3_REVIEWED_ENTRY_PATH, 1),
-        ("App/MoneyUp/QuickLogEntryReceiptCandidates.swift", 1),
-        (W3_REVIEWED_AUTHORITY_PATH, 1),
-    ),
-    "NaturalLanguageEntryParser": (
-        (W3_REVIEWED_ENTRY_PATH, 1),
-        (W3_REVIEWED_PARSER_PATH, 1),
-    ),
-    "ParsedNaturalLanguageEntry": (
-        (W3_REVIEWED_ENTRY_ASSISTANCE_PATH, 1),
-        ("App/MoneyUp/QuickLogSmartFill.swift", 1),
-        (W3_REVIEWED_REQUEST_PATH, 1),
-        (W3_REVIEWED_PARSER_PATH, 3),
-    ),
+    "QuickLogInputAuthority": (('App/MoneyUp/QuickLogEntryBody.swift', 1),
+ ('App/MoneyUp/QuickLogEntryReceiptCandidates.swift', 1),
+ ('App/MoneyUp/QuickLogSheet.swift', 1)),
+    "NaturalLanguageEntryParser": (('Sources/MoneyUpCore/NaturalLanguageEntryParser.swift', 1),
+ ('Sources/MoneyUpCore/SmartEntryInterpreter.swift', 2)),
+    "ParsedNaturalLanguageEntry": (('App/MoneyUp/QuickLogEntryOnDeviceAssistance.swift', 1),
+ ('App/MoneyUp/QuickLogOnDeviceAssistance.swift', 1),
+ ('App/MoneyUp/QuickLogSmartFill.swift', 1),
+ ('Sources/MoneyUpCore/NaturalLanguageEntryParser.swift', 3),
+ ('Sources/MoneyUpCore/SmartEntryInterpreter.swift', 9)),
     "QuickLogPromptBoundary": ((W3_REVIEWED_REQUEST_PATH, 8),),
     "QuickLogPromptComponent": ((W3_REVIEWED_REQUEST_PATH, 18),),
     "QuickLogAssistanceChoice": ((W3_REVIEWED_REQUEST_PATH, 10),),
@@ -516,6 +541,25 @@ W3_TYPE_REFERENCE_INVENTORIES = {
         (W3_REVIEWED_ENTRY_ASSISTANCE_PATH, 3),
         (W3_REVIEWED_AUTHORITY_PATH, 1),
     ),
+    'SmartEntryNames': (('Sources/MoneyUpCore/NaturalLanguageEntryParser.swift', 1),
+ ('Sources/MoneyUpCore/SmartEntryInterpreter.swift', 4),
+ ('Sources/MoneyUpCore/SmartEntryNames.swift', 1)),
+    'SmartEntryRelativeDate': (('Sources/MoneyUpCore/NaturalLanguageEntryParser.swift', 1),
+ ('Sources/MoneyUpCore/SmartEntryRelativeDate.swift', 1)),
+    'SmartEntryCurrencyText': (('Sources/MoneyUpCore/SmartEntryCurrencyText.swift', 1),
+ ('Sources/MoneyUpCore/SmartEntryTextReading.swift', 1)),
+    'SmartEntryInterpreter': (('App/MoneyUp/QuickLogEntryDraft.swift', 1), ('Sources/MoneyUpCore/SmartEntryInterpreter.swift', 1)),
+    'SmartEntryInterpretation': (('App/MoneyUp/QuickLogSmartState.swift', 4),
+ ('App/MoneyUp/QuickLogUnderstandingFill.swift', 4),
+ ('Sources/MoneyUpCore/SmartEntryInterpreter.swift', 8)),
+    'SmartEntryShape': (('Sources/MoneyUpCore/SmartEntryInterpreter.swift', 2),),
+    'SmartEntryIssue': (('App/MoneyUp/QuickLogSmartReview.swift', 1),
+ ('App/MoneyUp/QuickLogSmartState.swift', 2),
+ ('App/MoneyUp/QuickLogUnderstandingFill.swift', 3),
+ ('Sources/MoneyUpCore/SmartEntryInterpreter.swift', 2)),
+    'SmartEntrySplit': (('Sources/MoneyUpCore/SmartEntryInterpreter.swift', 3),),
+    'QuickLogParseCoordinator': (('App/MoneyUp/QuickLogSheet.swift', 1), ('App/MoneyUp/QuickLogSmartState.swift', 1)),
+    'QuickLogUnderstandingFill': (('App/MoneyUp/QuickLogEntryDraft.swift', 1), ('App/MoneyUp/QuickLogUnderstandingFill.swift', 1)),
 }
 
 W3_STATE_REFERENCE_INVENTORIES = {
@@ -566,7 +610,7 @@ W3_SOURCE_FUNCTION_DIGESTS: tuple[
             r"[^{};]*\)\s*\{",
             re.DOTALL,
         ),
-        "4e0d3dd60ede87b7aaaf95c00545b56e18955eee2628233800267c96e570426d",
+        "1075d4ed5cebdc854858dcdf9c27006b8045372d6539ca8725b5641e8719da26",
     ),
     (
         W3_PRODUCTION_SENTINEL_PATH,
@@ -575,13 +619,13 @@ W3_SOURCE_FUNCTION_DIGESTS: tuple[
             r"\bpublic\s+init\s*\(\s*from\s+decoder\s*:\s*Decoder\s*\)"
             r"\s*throws\s*\{"
         ),
-        "5d3827377f484c1dd41b81b746a574ad12b4c1c8796076fdc079c8fe6ab85c5d",
+        "cf8be60fd0af50580784ebbbdc86f1d3d8eef9516221fc43ae325f07a6c4a9d9",
     ),
     (
         W3_REVIEWED_ENTRY_PATH,
         "applyTypedPhrase",
         re.compile(r"\bfunc\s+applyTypedPhrase\s*\(\s*\)\s*\{"),
-        "2629dcf41846d45c7256470d6e8fd8dde39f9bbce0229ab9bfa4ef080299ded1",
+        "4baa6cc9a9fc86a1ed6b5d1b8c24334822c9a80d2a1d510000ba0f9a937e193e",
     ),
     (
         "App/MoneyUp/QuickLogEntryDraft.swift",
@@ -589,13 +633,13 @@ W3_SOURCE_FUNCTION_DIGESTS: tuple[
         re.compile(
             r"\bfunc\s+reloadDraftForLogicalBookReplacement\s*\(\s*\)\s*\{"
         ),
-        "c585e5eea2d40bd93eb1735357d0c748da39c30312061ca6966513cfb35ee2ab",
+        "68f79f5d097a0178dd0b7a031a7a5c433d642b8e9de1f18a9bbbed7dfd518641",
     ),
     (
         "App/MoneyUp/QuickLogEntryCaptureSuggestions.swift",
         "clearPerTransactionReviewState",
         re.compile(r"\bfunc\s+clearPerTransactionReviewState\s*\(\s*\)\s*\{"),
-        "e8aa4177d15fec2a1f9625aba87760b7f28e6bf82ee932c520921dd31a3f32b6",
+        "e3537d9e7a0cca37b1e66f3125ab26584d47d68201c716c8af3e43a7515acd8b",
     ),
     (
         W3_REVIEWED_ENTRY_ASSISTANCE_PATH,
@@ -610,32 +654,32 @@ W3_SOURCE_FUNCTION_DIGESTS: tuple[
 
 W3_PATH_TYPE_DIGESTS: tuple[tuple[str, str, str, str], ...] = (
     ('App/MoneyUp/QuickLogSmartFill.swift', 'struct', 'QuickLogSmartFill', '3c98e0dc2f72aae58ef9626c1953a3239b930ad5fb465a45c8ba2e8f08ddd998'),
-    ('Sources/MoneyUpCore/SmartEntryTextReading.swift', 'struct', 'SmartEntryAmountReading', '5dafdce9cddb460a7e7717fe274eb030346147cc5fff3f45df1102517307c52b'),
-    ('Sources/MoneyUpCore/SmartEntryTextReading.swift', 'struct', 'SmartEntryTextParts', '7848622794bd6430a155dd7bd419adba648d107f19fee6b1805a65982e5c90b0'),
+    ('Sources/MoneyUpCore/SmartEntryTextReading.swift', 'struct', 'SmartEntryAmountReading', '088699b5ce5d5f969b345f2d81ab3a8cca9609baa0cafd17afabaf21e802403c'),
+    ('Sources/MoneyUpCore/SmartEntryTextReading.swift', 'struct', 'SmartEntryTextParts', 'a84bf4da2c0b336f570103ee82b2f176ba7d30019cad745611022bae5e7b5ea4'),
     ("App/MoneyUp/QuickLogEntryChrome.swift", "extension", "QuickLogEntryView", "77d6f3d9a12bc36902f6c922110c73fcd72dcf5e5af9f2cbc39e4b69e69553f6"),
     (
         "App/MoneyUp/QuickLogEntryBody.swift",
         "extension",
         "QuickLogEntryView",
-        "1cd084472d42766fa7f187b5859828f52e94d26197ca7ca5d077aa45bbdc7120",
+        "ebd71daae79d320b3cdbc3f8b30882b7f9cbe87ab1687d61fb5393d0aed0185a",
     ),
     (
         "App/MoneyUp/QuickLogEntryReceipt.swift",
         "extension",
         "QuickLogEntryView",
-        "99650618749eb55d0f7a35be6d100960b873e74831123a8515d96fcb2f019dd6",
+        "a12d3ac43008ad47fd6d91175bfa5992a88c83d193e4979fb03330d47e20cbc7",
     ),
     (
         W3_REVIEWED_ENTRY_ASSISTANCE_PATH,
         "extension",
         "QuickLogEntryView",
-        "a7c13b1378358359f0fcfba0c9ea3aff56768afc9e4bf6249686b64ea2ed685c",
+        "5192891d388e9e355104036132bc0c113e3c86c73163e7c213f5d6ed703baa2d",
     ),
     (
         "App/MoneyUp/QuickLogEntryReceiptCandidates.swift",
         "extension",
         "QuickLogEntryView",
-        "c6a3343f7606ccd2d72fd03b38dde8ee35abc96edc5a544f4670e33f49459748",
+        "46da737486aeece756007e1d7f5489dbf4cb9d8600f76fb0a6588b3fb38247b4",
     ),
 )
 W3_PATH_TYPE_ATTRIBUTES = {
@@ -2302,7 +2346,9 @@ W3_MEMBER_INVENTORIES: tuple[
             r"\s*context\s*:\s*String\?\s*,\s*note\s*:\s*String\?\s*=\s*nil\s*,"
             r"\s*currencyEvidence\s*:\s*ReceiptCurrencyEvidence\s*=\s*\.init\(\)\s*,"
             r"\s*needsAmountReview\s*:\s*Bool\s*=\s*false\s*,"
-            r"\s*needsDateReview\s*:\s*Bool\s*=\s*false\s*\)\s*\{"
+            r"\s*needsDateReview\s*:\s*Bool\s*=\s*false\s*,"
+            r"\s*needsAccountReview\s*:\s*Bool\s*=\s*false\s*,"
+            r"\s*needsCategoryReview\s*:\s*Bool\s*=\s*false\s*\)\s*\{"
         ),
         r"""
         self.draft = draft
@@ -2311,6 +2357,8 @@ W3_MEMBER_INVENTORIES: tuple[
         self.currencyEvidence = currencyEvidence
         self.needsAmountReview = needsAmountReview
         self.needsDateReview = needsDateReview
+        self.needsAccountReview = needsAccountReview
+        self.needsCategoryReview = needsCategoryReview
         """,
     ),
     (
@@ -2925,14 +2973,14 @@ W3_DIRECT_PROPERTY_INVENTORIES: dict[str, tuple[str, ...]] = {
         "var secondChoiceOrdinal: Int",
     ),
     "QuickLogOnDeviceOrdinalModel": (),
-    "ParsedNaturalLanguageEntry": (
-        "public let draft: TransactionDraft",
-        "public let context: String?",
-        "public let note: String?",
-        "public let currencyEvidence: ReceiptCurrencyEvidence",
-        "public let needsAmountReview: Bool",
-        "public let needsDateReview: Bool",
-    ),
+    "ParsedNaturalLanguageEntry": ('public let draft: TransactionDraft',
+ 'public let context: String?',
+ 'public let note: String?',
+ 'public let currencyEvidence: ReceiptCurrencyEvidence',
+ 'public let needsAmountReview: Bool',
+ 'public let needsDateReview: Bool',
+ 'public let needsAccountReview: Bool',
+ 'public let needsCategoryReview: Bool'),
     "QuickLogAssistanceChoice": (
         "let id: UUID",
         "let label: String",
@@ -3564,7 +3612,7 @@ W3_PRODUCTION_CALLS: tuple[
             (
                 "App/MoneyUp/QuickLogEntryBody.swift",
                 "item, isActive: isActive, "
-                "cancelAssistance: { cancelOnDeviceAssistance() }",
+                "cancelAssistance: { cancelSmartParsing(); cancelOnDeviceAssistance() }",
                 1,
             ),
         ),
@@ -3572,14 +3620,7 @@ W3_PRODUCTION_CALLS: tuple[
     (
         "QuickLogInputAuthority.beginSmartFill",
         re.compile(r"\bQuickLogInputAuthority\s*\.\s*beginSmartFill\s*\("),
-        (
-            (
-                W3_REVIEWED_ENTRY_PATH,
-                "cancelReceipt: { cancelReceiptProcessing() }, "
-                "cancelAssistance: { cancelOnDeviceAssistance() }",
-                1,
-            ),
-        ),
+        (),
     ),
     (
         "QuickLogInputAuthority.applyReceiptCategory",
@@ -3738,31 +3779,33 @@ W3_PRODUCTION_CALLS: tuple[
     (
         "NaturalLanguageEntryParser.parse",
         re.compile(r"\bNaturalLanguageEntryParser\s*\.\s*parse\s*\("),
-        (
-            (
-                W3_REVIEWED_ENTRY_PATH,
-                "smartText, accounts: model.accounts, "
-                "now: model.currentDateForUserAction(), "
-                "calendar: model.captureCalendar, "
-                "prefersDayFirst: Self.localePrefersDayFirst",
-                1,
-            ),
-        ),
+        (('Sources/MoneyUpCore/SmartEntryInterpreter.swift',
+  '$0, accounts: accounts, now: now, calendar: calendar, prefersDayFirst: prefersDayFirst, locale: locale',
+  1),
+ ('Sources/MoneyUpCore/SmartEntryInterpreter.swift',
+  'text, accounts: accounts, now: now, calendar: calendar, prefersDayFirst: prefersDayFirst, locale: locale',
+  1)),
     ),
     (
         "ParsedNaturalLanguageEntry.init",
         re.compile(r"\bParsedNaturalLanguageEntry\s*\("),
-        (
-            (
-                W3_REVIEWED_PARSER_PATH,
-                "draft: draft, context: assistanceContext( "
-                "from: remainder, currencyCodes: currencyCodes, "
-                "localNames: accounts.map(\\.name) ), note: parts.note, "
-                "currencyEvidence: currencyEvidence, needsAmountReview: reading.needsReview, "
-                "needsDateReview: dateResult.invalidExplicitDate",
-                1,
-            ),
-        ),
+        (('Sources/MoneyUpCore/NaturalLanguageEntryParser.swift',
+  'draft: draft, context: assistanceContext( from: remainder, currencyCodes: currencyCodes, '
+  'localNames: accounts.map(\\.name) ), note: parts.note, currencyEvidence: currencyEvidence, '
+  'needsAmountReview: reading.needsReview, needsDateReview: dateResult.invalidExplicitDate, '
+  'needsAccountReview: account.ambiguous, needsCategoryReview: category.ambiguous',
+  1),
+ ('Sources/MoneyUpCore/SmartEntryInterpreter.swift',
+  'draft: TransactionDraft(source: .naturalLanguage), context: nil',
+  1),
+ ('Sources/MoneyUpCore/SmartEntryInterpreter.swift',
+  'draft: draft, context: nil, note: base.note, currencyEvidence: base.currencyEvidence, '
+  'needsDateReview: base.needsDateReview',
+  1),
+ ('Sources/MoneyUpCore/SmartEntryInterpreter.swift',
+  'draft: draft, context: nil, note: base.note, currencyEvidence: sourceReading.currencyEvidence, '
+  'needsAmountReview: sourceReading.needsAmountReview, needsDateReview: base.needsDateReview',
+  1)),
     ),
     (
         "QuickLogAssistancePrompt.text",
@@ -3842,21 +3885,21 @@ def _w3_parser_provenance(
         start, end = apply_body
         body = entry_scan.masked[start:end]
         parser_binding = re.compile(
-            r"\blet\s+parsed\s*=\s*NaturalLanguageEntryParser\s*\.\s*parse\s*\("
+            r"\blet\s+parsed\s*=\s*interpretation\s*\.\s*parsed\b"
         )
         assistance_call = re.compile(
             r"\bstartOnDeviceAssistance\s*\(\s*for\s*:\s*parsed\s*\)"
         )
         draft_application = re.compile(
-            r"\blet\s+fill\s*=\s*QuickLogSmartFill\s*\(\s*parsed\s*:\s*parsed\s*,"
-            r"\s*current\s*:\s*draftSnapshot\s*,\s*accounts\s*:\s*model\.accounts\s*\)"
+            r"\blet\s+draft\s*=\s*QuickLogUnderstandingFill\s*\.\s*fill\s*\(\s*interpretation\s*,"
+            r"\s*current\s*:\s*baseline\s*,\s*accounts\s*:\s*accountSnapshot\s*,\s*now\s*:\s*now\s*\)"
         )
         if (
             len(parser_binding.findall(body)) != 1
             or len(assistance_call.findall(body)) != 1
             or len(draft_application.findall(body)) != 1
             or len(re.findall(r"\b(?:let|var)\s+parsed\b", body)) != 1
-            or len(re.findall(r"\bparsed\b", body)) != 4
+            or len(re.findall(r"\bparsed\b", body)) != 3
         ):
             violations.append(
                 _w3_boundary_violation(
@@ -4461,7 +4504,7 @@ def _w3_accessible_suggestion_actions(
                 r"\bfunc\s+captureSuggestions\s*\(\s*_\s+result\s*:"
                 r"\s*CaptureSuggestionResult\s*\)\s*->\s*some\s+View\s*\{"
             ),
-            "9e20afde715c9bbb4918917376e04f8c52c33fbf8b69c87889e7d584ce0dc767",
+            "b978bb82b0b30dc59dfda83451bbb641ac3b098c30ddfb42a6513d348e2768f0",
         ),
     )
     use_literal = "quick_log.use_suggestion"

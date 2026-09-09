@@ -34,11 +34,34 @@ extension AppModel {
         if let sourceID = expected.sourceCaptureID {
             pendingLockedCaptureCount = try await removePendingLockedCapture(id: sourceID, in: draftStore)
         }
-        let cleared = expected.cleared(at: currentDateForUserAction())
+        var cleared = expected.cleared(at: currentDateForUserAction())
+        cleared.clearRecovery = try QuickLogClearRecovery(draft: expected)
         try await draftStore.upsert(cleared, id: QuickLogDraft.primaryRecordID, in: .quickLogDrafts)
         quickLogDraft = cleared
         quickLogPreparationRevision &+= 1
     }
+
+    func restoreClearedQuickLogDraft(replacing expected: QuickLogDraft) async throws {
+        guard state == .ready, quickLogDraft == expected, !expected.hasUserEdits,
+              let recovery = expected.clearRecovery else { throw AppModelError.transactionInProgress }
+        try beginLifecycleMutation(invalidatesJournalProjection: false)
+        defer { endLifecycleMutation() }
+        let draftStore = try requireStore()
+        await finishPendingQuickLogDraftWrite()
+        let restored = try recovery.restoredDraft()
+        try Task.checkCancellation()
+        try await draftStore.upsert(restored, id: QuickLogDraft.primaryRecordID, in: .quickLogDrafts)
+        quickLogDraft = restored
+        quickLogPreparationRevision &+= 1
+    }
+}
+
+struct QuickLogClearedEvidence {
+    let recovery: QuickLogClearRecovery
+    let attachments: [ReceiptAttachmentDraft]
+    let receiptData: Data?
+    let receiptResult: ReceiptParseResult?
+    let retainReceipt: Bool
 }
 
 extension QuickLogEntryView {
@@ -59,18 +82,26 @@ extension QuickLogEntryView {
               !isCheckingDuplicates, !isClearingDraft else { return }
         isClearingDraft = true
         defer { isClearingDraft = false }
+        cancelSmartParsing()
         cancelReceiptProcessing()
         cancelCaptureSuggestionLookup()
         cancelOnDeviceAssistance()
         evidencePreparationTask?.cancel()
         do {
+            let recovery = try QuickLogClearRecovery(draft: expected)
+            let evidence = QuickLogClearedEvidence(recovery: recovery, attachments: attachmentDrafts,
+                receiptData: receiptAttachmentData, receiptResult: receiptResult, retainReceipt: retainReceiptAttachment)
+            var cleared = expected.cleared(at: model.currentDateForUserAction())
+            cleared.clearRecovery = recovery
             if dismissAfterSave {
-                applyDraft(expected.cleared(at: model.currentDateForUserAction()))
+                clearPerTransactionReviewState()
+                applyDraft(cleared)
             } else {
                 try await model.clearQuickLogDraft(replacing: expected)
-                if let cleared = model.quickLogDraft { applyDraft(cleared) }
+                clearPerTransactionReviewState()
+                if let stored = model.quickLogDraft { applyDraft(stored) }
             }
-            clearPerTransactionReviewState()
+            clearedEvidence = evidence
             isPresentingReceiptPicker = false
             isPresentingEvidencePhotoPicker = false
             isPresentingEvidencePDFPicker = false
@@ -79,5 +110,38 @@ extension QuickLogEntryView {
         } catch {
             errorMessage = safeUserMessage(for: error, context: .save)
         }
+    }
+
+    func restoreClearedDraft() async {
+        guard !isSaving, !isClearingDraft, !draftSnapshot.hasUserEdits, let clearRecovery else { return }
+        isClearingDraft = true
+        defer { isClearingDraft = false }
+        cancelSmartParsing()
+        do {
+            if dismissAfterSave { applyDraft(try clearRecovery.restoredDraft()) }
+            else {
+                try await model.restoreClearedQuickLogDraft(replacing: draftSnapshot)
+                if let restored = model.quickLogDraft { applyDraft(restored) }
+            }
+            if let evidence = clearedEvidence, evidence.recovery == clearRecovery {
+                attachmentDrafts = evidence.attachments
+                receiptAttachmentData = evidence.receiptData
+                receiptResult = evidence.receiptResult
+                retainReceiptAttachment = evidence.retainReceipt
+            }
+            clearedEvidence = nil
+        } catch { errorMessage = safeUserMessage(for: error, context: .save) }
+    }
+
+    var clearRecoveryBanner: some View {
+        HStack {
+            Text("quick_log.entry_cleared")
+            Spacer()
+            Button("quick_log.restore_entry") { Task { await restoreClearedDraft() } }
+                .disabled(draftSnapshot.hasUserEdits || isSaving || isClearingDraft)
+                .accessibilityIdentifier("quick-log-restore-cleared")
+        }
+        .padding(12)
+        .background(.regularMaterial)
     }
 }

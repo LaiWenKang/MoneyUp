@@ -1,0 +1,29 @@
+{
+  "baseline": {
+    "correctFixtures": 12,
+    "fixtureCount": 32,
+    "fieldCorrectionsNeeded": 31,
+    "medianMilliseconds": 1.185709,
+    "p95Milliseconds": 1.748167,
+    "cpuSeconds": 3.9408410000000003,
+    "peakResidentBytes": 10731520,
+    "runs": 3,
+    "iterationsPerFixturePerRun": 100,
+    "coreSourceAndFixtureSHA256": "373f5980236d68ceb0d82d38e6312d0cfa61f6d99903822f59d7a593f9b7381a"
+  },
+  "after": {
+    "correctFixtures": 32,
+    "fixtureCount": 32,
+    "fieldCorrectionsNeeded": 0,
+    "medianMilliseconds": 0.90725,
+    "p95Milliseconds": 2.745292,
+    "cpuSeconds": 3.720505,
+    "peakResidentBytes": 11534336,
+    "runs": 3,
+    "iterationsPerFixturePerRun": 100,
+    "coreSourceAndFixtureSHA256": "069a1111867cd0ddfd4aa80339590e3a9c2c9ae098bb3f67290327867dedf9aa"
+  },
+  "swiftVersion": "Apple Swift version 6.4 (swiftlang-6.4.0.33.1 clang-2100.3.33.1)\nTarget: arm64-apple-macosx27.0.0",
+  "environment": "macOS-27.0-arm64-arm-64bit",
+  "scope": "Targeted fixtures, not population accuracy. Corrections are field discrepancies, not observed phone taps. Each warm interpretation includes output extraction and an autorelease pool. CPU and peak RSS cover the whole benchmark process. Values are medians across runs."
+}

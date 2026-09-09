@@ -9,7 +9,11 @@ struct SmartEntryTextParts {
     init(_ text: String) {
         let separator = text.firstIndex { $0 == ";" || $0 == "；" }
         let rawPhrase = separator.map { String(text[..<$0]) } ?? text
-        phrase = rawPhrase.precomposedStringWithCompatibilityMapping
+        let compatible = rawPhrase.precomposedStringWithCompatibilityMapping
+        let visible = String(String.UnicodeScalarView(compatible.unicodeScalars.filter {
+            !$0.properties.isDefaultIgnorableCodePoint && $0.properties.generalCategory != .format
+        }))
+        phrase = SmartEntryCurrencyText.normalized(visible)
         let rawNote = separator.map {
             String(text[text.index(after: $0)...])
                 .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -28,12 +32,13 @@ struct SmartEntryAmountReading {
     private static let number = #"(?<![0-9.,])[0-9]+(?:[.,][0-9]+)*(?![0-9.,])"#
     private static let totalPrefix = #"(?i)(?<![a-z])(?:total|合计|合計|总计|總計)\s*[:：]?\s*(?:(?:[a-z]{3}|US\$|S\$|HK\$|A\$|RM|RMB|[$€£₹¥￥])\s*)?$"#
 
+    private static let numberRegex = try? NSRegularExpression(pattern: number)
+    private static let totalRegex = try? NSRegularExpression(pattern: totalPrefix)
+
     init(text: String, locale: Locale) {
         let matches = Self.matches(in: text)
         let totals = matches.filter { match in
-            text[..<match.range.lowerBound].range(
-                of: Self.totalPrefix, options: .regularExpression
-            ) != nil
+            Self.totalRange(in: text[..<match.range.lowerBound]) != nil
         }
         let selected = totals.count == 1 ? totals.first
             : (matches.count == 1 ? matches.first : nil)
@@ -47,7 +52,7 @@ struct SmartEntryAmountReading {
         if let selected, amount != nil {
             let currencyRange = Self.includingCurrency(around: selected.range, in: text)
             let prefix = text[..<currencyRange.lowerBound]
-            let label = prefix.range(of: Self.totalPrefix, options: .regularExpression)
+            let label = Self.totalRange(in: prefix)
             consumedText = String(text[(label?.lowerBound ?? currencyRange.lowerBound)..<currencyRange.upperBound])
         } else {
             consumedText = nil
@@ -82,7 +87,7 @@ struct SmartEntryAmountReading {
     }
 
     private static func matches(in text: String) -> [Match] {
-        guard let regex = try? NSRegularExpression(pattern: number) else { return [] }
+        guard let regex = numberRegex else { return [] }
         return regex.matches(in: text, range: NSRange(text.startIndex..., in: text)).compactMap {
             guard let range = Range($0.range, in: text) else { return nil }
             // Keep number-bearing merchants intact (7-Eleven, H2O). Signs
@@ -90,11 +95,11 @@ struct SmartEntryAmountReading {
             let before = text[..<range.lowerBound]
             let after = text[range.upperBound...]
             if after.first == ":" { return nil }
-            if before.last == ":", before.range(of: totalPrefix, options: .regularExpression) == nil { return nil }
+            if before.last == ":", totalRange(in: before) == nil { return nil }
             if after.first == "-" || after.first == "/" || before.last == "/" { return nil }
             let adjacentLatin = before.last.map(Self.isLatinLetter) == true
                 || after.first.map(Self.isLatinLetter) == true
-            if adjacentLatin,
+            if adjacentLatin, totalRange(in: before) == nil,
                ReceiptTextParser.currencyEvidence(in: [String(before.suffix(4)) + String(text[range]) + String(after.prefix(4))]).codes.isEmpty {
                 return nil
             }
@@ -102,6 +107,11 @@ struct SmartEntryAmountReading {
                 ? text.index(before: range.lowerBound) : range.lowerBound
             return Match(text: String(text[start..<range.upperBound]), range: start..<range.upperBound)
         }
+    }
+
+    private static func totalRange(in text: Substring) -> Range<String.Index>? {
+        guard let match = totalRegex?.firstMatch(in: String(text), range: NSRange(text.startIndex..., in: text)) else { return nil }
+        return Range(match.range, in: text)
     }
 
     private static func isLatinLetter(_ character: Character) -> Bool {

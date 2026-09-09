@@ -397,6 +397,14 @@ struct QuickLogEntryView: View {
     let onRequestHandled: @MainActor (QuickLogRouteRequest) -> Void
     let onNavigate: @MainActor (QuickLogNavigationDestination) -> Void
 
+    @State var smartState = QuickLogSmartState()
+    @State var clearRecovery: QuickLogClearRecovery?
+    @State var smartParseCoordinator = QuickLogParseCoordinator()
+    @State var smartParseTask: Task<Void, Never>?
+    @State var smartParseRequestID = UUID()
+    @State var isParsingSmartEntry = false
+    @State var evidencePreparationGeneration: UInt64 = 0
+    @State var clearedEvidence: QuickLogClearedEvidence?
     @State var amountText = ""
     @State var destinationAmountText = ""
     @State var accountID: UUID?
@@ -612,7 +620,8 @@ struct QuickLogEntryView: View {
     }
 
     var canSave: Bool {
-        guard !isScanning, !isCheckingDuplicates, !isClearingDraft,
+        guard !isScanning, !isCheckingDuplicates, !isClearingDraft, !isParsingSmartEntry,
+              smartState.issues.isEmpty,
               let amount,
               let accountID,
               let sourceAccount = selectedSourceAccount else {

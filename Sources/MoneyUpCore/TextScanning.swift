@@ -32,11 +32,14 @@ public enum TextScanner {
         "([0-9]{1,2})[-/.]([0-9]{1,2})[-/.]([0-9]{4})"
     ]
 
+    private static let amountRegex = try? NSRegularExpression(pattern: amountPattern)
+    private static let dateRegexes = datePatterns.compactMap { try? NSRegularExpression(pattern: $0) }
+
     public static func amounts(
         in text: String,
         locale: Locale = .current
     ) -> [AmountMatch] {
-        guard let regex = try? NSRegularExpression(pattern: amountPattern) else {
+        guard let regex = amountRegex else {
             return []
         }
         let full = NSRange(text.startIndex..<text.endIndex, in: text)
@@ -71,8 +74,7 @@ public enum TextScanner {
         calendar: Calendar,
         prefersDayFirst: Bool
     ) -> (components: DateComponents, text: String)? {
-        for pattern in datePatterns {
-            guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+        for regex in dateRegexes {
             let full = NSRange(text.startIndex..<text.endIndex, in: text)
             guard let match = regex.firstMatch(in: text, range: full),
                   match.numberOfRanges == 4,
@@ -120,10 +122,7 @@ public enum TextScanner {
     static func explicitDateShapeCount(in text: String) -> Int {
         let full = NSRange(text.startIndex..<text.endIndex, in: text)
         var ranges = Set<String>()
-        for pattern in datePatterns {
-            guard let regex = try? NSRegularExpression(pattern: pattern) else {
-                continue
-            }
+        for regex in dateRegexes {
             for match in regex.matches(in: text, range: full) {
                 ranges.insert("\(match.range.location):\(match.range.length)")
             }

@@ -30,13 +30,11 @@ extension ReceiptTextParser {
         var ambiguous = false
         for line in lines {
             var text = line.uppercased()
-            for (marker, code) in receiptCurrencyAliases {
-                let pattern = "(?<![A-Z])" + NSRegularExpression.escapedPattern(for: marker)
-                    + (marker.last?.isLetter == true ? "(?![A-Z])" : "")
-                guard let regex = try? NSRegularExpression(pattern: pattern),
-                      regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil else { continue }
-                if let currency = try? CurrencyCode(code) { codes.insert(currency) }
-                text = regex.stringByReplacingMatches(in: text, range: NSRange(text.startIndex..., in: text), withTemplate: " ")
+            for (regex, currency) in receiptCurrencyAliasMatchers {
+                let range = NSRange(text.startIndex..., in: text)
+                guard regex.firstMatch(in: text, range: range) != nil else { continue }
+                codes.insert(currency)
+                text = regex.stringByReplacingMatches(in: text, range: range, withTemplate: " ")
             }
             ambiguous = ambiguous || text.contains("$") || text.contains("¥") || text.contains("￥")
             guard let regex = receiptCurrencyCodePattern else { continue }
@@ -59,6 +57,15 @@ extension ReceiptTextParser {
         ("US$", "USD"), ("S$", "SGD"), ("HK$", "HKD"), ("A$", "AUD"),
         ("RM", "MYR"), ("RMB", "CNY"), ("€", "EUR"), ("£", "GBP"), ("₹", "INR")
     ]
+
+    private static let receiptCurrencyAliasMatchers: [(NSRegularExpression, CurrencyCode)] =
+        receiptCurrencyAliases.compactMap { marker, code in
+            let pattern = "(?<![A-Z])" + NSRegularExpression.escapedPattern(for: marker)
+                + (marker.last?.isLetter == true ? "(?![A-Z])" : "")
+            guard let regex = try? NSRegularExpression(pattern: pattern),
+                  let currency = try? CurrencyCode(code) else { return nil }
+            return (regex, currency)
+        }
 
     private static let receiptCurrencyCodePattern: NSRegularExpression? = {
         let codes = Set(Locale.commonISOCurrencyCodes + ["BTC", "ETH"])

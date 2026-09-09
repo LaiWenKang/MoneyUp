@@ -50,6 +50,7 @@ extension QuickLogEntryView {
                     ForEach(Array(candidates.prefix(4).enumerated()), id: \.offset) {
                         _, candidate in
                         Button {
+                            smartState.edited(.amount)
                             amountText = editableAmount(candidate.value)
                             persistUserDraftChange { $0.amountText = amountText }
                         } label: {
@@ -129,6 +130,7 @@ extension QuickLogEntryView {
     }
 
     private func applyReceiptMerchantCandidate(_ candidate: String) {
+        smartState.edited(.payee)
         invalidateCaptureSuggestions()
         payee = candidate
         persistUserDraftChange { $0.payee = candidate }
@@ -176,6 +178,7 @@ extension QuickLogEntryView {
     }
 
     private func applyReceiptDateCandidate(_ candidate: Date) {
+        smartState.edited(.date)
         occurredAt = candidate
         dateWasEdited = true
         invalidateCaptureSuggestions()
@@ -203,6 +206,7 @@ extension QuickLogEntryView {
                         invalidateOnDeviceCategoryForDeterministicChange()
                     }
                 ) {
+                    smartState.edited(.category)
                     self.categoryID = categoryID
                     categoryWasEdited = true
                     autoAppliedCategorySuggestionID = nil

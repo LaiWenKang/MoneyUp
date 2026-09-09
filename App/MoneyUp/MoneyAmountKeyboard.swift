@@ -58,6 +58,18 @@ struct MoneyUpKeyboardDoneToolbar: ToolbarContent {
 
 @MainActor
 enum MoneyUpKeyboard {
+    static var hasMarkedText: Bool {
+        UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows).contains { hasMarkedText(in: $0) }
+    }
+
+    static func hasMarkedText(in view: UIView) -> Bool {
+        if view.isFirstResponder, let input = view as? any UITextInput {
+            return input.markedTextRange != nil
+        }
+        return view.subviews.contains { hasMarkedText(in: $0) }
+    }
+
     static func dismiss() {
         UIApplication.shared.sendAction(
             #selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil

@@ -180,6 +180,10 @@ extension QuickLogEntryView {
     /// category, transaction kind, and transfer destination remain selected so
     /// the next routine entry takes only an amount and a tap on Save.
     func completeSuccessfulSave(entryID: UUID?) {
+        cancelSmartParsing()
+        smartState = .init()
+        clearRecovery = nil
+        clearedEvidence = nil
         cancelReceiptProcessing()
         cancelCaptureSuggestionLookup()
         cancelOnDeviceAssistance()

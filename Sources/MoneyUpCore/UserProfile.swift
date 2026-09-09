@@ -28,6 +28,7 @@ public struct UserProfile: Codable, Equatable, Sendable {
     /// existing Quick Log accounts and categories. It is enabled by default;
     /// unsupported devices fail closed to deterministic parsing.
     public var foundationModelAssistanceEnabled: Bool
+    public var merchantSuggestionsEnabled: Bool
     /// Retired compatibility value. Old payloads may still contain the key,
     /// but 0.7.1 normalizes it off and never writes it again.
     public private(set) var enablesTabSwipeNavigation: Bool
@@ -55,6 +56,7 @@ public struct UserProfile: Codable, Equatable, Sendable {
         showsBudgetStatusWidget: Bool = false,
         intelligenceEnabled: Bool = true,
         foundationModelAssistanceEnabled: Bool = true,
+        merchantSuggestionsEnabled: Bool = true,
         enablesTabSwipeNavigation: Bool = false,
         reportingTimeZoneIdentifier: String = TimeZone.current.identifier,
         currencyDisplay: MoneyCurrencyDisplay = .automatic,
@@ -72,6 +74,7 @@ public struct UserProfile: Codable, Equatable, Sendable {
         self.showsBudgetStatusWidget = showsBudgetStatusWidget
         self.intelligenceEnabled = intelligenceEnabled
         self.foundationModelAssistanceEnabled = foundationModelAssistanceEnabled
+        self.merchantSuggestionsEnabled = merchantSuggestionsEnabled
         self.enablesTabSwipeNavigation = false
         self.reportingTimeZoneIdentifier = TimeZone(
             identifier: reportingTimeZoneIdentifier
@@ -104,6 +107,7 @@ public struct UserProfile: Codable, Equatable, Sendable {
         case showsBudgetStatusWidget
         case intelligenceEnabled
         case foundationModelAssistanceEnabled
+        case merchantSuggestionsEnabled
         case enablesTabSwipeNavigation
         case reportingTimeZoneIdentifier
         case currencyDisplay
@@ -154,6 +158,7 @@ public struct UserProfile: Codable, Equatable, Sendable {
         foundationModelAssistanceEnabled = try container.decodeIfPresent(
             Bool.self, forKey: .foundationModelAssistanceEnabled
         ) ?? true
+        merchantSuggestionsEnabled = try container.decodeIfPresent(Bool.self, forKey: .merchantSuggestionsEnabled) ?? true
         if container.contains(.enablesTabSwipeNavigation) {
             _ = try container.decode(
                 Bool.self,
@@ -181,6 +186,7 @@ public struct UserProfile: Codable, Equatable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(merchantSuggestionsEnabled, forKey: .merchantSuggestionsEnabled)
         try container.encode(baseCurrency, forKey: .baseCurrency)
         try container.encode(createdAt, forKey: .createdAt)
         try container.encode(autoLockDelay, forKey: .autoLockDelay)

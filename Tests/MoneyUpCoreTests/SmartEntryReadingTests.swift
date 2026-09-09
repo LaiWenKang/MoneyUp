@@ -55,6 +55,12 @@ final class SmartEntryReadingTests: XCTestCase {
         let ambiguous = NaturalLanguageEntryParser.parse("lunch $12", accounts: [], locale: locale)
         XCTAssertTrue(ambiguous.currencyEvidence.hasAmbiguousSymbol)
         XCTAssertFalse(ambiguous.currencyEvidence.permitsAutomaticFill(in: try CurrencyCode("SGD")))
+        let english = NaturalLanguageEntryParser.parse("lunch 12 US dollars", accounts: [], locale: locale)
+        XCTAssertEqual(english.currencyEvidence.identifiedCurrency, try CurrencyCode("USD"))
+        XCTAssertEqual(english.draft.amount, 12)
+        XCTAssertEqual(english.draft.payee, "lunch")
+        let unspecified = NaturalLanguageEntryParser.parse("lunch 12 dollars", accounts: [], locale: locale)
+        XCTAssertTrue(unspecified.currencyEvidence.hasAmbiguousSymbol)
     }
 
     func testMalformedSignedAndAmbiguousTotalsDoNotBecomePositiveAmounts() {
