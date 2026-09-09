@@ -17,6 +17,8 @@ def cloud_release_errors(info: dict, mode: str, *, signed: dict | None = None,
     if mode != "internal-beta":
         return ["Unknown cloud release mode"]
     errors = []
+    if profile is not None and signed is None:
+        errors.append("Profile authorization must be checked against the signed app entitlements")
     if not enabled:
         errors.append("Internal cloud beta has no enabled cloud configuration")
     if (info.get("MoneyUpCloudEnvironment") != "production"
@@ -50,7 +52,13 @@ def cloud_release_errors(info: dict, mode: str, *, signed: dict | None = None,
         if profile is not None:
             entitlements = profile.get("Entitlements", {})
             permitted = entitlements.get(key, []) if isinstance(entitlements, dict) else []
-            if not isinstance(permitted, list) or not any(item in permitted for item in ("*", expected)):
+            # Apple's profile is an authorization allowlist, not the app's
+            # entitlement declaration. It can grant this capability with a
+            # scalar wildcard; the signed app must still name the exact domain.
+            permitted_domains = [permitted] if permitted == "*" else permitted
+            if (not isinstance(permitted_domains, list)
+                    or not all(isinstance(item, str) and item for item in permitted_domains)
+                    or not any(item in permitted_domains for item in ("*", expected))):
                 errors.append("Distribution profile does not authorize the cloud callback domain")
     if export_options is not None and (
         export_options.get("method") != "app-store-connect"
@@ -76,8 +84,9 @@ def main() -> int:
             if not isinstance(value, dict):
                 raise ValueError("Expected a property-list dictionary")
             return value
+        profile = read(args.profile)
         errors = cloud_release_errors(read(args.info), args.mode, signed=read(args.signed_entitlements),
-                                      profile=read(args.profile), export_options=read(args.export_options))
+                                      profile=profile, export_options=read(args.export_options))
     except (OSError, ValueError, plistlib.InvalidFileException):
         errors = ["Could not read cloud release metadata"]
     if errors:
@@ -85,6 +94,10 @@ def main() -> int:
             print("error: " + error)
         return 1
     print("Verified cloud release mode: " + args.mode)
+    if args.mode == "internal-beta" and profile is not None:
+        entitlement = profile.get("Entitlements", {}).get("com.apple.developer.associated-domains")
+        shape = "scalar wildcard" if entitlement == "*" else "array allowlist"
+        print("Verified profile authorization: " + shape + "; signed app retains its exact callback domain.")
     return 0
 
 
