@@ -397,6 +397,8 @@ struct QuickLogEntryView: View {
     let onRequestHandled: @MainActor (QuickLogRouteRequest) -> Void
     let onNavigate: @MainActor (QuickLogNavigationDestination) -> Void
 
+    @State var batch: QuickLogBatch?
+    @State var pendingBatchRemoval: QuickLogDraft?
     @State var smartState = QuickLogSmartState()
     @State var clearRecovery: QuickLogClearRecovery?
     @State var smartParseCoordinator = QuickLogParseCoordinator()

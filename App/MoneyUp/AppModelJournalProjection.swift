@@ -11,6 +11,7 @@ private struct JournalSaveContext {
     let completedLockedCaptureID: UUID?
     let generation: Int
     let currentDraft: QuickLogDraft?
+    let nextDraft: QuickLogDraft?
     let store: EncryptedRecordStore
     let pendingDraftWrite: Task<Void, Never>?
 }
@@ -237,6 +238,9 @@ extension AppModel {
         return result
     }
 
+}
+
+extension AppModel {
     @discardableResult
     func save(
         _ entry: JournalEntry,
@@ -245,7 +249,8 @@ extension AppModel {
         receiptData: Data? = nil,
         attachmentDrafts: [ReceiptAttachmentDraft] = [],
         authorizedRestrictedAllowanceAccountID: UUID? = nil,
-        journalMutationAlreadyBegun: Bool = false
+        journalMutationAlreadyBegun: Bool = false,
+        batchToken: QuickLogBatchToken? = nil
     ) async throws -> UUID? {
         if journalMutationAlreadyBegun,
            !manualJournalMutationIsActive {
@@ -259,7 +264,7 @@ extension AppModel {
         defer {
             if !journalMutationAlreadyBegun { endJournalMutation() }
         }
-        let context = try prepareJournalSave(entry)
+        let context = try prepareJournalSave(entry, batchToken: batchToken)
         try await requireNonnegativeRestrictedBalances(
             afterRemoving: nil,
             adding: context.entry,
@@ -295,7 +300,8 @@ extension AppModel {
         let commitTask = journalCommitTask(
             pendingDraftWrite: context.pendingDraftWrite,
             store: context.store,
-            writes: writeCandidate.writes
+            writes: writeCandidate.writes,
+            nextDraft: context.nextDraft
         )
         let commitID = UUID()
         quickLogCommit = PendingQuickLogCommit(
@@ -323,7 +329,7 @@ extension AppModel {
     }
 
     private func prepareJournalSave(
-        _ entry: JournalEntry
+        _ entry: JournalEntry, batchToken: QuickLogBatchToken?
     ) throws -> JournalSaveContext {
         let completedLockedCaptureID = quickLogDraft?.sourceCaptureID
         let authoredEntry = try appAuthoredEntry(
@@ -336,6 +342,7 @@ extension AppModel {
         )
         let generation = storeGeneration
         let currentDraft = quickLogDraft
+        let nextDraft = try quickLogDraftAfterCommit(current: currentDraft, batchToken: batchToken)
         if let existingCommit = quickLogCommit {
             guard existingCommit.generation != generation else {
                 throw AppModelError.transactionInProgress
@@ -351,6 +358,7 @@ extension AppModel {
             completedLockedCaptureID: completedLockedCaptureID,
             generation: generation,
             currentDraft: currentDraft,
+            nextDraft: nextDraft,
             store: transactionStore,
             pendingDraftWrite: pendingDraftWrite
         )
@@ -474,7 +482,7 @@ extension AppModel {
     private func journalCommitTask(
         pendingDraftWrite: Task<Void, Never>?,
         store: EncryptedRecordStore,
-        writes: [RecordWrite]
+        writes: [RecordWrite], nextDraft: QuickLogDraft?
     ) -> Task<Void, Error> {
         Task {
             await pendingDraftWrite?.value
@@ -483,14 +491,18 @@ extension AppModel {
             await lifecycleHooks.checkpoint(
                 .afterJournalProjectionInvalidationBeforeCommit
             )
+            var committedWrites = writes
+            if let nextDraft {
+                committedWrites.append(try RecordWrite(nextDraft, id: QuickLogDraft.primaryRecordID, in: .quickLogDrafts))
+            }
             try await store.write(
-                writes,
-                removing: [
+                committedWrites,
+                removing: nextDraft == nil ? [
                     RecordDeletion(
                         id: QuickLogDraft.primaryRecordID,
                         from: .quickLogDrafts
                     )
-                ]
+                ] : []
             )
         }
     }
@@ -501,7 +513,8 @@ extension AppModel {
         receiptAttachments: [ReceiptAttachment],
         additionalAccounts: [LedgerAccount]
     ) async {
-        quickLogDraft = nil
+        quickLogDraft = context.nextDraft
+        if context.currentDraft?.batch != nil { quickLogPreparationRevision &+= 1 }
         if !additionalAccounts.isEmpty {
             accounts.append(contentsOf: additionalAccounts)
         }

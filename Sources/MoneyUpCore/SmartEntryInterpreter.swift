@@ -47,6 +47,11 @@ public enum SmartEntryInterpreter {
             return SmartEntryInterpretation(parsed: ParsedNaturalLanguageEntry(
                 draft: TransactionDraft(source: .naturalLanguage), context: nil), issues: [.inputLimit])
         }
+        if let batchLines = try? SmartEntryBatchText.lines(from: text),
+           batchLines.filter({ !TextScanner.amounts(in: SmartEntryTextParts($0).phrase, locale: locale).isEmpty }).count > 1 {
+            return SmartEntryInterpretation(parsed: ParsedNaturalLanguageEntry(
+                draft: TransactionDraft(source: .naturalLanguage), context: nil), shape: .multiple, issues: [.multiple])
+        }
         let parts = SmartEntryTextParts(text)
         let parsed = NaturalLanguageEntryParser.parse(text, accounts: accounts, now: now,
             calendar: calendar, prefersDayFirst: prefersDayFirst, locale: locale)

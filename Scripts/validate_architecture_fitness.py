@@ -450,7 +450,7 @@ W3_TYPE_EXECUTABLE_DIGESTS = {
     'SmartEntryNames': '1981a94f31d91eec1eeb140789f2b72d09232b3ba2fd721ab0b3ad57d6a35adc',
     'SmartEntryRelativeDate': '9d11da787d5bcfd52b3b5acec61bf0b7249e4b512ba87aac45de32ca44743286',
     'SmartEntryCurrencyText': '9a5d0f16109a79a22979eeafadf4f516e78a35f77598ec6d21dff09b6f8d66b2',
-    'SmartEntryInterpreter': 'd0384be226d7cf3e475dcac2fe5edfe3e5028daf83cf1de7ebd137d3cb28dc84',
+    'SmartEntryInterpreter': '152306fbcaf3e23f7f954b1c22bd9604cb1cd6a8c4e3d8dc416776bf5aa88f3a',
     'SmartEntryInterpretation': 'efac65a64510d6acb929e701ce4fbca09f40d39ca6048af2a10945c7b2906bb6',
     'SmartEntryShape': '47ab13cea59459ecce453f43a342d0c7592e69205aa49764655c581beec20cb1',
     'SmartEntryIssue': '29f8a164feb7d5549a4f953ee3317ea11f13f066d78b6cdd4f16f719041a3921',
@@ -502,7 +502,7 @@ W3_TYPE_REFERENCE_INVENTORIES = {
  ('App/MoneyUp/QuickLogOnDeviceAssistance.swift', 1),
  ('App/MoneyUp/QuickLogSmartFill.swift', 1),
  ('Sources/MoneyUpCore/NaturalLanguageEntryParser.swift', 3),
- ('Sources/MoneyUpCore/SmartEntryInterpreter.swift', 9)),
+ ('Sources/MoneyUpCore/SmartEntryInterpreter.swift', 10)),
     "QuickLogPromptBoundary": ((W3_REVIEWED_REQUEST_PATH, 8),),
     "QuickLogPromptComponent": ((W3_REVIEWED_REQUEST_PATH, 18),),
     "QuickLogAssistanceChoice": ((W3_REVIEWED_REQUEST_PATH, 10),),
@@ -548,10 +548,13 @@ W3_TYPE_REFERENCE_INVENTORIES = {
  ('Sources/MoneyUpCore/SmartEntryRelativeDate.swift', 1)),
     'SmartEntryCurrencyText': (('Sources/MoneyUpCore/SmartEntryCurrencyText.swift', 1),
  ('Sources/MoneyUpCore/SmartEntryTextReading.swift', 1)),
-    'SmartEntryInterpreter': (('App/MoneyUp/QuickLogEntryDraft.swift', 1), ('Sources/MoneyUpCore/SmartEntryInterpreter.swift', 1)),
+    'SmartEntryInterpreter': (('App/MoneyUp/QuickLogBatch.swift', 1),
+ ('App/MoneyUp/QuickLogEntryDraft.swift', 1),
+ ('Sources/MoneyUpCore/SmartEntryBatchText.swift', 1),
+ ('Sources/MoneyUpCore/SmartEntryInterpreter.swift', 1)),
     'SmartEntryInterpretation': (('App/MoneyUp/QuickLogSmartState.swift', 4),
  ('App/MoneyUp/QuickLogUnderstandingFill.swift', 4),
- ('Sources/MoneyUpCore/SmartEntryInterpreter.swift', 8)),
+ ('Sources/MoneyUpCore/SmartEntryInterpreter.swift', 9)),
     'SmartEntryShape': (('Sources/MoneyUpCore/SmartEntryInterpreter.swift', 2),),
     'SmartEntryIssue': (('App/MoneyUp/QuickLogSmartReview.swift', 1),
  ('App/MoneyUp/QuickLogSmartState.swift', 2),
@@ -559,7 +562,9 @@ W3_TYPE_REFERENCE_INVENTORIES = {
  ('Sources/MoneyUpCore/SmartEntryInterpreter.swift', 2)),
     'SmartEntrySplit': (('Sources/MoneyUpCore/SmartEntryInterpreter.swift', 3),),
     'QuickLogParseCoordinator': (('App/MoneyUp/QuickLogSheet.swift', 1), ('App/MoneyUp/QuickLogSmartState.swift', 1)),
-    'QuickLogUnderstandingFill': (('App/MoneyUp/QuickLogEntryDraft.swift', 1), ('App/MoneyUp/QuickLogUnderstandingFill.swift', 1)),
+    'QuickLogUnderstandingFill': (('App/MoneyUp/QuickLogBatch.swift', 1),
+ ('App/MoneyUp/QuickLogEntryDraft.swift', 1),
+ ('App/MoneyUp/QuickLogUnderstandingFill.swift', 1)),
 }
 
 W3_STATE_REFERENCE_INVENTORIES = {
@@ -633,7 +638,7 @@ W3_SOURCE_FUNCTION_DIGESTS: tuple[
         re.compile(
             r"\bfunc\s+reloadDraftForLogicalBookReplacement\s*\(\s*\)\s*\{"
         ),
-        "68f79f5d097a0178dd0b7a031a7a5c433d642b8e9de1f18a9bbbed7dfd518641",
+        "24258258cc5250a9b195b6199b850c0b625322e91bc276d8a4309cc5c1399f46",
     ),
     (
         "App/MoneyUp/QuickLogEntryCaptureSuggestions.swift",
@@ -653,6 +658,8 @@ W3_SOURCE_FUNCTION_DIGESTS: tuple[
 )
 
 W3_PATH_TYPE_DIGESTS: tuple[tuple[str, str, str, str], ...] = (
+    ('App/MoneyUp/QuickLogBatch.swift', 'enum', 'QuickLogBatchPreparation', 'b4a392813f96d592dce88fdc532816501d7ea991f59b791595e02fb7538e0273'),
+    ('Sources/MoneyUpCore/SmartEntryBatchText.swift', 'enum', 'SmartEntryBatchText', '1efd0ca7104e651a464478fd2e28c491af109ce94d48b2c7d9d035f0416047f9'),
     ('App/MoneyUp/QuickLogSmartFill.swift', 'struct', 'QuickLogSmartFill', '3c98e0dc2f72aae58ef9626c1953a3239b930ad5fb465a45c8ba2e8f08ddd998'),
     ('Sources/MoneyUpCore/SmartEntryTextReading.swift', 'struct', 'SmartEntryAmountReading', '088699b5ce5d5f969b345f2d81ab3a8cca9609baa0cafd17afabaf21e802403c'),
     ('Sources/MoneyUpCore/SmartEntryTextReading.swift', 'struct', 'SmartEntryTextParts', 'a84bf4da2c0b336f570103ee82b2f176ba7d30019cad745611022bae5e7b5ea4'),
@@ -661,13 +668,13 @@ W3_PATH_TYPE_DIGESTS: tuple[tuple[str, str, str, str], ...] = (
         "App/MoneyUp/QuickLogEntryBody.swift",
         "extension",
         "QuickLogEntryView",
-        "ebd71daae79d320b3cdbc3f8b30882b7f9cbe87ab1687d61fb5393d0aed0185a",
+        "21f5a23194cbe4dd409662f50ad2c272846681d6b99f59e096defd1025209da5",
     ),
     (
         "App/MoneyUp/QuickLogEntryReceipt.swift",
         "extension",
         "QuickLogEntryView",
-        "a12d3ac43008ad47fd6d91175bfa5992a88c83d193e4979fb03330d47e20cbc7",
+        "22b713afd5a13c96341723c1d1663efecb15e7cb36b53227932bd74cceda46b9",
     ),
     (
         W3_REVIEWED_ENTRY_ASSISTANCE_PATH,
@@ -3797,7 +3804,7 @@ W3_PRODUCTION_CALLS: tuple[
   1),
  ('Sources/MoneyUpCore/SmartEntryInterpreter.swift',
   'draft: TransactionDraft(source: .naturalLanguage), context: nil',
-  1),
+  2),
  ('Sources/MoneyUpCore/SmartEntryInterpreter.swift',
   'draft: draft, context: nil, note: base.note, currencyEvidence: base.currencyEvidence, '
   'needsDateReview: base.needsDateReview',

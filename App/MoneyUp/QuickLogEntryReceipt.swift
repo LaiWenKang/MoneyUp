@@ -416,7 +416,7 @@ extension QuickLogEntryView {
                     ?? smartFallbackCategory(in: model.expenseCategories)
             }
         case .transfer:
-            if !model.userAccounts.contains(where: {
+            if !smartState.issues.contains(.destination), !model.userAccounts.contains(where: {
                 $0.id == destinationAccountID && $0.id != accountID
             }) {
                 destinationAccountID = model.userAccounts.first { $0.id != accountID }?.id

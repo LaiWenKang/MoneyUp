@@ -442,6 +442,7 @@ extension AppModel {
     }
 
     func setLedgerItemArchived(id: UUID, isArchived: Bool) async throws {
+        if isArchived, try batchReferencesLedgerItem(id) { throw AppModelError.ledgerItemInUse }
         try beginLifecycleMutation()
         defer { endLifecycleMutation() }
         await finishPendingQuickLogDraftWrite()
@@ -513,6 +514,7 @@ extension AppModel {
     }
 
     func mergeLedgerItem(id sourceID: UUID, into targetID: UUID) async throws {
+        guard try !batchReferencesLedgerItem(sourceID) else { throw AppModelError.ledgerItemInUse }
         try beginLifecycleMutation()
         defer { endLifecycleMutation() }
         try await reassignAndDeleteLedgerItem(
@@ -523,6 +525,7 @@ extension AppModel {
     }
 
     func deleteLedgerItem(id: UUID, reassigningTo targetID: UUID? = nil) async throws {
+        guard try !batchReferencesLedgerItem(id) else { throw AppModelError.ledgerItemInUse }
         try beginLifecycleMutation()
         defer { endLifecycleMutation() }
         if let targetID {

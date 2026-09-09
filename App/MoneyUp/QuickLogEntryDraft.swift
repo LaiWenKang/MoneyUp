@@ -25,6 +25,7 @@ extension QuickLogEntryView {
             accountWasEdited: accountWasEdited,
             categoryWasEdited: categoryWasEdited
         )
+        snapshot.batch = batch
         snapshot.smartState = smartState
         snapshot.clearRecovery = clearRecovery
         return snapshot
@@ -122,6 +123,8 @@ extension QuickLogEntryView {
     /// book through `draftSnapshot` observation.
     func reloadDraftForLogicalBookReplacement() {
         hasRestoredDraft = false
+        batch = nil
+        pendingBatchRemoval = nil
         clearedEvidence = nil
         cancelSmartParsing()
         cancelReceiptProcessing()
@@ -158,6 +161,7 @@ extension QuickLogEntryView {
     }
 
     func applyDraft(_ draft: QuickLogDraft) {
+        batch = draft.batch
         smartState = draft.smartState
         clearRecovery = draft.clearRecovery
         kind = draft.kind
@@ -209,6 +213,8 @@ extension QuickLogEntryView {
 
     func discardDraftAndLaunch(_ launchRequest: QuickLogRouteRequest) {
         clearPerTransactionReviewState()
+        batch = nil
+        pendingBatchRemoval = nil
         clearedEvidence = nil
         cancelReceiptProcessing()
         cancelCaptureSuggestionLookup()

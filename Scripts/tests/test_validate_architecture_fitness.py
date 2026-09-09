@@ -71,6 +71,9 @@ class ArchitectureFitnessTests(unittest.TestCase):
         repository = SCRIPTS.parent
         relatives = (
             "project.yml",
+            "App/MoneyUp/QuickLogBatchReview.swift",
+            "App/MoneyUp/QuickLogBatch.swift",
+            "Sources/MoneyUpCore/SmartEntryBatchText.swift",
             "App/MoneyUp/QuickLogSmartReview.swift",
             "Sources/MoneyUpCore/SmartEntryRelativeDate.swift",
             "Sources/MoneyUpCore/SmartEntryNames.swift",

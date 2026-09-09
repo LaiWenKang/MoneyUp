@@ -7,12 +7,14 @@ extension QuickLogDraft {
     /// Retain routing choices for the next entry; clear transaction content,
     /// edits, split identities and the current capture's replay identity.
     func cleared(at date: Date) -> QuickLogDraft {
-        QuickLogDraft(
+        var cleared = QuickLogDraft(
             kind: kind, amountText: "", destinationAmountText: "",
             accountID: accountID, destinationAccountID: destinationAccountID,
             categoryID: categoryID, occurredAt: date, dateWasEdited: false,
             payee: "", note: "", smartText: ""
         )
+        cleared.batch = batch
+        return cleared
     }
 }
 
@@ -35,6 +37,7 @@ extension AppModel {
             pendingLockedCaptureCount = try await removePendingLockedCapture(id: sourceID, in: draftStore)
         }
         var cleared = expected.cleared(at: currentDateForUserAction())
+        cleared.batch?.revision &+= 1
         cleared.clearRecovery = try QuickLogClearRecovery(draft: expected)
         try await draftStore.upsert(cleared, id: QuickLogDraft.primaryRecordID, in: .quickLogDrafts)
         quickLogDraft = cleared
@@ -48,7 +51,9 @@ extension AppModel {
         defer { endLifecycleMutation() }
         let draftStore = try requireStore()
         await finishPendingQuickLogDraftWrite()
-        let restored = try recovery.restoredDraft()
+        var restored = try recovery.restoredDraft()
+        restored.batch = expected.batch
+        restored.batch?.revision &+= 1
         try Task.checkCancellation()
         try await draftStore.upsert(restored, id: QuickLogDraft.primaryRecordID, in: .quickLogDrafts)
         quickLogDraft = restored

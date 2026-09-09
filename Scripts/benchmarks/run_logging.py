@@ -48,7 +48,7 @@ def main() -> None:
     commands: dict[str, list[str]] = {}
 
     def build(label: str) -> None:
-        flags = ["-D", "LOGGING_V2"] if label == "after" else []
+        flags = ["-D", "LOGGING_V2"] if (variants[label] / "Sources/MoneyUpCore/SmartEntryInterpreter.swift").is_file() else []
         commands[label] = ["swiftc", "-O", "-parse-as-library", *flags,
             *map(str, sorted((variants[label] / "Sources/MoneyUpCore").glob("*.swift"))),
             str(harness), "-o", str(output / f"{label}-benchmark")]

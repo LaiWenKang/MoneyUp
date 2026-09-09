@@ -53,6 +53,7 @@ struct QuickLogClearRecovery: Codable, Equatable, Sendable {
     init(draft: QuickLogDraft) throws {
         var original = draft
         original.clearRecovery = nil
+        original.batch = nil
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         draftData = try encoder.encode(original)
@@ -62,7 +63,7 @@ struct QuickLogClearRecovery: Codable, Equatable, Sendable {
     func restoredDraft() throws -> QuickLogDraft {
         guard draftData.count <= Self.maximumBytes else { throw AppModelError.invalidBook }
         let draft = try JSONDecoder().decode(QuickLogDraft.self, from: draftData)
-        guard draft.clearRecovery == nil else { throw AppModelError.invalidBook }
+        guard draft.clearRecovery == nil, draft.batch == nil else { throw AppModelError.invalidBook }
         return draft
     }
 }

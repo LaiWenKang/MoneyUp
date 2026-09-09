@@ -49,6 +49,9 @@ jobs:
             -only-testing:MoneyUpTests/Feedback1039RegressionTests \
             -only-testing:MoneyUpTests/AutomaticUnlockTests \
             -only-testing:MoneyUpTests/QuickLogKeyboardJourneyTests \
+            -only-testing:MoneyUpTests/QuickLogBatchTests \
+            -only-testing:MoneyUpTests/QuickLogFlowReliabilityTests \
+            -only-testing:MoneyUpTests/BatchDeviceCoverageTests \
             -only-testing:MoneyUpTests/ScreenshotReceiptJourneyTests \
             -only-testing:MoneyUpTests/DailyJourneyAcceptanceTests \
             -only-testing:MoneyUpTests/TransactionPreparationTests \

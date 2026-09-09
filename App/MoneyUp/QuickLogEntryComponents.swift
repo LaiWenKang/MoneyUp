@@ -286,6 +286,12 @@ extension QuickLogEntryView {
                 matching: .images
             )
 
+            if batch == nil, smartText.contains(where: \.isNewline), !dismissAfterSave {
+                Button("quick_log.batch.start") { startBatchReview() }
+                    .disabled(isParsingSmartEntry)
+                    .accessibilityIdentifier("quick-log-start-batch")
+            }
+
             if isParsingSmartEntry {
                 Label("quick_log.parsing", systemImage: "ellipsis")
                     .foregroundStyle(.secondary)

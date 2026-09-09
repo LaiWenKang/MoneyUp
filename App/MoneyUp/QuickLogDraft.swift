@@ -43,6 +43,7 @@ struct QuickLogDraft: Codable, Equatable, Sendable {
     static let primaryRecordID = "current"
     static let maximumSplitLineCount = 512
 
+    var batch: QuickLogBatch?
     var smartState = QuickLogSmartState()
     var clearRecovery: QuickLogClearRecovery?
 
@@ -124,7 +125,7 @@ struct QuickLogDraft: Codable, Equatable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case smartState, clearRecovery
+        case batch, smartState, clearRecovery
         case accountWasEdited, categoryWasEdited
         case kind, amountText, destinationAmountText, accountID, destinationAccountID
         case categoryID, occurredAt, dateWasEdited, payee, note, smartText
@@ -133,6 +134,8 @@ struct QuickLogDraft: Codable, Equatable, Sendable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        batch = try container.decodeIfPresent(QuickLogBatch.self, forKey: .batch)
+        try batch?.validate()
         smartState = try container.decodeIfPresent(QuickLogSmartState.self, forKey: .smartState) ?? .init()
         clearRecovery = try container.decodeIfPresent(QuickLogClearRecovery.self, forKey: .clearRecovery)
         guard (clearRecovery?.draftData.count ?? 0) <= QuickLogClearRecovery.maximumBytes else {

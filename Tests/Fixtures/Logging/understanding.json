@@ -293,5 +293,299 @@
       "shape": "multiple",
       "review": "true"
     }
+  },
+  {
+    "id": "hawker",
+    "text": "paid lunch 18.90 S$ Cash",
+    "expected": {
+      "amount": "18.9",
+      "currency": "SGD",
+      "account": "Cash",
+      "merchant": "lunch"
+    }
+  },
+  {
+    "id": "mixed-wallet",
+    "text": "Alipay午餐12新币 yesterday",
+    "expected": {
+      "amount": "12",
+      "currency": "SGD",
+      "account": "Alipay",
+      "merchant": "午餐",
+      "dayOffset": "-1"
+    }
+  },
+  {
+    "id": "salary-notes",
+    "text": "received Salary 4500 Bank today; September payroll",
+    "expected": {
+      "kind": "income",
+      "amount": "4500",
+      "category": "Salary",
+      "note": "September payroll"
+    }
+  },
+  {
+    "id": "refund-card",
+    "text": "refund 40 Card 1234; returned shirt",
+    "expected": {
+      "kind": "refund",
+      "amount": "40",
+      "account": "Card 1234",
+      "note": "returned shirt"
+    }
+  },
+  {
+    "id": "cn-refund-small",
+    "text": "退款 淘宝2.50 支付宝",
+    "expected": {
+      "kind": "refund",
+      "amount": "2.5",
+      "merchant": "淘宝",
+      "account": "支付宝"
+    }
+  },
+  {
+    "id": "cash-taxi",
+    "text": "taxi SGD23.40 Cash Transport yesterday",
+    "expected": {
+      "amount": "23.4",
+      "currency": "SGD",
+      "category": "Transport",
+      "dayOffset": "-1"
+    }
+  },
+  {
+    "id": "category-chinese",
+    "text": "支付宝 餐饮 午餐 8.80",
+    "expected": {
+      "amount": "8.8",
+      "category": "餐饮",
+      "merchant": "午餐"
+    }
+  },
+  {
+    "id": "euro-explicit",
+    "text": "hotel 89 euros",
+    "expected": {
+      "amount": "89",
+      "currency": "EUR",
+      "merchant": "hotel"
+    }
+  },
+  {
+    "id": "ringgit-explicit",
+    "text": "lunch 15 ringgit",
+    "expected": {
+      "amount": "15",
+      "currency": "MYR",
+      "merchant": "lunch"
+    }
+  },
+  {
+    "id": "sgd-words",
+    "text": "lunch 12 Singapore dollars",
+    "expected": {
+      "amount": "12",
+      "currency": "SGD",
+      "merchant": "lunch"
+    }
+  },
+  {
+    "id": "usd-words",
+    "text": "book 25 US dollars",
+    "expected": {
+      "amount": "25",
+      "currency": "USD",
+      "merchant": "book"
+    }
+  },
+  {
+    "id": "long-relative",
+    "text": "coffee 4 Cash 10 days ago",
+    "expected": {
+      "amount": "4",
+      "dayOffset": "-10"
+    }
+  },
+  {
+    "id": "cn-relative",
+    "text": "10天前 支付宝 咖啡4",
+    "expected": {
+      "amount": "4",
+      "dayOffset": "-10"
+    }
+  },
+  {
+    "id": "weekend",
+    "text": "groceries 35 Cash next sunday",
+    "expected": {
+      "amount": "35",
+      "dayOffset": "4"
+    }
+  },
+  {
+    "id": "split-decimal",
+    "text": "split Cash Food 12.35 + Transport 7.65 total20",
+    "expected": {
+      "shape": "split",
+      "amount": "20",
+      "review": "false"
+    }
+  },
+  {
+    "id": "fx-notes-date",
+    "text": "transfer SGD10 from Cash to USD Wallet received USD7.50 yesterday; fee included",
+    "expected": {
+      "shape": "transfer",
+      "amount": "10",
+      "received": "7.5",
+      "dayOffset": "-1",
+      "note": "fee included"
+    }
+  },
+  {
+    "id": "batch-notes-01",
+    "text": "lunch 12 Cash; with Sam\ncoffee 4 Cash; with Mei",
+    "expected": {
+      "shape": "multiple",
+      "review": "true",
+      "amount": "-"
+    }
+  },
+  {
+    "id": "batch-notes-02",
+    "text": "午餐12 支付宝；同事\n咖啡4 支付宝；朋友",
+    "expected": {
+      "shape": "multiple",
+      "review": "true",
+      "amount": "-"
+    }
+  },
+  {
+    "id": "batch-notes-03",
+    "text": "1. lunch 12 Cash; work\n2. taxi 8 Cash; home",
+    "expected": {
+      "shape": "multiple",
+      "review": "true",
+      "amount": "-"
+    }
+  },
+  {
+    "id": "batch-notes-04",
+    "text": "1、午餐12；同事\n2、出租车8；回家",
+    "expected": {
+      "shape": "multiple",
+      "review": "true",
+      "amount": "-"
+    }
+  },
+  {
+    "id": "batch-notes-05",
+    "text": "• lunch 12; work\n• coffee 4; break",
+    "expected": {
+      "shape": "multiple",
+      "review": "true",
+      "amount": "-"
+    }
+  },
+  {
+    "id": "batch-notes-06",
+    "text": "lunch 12; total in note 99\nrefund 4 Cash",
+    "expected": {
+      "shape": "multiple",
+      "review": "true",
+      "amount": "-"
+    }
+  },
+  {
+    "id": "batch-notes-07",
+    "text": "lunch 12; tomorrow\ncoffee 4 yesterday",
+    "expected": {
+      "shape": "multiple",
+      "review": "true",
+      "amount": "-"
+    }
+  },
+  {
+    "id": "batch-notes-08",
+    "text": "lunch 12; USD99\ncoffee SGD4 Cash",
+    "expected": {
+      "shape": "multiple",
+      "review": "true",
+      "amount": "-"
+    }
+  },
+  {
+    "id": "batch-notes-09",
+    "text": "refund 4 Cash; returned\nSalary 5000 Bank",
+    "expected": {
+      "shape": "multiple",
+      "review": "true",
+      "amount": "-"
+    }
+  },
+  {
+    "id": "batch-notes-10",
+    "text": "Salary 5000 Bank; monthly\nFood 12 Cash",
+    "expected": {
+      "shape": "multiple",
+      "review": "true",
+      "amount": "-"
+    }
+  },
+  {
+    "id": "batch-notes-11",
+    "text": "lunch 12 Cash; note\r\ncoffee 4 Cash; note",
+    "expected": {
+      "shape": "multiple",
+      "review": "true",
+      "amount": "-"
+    }
+  },
+  {
+    "id": "batch-notes-12",
+    "text": "lunch 12 Cash; note\n\ncoffee 4 Cash",
+    "expected": {
+      "shape": "multiple",
+      "review": "true",
+      "amount": "-"
+    }
+  },
+  {
+    "id": "batch-notes-13",
+    "text": "lunch 12 Cash; note coffee 4 Cash",
+    "expected": {
+      "shape": "multiple",
+      "review": "true",
+      "amount": "-"
+    }
+  },
+  {
+    "id": "batch-notes-14",
+    "text": "Food 12 Cash; meal\ntransfer 10 from Cash to Bank",
+    "expected": {
+      "shape": "multiple",
+      "review": "true",
+      "amount": "-"
+    }
+  },
+  {
+    "id": "batch-notes-15",
+    "text": "Food 12 Cash; meal\ntransfer SGD10 from Cash to USD Wallet received USD7.50",
+    "expected": {
+      "shape": "multiple",
+      "review": "true",
+      "amount": "-"
+    }
+  },
+  {
+    "id": "batch-notes-16",
+    "text": "午餐12；备注\ncoffee4 Cash; note\nrefund 2 Cash",
+    "expected": {
+      "shape": "multiple",
+      "review": "true",
+      "amount": "-"
+    }
   }
 ]

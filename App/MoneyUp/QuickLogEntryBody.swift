@@ -28,6 +28,8 @@ extension QuickLogEntryView {
                     kindPicker(style: .segmented)
                 }
 
+                batchReviewControls
+
                 Section { primaryAmountControl }
 
                 smartEntrySection
@@ -453,7 +455,7 @@ extension QuickLogEntryView {
             .sheet(isPresented: $isManagingCategories) { CategoryManagementList() }
     }
 
-    private var quickLogBase: some View {
+    var quickLogBase: some View {
         quickLogNavigation
         .safeAreaInset(edge: .bottom) {
             VStack(spacing: 0) {
@@ -514,7 +516,7 @@ extension QuickLogEntryView {
     }
 
     private var quickLogDialogs: some View {
-        quickLogBase
+        quickLogBatchDialogs
         .confirmationDialog(
             "quick_log.clear_title",
             isPresented: Binding(
