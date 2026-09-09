@@ -41,6 +41,20 @@ class CloudReleaseTests(unittest.TestCase):
         self.assertTrue(cloud_release_errors(self.info, "off"))
         self.assertEqual(cloud_release_errors({}, "off"), [])
 
+    def test_profile_scalar_wildcard_does_not_relax_the_apps_exact_domain(self):
+        profile = {"Entitlements": {self.key: "*"}}
+        self.assertEqual(self.check(profile=profile), [])
+        for signed in ({}, {self.key: "*"}, {self.key: ["*"]},
+                       {self.key: ["webcredentials:other.example"]},
+                       {self.key: ["webcredentials:backup.example", "webcredentials:other.example"]}):
+            self.assertTrue(self.check(profile=profile, signed=signed))
+
+    def test_profile_missing_or_malformed_grants_still_fail_closed(self):
+        for value in (None, False, True, 1, {}, "", "webcredentials:other.example", [],
+                      ["webcredentials:other.example"], ["*", False], ["*", ""]):
+            self.assertTrue(self.check(profile={"Entitlements": {self.key: value}}))
+        self.assertTrue(self.check(signed=None))
+
     def test_invalid_metadata_errors_never_echo_credentials(self):
         for callback in ("http://backup.example/callback", "https://user:secret@backup.example/callback",
                          "https://backup.example/callback?secret=x", "https://backup.example:bad/callback"):
