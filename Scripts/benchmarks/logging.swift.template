@@ -1,0 +1,102 @@
+import Foundation
+import Darwin
+
+@main
+struct LoggingBenchmark {
+    static func main() throws {
+        guard CommandLine.arguments.count == 3 else { fatalError("Usage: logging-benchmark fixtures.json result.json") }
+        let data = try Data(contentsOf: URL(fileURLWithPath: CommandLine.arguments[1]))
+        let fixtures = try JSONDecoder().decode([Fixture].self, from: data)
+        let sgd = try CurrencyCode("SGD"), usd = try CurrencyCode("USD")
+        let specs: [(String, LedgerAccountKind, CurrencyCode?)] = [
+            ("Cash", .asset, sgd), ("Bank", .asset, sgd), ("Card 1234", .liability, sgd),
+            ("USD Wallet", .asset, usd), ("支付宝", .asset, sgd), ("Alipay", .asset, sgd),
+            ("Shared", .asset, sgd), ("Shared", .asset, sgd),
+            ("Food", .expense, nil), ("Transport", .expense, nil), ("餐饮", .expense, nil), ("Salary", .income, nil)
+        ]
+        let accounts = specs.enumerated().map { index, spec in
+            LedgerAccount(id: UUID(uuidString: String(format: "00000000-0000-0000-0000-%012d", index + 1))!,
+                name: spec.0, kind: spec.1, currency: spec.2)
+        }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Asia/Singapore")!
+        let now = calendar.date(from: DateComponents(year: 2026, month: 9, day: 9, hour: 14, minute: 30))!
+        func read(_ item: Fixture) -> [String: String] {
+            autoreleasepool { readWithoutPool(item) }
+        }
+        func readWithoutPool(_ item: Fixture) -> [String: String] {
+            let parsed: ParsedNaturalLanguageEntry
+            var actual: [String: String] = [:]
+            #if LOGGING_V2
+            let understanding = SmartEntryInterpreter.interpret(item.text, accounts: accounts, now: now,
+                calendar: calendar, locale: Locale(identifier: item.locale ?? "en_SG"))
+            parsed = understanding.parsed
+            actual["shape"] = understanding.shape.rawValue
+            actual["kind"] = understanding.shape == .transfer ? "transfer" : parsed.draft.kind.rawValue
+            actual["account"] = accounts.first { $0.id == (understanding.sourceAccountID ?? parsed.draft.accountID) }?.name ?? "-"
+            actual["destination"] = accounts.first { $0.id == understanding.destinationAccountID }?.name ?? "-"
+            actual["received"] = understanding.destinationAmount.map { NSDecimalNumber(decimal: $0).stringValue } ?? "-"
+            actual["review"] = String(!understanding.issues.isEmpty)
+            #else
+            parsed = NaturalLanguageEntryParser.parse(item.text, accounts: accounts, now: now,
+                calendar: calendar, locale: Locale(identifier: item.locale ?? "en_SG"))
+            actual["shape"] = "single"
+            actual["kind"] = parsed.draft.kind.rawValue
+            actual["account"] = accounts.first { $0.id == parsed.draft.accountID }?.name ?? "-"
+            actual["destination"] = "-"
+            actual["received"] = "-"
+            actual["review"] = String(parsed.needsAmountReview || parsed.needsDateReview)
+            #endif
+            actual["amount"] = parsed.draft.amount.map { NSDecimalNumber(decimal: $0).stringValue } ?? "-"
+            actual["currency"] = parsed.currencyEvidence.identifiedCurrency?.value ?? "-"
+            actual["category"] = accounts.first { $0.id == parsed.draft.categoryID }?.name ?? "-"
+            actual["merchant"] = parsed.draft.payee ?? "-"
+            actual["note"] = parsed.note ?? "-"
+            actual["dayOffset"] = parsed.draft.occurredAt.map {
+                String(calendar.dateComponents([.day], from: calendar.startOfDay(for: now), to: calendar.startOfDay(for: $0)).day!)
+            } ?? "-"
+            return actual
+        }
+        var report: [[String: Any]] = []
+        var correct = 0, corrections = 0
+        for fixture in fixtures {
+            let actual = read(fixture)
+            let differences = fixture.expected.keys.sorted().filter { actual[$0] != fixture.expected[$0] }
+            if differences.isEmpty { correct += 1 }
+            corrections += differences.filter { $0 != "shape" && $0 != "review" }.count
+            report.append(["id": fixture.id, "text": fixture.text, "correct": differences.isEmpty,
+                "differences": differences, "expected": fixture.expected, "actual": actual])
+        }
+        for _ in 0..<5 { for item in fixtures { _ = read(item) } }
+        var before = rusage(), after = rusage()
+        getrusage(RUSAGE_SELF, &before)
+        var timings: [Double] = []
+        for _ in 0..<100 {
+            for item in fixtures {
+                let start = DispatchTime.now().uptimeNanoseconds
+                _ = read(item)
+                timings.append(Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000)
+            }
+        }
+        getrusage(RUSAGE_SELF, &after)
+        timings.sort()
+        func cpu(_ usage: rusage) -> Double {
+            Double(usage.ru_utime.tv_sec + usage.ru_stime.tv_sec) + Double(usage.ru_utime.tv_usec + usage.ru_stime.tv_usec) / 1_000_000
+        }
+        let result: [String: Any] = ["fixtureCount": fixtures.count, "correctFixtures": correct,
+            "fieldCorrectionsNeeded": corrections, "iterationsPerFixture": 100,
+            "medianMilliseconds": timings[timings.count / 2], "p95Milliseconds": timings[timings.count * 95 / 100],
+            "cpuSeconds": cpu(after) - cpu(before), "peakResidentBytes": after.ru_maxrss,
+            "environment": ProcessInfo.processInfo.operatingSystemVersionString,
+            "measurementScope": "Release executable; one autorelease pool per interaction; warm complete interpretation and output extraction; fixture-derived field corrections, not physical taps", "cases": report]
+        try JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys])
+            .write(to: URL(fileURLWithPath: CommandLine.arguments[2]))
+    }
+
+    struct Fixture: Decodable {
+        let id: String
+        let text: String
+        let locale: String?
+        let expected: [String: String]
+    }
+}

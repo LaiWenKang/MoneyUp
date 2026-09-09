@@ -410,17 +410,22 @@ extension AppModel {
     /// transaction. A prepaid allowance becomes a real payment source: its
     /// linked restricted asset funds the eligible portion and the originally
     /// selected account funds any remainder.
+}
+
+extension AppModel {
     func save(
         _ entry: JournalEntry,
         applyingAllowance planID: UUID?,
         receiptData: Data? = nil,
-        attachmentDrafts: [ReceiptAttachmentDraft] = []
+        attachmentDrafts: [ReceiptAttachmentDraft] = [],
+        batchToken: QuickLogBatchToken? = nil
     ) async throws -> UUID? {
         guard let planID else {
             return try await save(
                 entry,
                 receiptData: receiptData,
-                attachmentDrafts: attachmentDrafts
+                attachmentDrafts: attachmentDrafts,
+                batchToken: batchToken
             )
         }
         try beginJournalMutation()
@@ -451,7 +456,8 @@ extension AppModel {
             attachmentDrafts: attachmentDrafts,
             authorizedRestrictedAllowanceAccountID:
                 plan.fundingMode == .prepaidAsset ? plan.linkedAccountID : nil,
-            journalMutationAlreadyBegun: true
+            journalMutationAlreadyBegun: true,
+            batchToken: batchToken
         )
         if savedID == application.entry.id {
             await lifecycleHooks.checkpoint(

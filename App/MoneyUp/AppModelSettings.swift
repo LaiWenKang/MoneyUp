@@ -42,6 +42,10 @@ extension AppModel {
         }
     }
 
+    func updateMerchantSuggestions(_ enabled: Bool) async throws {
+        try await mutateProfile { $0.merchantSuggestionsEnabled = enabled }
+    }
+
     func updateFoundationModelAssistance(_ enabled: Bool) async throws {
         try await mutateProfile {
             $0.foundationModelAssistanceEnabled = enabled

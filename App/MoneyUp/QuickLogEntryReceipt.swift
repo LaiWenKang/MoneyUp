@@ -379,7 +379,7 @@ extension QuickLogEntryView {
     /// Fills what is still unset. It must not overwrite a value the user or a
     /// parsed draft already chose, because it also runs when the kind changes.
     func selectDefaults() {
-        if !sourceAccounts.contains(where: { $0.id == accountID }) {
+        if !smartState.issues.contains(.account), !sourceAccounts.contains(where: { $0.id == accountID }) {
             accountWasEdited = false
             accountID = validPreferred(
                 model.profile?.preferredAccountID,
@@ -389,7 +389,7 @@ extension QuickLogEntryView {
         }
         switch kind {
         case .expense:
-            if !model.expenseCategories.contains(where: { $0.id == categoryID }) {
+            if !smartState.issues.contains(.category), !model.expenseCategories.contains(where: { $0.id == categoryID }) {
                 categoryWasEdited = false
                 categoryID = validPreferred(
                     model.profile?.preferredExpenseCategoryID,
@@ -398,7 +398,7 @@ extension QuickLogEntryView {
                     ?? smartFallbackCategory(in: model.expenseCategories)
             }
         case .income:
-            if !model.incomeCategories.contains(where: { $0.id == categoryID }) {
+            if !smartState.issues.contains(.category), !model.incomeCategories.contains(where: { $0.id == categoryID }) {
                 categoryWasEdited = false
                 categoryID = validPreferred(
                     model.profile?.preferredIncomeCategoryID,
@@ -407,7 +407,7 @@ extension QuickLogEntryView {
                     ?? smartFallbackCategory(in: model.incomeCategories)
             }
         case .refund:
-            if !model.expenseCategories.contains(where: { $0.id == categoryID }) {
+            if !smartState.issues.contains(.category), !model.expenseCategories.contains(where: { $0.id == categoryID }) {
                 categoryWasEdited = false
                 categoryID = validPreferred(
                     model.profile?.preferredExpenseCategoryID,
@@ -416,7 +416,7 @@ extension QuickLogEntryView {
                     ?? smartFallbackCategory(in: model.expenseCategories)
             }
         case .transfer:
-            if !model.userAccounts.contains(where: {
+            if !smartState.issues.contains(.destination), !model.userAccounts.contains(where: {
                 $0.id == destinationAccountID && $0.id != accountID
             }) {
                 destinationAccountID = model.userAccounts.first { $0.id != accountID }?.id

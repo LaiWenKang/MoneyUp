@@ -1,0 +1,30 @@
+{
+  "baseline": {
+    "correctFixtures": 48,
+    "fixtureCount": 64,
+    "fieldCorrectionsNeeded": 15,
+    "medianMilliseconds": 0.750333,
+    "p95Milliseconds": 2.524334,
+    "cpuSeconds": 6.086679,
+    "peakResidentBytes": 11714560,
+    "runs": 3,
+    "iterationsPerFixturePerRun": 100,
+    "coreSourceAndFixtureSHA256": "7e4ea65088161d1d73f5cbad37f5e7a3130c6b7e8b8b67068bdead3dc83ada1b"
+  },
+  "after": {
+    "correctFixtures": 64,
+    "fixtureCount": 64,
+    "fieldCorrectionsNeeded": 0,
+    "medianMilliseconds": 0.694709,
+    "p95Milliseconds": 2.502375,
+    "cpuSeconds": 4.999878000000001,
+    "peakResidentBytes": 11665408,
+    "runs": 3,
+    "iterationsPerFixturePerRun": 100,
+    "coreSourceAndFixtureSHA256": "4abf32f742a2d05a856d743510b6fa21bcb49709dbe18be845ef596ed6ecf7bb"
+  },
+  "swiftVersion": "Apple Swift version 6.4 (swiftlang-6.4.0.33.1 clang-2100.3.33.1)\nTarget: arm64-apple-macosx27.0.0",
+  "environment": "macOS-27.0-arm64-arm-64bit",
+  "scope": "Targeted fixtures, not population accuracy. Corrections are field discrepancies, not observed phone taps. Each warm interpretation includes output extraction and an autorelease pool. CPU and peak RSS cover the whole benchmark process. Values are medians across runs.",
+  "measurementCondition": "Final repetitions ran after disposable-device tests completed; no simulator startup or local test build ran concurrently."
+}

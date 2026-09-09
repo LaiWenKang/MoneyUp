@@ -27,6 +27,10 @@ extension AppModel {
               quickLogCommit == nil,
               goalMutationsInProgress == 0,
               !goalMutationBarrierClosed else { return }
+        if let active = quickLogDraft?.batch {
+            guard draft.batch?.id == active.id, draft.batch?.selectedID == active.selectedID,
+                  draft.batch?.revision == active.revision else { return }
+        } else if draft.batch != nil { return }
         guard quickLogDraft != draft else { return }
         quickLogDraft = draft
         scheduleQuickLogDraftWrite(draft)

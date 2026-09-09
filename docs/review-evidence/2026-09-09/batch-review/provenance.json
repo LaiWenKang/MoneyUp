@@ -1,0 +1,30 @@
+{
+  "implementationSHA": "135adbf45a26e93fc7736641450b72e20b70fcd2",
+  "testProducts": "/tmp/moneyup-batch-products.xctestproducts",
+  "binaries": [
+    {
+      "path": "Binaries/0/Debug-iphonesimulator/MoneyUp.app/MoneyUp",
+      "sha256": "63c5bc266682b1a9eaf2f661b5b12bcd456f5eb9dd90f02dd75abce476b53d59",
+      "bytes": 72984
+    },
+    {
+      "path": "Binaries/0/Debug-iphonesimulator/MoneyUp.app/PlugIns/MoneyUpTests.xctest/MoneyUpTests",
+      "sha256": "8d59f28041890523306544ca0f828012ac5ed4206cc8a06c6d95f10ff9e3a19f",
+      "bytes": 33438832
+    },
+    {
+      "path": "Binaries/0/Debug-iphonesimulator/MoneyUp.app/PlugIns/MoneyUpTests.xctest.dSYM/Contents/Resources/DWARF/MoneyUpTests",
+      "sha256": "4c98549905080020205f7a3b825bb79560564a1b9fc85603e7ebdcd29e3cb29d",
+      "bytes": 29515688
+    },
+    {
+      "path": "Binaries/0/Debug-iphonesimulator/MoneyUp.app.dSYM/Contents/Resources/DWARF/MoneyUp",
+      "sha256": "d0f7e4ed6090096a202d699c6883099c329d0adeed7f59b3631c638540f4a7ec",
+      "bytes": 20862
+    }
+  ],
+  "xcode": "Xcode 27.0\nBuild version 27A5252f",
+  "physicalDevices": "none connected; not measured",
+  "runtime": "iOS 27.0 simulator",
+  "sourceScope": "App, Core and test code unchanged during the matrix"
+}

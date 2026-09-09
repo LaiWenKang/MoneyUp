@@ -1,0 +1,22 @@
+{
+  "sourceSHA": "135adbf45a26e93fc7736641450b72e20b70fcd2",
+  "ci": {
+    "url": "https://github.com/LaiWenKang/MoneyUp/actions/runs/34356967668",
+    "status": "success",
+    "ios": "18.5",
+    "appTestsPassed": 715,
+    "performanceTestsPassed": 11
+  },
+  "ios26": {
+    "url": "https://github.com/LaiWenKang/MoneyUp/actions/runs/34356967829",
+    "status": "success",
+    "interactionTestsPassed": 148,
+    "coldLaunchWorkflow": "passed"
+  },
+  "local": {
+    "packageTestsPassed": 514,
+    "architectureValidatorTestsPassed": 57,
+    "focusedBatchAndDeviceTestsPassed": 8,
+    "runtime": "iOS 27.0"
+  }
+}

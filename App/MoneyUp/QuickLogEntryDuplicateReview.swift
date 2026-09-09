@@ -3,7 +3,8 @@ import MoneyUpCore
 
 extension QuickLogEntryView {
     func attemptSave() async {
-        guard !isSaving, !isUndoing, !isCheckingDuplicates, isActive, canSave else { return }
+        guard !isSaving, !isUndoing, !isCheckingDuplicates, isActive, canSave,
+              !MoneyUpKeyboard.hasMarkedText else { return }
         pendingDuplicateReview = nil
         guard let query = duplicateQuery() else {
             await commitSave()

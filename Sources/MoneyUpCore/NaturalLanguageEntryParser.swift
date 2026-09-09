@@ -6,10 +6,27 @@ import Foundation
 public struct ParsedNaturalLanguageEntry: Equatable, Sendable {
     public let draft: TransactionDraft
     public let context: String?
+    public let note: String?
+    public let currencyEvidence: ReceiptCurrencyEvidence
+    public let needsAmountReview: Bool
+    public let needsDateReview: Bool
+    public let needsAccountReview: Bool
+    public let needsCategoryReview: Bool
 
-    public init(draft: TransactionDraft, context: String?) {
+    public init(
+        draft: TransactionDraft, context: String?, note: String? = nil,
+        currencyEvidence: ReceiptCurrencyEvidence = .init(),
+        needsAmountReview: Bool = false, needsDateReview: Bool = false,
+        needsAccountReview: Bool = false, needsCategoryReview: Bool = false
+    ) {
         self.draft = draft
         self.context = context
+        self.note = note
+        self.currencyEvidence = currencyEvidence
+        self.needsAmountReview = needsAmountReview
+        self.needsDateReview = needsDateReview
+        self.needsAccountReview = needsAccountReview
+        self.needsCategoryReview = needsCategoryReview
     }
 }
 
@@ -87,8 +104,9 @@ public enum NaturalLanguageEntryParser {
         prefersDayFirst: Bool = true,
         locale: Locale = .current
     ) -> ParsedNaturalLanguageEntry {
-        var remainder = text
-        let haystack = TextScanner.normalized(text).lowercased()
+        let parts = SmartEntryTextParts(text)
+        var remainder = parts.phrase
+        let haystack = TextScanner.normalized(remainder).lowercased()
         let kind: DraftKind
         if refundKeywords.contains(where: { containsToken($0, in: haystack) }) {
             kind = .refund
@@ -98,6 +116,18 @@ public enum NaturalLanguageEntryParser {
             kind = .expense
         }
 
+        // Exact local names may contain digits or date words. Resolve them
+        // before scanning money and dates so "Card 1234" stays one name.
+        let account = consumeNames(
+            from: &remainder,
+            in: accounts.filter { ($0.kind == .asset || $0.kind == .liability) && !$0.isArchived }
+        )
+        let categoryKind: LedgerAccountKind = kind == .income ? .income : .expense
+        let category = consumeNames(
+            from: &remainder,
+            in: accounts.filter { $0.kind == categoryKind && !$0.isArchived }
+        )
+        let currencyEvidence = ReceiptTextParser.currencyEvidence(in: [remainder])
         let dateResult = consumeDate(
             from: &remainder,
             now: now,
@@ -107,25 +137,22 @@ public enum NaturalLanguageEntryParser {
         // When a phrase contains an impossible explicit civil date, do not
         // reinterpret one of its date components as money. Leave amount empty
         // so the normal editable review path asks the user to correct it.
-        let amount = dateResult.invalidExplicitDate
-            ? nil : consumeAmount(from: &remainder, locale: locale)
-        let account = consumeName(
-            from: &remainder,
-            in: accounts.filter { ($0.kind == .asset || $0.kind == .liability) && !$0.isArchived }
-        )
-        let categoryKind: LedgerAccountKind = kind == .income ? .income : .expense
-        let category = consumeName(
-            from: &remainder,
-            in: accounts.filter { $0.kind == categoryKind && !$0.isArchived }
-        )
+        let reading = SmartEntryAmountReading(text: remainder, locale: locale)
+        let amount = dateResult.invalidExplicitDate ? nil : reading.amount
+        if let fragment = reading.consumedText, amount != nil {
+            remove(fragment, from: &remainder)
+        }
 
+        for token in incomeKeywords + refundKeywords {
+            _ = consumeToken(token, from: &remainder)
+        }
         let draft = TransactionDraft(
             kind: kind,
             amount: amount,
             occurredAt: dateResult.date,
             payee: payee(from: remainder),
-            accountID: account,
-            categoryID: category,
+            accountID: account.id,
+            categoryID: category.id,
             source: .naturalLanguage
         )
         let currencyCodes = Set(
@@ -137,7 +164,13 @@ public enum NaturalLanguageEntryParser {
                 from: remainder,
                 currencyCodes: currencyCodes,
                 localNames: accounts.map(\.name)
-            )
+            ),
+            note: parts.note,
+            currencyEvidence: currencyEvidence,
+            needsAmountReview: reading.needsReview,
+            needsDateReview: dateResult.invalidExplicitDate,
+            needsAccountReview: account.ambiguous,
+            needsCategoryReview: category.ambiguous
         )
     }
 
@@ -245,22 +278,19 @@ public enum NaturalLanguageEntryParser {
             .lowercased(with: locale)
     }
 
-    private static func consumeAmount(
-        from text: inout String,
-        locale: Locale
-    ) -> Decimal? {
-        guard let match = TextScanner.amounts(in: text, locale: locale).first else { return nil }
-        remove(match.text, from: &text)
-        return match.value
-    }
-
     private static func consumeDate(
         from text: inout String,
         now: Date,
         calendar: Calendar,
         prefersDayFirst: Bool
     ) -> (date: Date?, invalidExplicitDate: Bool) {
+        let relative = SmartEntryRelativeDate(text: text, now: now, calendar: calendar)
         let explicitDateShapeCount = TextScanner.explicitDateShapeCount(in: text)
+        if relative.found {
+            guard explicitDateShapeCount == 0, !relative.isAmbiguous else { return (nil, true) }
+            text = relative.remainder
+            return (relative.date, false)
+        }
         guard explicitDateShapeCount <= 1 else {
             // Multiple explicit dates are ambiguous. Do not choose one by
             // pattern priority or let any remaining date become the amount.
@@ -350,44 +380,13 @@ public enum NaturalLanguageEntryParser {
 
     /// Matches the longest account or category name present in the text, so a
     /// book containing both "Cash" and "Cash back" resolves the specific one.
-    private static func consumeName(
-        from text: inout String,
-        in accounts: [LedgerAccount]
-    ) -> UUID? {
-        let matches = accounts.compactMap { account -> NameMatch? in
-            let name = TextScanner.normalized(account.name)
-            guard !name.isEmpty,
-                  let range = firstTokenRange(of: name, in: text) else {
-                return nil
-            }
-            return NameMatch(
-                accountID: account.id,
-                normalizedName: name,
-                range: range,
-                location: text.distance(from: text.startIndex, to: range.lowerBound)
-            )
-        }.sorted { first, second in
-            if first.normalizedName.count != second.normalizedName.count {
-                return first.normalizedName.count > second.normalizedName.count
-            }
-            if first.location != second.location {
-                return first.location < second.location
-            }
-            if first.normalizedName != second.normalizedName {
-                return first.normalizedName < second.normalizedName
-            }
-            return first.accountID.uuidString < second.accountID.uuidString
-        }
-        guard let best = matches.first else { return nil }
-        text.replaceSubrange(best.range, with: " ")
-        return best.accountID
-    }
-
-    private struct NameMatch {
-        let accountID: UUID
-        let normalizedName: String
-        let range: Range<String.Index>
-        let location: Int
+    private static func consumeNames(
+        from text: inout String, in accounts: [LedgerAccount]
+    ) -> (id: UUID?, ambiguous: Bool) {
+        let reading = SmartEntryNames(text: text, accounts: accounts)
+        guard !reading.matches.isEmpty else { return (nil, false) }
+        text = reading.removingNames(from: text)
+        return (reading.uniqueID, reading.isAmbiguous)
     }
 
     /// Latin tokens must be complete Unicode words, looking through combining

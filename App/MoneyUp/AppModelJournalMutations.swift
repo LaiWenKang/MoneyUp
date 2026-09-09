@@ -17,7 +17,8 @@ extension AppModel {
         note: String?,
         receiptData: Data? = nil,
         attachmentDrafts: [ReceiptAttachmentDraft] = [],
-        allowancePlanID: UUID? = nil
+        allowancePlanID: UUID? = nil,
+        batchToken: QuickLogBatchToken? = nil
     ) async throws -> UUID? {
         try requireActiveCategory(categoryID, kind: .expense)
         try requireAllowanceGovernedExpenseSource(
@@ -38,7 +39,8 @@ extension AppModel {
             entry,
             applyingAllowance: allowancePlanID,
             receiptData: receiptData,
-            attachmentDrafts: attachmentDrafts
+            attachmentDrafts: attachmentDrafts,
+            batchToken: batchToken
         )
     }
 
@@ -51,7 +53,8 @@ extension AppModel {
         payee: String?,
         note: String?,
         receiptData: Data? = nil,
-        attachmentDrafts: [ReceiptAttachmentDraft] = []
+        attachmentDrafts: [ReceiptAttachmentDraft] = [],
+        batchToken: QuickLogBatchToken? = nil
     ) async throws -> UUID? {
         try requireActiveCategory(categoryID, kind: .income)
         let currency = try currency(for: accountID)
@@ -67,7 +70,8 @@ extension AppModel {
         return try await save(
             entry,
             receiptData: receiptData,
-            attachmentDrafts: attachmentDrafts
+            attachmentDrafts: attachmentDrafts,
+            batchToken: batchToken
         )
     }
 
@@ -80,7 +84,8 @@ extension AppModel {
         payee: String?,
         note: String?,
         receiptData: Data? = nil,
-        attachmentDrafts: [ReceiptAttachmentDraft] = []
+        attachmentDrafts: [ReceiptAttachmentDraft] = [],
+        batchToken: QuickLogBatchToken? = nil
     ) async throws -> UUID? {
         try requireActiveCategory(categoryID, kind: .expense)
         let currency = try currency(for: accountID)
@@ -96,7 +101,8 @@ extension AppModel {
         return try await save(
             entry,
             receiptData: receiptData,
-            attachmentDrafts: attachmentDrafts
+            attachmentDrafts: attachmentDrafts,
+            batchToken: batchToken
         )
     }
 
@@ -111,7 +117,8 @@ extension AppModel {
         note: String?,
         receiptData: Data? = nil,
         attachmentDrafts: [ReceiptAttachmentDraft] = [],
-        allowancePlanID: UUID? = nil
+        allowancePlanID: UUID? = nil,
+        batchToken: QuickLogBatchToken? = nil
     ) async throws -> UUID? {
         guard kind != .transfer else { throw AppModelError.invalidCategoryKind }
         if kind == .expense {
@@ -165,7 +172,8 @@ extension AppModel {
                 entry,
                 applyingAllowance: allowancePlanID,
                 receiptData: receiptData,
-                attachmentDrafts: attachmentDrafts
+                attachmentDrafts: attachmentDrafts,
+            batchToken: batchToken
             )
         }
         guard allowancePlanID == nil else {
@@ -174,7 +182,8 @@ extension AppModel {
         return try await save(
             entry,
             receiptData: receiptData,
-            attachmentDrafts: attachmentDrafts
+            attachmentDrafts: attachmentDrafts,
+            batchToken: batchToken
         )
     }
 
@@ -187,7 +196,8 @@ extension AppModel {
         occurredAt: Date,
         payee: String?,
         note: String?,
-        attachmentDrafts: [ReceiptAttachmentDraft] = []
+        attachmentDrafts: [ReceiptAttachmentDraft] = [],
+        batchToken: QuickLogBatchToken? = nil
     ) async throws -> UUID? {
         try requireGenericOutgoingSource(sourceAccountID)
         let sourceCurrency = try currency(for: sourceAccountID)
@@ -202,7 +212,7 @@ extension AppModel {
                 payee: payee,
                 note: note
             )
-            return try await save(entry, attachmentDrafts: attachmentDrafts)
+            return try await save(entry, attachmentDrafts: attachmentDrafts, batchToken: batchToken)
         }
 
         guard let destinationAmount, destinationAmount > .zero else {
@@ -232,7 +242,8 @@ extension AppModel {
             entry,
             additionalWrites: writes,
             additionalAccounts: newTradingAccounts,
-            attachmentDrafts: attachmentDrafts
+            attachmentDrafts: attachmentDrafts,
+            batchToken: batchToken
         )
     }
 

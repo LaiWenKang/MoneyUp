@@ -93,7 +93,8 @@ extension QuickLogEntryView {
                 payee: payee,
                 note: note,
                 attachmentDrafts: attachmentDrafts,
-                allowancePlanID: selectedAllowanceID
+                allowancePlanID: selectedAllowanceID,
+                batchToken: dismissAfterSave ? nil : batch?.token
             ))
         case .income:
             guard let categoryID else { return .skipped }
@@ -104,7 +105,8 @@ extension QuickLogEntryView {
                 occurredAt: occurredAt,
                 payee: payee,
                 note: note,
-                attachmentDrafts: attachmentDrafts
+                attachmentDrafts: attachmentDrafts,
+                batchToken: dismissAfterSave ? nil : batch?.token
             ))
         case .refund:
             guard let categoryID else { return .skipped }
@@ -115,7 +117,8 @@ extension QuickLogEntryView {
                 occurredAt: occurredAt,
                 payee: payee,
                 note: note,
-                attachmentDrafts: attachmentDrafts
+                attachmentDrafts: attachmentDrafts,
+                batchToken: dismissAfterSave ? nil : batch?.token
             ))
         case .transfer:
             guard let destinationAccountID else { return .skipped }
@@ -129,7 +132,8 @@ extension QuickLogEntryView {
                 occurredAt: occurredAt,
                 payee: payee,
                 note: note,
-                attachmentDrafts: attachmentDrafts
+                attachmentDrafts: attachmentDrafts,
+                batchToken: dismissAfterSave ? nil : batch?.token
             ))
         }
     }
@@ -155,7 +159,8 @@ extension QuickLogEntryView {
             payee: payee,
             note: note,
             attachmentDrafts: attachmentDrafts,
-            allowancePlanID: kind == .expense ? selectedAllowanceID : nil
+            allowancePlanID: kind == .expense ? selectedAllowanceID : nil,
+            batchToken: dismissAfterSave ? nil : batch?.token
         )
     }
 
@@ -180,11 +185,17 @@ extension QuickLogEntryView {
     /// category, transaction kind, and transfer destination remain selected so
     /// the next routine entry takes only an amount and a tap on Save.
     func completeSuccessfulSave(entryID: UUID?) {
+        batch = nil
+        pendingBatchRemoval = nil
+        cancelSmartParsing()
+        smartState = .init()
+        clearRecovery = nil
+        clearedEvidence = nil
         cancelReceiptProcessing()
         cancelCaptureSuggestionLookup()
         cancelOnDeviceAssistance()
         if let nextCapture = model.quickLogDraft,
-           nextCapture.sourceCaptureID != nil,
+           (nextCapture.sourceCaptureID != nil || nextCapture.batch != nil),
            !dismissAfterSave {
             clearPerTransactionReviewState()
             applyDraft(nextCapture)
@@ -220,7 +231,7 @@ extension QuickLogEntryView {
             if !dismissAfterSave { model.updateQuickLogDraft(draftSnapshot) }
         }
         successFeedback += 1
-        focusedField = isActive ? .amount : nil
+        focusedField = isActive && batch == nil ? .amount : nil
 
         guard !dismissAfterSave, let entryID else { return }
         updateSavedEntry(entryID)

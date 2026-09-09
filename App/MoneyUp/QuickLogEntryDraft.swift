@@ -7,7 +7,7 @@ import UIKit
 
 extension QuickLogEntryView {
     var draftSnapshot: QuickLogDraft {
-        QuickLogDraft(
+        var snapshot = QuickLogDraft(
             kind: kind,
             amountText: amountText,
             destinationAmountText: destinationAmountText,
@@ -25,6 +25,10 @@ extension QuickLogEntryView {
             accountWasEdited: accountWasEdited,
             categoryWasEdited: categoryWasEdited
         )
+        snapshot.batch = batch
+        snapshot.smartState = smartState
+        snapshot.clearRecovery = clearRecovery
+        return snapshot
     }
 
     /// Writes direct control edits to the model in the same setter that updates
@@ -39,6 +43,7 @@ extension QuickLogEntryView {
         Binding(
             get: { binding.wrappedValue },
             set: { newValue in
+                if let field = QuickLogSmartField.field(for: keyPath) { smartState.edited(field) }
                 cancelOnDeviceAssistance()
                 receiptProtectedFields.insert(keyPath)
                 if refreshesOccurrenceDate {
@@ -73,6 +78,9 @@ extension QuickLogEntryView {
 
     func handleActiveStateChange(_ isActive: Bool) {
         guard isActive else {
+            cancelSmartParsing()
+            clearedEvidence = nil
+            pendingDraftClear = nil
             cancelReceiptProcessing()
             cancelOnDeviceAssistance()
             pendingDuplicateReview = nil
@@ -91,6 +99,7 @@ extension QuickLogEntryView {
     func persistUserDraftChange(
         _ update: (inout QuickLogDraft) -> Void
     ) {
+        cancelSmartParsing()
         guard hasRestoredDraft, !dismissAfterSave else { return }
         var snapshot = draftSnapshot
         update(&snapshot)
@@ -114,6 +123,10 @@ extension QuickLogEntryView {
     /// book through `draftSnapshot` observation.
     func reloadDraftForLogicalBookReplacement() {
         hasRestoredDraft = false
+        batch = nil
+        pendingBatchRemoval = nil
+        clearedEvidence = nil
+        cancelSmartParsing()
         cancelReceiptProcessing()
         cancelCaptureSuggestionLookup()
         clearPerTransactionReviewState()
@@ -137,6 +150,7 @@ extension QuickLogEntryView {
         isShowingOptionalDetails = false
         pendingLaunchRequest = nil
         isConfirmingDraftSwitch = false
+        pendingDraftClear = nil
         guard !model.isBookReplacementInProgress,
               model.state == .ready else { return }
         if !dismissAfterSave, let draft = model.quickLogDraft {
@@ -147,6 +161,9 @@ extension QuickLogEntryView {
     }
 
     func applyDraft(_ draft: QuickLogDraft) {
+        batch = draft.batch
+        smartState = draft.smartState
+        clearRecovery = draft.clearRecovery
         kind = draft.kind
         amountText = draft.amountText
         destinationAmountText = draft.destinationAmountText
@@ -195,6 +212,10 @@ extension QuickLogEntryView {
     }
 
     func discardDraftAndLaunch(_ launchRequest: QuickLogRouteRequest) {
+        clearPerTransactionReviewState()
+        batch = nil
+        pendingBatchRemoval = nil
+        clearedEvidence = nil
         cancelReceiptProcessing()
         cancelCaptureSuggestionLookup()
         cancelOnDeviceAssistance()
@@ -241,6 +262,7 @@ extension QuickLogEntryView {
                 isPresentingReceiptPicker = true
             }
         case .expense, .income, .transfer, .refund:
+            smartState.edited(.kind)
             isHandlingFocusedLaunch = false
             focusedField = .amount
         }
@@ -261,25 +283,59 @@ extension QuickLogEntryView {
     }
 
     func applyTypedPhrase() {
-        QuickLogInputAuthority.beginSmartFill(
-            cancelReceipt: { cancelReceiptProcessing() },
-            cancelAssistance: { cancelOnDeviceAssistance() }
-        ) {
-            receiptResult = nil
-            invalidateCaptureSuggestions()
-            pendingDuplicateReview = nil
-            let parsed = NaturalLanguageEntryParser.parse(
-                smartText,
-                accounts: model.accounts,
-                now: model.currentDateForUserAction(),
-                calendar: model.captureCalendar,
-                prefersDayFirst: Self.localePrefersDayFirst
-            )
-            if apply(parsed.draft) {
-                smartText = ""
-                if !dismissAfterSave { model.updateQuickLogDraft(draftSnapshot) }
+        guard !isSaving, !isUndoing, !isClearingDraft, !isCheckingDuplicates else { return }
+        guard !MoneyUpKeyboard.hasMarkedText else {
+            smartMessage = AppLocalization.string("quick_log.finish_composition")
+            return
+        }
+        cancelSmartParsing()
+        cancelReceiptProcessing()
+        cancelOnDeviceAssistance()
+        invalidateCaptureSuggestions()
+        pendingDuplicateReview = nil
+        let baseline = draftSnapshot
+        let accountSnapshot = model.accounts
+        let now = baseline.smartState.referenceDate
+            ?? (baseline.dateWasEdited ? model.currentDateForUserAction() : baseline.occurredAt)
+        let calendar = captureCalendar
+        let dayFirst = Self.localePrefersDayFirst
+        let locale = Locale.current
+        let bookRevision = model.logicalBookRevision
+        let request = smartParseRequestID
+        isParsingSmartEntry = true
+        smartParseTask = Task { @MainActor in
+            defer {
+                if request == smartParseRequestID { isParsingSmartEntry = false; smartParseTask = nil }
+            }
+            let interpretation = await smartParseCoordinator.resolve {
+                SmartEntryInterpreter.interpret(baseline.smartText, accounts: accountSnapshot,
+                    now: now, calendar: calendar, prefersDayFirst: dayFirst, locale: locale,
+                    expectsTransfer: baseline.kind == .transfer && !baseline.smartState.automaticFields.contains(.kind))
+            }
+            guard let interpretation, !Task.isCancelled, isActive,
+                  request == smartParseRequestID, model.state == .ready,
+                  bookRevision == model.logicalBookRevision, accountSnapshot == model.accounts,
+                  baseline == draftSnapshot else { return }
+            let parsed = interpretation.parsed
+            let draft = QuickLogUnderstandingFill.fill(interpretation,
+                current: baseline, accounts: accountSnapshot, now: now)
+            if kind != draft.kind { preservesCaptureSuggestionsAcrossNextKindChange = true }
+            applyDraft(draft)
+            selectDefaults()
+            smartMessage = nil
+            if !dismissAfterSave { model.updateQuickLogDraft(draftSnapshot) }
+            if smartState.issues.isEmpty, kind != .transfer {
+                refreshTypedPayeeSuggestion()
                 startOnDeviceAssistance(for: parsed)
             }
         }
+    }
+
+    func cancelSmartParsing() {
+        smartParseRequestID = UUID()
+        smartParseCoordinator.cancel()
+        smartParseTask?.cancel()
+        smartParseTask = nil
+        isParsingSmartEntry = false
     }
 }

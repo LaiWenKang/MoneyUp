@@ -1,0 +1,907 @@
+{
+  "cases" : [
+    {
+      "actual" : {
+        "account" : "Cash",
+        "amount" : "12.5",
+        "category" : "-",
+        "currency" : "-",
+        "dayOffset" : "-1",
+        "destination" : "-",
+        "kind" : "expense",
+        "merchant" : "lunch",
+        "note" : "-",
+        "received" : "-",
+        "review" : "false",
+        "shape" : "single"
+      },
+      "correct" : true,
+      "differences" : [
+
+      ],
+      "expected" : {
+        "account" : "Cash",
+        "amount" : "12.5",
+        "dayOffset" : "-1",
+        "kind" : "expense",
+        "merchant" : "lunch"
+      },
+      "id" : "english",
+      "text" : "lunch 12.50 Cash yesterday"
+    },
+    {
+      "actual" : {
+        "account" : "支付宝",
+        "amount" : "12.5",
+        "category" : "-",
+        "currency" : "-",
+        "dayOffset" : "-1",
+        "destination" : "-",
+        "kind" : "expense",
+        "merchant" : "午餐",
+        "note" : "-",
+        "received" : "-",
+        "review" : "false",
+        "shape" : "single"
+      },
+      "correct" : true,
+      "differences" : [
+
+      ],
+      "expected" : {
+        "account" : "支付宝",
+        "amount" : "12.5",
+        "dayOffset" : "-1",
+        "kind" : "expense",
+        "merchant" : "午餐"
+      },
+      "id" : "chinese",
+      "text" : "昨天 支付宝 午餐 12.50"
+    },
+    {
+      "actual" : {
+        "account" : "支付宝",
+        "amount" : "12.5",
+        "category" : "-",
+        "currency" : "SGD",
+        "dayOffset" : "-1",
+        "destination" : "-",
+        "kind" : "expense",
+        "merchant" : "lunch",
+        "note" : "-",
+        "received" : "-",
+        "review" : "false",
+        "shape" : "single"
+      },
+      "correct" : true,
+      "differences" : [
+
+      ],
+      "expected" : {
+        "account" : "支付宝",
+        "amount" : "12.5",
+        "currency" : "SGD",
+        "dayOffset" : "-1",
+        "merchant" : "lunch"
+      },
+      "id" : "mixed",
+      "text" : "昨天 lunch SGD12.50 支付宝"
+    },
+    {
+      "actual" : {
+        "account" : "Card 1234",
+        "amount" : "12.5",
+        "category" : "-",
+        "currency" : "-",
+        "dayOffset" : "-",
+        "destination" : "-",
+        "kind" : "expense",
+        "merchant" : "lunch",
+        "note" : "-",
+        "received" : "-",
+        "review" : "false",
+        "shape" : "single"
+      },
+      "correct" : true,
+      "differences" : [
+
+      ],
+      "expected" : {
+        "account" : "Card 1234",
+        "amount" : "12.5"
+      },
+      "id" : "numbered-account",
+      "text" : "Card 1234 lunch 12.50"
+    },
+    {
+      "actual" : {
+        "account" : "-",
+        "amount" : "12.5",
+        "category" : "-",
+        "currency" : "SGD",
+        "dayOffset" : "-",
+        "destination" : "-",
+        "kind" : "expense",
+        "merchant" : "午餐",
+        "note" : "和小林",
+        "received" : "-",
+        "review" : "false",
+        "shape" : "single"
+      },
+      "correct" : true,
+      "differences" : [
+
+      ],
+      "expected" : {
+        "amount" : "12.5",
+        "currency" : "SGD",
+        "note" : "和小林"
+      },
+      "id" : "fullwidth",
+      "text" : "午餐 ＳＧＤ１２.５０；和小林"
+    },
+    {
+      "actual" : {
+        "account" : "-",
+        "amount" : "8.4",
+        "category" : "-",
+        "currency" : "-",
+        "dayOffset" : "-",
+        "destination" : "-",
+        "kind" : "expense",
+        "merchant" : "2 coffees",
+        "note" : "-",
+        "received" : "-",
+        "review" : "false",
+        "shape" : "single"
+      },
+      "correct" : true,
+      "differences" : [
+
+      ],
+      "expected" : {
+        "amount" : "8.4",
+        "review" : "false"
+      },
+      "id" : "explicit-total",
+      "text" : "2 coffees total 8.40"
+    },
+    {
+      "actual" : {
+        "account" : "-",
+        "amount" : "-",
+        "category" : "-",
+        "currency" : "-",
+        "dayOffset" : "-",
+        "destination" : "-",
+        "kind" : "expense",
+        "merchant" : "lunch 12 dinner 18",
+        "note" : "-",
+        "received" : "-",
+        "review" : "true",
+        "shape" : "single"
+      },
+      "correct" : true,
+      "differences" : [
+
+      ],
+      "expected" : {
+        "amount" : "-",
+        "review" : "true"
+      },
+      "id" : "amount-ambiguity",
+      "text" : "lunch 12 dinner 18"
+    },
+    {
+      "actual" : {
+        "account" : "-",
+        "amount" : "-",
+        "category" : "-",
+        "currency" : "-",
+        "dayOffset" : "-",
+        "destination" : "-",
+        "kind" : "expense",
+        "merchant" : "coffee 12,3",
+        "note" : "-",
+        "received" : "-",
+        "review" : "true",
+        "shape" : "single"
+      },
+      "correct" : true,
+      "differences" : [
+
+      ],
+      "expected" : {
+        "amount" : "-",
+        "review" : "true"
+      },
+      "id" : "malformed",
+      "text" : "coffee 12,3"
+    },
+    {
+      "actual" : {
+        "account" : "-",
+        "amount" : "-",
+        "category" : "-",
+        "currency" : "-",
+        "dayOffset" : "-",
+        "destination" : "-",
+        "kind" : "expense",
+        "merchant" : "coffee 12",
+        "note" : "-",
+        "received" : "-",
+        "review" : "true",
+        "shape" : "single"
+      },
+      "correct" : true,
+      "differences" : [
+
+      ],
+      "expected" : {
+        "amount" : "-",
+        "review" : "true"
+      },
+      "id" : "negative",
+      "text" : "coffee -12"
+    },
+    {
+      "actual" : {
+        "account" : "-",
+        "amount" : "12.5",
+        "category" : "-",
+        "currency" : "-",
+        "dayOffset" : "-",
+        "destination" : "-",
+        "kind" : "expense",
+        "merchant" : "7-Eleven H2O",
+        "note" : "-",
+        "received" : "-",
+        "review" : "false",
+        "shape" : "single"
+      },
+      "correct" : true,
+      "differences" : [
+
+      ],
+      "expected" : {
+        "amount" : "12.5",
+        "merchant" : "7-Eleven H2O"
+      },
+      "id" : "numeric-merchant",
+      "text" : "7-Eleven H2O 12.50"
+    },
+    {
+      "actual" : {
+        "account" : "-",
+        "amount" : "12",
+        "category" : "-",
+        "currency" : "-",
+        "dayOffset" : "-",
+        "destination" : "-",
+        "kind" : "expense",
+        "merchant" : "lunch",
+        "note" : "refund USD99 tomorrow",
+        "received" : "-",
+        "review" : "false",
+        "shape" : "single"
+      },
+      "correct" : true,
+      "differences" : [
+
+      ],
+      "expected" : {
+        "amount" : "12",
+        "dayOffset" : "-",
+        "kind" : "expense",
+        "note" : "refund USD99 tomorrow"
+      },
+      "id" : "note-isolation",
+      "text" : "lunch 12; refund USD99 tomorrow"
+    },
+    {
+      "actual" : {
+        "account" : "Bank",
+        "amount" : "5000",
+        "category" : "Salary",
+        "currency" : "-",
+        "dayOffset" : "0",
+        "destination" : "-",
+        "kind" : "income",
+        "merchant" : "received",
+        "note" : "-",
+        "received" : "-",
+        "review" : "false",
+        "shape" : "single"
+      },
+      "correct" : false,
+      "differences" : [
+        "merchant"
+      ],
+      "expected" : {
+        "account" : "Bank",
+        "amount" : "5000",
+        "category" : "Salary",
+        "dayOffset" : "0",
+        "kind" : "income",
+        "merchant" : "-"
+      },
+      "id" : "income",
+      "text" : "received Salary 5000 Bank today"
+    },
+    {
+      "actual" : {
+        "account" : "Cash",
+        "amount" : "12",
+        "category" : "-",
+        "currency" : "-",
+        "dayOffset" : "-",
+        "destination" : "-",
+        "kind" : "refund",
+        "merchant" : "received refund Shopee",
+        "note" : "-",
+        "received" : "-",
+        "review" : "false",
+        "shape" : "single"
+      },
+      "correct" : false,
+      "differences" : [
+        "merchant"
+      ],
+      "expected" : {
+        "account" : "Cash",
+        "amount" : "12",
+        "kind" : "refund",
+        "merchant" : "Shopee"
+      },
+      "id" : "refund",
+      "text" : "received refund Shopee 12 Cash"
+    },
+    {
+      "actual" : {
+        "account" : "支付宝",
+        "amount" : "12",
+        "category" : "-",
+        "currency" : "-",
+        "dayOffset" : "-",
+        "destination" : "-",
+        "kind" : "refund",
+        "merchant" : "退款 淘宝",
+        "note" : "-",
+        "received" : "-",
+        "review" : "false",
+        "shape" : "single"
+      },
+      "correct" : false,
+      "differences" : [
+        "merchant"
+      ],
+      "expected" : {
+        "amount" : "12",
+        "kind" : "refund",
+        "merchant" : "淘宝"
+      },
+      "id" : "refund-cn",
+      "text" : "支付宝 退款 淘宝 12"
+    },
+    {
+      "actual" : {
+        "account" : "Cash",
+        "amount" : "-",
+        "category" : "-",
+        "currency" : "-",
+        "dayOffset" : "-",
+        "destination" : "-",
+        "kind" : "expense",
+        "merchant" : "lunch 12 3 days ago",
+        "note" : "-",
+        "received" : "-",
+        "review" : "true",
+        "shape" : "single"
+      },
+      "correct" : false,
+      "differences" : [
+        "amount",
+        "dayOffset"
+      ],
+      "expected" : {
+        "amount" : "12",
+        "dayOffset" : "-3"
+      },
+      "id" : "days-ago",
+      "text" : "lunch 12 Cash 3 days ago"
+    },
+    {
+      "actual" : {
+        "account" : "支付宝",
+        "amount" : "-",
+        "category" : "-",
+        "currency" : "-",
+        "dayOffset" : "-",
+        "destination" : "-",
+        "kind" : "expense",
+        "merchant" : "3天前 午餐12",
+        "note" : "-",
+        "received" : "-",
+        "review" : "true",
+        "shape" : "single"
+      },
+      "correct" : false,
+      "differences" : [
+        "amount",
+        "dayOffset"
+      ],
+      "expected" : {
+        "amount" : "12",
+        "dayOffset" : "-3"
+      },
+      "id" : "days-ago-cn",
+      "text" : "3天前 支付宝 午餐12"
+    },
+    {
+      "actual" : {
+        "account" : "Cash",
+        "amount" : "4",
+        "category" : "-",
+        "currency" : "-",
+        "dayOffset" : "-2",
+        "destination" : "-",
+        "kind" : "expense",
+        "merchant" : "coffee",
+        "note" : "-",
+        "received" : "-",
+        "review" : "false",
+        "shape" : "single"
+      },
+      "correct" : true,
+      "differences" : [
+
+      ],
+      "expected" : {
+        "amount" : "4",
+        "dayOffset" : "-2"
+      },
+      "id" : "last-weekday",
+      "text" : "coffee 4 Cash last monday"
+    },
+    {
+      "actual" : {
+        "account" : "支付宝",
+        "amount" : "4",
+        "category" : "-",
+        "currency" : "-",
+        "dayOffset" : "0",
+        "destination" : "-",
+        "kind" : "expense",
+        "merchant" : "上 咖啡",
+        "note" : "-",
+        "received" : "-",
+        "review" : "false",
+        "shape" : "single"
+      },
+      "correct" : false,
+      "differences" : [
+        "dayOffset"
+      ],
+      "expected" : {
+        "amount" : "4",
+        "dayOffset" : "-7"
+      },
+      "id" : "last-week-cn",
+      "text" : "上周三 支付宝 咖啡4"
+    },
+    {
+      "actual" : {
+        "account" : "Cash",
+        "amount" : "4",
+        "category" : "-",
+        "currency" : "-",
+        "dayOffset" : "-5",
+        "destination" : "-",
+        "kind" : "expense",
+        "merchant" : "coffee next",
+        "note" : "-",
+        "received" : "-",
+        "review" : "false",
+        "shape" : "single"
+      },
+      "correct" : false,
+      "differences" : [
+        "dayOffset"
+      ],
+      "expected" : {
+        "amount" : "4",
+        "dayOffset" : "2"
+      },
+      "id" : "next-weekday",
+      "text" : "coffee 4 Cash next friday"
+    },
+    {
+      "actual" : {
+        "account" : "-",
+        "amount" : "12",
+        "category" : "-",
+        "currency" : "-",
+        "dayOffset" : "-1",
+        "destination" : "-",
+        "kind" : "expense",
+        "merchant" : "lunch tomorrow",
+        "note" : "-",
+        "received" : "-",
+        "review" : "false",
+        "shape" : "single"
+      },
+      "correct" : false,
+      "differences" : [
+        "amount",
+        "dayOffset",
+        "review"
+      ],
+      "expected" : {
+        "amount" : "-",
+        "dayOffset" : "-",
+        "review" : "true"
+      },
+      "id" : "conflicting-dates",
+      "text" : "lunch 12 yesterday tomorrow"
+    },
+    {
+      "actual" : {
+        "account" : "支付宝",
+        "amount" : "12",
+        "category" : "-",
+        "currency" : "-",
+        "dayOffset" : "-",
+        "destination" : "-",
+        "kind" : "expense",
+        "merchant" : "午餐 新币",
+        "note" : "-",
+        "received" : "-",
+        "review" : "false",
+        "shape" : "single"
+      },
+      "correct" : false,
+      "differences" : [
+        "currency",
+        "merchant"
+      ],
+      "expected" : {
+        "amount" : "12",
+        "currency" : "SGD",
+        "merchant" : "午餐"
+      },
+      "id" : "chinese-currency",
+      "text" : "午餐12新币 支付宝"
+    },
+    {
+      "actual" : {
+        "account" : "-",
+        "amount" : "12.5",
+        "category" : "-",
+        "currency" : "-",
+        "dayOffset" : "-",
+        "destination" : "-",
+        "kind" : "expense",
+        "merchant" : "Alipay午餐",
+        "note" : "-",
+        "received" : "-",
+        "review" : "false",
+        "shape" : "single"
+      },
+      "correct" : false,
+      "differences" : [
+        "account",
+        "merchant"
+      ],
+      "expected" : {
+        "account" : "Alipay",
+        "amount" : "12.5",
+        "merchant" : "午餐"
+      },
+      "id" : "mixed-name-boundary",
+      "text" : "用Alipay午餐12.50"
+    },
+    {
+      "actual" : {
+        "account" : "Shared",
+        "amount" : "4",
+        "category" : "-",
+        "currency" : "-",
+        "dayOffset" : "-",
+        "destination" : "-",
+        "kind" : "expense",
+        "merchant" : "coffee",
+        "note" : "-",
+        "received" : "-",
+        "review" : "false",
+        "shape" : "single"
+      },
+      "correct" : false,
+      "differences" : [
+        "account",
+        "review"
+      ],
+      "expected" : {
+        "account" : "-",
+        "review" : "true"
+      },
+      "id" : "ambiguous-account",
+      "text" : "Shared coffee 4"
+    },
+    {
+      "actual" : {
+        "account" : "Cash",
+        "amount" : "20",
+        "category" : "-",
+        "currency" : "-",
+        "dayOffset" : "-",
+        "destination" : "-",
+        "kind" : "expense",
+        "merchant" : "transfer Bank",
+        "note" : "-",
+        "received" : "-",
+        "review" : "false",
+        "shape" : "single"
+      },
+      "correct" : false,
+      "differences" : [
+        "destination",
+        "kind",
+        "shape"
+      ],
+      "expected" : {
+        "account" : "Cash",
+        "amount" : "20",
+        "destination" : "Bank",
+        "kind" : "transfer",
+        "review" : "false",
+        "shape" : "transfer"
+      },
+      "id" : "transfer",
+      "text" : "transfer 20 from Cash to Bank"
+    },
+    {
+      "actual" : {
+        "account" : "Bank",
+        "amount" : "20",
+        "category" : "-",
+        "currency" : "-",
+        "dayOffset" : "-",
+        "destination" : "-",
+        "kind" : "expense",
+        "merchant" : "transfer Cash",
+        "note" : "-",
+        "received" : "-",
+        "review" : "false",
+        "shape" : "single"
+      },
+      "correct" : false,
+      "differences" : [
+        "account",
+        "destination",
+        "kind"
+      ],
+      "expected" : {
+        "account" : "Cash",
+        "amount" : "20",
+        "destination" : "Bank",
+        "kind" : "transfer",
+        "review" : "false"
+      },
+      "id" : "transfer-reverse",
+      "text" : "transfer 20 to Bank from Cash"
+    },
+    {
+      "actual" : {
+        "account" : "支付宝",
+        "amount" : "20",
+        "category" : "-",
+        "currency" : "-",
+        "dayOffset" : "-",
+        "destination" : "-",
+        "kind" : "expense",
+        "merchant" : "从 转账到Bank",
+        "note" : "-",
+        "received" : "-",
+        "review" : "false",
+        "shape" : "single"
+      },
+      "correct" : false,
+      "differences" : [
+        "destination",
+        "kind"
+      ],
+      "expected" : {
+        "account" : "支付宝",
+        "amount" : "20",
+        "destination" : "Bank",
+        "kind" : "transfer",
+        "review" : "false"
+      },
+      "id" : "transfer-cn",
+      "text" : "从支付宝转账到Bank 20"
+    },
+    {
+      "actual" : {
+        "account" : "USD Wallet",
+        "amount" : "-",
+        "category" : "-",
+        "currency" : "-",
+        "dayOffset" : "-",
+        "destination" : "-",
+        "kind" : "income",
+        "merchant" : "transfer SGD10 Cash received USD7.50",
+        "note" : "-",
+        "received" : "-",
+        "review" : "true",
+        "shape" : "single"
+      },
+      "correct" : false,
+      "differences" : [
+        "account",
+        "amount",
+        "destination",
+        "kind",
+        "received",
+        "review"
+      ],
+      "expected" : {
+        "account" : "Cash",
+        "amount" : "10",
+        "destination" : "USD Wallet",
+        "kind" : "transfer",
+        "received" : "7.5",
+        "review" : "false"
+      },
+      "id" : "transfer-fx",
+      "text" : "transfer SGD10 from Cash to USD Wallet received USD7.50"
+    },
+    {
+      "actual" : {
+        "account" : "USD Wallet",
+        "amount" : "10",
+        "category" : "-",
+        "currency" : "-",
+        "dayOffset" : "-",
+        "destination" : "-",
+        "kind" : "expense",
+        "merchant" : "transfer Cash",
+        "note" : "-",
+        "received" : "-",
+        "review" : "false",
+        "shape" : "single"
+      },
+      "correct" : false,
+      "differences" : [
+        "kind",
+        "review"
+      ],
+      "expected" : {
+        "kind" : "transfer",
+        "received" : "-",
+        "review" : "true"
+      },
+      "id" : "transfer-missing-fx",
+      "text" : "transfer 10 from Cash to USD Wallet"
+    },
+    {
+      "actual" : {
+        "account" : "Cash",
+        "amount" : "-",
+        "category" : "-",
+        "currency" : "-",
+        "dayOffset" : "-",
+        "destination" : "-",
+        "kind" : "expense",
+        "merchant" : "split Food12 + Transport8",
+        "note" : "-",
+        "received" : "-",
+        "review" : "false",
+        "shape" : "single"
+      },
+      "correct" : false,
+      "differences" : [
+        "amount",
+        "shape"
+      ],
+      "expected" : {
+        "amount" : "20",
+        "review" : "false",
+        "shape" : "split"
+      },
+      "id" : "split",
+      "text" : "split Cash Food12 + Transport8"
+    },
+    {
+      "actual" : {
+        "account" : "Cash",
+        "amount" : "-",
+        "category" : "-",
+        "currency" : "-",
+        "dayOffset" : "-",
+        "destination" : "-",
+        "kind" : "expense",
+        "merchant" : "split Food12 + Transport8 total20",
+        "note" : "-",
+        "received" : "-",
+        "review" : "false",
+        "shape" : "single"
+      },
+      "correct" : false,
+      "differences" : [
+        "amount",
+        "shape"
+      ],
+      "expected" : {
+        "amount" : "20",
+        "review" : "false",
+        "shape" : "split"
+      },
+      "id" : "split-total",
+      "text" : "split Cash Food12 + Transport8 total20"
+    },
+    {
+      "actual" : {
+        "account" : "Cash",
+        "amount" : "-",
+        "category" : "-",
+        "currency" : "-",
+        "dayOffset" : "-",
+        "destination" : "-",
+        "kind" : "expense",
+        "merchant" : "split Food12 + Transport8 total25",
+        "note" : "-",
+        "received" : "-",
+        "review" : "false",
+        "shape" : "single"
+      },
+      "correct" : false,
+      "differences" : [
+        "review",
+        "shape"
+      ],
+      "expected" : {
+        "review" : "true",
+        "shape" : "split"
+      },
+      "id" : "split-mismatch",
+      "text" : "split Cash Food12 + Transport8 total25"
+    },
+    {
+      "actual" : {
+        "account" : "Cash",
+        "amount" : "-",
+        "category" : "-",
+        "currency" : "-",
+        "dayOffset" : "-",
+        "destination" : "-",
+        "kind" : "expense",
+        "merchant" : "lunch12 Bank taxi8",
+        "note" : "-",
+        "received" : "-",
+        "review" : "false",
+        "shape" : "single"
+      },
+      "correct" : false,
+      "differences" : [
+        "review",
+        "shape"
+      ],
+      "expected" : {
+        "review" : "true",
+        "shape" : "multiple"
+      },
+      "id" : "multiple",
+      "text" : "Cash lunch12\nBank taxi8"
+    }
+  ],
+  "correctFixtures" : 12,
+  "cpuSeconds" : 4.0219120000000004,
+  "environment" : "Version 27.0 (Build 26A5425a)",
+  "fieldCorrectionsNeeded" : 31,
+  "fixtureCount" : 32,
+  "iterationsPerFixture" : 100,
+  "measurementScope" : "Release executable; one autorelease pool per interaction; warm complete interpretation and output extraction; fixture-derived field corrections, not physical taps",
+  "medianMilliseconds" : 1.21,
+  "p95Milliseconds" : 1.808125,
+  "peakResidentBytes" : 10731520
+}

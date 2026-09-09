@@ -234,6 +234,7 @@ extension QuickLogEntryView {
             id,
             current: onDeviceAccountFieldState
         ) else { return }
+        smartState.edited(.account)
         applyOnDeviceAccountFieldState(state)
         onDeviceAssistance = presentation
         persistUserDraftChange { $0.accountID = id }
@@ -247,6 +248,7 @@ extension QuickLogEntryView {
             id,
             current: onDeviceCategoryFieldState
         ) else { return }
+        smartState.edited(.category)
         applyOnDeviceCategoryFieldState(state)
         onDeviceAssistance = presentation
         persistUserDraftChange { $0.categoryID = id }

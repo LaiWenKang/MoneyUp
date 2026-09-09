@@ -1,0 +1,49 @@
+{
+  "configuration": "Release",
+  "corpus_currencies": [
+    "KWD",
+    "SGD",
+    "USD"
+  ],
+  "corpus_profile": "intelligence-v1",
+  "entry_count": 10000,
+  "iteration_count": 3,
+  "logical_csv_payload_sha256": "92fe646bbcc7e52fc11a340266a194d3d18b1b147ef70ff53ffab1026a495df5",
+  "metrics": [
+    "clock",
+    "cpu",
+    "memory",
+    "logical_storage_writes"
+  ],
+  "operations": [
+    "store_open_close",
+    "store_load",
+    "save",
+    "history_page_query",
+    "csv_xlsx_export",
+    "archive",
+    "restore",
+    "receipt_text_processing",
+    "projection",
+    "intelligence"
+  ],
+  "oracle_sha256": "4c33ed9e0b8082a6c5af936fe7399195c30f4045a01583bad5c6eaccd6945fa5",
+  "parallel_testing": false,
+  "physical_device_gates": "open",
+  "runner_architecture": "arm64",
+  "runner_hardware_model": "VirtualMac2,1",
+  "runner_image_os": "macos15",
+  "runner_image_version": "20260829.0321.1",
+  "schedule_count": 20,
+  "scheme": "MoneyUpPerformance",
+  "simulator_device_name": "iPhone 16 Pro",
+  "simulator_os_version": "18.5",
+  "simulator_runtime_identifier": "com.apple.CoreSimulator.SimRuntime.iOS-18-5",
+  "simulator_sdk_version": "18.5",
+  "simulator_udid": "DF24883C-910C-42D6-A87A-531F98C777E2",
+  "source_sha": "135adbf45a26e93fc7736641450b72e20b70fcd2",
+  "target": "MoneyUpPerformanceTests",
+  "total_invocation_count": 4,
+  "xcode_build": "Build version 16F6",
+  "xcode_version": "Xcode 16.4"
+}

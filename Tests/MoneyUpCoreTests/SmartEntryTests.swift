@@ -428,7 +428,7 @@ final class NaturalLanguageEntryParserTests: XCTestCase {
         XCTAssertEqual(parsed.context, "Foodie lunch")
     }
 
-    func testEquivalentNameTieUsesStableIdentityAcrossInputOrder() throws {
+    func testEquivalentNameTieRequiresReviewAcrossInputOrder() throws {
         let lowerID = try XCTUnwrap(
             UUID(uuidString: "00000000-0000-0000-0000-000000000001")
         )
@@ -446,7 +446,7 @@ final class NaturalLanguageEntryParserTests: XCTestCase {
                 calendar: calendar,
                 locale: Locale(identifier: "en_SG")
             )
-            XCTAssertEqual(draft.accountID, lowerID)
+            XCTAssertNil(draft.accountID)
             XCTAssertEqual(draft.payee, "lunch")
         }
     }

@@ -43,6 +43,10 @@ struct QuickLogDraft: Codable, Equatable, Sendable {
     static let primaryRecordID = "current"
     static let maximumSplitLineCount = 512
 
+    var batch: QuickLogBatch?
+    var smartState = QuickLogSmartState()
+    var clearRecovery: QuickLogClearRecovery?
+
     var kind: QuickLogKind
     var amountText: String
     var destinationAmountText: String
@@ -117,9 +121,11 @@ struct QuickLogDraft: Codable, Equatable, Sendable {
     /// an amount is typed. It does not freeze an otherwise fresh timestamp.
     var hasUserEdits: Bool {
         hasTransactionContent || accountWasEdited || categoryWasEdited || sourceCaptureID != nil
+            || !smartState.manualFields.isEmpty
     }
 
     private enum CodingKeys: String, CodingKey {
+        case batch, smartState, clearRecovery
         case accountWasEdited, categoryWasEdited
         case kind, amountText, destinationAmountText, accountID, destinationAccountID
         case categoryID, occurredAt, dateWasEdited, payee, note, smartText
@@ -128,6 +134,13 @@ struct QuickLogDraft: Codable, Equatable, Sendable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        batch = try container.decodeIfPresent(QuickLogBatch.self, forKey: .batch)
+        try batch?.validate()
+        smartState = try container.decodeIfPresent(QuickLogSmartState.self, forKey: .smartState) ?? .init()
+        clearRecovery = try container.decodeIfPresent(QuickLogClearRecovery.self, forKey: .clearRecovery)
+        guard (clearRecovery?.draftData.count ?? 0) <= QuickLogClearRecovery.maximumBytes else {
+            throw AppModelError.invalidBook
+        }
         kind = try container.decode(QuickLogKind.self, forKey: .kind)
         amountText = try container.decode(String.self, forKey: .amountText)
         destinationAmountText = try container.decode(String.self, forKey: .destinationAmountText)

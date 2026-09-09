@@ -71,8 +71,20 @@ class ArchitectureFitnessTests(unittest.TestCase):
         repository = SCRIPTS.parent
         relatives = (
             "project.yml",
+            "App/MoneyUp/QuickLogBatchReview.swift",
+            "App/MoneyUp/QuickLogBatch.swift",
+            "Sources/MoneyUpCore/SmartEntryBatchText.swift",
+            "App/MoneyUp/QuickLogSmartReview.swift",
+            "Sources/MoneyUpCore/SmartEntryRelativeDate.swift",
+            "Sources/MoneyUpCore/SmartEntryNames.swift",
+            "Sources/MoneyUpCore/SmartEntryInterpreter.swift",
+            "Sources/MoneyUpCore/SmartEntryCurrencyText.swift",
+            "App/MoneyUp/QuickLogUnderstandingFill.swift",
+            "App/MoneyUp/QuickLogSmartState.swift",
             "Sources/MoneyUpCore/UserProfile.swift",
             "Sources/MoneyUpCore/NaturalLanguageEntryParser.swift",
+            "Sources/MoneyUpCore/SmartEntryTextReading.swift",
+            "App/MoneyUp/QuickLogSmartFill.swift",
             "App/MoneyUp/AppModelLifecycle.swift",
             "App/MoneyUp/MoneyUpAppShortcuts.swift",
             "App/MoneyUp/QuickLogOnDeviceAssistance.swift",
@@ -1558,8 +1570,8 @@ func unreviewedRequest(
         mutations = (
             (
                 entry_relative,
-                "let parsed = NaturalLanguageEntryParser.parse(",
-                "let ignoredParsed = NaturalLanguageEntryParser.parse(",
+                "let parsed = interpretation.parsed",
+                "let ignoredParsed = interpretation.parsed",
             ),
             (
                 entry_relative,
@@ -1989,7 +2001,7 @@ func unreviewedPlan(
             ),
             (
                 body_relative,
-                "cancelAssistance: { cancelOnDeviceAssistance() }",
+                "cancelAssistance: { cancelSmartParsing(); cancelOnDeviceAssistance() }",
                 "cancelAssistance: {}",
             ),
             (

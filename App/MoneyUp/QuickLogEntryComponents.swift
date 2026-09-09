@@ -221,6 +221,8 @@ extension QuickLogEntryView {
                     selection: Binding(
                         get: { occurredAt },
                         set: { newDate in
+                            cancelSmartParsing()
+                            smartState.edited(.date)
                             cancelOnDeviceAssistance()
                             occurredAt = newDate
                             dateWasEdited = true
@@ -240,8 +242,11 @@ extension QuickLogEntryView {
     }
 
     var smartEntrySection: some View {
-        Section {
-            HStack(alignment: .top, spacing: 8) {
+        let inputLayout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+            : AnyLayout(HStackLayout(alignment: .top, spacing: 8))
+        return Section {
+            inputLayout {
                 TextField(
                     "quick_log.smart_placeholder",
                     text: trackedBinding(
@@ -252,10 +257,18 @@ extension QuickLogEntryView {
                     axis: .vertical
                 )
                     .lineLimit(1...3)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .focused($focusedField, equals: .smartEntry)
                     .id(QuickLogFieldFocus.smartEntry)
+                    .accessibilityIdentifier("quick-log-smart-input")
+                    .moneyUpPrivateAmountInput(
+                        masked: hidesAmounts && focusedField != .smartEntry && !smartText.isEmpty,
+                        accessibilityLabel: Text("quick_log.smart_entry")
+                    ) { focusedField = .smartEntry }
                 Button("quick_log.smart_fill") { applyTypedPhrase() }
                     .buttonStyle(.borderless)
+                    .accessibilityIdentifier("quick-log-smart-fill")
+                    .frame(minWidth: 44, minHeight: 44)
                     .disabled(
                         smartText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                     )
@@ -272,6 +285,18 @@ extension QuickLogEntryView {
                 selection: $photoItem,
                 matching: .images
             )
+
+            if batch == nil, smartText.contains(where: \.isNewline), !dismissAfterSave {
+                Button("quick_log.batch.start") { startBatchReview() }
+                    .disabled(isParsingSmartEntry)
+                    .accessibilityIdentifier("quick-log-start-batch")
+            }
+
+            if isParsingSmartEntry {
+                Label("quick_log.parsing", systemImage: "ellipsis")
+                    .foregroundStyle(.secondary)
+            }
+            if smartState.hasPreview { smartReviewSummary }
 
             if isScanning {
                 HStack(spacing: 8) {
@@ -314,7 +339,14 @@ extension QuickLogEntryView {
                     .foregroundStyle(.secondary)
             }
         } header: {
-            Text("quick_log.smart_entry")
+            HStack {
+                Text("quick_log.smart_entry")
+                Spacer()
+                Menu { merchantLearningControl } label: {
+                    Image(systemName: "ellipsis.circle").frame(minWidth: 44, minHeight: 44)
+                }
+                .accessibilityLabel("quick_log.suggestion_options")
+            }
         } footer: {
             Text("quick_log.smart_footer")
         }
@@ -490,6 +522,7 @@ extension QuickLogEntryView {
         }
 
         Button {
+            smartState.edited(.splits)
             splitLines.append(
                 QuickLogSplitDraftLine(categoryID: categoryID ?? categories.first?.id)
             )
@@ -516,75 +549,4 @@ extension QuickLogEntryView {
         }
     }
 
-    func updateSplitLine(
-        _ lineID: UUID,
-        update: (inout QuickLogSplitDraftLine) -> Void
-    ) {
-        cancelOnDeviceAssistance()
-        guard let index = splitLines.firstIndex(where: { $0.id == lineID }) else {
-            return
-        }
-        update(&splitLines[index])
-        persistUserDraftChange { $0.splitLines = splitLines }
-    }
-
-    func removeSplitLine(_ lineID: UUID) {
-        cancelOnDeviceAssistance()
-        clearSplitFocus(for: lineID)
-        splitLines.removeAll { $0.id == lineID }
-        persistUserDraftChange { $0.splitLines = splitLines }
-    }
-
-    func applyEqualSplit() {
-        guard let amount,
-              let currency = selectedAccountCurrency,
-              let allocations = try? TransactionSplitCalculator.equalAmounts(
-                total: Money(amount, currency: currency),
-                count: splitLines.count
-              ) else {
-            errorMessage = AppLocalization.string("split.error.allocation")
-            return
-        }
-        applySplitAllocations(allocations)
-    }
-
-    func rebalanceUnlockedSplits() {
-        guard let amount,
-              let currency = selectedAccountCurrency else { return }
-        let current: [Money?] = splitLines.map { line in
-            guard let value = decimalAmount(from: line.amountText) else { return nil }
-            return try? Money(value, currency: currency)
-        }
-        guard let allocations = try? TransactionSplitCalculator.rebalancedAmounts(
-            total: Money(amount, currency: currency),
-            current: current,
-            locked: splitLines.map(\.isLocked)
-        ) else {
-            errorMessage = AppLocalization.string("split.error.allocation")
-            return
-        }
-        applySplitAllocations(allocations)
-    }
-
-    func applyPercentageSplit(_ percentages: [Decimal]) {
-        guard let amount,
-              let currency = selectedAccountCurrency,
-              let allocations = try? TransactionSplitCalculator.percentageAmounts(
-                total: Money(amount, currency: currency),
-                percentages: percentages
-              ) else {
-            errorMessage = AppLocalization.string("split.error.allocation")
-            return
-        }
-        applySplitAllocations(allocations)
-    }
-
-    func applySplitAllocations(_ allocations: [Money]) {
-        guard allocations.count == splitLines.count else { return }
-        for index in splitLines.indices {
-            splitLines[index].amountText = editableAmount(allocations[index].amount)
-        }
-        errorMessage = nil
-        persistUserDraftChange { $0.splitLines = splitLines }
-    }
 }

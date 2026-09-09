@@ -57,6 +57,9 @@ extension QuickLogEntryView {
     }
 
     func clearPerTransactionReviewState() {
+        cancelSmartParsing()
+        smartState = .init()
+        clearRecovery = nil
         smartMessage = nil
         receiptResult = nil
         clearCaptureSuggestionProvenance()
@@ -65,6 +68,8 @@ extension QuickLogEntryView {
         receiptAttachmentData = nil
         retainReceiptAttachment = false
         receiptRetentionMessage = nil
+        evidencePreparationGeneration &+= 1
+        isPreparingEvidence = false
         evidencePreparationTask?.cancel()
         evidencePreparationTask = nil
         evidencePhotoItems = []
@@ -76,7 +81,8 @@ extension QuickLogEntryView {
 
     func refreshCaptureSuggestions(for draft: TransactionDraft) {
         cancelCaptureSuggestionLookup()
-        guard let currency = selectedAccountCurrency else {
+        guard model.profile?.merchantSuggestionsEnabled != false,
+              let currency = selectedAccountCurrency else {
             captureSuggestionResult = nil
             return
         }
@@ -96,6 +102,9 @@ extension QuickLogEntryView {
         let logicalBookRevision = model.logicalBookRevision
         let eligibleCategoryIDs = Set(categories.map(\.id))
         captureSuggestionTask = Task { @MainActor in
+            // Coalesce typing without running an indexed lookup per keystroke.
+            do { try await Task.sleep(for: .milliseconds(180)) } catch { return }
+            guard !Task.isCancelled, !MoneyUpKeyboard.hasMarkedText else { return }
             let result = await model.indexedCaptureSuggestion(
                 for: query,
                 eligibleCategoryIDs: eligibleCategoryIDs
@@ -103,7 +112,8 @@ extension QuickLogEntryView {
             guard !Task.isCancelled,
                   generation == captureSuggestionGeneration,
                   logicalBookRevision == model.logicalBookRevision,
-                  !model.isBookReplacementInProgress else { return }
+                  !model.isBookReplacementInProgress,
+                  model.profile?.merchantSuggestionsEnabled != false else { return }
             captureSuggestionResult = result
             applyAccountSuggestion(result.accountSuggestion, draft: draft)
             applyCategorySuggestion(result.categorySuggestion, draft: draft)
@@ -200,6 +210,7 @@ extension QuickLogEntryView {
                     )
                 ) {
                     invalidateOnDeviceAccountForDeterministicChange()
+                    smartState.edited(.account)
                     accountID = account.id
                     accountWasEdited = true
                     autoAppliedAccountSuggestionID = nil
@@ -222,6 +233,7 @@ extension QuickLogEntryView {
                     )
                 ) {
                     invalidateOnDeviceCategoryForDeterministicChange()
+                    smartState.edited(.category)
                     categoryID = category.id
                     categoryWasEdited = true
                     autoAppliedCategorySuggestionID = nil

@@ -6,10 +6,17 @@ extension QuickLogEntryView {
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
             .scrollDismissesKeyboard(.interactively)
-            .disabled(isSaving || isUndoing)
+            .disabled(isSaving || isUndoing || isClearingDraft)
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    if !dismissAfterSave {
+                        Button("quick_log.clear_entry") { requestDraftClear() }
+                            .disabled(!hasClearableDraft || isCheckingDuplicates)
+                            .accessibilityIdentifier("quick-log-clear")
+                    }
+                }
                 ToolbarItem(placement: .primaryAction) {
                     MoneyUpAmountPrivacyButton()
                 }
