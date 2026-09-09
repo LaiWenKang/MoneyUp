@@ -240,8 +240,11 @@ extension QuickLogEntryView {
     }
 
     var smartEntrySection: some View {
-        Section {
-            HStack(alignment: .top, spacing: 8) {
+        let inputLayout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+            : AnyLayout(HStackLayout(alignment: .top, spacing: 8))
+        return Section {
+            inputLayout {
                 TextField(
                     "quick_log.smart_placeholder",
                     text: trackedBinding(
@@ -252,10 +255,14 @@ extension QuickLogEntryView {
                     axis: .vertical
                 )
                     .lineLimit(1...3)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .focused($focusedField, equals: .smartEntry)
                     .id(QuickLogFieldFocus.smartEntry)
+                    .accessibilityIdentifier("quick-log-smart-input")
                 Button("quick_log.smart_fill") { applyTypedPhrase() }
                     .buttonStyle(.borderless)
+                    .accessibilityIdentifier("quick-log-smart-fill")
+                    .frame(minWidth: 44, minHeight: 44)
                     .disabled(
                         smartText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                     )

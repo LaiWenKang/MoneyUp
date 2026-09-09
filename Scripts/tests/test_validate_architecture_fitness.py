@@ -73,6 +73,8 @@ class ArchitectureFitnessTests(unittest.TestCase):
             "project.yml",
             "Sources/MoneyUpCore/UserProfile.swift",
             "Sources/MoneyUpCore/NaturalLanguageEntryParser.swift",
+            "Sources/MoneyUpCore/SmartEntryTextReading.swift",
+            "App/MoneyUp/QuickLogSmartFill.swift",
             "App/MoneyUp/AppModelLifecycle.swift",
             "App/MoneyUp/MoneyUpAppShortcuts.swift",
             "App/MoneyUp/QuickLogOnDeviceAssistance.swift",

@@ -412,6 +412,8 @@ struct QuickLogEntryView: View {
     @State var isAddingAccount = false
     @State var isCheckingDuplicates = false
     @State var isSaving = false
+    @State var isClearingDraft = false
+    @State var pendingDraftClear: QuickLogDraft?
     @State var errorMessage: String?
     @State var smartText = ""
     @State var photoItem: PhotosPickerItem?
@@ -610,7 +612,7 @@ struct QuickLogEntryView: View {
     }
 
     var canSave: Bool {
-        guard !isScanning, !isCheckingDuplicates,
+        guard !isScanning, !isCheckingDuplicates, !isClearingDraft,
               let amount,
               let accountID,
               let sourceAccount = selectedSourceAccount else {

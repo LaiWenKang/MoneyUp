@@ -73,6 +73,7 @@ extension QuickLogEntryView {
 
     func handleActiveStateChange(_ isActive: Bool) {
         guard isActive else {
+            pendingDraftClear = nil
             cancelReceiptProcessing()
             cancelOnDeviceAssistance()
             pendingDuplicateReview = nil
@@ -137,6 +138,7 @@ extension QuickLogEntryView {
         isShowingOptionalDetails = false
         pendingLaunchRequest = nil
         isConfirmingDraftSwitch = false
+        pendingDraftClear = nil
         guard !model.isBookReplacementInProgress,
               model.state == .ready else { return }
         if !dismissAfterSave, let draft = model.quickLogDraft {
@@ -261,6 +263,7 @@ extension QuickLogEntryView {
     }
 
     func applyTypedPhrase() {
+        guard !isSaving, !isUndoing, !isClearingDraft, kind != .transfer else { return }
         QuickLogInputAuthority.beginSmartFill(
             cancelReceipt: { cancelReceiptProcessing() },
             cancelAssistance: { cancelOnDeviceAssistance() }
@@ -275,11 +278,20 @@ extension QuickLogEntryView {
                 calendar: model.captureCalendar,
                 prefersDayFirst: Self.localePrefersDayFirst
             )
-            if apply(parsed.draft) {
-                smartText = ""
-                if !dismissAfterSave { model.updateQuickLogDraft(draftSnapshot) }
+            let fill = QuickLogSmartFill(parsed: parsed, current: draftSnapshot, accounts: model.accounts)
+            let changesKind = kind != fill.draft.kind
+            if changesKind { preservesCaptureSuggestionsAcrossNextKindChange = true }
+            applyDraft(fill.draft)
+            selectDefaults()
+            smartMessage = fill.messageKeys.map(AppLocalization.string).joined(separator: "\n")
+            if !dismissAfterSave { model.updateQuickLogDraft(draftSnapshot) }
+            // Financial uncertainty must not be hidden by a later automatic
+            // history suggestion. Optional matching remains review-only.
+            if fill.messageKeys == ["quick_log.smart_review"] {
+                refreshTypedPayeeSuggestion()
                 startOnDeviceAssistance(for: parsed)
             }
+            dismissKeyboard()
         }
     }
 }

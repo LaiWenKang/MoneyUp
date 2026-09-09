@@ -314,8 +314,8 @@ W3_PRODUCTION_TYPES = {
 }
 
 # These headers and executable digests freeze the complete reviewed production
-# boundary. The parser digest is intentionally sourced from cdd8743c: its local
-# name/token projection helpers form one security dependency closure. Digests
+# boundary. The parser and its note/amount readers form one reviewed security
+# dependency closure; financial fields never enter model context. Digests
 # ignore comments and formatting but include every executable token and literal.
 W3_TYPE_DECLARATION_INVENTORIES = {
     "LocalOrdinalSelection": "private struct LocalOrdinalSelection",
@@ -373,10 +373,10 @@ W3_TYPE_EXECUTABLE_DIGESTS = {
         "92fe2760d24d21c4af2fab73c73d7e51202003db1aa591882c14ec7aedc75d2d"
     ),
     "ParsedNaturalLanguageEntry": (
-        "6cf9966b153ca11e1c66bb4fd877d7285f75b73acb7ec1d7c5dd540fc0c9c71a"
+        "2909819bbd2c15eca7677f13577f7bf4a9ab587213f0e0e95bc36280ba770823"
     ),
     "NaturalLanguageEntryParser": (
-        "26bdbb8806cc592a5be0ff1663a452075fdad08fa59b4ec48d4c72b71cb9ae2b"
+        "d76cc7431f98bb5edb0b535b2c895672125c2ee88e30f4a10210107dba5df395"
     ),
     "QuickLogInputAuthority": (
         "973c735265e2cc2bff6e170ce3d45fcc19655792ce9c0ee4397687fa4c6068b1"
@@ -474,6 +474,7 @@ W3_TYPE_REFERENCE_INVENTORIES = {
     ),
     "ParsedNaturalLanguageEntry": (
         (W3_REVIEWED_ENTRY_ASSISTANCE_PATH, 1),
+        ("App/MoneyUp/QuickLogSmartFill.swift", 1),
         (W3_REVIEWED_REQUEST_PATH, 1),
         (W3_REVIEWED_PARSER_PATH, 3),
     ),
@@ -580,7 +581,7 @@ W3_SOURCE_FUNCTION_DIGESTS: tuple[
         W3_REVIEWED_ENTRY_PATH,
         "applyTypedPhrase",
         re.compile(r"\bfunc\s+applyTypedPhrase\s*\(\s*\)\s*\{"),
-        "6f09d5eebaff59a218ad0ecd25324646e4ad4bf3e2abb9479fca29e8df01df4d",
+        "2629dcf41846d45c7256470d6e8fd8dde39f9bbce0229ab9bfa4ef080299ded1",
     ),
     (
         "App/MoneyUp/QuickLogEntryDraft.swift",
@@ -588,7 +589,7 @@ W3_SOURCE_FUNCTION_DIGESTS: tuple[
         re.compile(
             r"\bfunc\s+reloadDraftForLogicalBookReplacement\s*\(\s*\)\s*\{"
         ),
-        "fcc2de7cedfb42cc0517d212b6e481436764d6021e24c4830352e4ebbc15bdfc",
+        "c585e5eea2d40bd93eb1735357d0c748da39c30312061ca6966513cfb35ee2ab",
     ),
     (
         "App/MoneyUp/QuickLogEntryCaptureSuggestions.swift",
@@ -608,12 +609,15 @@ W3_SOURCE_FUNCTION_DIGESTS: tuple[
 )
 
 W3_PATH_TYPE_DIGESTS: tuple[tuple[str, str, str, str], ...] = (
-    ("App/MoneyUp/QuickLogEntryChrome.swift", "extension", "QuickLogEntryView", "ab0593091dcbfd67ad29a22a81578b39520a78654715368153e0fa0898794544"),
+    ('App/MoneyUp/QuickLogSmartFill.swift', 'struct', 'QuickLogSmartFill', '3c98e0dc2f72aae58ef9626c1953a3239b930ad5fb465a45c8ba2e8f08ddd998'),
+    ('Sources/MoneyUpCore/SmartEntryTextReading.swift', 'struct', 'SmartEntryAmountReading', '5dafdce9cddb460a7e7717fe274eb030346147cc5fff3f45df1102517307c52b'),
+    ('Sources/MoneyUpCore/SmartEntryTextReading.swift', 'struct', 'SmartEntryTextParts', '7848622794bd6430a155dd7bd419adba648d107f19fee6b1805a65982e5c90b0'),
+    ("App/MoneyUp/QuickLogEntryChrome.swift", "extension", "QuickLogEntryView", "77d6f3d9a12bc36902f6c922110c73fcd72dcf5e5af9f2cbc39e4b69e69553f6"),
     (
         "App/MoneyUp/QuickLogEntryBody.swift",
         "extension",
         "QuickLogEntryView",
-        "a342dcb31627979fb270048e7a77e0e443f7c85359fa823425f86df2a1ed6b56",
+        "1cd084472d42766fa7f187b5859828f52e94d26197ca7ca5d077aa45bbdc7120",
     ),
     (
         "App/MoneyUp/QuickLogEntryReceipt.swift",
@@ -2295,11 +2299,18 @@ W3_MEMBER_INVENTORIES: tuple[
         "init",
         re.compile(
             r"\bpublic\s+init\s*\(\s*draft\s*:\s*TransactionDraft\s*,"
-            r"\s*context\s*:\s*String\?\s*\)\s*\{"
+            r"\s*context\s*:\s*String\?\s*,\s*note\s*:\s*String\?\s*=\s*nil\s*,"
+            r"\s*currencyEvidence\s*:\s*ReceiptCurrencyEvidence\s*=\s*\.init\(\)\s*,"
+            r"\s*needsAmountReview\s*:\s*Bool\s*=\s*false\s*,"
+            r"\s*needsDateReview\s*:\s*Bool\s*=\s*false\s*\)\s*\{"
         ),
         r"""
         self.draft = draft
         self.context = context
+        self.note = note
+        self.currencyEvidence = currencyEvidence
+        self.needsAmountReview = needsAmountReview
+        self.needsDateReview = needsDateReview
         """,
     ),
     (
@@ -2917,6 +2928,10 @@ W3_DIRECT_PROPERTY_INVENTORIES: dict[str, tuple[str, ...]] = {
     "ParsedNaturalLanguageEntry": (
         "public let draft: TransactionDraft",
         "public let context: String?",
+        "public let note: String?",
+        "public let currencyEvidence: ReceiptCurrencyEvidence",
+        "public let needsAmountReview: Bool",
+        "public let needsDateReview: Bool",
     ),
     "QuickLogAssistanceChoice": (
         "let id: UUID",
@@ -3742,7 +3757,9 @@ W3_PRODUCTION_CALLS: tuple[
                 W3_REVIEWED_PARSER_PATH,
                 "draft: draft, context: assistanceContext( "
                 "from: remainder, currencyCodes: currencyCodes, "
-                "localNames: accounts.map(\\.name) )",
+                "localNames: accounts.map(\\.name) ), note: parts.note, "
+                "currencyEvidence: currencyEvidence, needsAmountReview: reading.needsReview, "
+                "needsDateReview: dateResult.invalidExplicitDate",
                 1,
             ),
         ),
@@ -3830,13 +3847,16 @@ def _w3_parser_provenance(
         assistance_call = re.compile(
             r"\bstartOnDeviceAssistance\s*\(\s*for\s*:\s*parsed\s*\)"
         )
-        draft_application = re.compile(r"\bapply\s*\(\s*parsed\s*\.\s*draft\s*\)")
+        draft_application = re.compile(
+            r"\blet\s+fill\s*=\s*QuickLogSmartFill\s*\(\s*parsed\s*:\s*parsed\s*,"
+            r"\s*current\s*:\s*draftSnapshot\s*,\s*accounts\s*:\s*model\.accounts\s*\)"
+        )
         if (
             len(parser_binding.findall(body)) != 1
             or len(assistance_call.findall(body)) != 1
             or len(draft_application.findall(body)) != 1
             or len(re.findall(r"\b(?:let|var)\s+parsed\b", body)) != 1
-            or len(re.findall(r"\bparsed\b", body)) != 3
+            or len(re.findall(r"\bparsed\b", body)) != 4
         ):
             violations.append(
                 _w3_boundary_violation(

@@ -6,10 +6,22 @@ import Foundation
 public struct ParsedNaturalLanguageEntry: Equatable, Sendable {
     public let draft: TransactionDraft
     public let context: String?
+    public let note: String?
+    public let currencyEvidence: ReceiptCurrencyEvidence
+    public let needsAmountReview: Bool
+    public let needsDateReview: Bool
 
-    public init(draft: TransactionDraft, context: String?) {
+    public init(
+        draft: TransactionDraft, context: String?, note: String? = nil,
+        currencyEvidence: ReceiptCurrencyEvidence = .init(),
+        needsAmountReview: Bool = false, needsDateReview: Bool = false
+    ) {
         self.draft = draft
         self.context = context
+        self.note = note
+        self.currencyEvidence = currencyEvidence
+        self.needsAmountReview = needsAmountReview
+        self.needsDateReview = needsDateReview
     }
 }
 
@@ -87,8 +99,9 @@ public enum NaturalLanguageEntryParser {
         prefersDayFirst: Bool = true,
         locale: Locale = .current
     ) -> ParsedNaturalLanguageEntry {
-        var remainder = text
-        let haystack = TextScanner.normalized(text).lowercased()
+        let parts = SmartEntryTextParts(text)
+        var remainder = parts.phrase
+        let haystack = TextScanner.normalized(remainder).lowercased()
         let kind: DraftKind
         if refundKeywords.contains(where: { containsToken($0, in: haystack) }) {
             kind = .refund
@@ -98,17 +111,8 @@ public enum NaturalLanguageEntryParser {
             kind = .expense
         }
 
-        let dateResult = consumeDate(
-            from: &remainder,
-            now: now,
-            calendar: calendar,
-            prefersDayFirst: prefersDayFirst
-        )
-        // When a phrase contains an impossible explicit civil date, do not
-        // reinterpret one of its date components as money. Leave amount empty
-        // so the normal editable review path asks the user to correct it.
-        let amount = dateResult.invalidExplicitDate
-            ? nil : consumeAmount(from: &remainder, locale: locale)
+        // Exact local names may contain digits or date words. Resolve them
+        // before scanning money and dates so "Card 1234" stays one name.
         let account = consumeName(
             from: &remainder,
             in: accounts.filter { ($0.kind == .asset || $0.kind == .liability) && !$0.isArchived }
@@ -118,6 +122,21 @@ public enum NaturalLanguageEntryParser {
             from: &remainder,
             in: accounts.filter { $0.kind == categoryKind && !$0.isArchived }
         )
+        let currencyEvidence = ReceiptTextParser.currencyEvidence(in: [remainder])
+        let dateResult = consumeDate(
+            from: &remainder,
+            now: now,
+            calendar: calendar,
+            prefersDayFirst: prefersDayFirst
+        )
+        // When a phrase contains an impossible explicit civil date, do not
+        // reinterpret one of its date components as money. Leave amount empty
+        // so the normal editable review path asks the user to correct it.
+        let reading = SmartEntryAmountReading(text: remainder, locale: locale)
+        let amount = dateResult.invalidExplicitDate ? nil : reading.amount
+        if let fragment = reading.consumedText, amount != nil {
+            remove(fragment, from: &remainder)
+        }
 
         let draft = TransactionDraft(
             kind: kind,
@@ -137,7 +156,11 @@ public enum NaturalLanguageEntryParser {
                 from: remainder,
                 currencyCodes: currencyCodes,
                 localNames: accounts.map(\.name)
-            )
+            ),
+            note: parts.note,
+            currencyEvidence: currencyEvidence,
+            needsAmountReview: reading.needsReview,
+            needsDateReview: dateResult.invalidExplicitDate
         )
     }
 
@@ -243,15 +266,6 @@ public enum NaturalLanguageEntryParser {
                 locale: locale
             )
             .lowercased(with: locale)
-    }
-
-    private static func consumeAmount(
-        from text: inout String,
-        locale: Locale
-    ) -> Decimal? {
-        guard let match = TextScanner.amounts(in: text, locale: locale).first else { return nil }
-        remove(match.text, from: &text)
-        return match.value
     }
 
     private static func consumeDate(

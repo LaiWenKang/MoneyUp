@@ -28,6 +28,7 @@ extension QuickLogEntryView {
                         ordinal
                     )
                 )
+                try Task.checkCancellation()
                 try appendEvidence(draft)
             }
             evidenceMessage = AppLocalization.string("evidence.ready")
@@ -64,6 +65,7 @@ extension QuickLogEntryView {
                     data: data,
                     displayName: url.lastPathComponent
                 )
+                try Task.checkCancellation()
                 try appendEvidence(draft)
             }
             evidenceMessage = AppLocalization.string("evidence.ready")

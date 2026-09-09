@@ -28,9 +28,46 @@ extension QuickLogEntryView {
                     kindPicker(style: .segmented)
                 }
 
-                Section {
-                    primaryAmountControl
+                Section { primaryAmountControl }
 
+                if kind != .transfer { smartEntrySection }
+
+                Section {
+                    TextField(
+                        "transaction.title_or_merchant",
+                        text: trackedBinding(
+                            $payee,
+                            \.payee,
+                            refreshesOccurrenceDate: true,
+                            onUserEdit: {
+                                refreshTypedPayeeSuggestion()
+                            }
+                        )
+                    )
+                    .focused($focusedField, equals: .payee)
+                    .id(QuickLogFieldFocus.payee)
+
+                    TextField(
+                        "transaction.description_or_notes",
+                        text: trackedBinding(
+                            $note,
+                            \.note,
+                            refreshesOccurrenceDate: true
+                        ),
+                        axis: .vertical
+                    )
+                    .lineLimit(2...4)
+                    .focused($focusedField, equals: .note)
+                    .id(QuickLogFieldFocus.note)
+                    .accessibilityIdentifier("quick-log-note")
+                } header: {
+                    Text("transaction.details")
+                } footer: {
+                    Text("transaction.details_help")
+                }
+
+
+                Section {
                     Picker(
                         kind == .transfer ? "transaction.from_account" : "transaction.account",
                         selection: trackedBinding(
@@ -159,47 +196,10 @@ extension QuickLogEntryView {
                     )
                 }
 
-                if kind != .transfer {
-                    smartEntrySection
-                }
-
-                evidenceSection
-
-                Section {
-                    TextField(
-                        "transaction.title_or_merchant",
-                        text: trackedBinding(
-                            $payee,
-                            \.payee,
-                            refreshesOccurrenceDate: true,
-                            onUserEdit: {
-                                refreshTypedPayeeSuggestion()
-                            }
-                        )
-                    )
-                    .focused($focusedField, equals: .payee)
-                    .id(QuickLogFieldFocus.payee)
-
-                    TextField(
-                        "transaction.description_or_notes",
-                        text: trackedBinding(
-                            $note,
-                            \.note,
-                            refreshesOccurrenceDate: true
-                        ),
-                        axis: .vertical
-                    )
-                    .lineLimit(2...4)
-                    .focused($focusedField, equals: .note)
-                    .id(QuickLogFieldFocus.note)
-                    .accessibilityIdentifier("quick-log-note")
-                } header: {
-                    Text("transaction.details")
-                } footer: {
-                    Text("transaction.details_help")
-                }
 
                 occurrenceSection
+
+                evidenceSection
 
                 if model.userAccounts.isEmpty {
                     Section {
@@ -483,7 +483,7 @@ extension QuickLogEntryView {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
                 .tint(.moneyUpAction)
-                .disabled(!canSave || isSaving || isUndoing || isPreparingEvidence)
+                .disabled(!canSave || isSaving || isUndoing || isPreparingEvidence || isClearingDraft)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
                 .background { Color.moneyUpBackground }
@@ -500,6 +500,23 @@ extension QuickLogEntryView {
 
     private var quickLogDialogs: some View {
         quickLogBase
+        .confirmationDialog(
+            "quick_log.clear_title",
+            isPresented: Binding(
+                get: { pendingDraftClear != nil },
+                set: { if !$0 { pendingDraftClear = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("quick_log.clear_entry", role: .destructive) {
+                guard let expected = pendingDraftClear else { return }
+                pendingDraftClear = nil
+                Task { await clearConfirmedDraft(expected) }
+            }
+            Button("action.cancel", role: .cancel) { pendingDraftClear = nil }
+        } message: {
+            Text("quick_log.clear_detail")
+        }
         .confirmationDialog(
             "quick_log.unfinished_title",
             isPresented: $isConfirmingDraftSwitch,
