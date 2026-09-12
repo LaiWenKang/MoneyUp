@@ -1,17 +1,14 @@
 # MoneyUp Support
 
-MoneyUp is currently a Founders Beta. The fastest support channel for an
-installed TestFlight build is **Send Beta Feedback** in the TestFlight app.
+For MoneyUp support, email [laiwenkang99@gmail.com](mailto:laiwenkang99@gmail.com).
+Support requests can be written in English or Simplified Chinese.
+For an installed TestFlight build, you can also use **Send Beta Feedback** in the TestFlight app.
 General reproducible defects can also be reported at
 <https://github.com/LaiWenKang/MoneyUp/issues>.
 
-A public direct-contact mailbox has not yet been published. Before MoneyUp is
-submitted to the public App Store, a monitored support email must be added to
-this page. Until then, this page supports only the invited founders beta.
-
 Before reporting a problem:
 
-1. Confirm that TestFlight shows the newest available build.
+1. Check the App Store or TestFlight for the latest available version.
 2. Note the MoneyUp version shown under **Assets → Data and privacy**.
 3. Reproduce the issue once with a small sample amount if it is safe to do so.
 4. Do not reinstall or erase data when the issue concerns missing or
@@ -47,16 +44,14 @@ Support because MoneyUp cannot access or change Apple's account status.
 
 # MoneyUp 支持（简体中文）
 
-MoneyUp 目前处于首轮测试阶段。对于已安装的 TestFlight 版本，最快的支持方式
-是在 TestFlight 应用中使用“发送 Beta 版反馈”。可稳定复现的一般问题也可提交
+如需 MoneyUp 支持，请发送邮件至 [laiwenkang99@gmail.com](mailto:laiwenkang99@gmail.com)。
+可使用英文或简体中文描述问题。对于已安装的 TestFlight 版本，也可在 TestFlight
+应用中使用“发送 Beta 版反馈”。可稳定复现的一般问题也可提交
 至 <https://github.com/LaiWenKang/MoneyUp/issues>。
-
-目前尚未公布对外联系邮箱。MoneyUp 提交公开 App Store 审核前，必须在此页面
-加入有人定期查看的支持邮箱；在此之前，本页面仅服务受邀的首轮测试。
 
 提交问题前：
 
-1. 确认 TestFlight 显示的是最新可用版本。
+1. 在 App Store 或 TestFlight 中检查最新可用版本。
 2. 记录 **资产 → 数据与隐私** 中显示的 MoneyUp 版本与构建号。
 3. 在安全的情况下，用小额样例再次复现。
 4. 如果问题涉及数据丢失或无法访问，请勿重新安装应用或抹掉数据。
