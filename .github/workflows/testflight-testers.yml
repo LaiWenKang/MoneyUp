@@ -1,0 +1,99 @@
+name: TestFlight tester delivery
+
+on:
+  pull_request:
+    paths:
+      - Scripts/distribute_testflight.py
+      - Scripts/tests/test_distribute_testflight.py
+      - .github/workflows/testflight-testers.yml
+      - docs/TESTFLIGHT_WHATS_NEW.json
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Inspect access or distribute to existing testers
+        type: choice
+        options: [inspect, distribute]
+        default: inspect
+        required: true
+      build:
+        description: Exact uploaded build number
+        type: string
+        required: true
+      version:
+        description: Exact marketing version
+        type: string
+        default: '0.7.1'
+        required: true
+      confirmation:
+        description: Type DISTRIBUTE to assign groups and notify existing testers
+        type: string
+        required: false
+      expected_sha:
+        description: Exact reviewed main commit containing the delivery tooling
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: moneyup-testflight-tester-delivery-${{ github.event_name }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - run: python3 -m unittest discover -s Scripts/tests -p test_distribute_testflight.py -v
+  delivery:
+    if: github.event_name == 'workflow_dispatch' && github.actor == github.repository_owner
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: testflight
+    steps:
+      - name: Require owner, main, exact revision, and explicit write confirmation
+        env:
+          OPERATION: ${{ inputs.operation }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main
+          [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$GITHUB_SHA" = "$EXPECTED_SHA"
+          [[ "$OPERATION" = inspect || "$OPERATION" = distribute ]]
+          if [[ "$OPERATION" = distribute ]]; then
+            test "$CONFIRMATION" = DISTRIBUTE
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Inspect or assign the exact MoneyUp build
+        env:
+          ASC_KEY_ID: ${{ vars.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ vars.ASC_ISSUER_ID }}
+          ASC_API_KEY_P8: ${{ secrets.ASC_API_KEY_P8 }}
+          BUILD: ${{ inputs.build }}
+          VERSION: ${{ inputs.version }}
+          OPERATION: ${{ inputs.operation }}
+        run: |
+          set -euo pipefail
+          arguments=(--build "$BUILD" --version "$VERSION" --receipt testflight-distribution-receipt.json)
+          if [[ "$OPERATION" = distribute ]]; then
+            arguments+=(--distribute --notes docs/TESTFLIGHT_WHATS_NEW.json)
+          fi
+          python3 Scripts/distribute_testflight.py "${arguments[@]}"
+      - name: Preserve aggregate delivery receipt
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: testflight-distribution-receipt
+          path: testflight-distribution-receipt.json
+          if-no-files-found: ignore
+          retention-days: 14
