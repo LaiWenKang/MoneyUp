@@ -235,6 +235,82 @@ extension QuickLogEntryView {
         quickLogFinalForm(scrollProxy: scrollProxy)
     }
 
+    private var quickLogPrimaryLifecycle: some View {
+        quickLogFormChrome
+            .onAppear {
+                refreshUserActionTimeContext()
+                restoreDraftIfAvailable()
+                selectDefaults()
+                hasRestoredDraft = true
+                refreshUntouchedOccurrenceDate()
+                handleRequestedLaunch()
+                refreshTypedPayeeSuggestion()
+                Task { @MainActor in
+                    await Task.yield()
+                    if isActive && amountText.isEmpty && !isHandlingFocusedLaunch {
+                        focusedField = .amount
+                    }
+                }
+            }
+            .onChange(of: isActive) { _, newValue in
+                handleActiveStateChange(newValue)
+            }
+            .onChange(of: model.accounts) { _, _ in refreshTypedPayeeSuggestion() }
+            .onChange(of: accountID) { _, _ in refreshTypedPayeeSuggestion() }
+            .onChange(of: categoryID) { _, _ in refreshTypedPayeeSuggestion() }
+            .onChange(of: occurredAt) { _, _ in refreshTypedPayeeSuggestion() }
+            .onChange(of: model.profile?.merchantSuggestionsEnabled) { _, _ in refreshTypedPayeeSuggestion() }
+            .onChange(of: model.profile?.intelligenceEnabled) { _, _ in refreshTypedPayeeSuggestion() }
+            .onUserActionTimeChange(perform: refreshUserActionTimeContext)
+            .onChange(of: model.quickLogPreparationRevision) { _, _ in
+                cancelReceiptProcessing()
+                restoreDraftIfAvailable()
+                selectDefaults()
+            }
+            .onChange(of: model.logicalBookRevision) { _, _ in
+                reloadDraftForLogicalBookReplacement()
+            }
+            .onChange(of: model.state) { _, state in
+                guard state != .ready else { return }
+                cancelSmartParsing()
+                clearedEvidence = nil
+                cancelReceiptProcessing()
+                invalidateCaptureSuggestions(restoresDefaults: false)
+            }
+            .onChange(of: kind) { _, newKind in
+                if preservesCaptureSuggestionsAcrossNextKindChange {
+                    preservesCaptureSuggestionsAcrossNextKindChange = false
+                } else {
+                    cancelOnDeviceAssistance()
+                    invalidateCaptureSuggestions(restoresDefaults: false)
+                }
+                pendingDuplicateReview = nil
+                cancelReceiptProcessing()
+                receiptResult = nil
+                receiptAttachmentData = nil
+                retainReceiptAttachment = false
+                receiptRetentionMessage = nil
+                if newKind == .transfer {
+                    clearSplitFocus()
+                    splitLines = []
+                }
+                if newKind != .expense {
+                    selectedAllowanceID = nil
+                }
+                selectDefaults()
+                if newKind != .transfer, !splitLines.isEmpty {
+                    for index in splitLines.indices where !categories.contains(
+                        where: { $0.id == splitLines[index].categoryID }
+                    ) {
+                        splitLines[index].categoryID = categories.first?.id
+                    }
+                }
+                persistUserDraftChange { $0.splitLines = splitLines }
+                refreshTypedPayeeSuggestion()
+            }
+    }
+
+
     private var quickLogReceiptLifecycle: some View {
         quickLogPrimaryLifecycle
             .onChange(of: launchRequest) { _, _ in
@@ -466,91 +542,6 @@ extension QuickLogEntryView {
         )
         .interactiveDismissDisabled(isSaving)
         .presentationDetents([.large])
-    }
-
-    private var quickLogDialogs: some View {
-        quickLogBatchDialogs
-        .confirmationDialog(
-            "quick_log.clear_title",
-            isPresented: Binding(
-                get: { pendingDraftClear != nil },
-                set: { if !$0 { pendingDraftClear = nil } }
-            ),
-            titleVisibility: .visible
-        ) {
-            Button("quick_log.clear_entry", role: .destructive) {
-                guard let expected = pendingDraftClear else { return }
-                pendingDraftClear = nil
-                Task { await clearConfirmedDraft(expected) }
-            }
-            Button("action.cancel", role: .cancel) { pendingDraftClear = nil }
-        } message: {
-            Text("quick_log.clear_detail")
-        }
-        .confirmationDialog(
-            "quick_log.unfinished_title",
-            isPresented: $isConfirmingDraftSwitch,
-            titleVisibility: .visible
-        ) {
-            Button("quick_log.resume_draft") {
-                if let request = pendingLaunchRequest {
-                    onRequestHandled(request)
-                }
-                pendingLaunchRequest = nil
-                isHandlingFocusedLaunch = false
-                focusedField = .amount
-            }
-            Button("quick_log.start_new", role: .destructive) {
-                guard let request = pendingLaunchRequest else { return }
-                pendingLaunchRequest = nil
-                discardDraftAndLaunch(request)
-                onRequestHandled(request)
-            }
-            Button("action.cancel", role: .cancel) {
-                if let request = pendingLaunchRequest {
-                    onRequestHandled(request)
-                }
-                pendingLaunchRequest = nil
-            }
-        } message: {
-            Text("quick_log.unfinished_detail")
-        }
-        .onChange(of: isConfirmingDraftSwitch) { wasPresented, isPresented in
-            guard wasPresented, !isPresented,
-                  let request = pendingLaunchRequest else { return }
-            // Tapping outside the system dialog is also a cancellation. Ack it
-            // so the same external request cannot remain stuck indefinitely.
-            pendingLaunchRequest = nil
-            onRequestHandled(request)
-        }
-        .confirmationDialog(
-            "quick_log.duplicate_title",
-            isPresented: Binding(
-                get: { pendingDuplicateReview != nil },
-                set: { if !$0 { pendingDuplicateReview = nil } }
-            ),
-            titleVisibility: .visible
-        ) {
-            Button("quick_log.duplicate_save_anyway") {
-                guard let pending = pendingDuplicateReview else { return }
-                pendingDuplicateReview = nil
-                Task { await confirmDuplicateSave(pending) }
-            }
-            Button("quick_log.duplicate_review") {
-                let matchDate = pendingDuplicateReview?.historyDate
-                pendingDuplicateReview = nil
-                if dismissAfterSave {
-                    dismiss()
-                } else {
-                    navigate(to: .history(matchDate))
-                }
-            }
-            Button("action.cancel", role: .cancel) {
-                pendingDuplicateReview = nil
-            }
-        } message: {
-            Text(duplicateReviewMessage)
-        }
     }
 
     private var quickLogPresentation: some View {

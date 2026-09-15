@@ -658,8 +658,8 @@ W3_SOURCE_FUNCTION_DIGESTS: tuple[
 )
 
 W3_PATH_TYPE_DIGESTS: tuple[tuple[str, str, str, str], ...] = (
-    # Contextual preload retains the reviewed input lifecycle after extraction.
-    ("App/MoneyUp/QuickLogEntryDraft.swift", "extension", "QuickLogEntryView", "4ff76695446e967ab6c9754d973de39d323732b4da6638adae61981024f4175b"),
+    # Contextual preload retains the reviewed draft dialogs after extraction.
+    ("App/MoneyUp/QuickLogEntryDraft.swift", "extension", "QuickLogEntryView", "dddea2ecf2b74a229f3008248182bcf4cce80968f2a7cc5c15d8a6d783262d5a"),
     ('App/MoneyUp/QuickLogBatch.swift', 'enum', 'QuickLogBatchPreparation', 'b4a392813f96d592dce88fdc532816501d7ea991f59b791595e02fb7538e0273'),
     ('Sources/MoneyUpCore/SmartEntryBatchText.swift', 'enum', 'SmartEntryBatchText', '1efd0ca7104e651a464478fd2e28c491af109ce94d48b2c7d9d035f0416047f9'),
     ('App/MoneyUp/QuickLogSmartFill.swift', 'struct', 'QuickLogSmartFill', '3c98e0dc2f72aae58ef9626c1953a3239b930ad5fb465a45c8ba2e8f08ddd998'),
@@ -670,7 +670,7 @@ W3_PATH_TYPE_DIGESTS: tuple[tuple[str, str, str, str], ...] = (
         "App/MoneyUp/QuickLogEntryBody.swift",
         "extension",
         "QuickLogEntryView",
-        "5fa15053300c58847a49a53dac570e2083f1f0b1c107fdbbd02f4769a803a54e",
+        "b3842194e9dabc2afe81316850e299e25afa06f62b4336ff993e942328fa9a33",
     ),
     (
         "App/MoneyUp/QuickLogEntryReceipt.swift",
