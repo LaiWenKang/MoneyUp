@@ -8,14 +8,20 @@ struct TransactionRow: View {
     private var hidesAmounts = MoneyAmountPrivacy.defaultHidesAmounts
     let entry: JournalEntry
     let searchMatchLabel: String?
+    let budgetCategoryIDs: Set<UUID>?
+    let budgetCurrency: CurrencyCode?
 
-    init(entry: JournalEntry, searchMatchLabel: String? = nil) {
+    init(entry: JournalEntry, searchMatchLabel: String? = nil,
+         budgetCategoryIDs: Set<UUID>? = nil, budgetCurrency: CurrencyCode? = nil) {
         self.entry = entry
         self.searchMatchLabel = searchMatchLabel
+        self.budgetCategoryIDs = budgetCategoryIDs
+        self.budgetCurrency = budgetCurrency
     }
 
     private var categoryName: String? {
         entry.postings.lazy.compactMap { posting in
+            if let budgetCategoryIDs, !budgetCategoryIDs.contains(posting.accountID) { return nil }
             let account = model.accountsByID[posting.accountID]
             return account?.kind == .expense || account?.kind == .income
                 ? model.categoryPathName(for: posting.accountID)
@@ -79,7 +85,16 @@ struct TransactionRow: View {
     }
 
     private var displayedAmountsResult: DerivedValue<[TransactionDisplayAmount]> {
-        transactionDisplayAmountsResult(
+        if let budgetCategoryIDs, let budgetCurrency {
+            do {
+                let amount = try BudgetSpendingScope.amount(for: entry, categoryIDs: budgetCategoryIDs, currency: budgetCurrency)
+                return .available([TransactionDisplayAmount(
+                    money: amount.amount < .zero ? amount.negated : amount,
+                    role: amount.amount < .zero ? .refund : .expense
+                )])
+            } catch { return .unavailable(.amountCalculationFailed) }
+        }
+        return transactionDisplayAmountsResult(
             for: entry,
             accountsByID: model.accountsByID,
             isRefund: isRefund
@@ -105,6 +120,7 @@ struct TransactionRow: View {
         if let categoryName, categoryName != title { components.append(categoryName) }
         if let note = entry.note { components.append(note) }
         if let searchMatchLabel { components.append(searchMatchLabel) }
+        if budgetCategoryIDs != nil { components.append(AppLocalization.string("history.category_amount")) }
         components.append(reportingDateDescription)
         switch displayedAmountsResult {
         case let .available(amounts):
@@ -191,6 +207,9 @@ struct TransactionRow: View {
                 alignment: dynamicTypeSize.isAccessibilitySize ? .leading : .trailing,
                 spacing: 2
             ) {
+                if budgetCategoryIDs != nil {
+                    Text("history.category_amount").font(.caption2).foregroundStyle(.secondary)
+                }
                 ForEach(Array(amounts.prefix(2).enumerated()), id: \.offset) {
                     _, amount in
                     Text(formattedTransactionAmount(amount))

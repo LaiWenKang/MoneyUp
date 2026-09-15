@@ -93,6 +93,11 @@ struct BudgetPlanView: View {
                 childAllocation: presentation?.value?.progress.first { $0.node.id == node.id }?.childAllocation
             )
         }
+        .navigationDestination(for: UUID.self) { nodeID in
+            if let currency {
+                BudgetSpendingHistoryView(nodeID: nodeID, date: date, currency: currency)
+            }
+        }
         .sheet(isPresented: $isAddingCategory) { AddCategorySheet(kind: .expense) }
         .sheet(isPresented: $isManagingCategories) { CategoryManagementList() }
         .moneyUpOperationErrorAlert(message: $errorMessage)
@@ -209,27 +214,20 @@ struct BudgetPlanView: View {
         progress: BudgetProgress?,
         snapshot: MonthlyBudgetPresentation
     ) -> some View {
-        if isClosed {
+        NavigationLink(value: item.id) {
             categoryRowContent(item, progress: progress, snapshot: snapshot)
-        } else {
-            Button { editingNode = item.node } label: {
-                HStack(spacing: 10) {
-                    categoryRowContent(item, progress: progress, snapshot: snapshot)
-                    Image(systemName: "pencil").font(.caption).foregroundStyle(.secondary)
-                        .accessibilityHidden(true)
-                }
-            }
-            .buttonStyle(.plain)
-            .accessibilityHint("budget.edit")
-            .contextMenu {
+        }
+        .contextMenu {
+            if !isClosed {
+                Button("budget.edit") { editingNode = item.node }
                 Button("lifecycle.manage_categories") { isManagingCategories = true }
-                if isCurrentMonth, currency == model.profile?.baseCurrency,
-                   model.isBudgetNodePinned(item.id) || model.canPinAnotherBudgetNode {
-                    Button(model.isBudgetNodePinned(item.id) ? "plan.unpin_from_today" : "plan.pin_to_today") {
-                        Task {
-                            do { try await model.setBudgetNodePinned(item.id, isPinned: !model.isBudgetNodePinned(item.id)) }
-                            catch { errorMessage = safeUserMessage(for: error, context: .save) }
-                        }
+            }
+            if isCurrentMonth, currency == model.profile?.baseCurrency,
+               model.isBudgetNodePinned(item.id) || model.canPinAnotherBudgetNode {
+                Button(model.isBudgetNodePinned(item.id) ? "plan.unpin_from_today" : "plan.pin_to_today") {
+                    Task {
+                        do { try await model.setBudgetNodePinned(item.id, isPinned: !model.isBudgetNodePinned(item.id)) }
+                        catch { errorMessage = safeUserMessage(for: error, context: .save) }
                     }
                 }
             }
@@ -302,5 +300,107 @@ struct BudgetPlanView: View {
         let result = await model.monthlyBudgetPresentation(asOf: date, currency: currency)
         guard !Task.isCancelled, loadRequestID == request, loadIdentity == identity else { return }
         presentation = result
+    }
+}
+
+/// Derive the scope from the same period-specific hierarchy as the budget total.
+/// A visited set also makes malformed cyclic input terminate deterministically.
+enum BudgetSpendingScope {
+    static func amount(for entry: JournalEntry, categoryIDs: Set<UUID>, currency: CurrencyCode) throws -> Money {
+        var total = Decimal.zero
+        for posting in entry.postings where categoryIDs.contains(posting.accountID)
+            && posting.money.currency == currency {
+            total = try CheckedDecimal.adding(total, posting.money.amount)
+        }
+        return try Money(total, currency: currency)
+    }
+
+    static func categoryIDs(rootID: UUID, nodes: [BudgetNode]) -> Set<UUID> {
+        let children = Dictionary(grouping: nodes, by: \.parentID)
+        var result: Set<UUID> = [rootID]
+        var pending = [rootID]
+        while let parent = pending.popLast() {
+            for child in children[parent] ?? [] where result.insert(child.id).inserted {
+                pending.append(child.id)
+            }
+        }
+        return result
+    }
+}
+
+struct BudgetSpendingHistoryView: View {
+    @Environment(AppModel.self) private var model
+    @AppStorage(MoneyAmountPrivacy.storageKey)
+    private var hidesAmounts = MoneyAmountPrivacy.defaultHidesAmounts
+    @State private var presentation: DerivedValue<MonthlyBudgetPresentation>?
+    @State private var isEditing = false
+    let nodeID: UUID
+    let date: Date
+    let currency: CurrencyCode
+
+    private var identity: String {
+        "\(model.logicalBookRevision)-\(model.budgetNodesRevision)-"
+            + "\(model.journalProjectionRevision)-\(model.isJournalMutationInProgress)-"
+            + "\(model.isLifecycleMutationInProgress)"
+    }
+
+    var body: some View {
+        let _ = hidesAmounts
+        Group {
+            if let presentation {
+                switch presentation {
+                case let .available(snapshot): content(snapshot)
+                case let .unavailable(issue): DerivedValueUnavailableView(issue: issue, prominent: true)
+                }
+            } else {
+                ProgressView("budget.loading")
+            }
+        }
+        .task(id: identity) {
+            guard !model.isJournalMutationInProgress, !model.isLifecycleMutationInProgress else { return }
+            let requestedIdentity = identity
+            let result = await model.monthlyBudgetPresentation(asOf: date, currency: currency)
+            guard !Task.isCancelled, identity == requestedIdentity else { return }
+            presentation = result
+        }
+        .environment(\.calendar, model.reportingCalendar)
+        .environment(\.timeZone, model.reportingCalendar.timeZone)
+    }
+
+    @ViewBuilder
+    private func content(_ snapshot: MonthlyBudgetPresentation) -> some View {
+        if let progress = snapshot.progress.first(where: { $0.node.id == nodeID }),
+           let interval = model.reportingCalendar.dateInterval(of: .month, for: date) {
+            let categoryIDs = BudgetSpendingScope.categoryIDs(rootID: nodeID, nodes: snapshot.progress.map(\.node))
+            VStack(spacing: 0) {
+                VStack(spacing: 8) {
+                    Text(date, format: .dateTime.year().month()).font(.caption).foregroundStyle(.secondary)
+                    LabeledContent("history.spent", value: formattedMoney(progress.spent))
+                    if let remaining = progress.remaining {
+                        LabeledContent("plan.total_left", value: formattedMoney(remaining))
+                    } else {
+                        Text("intelligence.budget.no_limit").foregroundStyle(.secondary)
+                    }
+                }.padding()
+                HistoryView(preset: HistoryPreset(
+                    categoryIDs: categoryIDs,
+                    categoryPostingCurrency: currency, interval: interval
+                ), allowsFiltering: false, title: progress.node.name)
+                .id(categoryIDs)
+            }
+            .toolbar {
+                if interval.end > model.currentDateForUserAction() {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button("budget.edit") { isEditing = true }
+                    }
+                }
+            }
+            .sheet(isPresented: $isEditing) {
+                BudgetEditorSheet(node: progress.node, asOf: date, currency: currency,
+                    childAllocation: progress.childAllocation)
+            }
+        } else {
+            ContentUnavailableView("history.no_results", systemImage: "square.grid.2x2")
+        }
     }
 }

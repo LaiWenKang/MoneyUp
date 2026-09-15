@@ -85,8 +85,8 @@ struct AssetsView: View {
 
                 Section("assets.accounts") {
                     ForEach(model.userAccounts) { account in
-                        Button {
-                            editingAccount = account
+                        NavigationLink {
+                            AccountSpendingHistoryView(accountID: account.id)
                         } label: {
                             HStack(spacing: 12) {
                                 MoneyUpSymbolBadge(
@@ -542,4 +542,41 @@ extension AssetsView {
         }
     }
 
+}
+
+struct AccountSpendingHistoryView: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.appReportingSnapshot) private var snapshot
+    @AppStorage(MoneyAmountPrivacy.storageKey)
+    private var hidesAmounts = MoneyAmountPrivacy.defaultHidesAmounts
+    @State private var isEditing = false
+    let accountID: UUID
+
+    var body: some View {
+        let _ = hidesAmounts
+        if let account = model.accounts.first(where: { $0.id == accountID }) {
+            VStack(spacing: 0) {
+                switch model.accountBalanceResultForPresentation(
+                    for: account, asOf: snapshot?.instant ?? model.currentDateForUserAction()
+                ) {
+                case let .available(balance):
+                    LabeledContent("account.current_balance", value: formattedMoney(balance)).padding()
+                case let .unavailable(issue):
+                    DerivedValueUnavailableView(issue: issue).padding()
+                }
+                HistoryView(
+                    preset: HistoryPreset(accountID: accountID),
+                    allowsFiltering: false, title: account.name
+                )
+            }
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button("action.edit") { isEditing = true }
+                }
+            }
+            .sheet(isPresented: $isEditing) { AccountManagementSheet(account: account) }
+        } else {
+            ContentUnavailableView("history.no_results", systemImage: "wallet.bifold")
+        }
+    }
 }
