@@ -173,5 +173,96 @@ class DeliveryTests(unittest.TestCase):
                 m.raw_signature(invalid)
 
 
+
+class ComplianceFake(Fake):
+    def __init__(self):
+        super().__init__()
+        self.reference = {"id": "old", "attributes": {"version": "1051.1", "processingState": "VALID",
+                          "expired": False, "usesNonExemptEncryption": False}}
+        self.build["attributes"]["usesNonExemptEncryption"] = None
+        self.france = False
+        self.future = False
+        self.declarations = {}
+        self.links = {}
+
+    def all(self, path):
+        if path.startswith('/v2/appAvailabilities/'):
+            return [{"attributes": {"available": self.france}, "relationships": {"territory": {"data": {"id": "FRA"}}}}]
+        return super().all(path)
+
+    def request(self, method, path, payload=None):
+        if method == 'GET':
+            if path.endswith('/appAvailabilityV2'):
+                return {"data": {"id": "availability", "attributes": {"availableInNewTerritories": self.future}}}
+            if path.endswith('/relationships/appEncryptionDeclaration'):
+                linked = self.links.get(path.split('/')[3])
+                return {"data": {"id": linked, "type": "appEncryptionDeclarations"} if linked else None}
+            if path.startswith('/v1/appEncryptionDeclarations/'):
+                identity = path.split('/')[-1]
+                return {"data": {"id": identity, "attributes": self.declarations[identity]}}
+            if path == '/v1/builds/build':
+                return {"data": self.build}
+        elif method == 'PATCH':
+            if path == '/v1/builds/build':
+                self.writes.append((method, path, payload))
+                self.build['attributes'].update(payload['data']['attributes'])
+                return {"data": self.build}
+            if path == '/v1/builds/build/relationships/appEncryptionDeclaration':
+                self.writes.append((method, path, payload))
+                self.links['build'] = payload['data']['id']
+                self.build['attributes']['usesNonExemptEncryption'] = True
+                return {}
+        return super().request(method, path, payload)
+
+
+class ComplianceTests(unittest.TestCase):
+    def test_existing_exempt_answer_can_be_reused_after_explicit_review(self):
+        client = ComplianceFake()
+        result = m.inherit_compliance(client, client.app, client.build, client.reference, True)
+        self.assertIs(result['uses_non_exempt_encryption'], False)
+        self.assertEqual(len(client.writes), 1)
+        m.inherit_compliance(client, client.app, client.build, client.reference, True)
+        self.assertEqual(len(client.writes), 1)
+
+    def test_nonexempt_reference_requires_approved_existing_document(self):
+        client = ComplianceFake()
+        client.reference['attributes']['usesNonExemptEncryption'] = True
+        with self.assertRaises(ValueError):
+            m.inherit_compliance(client, client.app, client.build, client.reference, True)
+        client.links['old'] = 'declaration'
+        client.declarations['declaration'] = {'appEncryptionDeclarationState': 'IN_REVIEW'}
+        with self.assertRaises(ValueError):
+            m.inherit_compliance(client, client.app, client.build, client.reference, True)
+        self.assertEqual(client.writes, [])
+        client.declarations['declaration']['appEncryptionDeclarationState'] = 'APPROVED'
+        result = m.inherit_compliance(client, client.app, client.build, client.reference, True)
+        self.assertIs(result['uses_non_exempt_encryption'], True)
+        self.assertEqual(client.links['build'], 'declaration')
+
+    def test_unknown_reference_or_conflicting_answer_cannot_be_guessed(self):
+        for prior, target in [(None, None), (False, True), (True, False)]:
+            client = ComplianceFake()
+            client.reference['attributes']['usesNonExemptEncryption'] = prior
+            client.build['attributes']['usesNonExemptEncryption'] = target
+            with self.assertRaises(ValueError):
+                m.inherit_compliance(client, client.app, client.build, client.reference, True)
+            self.assertEqual(client.writes, [])
+
+    def test_explicit_review_and_unchanged_territory_settings_are_required(self):
+        for reviewed, france, future in [(False, False, False), (True, True, False),
+                                        (True, False, True), (True, None, False)]:
+            client = ComplianceFake()
+            client.france, client.future = france, future
+            with self.assertRaises(ValueError):
+                m.inherit_compliance(client, client.app, client.build, client.reference, reviewed)
+            self.assertEqual(client.writes, [])
+
+    def test_unprocessed_target_cannot_be_changed(self):
+        client = ComplianceFake()
+        client.build['attributes']['processingState'] = 'PROCESSING'
+        with self.assertRaises(ValueError):
+            m.inherit_compliance(client, client.app, client.build, client.reference, True)
+        self.assertEqual(client.writes, [])
+
 if __name__ == '__main__':
     unittest.main()

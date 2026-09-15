@@ -12,7 +12,7 @@ on:
       operation:
         description: Inspect access or distribute to existing testers
         type: choice
-        options: [inspect, distribute]
+        options: [inspect, distribute, inherit-compliance]
         default: inspect
         required: true
       build:
@@ -25,9 +25,17 @@ on:
         default: '0.7.1'
         required: true
       confirmation:
-        description: Type DISTRIBUTE to assign groups and notify existing testers
+        description: Type DISTRIBUTE for delivery or INHERIT_COMPLIANCE for a reviewed reference
         type: string
         required: false
+      reference_build:
+        description: Prior build with completed compliance for unchanged app encryption
+        type: string
+        required: false
+      encryption_unchanged:
+        description: The target and reference app encryption and dependencies were compared and are unchanged
+        type: boolean
+        default: false
       expected_sha:
         description: Exact reviewed main commit containing the delivery tooling
         type: string
@@ -66,9 +74,11 @@ jobs:
           test "$GITHUB_REF" = refs/heads/main
           [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
           test "$GITHUB_SHA" = "$EXPECTED_SHA"
-          [[ "$OPERATION" = inspect || "$OPERATION" = distribute ]]
+          [[ "$OPERATION" = inspect || "$OPERATION" = distribute || "$OPERATION" = inherit-compliance ]]
           if [[ "$OPERATION" = distribute ]]; then
             test "$CONFIRMATION" = DISTRIBUTE
+          elif [[ "$OPERATION" = inherit-compliance ]]; then
+            test "$CONFIRMATION" = INHERIT_COMPLIANCE
           fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -82,11 +92,20 @@ jobs:
           BUILD: ${{ inputs.build }}
           VERSION: ${{ inputs.version }}
           OPERATION: ${{ inputs.operation }}
+          REFERENCE_BUILD: ${{ inputs.reference_build }}
+          ENCRYPTION_UNCHANGED: ${{ inputs.encryption_unchanged }}
         run: |
           set -euo pipefail
           arguments=(--build "$BUILD" --version "$VERSION" --receipt testflight-distribution-receipt.json)
           if [[ "$OPERATION" = distribute ]]; then
             arguments+=(--distribute --notes docs/TESTFLIGHT_WHATS_NEW.json)
+          fi
+          if [[ -n "$REFERENCE_BUILD" ]]; then
+            arguments+=(--reference-build "$REFERENCE_BUILD")
+          fi
+          if [[ "$OPERATION" = inherit-compliance ]]; then
+            test "$ENCRYPTION_UNCHANGED" = true
+            arguments+=(--inherit-compliance --encryption-unchanged)
           fi
           python3 Scripts/distribute_testflight.py "${arguments[@]}"
       - name: Preserve aggregate delivery receipt

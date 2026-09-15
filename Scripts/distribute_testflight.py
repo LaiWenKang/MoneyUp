@@ -73,7 +73,7 @@ class NoRedirect(HTTPRedirectHandler):
 def safe_url(path: str) -> str:
     url = path if path.startswith("https://") else ORIGIN + path
     parts = urlsplit(url)
-    if parts.scheme != "https" or parts.netloc != urlsplit(ORIGIN).netloc or not parts.path.startswith("/v1/"):
+    if parts.scheme != "https" or parts.netloc != urlsplit(ORIGIN).netloc or not parts.path.startswith(("/v1/", "/v2/")):
         raise ValueError("App Store Connect origin boundary")
     if parts.fragment or parts.username or parts.password:
         raise ValueError("Invalid App Store Connect URL")
@@ -227,16 +227,84 @@ def deliver(client, app, build, notes: dict, distribute: bool):
     return result
 
 
+def compliance(client, build):
+    linkage = client.request("GET", f'/v1/builds/{build["id"]}/relationships/appEncryptionDeclaration').get("data")
+    declaration = None
+    if linkage:
+        declaration = client.request("GET", f'/v1/appEncryptionDeclarations/{linkage["id"]}')["data"]
+    attributes = declaration.get("attributes", {}) if declaration else {}
+    summary = {"uses_non_exempt_encryption": build["attributes"].get("usesNonExemptEncryption"),
+        "declaration": {key: attributes.get(key) for key in ["usesEncryption", "exempt",
+            "containsProprietaryCryptography", "containsThirdPartyCryptography", "availableOnFrenchStore",
+            "appEncryptionDeclarationState"]} if declaration else None}
+    return declaration, summary
+
+
+def availability(client, app_id):
+    record = client.request("GET", f"/v1/apps/{app_id}/appAvailabilityV2")["data"]
+    territories = client.all(f'/v2/appAvailabilities/{record["id"]}/territoryAvailabilities?include=territory&limit=200')
+    france = one([row for row in territories if row.get("relationships", {}).get("territory", {}).get("data", {}).get("id") == "FRA"], "France availability")
+    return {"france_available": france["attributes"].get("available"),
+            "future_countries_enabled": record["attributes"].get("availableInNewTerritories")}
+
+
+def inherit_compliance(client, app, build, reference, encryption_unchanged):
+    if not encryption_unchanged or build["id"] == reference["id"]:
+        raise ValueError("An independently reviewed unchanged-encryption reference is required")
+    if build["attributes"].get("processingState") != "VALID" or build["attributes"].get("expired"):
+        raise ValueError("Target build is not a valid active build")
+    territory_state = availability(client, app["id"])
+    if territory_state != {"france_available": False, "future_countries_enabled": False}:
+        raise ValueError("France exclusion and future-country settings must be verified first")
+    if reference["attributes"].get("processingState") != "VALID" or reference["attributes"].get("expired"):
+        raise ValueError("Reference build is not a valid active build")
+    declaration, previous = compliance(client, reference)
+    prior_value = previous["uses_non_exempt_encryption"]
+    target_value = build["attributes"].get("usesNonExemptEncryption")
+    if target_value is not None and target_value != prior_value:
+        raise ValueError("An existing compliance answer cannot be overwritten")
+    if prior_value is False:
+        if target_value is None:
+            current_declaration, _ = compliance(client, build)
+            if current_declaration:
+                raise ValueError("A linked encryption declaration needs separate review")
+            client.request("PATCH", f'/v1/builds/{build["id"]}', {"data": {
+                "type": "builds", "id": build["id"], "attributes": {"usesNonExemptEncryption": False}}})
+    elif prior_value is True and declaration and declaration["attributes"].get("appEncryptionDeclarationState") == "APPROVED":
+        current = client.request("GET", f'/v1/builds/{build["id"]}/relationships/appEncryptionDeclaration').get("data")
+        if current and current["id"] != declaration["id"]:
+            raise ValueError("An existing encryption declaration cannot be replaced")
+        if not current:
+            client.request("PATCH", f'/v1/builds/{build["id"]}/relationships/appEncryptionDeclaration',
+                {"data": {"type": "appEncryptionDeclarations", "id": declaration["id"]}})
+    else:
+        raise ValueError("Reference has no reusable completed compliance result")
+    updated = client.request("GET", f'/v1/builds/{build["id"]}')["data"]
+    _, result = compliance(client, updated)
+    result.update(reference_build=reference["attributes"]["version"], availability=territory_state)
+    if result["uses_non_exempt_encryption"] != prior_value:
+        raise ValueError("Apple has not confirmed the inherited compliance result")
+    return result
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--build", required=True)
     parser.add_argument("--version", required=True)
-    parser.add_argument("--distribute", action="store_true")
+    operation = parser.add_mutually_exclusive_group()
+    operation.add_argument("--distribute", action="store_true")
+    operation.add_argument("--inherit-compliance", action="store_true")
+    parser.add_argument("--reference-build")
+    parser.add_argument("--encryption-unchanged", action="store_true")
     parser.add_argument("--notes", type=Path)
     parser.add_argument("--receipt", type=Path, required=True)
     args = parser.parse_args()
     if not re.fullmatch(r"[0-9]+(?:\.[0-9]+){0,2}", args.build) or not re.fullmatch(r"[0-9]+(?:\.[0-9]+){1,2}", args.version):
         raise ValueError("Invalid version or build number")
+    if args.reference_build and not re.fullmatch(r"[0-9]+(?:\.[0-9]+){0,2}", args.reference_build):
+        raise ValueError("Invalid reference build")
+    if args.inherit_compliance and (not args.reference_build or not args.encryption_unchanged):
+        raise ValueError("Explicit reference and unchanged-encryption review required")
     key_id, issuer = os.environ["ASC_KEY_ID"], os.environ["ASC_ISSUER_ID"]
     if not re.fullmatch(r"[A-Z0-9]{10}", key_id) or not re.fullmatch(r"[0-9a-fA-F-]{36}", issuer):
         raise ValueError("Invalid App Store Connect credential identifiers")
@@ -250,9 +318,22 @@ def main():
         with os.fdopen(fd, "w") as handle:
             handle.write(secret)
         del secret
-        client = Client(key, key_id, issuer, args.distribute)
+        client = Client(key, key_id, issuer, args.distribute or args.inherit_compliance)
         app, build = locate(client, args.version, args.build)
-        result = deliver(client, app, build, notes, args.distribute)
+        if args.inherit_compliance:
+            reference_app, reference = locate(client, args.version, args.reference_build)
+            if reference_app["id"] != app["id"]:
+                raise ValueError("Reference app differs from target")
+            result = inherit_compliance(client, app, build, reference, args.encryption_unchanged)
+        else:
+            result = deliver(client, app, build, notes, args.distribute)
+            _, result["compliance"] = compliance(client, build)
+            result["availability"] = availability(client, app["id"])
+            if args.reference_build:
+                reference_app, reference = locate(client, args.version, args.reference_build)
+                if reference_app["id"] != app["id"]:
+                    raise ValueError("Reference app differs from target")
+                _, result["reference_compliance"] = compliance(client, reference)
     result.update(version=args.version, build=args.build)
     args.receipt.write_text(json.dumps(result, indent=2) + "\n")
     print(json.dumps(result, indent=2))
