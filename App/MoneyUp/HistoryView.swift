@@ -521,7 +521,9 @@ struct HistoryView: View {
                                             entry: entry,
                                             searchMatchLabel: attachmentMatchLabel(
                                                 attachmentMatchesByEntryID[entry.id]
-                                            )
+                                            ),
+                                            budgetCategoryIDs: allowsFiltering ? nil : filters.categoryIDs,
+                                            budgetCurrency: allowsFiltering ? nil : filters.categoryPostingCurrency
                                         )
                                             .contentShape(Rectangle())
                                     }

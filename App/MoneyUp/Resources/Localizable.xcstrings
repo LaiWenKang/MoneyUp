@@ -1,6 +1,7 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "history.category_amount" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"In this category"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"本分类金额"}}}},
     "capture.review_detail" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Private captures are saved for review. Confirm the account and category, then save to include them in transactions and balances. An existing draft is reviewed first."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"私密记录已保存，等待核对。确认账户与分类后保存，即可计入交易记录和余额。如有未完成草稿，请先完成该草稿。"}}}},
     "capture.review_title" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Unfinished entries"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"待完成记录"}}}},
     "cloud.status.verifying" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Verifying the downloaded backup"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"正在验证下载的备份"}}}},

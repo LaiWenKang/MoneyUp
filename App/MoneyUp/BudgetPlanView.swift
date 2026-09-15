@@ -306,6 +306,15 @@ struct BudgetPlanView: View {
 /// Derive the scope from the same period-specific hierarchy as the budget total.
 /// A visited set also makes malformed cyclic input terminate deterministically.
 enum BudgetSpendingScope {
+    static func amount(for entry: JournalEntry, categoryIDs: Set<UUID>, currency: CurrencyCode) throws -> Money {
+        var total = Decimal.zero
+        for posting in entry.postings where categoryIDs.contains(posting.accountID)
+            && posting.money.currency == currency {
+            total = try CheckedDecimal.adding(total, posting.money.amount)
+        }
+        return try Money(total, currency: currency)
+    }
+
     static func categoryIDs(rootID: UUID, nodes: [BudgetNode]) -> Set<UUID> {
         let children = Dictionary(grouping: nodes, by: \.parentID)
         var result: Set<UUID> = [rootID]

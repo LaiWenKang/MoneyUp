@@ -19,6 +19,28 @@ final class NavigationPresentationTests: XCTestCase {
         }
     }
 
+    func testBudgetRowAmountIncludesOnlyMatchingSplitAndCurrency() throws {
+        let food = UUID(), travel = UUID(), wallet = UUID()
+        let sgd = try CurrencyCode("SGD"), usd = try CurrencyCode("USD")
+        let entry = try JournalEntry(kind: .expense, postings: [
+            Posting(accountID: food, money: Money(12.30, currency: sgd)),
+            Posting(accountID: travel, money: Money(7.70, currency: sgd)),
+            Posting(accountID: wallet, money: Money(-20, currency: sgd)),
+            Posting(accountID: food, money: Money(5, currency: usd)),
+            Posting(accountID: wallet, money: Money(-5, currency: usd))
+        ])
+        XCTAssertEqual(try BudgetSpendingScope.amount(for: entry, categoryIDs: [food], currency: sgd),
+            try Money(12.30, currency: sgd))
+        XCTAssertEqual(try BudgetSpendingScope.amount(for: entry, categoryIDs: [food, travel], currency: sgd),
+            try Money(20, currency: sgd))
+        let refund = try JournalEntry(kind: .expense, postings: [
+            Posting(accountID: food, money: Money(-2.30, currency: sgd)),
+            Posting(accountID: wallet, money: Money(2.30, currency: sgd))
+        ])
+        XCTAssertEqual(try BudgetSpendingScope.amount(for: refund, categoryIDs: [food], currency: sgd),
+            try Money(-2.30, currency: sgd))
+    }
+
     func testBudgetSpendingScopeIncludesOnlySelectedSubtree() {
         let root = BudgetNode(name: "Food")
         let child = BudgetNode(parentID: root.id, name: "Lunch")
