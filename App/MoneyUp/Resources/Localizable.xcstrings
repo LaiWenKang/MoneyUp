@@ -1,6 +1,8 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "capture.review_detail" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Private captures are saved for review. Confirm the account and category, then save to include them in transactions and balances. An existing draft is reviewed first."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"私密记录已保存，等待核对。确认账户与分类后保存，即可计入交易记录和余额。如有未完成草稿，请先完成该草稿。"}}}},
+    "capture.review_title" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Unfinished entries"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"待完成记录"}}}},
     "cloud.status.verifying" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Verifying the downloaded backup"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"正在验证下载的备份"}}}},
     "cloud.beta.detail" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"iCloud backup is in beta. MoneyUp downloads and checks each backup before reporting success. Keep a separate encrypted file until you have tested recovery."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"iCloud 备份目前为测试功能。MoneyUp 会下载并验证每份备份后才报告成功。在完成恢复验证前，请另外保存一份加密备份文件。"}}}},
     "cloud.unavailable.build" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"iCloud backup is not available in this version of MoneyUp."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"此版本的 MoneyUp 尚不支持 iCloud 备份。"}}}},
@@ -766,7 +768,7 @@
     "capture.add_details" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Add optional details"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"添加可选详情"}}}},
     "capture.save" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Capture privately"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"私密记录"}}}},
     "capture.saved_title" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Captured privately"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"已私密记录"}}}},
-    "capture.saved_detail" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"No balance was opened. Review the account and category after your next unlock."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"未打开任何余额。请在下次解锁后检查账户与分类。"}}}},
+    "capture.saved_detail" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Saved as an unfinished entry. After unlocking, open History to review the account and category, then save it to your transactions."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"已保存为待完成记录。解锁后，打开历史记录核对账户与分类，再保存为交易。"}}}},
     "capture.pending_count" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Pending captures: %d"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"%d 笔待检查记录"}}}},
     "capture.review_now" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Unlock and review now"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"立即解锁并检查"}}}},
     "settings.auto_lock" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Require unlock after"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"离开多久后需要解锁"}}}},

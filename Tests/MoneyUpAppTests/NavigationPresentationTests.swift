@@ -1,9 +1,44 @@
 @testable import MoneyUp
 import Foundation
+import MoneyUpCore
 import SwiftUI
 import XCTest
 
 final class NavigationPresentationTests: XCTestCase {
+    func testAssetHistoryPresetRetainsAccountAcrossDateShortcuts() {
+        let accountID = UUID()
+        var filters = HistoryFilterDraft(preset: HistoryPreset(accountID: accountID))
+        XCTAssertEqual(filters.accountID, accountID)
+        XCTAssertNil(filters.categoryIDs)
+        XCTAssertFalse(filters.includesStartDate)
+        XCTAssertFalse(filters.includesEndDate)
+        XCTAssertTrue(filters.hasActiveFilters)
+        for range in HistoryQuickRange.allCases {
+            filters.applyQuickRange(range, asOf: Date(), calendar: Calendar(identifier: .gregorian))
+            XCTAssertEqual(filters.accountID, accountID)
+        }
+    }
+
+    func testBudgetSpendingScopeIncludesOnlySelectedSubtree() {
+        let root = BudgetNode(name: "Food")
+        let child = BudgetNode(parentID: root.id, name: "Lunch")
+        let grandchild = BudgetNode(parentID: child.id, name: "Office")
+        let unrelated = BudgetNode(name: "Travel")
+        let nodes = [root, child, grandchild, unrelated]
+        XCTAssertEqual(BudgetSpendingScope.categoryIDs(rootID: root.id, nodes: nodes),
+            [root.id, child.id, grandchild.id])
+        XCTAssertEqual(BudgetSpendingScope.categoryIDs(rootID: child.id, nodes: nodes),
+            [child.id, grandchild.id])
+    }
+
+    func testBudgetSpendingScopeTerminatesOnCycles() {
+        var parent = BudgetNode(name: "Parent")
+        let child = BudgetNode(parentID: parent.id, name: "Child")
+        parent.parentID = child.id
+        XCTAssertEqual(BudgetSpendingScope.categoryIDs(rootID: parent.id, nodes: [parent, child]),
+            [parent.id, child.id])
+    }
+
     func testPlanSelectorExpandsOnlyTheCurrentSection() {
         XCTAssertEqual(PlanSection.ordered, PlanSection.allCases)
         XCTAssertEqual(Set(PlanSection.ordered.map(\.systemImage)).count, 3)

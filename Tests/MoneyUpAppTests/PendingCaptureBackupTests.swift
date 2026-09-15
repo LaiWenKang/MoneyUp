@@ -8,6 +8,26 @@ final class PendingCaptureBackupTests: XCTestCase {
     private let password = "Synthetic backup password"
 
     @MainActor
+    func testHistoryReviewPreservesExistingDraftBeforePromotingCapture() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let capture = LockedCapture(kind: .expense, amountText: "12.30", payee: "Lunch")
+        let inbox = InMemoryLockedCaptureStore(captures: [capture])
+        let draft = QuickLogDraft(kind: .income, amountText: "900", destinationAmountText: "",
+            accountID: fixture.wallet.id, destinationAccountID: nil, categoryID: nil,
+            occurredAt: Date(), dateWasEdited: true, payee: "Salary", note: "Keep", smartText: "")
+        let model = fixture.model(quickLogDraft: draft, lockedCaptureStore: inbox)
+        try await model.reviewPendingLockedCapturesForBackup()
+        XCTAssertEqual(model.quickLogDraft, draft)
+        XCTAssertEqual(model.requestedQuickLogMode, .income)
+        XCTAssertEqual(model.pendingLockedCaptureCount, 1)
+        let remaining = try await inbox.all()
+        XCTAssertEqual(remaining, [capture])
+        XCTAssertTrue(model.entries.isEmpty)
+        await fixture.store.close()
+    }
+
+    @MainActor
     func testRepeatedBackupsKeepExistingDraftAndEveryCaptureWithoutDuplicates() async throws {
         let fixture = try AppModelFixture()
         defer { fixture.removeFiles() }

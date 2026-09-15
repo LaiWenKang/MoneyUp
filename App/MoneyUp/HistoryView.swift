@@ -4,16 +4,19 @@ import SwiftUI
 import UIKit
 
 struct HistoryPreset: Equatable {
+    let accountID: UUID?
     let categoryIDs: Set<UUID>?
     let categoryPostingCurrency: CurrencyCode?
     let interval: DateInterval?
 
     init(
+        accountID: UUID? = nil,
         categoryID: UUID? = nil,
         categoryIDs: Set<UUID>? = nil,
         categoryPostingCurrency: CurrencyCode? = nil,
         interval: DateInterval? = nil
     ) {
+        self.accountID = accountID
         self.categoryIDs = categoryIDs ?? categoryID.map { Set([$0]) }
         self.categoryPostingCurrency = categoryPostingCurrency
         self.interval = interval
@@ -54,6 +57,7 @@ struct HistoryFilterDraft: Hashable {
         startDate = calendar.dateInterval(of: .month, for: now)?.start ?? now
         endDate = now
 
+        accountID = preset?.accountID
         categoryIDs = preset?.categoryIDs
         categoryPostingCurrency = preset?.categoryPostingCurrency
         includesSubcategories = preset == nil
@@ -301,16 +305,22 @@ struct HistoryView: View {
         HistoryPerformanceMeasurement?
     @State private var quickRange: HistoryQuickRange?
     @State private var lastAppliedRollingDay: ReportingDayIdentity?
+    let allowsFiltering: Bool
+    let title: String?
     let returnOrigin: HistoryReturnOrigin?
     let onReturnToOrigin: @MainActor () -> Void
 
     init(
         preset: HistoryPreset? = nil,
+        allowsFiltering: Bool = true,
+        title: String? = nil,
         returnOrigin: HistoryReturnOrigin? = nil,
         onReturnToOrigin: @escaping @MainActor () -> Void = {}
     ) {
         _filters = State(initialValue: HistoryFilterDraft(preset: preset))
         _quickRange = State(initialValue: preset == nil ? .today : nil)
+        self.allowsFiltering = allowsFiltering
+        self.title = title
         self.returnOrigin = returnOrigin
         self.onReturnToOrigin = onReturnToOrigin
     }
@@ -393,6 +403,8 @@ struct HistoryView: View {
     var body: some View {
         let _ = hidesAmounts
         return List {
+            PendingCaptureHistorySection()
+            if allowsFiltering {
             Section {
                 HistoryScopeSelector(selection: $quickRange)
                     .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
@@ -411,6 +423,7 @@ struct HistoryView: View {
                 }
             }
 
+            }
                 if !model.journalRecentEntriesAreCurrent {
                     Section {
                         DerivedValueUnavailableView(issue: .appNotReady)
@@ -574,7 +587,7 @@ struct HistoryView: View {
             .scrollDismissesKeyboard(.interactively)
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
-            .navigationTitle("tab.history")
+            .navigationTitle(title ?? AppLocalization.string("tab.history"))
             .moneyUpNavigationSurface()
             .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "history.search")
             .onAppear {
@@ -1041,5 +1054,32 @@ extension HistoryView {
             return
         }
         Task { await loadNextPage() }
+    }
+}
+
+struct PendingCaptureHistorySection: View {
+    @Environment(AppModel.self) private var model
+    @State private var isReviewing = false
+    @State private var errorMessage: String?
+
+    var body: some View {
+        if model.pendingLockedCaptureCount > 0 || model.quickLogDraft != nil {
+            Section("capture.review_title") {
+                Text("capture.review_detail").font(.caption).foregroundStyle(.secondary)
+                Button("backup.review_pending_captures") {
+                    Task { await review() }
+                }
+                .disabled(isReviewing || model.isWorking || model.isJournalMutationInProgress)
+            }
+            .moneyUpOperationErrorAlert(message: $errorMessage)
+        }
+    }
+
+    private func review() async {
+        guard !isReviewing else { return }
+        isReviewing = true
+        defer { isReviewing = false }
+        do { try await model.reviewPendingLockedCapturesForBackup() }
+        catch { errorMessage = safeUserMessage(for: error, context: .save) }
     }
 }
