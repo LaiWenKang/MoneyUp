@@ -6,14 +6,12 @@ import SwiftUI
 import UIKit
 
 extension QuickLogEntryView {
-    var body: some View {
-        quickLogPresentation
-    }
+    var body: some View { quickLogPresentation }
 
     private var quickLogNavigation: some View {
         NavigationStack {
             ScrollViewReader { scrollProxy in
-                quickLogForm(scrollProxy: scrollProxy)
+                quickLogFinalForm(scrollProxy: scrollProxy)
             }
         }
     }
@@ -31,6 +29,8 @@ extension QuickLogEntryView {
                 batchReviewControls
 
                 Section { primaryAmountControl }
+
+                if !historyPreloads.isEmpty { Section { historyPreloadRows } }
 
                 smartEntrySection
 
@@ -68,7 +68,6 @@ extension QuickLogEntryView {
                     Text("transaction.details_help")
                 }
 
-
                 Section {
                     Picker(
                         kind == .transfer ? "transaction.from_account" : "transaction.account",
@@ -104,6 +103,8 @@ extension QuickLogEntryView {
                         }
                         if isForeignCurrencyTransfer {
                             destinationAmountControl
+                            Button("fx.custom_transfer_rate") { isEnteringManualRate = true }
+                                .disabled(amount == nil)
 
                             if case let .available(.some(conversion)) =
                                 historicalFXConversionResult {
@@ -204,7 +205,6 @@ extension QuickLogEntryView {
                     )
                 }
 
-
                 occurrenceSection
 
                 evidenceSection
@@ -227,12 +227,8 @@ extension QuickLogEntryView {
         }
     }
 
-    private func quickLogForm(scrollProxy: ScrollViewProxy) -> some View {
-        quickLogFinalForm(scrollProxy: scrollProxy)
-    }
-
     private var quickLogPrimaryLifecycle: some View {
-        quickLogFormChrome
+        quickLogHistoryPreloadChrome
             .onAppear {
                 refreshUserActionTimeContext()
                 restoreDraftIfAvailable()
@@ -240,6 +236,7 @@ extension QuickLogEntryView {
                 hasRestoredDraft = true
                 refreshUntouchedOccurrenceDate()
                 handleRequestedLaunch()
+                refreshTypedPayeeSuggestion()
                 Task { @MainActor in
                     await Task.yield()
                     if isActive && amountText.isEmpty && !isHandlingFocusedLaunch {
@@ -295,6 +292,7 @@ extension QuickLogEntryView {
                     }
                 }
                 persistUserDraftChange { $0.splitLines = splitLines }
+                refreshTypedPayeeSuggestion()
             }
     }
 
@@ -436,6 +434,7 @@ extension QuickLogEntryView {
             }
             .scrollDismissesKeyboard(.interactively)
             .contentMargins(.bottom, focusedField == nil ? 72 : 200, for: .scrollContent)
+            .sheet(isPresented: $isEnteringManualRate) { manualTransferRateSheet }
             .sheet(isPresented: $isAddingAccount, onDismiss: {
                 selectDefaults()
                 if isActive { focusedField = .amount }

@@ -448,6 +448,9 @@ struct QuickLogEntryView: View {
     @State var receiptScanBaseline: ReceiptScanBaseline?
     @State var receiptProtectedFields = Set<PartialKeyPath<QuickLogDraft>>()
     @State var receiptResult: ReceiptParseResult?
+    @State var historyPreloadBookRevision: UInt64?
+    @State var historyPreloads: [HistoryPreloadSuggestion] = []
+    @State var isEnteringManualRate = false
     @State var captureSuggestionResult: CaptureSuggestionResult?
     @State var captureSuggestionTask: Task<Void, Never>?
     @State var captureSuggestionGeneration = 0

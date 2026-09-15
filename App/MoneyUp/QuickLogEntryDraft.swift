@@ -93,6 +93,7 @@ extension QuickLogEntryView {
             return
         }
         refreshUserActionTimeContext()
+        refreshTypedPayeeSuggestion()
         if amountText.isEmpty { focusedField = .amount }
     }
 

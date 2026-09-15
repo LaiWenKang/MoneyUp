@@ -320,9 +320,12 @@ extension QuickLogEntryView {
             }
 
             if let captureSuggestionResult,
-               captureSuggestionResult.accountSuggestion != nil
-                || (splitLines.isEmpty
-                    && captureSuggestionResult.categorySuggestion != nil) {
+               (!accountWasEdited && !smartState.manualFields.contains(.account)
+                    && !smartState.automaticFields.contains(.account) && captureSuggestionResult.accountSuggestion != nil
+                    && captureSuggestionResult.accountSuggestion?.ledgerAccountID != accountID)
+                || (splitLines.isEmpty && !categoryWasEdited && !smartState.manualFields.contains(.category)
+                    && !smartState.automaticFields.contains(.category) && captureSuggestionResult.categorySuggestion != nil
+                    && captureSuggestionResult.categorySuggestion?.ledgerAccountID != categoryID) {
                 captureSuggestions(captureSuggestionResult)
             }
 

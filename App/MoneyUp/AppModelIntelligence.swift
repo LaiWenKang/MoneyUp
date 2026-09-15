@@ -228,3 +228,41 @@ extension AppModel {
         return date
     }
 }
+
+
+extension AppModel {
+    func historyPreloadSuggestions(for query: CaptureSuggestionQuery,
+                                   eligibleCategoryIDs: Set<UUID>, accountID: UUID? = nil,
+                                   categoryID: UUID? = nil) async -> (
+        fields: CaptureSuggestionResult, merchants: [HistoryPreloadSuggestion]
+    ) {
+        let empty = (fields: CaptureSuggestionResult(queryFingerprint: query.fingerprint,
+            accountSuggestion: nil, categorySuggestion: nil), merchants: [HistoryPreloadSuggestion]())
+        guard state == .ready, profile?.intelligenceEnabled == true,
+              profile?.merchantSuggestionsEnabled != false,
+              !isBookReplacementInProgress,
+              let read = try? beginLogicalBookRead() else { return empty }
+        let eligibleAccounts = accounts.filter {
+            ($0.kind != .expense && $0.kind != .income) || eligibleCategoryIDs.contains($0.id)
+        }
+        let calendar = reportingCalendar
+        do {
+            let page = try await read.store.fetchJournalEntryPage(
+                startDate: query.occurredAt.addingTimeInterval(-180 * 86_400),
+                endDateExclusive: Date(timeIntervalSinceReferenceDate:
+                    query.occurredAt.timeIntervalSinceReferenceDate.nextUp), limit: 200)
+            try requireLogicalBookRead(read.token)
+            guard profile?.intelligenceEnabled == true,
+                  profile?.merchantSuggestionsEnabled != false,
+                  page.issues.isEmpty else { return try await finishLogicalBookRead(empty, token: read.token) }
+            let result = await Task.detached(priority: .utility) {
+                (fields: CaptureSuggestionEngine.suggestions(for: query, entries: page.entries,
+                    accounts: eligibleAccounts),
+                 merchants: HistoryPreload.suggestions(for: query, entries: page.entries,
+                    accounts: eligibleAccounts, calendar: calendar,
+                    accountID: accountID, categoryID: categoryID))
+            }.value
+            return try await finishLogicalBookRead(result, token: read.token)
+        } catch { return empty }
+    }
+}

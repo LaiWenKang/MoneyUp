@@ -1,8 +1,10 @@
 import Foundation
 import MoneyUpCore
+import MoneyUpPersistence
 @testable import MoneyUp
 import SwiftUI
 import UIKit
+import Vision
 import XCTest
 
 final class QuickLogSmartEntryRenderTests: XCTestCase {
@@ -61,6 +63,89 @@ final class QuickLogSmartEntryRenderTests: XCTestCase {
         }
         model.flushQuickLogDraftImmediately()
         await model.waitForPendingQuickLogDraftFlush()
+        await fixture.store.close()
+    }
+}
+
+
+extension QuickLogSmartEntryRenderTests {
+    @MainActor
+    func testHistoryPreloadAndManualRateLayouts() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let now = Date()
+        let entries = try [100.0, 200].map {
+            try TransactionFactory.expense(amount: Money(7, currency: fixture.sgd),
+                paidFrom: fixture.wallet.id, category: fixture.food.id,
+                occurredAt: now.addingTimeInterval(-$0), payee: "Morning Coffee")
+        }
+        try await fixture.seed(profile: UserProfile(baseCurrency: fixture.sgd),
+            accounts: [fixture.wallet, fixture.food], entries: entries)
+        let model = fixture.model(entries: entries)
+        let predictions = await model.historyPreloadSuggestions(for: CaptureSuggestionQuery(
+            kind: .expense, currency: fixture.sgd, occurredAt: now), eligibleCategoryIDs: [fixture.food.id])
+        let prediction = try XCTUnwrap(predictions.merchants.first)
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        let priorWindow = scene.windows.first { $0.isKeyWindow }
+        defer {
+            window.isHidden = true
+            window.rootViewController = nil
+            priorWindow?.makeKey()
+        }
+        let defaults = try XCTUnwrap(AppLanguagePreference.defaults)
+        let priorLanguage = defaults.string(forKey: AppLanguagePreference.storageKey)
+        defer {
+            if let priorLanguage { defaults.set(priorLanguage, forKey: AppLanguagePreference.storageKey) }
+            else { defaults.removeObject(forKey: AppLanguagePreference.storageKey) }
+        }
+        for language in ["en", "zh-Hans"] {
+            defaults.set(language, forKey: AppLanguagePreference.storageKey)
+            for mode in [0, 1, 2] {
+                let rate = mode == 1
+                window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+                let content: AnyView = mode == 2
+                    ? AnyView(Form {
+                        HistoryPreloadCard(suggestion: prediction, accountName: "Wallet", categoryName: "Food",
+                            available: QuickLogHistoryPreloadFill.fields, canApplyAll: true,
+                            apply: { _ in XCTFail("Rendering must not fill the draft") }, expanded: true)
+                    })
+                    : rate
+                    ? AnyView(ManualTransferRateSheet(source: try Money(100, currency: fixture.sgd),
+                        destination: fixture.usd, apply: { _ in XCTFail("Rendering must not apply a rate") }))
+                    : AnyView(QuickLogEntryView(kind: .constant(.expense), dismissAfterSave: false,
+                        isActive: false, launchRequest: nil, onRequestHandled: { _ in }, onNavigate: { _ in }))
+                let host = UIHostingController(rootView: content.environment(model)
+                    .environment(\.locale, Locale(identifier: language)))
+                window.rootViewController = host
+                window.makeKeyAndVisible()
+                host.view.frame = window.bounds
+                var image = UIImage()
+                var merchantVisible = false
+                for _ in 0..<20 {
+                    try await Task.sleep(for: .milliseconds(250))
+                    host.view.layoutIfNeeded()
+                    image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+                        window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+                    }
+                    if rate { break }
+                    let request = VNRecognizeTextRequest()
+                    request.recognitionLevel = .accurate
+                    try VNImageRequestHandler(cgImage: XCTUnwrap(image.cgImage), options: [:]).perform([request])
+                    merchantVisible = request.results?.contains {
+                        $0.topCandidates(1).first?.string.contains("Morning Coffee") == true
+                    } == true
+                    if merchantVisible { break }
+                }
+                if !rate { XCTAssertTrue(merchantVisible, "The preload must be visible before scrolling") }
+                let attachment = XCTAttachment(image: image)
+                attachment.name = "context-preload-\(mode)-\(language)"
+                attachment.lifetime = .keepAlways
+                add(attachment)
+                XCTAssertEqual(model.entries.count, 2)
+                XCTAssertTrue(model.quickLogDraft?.payee.isEmpty ?? true)
+            }
+        }
         await fixture.store.close()
     }
 }
