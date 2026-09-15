@@ -1409,11 +1409,15 @@ extension HistoryPreloadTests {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
         let now = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 9, day: 15, hour: 8)))
-        let entries = try [7, 14, 21].flatMap { days in
-            [try f.expense(amount: 6, account: f.bank, category: f.coffee,
-                at: now.addingTimeInterval(-Double(days) * 86_400), payee: "Cafe"),
-             try f.expense(amount: 24, account: f.bank, category: f.coffee,
-                at: now.addingTimeInterval(-Double(days) * 86_400 + 10 * 3_600), payee: "Cafe")]
+        var entries: [JournalEntry] = []
+        for days: Int in [7, 14, 21] {
+            let elapsed: TimeInterval = Double(days) * 86_400
+            let morning = now.addingTimeInterval(-elapsed)
+            let evening = morning.addingTimeInterval(36_000)
+            entries.append(try f.expense(amount: 6, account: f.bank, category: f.coffee,
+                at: morning, payee: "Cafe"))
+            entries.append(try f.expense(amount: 24, account: f.bank, category: f.coffee,
+                at: evening, payee: "Cafe"))
         }
         let query = CaptureSuggestionQuery(kind: .expense, currency: f.sgd, occurredAt: now)
         let result = HistoryPreload.suggestions(for: query, entries: entries,
