@@ -12,7 +12,7 @@ on:
       operation:
         description: Inspect access or distribute to existing testers
         type: choice
-        options: [inspect, distribute, inherit-compliance]
+        options: [inspect, distribute, distribute-internal, inherit-compliance]
         default: inspect
         required: true
       build:
@@ -25,7 +25,7 @@ on:
         default: '0.7.1'
         required: true
       confirmation:
-        description: Type DISTRIBUTE for delivery or INHERIT_COMPLIANCE for a reviewed reference
+        description: Type DISTRIBUTE, DISTRIBUTE_INTERNAL, or INHERIT_COMPLIANCE for the chosen operation
         type: string
         required: false
       reference_build:
@@ -74,9 +74,11 @@ jobs:
           test "$GITHUB_REF" = refs/heads/main
           [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
           test "$GITHUB_SHA" = "$EXPECTED_SHA"
-          [[ "$OPERATION" = inspect || "$OPERATION" = distribute || "$OPERATION" = inherit-compliance ]]
+          [[ "$OPERATION" = inspect || "$OPERATION" = distribute || "$OPERATION" = distribute-internal || "$OPERATION" = inherit-compliance ]]
           if [[ "$OPERATION" = distribute ]]; then
             test "$CONFIRMATION" = DISTRIBUTE
+          elif [[ "$OPERATION" = distribute-internal ]]; then
+            test "$CONFIRMATION" = DISTRIBUTE_INTERNAL
           elif [[ "$OPERATION" = inherit-compliance ]]; then
             test "$CONFIRMATION" = INHERIT_COMPLIANCE
           fi
@@ -99,6 +101,8 @@ jobs:
           arguments=(--build "$BUILD" --version "$VERSION" --receipt testflight-distribution-receipt.json)
           if [[ "$OPERATION" = distribute ]]; then
             arguments+=(--distribute --notes docs/TESTFLIGHT_WHATS_NEW.json)
+          elif [[ "$OPERATION" = distribute-internal ]]; then
+            arguments+=(--distribute-internal --notes docs/TESTFLIGHT_WHATS_NEW.json)
           fi
           if [[ -n "$REFERENCE_BUILD" ]]; then
             arguments+=(--reference-build "$REFERENCE_BUILD")

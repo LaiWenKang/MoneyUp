@@ -227,6 +227,49 @@ def deliver(client, app, build, notes: dict, distribute: bool):
     return result
 
 
+def internal_access(client, app_id: str, build_id: str):
+    groups = client.all(f"/v1/apps/{app_id}/betaGroups?limit=200")
+    internal = {group["id"]: group for group in groups
+                if group.get("attributes", {}).get("isInternalGroup") is True}
+    testers, covered, rows = set(), set(), []
+    for group_id in sorted(internal):
+        members = {row["id"] for row in client.all(
+            f"/v1/betaGroups/{group_id}/relationships/betaTesters?limit=200")}
+        builds = client.all(f"/v1/betaGroups/{group_id}/relationships/builds?limit=200")
+        assigned = any(row["id"] == build_id for row in builds)
+        testers.update(members)
+        if assigned:
+            covered.update(members)
+        rows.append({"id": group_id, "assigned": assigned})
+    detail = client.request("GET", f"/v1/builds/{build_id}/buildBetaDetail")["data"]
+    state = detail["attributes"].get("internalBuildState")
+    all_assigned = bool(rows) and all(row["assigned"] for row in rows)
+    return rows, {"scope": "internal", "internal_groups": len(rows),
+        "internal_testers": len(testers), "covered_internal_testers": len(covered),
+        "internal_state": state, "all_internal_assigned": all_assigned,
+        "internal_available": bool(testers) and all_assigned and state in READY}
+
+
+def deliver_internal(client, app, build, notes: dict):
+    """Assign only existing internal groups; never initiate external delivery."""
+    if build["attributes"].get("expired") or build["attributes"].get("processingState") != "VALID":
+        raise ValueError("Build is expired or not processed")
+    rows, summary = internal_access(client, app["id"], build["id"])
+    if not summary["internal_testers"] or summary["internal_state"] not in READY:
+        raise ValueError("An eligible build and existing internal testers are required")
+    set_notes(client, build["id"], notes)
+    for row in rows:
+        if not row["assigned"]:
+            client.request("POST", f'/v1/betaGroups/{row["id"]}/relationships/builds',
+                {"data": [{"type": "builds", "id": build["id"]}]})
+    _, result = internal_access(client, app["id"], build["id"])
+    updated = client.request("GET", f'/v1/builds/{build["id"]}')["data"]
+    result["processing_state"] = updated["attributes"].get("processingState")
+    result["internal_available"] = (result["internal_available"]
+        and result["processing_state"] == "VALID" and not updated["attributes"].get("expired"))
+    return result
+
+
 def compliance(client, build):
     linkage = client.request("GET", f'/v1/builds/{build["id"]}/relationships/appEncryptionDeclaration').get("data")
     declaration = None
@@ -293,6 +336,7 @@ def main():
     parser.add_argument("--version", required=True)
     operation = parser.add_mutually_exclusive_group()
     operation.add_argument("--distribute", action="store_true")
+    operation.add_argument("--distribute-internal", action="store_true")
     operation.add_argument("--inherit-compliance", action="store_true")
     parser.add_argument("--reference-build")
     parser.add_argument("--encryption-unchanged", action="store_true")
@@ -309,7 +353,7 @@ def main():
     if not re.fullmatch(r"[A-Z0-9]{10}", key_id) or not re.fullmatch(r"[0-9a-fA-F-]{36}", issuer):
         raise ValueError("Invalid App Store Connect credential identifiers")
     notes = json.loads(args.notes.read_text()) if args.notes else {}
-    if args.distribute and (not notes or any(not isinstance(k, str) or not isinstance(v, str) or not v.strip() or len(v) > 4000 for k, v in notes.items())):
+    if (args.distribute or args.distribute_internal) and (not notes or any(not isinstance(k, str) or not isinstance(v, str) or not v.strip() or len(v) > 4000 for k, v in notes.items())):
         raise ValueError("Reviewed localized test notes are required")
     secret = os.environ.pop("ASC_API_KEY_P8")
     with tempfile.TemporaryDirectory(prefix="moneyup-asc-") as directory:
@@ -318,7 +362,7 @@ def main():
         with os.fdopen(fd, "w") as handle:
             handle.write(secret)
         del secret
-        client = Client(key, key_id, issuer, args.distribute or args.inherit_compliance)
+        client = Client(key, key_id, issuer, args.distribute or args.distribute_internal or args.inherit_compliance)
         app, build = locate(client, args.version, args.build)
         if args.inherit_compliance:
             reference_app, reference = locate(client, args.version, args.reference_build)
@@ -326,7 +370,8 @@ def main():
                 raise ValueError("Reference app differs from target")
             result = inherit_compliance(client, app, build, reference, args.encryption_unchanged)
         else:
-            result = deliver(client, app, build, notes, args.distribute)
+            result = (deliver_internal(client, app, build, notes) if args.distribute_internal
+                      else deliver(client, app, build, notes, args.distribute))
             _, result["compliance"] = compliance(client, build)
             result["availability"] = availability(client, app["id"])
             if args.reference_build:
