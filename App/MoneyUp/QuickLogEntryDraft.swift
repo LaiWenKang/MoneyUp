@@ -6,6 +6,82 @@ import SwiftUI
 import UIKit
 
 extension QuickLogEntryView {
+    var quickLogPrimaryLifecycle: some View {
+        quickLogFormChrome
+            .onAppear {
+                refreshUserActionTimeContext()
+                restoreDraftIfAvailable()
+                selectDefaults()
+                hasRestoredDraft = true
+                refreshUntouchedOccurrenceDate()
+                handleRequestedLaunch()
+                refreshTypedPayeeSuggestion()
+                Task { @MainActor in
+                    await Task.yield()
+                    if isActive && amountText.isEmpty && !isHandlingFocusedLaunch {
+                        focusedField = .amount
+                    }
+                }
+            }
+            .onChange(of: isActive) { _, newValue in
+                handleActiveStateChange(newValue)
+            }
+            .onChange(of: model.accounts) { _, _ in refreshTypedPayeeSuggestion() }
+            .onChange(of: accountID) { _, _ in refreshTypedPayeeSuggestion() }
+            .onChange(of: categoryID) { _, _ in refreshTypedPayeeSuggestion() }
+            .onChange(of: occurredAt) { _, _ in refreshTypedPayeeSuggestion() }
+            .onChange(of: model.profile?.merchantSuggestionsEnabled) { _, _ in refreshTypedPayeeSuggestion() }
+            .onChange(of: model.profile?.intelligenceEnabled) { _, _ in refreshTypedPayeeSuggestion() }
+            .onUserActionTimeChange(perform: refreshUserActionTimeContext)
+            .onChange(of: model.quickLogPreparationRevision) { _, _ in
+                cancelReceiptProcessing()
+                restoreDraftIfAvailable()
+                selectDefaults()
+            }
+            .onChange(of: model.logicalBookRevision) { _, _ in
+                reloadDraftForLogicalBookReplacement()
+            }
+            .onChange(of: model.state) { _, state in
+                guard state != .ready else { return }
+                cancelSmartParsing()
+                clearedEvidence = nil
+                cancelReceiptProcessing()
+                invalidateCaptureSuggestions(restoresDefaults: false)
+            }
+            .onChange(of: kind) { _, newKind in
+                if preservesCaptureSuggestionsAcrossNextKindChange {
+                    preservesCaptureSuggestionsAcrossNextKindChange = false
+                } else {
+                    cancelOnDeviceAssistance()
+                    invalidateCaptureSuggestions(restoresDefaults: false)
+                }
+                pendingDuplicateReview = nil
+                cancelReceiptProcessing()
+                receiptResult = nil
+                receiptAttachmentData = nil
+                retainReceiptAttachment = false
+                receiptRetentionMessage = nil
+                if newKind == .transfer {
+                    clearSplitFocus()
+                    splitLines = []
+                }
+                if newKind != .expense {
+                    selectedAllowanceID = nil
+                }
+                selectDefaults()
+                if newKind != .transfer, !splitLines.isEmpty {
+                    for index in splitLines.indices where !categories.contains(
+                        where: { $0.id == splitLines[index].categoryID }
+                    ) {
+                        splitLines[index].categoryID = categories.first?.id
+                    }
+                }
+                persistUserDraftChange { $0.splitLines = splitLines }
+                refreshTypedPayeeSuggestion()
+            }
+    }
+
+
     var draftSnapshot: QuickLogDraft {
         var snapshot = QuickLogDraft(
             kind: kind,
@@ -93,6 +169,7 @@ extension QuickLogEntryView {
             return
         }
         refreshUserActionTimeContext()
+        refreshTypedPayeeSuggestion()
         if amountText.isEmpty { focusedField = .amount }
     }
 

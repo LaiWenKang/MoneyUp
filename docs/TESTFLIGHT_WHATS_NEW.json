@@ -1,4 +1,4 @@
 {
-  "en-US": "Private capture: open History after unlocking to review unfinished entries, confirm the account and category, and save once. Plan: tap a category for transactions, merchant, exact category amount (including splits and refunds), spending and remaining budget. Assets: tap an account for its balance and transactions. Check hidden amounts and larger text sizes.",
-  "zh-Hans": "私密记录：解锁后打开历史记录，核对待完成记录的账户与分类并保存。计划：点按分类查看交易、商户、本分类金额（含拆分交易与退款）、支出和预算余额。资产：点按账户查看余额与交易明细。请检查隐藏金额和大字体显示。"
+  "en-US": "Quick Log: preview contextual suggestions for merchant, amount, account and category. Use the main arrow to fill untouched fields, or expand individual field arrows. Your edited and cleared fields stay protected. Suggestions use local transaction history, date and time; uncertain amounts stay blank. Transfers: enter your own forward or reverse exchange rate and preview the received amount before applying. Please test draft resume, hidden amounts, large text, and currency/account accuracy.",
+  "zh-Hans": "快速记账：预览根据情境推荐的商家、金额、账户和分类。点按主箭头填入未修改字段，或展开后逐项选择。保留你已编辑及主动清空的字段。建议依据本机交易历史、日期和时间；金额依据不足时留空。转账：输入自定正向或反向汇率，预览到账金额后应用。请测试草稿恢复、隐藏金额、大字体及币种与账户准确性。"
 }

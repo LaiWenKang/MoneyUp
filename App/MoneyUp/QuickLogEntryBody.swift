@@ -32,6 +32,8 @@ extension QuickLogEntryView {
 
                 Section { primaryAmountControl }
 
+                if !historyPreloads.isEmpty { Section { historyPreloadRows } }
+
                 smartEntrySection
 
                 Section {
@@ -104,6 +106,8 @@ extension QuickLogEntryView {
                         }
                         if isForeignCurrencyTransfer {
                             destinationAmountControl
+                            Button("fx.custom_transfer_rate") { isEnteringManualRate = true }
+                                .disabled(amount == nil)
 
                             if case let .available(.some(conversion)) =
                                 historicalFXConversionResult {
@@ -229,73 +233,6 @@ extension QuickLogEntryView {
 
     private func quickLogForm(scrollProxy: ScrollViewProxy) -> some View {
         quickLogFinalForm(scrollProxy: scrollProxy)
-    }
-
-    private var quickLogPrimaryLifecycle: some View {
-        quickLogFormChrome
-            .onAppear {
-                refreshUserActionTimeContext()
-                restoreDraftIfAvailable()
-                selectDefaults()
-                hasRestoredDraft = true
-                refreshUntouchedOccurrenceDate()
-                handleRequestedLaunch()
-                Task { @MainActor in
-                    await Task.yield()
-                    if isActive && amountText.isEmpty && !isHandlingFocusedLaunch {
-                        focusedField = .amount
-                    }
-                }
-            }
-            .onChange(of: isActive) { _, newValue in
-                handleActiveStateChange(newValue)
-            }
-            .onUserActionTimeChange(perform: refreshUserActionTimeContext)
-            .onChange(of: model.quickLogPreparationRevision) { _, _ in
-                cancelReceiptProcessing()
-                restoreDraftIfAvailable()
-                selectDefaults()
-            }
-            .onChange(of: model.logicalBookRevision) { _, _ in
-                reloadDraftForLogicalBookReplacement()
-            }
-            .onChange(of: model.state) { _, state in
-                guard state != .ready else { return }
-                cancelSmartParsing()
-                clearedEvidence = nil
-                cancelReceiptProcessing()
-                invalidateCaptureSuggestions(restoresDefaults: false)
-            }
-            .onChange(of: kind) { _, newKind in
-                if preservesCaptureSuggestionsAcrossNextKindChange {
-                    preservesCaptureSuggestionsAcrossNextKindChange = false
-                } else {
-                    cancelOnDeviceAssistance()
-                    invalidateCaptureSuggestions(restoresDefaults: false)
-                }
-                pendingDuplicateReview = nil
-                cancelReceiptProcessing()
-                receiptResult = nil
-                receiptAttachmentData = nil
-                retainReceiptAttachment = false
-                receiptRetentionMessage = nil
-                if newKind == .transfer {
-                    clearSplitFocus()
-                    splitLines = []
-                }
-                if newKind != .expense {
-                    selectedAllowanceID = nil
-                }
-                selectDefaults()
-                if newKind != .transfer, !splitLines.isEmpty {
-                    for index in splitLines.indices where !categories.contains(
-                        where: { $0.id == splitLines[index].categoryID }
-                    ) {
-                        splitLines[index].categoryID = categories.first?.id
-                    }
-                }
-                persistUserDraftChange { $0.splitLines = splitLines }
-            }
     }
 
     private var quickLogReceiptLifecycle: some View {
@@ -436,6 +373,22 @@ extension QuickLogEntryView {
             }
             .scrollDismissesKeyboard(.interactively)
             .contentMargins(.bottom, focusedField == nil ? 72 : 200, for: .scrollContent)
+            .sheet(isPresented: $isEnteringManualRate) {
+                if let amount, let source = selectedAccountCurrency,
+                   let destination = selectedDestinationCurrency,
+                   let money = try? Money(amount, currency: source) {
+                    ManualTransferRateSheet(source: money, destination: destination) { converted in
+                        guard self.amount == amount, selectedAccountCurrency == source,
+                              selectedDestinationCurrency == destination,
+                              isForeignCurrencyTransfer else { return }
+                        cancelSmartParsing()
+                        cancelOnDeviceAssistance()
+                        smartState.edited(.receivedAmount)
+                        destinationAmountText = editableAmount(converted.amount)
+                        persistUserDraftChange { $0.destinationAmountText = destinationAmountText }
+                    }
+                }
+            }
             .sheet(isPresented: $isAddingAccount, onDismiss: {
                 selectDefaults()
                 if isActive { focusedField = .amount }

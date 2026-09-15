@@ -126,3 +126,50 @@ struct ExchangeRateEditorSheet: View {
     }
 
 }
+
+struct ManualTransferRateSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let source: Money
+    let destination: CurrencyCode
+    let apply: (Money) -> Void
+    @State private var rateText = ""
+    @State private var inverse = false
+
+    private var converted: Money? {
+        guard let rate = decimalAmount(from: rateText) else { return nil }
+        return try? ManualCurrencyConversion.convert(source: source, to: destination, rate: rate, inverse: inverse)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Text("1 \(inverse ? destination.value : source.currency.value) = \(rateText.isEmpty ? "…" : rateText) \(inverse ? source.currency.value : destination.value)")
+                        .font(.headline.monospacedDigit())
+                    Toggle("fx.inverse_input", isOn: $inverse)
+                    TextField("fx.quote_per_base", text: $rateText)
+                        .keyboardType(.decimalPad)
+                        .accessibilityIdentifier("manual-transfer-rate")
+                    if let converted {
+                        Text("transaction.received_amount").font(.caption)
+                        Text("\(destination.value) \(MoneyAmountPrivacy.protected(editableAmount(converted.amount)))")
+                            .font(.title3.monospacedDigit())
+                    } else if !rateText.isEmpty {
+                        Text("fx.custom_rate_invalid").foregroundStyle(.secondary)
+                    }
+                    Button("fx.apply_custom_rate") {
+                        guard let converted else { return }
+                        apply(converted)
+                        dismiss()
+                    }
+                    .disabled(converted == nil)
+                } footer: {
+                    Text("fx.custom_transfer_detail")
+                }
+            }
+            .navigationTitle("fx.custom_transfer_rate")
+            .toolbar { MoneyUpKeyboardDoneToolbar() }
+            .moneyUpProtectDraft(hasChanges: !rateText.isEmpty, isSaving: false)
+        }
+    }
+}

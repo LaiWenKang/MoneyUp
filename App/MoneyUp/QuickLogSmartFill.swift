@@ -73,3 +73,64 @@ struct QuickLogSmartFill {
             }
     }
 }
+
+/// A single application policy for the full preview and every field arrow.
+/// Manual edits (including an explicitly cleared field), parser values, split
+/// work and captured records retain their authority across draft restoration.
+enum QuickLogHistoryPreloadFill {
+    static let fields: Set<QuickLogSmartField> = [.payee, .amount, .account, .category]
+
+    static func fill(_ suggestion: HistoryPreloadSuggestion, current: QuickLogDraft,
+                     accounts: [LedgerAccount], only requested: Set<QuickLogSmartField> = fields) -> QuickLogDraft {
+        var result = current
+        let kind: CaptureIntelligenceKind = switch current.kind {
+        case .expense: .expense
+        case .income: .income
+        case .refund: .refund
+        case .transfer: .transfer
+        }
+        guard kind == suggestion.kind, current.splitLines.isEmpty,
+              current.selectedAllowanceID == nil,
+              let account = accounts.first(where: {
+                  $0.id == suggestion.fields.accountSuggestion?.ledgerAccountID && !$0.isArchived
+                      && $0.systemRole == nil && ($0.kind == .asset || $0.kind == .liability)
+                      && $0.currency == suggestion.currency
+              }),
+              let category = accounts.first(where: {
+                  $0.id == suggestion.fields.categorySuggestion?.ledgerAccountID && !$0.isArchived
+                      && $0.systemRole == nil && $0.kind == (current.kind == .income ? .income : .expense)
+                      && ($0.currency == nil || $0.currency == suggestion.currency)
+              }) else { return current }
+        let protected = current.smartState.manualFields.union(current.smartState.automaticFields)
+        // Partial merchant input can narrow a pattern without granting
+        // permission to replace that text. Unrelated patterns cannot apply.
+        if let typed = PayeeNormalization.key(current.payee),
+           PayeeNormalization.key(suggestion.payee)?.contains(typed) != true { return current }
+        if requested.contains(.payee), !protected.contains(.payee), current.payee.isEmpty {
+            result.payee = suggestion.payee
+            result.smartState.edited(.payee)
+        }
+        if requested.contains(.account), !protected.contains(.account), !current.accountWasEdited,
+           current.amountText.isEmpty, current.sourceCaptureID == nil {
+            result.accountID = account.id
+            result.accountWasEdited = true
+            result.smartState.edited(.account)
+        }
+        let effectiveAccount = accounts.first { $0.id == result.accountID && !$0.isArchived }
+        guard effectiveAccount?.currency == suggestion.currency else { return current }
+        if requested.contains(.amount), !protected.contains(.amount), current.amountText.isEmpty,
+           let money = suggestion.amount, money.currency == suggestion.currency,
+           money.amount > .zero, MonetaryInputPolicy.accepts(money.amount, currency: money.currency),
+           effectiveAccount?.id == account.id {
+            result.amountText = editableAmount(money.amount)
+            result.smartState.edited(.amount)
+        }
+        if requested.contains(.category), !protected.contains(.category), !current.categoryWasEdited,
+           current.sourceCaptureID == nil, effectiveAccount?.id == account.id {
+            result.categoryID = category.id
+            result.categoryWasEdited = true
+            result.smartState.edited(.category)
+        }
+        return result
+    }
+}

@@ -1354,3 +1354,113 @@ private struct CaptureIntelligenceFixture {
         case invalidUUID
     }
 }
+
+final class HistoryPreloadTests: XCTestCase {
+    func testRequiresRepeatedHistoryAndFiltersCurrencyKindAndFuture() throws {
+        let f = try CaptureIntelligenceFixture()
+        let entries = try [100.0, 200].map {
+            try f.expense(amount: 6, account: f.bank, category: f.coffee,
+                at: f.date($0), payee: "Coffee")
+        }
+        let query = CaptureSuggestionQuery(kind: .expense, currency: f.sgd, occurredAt: f.date(300))
+        let calendar = Calendar(identifier: .gregorian)
+        XCTAssertTrue(HistoryPreload.suggestions(for: query, entries: Array(entries.prefix(1)),
+            accounts: f.accounts, calendar: calendar).isEmpty)
+        let result = HistoryPreload.suggestions(for: query, entries: entries,
+            accounts: f.accounts, calendar: calendar)
+        XCTAssertEqual(result.map(\.payee), ["Coffee"])
+        XCTAssertEqual(result.first?.supportingCount, 2)
+        for wrong in [
+            CaptureSuggestionQuery(kind: .expense, currency: f.usd, occurredAt: f.date(300)),
+            CaptureSuggestionQuery(kind: .refund, currency: f.sgd, occurredAt: f.date(300)),
+            CaptureSuggestionQuery(kind: .income, currency: f.sgd, occurredAt: f.date(300)),
+            CaptureSuggestionQuery(kind: .expense, currency: f.sgd, occurredAt: f.date(50))
+        ] {
+            XCTAssertTrue(HistoryPreload.suggestions(for: wrong, entries: entries,
+                accounts: f.accounts, calendar: calendar).isEmpty)
+        }
+        XCTAssertTrue(HistoryPreload.suggestions(for: query, entries: entries,
+            accounts: [f.bank], calendar: calendar).isEmpty)
+    }
+
+    func testRanksRecentHistoryDeterministicallyAndFiltersTypedPayee() throws {
+        let f = try CaptureIntelligenceFixture()
+        let entries = try [(100.0, "Old"), (200, "Old"), (300, "Recent"), (400, "Recent")].map {
+            try f.expense(amount: 6, account: f.bank, category: f.coffee,
+                at: f.date($0.0), payee: $0.1)
+        }
+        let query = CaptureSuggestionQuery(kind: .expense, currency: f.sgd, occurredAt: f.date(500))
+        let calendar = Calendar(identifier: .gregorian)
+        let result = HistoryPreload.suggestions(for: query, entries: entries,
+            accounts: f.accounts, calendar: calendar)
+        XCTAssertEqual(result.first?.payee, "Recent")
+        XCTAssertEqual(result, HistoryPreload.suggestions(for: query, entries: entries.reversed(),
+            accounts: f.accounts, calendar: calendar))
+        let typed = CaptureSuggestionQuery(kind: .expense, payee: "rec", currency: f.sgd,
+            occurredAt: f.date(500))
+        XCTAssertEqual(HistoryPreload.suggestions(for: typed, entries: entries,
+            accounts: f.accounts, calendar: calendar).map(\.payee), ["Recent"])
+    }
+}
+
+extension HistoryPreloadTests {
+    func testTimeContextSelectsObservedAmountWithoutAveraging() throws {
+        let f = try CaptureIntelligenceFixture()
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let now = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 9, day: 15, hour: 8)))
+        let entries = try [7, 14, 21].flatMap { days in
+            [try f.expense(amount: 6, account: f.bank, category: f.coffee,
+                at: now.addingTimeInterval(-Double(days) * 86_400), payee: "Cafe"),
+             try f.expense(amount: 24, account: f.bank, category: f.coffee,
+                at: now.addingTimeInterval(-Double(days) * 86_400 + 10 * 3_600), payee: "Cafe")]
+        }
+        let query = CaptureSuggestionQuery(kind: .expense, currency: f.sgd, occurredAt: now)
+        let result = HistoryPreload.suggestions(for: query, entries: entries,
+            accounts: f.accounts, calendar: calendar)
+        XCTAssertEqual(result.first?.amount?.amount, 6)
+        XCTAssertEqual(result, HistoryPreload.suggestions(for: query, entries: entries.reversed(),
+            accounts: f.accounts.reversed(), calendar: calendar))
+        let evening = CaptureSuggestionQuery(kind: .expense, currency: f.sgd,
+            occurredAt: now.addingTimeInterval(10 * 3_600))
+        XCTAssertEqual(HistoryPreload.suggestions(for: evening, entries: entries,
+            accounts: f.accounts, calendar: calendar).first?.amount?.amount, 24)
+    }
+
+    func testVariableAmountsAbstainAndBankConstraintKeepsPatternsTogether() throws {
+        let f = try CaptureIntelligenceFixture()
+        let entries = try [(6, f.bank, f.coffee), (8, f.bank, f.coffee),
+                           (24, f.card, f.groceries), (24, f.card, f.groceries)].enumerated().map { index, value in
+            try f.expense(amount: Decimal(value.0), account: value.1, category: value.2,
+                at: f.date(Double(index)), payee: "Cafe")
+        }
+        let query = CaptureSuggestionQuery(kind: .expense, currency: f.sgd, occurredAt: f.date(100))
+        let bank = HistoryPreload.suggestions(for: query, entries: entries, accounts: f.accounts,
+            calendar: Calendar(identifier: .gregorian), accountID: f.bank.id).first
+        XCTAssertNil(bank?.amount)
+        XCTAssertEqual(bank?.fields.categorySuggestion?.ledgerAccountID, f.coffee.id)
+        let card = HistoryPreload.suggestions(for: query, entries: entries, accounts: f.accounts,
+            calendar: Calendar(identifier: .gregorian), accountID: f.card.id).first
+        XCTAssertEqual(card?.amount?.amount, 24)
+        XCTAssertEqual(card?.fields.categorySuggestion?.ledgerAccountID, f.groceries.id)
+    }
+}
+
+extension HistoryPreloadTests {
+    func testMonthEndContextSupportsRecurringAmountAcrossDifferentMonthLengths() throws {
+        let f = try CaptureIntelligenceFixture()
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        func date(_ month: Int, _ day: Int) throws -> Date {
+            try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: month, day: day, hour: 9)))
+        }
+        let entries = try [(7, 31, 30), (8, 31, 30), (7, 15, 6), (8, 15, 6)].map {
+            try f.expense(amount: Decimal($0.2), account: f.bank, category: f.coffee,
+                at: date($0.0, $0.1), payee: "Cafe")
+        }
+        let result = HistoryPreload.suggestions(for: CaptureSuggestionQuery(kind: .expense,
+            currency: f.sgd, occurredAt: try date(9, 30)), entries: entries,
+            accounts: f.accounts, calendar: calendar)
+        XCTAssertEqual(result.first?.amount?.amount, 30)
+    }
+}
