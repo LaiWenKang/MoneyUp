@@ -18,6 +18,7 @@ class Fake:
         self.individual = set()
         self.reviewed = False
         self.external = 'READY_FOR_BETA_SUBMISSION'
+        self.internal = 'IN_BETA_TESTING'
         self.groups = [{'id': 'internal', 'attributes': {'isInternalGroup': True}},
                        {'id': 'external', 'attributes': {'isInternalGroup': False}}]
         self.app = {'id': 'app', 'attributes': {'bundleId': m.BUNDLE}}
@@ -48,11 +49,13 @@ class Fake:
 
     def request(self, method, path, payload=None):
         if method == 'GET':
+            if path == '/v1/builds/build':
+                return {'data': self.build}
             if path.endswith('/preReleaseVersion'):
                 return {'data': {'attributes': {'version': '0.7.1', 'platform': 'IOS'}}}
             if path.endswith('/buildBetaDetail'):
                 return {'data': {'id': 'detail', 'attributes': {'autoNotifyEnabled': True,
-                        'internalBuildState': 'IN_BETA_TESTING', 'externalBuildState': self.external}}}
+                        'internalBuildState': self.internal, 'externalBuildState': self.external}}}
             raise AssertionError(path)
         self.writes.append((method, path, payload))
         if '/betaGroups/' in path:
@@ -172,6 +175,89 @@ class DeliveryTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 m.raw_signature(invalid)
 
+
+
+class InternalDeliveryTests(unittest.TestCase):
+    def test_assigns_only_internal_groups_without_external_actions(self):
+        client = Fake()
+        result = m.deliver_internal(client, client.app, client.build, {'en-US': 'Reviewed notes'})
+        self.assertEqual(client.assigned, {'internal'})
+        self.assertEqual(client.individual, set())
+        self.assertFalse(client.reviewed)
+        self.assertEqual(client.external, 'READY_FOR_BETA_SUBMISSION')
+        self.assertEqual([path for _, path, _ in client.writes],
+                         ['/v1/betaGroups/internal/relationships/builds'])
+        self.assertEqual(result['covered_internal_testers'], 1)
+        self.assertTrue(result['internal_available'])
+        self.assertNotIn('email', json.dumps(result))
+        self.assertNotIn('id', result)
+
+    def test_repeat_is_idempotent_and_internal_only_build_is_supported(self):
+        client = Fake()
+        client.build['attributes']['buildAudienceType'] = 'INTERNAL_ONLY'
+        first = m.deliver_internal(client, client.app, client.build, {'en-US': 'Reviewed notes'})
+        writes = list(client.writes)
+        second = m.deliver_internal(client, client.app, client.build, {'en-US': 'Reviewed notes'})
+        self.assertEqual(first, second)
+        self.assertEqual(client.writes, writes)
+
+    def test_ineligible_builds_and_missing_internal_groups_fail_before_writing(self):
+        for reason in ['expired', 'processing', 'compliance', 'external-only', 'unknown-scope']:
+            with self.subTest(reason=reason):
+                client = Fake()
+                if reason == 'expired':
+                    client.build['attributes']['expired'] = True
+                elif reason == 'processing':
+                    client.build['attributes']['processingState'] = 'PROCESSING'
+                elif reason == 'compliance':
+                    client.internal = 'MISSING_EXPORT_COMPLIANCE'
+                elif reason == 'external-only':
+                    client.groups = client.groups[1:]
+                else:
+                    client.groups[0]['attributes']['isInternalGroup'] = None
+                with self.assertRaises(ValueError):
+                    m.deliver_internal(client, client.app, client.build, {'en-US': 'Reviewed notes'})
+                self.assertEqual(client.writes, [])
+
+    def test_counts_unique_members_and_verifies_assignment_instead_of_assuming_success(self):
+        client = Fake()
+        client.groups.append({'id': 'internal-second', 'attributes': {'isInternalGroup': True}})
+        original_all = client.all
+        def reads(path):
+            if '/internal-second/relationships/betaTesters' in path:
+                return [{'id': 'one'}]
+            return original_all(path)
+        client.all = reads
+        result = m.deliver_internal(client, client.app, client.build, {'en-US': 'Reviewed notes'})
+        self.assertEqual(result['internal_groups'], 2)
+        self.assertEqual(result['internal_testers'], 1)
+        self.assertEqual(result['covered_internal_testers'], 1)
+        self.assertTrue(result['internal_available'])
+        client = Fake()
+        original_request = client.request
+        def requests(method, path, payload=None):
+            if method == 'POST':
+                return {}  # Simulate an accepted write not yet visible to reads.
+            return original_request(method, path, payload)
+        client.request = requests
+        result = m.deliver_internal(client, client.app, client.build, {'en-US': 'Reviewed notes'})
+        self.assertFalse(result['internal_available'])
+        self.assertFalse(result['all_internal_assigned'])
+
+    def test_workflow_requires_internal_confirmation_main_and_exact_sha(self):
+        workflow = (PATH.parents[1] / '.github/workflows/testflight-testers.yml').read_text()
+        start = workflow.index('          set -euo pipefail')
+        end = workflow.index('      - uses:', start)
+        script = '\n'.join(line[10:] for line in workflow[start:end].splitlines())
+        base = {'GITHUB_REF': 'refs/heads/main', 'EXPECTED_SHA': 'a' * 40,
+                'GITHUB_SHA': 'a' * 40, 'OPERATION': 'distribute-internal',
+                'CONFIRMATION': 'DISTRIBUTE_INTERNAL'}
+        for overrides, succeeds in [({}, True), ({'CONFIRMATION': 'DISTRIBUTE'}, False),
+                ({'GITHUB_REF': 'refs/heads/other'}, False), ({'GITHUB_SHA': 'b' * 40}, False)]:
+            with self.subTest(overrides=overrides):
+                result = subprocess.run(['bash', '-c', script], env=base | overrides,
+                                        capture_output=True, check=False)
+                self.assertEqual(result.returncode == 0, succeeds)
 
 
 class ComplianceFake(Fake):
