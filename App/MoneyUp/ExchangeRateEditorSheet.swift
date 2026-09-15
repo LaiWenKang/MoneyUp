@@ -173,3 +173,23 @@ struct ManualTransferRateSheet: View {
         }
     }
 }
+
+extension QuickLogEntryView {
+    @ViewBuilder
+    var manualTransferRateSheet: some View {
+        if let amount, let source = selectedAccountCurrency,
+           let destination = selectedDestinationCurrency,
+           let money = try? Money(amount, currency: source) {
+            ManualTransferRateSheet(source: money, destination: destination) { converted in
+                guard self.amount == amount, selectedAccountCurrency == source,
+                      selectedDestinationCurrency == destination,
+                      isForeignCurrencyTransfer else { return }
+                cancelSmartParsing()
+                cancelOnDeviceAssistance()
+                smartState.edited(.receivedAmount)
+                destinationAmountText = editableAmount(converted.amount)
+                persistUserDraftChange { $0.destinationAmountText = destinationAmountText }
+            }
+        }
+    }
+}

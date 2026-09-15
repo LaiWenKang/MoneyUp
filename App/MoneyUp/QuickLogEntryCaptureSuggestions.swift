@@ -3,6 +3,16 @@ import MoneyUpCore
 import SwiftUI
 
 extension QuickLogEntryView {
+    var quickLogHistoryPreloadChrome: some View {
+        quickLogFormChrome
+            .onChange(of: model.accounts) { _, _ in refreshTypedPayeeSuggestion() }
+            .onChange(of: accountID) { _, _ in refreshTypedPayeeSuggestion() }
+            .onChange(of: categoryID) { _, _ in refreshTypedPayeeSuggestion() }
+            .onChange(of: occurredAt) { _, _ in refreshTypedPayeeSuggestion() }
+            .onChange(of: model.profile?.merchantSuggestionsEnabled) { _, _ in refreshTypedPayeeSuggestion() }
+            .onChange(of: model.profile?.intelligenceEnabled) { _, _ in refreshTypedPayeeSuggestion() }
+    }
+
     func refreshTypedPayeeSuggestion() {
         let normalized = payee.trimmingCharacters(in: .whitespacesAndNewlines)
         guard kind != .transfer, normalized.isEmpty || normalized.count >= 2 else {
