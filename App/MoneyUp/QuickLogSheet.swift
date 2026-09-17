@@ -498,16 +498,38 @@ struct QuickLogEntryView: View {
             && !destinationAmountText.isEmpty
     }
 
+    var retainedEntryChoiceIDs: Set<UUID> {
+        guard draftSnapshot.hasUserEdits else { return [] }
+        return Set(([accountID, destinationAccountID, categoryID]
+            + splitLines.map(\.categoryID)).compactMap { $0 })
+    }
+
+    var recordingInputAccounts: [LedgerAccount] {
+        LedgerEntryChoices.visible(model.accounts, preserving: retainedEntryChoiceIDs)
+    }
+
+    var recordingAccounts: [LedgerAccount] {
+        LedgerEntryChoices.visible(model.userAccounts, preserving: retainedEntryChoiceIDs)
+    }
+
+    var recordingExpenseCategories: [LedgerAccount] {
+        LedgerEntryChoices.visible(model.expenseCategories, preserving: retainedEntryChoiceIDs)
+    }
+
+    var recordingIncomeCategories: [LedgerAccount] {
+        LedgerEntryChoices.visible(model.incomeCategories, preserving: retainedEntryChoiceIDs)
+    }
+
     var categories: [LedgerAccount] {
-        kind == .income ? model.incomeCategories : model.expenseCategories
+        kind == .income ? recordingIncomeCategories : recordingExpenseCategories
     }
 
     /// A restricted allowance account may receive a top-up, but it is never a
     /// generic transfer source. Allowance expenses authorize their own debit
     /// later in the model layer, so non-transfer entry keeps the full list.
     var sourceAccounts: [LedgerAccount] {
-        guard kind == .transfer else { return model.userAccounts }
-        return model.userAccounts.filter {
+        guard kind == .transfer else { return recordingAccounts }
+        return recordingAccounts.filter {
             $0.accountType != .restrictedAllowance
         }
     }

@@ -305,6 +305,10 @@ extension QuickLogEntryView {
             reviewDraft.accountID = nil
         }
         if let parsedCategoryID = reviewDraft.categoryID,
+           !categories.contains(where: { $0.id == parsedCategoryID }) {
+            reviewDraft.categoryID = nil
+        }
+        if let parsedCategoryID = reviewDraft.categoryID,
            let category = model.accountsByID[parsedCategoryID],
            !QuickLogSuggestionPolicy.receiptCategoryIsCompatible(
                category,
@@ -357,7 +361,8 @@ extension QuickLogEntryView {
             accountWasEdited = true
         }
 
-        if let parsedCategory = draft.categoryID {
+        if let parsedCategory = draft.categoryID,
+           categories.contains(where: { $0.id == parsedCategory }) {
             categoryID = parsedCategory
             categoryWasEdited = true
         }
@@ -389,37 +394,37 @@ extension QuickLogEntryView {
         }
         switch kind {
         case .expense:
-            if !smartState.issues.contains(.category), !model.expenseCategories.contains(where: { $0.id == categoryID }) {
+            if !smartState.issues.contains(.category), !recordingExpenseCategories.contains(where: { $0.id == categoryID }) {
                 categoryWasEdited = false
                 categoryID = validPreferred(
                     model.profile?.preferredExpenseCategoryID,
-                    in: model.expenseCategories
+                    in: recordingExpenseCategories
                 ) ?? recentCategoryID(kind: .expense)
-                    ?? smartFallbackCategory(in: model.expenseCategories)
+                    ?? smartFallbackCategory(in: recordingExpenseCategories)
             }
         case .income:
-            if !smartState.issues.contains(.category), !model.incomeCategories.contains(where: { $0.id == categoryID }) {
+            if !smartState.issues.contains(.category), !recordingIncomeCategories.contains(where: { $0.id == categoryID }) {
                 categoryWasEdited = false
                 categoryID = validPreferred(
                     model.profile?.preferredIncomeCategoryID,
-                    in: model.incomeCategories
+                    in: recordingIncomeCategories
                 ) ?? recentCategoryID(kind: .income)
-                    ?? smartFallbackCategory(in: model.incomeCategories)
+                    ?? smartFallbackCategory(in: recordingIncomeCategories)
             }
         case .refund:
-            if !smartState.issues.contains(.category), !model.expenseCategories.contains(where: { $0.id == categoryID }) {
+            if !smartState.issues.contains(.category), !recordingExpenseCategories.contains(where: { $0.id == categoryID }) {
                 categoryWasEdited = false
                 categoryID = validPreferred(
                     model.profile?.preferredExpenseCategoryID,
-                    in: model.expenseCategories
+                    in: recordingExpenseCategories
                 ) ?? recentCategoryID(kind: .expense)
-                    ?? smartFallbackCategory(in: model.expenseCategories)
+                    ?? smartFallbackCategory(in: recordingExpenseCategories)
             }
         case .transfer:
-            if !smartState.issues.contains(.destination), !model.userAccounts.contains(where: {
+            if !smartState.issues.contains(.destination), !recordingAccounts.contains(where: {
                 $0.id == destinationAccountID && $0.id != accountID
             }) {
-                destinationAccountID = model.userAccounts.first { $0.id != accountID }?.id
+                destinationAccountID = recordingAccounts.first { $0.id != accountID }?.id
             }
         }
         if hasRestoredDraft, !dismissAfterSave {
@@ -438,7 +443,7 @@ extension QuickLogEntryView {
     func recentAccountID() -> UUID? {
         // AppModel intentionally retains only the 80 newest valid entries.
         // Defaults favor recent behavior and never trigger a historical scan.
-        let validIDs = Set(model.userAccounts.map(\.id))
+        let validIDs = Set(recordingAccounts.map(\.id))
         return model.entries.lazy
             .filter { entry in
                 switch kind {
@@ -454,7 +459,7 @@ extension QuickLogEntryView {
     }
 
     func recentCategoryID(kind: LedgerAccountKind) -> UUID? {
-        let choices = kind == .income ? model.incomeCategories : model.expenseCategories
+        let choices = kind == .income ? recordingIncomeCategories : recordingExpenseCategories
         let validIDs = Set(choices.map(\.id))
         let cutoff = model.reportingCalendar.date(
             byAdding: .day,

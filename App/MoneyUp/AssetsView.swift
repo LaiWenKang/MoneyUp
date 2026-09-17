@@ -12,7 +12,9 @@ struct AssetsView: View {
     @State private var isAddingHolding = false
     @State private var editingAccount: LedgerAccount?
     @State private var editingHolding: InvestmentHolding?
+    @State private var isShowingAccountCatalog = false
     @State private var isConfirmingExport = false
+    @State private var isPreparingExport = false
     @State private var isExporting = false
     @State private var exportDocument = CSVDocument(text: "")
     @State private var isExportingXLSX = false
@@ -370,8 +372,13 @@ struct AssetsView: View {
                     Button {
                         isConfirmingExport = true
                     } label: {
-                        Label("export.data", systemImage: "tablecells")
+                        if isPreparingExport {
+                            HStack { ProgressView(); Text("action.working") }
+                        } else {
+                            Label("export.data", systemImage: "tablecells")
+                        }
                     }
+                    .disabled(isPreparingExport)
 
                     Button {
                         model.lockManually()
@@ -404,6 +411,9 @@ struct AssetsView: View {
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
+                        Button { isShowingAccountCatalog = true } label: {
+                            Label("catalog.accounts_title", systemImage: "switch.2")
+                        }
                         Button { isAddingAccount = true } label: { Label("account.add", systemImage: "wallet.bifold") }
                         Button { isAddingAllowance = true } label: { Label("allowance.add", systemImage: "giftcard") }
                         Button { isAddingHolding = true } label: { Label("holding.add", systemImage: "chart.line.uptrend.xyaxis") }
@@ -411,6 +421,9 @@ struct AssetsView: View {
                 }
             }
             .sheet(isPresented: $isAddingAllowance) { AllowanceEditorSheet(plan: nil) }
+            .sheet(isPresented: $isShowingAccountCatalog) {
+                NavigationStack { EntryCatalogView(scope: .accounts, showsDone: true) }
+            }
             .sheet(isPresented: $isAddingAccount) {
                 AddAccountSheet()
             }
@@ -429,28 +442,10 @@ struct AssetsView: View {
                 titleVisibility: .visible
             ) {
                 Button("export.xlsx") {
-                    Task {
-                        do {
-                            xlsxDocument = XLSXDocument(
-                                data: try await model.xlsxExport()
-                            )
-                            isExportingXLSX = true
-                        } catch {
-                            errorMessage = safeUserMessage(for: error, context: .exportData)
-                        }
-                    }
+                    Task { await prepareExport(.xlsx) }
                 }
                 Button("export.csv") {
-                    Task {
-                        do {
-                            exportDocument = CSVDocument(
-                                text: try await model.csvExport()
-                            )
-                            isExporting = true
-                        } catch {
-                            errorMessage = safeUserMessage(for: error, context: .exportData)
-                        }
-                    }
+                    Task { await prepareExport(.csv) }
                 }
                 Button("action.cancel", role: .cancel) {}
             } message: {
@@ -522,6 +517,37 @@ private extension AssetsView {
 }
 
 extension AssetsView {
+    private enum ExportFormat { case csv, xlsx }
+
+    @MainActor
+    private func prepareExport(_ format: ExportFormat) async {
+        guard !isPreparingExport else { return }
+        isPreparingExport = true
+        defer { isPreparingExport = false }
+        do {
+            switch format {
+            case .csv:
+                let text = try await model.csvExport()
+                guard model.state == .ready,
+                      !model.requiresAuthenticationPrivacyCover else { return }
+                exportDocument = CSVDocument(text: text)
+                isExporting = true
+            case .xlsx:
+                let data = try await model.xlsxExport()
+                guard model.state == .ready,
+                      !model.requiresAuthenticationPrivacyCover else { return }
+                xlsxDocument = XLSXDocument(data: data)
+                isExportingXLSX = true
+            }
+        } catch is CancellationError {
+            return
+        } catch {
+            guard model.state == .ready,
+                  !model.requiresAuthenticationPrivacyCover else { return }
+            errorMessage = safeUserMessage(for: error, context: .exportData)
+        }
+    }
+
     func value(for holding: InvestmentHolding) -> DerivedValue<Money> {
         do {
             guard let value = try holding.marketValue() else {

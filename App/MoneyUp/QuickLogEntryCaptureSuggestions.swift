@@ -5,7 +5,10 @@ import SwiftUI
 extension QuickLogEntryView {
     var quickLogHistoryPreloadChrome: some View {
         quickLogFormChrome
-            .onChange(of: model.accounts) { _, _ in refreshTypedPayeeSuggestion() }
+            .onChange(of: model.accounts) { _, _ in
+                if !draftSnapshot.hasUserEdits { selectDefaults() }
+                refreshTypedPayeeSuggestion()
+            }
             .onChange(of: accountID) { _, _ in refreshTypedPayeeSuggestion() }
             .onChange(of: categoryID) { _, _ in refreshTypedPayeeSuggestion() }
             .onChange(of: occurredAt) { _, _ in refreshTypedPayeeSuggestion() }
@@ -115,6 +118,7 @@ extension QuickLogEntryView {
         let generation = captureSuggestionGeneration
         let logicalBookRevision = model.logicalBookRevision
         let eligibleCategoryIDs = Set(categories.map(\.id))
+        let eligibleAccountIDs = Set(sourceAccounts.map(\.id))
         let protected = smartState.manualFields.union(smartState.automaticFields)
         let fixedAccount = accountWasEdited || protected.contains(.account) || !amountText.isEmpty
             || sourceCaptureID != nil ? accountID : nil
@@ -125,7 +129,8 @@ extension QuickLogEntryView {
             do { try await Task.sleep(for: .milliseconds(180)) } catch { return }
             guard !Task.isCancelled, !MoneyUpKeyboard.hasMarkedText else { return }
             let result = await model.historyPreloadSuggestions(for: query,
-                eligibleCategoryIDs: eligibleCategoryIDs, accountID: fixedAccount, categoryID: fixedCategory)
+                eligibleCategoryIDs: eligibleCategoryIDs, accountID: fixedAccount, categoryID: fixedCategory,
+                eligibleAccountIDs: eligibleAccountIDs)
             guard !Task.isCancelled, generation == captureSuggestionGeneration,
                   logicalBookRevision == model.logicalBookRevision,
                   !model.isBookReplacementInProgress,

@@ -71,6 +71,12 @@ struct CategoryManagementSheet: View {
                     recurringSection
                 }
                 Section {
+                    if let category, !category.isArchived {
+                        Toggle("catalog.entry_visible", isOn: Binding(
+                            get: { !category.isHiddenFromEntry },
+                            set: { enabled in Task { await setEntryVisible(enabled) } }
+                        ))
+                    }
                     Button(category?.isArchived == true ? "lifecycle.restore" : "lifecycle.archive") {
                         isArchiving = true
                     }
@@ -152,6 +158,14 @@ struct CategoryManagementSheet: View {
             )
             dismiss()
         } catch { errorMessage = safeUserMessage(for: error, context: .save) }
+    }
+
+    private func setEntryVisible(_ visible: Bool) async {
+        guard !isSaving else { return }
+        isSaving = true
+        defer { isSaving = false }
+        do { try await model.setEntryOptionEnabled(id: categoryID, enabled: visible) }
+        catch { errorMessage = safeUserMessage(for: error, context: .save) }
     }
 
     private func archive() async {

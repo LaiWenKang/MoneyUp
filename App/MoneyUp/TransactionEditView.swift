@@ -174,8 +174,13 @@ struct TransactionEditView: View {
 
     /// Active choices plus the archived, user-owned choices already present on
     /// this historical entry. System accounts never enter an edit picker.
+    private var retainedEntryChoiceIDs: Set<UUID> {
+        originalLedgerItemIDs.union(([accountID, destinationAccountID, categoryID]
+            + splitLines.map(\.categoryID)).compactMap { $0 })
+    }
+
     var editableUserAccounts: [LedgerAccount] {
-        model.accounts.filter { account in
+        LedgerEntryChoices.visible(model.accounts, preserving: retainedEntryChoiceIDs).filter { account in
             (account.kind == .asset || account.kind == .liability)
                 && account.systemRole == nil
                 && (!account.isArchived || originalLedgerItemIDs.contains(account.id))
@@ -191,7 +196,7 @@ struct TransactionEditView: View {
 
     var categories: [LedgerAccount] {
         let expectedKind: LedgerAccountKind = kind == .income ? .income : .expense
-        return model.accounts.filter { category in
+        return LedgerEntryChoices.visible(model.accounts, preserving: retainedEntryChoiceIDs).filter { category in
             category.kind == expectedKind
                 && category.systemRole == nil
                 && (!category.isArchived || originalLedgerItemIDs.contains(category.id))

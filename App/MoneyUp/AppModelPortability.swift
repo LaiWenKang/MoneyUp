@@ -7,26 +7,26 @@ import UIKit
 import WidgetKit
 
 extension AppModel {
-    func csvExport() async throws -> String {
-        try beginJournalMutation(invalidatesJournalProjection: false)
-        defer { endJournalMutation() }
-        let exportEntries: [JournalEntry]
-        if retainsCompleteJournal {
-            exportEntries = entries
-        } else {
-            exportEntries = try await journalSnapshot(
-                includeInvalidRelationships: false
-            )
-        }
-        return LedgerCSVExporter.export(
-            exportEntries.sorted { $0.occurredAt < $1.occurredAt },
-            accounts: accounts
-        )
+    func csvExport(
+        renderer: @escaping @Sendable (LedgerExportSnapshot) throws -> String = { $0.csv() }
+    ) async throws -> String {
+        try await prepareLedgerExport(renderer)
     }
 
-    func xlsxExport() async throws -> Data {
+    func xlsxExport(
+        renderer: @escaping @Sendable (LedgerExportSnapshot) throws -> Data = { $0.xlsx() }
+    ) async throws -> Data {
+        try await prepareLedgerExport(renderer)
+    }
+
+    private func prepareLedgerExport<Value: Sendable>(
+        _ renderer: @escaping @Sendable (LedgerExportSnapshot) throws -> Value
+    ) async throws -> Value {
+        try Task.checkCancellation()
+        guard !requiresAuthenticationPrivacyCover else { throw AppModelError.locked }
         try beginJournalMutation(invalidatesJournalProjection: false)
         defer { endJournalMutation() }
+        let read = try beginLogicalBookRead()
         let exportEntries: [JournalEntry]
         if retainsCompleteJournal {
             exportEntries = entries
@@ -35,12 +35,32 @@ extension AppModel {
                 includeInvalidRelationships: false
             )
         }
-        return LedgerXLSXExporter.export(
+        try requireLogicalBookRead(read.token)
+        guard state == .ready, !requiresAuthenticationPrivacyCover else {
+            throw AppModelError.locked
+        }
+        let snapshot = LedgerExportSnapshot(
             entries: exportEntries,
             accounts: accounts,
             rates: exchangeRates,
-            attachmentMetadata: receiptAttachmentMetadata
+            attachments: receiptAttachmentMetadata
         )
+        let worker = Task.detached(priority: .userInitiated) {
+            try Task.checkCancellation()
+            let result = try renderer(snapshot)
+            try Task.checkCancellation()
+            return result
+        }
+        let result = try await withTaskCancellationHandler {
+            try await worker.value
+        } onCancel: {
+            worker.cancel()
+        }
+        let current = try await finishLogicalBookRead(result, token: read.token)
+        try Task.checkCancellation()
+        guard state == .ready, !requiresAuthenticationPrivacyCover,
+              !hasDeferredAuthenticationLock else { throw AppModelError.locked }
+        return current
     }
 
     /// Produces a coherent, metadata-only manifest for upgrade and restore drills.
