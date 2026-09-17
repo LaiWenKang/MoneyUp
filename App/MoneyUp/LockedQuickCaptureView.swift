@@ -225,6 +225,7 @@ struct LockedQuickCaptureView: View {
             .scrollDismissesKeyboard(.interactively)
             .disabled(isSaving)
             .navigationTitle("capture.title")
+            .moneyUpNavigationSurface()
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

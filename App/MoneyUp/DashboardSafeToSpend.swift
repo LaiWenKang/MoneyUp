@@ -128,7 +128,7 @@ extension DashboardView {
                 .moneyUpFinancialValue(.hero)
                 .foregroundStyle(
                     breakdown.availableForRemainingPeriod.amount < .zero
-                        ? Color.red
+                        ? Color.moneyUpDanger
                         : Color.primary
                 )
             Text("dashboard.safe_to_spend.per_day")
@@ -149,7 +149,7 @@ extension DashboardView {
                     systemImage: "exclamationmark.triangle.fill"
                 )
                 .font(.footnote.weight(.semibold))
-                .foregroundStyle(.red)
+                .foregroundStyle(Color.moneyUpDanger)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -174,7 +174,7 @@ extension DashboardView {
                                 .font(.title3.monospacedDigit().weight(.semibold))
                                 .foregroundStyle(
                                     breakdown.availableForRemainingPeriod.amount < .zero
-                                        ? Color.red
+                                        ? Color.moneyUpDanger
                                         : Color.primary
                                 )
                             Text("dashboard.safe_to_spend.per_day")

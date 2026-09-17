@@ -81,6 +81,7 @@ struct AddHoldingSheet: View {
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
             .navigationTitle("holding.add")
+            .moneyUpNavigationSurface()
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -223,7 +224,7 @@ struct HoldingManagementSheet: View {
                                         relativeTo: Date(),
                                         calendar: model.reportingCalendar
                                     ) {
-                                        Text("holding.stale").foregroundStyle(.orange)
+                                        Text("holding.stale").foregroundStyle(Color.moneyUpWarning)
                                     }
                                 }
                             }
@@ -313,12 +314,13 @@ struct HoldingManagementSheet: View {
                         }
                     }
                 }
-                if let resultMessage { Section { Text(resultMessage).foregroundStyle(.green) } }
+                if let resultMessage { Section { Text(resultMessage).foregroundStyle(Color.moneyUpPositive) } }
             }
             .scrollDismissesKeyboard(.interactively)
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
             .navigationTitle(holding?.symbol.isEmpty == false ? holding?.symbol ?? "" : holding?.name ?? "")
+            .moneyUpNavigationSurface()
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 MoneyUpKeyboardDoneToolbar()

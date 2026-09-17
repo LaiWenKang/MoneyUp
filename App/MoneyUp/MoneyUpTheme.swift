@@ -4,6 +4,9 @@ import SwiftUI
 /// increased-contrast, and future tinted appearances can evolve without
 /// scattering literal colours through financial screens.
 extension Color {
+    static let moneyUpPositive = Color("ChartSeries1")
+    static let moneyUpWarning = Color("ChartSeries3")
+    static let moneyUpDanger = Color("ChartSeries5")
     static let moneyUpBackground = Color("BrandBackground")
     static let moneyUpSurface = Color("BrandSurface")
     static let moneyUpSurfaceElevated = Color("BrandSurfaceElevated")

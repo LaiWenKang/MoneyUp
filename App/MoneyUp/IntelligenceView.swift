@@ -105,6 +105,7 @@ struct IntelligenceView: View {
         }
         .background { MoneyUpBackdrop() }
         .navigationTitle("intelligence.title")
+            .moneyUpNavigationSurface()
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -141,7 +142,7 @@ struct IntelligenceView: View {
                         systemImage: "exclamationmark.triangle.fill"
                     )
                     .font(.footnote)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(Color.moneyUpWarning)
                 }
                 if model.intelligenceIsUnavailable {
                     Label(
@@ -149,7 +150,7 @@ struct IntelligenceView: View {
                         systemImage: "exclamationmark.circle.fill"
                     )
                     .font(.footnote)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(Color.moneyUpWarning)
                 }
             }
         }
@@ -160,7 +161,7 @@ struct IntelligenceView: View {
             VStack(alignment: .leading, spacing: 10) {
                 Label("intelligence.clear_title", systemImage: "checkmark.circle.fill")
                     .font(.headline)
-                    .foregroundStyle(.green)
+                    .foregroundStyle(Color.moneyUpPositive)
                 Text("intelligence.clear_detail")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -297,7 +298,7 @@ extension IntelligenceFindingKind {
 
     fileprivate var tint: Color {
         switch self {
-        case .possibleDuplicate, .priceIncrease, .categoryAnomaly: .orange
+        case .possibleDuplicate, .priceIncrease, .categoryAnomaly: Color.moneyUpWarning
         case .lapsedSubscription: .secondary
         case .recurrence, .budgetSuggestion: .accentColor
         }

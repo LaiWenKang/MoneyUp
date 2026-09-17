@@ -240,12 +240,13 @@ struct ImportTransactionsView: View {
 
             if let message {
                 Section { Label(message, systemImage: "checkmark.circle.fill") }
-                    .foregroundStyle(.green)
+                    .foregroundStyle(Color.moneyUpPositive)
             }
         }
         .scrollContentBackground(.hidden)
         .background(Color.moneyUpBackground)
         .navigationTitle("import.title")
+            .moneyUpNavigationSurface()
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { selectDefaults() }
         .fileImporter(

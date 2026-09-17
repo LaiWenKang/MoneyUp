@@ -118,15 +118,7 @@ struct MoneyUpPaceBar: View {
                     .fill(Color(.tertiarySystemFill))
 
                 Capsule()
-                    .fill(
-                        LinearGradient(
-                            colors: ratio > 1
-                                ? [Color.red.opacity(0.72), Color.red]
-                                : [Color.accentColor.opacity(0.62), Color.accentColor],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
+                    .fill(ratio > 1 ? Color.moneyUpDanger : Color.moneyUpPositive)
                     .frame(width: width * clampedRatio)
 
                 Rectangle()
@@ -138,7 +130,7 @@ struct MoneyUpPaceBar: View {
                     Image(systemName: "exclamationmark.circle.fill")
                         .font(.system(size: 14, weight: .bold))
                         .symbolRenderingMode(.palette)
-                        .foregroundStyle(.white, .red)
+                        .foregroundStyle(Color.moneyUpBackground, Color.moneyUpDanger)
                         .frame(width: 16, height: 16)
                         .background(Color.moneyUpSurfaceElevated, in: Circle())
                         .offset(x: max(0, width - 16))
@@ -148,6 +140,9 @@ struct MoneyUpPaceBar: View {
         .frame(height: 14)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(statusKey)
+        .accessibilityValue(String(format: AppLocalization.string("dashboard.budget_pace.accessibility"),
+            ratio.formatted(.percent.precision(.fractionLength(0))),
+            elapsed.formatted(.percent.precision(.fractionLength(0)))))
         .accessibilityHidden(!announcesStatus)
     }
 }
@@ -200,7 +195,7 @@ struct MoneyUpPositionOrbit: View {
                 Circle()
                     .trim(from: min(max(value + 0.025, 0), 1), to: 1)
                     .stroke(
-                        Color.orange.opacity(0.86),
+                        Color.moneyUpWarning.opacity(0.86),
                         style: StrokeStyle(lineWidth: 6, lineCap: .round)
                     )
                     .rotationEffect(.degrees(-90))
@@ -236,7 +231,7 @@ struct MoneyUpBudgetOrbit: View {
                     .trim(from: 0, to: clampedRatio)
                     .stroke(
                         ratio > 1
-                            ? Color.red
+                            ? Color.moneyUpDanger
                             : Color.accentColor,
                         style: StrokeStyle(lineWidth: 6, lineCap: .round)
                     )
@@ -254,7 +249,7 @@ struct MoneyUpBudgetOrbit: View {
                         : "gauge.with.dots.needle.50percent"
                 )
                 .font(.caption2.weight(.bold))
-                .foregroundStyle(ratio > 1 ? Color.red : Color.secondary)
+                .foregroundStyle(ratio > 1 ? Color.moneyUpDanger : Color.secondary)
             }
         }
         .frame(width: 48, height: 48)
@@ -280,7 +275,7 @@ struct MoneyUpPositionDiagram: View {
             positionBar(
                 amount: debtAmount,
                 symbol: "creditcard.fill",
-                color: .orange
+                color: Color.moneyUpWarning
             )
         }
         .accessibilityHidden(true)

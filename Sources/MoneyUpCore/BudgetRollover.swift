@@ -164,12 +164,14 @@ public struct BudgetEntryAttribution: Codable, Equatable, Identifiable, Sendable
             Int.self,
             forKey: .originUTCOffsetSeconds
         )
-        guard TimeZone(secondsFromGMT: offset) != nil,
-              originTimeZone.secondsFromGMT(for: occurredAt) == offset else {
+        // Frozen offset and civil day are historical evidence; current tzdata
+        // may legitimately differ after a system update.
+        guard occurredAt.timeIntervalSinceReferenceDate.isFinite,
+              TimeZone(secondsFromGMT: offset) != nil else {
             throw DecodingError.dataCorruptedError(
                 forKey: .originUTCOffsetSeconds,
                 in: container,
-                debugDescription: "Budget-attribution zone and offset disagree"
+                debugDescription: "Invalid budget-attribution frozen offset"
             )
         }
         let day = try container.decode(

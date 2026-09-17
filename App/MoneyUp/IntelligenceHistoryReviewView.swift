@@ -71,6 +71,7 @@ struct IntelligenceHistoryReviewView: View {
             }
             .background { MoneyUpBackdrop() }
             .navigationTitle("intelligence.history.title")
+            .moneyUpNavigationSurface()
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {

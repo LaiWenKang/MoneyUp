@@ -1,4 +1,5 @@
 import Foundation
+import MoneyUpCore
 @testable import MoneyUp
 import XCTest
 
@@ -31,6 +32,30 @@ final class AppLocalizationTests: XCTestCase {
             )
         }
         super.tearDown()
+    }
+
+    func testEveryPresetAndGroupIsLocalizedInBothLanguages() {
+        for language in [AppLanguagePreference.english, .simplifiedChinese] {
+            languageDefaults.set(language.rawValue, forKey: AppLanguagePreference.storageKey)
+            for preset in LedgerPresetCatalog.accounts + LedgerPresetCatalog.expenses {
+                for key in [preset.labelKey, preset.groupLabelKey] {
+                    XCTAssertNotEqual(AppLocalization.string(key), key)
+                    XCTAssertFalse(AppLocalization.string(key).isEmpty)
+                }
+            }
+        }
+    }
+
+    func testBudgetFindingMetadataResolvesInBothLanguages() {
+        for language in [AppLanguagePreference.english, .simplifiedChinese] {
+            languageDefaults.set(language.rawValue, forKey: AppLanguagePreference.storageKey)
+            for key in ["intelligence.budget.headline", "intelligence.budget.explanation",
+                        "intelligence.figure.categories", "fx.identical_currencies",
+                        "dashboard.budget_pace.accessibility"] {
+                XCTAssertNotEqual(AppLocalization.string(key), key)
+                XCTAssertFalse(AppLocalization.string(key).isEmpty)
+            }
+        }
     }
 
     func testProgrammaticLocalizationFollowsEnglishPreference() {

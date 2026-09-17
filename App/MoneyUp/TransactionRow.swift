@@ -58,8 +58,8 @@ struct TransactionRow: View {
 
     private var iconColor: Color {
         switch entry.kind {
-        case .expense: isRefund ? .green : .orange
-        case .income: .green
+        case .expense: isRefund ? MoneyUpChartPalette.income : MoneyUpChartPalette.expense
+        case .income: Color.moneyUpPositive
         case .transfer: .accentColor
         case .adjustment: .secondary
         case .investment: .accentColor
@@ -213,12 +213,12 @@ struct TransactionRow: View {
                 ForEach(Array(amounts.prefix(2).enumerated()), id: \.offset) {
                     _, amount in
                     Text(formattedTransactionAmount(amount))
-                        .font(.subheadline.monospacedDigit().weight(.semibold))
+                        .moneyUpFinancialValue(.compact)
                         .foregroundStyle(
                             amount.role == .income
                                 || amount.role == .refund
                                 || amount.role == .incoming
-                                ? Color.green
+                                ? Color.moneyUpPositive
                                 : Color.primary
                         )
                         .lineLimit(1)
@@ -231,7 +231,7 @@ struct TransactionRow: View {
                 spacing: 2
             ) {
                 Text("—")
-                    .font(.subheadline.monospacedDigit().weight(.semibold))
+                    .moneyUpFinancialValue(.compact)
                 Text(issue.localizedDescription)
                     .font(.caption2)
                     .foregroundStyle(.secondary)

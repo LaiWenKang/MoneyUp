@@ -22,6 +22,8 @@ public struct NetWorthConversionEvidence: Codable, Equatable, Identifiable, Send
     public var id: CurrencyCode { source.currency }
     public let source: Money
     public let appliedRate: Decimal
+    /// Original quoted rate preserves exact division for inverse conversions.
+    public let quotedRate: Decimal?
     public let rateID: UUID
     public let effectiveDayKey: Int
     public let usedInverseRate: Bool
@@ -33,7 +35,8 @@ public struct NetWorthConversionEvidence: Codable, Equatable, Identifiable, Send
         rateID: UUID,
         effectiveDayKey: Int,
         usedInverseRate: Bool,
-        converted: Money
+        converted: Money,
+        quotedRate: Decimal? = nil
     ) throws {
         guard source.currency != converted.currency,
               source.amount != .zero,
@@ -42,17 +45,32 @@ public struct NetWorthConversionEvidence: Codable, Equatable, Identifiable, Send
               effectiveDayKey > 0 else {
             throw NetWorthSnapshotError.invalidConversion
         }
-        var sourceAmount = source.amount
-        var rate = appliedRate
-        var raw = Decimal.zero
-        let error = NSDecimalMultiply(&raw, &sourceAmount, &rate, .bankers)
-        guard (error == .noError || error == .lossOfPrecision),
-              !raw.isNaN,
-              raw != .zero,
-              converted.currency.rounded(raw) == converted.amount,
-              converted.amount != .zero else {
+        let expected: Decimal
+        do {
+            if let quotedRate {
+                guard quotedRate > .zero, !quotedRate.isNaN else {
+                    throw NetWorthSnapshotError.invalidConversion
+                }
+                let expectedRate = usedInverseRate
+                    ? try CheckedDecimal.ratio(1, quotedRate) : quotedRate
+                guard appliedRate == expectedRate else {
+                    throw NetWorthSnapshotError.invalidConversion
+                }
+                expected = usedInverseRate
+                    ? try CheckedDecimal.divideForCurrencyRounding(source.amount, quotedRate, currency: converted.currency)
+                    : try CheckedDecimal.productForCurrencyRounding(source.amount, quotedRate, currency: converted.currency)
+            } else {
+                // Existing snapshots stored only a multiplied applied rate.
+                expected = try CheckedDecimal.productForCurrencyRounding(
+                    source.amount, appliedRate, currency: converted.currency)
+            }
+        } catch {
             throw NetWorthSnapshotError.invalidConversion
         }
+        guard expected == converted.amount, converted.amount != .zero else {
+            throw NetWorthSnapshotError.invalidConversion
+        }
+        self.quotedRate = quotedRate
         self.source = source
         self.appliedRate = appliedRate
         self.rateID = rateID
@@ -62,7 +80,7 @@ public struct NetWorthConversionEvidence: Codable, Equatable, Identifiable, Send
     }
 
     private enum CodingKeys: String, CodingKey {
-        case source, appliedRate, rateID, effectiveDayKey, usedInverseRate, converted
+        case source, appliedRate, quotedRate, rateID, effectiveDayKey, usedInverseRate, converted
     }
 
     public init(from decoder: Decoder) throws {
@@ -74,7 +92,8 @@ public struct NetWorthConversionEvidence: Codable, Equatable, Identifiable, Send
                 rateID: container.decode(UUID.self, forKey: .rateID),
                 effectiveDayKey: container.decode(Int.self, forKey: .effectiveDayKey),
                 usedInverseRate: container.decode(Bool.self, forKey: .usedInverseRate),
-                converted: container.decode(Money.self, forKey: .converted)
+                converted: container.decode(Money.self, forKey: .converted),
+                quotedRate: container.decodeIfPresent(Decimal.self, forKey: .quotedRate)
             )
         } catch {
             throw DecodingError.dataCorruptedError(

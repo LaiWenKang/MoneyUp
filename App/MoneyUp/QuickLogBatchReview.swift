@@ -38,7 +38,7 @@ extension QuickLogEntryView {
         cancelReceiptProcessing()
         cancelCaptureSuggestionLookup()
         cancelOnDeviceAssistance()
-        let accountSnapshot = model.accounts
+        let accountSnapshot = recordingInputAccounts
         let reference = original.smartState.referenceDate ?? original.occurredAt
         let calendar = captureCalendar
         let locale = Locale.current
@@ -55,7 +55,7 @@ extension QuickLogEntryView {
             do {
                 let prepared = try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
                 guard !Task.isCancelled, request == smartParseRequestID, isActive,
-                      bookRevision == model.logicalBookRevision, accountSnapshot == model.accounts,
+                      bookRevision == model.logicalBookRevision, accountSnapshot == recordingInputAccounts,
                       draftSnapshot == original else { return }
                 isClearingDraft = true
                 defer { isClearingDraft = false }

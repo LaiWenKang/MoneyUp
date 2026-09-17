@@ -60,6 +60,7 @@ struct RestrictedFundingCorrectionSheet: View {
                 }
             }
             .navigationTitle("account.restricted_funding_correct")
+            .moneyUpNavigationSurface()
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

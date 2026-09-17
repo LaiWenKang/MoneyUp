@@ -64,7 +64,7 @@ private struct LockedView: View {
                     Image(systemName: method?.systemImage ?? "lock.fill")
                         .font(.system(size: 52))
                         .foregroundStyle(
-                            method == .unavailable ? Color.orange : Color.accentColor
+                            method == .unavailable ? Color.moneyUpWarning : Color.accentColor
                         )
                         .accessibilityHidden(true)
                     Text("lock.title")
@@ -126,7 +126,7 @@ private struct RecoveryView: View {
                 VStack(spacing: 18) {
                     Image(systemName: "exclamationmark.shield.fill")
                         .font(.system(size: 48))
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(Color.moneyUpWarning)
                         .accessibilityHidden(true)
                     Text("error.could_not_open")
                         .font(.title2.bold())
@@ -138,7 +138,7 @@ private struct RecoveryView: View {
                             "recovery.key_cliff.detail",
                             systemImage: "key.slash.fill"
                         )
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(Color.moneyUpWarning)
                         .multilineTextAlignment(.center)
                         Text("recovery.key_cliff.steps")
                             .font(.callout)

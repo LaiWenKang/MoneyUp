@@ -57,6 +57,10 @@ public struct LedgerAccount: Codable, Equatable, Identifiable, Sendable {
     public var systemRole: SystemAccountRole?
     public var parentID: UUID?
     public var isArchived: Bool
+    /// Controls new-entry choices only; balances, budgets and history ignore it.
+    public var isHiddenFromEntry: Bool
+    /// Optional provenance for an explicitly enabled catalogue preset.
+    public var presetID: String?
 
     public init(
         id: UUID = UUID(),
@@ -66,7 +70,9 @@ public struct LedgerAccount: Codable, Equatable, Identifiable, Sendable {
         accountType: FinancialAccountType? = nil,
         systemRole: SystemAccountRole? = nil,
         parentID: UUID? = nil,
-        isArchived: Bool = false
+        isArchived: Bool = false,
+        isHiddenFromEntry: Bool = false,
+        presetID: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -76,5 +82,58 @@ public struct LedgerAccount: Codable, Equatable, Identifiable, Sendable {
         self.systemRole = systemRole
         self.parentID = parentID
         self.isArchived = isArchived
+        self.isHiddenFromEntry = isHiddenFromEntry
+        self.presetID = presetID
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, kind, currency, accountType, systemRole, parentID, isArchived
+        case isHiddenFromEntry, presetID
+    }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        let preset = try values.decodeIfPresent(String.self, forKey: .presetID)
+        guard Self.isValidPresetID(preset) else {
+            throw DecodingError.dataCorruptedError(forKey: .presetID, in: values,
+                debugDescription: "Invalid entry preset identifier")
+        }
+        self.init(
+            id: try values.decode(UUID.self, forKey: .id),
+            name: try values.decode(String.self, forKey: .name),
+            kind: try values.decode(LedgerAccountKind.self, forKey: .kind),
+            currency: try values.decodeIfPresent(CurrencyCode.self, forKey: .currency),
+            accountType: try values.decodeIfPresent(FinancialAccountType.self, forKey: .accountType),
+            systemRole: try values.decodeIfPresent(SystemAccountRole.self, forKey: .systemRole),
+            parentID: try values.decodeIfPresent(UUID.self, forKey: .parentID),
+            isArchived: try values.decode(Bool.self, forKey: .isArchived),
+            isHiddenFromEntry: try values.decodeIfPresent(Bool.self, forKey: .isHiddenFromEntry) ?? false,
+            presetID: preset
+        )
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        guard Self.isValidPresetID(presetID) else {
+            throw EncodingError.invalidValue(presetID as Any, .init(codingPath: encoder.codingPath,
+                debugDescription: "Invalid entry preset identifier"))
+        }
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(id, forKey: .id)
+        try values.encode(name, forKey: .name)
+        try values.encode(kind, forKey: .kind)
+        try values.encodeIfPresent(currency, forKey: .currency)
+        try values.encodeIfPresent(accountType, forKey: .accountType)
+        try values.encodeIfPresent(systemRole, forKey: .systemRole)
+        try values.encodeIfPresent(parentID, forKey: .parentID)
+        try values.encode(isArchived, forKey: .isArchived)
+        if isHiddenFromEntry { try values.encode(true, forKey: .isHiddenFromEntry) }
+        try values.encodeIfPresent(presetID, forKey: .presetID)
+    }
+
+    private static func isValidPresetID(_ value: String?) -> Bool {
+        guard let value else { return true }
+        let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyz0123456789._-")
+        return !value.isEmpty && value.utf8.count <= 80
+            && value.unicodeScalars.allSatisfy { allowed.contains($0) }
     }
 }

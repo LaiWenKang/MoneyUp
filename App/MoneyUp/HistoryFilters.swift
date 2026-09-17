@@ -275,6 +275,7 @@ struct HistoryFilterSheet: View {
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
             .navigationTitle("history.filter")
+            .moneyUpNavigationSurface()
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

@@ -630,7 +630,7 @@ W3_SOURCE_FUNCTION_DIGESTS: tuple[
         W3_REVIEWED_ENTRY_PATH,
         "applyTypedPhrase",
         re.compile(r"\bfunc\s+applyTypedPhrase\s*\(\s*\)\s*\{"),
-        "4baa6cc9a9fc86a1ed6b5d1b8c24334822c9a80d2a1d510000ba0f9a937e193e",
+        "27b0914d2e7990784c85175825455b71d4395373bee007950ad92cdaec1b5366",
     ),
     (
         "App/MoneyUp/QuickLogEntryDraft.swift",
@@ -659,24 +659,24 @@ W3_SOURCE_FUNCTION_DIGESTS: tuple[
 
 W3_PATH_TYPE_DIGESTS: tuple[tuple[str, str, str, str], ...] = (
     # Contextual preload protects the restored draft and active-entry lifecycle.
-    ("App/MoneyUp/QuickLogEntryDraft.swift", "extension", "QuickLogEntryView", "2a9672a168947c80ab0ce0bb65c3c7cd04cce17088a2a8758bfad5b8e67313f9"),
+    ("App/MoneyUp/QuickLogEntryDraft.swift", "extension", "QuickLogEntryView", "b76ee3c86e1fe002fa25de768217d90d44e7226af9d99950672cd92d6fdba448"),
     ('App/MoneyUp/QuickLogBatch.swift', 'enum', 'QuickLogBatchPreparation', 'b4a392813f96d592dce88fdc532816501d7ea991f59b791595e02fb7538e0273'),
     ('Sources/MoneyUpCore/SmartEntryBatchText.swift', 'enum', 'SmartEntryBatchText', '1efd0ca7104e651a464478fd2e28c491af109ce94d48b2c7d9d035f0416047f9'),
     ('App/MoneyUp/QuickLogSmartFill.swift', 'struct', 'QuickLogSmartFill', '3c98e0dc2f72aae58ef9626c1953a3239b930ad5fb465a45c8ba2e8f08ddd998'),
     ('Sources/MoneyUpCore/SmartEntryTextReading.swift', 'struct', 'SmartEntryAmountReading', '088699b5ce5d5f969b345f2d81ab3a8cca9609baa0cafd17afabaf21e802403c'),
     ('Sources/MoneyUpCore/SmartEntryTextReading.swift', 'struct', 'SmartEntryTextParts', 'a84bf4da2c0b336f570103ee82b2f176ba7d30019cad745611022bae5e7b5ea4'),
-    ("App/MoneyUp/QuickLogEntryChrome.swift", "extension", "QuickLogEntryView", "77d6f3d9a12bc36902f6c922110c73fcd72dcf5e5af9f2cbc39e4b69e69553f6"),
+    ("App/MoneyUp/QuickLogEntryChrome.swift", "extension", "QuickLogEntryView", "027e686f61d667547a013213b7627cc2444b8ebffd68a50021c023be915ca3a9"),
     (
         "App/MoneyUp/QuickLogEntryBody.swift",
         "extension",
         "QuickLogEntryView",
-        "0bd332a82a08e3f77f70747c3c5a53580bc99c9804543ed5e1922000da71a2b4",
+        "ec999203c02f40c0ec445f4fd85203aaa53ce7213c768d815efea2634e3e01a3",
     ),
     (
         "App/MoneyUp/QuickLogEntryReceipt.swift",
         "extension",
         "QuickLogEntryView",
-        "22b713afd5a13c96341723c1d1663efecb15e7cb36b53227932bd74cceda46b9",
+        "dc215dffbab6b5361dd8426d0f6d2bec0072fbde6c92d4bf42ec8dcb783073ec",
     ),
     (
         W3_REVIEWED_ENTRY_ASSISTANCE_PATH,
@@ -688,7 +688,7 @@ W3_PATH_TYPE_DIGESTS: tuple[tuple[str, str, str, str], ...] = (
         "App/MoneyUp/QuickLogEntryReceiptCandidates.swift",
         "extension",
         "QuickLogEntryView",
-        "46da737486aeece756007e1d7f5489dbf4cb9d8600f76fb0a6588b3fb38247b4",
+        "d140a116afd028babd684c42035ac5d428b6ee4c5b42935b49d5145fe8ff20a6",
     ),
 )
 W3_PATH_TYPE_ATTRIBUTES = {
@@ -4513,7 +4513,7 @@ def _w3_accessible_suggestion_actions(
                 r"\bfunc\s+captureSuggestions\s*\(\s*_\s+result\s*:"
                 r"\s*CaptureSuggestionResult\s*\)\s*->\s*some\s+View\s*\{"
             ),
-            "0f71641fb69daeabb5282b55df11f896f1f7dcd1cf58966830476ed0c4aa6969",
+            "5bdfc5ce3cc952d1e30b7c2f81de9e259a7e97bcfe2dec90be4293c13a8792c7",
         ),
     )
     use_literal = "quick_log.use_suggestion"

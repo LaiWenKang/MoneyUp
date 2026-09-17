@@ -727,11 +727,13 @@ private struct AddScheduleSheet: View {
     }
 
     private var categories: [LedgerAccount] {
-        kind == .income ? model.incomeCategories : model.expenseCategories
+        LedgerEntryChoices.visible(kind == .income ? model.incomeCategories : model.expenseCategories,
+            preserving: Set([categoryID].compactMap { $0 }))
     }
 
     private var eligibleAccounts: [LedgerAccount] {
-        model.userAccounts.filter {
+        LedgerEntryChoices.visible(model.userAccounts,
+            preserving: Set([accountID].compactMap { $0 })).filter {
             kind != .expense || $0.accountType != .restrictedAllowance
         }
     }
@@ -792,6 +794,7 @@ private struct AddScheduleSheet: View {
                     ? AppLocalization.string("schedule.add")
                     : AppLocalization.string("schedule.edit")
             )
+            .moneyUpNavigationSurface()
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {

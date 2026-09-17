@@ -1,3 +1,4 @@
+import MoneyUpCore
 import SwiftUI
 
 private enum AutoLockChoice: TimeInterval, CaseIterable, Identifiable {
@@ -211,6 +212,13 @@ struct AppSettingsView: View {
                 MoneyUpExplainer("settings.auto_lock_detail")
             }
 
+            Section("catalog.settings_section") {
+                NavigationLink { EntryCatalogView(scope: .accounts) }
+                label: { Label("catalog.accounts_title", systemImage: "wallet.bifold") }
+                NavigationLink { EntryCatalogView(scope: .expenses) }
+                label: { Label("catalog.expenses_title", systemImage: "tag") }
+            }
+
             Section {
                 Picker(
                     "settings.default_account",
@@ -226,7 +234,8 @@ struct AppSettingsView: View {
                     )
                 ) {
                     Text("settings.smart_default").tag(Optional<UUID>.none)
-                    ForEach(bindableModel.userAccounts.filter {
+                    ForEach(LedgerEntryChoices.visible(bindableModel.userAccounts,
+                        preserving: Set([bindableModel.profile?.preferredAccountID].compactMap { $0 })).filter {
                         $0.accountType != .restrictedAllowance
                     }) { account in
                         Text(accountCurrencyLabel(account)).tag(Optional(account.id))
@@ -250,7 +259,8 @@ struct AppSettingsView: View {
                     )
                 ) {
                     Text("settings.smart_default").tag(Optional<UUID>.none)
-                    ForEach(bindableModel.expenseCategories) { category in
+                    ForEach(LedgerEntryChoices.visible(bindableModel.expenseCategories,
+                        preserving: Set([bindableModel.profile?.preferredExpenseCategoryID].compactMap { $0 }))) { category in
                         Text(category.name).tag(Optional(category.id))
                     }
                 }
@@ -272,7 +282,8 @@ struct AppSettingsView: View {
                     )
                 ) {
                     Text("settings.smart_default").tag(Optional<UUID>.none)
-                    ForEach(bindableModel.incomeCategories) { category in
+                    ForEach(LedgerEntryChoices.visible(bindableModel.incomeCategories,
+                        preserving: Set([bindableModel.profile?.preferredIncomeCategoryID].compactMap { $0 }))) { category in
                         Text(category.name).tag(Optional(category.id))
                     }
                 }
@@ -362,7 +373,8 @@ struct AppSettingsView: View {
 
         }
         .scrollContentBackground(.hidden)
-        .background(Color.moneyUpBackground)
+        .background { MoneyUpBackdrop() }
+        .moneyUpNavigationSurface()
         .navigationTitle("settings.title")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $isManagingCategories) {

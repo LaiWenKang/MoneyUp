@@ -52,6 +52,7 @@ struct DisplaySettingsView: View {
         .scrollContentBackground(.hidden)
         .background(Color.moneyUpBackground)
         .navigationTitle("display.title")
+            .moneyUpNavigationSurface()
         .navigationBarTitleDisplayMode(.inline)
     }
 

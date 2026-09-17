@@ -3,6 +3,7 @@ import SwiftUI
 
 struct BudgetPlanView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.moneyUpReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.appReportingSnapshot) private var sharedSnapshot
     @Bindable var workspace: PlanWorkspaceState
@@ -84,6 +85,7 @@ struct BudgetPlanView: View {
         .scrollContentBackground(.hidden)
         .background(Color.moneyUpBackground)
         .navigationTitle("plan.budget")
+            .moneyUpNavigationSurface()
         .navigationBarTitleDisplayMode(.inline)
         .task(id: loadIdentity) { await load() }
         .toolbar { toolbar }
@@ -254,11 +256,11 @@ struct BudgetPlanView: View {
             }
             if snapshot.unclassifiedNodeIDs.contains(item.id), item.node.limit == nil {
                 Label("plan.purpose.unclassified", systemImage: "questionmark.circle")
-                    .font(.caption).foregroundStyle(.orange)
+                    .font(.caption).foregroundStyle(Color.moneyUpWarning)
             }
             if progress?.childAllocation != nil, let directRemaining = progress?.directRemaining, directRemaining.amount < .zero {
                 Label("budget.direct_overspent", systemImage: "exclamationmark.triangle")
-                    .font(.caption).foregroundStyle(.red)
+                    .font(.caption).foregroundStyle(Color.moneyUpDanger)
             }
         }
     }
@@ -280,7 +282,7 @@ struct BudgetPlanView: View {
                 Button { isManagingCategories = true } label: {
                     Label("lifecycle.manage_categories", systemImage: "square.grid.2x2")
                 }
-                Toggle("budget.show_details", isOn: $showsRowDetail)
+                Toggle("budget.show_details", isOn: $showsRowDetail.animation(MoneyUpMotion.animation(for: .disclosure, reduceMotion: reduceMotion)))
                 NavigationLink { DisplaySettingsView() } label: { Text("display.title") }
             } label: { Label("display.short_title", systemImage: "ellipsis.circle") }
         }

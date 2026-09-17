@@ -63,7 +63,7 @@ struct PinnedBudgetBoard: View {
                 Button {
                     withAnimation(
                         MoneyUpMotion.animation(
-                            for: .stateChange,
+                            for: .disclosure,
                             reduceMotion: reduceMotion
                         )
                     ) {
@@ -177,7 +177,7 @@ struct PinnedBudgetRow: View {
                         )
                     )
                     .font(.title3.monospacedDigit().weight(.semibold))
-                    .foregroundStyle(summary.isOverspent ? Color.red : Color.primary)
+                    .foregroundStyle(summary.isOverspent ? Color.moneyUpDanger : Color.primary)
                     Text(summary.isOverspent ? "plan.over" : "plan.left")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
@@ -235,7 +235,7 @@ struct PinnedBudgetRow: View {
             Label(summary.purpose.titleKey, systemImage: summary.purpose.systemImage)
                 .foregroundStyle(
                     summary.purpose == .unclassified
-                        ? Color.orange
+                        ? Color.moneyUpWarning
                         : Color.accentColor
                 )
             if let limit = summary.effectiveLimit {

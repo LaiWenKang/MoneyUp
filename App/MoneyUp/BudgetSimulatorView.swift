@@ -90,6 +90,7 @@ struct BudgetSimulatorView: View {
         .scrollDismissesKeyboard(.interactively)
         .background { MoneyUpBackdrop() }
         .navigationTitle("simulator.title")
+            .moneyUpNavigationSurface()
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             MoneyUpKeyboardDoneToolbar()
@@ -276,7 +277,7 @@ struct BudgetSimulatorView: View {
                         .foregroundStyle(
                             point.id == "current"
                                 ? Color.secondary
-                                : (isOver ? Color.red : Color.accentColor)
+                                : (isOver ? Color.moneyUpDanger : Color.accentColor)
                         )
                         .annotation(position: .top) {
                             Text(formattedMoney(point.money))
@@ -310,7 +311,7 @@ struct BudgetSimulatorView: View {
                 .accessibilityHidden(hidesAmounts)
                 .animation(
                     MoneyUpMotion.animation(
-                        for: .stateChange,
+                        for: .financialValue,
                         reduceMotion: reduceMotion
                     ),
                     value: forecast.projectedSpent.amount
@@ -348,7 +349,7 @@ struct BudgetSimulatorView: View {
                     )
                 }
                 .font(.headline)
-                .foregroundStyle(isOver ? Color.red : Color.primary)
+                .foregroundStyle(isOver ? Color.moneyUpDanger : Color.primary)
 
                 Text(
                     formattedMoney(

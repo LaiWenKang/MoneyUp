@@ -138,6 +138,7 @@ struct InsightsView: View {
         }
         .background { MoneyUpBackdrop() }
         .navigationTitle("tab.insights")
+            .moneyUpNavigationSurface()
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 MoneyUpAmountPrivacyButton()
@@ -201,7 +202,7 @@ struct InsightsView: View {
         MetricCard(
             title: "transaction.income",
             value: formattedMoney(report.baseFlow.income),
-            color: .green
+            color: Color.moneyUpPositive
         )
         MetricCard(
             title: "transaction.expense",
@@ -211,7 +212,7 @@ struct InsightsView: View {
         MetricCard(
             title: "insights.net",
             value: formattedMoney(report.baseFlow.net),
-            color: report.baseFlow.net.amount >= .zero ? .accentColor : .red
+            color: report.baseFlow.net.amount >= .zero ? .accentColor : Color.moneyUpDanger
         )
     }
 
@@ -228,7 +229,7 @@ struct InsightsView: View {
                         Spacer(minLength: 12)
                         Text(formattedMoney(flow.net))
                             .font(.subheadline.monospacedDigit())
-                            .foregroundStyle(flow.net.amount >= .zero ? Color.primary : Color.red)
+                            .foregroundStyle(flow.net.amount >= .zero ? Color.primary : Color.moneyUpDanger)
                     }
                     .accessibilityElement(children: .combine)
                 }

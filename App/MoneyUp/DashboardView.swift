@@ -316,6 +316,7 @@ struct FlexibleTodayBreakdownSheet: View {
             }
             .background { MoneyUpBackdrop() }
             .navigationTitle("dashboard.safe_to_spend.how")
+            .moneyUpNavigationSurface()
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {

@@ -344,7 +344,8 @@ extension TransactionCSVImporter {
             ? dayFirstFormats + monthFirstFormats
             : monthFirstFormats + dayFirstFormats)
         let formatter = DateFormatter()
-        formatter.locale = locale
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = Calendar(identifier: .gregorian)
         formatter.timeZone = timeZone
         formatter.isLenient = false
         for format in formats {

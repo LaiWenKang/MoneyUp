@@ -202,6 +202,8 @@ extension TransactionEditView {
                                 pendingEvidence.removeAll { $0.id == attachment.id }
                             } label: {
                                 Image(systemName: "trash")
+                                    .frame(minWidth: 44, minHeight: 44)
+                                    .contentShape(Rectangle())
                             }
                             .buttonStyle(.borderless)
                             .accessibilityLabel("evidence.remove")
@@ -269,6 +271,7 @@ extension TransactionEditView {
                 for: .scrollContent
             )
             .navigationTitle("history.edit")
+            .moneyUpNavigationSurface()
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 if isEditable {
@@ -329,7 +332,7 @@ extension TransactionEditView {
             }
             .onChange(of: focusedField) { _, field in
                 guard let field else { return }
-                withAnimation(.easeOut(duration: 0.2)) {
+                withAnimation(MoneyUpMotion.animation(for: .stateChange, reduceMotion: reduceMotion)) {
                     scrollProxy.scrollTo(field, anchor: .center)
                 }
                 Task { @MainActor in
@@ -337,7 +340,7 @@ extension TransactionEditView {
                         nanoseconds: QuickLogFocusScrollPolicy.layoutSettlingNanoseconds
                     )
                     guard focusedField == field else { return }
-                    withAnimation(.easeOut(duration: 0.2)) {
+                    withAnimation(MoneyUpMotion.animation(for: .stateChange, reduceMotion: reduceMotion)) {
                         scrollProxy.scrollTo(field, anchor: .center)
                     }
                 }

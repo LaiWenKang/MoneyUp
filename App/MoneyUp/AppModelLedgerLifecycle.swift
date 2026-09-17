@@ -11,7 +11,8 @@ extension AppModel {
         name: String,
         type: FinancialAccountType,
         currencyCode: String,
-        startingBalance: Decimal = .zero
+        startingBalance: Decimal = .zero,
+        presetID: String? = nil
     ) async throws {
         try beginJournalMutation()
         defer { endJournalMutation() }
@@ -22,12 +23,20 @@ extension AppModel {
             throw AppModelError.negativeAmount
         }
         let currency = try CurrencyCode(currencyCode)
+        if let presetID {
+            guard let preset = LedgerPresetCatalog.preset(id: presetID),
+                  preset.scope == .accounts, preset.accountType == type else {
+                throw AppModelError.missingRecord
+            }
+            if accounts.contains(where: { $0.presetID == presetID && $0.currency == currency }) { return }
+        }
         try requireValidNewWriteAmount(startingBalance, currency: currency)
         let account = LedgerAccount(
             name: normalizedName,
             kind: type.isLiabilityAccount ? .liability : .asset,
             currency: currency,
-            accountType: type
+            accountType: type,
+            presetID: presetID
         )
         var accountsToAdd = [account]
         var writes = [
@@ -77,7 +86,8 @@ extension AppModel {
     func addCategory(
         name: String,
         kind: LedgerAccountKind,
-        parentID: UUID? = nil
+        parentID: UUID? = nil,
+        presetID: String? = nil
     ) async throws -> UUID {
         try beginJournalMutation()
         defer { endJournalMutation() }
@@ -94,10 +104,19 @@ extension AppModel {
                 throw AppModelError.invalidCategoryParent
             }
         }
+        if let presetID {
+            guard LedgerPresetCatalog.preset(id: presetID)?.scope == .expenses, kind == .expense else {
+                throw AppModelError.missingRecord
+            }
+            if let existing = accounts.first(where: { $0.presetID == presetID && $0.kind == .expense }) {
+                return existing.id
+            }
+        }
         let category = LedgerAccount(
             name: normalizedName,
             kind: kind,
-            parentID: parentID
+            parentID: parentID,
+            presetID: presetID
         )
         let generation = storeGeneration
         let store = try requireStore()

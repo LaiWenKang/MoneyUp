@@ -295,7 +295,7 @@ extension QuickLogEntryView {
         invalidateCaptureSuggestions()
         pendingDuplicateReview = nil
         let baseline = draftSnapshot
-        let accountSnapshot = model.accounts
+        let accountSnapshot = recordingInputAccounts
         let now = baseline.smartState.referenceDate
             ?? (baseline.dateWasEdited ? model.currentDateForUserAction() : baseline.occurredAt)
         let calendar = captureCalendar
@@ -315,7 +315,7 @@ extension QuickLogEntryView {
             }
             guard let interpretation, !Task.isCancelled, isActive,
                   request == smartParseRequestID, model.state == .ready,
-                  bookRevision == model.logicalBookRevision, accountSnapshot == model.accounts,
+                  bookRevision == model.logicalBookRevision, accountSnapshot == recordingInputAccounts,
                   baseline == draftSnapshot else { return }
             let parsed = interpretation.parsed
             let draft = QuickLogUnderstandingFill.fill(interpretation,

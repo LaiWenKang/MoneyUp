@@ -80,6 +80,7 @@ struct PrivacyAndBetaView: View {
         .scrollContentBackground(.hidden)
         .background(Color.moneyUpBackground)
         .navigationTitle("privacy.title")
+            .moneyUpNavigationSurface()
         .navigationBarTitleDisplayMode(.inline)
     }
 }

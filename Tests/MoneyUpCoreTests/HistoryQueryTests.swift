@@ -57,7 +57,8 @@ final class HistoryQueryTests: XCTestCase {
             query.filteredEntries(
                 [outsideDate, outsideAmount, wrongAccount, wrongCategory, expense],
                 accounts: fixture.accounts,
-                locale: Locale(identifier: "en_US")
+                locale: Locale(identifier: "en_US"),
+                calendar: calendar
             ).map(\.id),
             [expense.id]
         )

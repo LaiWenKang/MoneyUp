@@ -57,6 +57,8 @@ extension QuickLogEntryView {
                         evidenceMessage = nil
                     } label: {
                         Image(systemName: "trash")
+                                    .frame(minWidth: 44, minHeight: 44)
+                                    .contentShape(Rectangle())
                     }
                     .buttonStyle(.borderless)
                     .accessibilityLabel("evidence.remove")

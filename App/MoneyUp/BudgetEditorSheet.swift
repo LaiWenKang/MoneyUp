@@ -90,6 +90,7 @@ struct BudgetEditorSheet: View {
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
             .navigationTitle(node.name)
+            .moneyUpNavigationSurface()
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -143,7 +144,7 @@ struct BudgetEditorSheet: View {
                 LabeledContent("budget.preview_total", value: formattedMoney(total))
                 if mode == .fixedTotal, let childAllocation, childAllocation.amount > amount {
                     Label("budget.children_overallocated", systemImage: "exclamationmark.triangle")
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(Color.moneyUpWarning)
                 }
             }
         }

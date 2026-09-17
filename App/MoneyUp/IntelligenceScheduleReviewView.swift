@@ -90,6 +90,7 @@ struct IntelligenceScheduleReviewView: View {
 
             }
             .navigationTitle("intelligence.schedule.title")
+            .moneyUpNavigationSurface()
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

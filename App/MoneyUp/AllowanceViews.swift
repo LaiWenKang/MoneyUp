@@ -41,6 +41,7 @@ struct AllowanceCenterView: View {
         .scrollContentBackground(.hidden)
         .background(Color.moneyUpBackground)
         .navigationTitle("allowance.title")
+            .moneyUpNavigationSurface()
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -360,6 +361,7 @@ struct AllowanceDetailView: View {
         .scrollContentBackground(.hidden)
         .background(Color.moneyUpBackground)
         .navigationTitle(plan?.name ?? AppLocalization.string("allowance.title"))
+            .moneyUpNavigationSurface()
         .toolbar {
             if isWritable {
                 ToolbarItem(placement: .primaryAction) {
@@ -466,6 +468,7 @@ private struct AllowanceReconciliationSheet: View {
                 }
             }
             .navigationTitle("allowance.confirm_expiry")
+            .moneyUpNavigationSurface()
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -776,6 +779,7 @@ struct AllowanceEditorSheet: View {
                     ? LocalizedStringKey("allowance.add")
                     : LocalizedStringKey("action.edit")
             )
+            .moneyUpNavigationSurface()
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {

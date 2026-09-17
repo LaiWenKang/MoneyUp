@@ -146,7 +146,7 @@ struct MoneyUpFieldError: View {
     var body: some View {
         Label(message, systemImage: "exclamationmark.circle.fill")
             .font(.footnote)
-            .foregroundStyle(.red)
+            .foregroundStyle(Color.moneyUpDanger)
             .accessibilityElement(children: .combine)
             .accessibilityLabel(
                 Text(

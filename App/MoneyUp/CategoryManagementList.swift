@@ -15,6 +15,7 @@ struct CategoryManagementList: View {
     @State private var lifecycleRequest: CategoryLifecycleRequest?
     @State private var categoryKindToAdd: LedgerAccountKind = .expense
     @State private var parentIDToAdd: UUID?
+    @State private var isShowingCatalog = false
     @State private var isAddingCategory = false
     @State private var searchText = ""
 
@@ -29,10 +30,12 @@ struct CategoryManagementList: View {
             .searchable(text: $searchText, prompt: "lifecycle.search_categories")
             .scrollDismissesKeyboard(.interactively)
             .navigationTitle("lifecycle.manage_categories")
+            .moneyUpNavigationSurface()
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
+                        Button("catalog.expenses_title") { isShowingCatalog = true }
                         Button("lifecycle.add_expense_category") { add(kind: .expense) }
                         Button("lifecycle.add_income_category") { add(kind: .income) }
                     } label: { Label("category.add", systemImage: "plus") }
@@ -41,6 +44,9 @@ struct CategoryManagementList: View {
             }
             .sheet(item: $selectedCategory) { CategoryManagementSheet(categoryID: $0.id) }
             .sheet(item: $lifecycleRequest) { CategoryLifecycleReviewSheet(request: $0) }
+            .sheet(isPresented: $isShowingCatalog) {
+                NavigationStack { EntryCatalogView(scope: .expenses, showsDone: true) }
+            }
             .sheet(isPresented: $isAddingCategory) {
                 AddCategorySheet(kind: categoryKindToAdd, initialParentID: parentIDToAdd)
             }

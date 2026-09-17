@@ -56,6 +56,7 @@ struct CloudBackupView: View {
         .scrollContentBackground(.hidden)
         .background(Color.moneyUpBackground)
         .navigationTitle("cloud.title")
+            .moneyUpNavigationSurface()
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { ToolbarItem(placement: .confirmationAction) { Button("action.done") { signIn.cancel(); dismiss() } } }
         .background(CloudBackupWindowAnchor { signIn.anchor = $0 }.frame(width: 0, height: 0))

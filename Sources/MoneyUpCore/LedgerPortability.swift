@@ -578,6 +578,7 @@ public enum ExchangeRateError: Error, Equatable, Sendable {
 }
 
 public struct HistoricalCurrencyConversion: Equatable, Sendable {
+    public let quotedRate: Decimal
     public let source: Money
     public let converted: Money
     public let appliedRate: Decimal
@@ -601,6 +602,7 @@ public enum HistoricalExchangeRateLookup {
     ) throws -> HistoricalCurrencyConversion? {
         if source.currency == destinationCurrency {
             return HistoricalCurrencyConversion(
+                quotedRate: 1,
                 source: source,
                 converted: source,
                 appliedRate: 1,
@@ -662,6 +664,7 @@ public enum HistoricalExchangeRateLookup {
             throw ExchangeRateError.conversionOutOfRange
         }
         return HistoricalCurrencyConversion(
+            quotedRate: candidate.rate,
             source: source,
             converted: try Money(roundedAmount, currency: destinationCurrency),
             appliedRate: applied,

@@ -233,7 +233,8 @@ extension AppModel {
 extension AppModel {
     func historyPreloadSuggestions(for query: CaptureSuggestionQuery,
                                    eligibleCategoryIDs: Set<UUID>, accountID: UUID? = nil,
-                                   categoryID: UUID? = nil) async -> (
+                                   categoryID: UUID? = nil,
+                                   eligibleAccountIDs: Set<UUID>? = nil) async -> (
         fields: CaptureSuggestionResult, merchants: [HistoryPreloadSuggestion]
     ) {
         let empty = (fields: CaptureSuggestionResult(queryFingerprint: query.fingerprint,
@@ -242,9 +243,13 @@ extension AppModel {
               profile?.merchantSuggestionsEnabled != false,
               !isBookReplacementInProgress,
               let read = try? beginLogicalBookRead() else { return empty }
+        let choiceIDs = eligibleAccountIDs ?? Set(LedgerEntryChoices.visible(accounts,
+            preserving: Set([accountID].compactMap { $0 })).map(\.id))
         let eligibleAccounts = accounts.filter {
-            ($0.kind != .expense && $0.kind != .income) || eligibleCategoryIDs.contains($0.id)
+            if $0.kind == .expense || $0.kind == .income { return eligibleCategoryIDs.contains($0.id) }
+            return choiceIDs.contains($0.id)
         }
+        let revision = journalProjectionRevision
         let calendar = reportingCalendar
         do {
             let page = try await read.store.fetchJournalEntryPage(
@@ -252,7 +257,8 @@ extension AppModel {
                 endDateExclusive: Date(timeIntervalSinceReferenceDate:
                     query.occurredAt.timeIntervalSinceReferenceDate.nextUp), limit: 200)
             try requireLogicalBookRead(read.token)
-            guard profile?.intelligenceEnabled == true,
+            guard revision == journalProjectionRevision,
+                  profile?.intelligenceEnabled == true,
                   profile?.merchantSuggestionsEnabled != false,
                   page.issues.isEmpty else { return try await finishLogicalBookRead(empty, token: read.token) }
             let result = await Task.detached(priority: .utility) {
@@ -262,7 +268,9 @@ extension AppModel {
                     accounts: eligibleAccounts, calendar: calendar,
                     accountID: accountID, categoryID: categoryID))
             }.value
-            return try await finishLogicalBookRead(result, token: read.token)
+            let current = try await finishLogicalBookRead(result, token: read.token)
+            guard revision == journalProjectionRevision else { return empty }
+            return current
         } catch { return empty }
     }
 }

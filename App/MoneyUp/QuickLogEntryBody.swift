@@ -97,7 +97,7 @@ extension QuickLogEntryView {
                             )
                         ) {
                             Text("quick_log.choose_account").tag(UUID?.none)
-                            ForEach(model.userAccounts.filter { $0.id != accountID }) { account in
+                            ForEach(recordingAccounts.filter { $0.id != accountID }) { account in
                                 Text(accountCurrencyLabel(account)).tag(Optional(account.id))
                             }
                         }
@@ -198,31 +198,20 @@ extension QuickLogEntryView {
                     MoneyUpEntryRoutePreview(
                         kind: kind,
                         account: selectedSourceAccount?.name,
-                        destination: model.userAccounts.first { $0.id == destinationAccountID }?.name,
+                        destination: recordingAccounts.first { $0.id == destinationAccountID }?.name,
                         category: splitLines.isEmpty
                             ? categoryID.map { model.categoryPathName(for: $0) }
                             : AppLocalization.string("flow.split_categories")
                     )
                 }
 
+                missingEntryCategoryGuidance
+
                 occurrenceSection
 
                 evidenceSection
 
-                if model.userAccounts.isEmpty {
-                    Section {
-                        Button("account.add") { isAddingAccount = true }
-                        Text("transaction.no_accounts")
-                            .foregroundStyle(.secondary)
-                    }
-                } else if kind == .transfer
-                            && (sourceAccounts.isEmpty || model.userAccounts.count < 2) {
-                    Section {
-                        Button("account.add") { isAddingAccount = true }
-                        Text("transaction.need_two_accounts")
-                            .foregroundStyle(.secondary)
-                    }
-                }
+                missingEntryAccountGuidance
 
         }
     }
@@ -378,7 +367,7 @@ extension QuickLogEntryView {
             }
             .onChange(of: accountID) { _, _ in
                 if destinationAccountID == accountID {
-                    destinationAccountID = model.userAccounts.first { $0.id != accountID }?.id
+                    destinationAccountID = recordingAccounts.first { $0.id != accountID }?.id
                 }
                 if selectedAllowanceID != nil,
                    selectedAllowanceApplication == nil {

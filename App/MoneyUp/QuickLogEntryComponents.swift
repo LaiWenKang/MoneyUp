@@ -542,7 +542,7 @@ extension QuickLogEntryView {
                         + currency.value
                 )
                     .font(.subheadline.monospacedDigit().weight(.semibold))
-                    .foregroundStyle(remainder == .zero ? Color.green : Color.red)
+                    .foregroundStyle(remainder == .zero ? Color.moneyUpPositive : Color.moneyUpDanger)
             }
             .accessibilityHint(
                 remainder == .zero

@@ -288,7 +288,9 @@ struct AllowanceUsageSheet: View {
             .navigationTitle(usage == nil
                 ? LocalizedStringKey("allowance.record_use")
                 : LocalizedStringKey("allowance.usage.edit"))
+            .moneyUpNavigationSurface()
             .navigationBarTitleDisplayMode(.inline)
+            .moneyUpNavigationSurface()
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("action.save") { Task { await save() } }

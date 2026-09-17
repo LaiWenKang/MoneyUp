@@ -140,6 +140,7 @@ struct WhatsNewSheet: View {
             }
             .background { MoneyUpBackdrop() }
             .navigationTitle("whats_new.title")
+            .moneyUpNavigationSurface()
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {

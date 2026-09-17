@@ -588,7 +588,7 @@ struct HistoryView: View {
             .contentMargins(.top, 8, for: .scrollContent)
             .scrollDismissesKeyboard(.interactively)
             .scrollContentBackground(.hidden)
-            .background(Color.moneyUpBackground)
+            .background { MoneyUpBackdrop() }
             .navigationTitle(title ?? AppLocalization.string("tab.history"))
             .moneyUpNavigationSurface()
             .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "history.search")

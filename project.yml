@@ -46,6 +46,15 @@ targets:
               - moneyup
         LSApplicationCategoryType: public.app-category.finance
         NSFaceIDUsageDescription: Unlock your private MoneyUp financial data.
+        UTImportedTypeDeclarations:
+          - UTTypeIdentifier: org.openxmlformats.spreadsheetml.sheet
+            UTTypeConformsTo:
+              - public.data
+              - public.spreadsheet
+            UTTypeTagSpecification:
+              public.filename-extension:
+                - xlsx
+              public.mime-type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
         UTExportedTypeDeclarations:
           - UTTypeIdentifier: com.laiwenkang.moneyup.archive
             UTTypeDescription: MoneyUp Encrypted Backup
