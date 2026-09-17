@@ -65,7 +65,7 @@ struct PlanView: View {
                 sectionRoot
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-                .background(Color.moneyUpBackground)
+                .background { MoneyUpBackdrop() }
                 .moneyUpNavigationSurface()
                 .toolbar {
                     ToolbarItem(placement: .primaryAction) {
@@ -229,7 +229,7 @@ struct BudgetRow: View {
                 if let remaining {
                     Text(formattedMoney(isOverspent ? remaining.negated : remaining))
                         .font(.subheadline.monospacedDigit().weight(.semibold))
-                        .foregroundStyle(isOverspent ? Color.red : Color.primary)
+                        .foregroundStyle(isOverspent ? Color.moneyUpDanger : Color.primary)
                     Text(isOverspent ? "plan.over" : "plan.left")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -259,7 +259,7 @@ struct BudgetRow: View {
                     }
                 }
                 .font(.caption2.weight(.semibold))
-                .foregroundStyle(purpose == .unclassified ? Color.orange : Color.accentColor)
+                .foregroundStyle(purpose == .unclassified ? Color.moneyUpWarning : Color.accentColor)
             }
 
             if case let .available(.some(ratio)) = ratioResult,
@@ -341,7 +341,7 @@ struct BudgetSummaryCard: View {
                         .foregroundStyle(.secondary)
                     Text(formattedMoney(isOverspent ? remaining.negated : remaining))
                         .moneyUpFinancialValue(.hero)
-                        .foregroundStyle(isOverspent ? Color.red : Color.primary)
+                        .foregroundStyle(isOverspent ? Color.moneyUpDanger : Color.primary)
                 }
                 Spacer(minLength: 0)
                 if !dynamicTypeSize.isAccessibilitySize, case let .available(ratio) = ratioResult {
@@ -472,8 +472,9 @@ struct AddCategorySheet: View {
             .disabled(isSaving)
             .scrollDismissesKeyboard(.interactively)
             .scrollContentBackground(.hidden)
-            .background(Color.moneyUpBackground)
+            .background { MoneyUpBackdrop() }
             .navigationTitle(titleKey)
+            .moneyUpNavigationSurface()
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

@@ -101,6 +101,7 @@ struct LoanCenterView: View {
         .scrollContentBackground(.hidden)
         .background(Color.moneyUpBackground)
         .navigationTitle("loan.title")
+            .moneyUpNavigationSurface()
         .toolbar {
             if !unconfiguredLoanAccounts.isEmpty {
                 ToolbarItem(placement: .primaryAction) {
@@ -261,6 +262,7 @@ private struct LoanDetailView: View {
         .scrollContentBackground(.hidden)
         .background(Color.moneyUpBackground)
         .navigationTitle(plan?.name ?? AppLocalization.string("loan.title"))
+            .moneyUpNavigationSurface()
         .toolbar {
             if plan != nil {
                 ToolbarItem(placement: .primaryAction) {
@@ -342,6 +344,7 @@ private struct AddLoanPlanSheet: View {
                 expenseCategoryPicker("loan.fee_category", selection: $feeCategoryID)
             }
             .navigationTitle("loan.configure")
+            .moneyUpNavigationSurface()
             .navigationBarTitleDisplayMode(.inline)
             .scrollDismissesKeyboard(.interactively)
             .scrollContentBackground(.hidden)
@@ -462,6 +465,7 @@ private struct LoanPaymentSheet: View {
                 TextField("transaction.description_or_notes", text: $note, axis: .vertical)
             }
             .navigationTitle("loan.repayment")
+            .moneyUpNavigationSurface()
             .navigationBarTitleDisplayMode(.inline)
             .scrollDismissesKeyboard(.interactively)
             .scrollContentBackground(.hidden)
@@ -570,6 +574,7 @@ private struct LoanDrawdownSheet: View {
                 TextField("transaction.description_or_notes", text: $note, axis: .vertical)
             }
             .navigationTitle("loan.drawdown")
+            .moneyUpNavigationSurface()
             .navigationBarTitleDisplayMode(.inline)
             .scrollDismissesKeyboard(.interactively)
             .scrollContentBackground(.hidden)
@@ -667,6 +672,7 @@ private struct LoanEditSheet: View {
                 categoryPicker("loan.fee_category", selection: $feeCategoryID)
             }
             .navigationTitle("action.edit")
+            .moneyUpNavigationSurface()
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {

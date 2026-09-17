@@ -72,7 +72,7 @@ struct BudgetCompositionView: View {
                 .frame(height: 40)
                 .accessibilityLabel("budget.composition")
                 .accessibilityHidden(hidesAmounts)
-                .animation(MoneyUpMotion.animation(for: .stateChange, reduceMotion: reduceMotion), value: segments.map { $0.amount.amount })
+                .animation(MoneyUpMotion.animation(for: .financialValue, reduceMotion: reduceMotion), value: segments.map { $0.amount.amount })
                 .onChange(of: selectedPosition) { _, value in
                     guard let value else { return }
                     var end = 0.0

@@ -35,7 +35,7 @@ struct AssetsOverviewSection: View {
                         Text(oldestPositionPriceDate, format: .dateTime.year().month().day()).font(.caption)
                         if model.investmentHoldings.contains(where: {
                             $0.positionAccountID != nil && $0.quantity > .zero && $0.isPriceStale(relativeTo: now, calendar: model.reportingCalendar)
-                        }) { Text("holding.stale").font(.caption).foregroundStyle(.orange) }
+                        }) { Text("holding.stale").font(.caption).foregroundStyle(Color.moneyUpWarning) }
                     }.foregroundStyle(.secondary)
                 }
                 Button { Task { await capture() } } label: {

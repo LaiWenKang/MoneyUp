@@ -33,6 +33,18 @@ final class AppLocalizationTests: XCTestCase {
         super.tearDown()
     }
 
+    func testBudgetFindingMetadataResolvesInBothLanguages() {
+        for language in [AppLanguagePreference.english, .simplifiedChinese] {
+            languageDefaults.set(language.rawValue, forKey: AppLanguagePreference.storageKey)
+            for key in ["intelligence.budget.headline", "intelligence.budget.explanation",
+                        "intelligence.figure.categories", "fx.identical_currencies",
+                        "dashboard.budget_pace.accessibility"] {
+                XCTAssertNotEqual(AppLocalization.string(key), key)
+                XCTAssertFalse(AppLocalization.string(key).isEmpty)
+            }
+        }
+    }
+
     func testProgrammaticLocalizationFollowsEnglishPreference() {
         languageDefaults.set(
             AppLanguagePreference.english.rawValue,

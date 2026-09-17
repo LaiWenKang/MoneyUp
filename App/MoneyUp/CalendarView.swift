@@ -792,6 +792,7 @@ private struct AddScheduleSheet: View {
                     ? AppLocalization.string("schedule.add")
                     : AppLocalization.string("schedule.edit")
             )
+            .moneyUpNavigationSurface()
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {

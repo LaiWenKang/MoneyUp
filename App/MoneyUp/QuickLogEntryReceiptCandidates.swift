@@ -10,7 +10,7 @@ extension QuickLogEntryView {
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.tint)
             if result.requiresExplicitReview {
-                Text("quick_log.scan_partial_review").font(.footnote).foregroundStyle(.orange)
+                Text("quick_log.scan_partial_review").font(.footnote).foregroundStyle(Color.moneyUpWarning)
             }
             if result.dateCandidates.isEmpty {
                 Text("quick_log.scan_date_review").font(.footnote).foregroundStyle(.secondary)
@@ -92,10 +92,10 @@ extension QuickLogEntryView {
     private func receiptCurrencyNotice(_ evidence: ReceiptCurrencyEvidence) -> some View {
         if evidence.codes.count > 1 {
             Text("quick_log.receipt_multiple_currencies")
-                .font(.footnote).foregroundStyle(.orange)
+                .font(.footnote).foregroundStyle(Color.moneyUpWarning)
         } else if let currency = evidence.identifiedCurrency, currency != selectedAccountCurrency {
             Text(String(format: AppLocalization.string("quick_log.receipt_currency_mismatch"), currency.value))
-                .font(.footnote).foregroundStyle(.orange)
+                .font(.footnote).foregroundStyle(Color.moneyUpWarning)
         } else if evidence.hasAmbiguousSymbol, evidence.identifiedCurrency == nil {
             Text("quick_log.receipt_currency_ambiguous")
                 .font(.footnote).foregroundStyle(.secondary)

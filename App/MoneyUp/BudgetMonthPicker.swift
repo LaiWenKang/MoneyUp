@@ -78,6 +78,7 @@ private struct BudgetMonthSelectionSheet: View {
                 }
             }
             .navigationTitle("budget.choose_month")
+            .moneyUpNavigationSurface()
             .navigationBarTitleDisplayMode(.inline)
             .scrollDismissesKeyboard(.interactively)
             .toolbar {

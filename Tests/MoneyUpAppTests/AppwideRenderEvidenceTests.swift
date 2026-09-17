@@ -8,6 +8,27 @@ import XCTest
 
 final class AppwideRenderEvidenceTests: XCTestCase {
     @MainActor
+    func testCaptureAppStoreScreenshots() async throws {
+        let (fixture, model, snapshot) = try await makeFixture()
+        defer { fixture.removeFiles() }
+        let previousPrivacy = UserDefaults.standard.object(forKey: MoneyAmountPrivacy.storageKey)
+        UserDefaults.standard.set(false, forKey: MoneyAmountPrivacy.storageKey)
+        defer {
+            if let previousPrivacy { UserDefaults.standard.set(previousPrivacy, forKey: MoneyAmountPrivacy.storageKey) }
+            else { UserDefaults.standard.removeObject(forKey: MoneyAmountPrivacy.storageKey) }
+        }
+        for language in [AppLanguagePreference.english, .simplifiedChinese] {
+            let prefix = language == .english ? "store-en-" : "store-zh-"
+            for (tab, name) in [(MoneyUpSection.today, "today"), (.log, "log"), (.plan, "plan"), (.history, "history"), (.assets, "assets")] {
+                await capture(MainTabView(initialReportingSnapshot: snapshot, initialSection: tab)
+                    .environment(model).environment(MoneyUpOverviewNavigation()).preferredColorScheme(.light),
+                    name: prefix + name, width: 428, height: 926, language: language)
+            }
+        }
+        await fixture.store.close()
+    }
+
+    @MainActor
     func testPlanToolbarSurvivesRetainedTabAndAppearanceChanges() async throws {
         let (fixture, model, snapshot) = try await makeFixture()
         defer { fixture.removeFiles() }

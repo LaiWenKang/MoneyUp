@@ -453,6 +453,8 @@ public extension AllowancePlan {
         var copy = self
         copy.usages.append(usage)
         copy.usages.sort { $0.occurredAt < $1.occurredAt }
+        // Backdated usage must leave every later rollover period valid.
+        try copy.validateAllowancePeriodBalances(validatesUsage: true)
         return copy
     }
 

@@ -64,6 +64,7 @@ struct ExchangeRatesView: View {
         .scrollContentBackground(.hidden)
         .background(Color.moneyUpBackground)
         .navigationTitle("fx.title")
+            .moneyUpNavigationSurface()
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { MoneyUpKeyboardDoneToolbar() }
         .sheet(isPresented: $isAdding) { ExchangeRateEditorSheet() }

@@ -8,6 +8,7 @@ extension QuickLogEntryView {
             .scrollDismissesKeyboard(.interactively)
             .disabled(isSaving || isUndoing || isClearingDraft)
             .navigationTitle(title)
+            .moneyUpNavigationSurface()
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {

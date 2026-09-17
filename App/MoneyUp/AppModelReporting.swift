@@ -104,7 +104,8 @@ extension AppModel {
                     rateID: conversion.rateID,
                     effectiveDayKey: conversion.effectiveDayKey,
                     usedInverseRate: conversion.usedInverseRate,
-                    converted: conversion.converted
+                    converted: conversion.converted,
+                    quotedRate: conversion.quotedRate
                 ))
             }
             guard !evidence.isEmpty,

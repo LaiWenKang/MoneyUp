@@ -15,7 +15,7 @@ extension QuickLogEntryView {
 
     func refreshTypedPayeeSuggestion() {
         let normalized = payee.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard kind != .transfer, normalized.isEmpty || normalized.count >= 2 else {
+        guard kind != .transfer, normalized.isEmpty || normalized.utf8.count >= 2 else {
             invalidateCaptureSuggestions()
             return
         }
@@ -93,11 +93,11 @@ extension QuickLogEntryView {
 
     func refreshCaptureSuggestions(for draft: TransactionDraft) {
         cancelCaptureSuggestionLookup()
-        historyPreloads = []
-        captureSuggestionResult = nil
         guard model.profile?.intelligenceEnabled == true,
               model.profile?.merchantSuggestionsEnabled != false,
               let currency = selectedAccountCurrency else {
+            historyPreloads = []
+            captureSuggestionResult = nil
             return
         }
         let suggestionKind: CaptureIntelligenceKind
@@ -164,6 +164,7 @@ extension QuickLogEntryView {
                         } ?? "", available: available,
                         canApplyAll: preloadDraft(suggestion, fields: QuickLogHistoryPreloadFill.fields) != draftSnapshot
                     ) { fields in applyHistoryPreload(suggestion, fields: fields) }
+                    .disabled(captureSuggestionTask != nil)
                 }
                 Text("quick_log.preload_context_detail").font(.caption).foregroundStyle(.secondary)
             }
@@ -178,7 +179,8 @@ extension QuickLogEntryView {
 
     func applyHistoryPreload(_ suggestion: HistoryPreloadSuggestion,
                              fields: Set<QuickLogSmartField>) {
-        guard !isSaving, !isScanning, !isCheckingDuplicates, !isClearingDraft,
+        guard captureSuggestionTask == nil,
+              !isSaving, !isScanning, !isCheckingDuplicates, !isClearingDraft,
               model.state == .ready, !model.isBookReplacementInProgress,
               model.profile?.intelligenceEnabled == true,
               model.profile?.merchantSuggestionsEnabled != false,
@@ -193,7 +195,9 @@ extension QuickLogEntryView {
         if updated.amountText != baseline.amountText { receiptProtectedFields.insert(\.amountText) }
         if updated.accountID != baseline.accountID { receiptProtectedFields.insert(\.accountID) }
         if updated.categoryID != baseline.categoryID { receiptProtectedFields.insert(\.categoryID) }
+        let wasShowingOptionalDetails = isShowingOptionalDetails
         applyDraft(updated)
+        isShowingOptionalDetails = wasShowingOptionalDetails
         if !dismissAfterSave { model.updateQuickLogDraft(updated) }
         refreshTypedPayeeSuggestion()
     }
@@ -260,6 +264,7 @@ extension QuickLogEntryView {
                 .foregroundStyle(.secondary)
         }
         .accessibilityElement(children: .contain)
+        .disabled(captureSuggestionTask != nil)
     }
 
     private func captureSuggestionRow(

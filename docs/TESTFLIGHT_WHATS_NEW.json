@@ -1,4 +1,4 @@
 {
-  "en-US": "Quick Log: preview contextual suggestions for merchant, amount, account and category. Use the main arrow to fill untouched fields, or expand individual field arrows. Your edited and cleared fields stay protected. Suggestions use local transaction history, date and time; uncertain amounts stay blank. Transfers: enter your own forward or reverse exchange rate and preview the received amount before applying. Please test draft resume, hidden amounts, large text, and currency/account accuracy.",
-  "zh-Hans": "快速记账：预览根据情境推荐的商家、金额、账户和分类。点按主箭头填入未修改字段，或展开后逐项选择。保留你已编辑及主动清空的字段。建议依据本机交易历史、日期和时间；金额依据不足时留空。转账：输入自定正向或反向汇率，预览到账金额后应用。请测试草稿恢复、隐藏金额、大字体及币种与账户准确性。"
+  "en-US": "Financial accuracy improvements for backdated allowance usage, CSV dates across regions, three-decimal receipt amounts and historical currency estimates. Ambiguous receipt amounts require review. Quick Log suggestions are steadier while typing and preserve your edits and expanded details. Improved motion, semantic colors, VoiceOver descriptions and touch targets. Please check receipt amounts and currencies, draft resume, CSV previews, allowance rollover, and light/dark layouts before saving.",
+  "zh-Hans": "改进回填津贴用量、跨地区 CSV 日期、三位小数收据金额和历史汇率估算的准确性。含义不明确的收据金额需先复核。记账建议在输入时更稳定，保留你已修改的字段和已展开的详情。统一动效、语义颜色、VoiceOver 描述及按钮点击区。请重点检查收据金额与币种、草稿恢复、CSV 预览、津贴结转及浅深色界面。"
 }

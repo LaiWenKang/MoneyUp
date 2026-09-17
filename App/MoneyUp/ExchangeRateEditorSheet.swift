@@ -56,6 +56,9 @@ struct ExchangeRateEditorSheet: View {
                     selection: $quoteCode,
                     existing: knownCurrencies
                 )
+                if baseCode == quoteCode {
+                    Text("fx.identical_currencies").foregroundStyle(Color.moneyUpWarning)
+                }
                 TextField("fx.quote_per_base", text: $rateText)
                     .keyboardType(.decimalPad)
                 DatePicker("fx.effective_date", selection: $effectiveAt, displayedComponents: .date)
@@ -91,6 +94,8 @@ struct ExchangeRateEditorSheet: View {
             .onAppear {
                 guard initialDraftSignature == nil else { return }
                 baseCode = model.profile?.baseCurrency.value ?? baseCode
+                quoteCode = knownCurrencies.first(where: { $0.value != baseCode })?.value
+                    ?? (baseCode == "USD" ? "EUR" : "USD")
                 effectiveAt = model.currentDateForUserAction()
                 initialDraftSignature = draftSignature
             }
@@ -167,7 +172,10 @@ struct ManualTransferRateSheet: View {
                     Text("fx.custom_transfer_detail")
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background { MoneyUpBackdrop() }
             .navigationTitle("fx.custom_transfer_rate")
+            .moneyUpNavigationSurface()
             .toolbar { MoneyUpKeyboardDoneToolbar() }
             .moneyUpProtectDraft(hasChanges: !rateText.isEmpty, isSaving: false)
         }

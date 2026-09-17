@@ -202,7 +202,7 @@ extension DashboardView {
             title: "dashboard.card_loan_debt",
             value: formattedMoney(position.debt),
             systemImage: "creditcard.fill",
-            tint: .orange
+            tint: Color.moneyUpWarning
         )
     }
 
@@ -222,7 +222,7 @@ extension DashboardView {
                         .font(.title3.monospacedDigit().weight(.semibold))
                         .foregroundStyle(
                             summary.remaining.amount < .zero
-                                ? Color.red
+                                ? Color.moneyUpDanger
                                 : Color.primary
                         )
                         .lineLimit(1)
@@ -276,7 +276,7 @@ extension DashboardView {
                 systemImage: budgetPaceSymbol(ratio: ratio)
             )
             .font(.footnote.weight(.semibold))
-            .foregroundStyle(ratio > 1 ? Color.red : Color.secondary)
+            .foregroundStyle(ratio > 1 ? Color.moneyUpDanger : Color.secondary)
         }
         if summary.unbudgetedSpent.amount > .zero {
             HStack {
@@ -305,7 +305,7 @@ extension DashboardView {
                         .monospacedDigit()
                 }
                 .font(.footnote)
-                .foregroundStyle(.orange)
+                .foregroundStyle(Color.moneyUpWarning)
                 .accessibilityElement(children: .combine)
             }
         case let .unavailable(issue):
@@ -340,7 +340,7 @@ extension DashboardView {
                             .font(.subheadline.monospacedDigit().weight(.semibold))
                             .foregroundStyle(
                                 upcoming.transaction.kind == .income
-                                    ? Color.green
+                                    ? Color.moneyUpPositive
                                     : Color.primary
                             )
                     }

@@ -128,6 +128,7 @@ private struct CurrencySelectionSheet: View {
             }
             .searchable(text: $query, prompt: "currency.search")
             .navigationTitle(title)
+            .moneyUpNavigationSurface()
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

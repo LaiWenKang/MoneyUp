@@ -27,7 +27,7 @@ struct BudgetSuggestionReviewView: View {
                         "intelligence.budget.applied",
                         systemImage: "checkmark.circle.fill"
                     )
-                    .foregroundStyle(.green)
+                    .foregroundStyle(Color.moneyUpPositive)
                     Button("intelligence.budget.undo") {
                         Task { await undo() }
                     }
@@ -36,6 +36,7 @@ struct BudgetSuggestionReviewView: View {
             }
         }
         .navigationTitle("intelligence.budget.review_title")
+            .moneyUpNavigationSurface()
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 Button("intelligence.budget.apply") {

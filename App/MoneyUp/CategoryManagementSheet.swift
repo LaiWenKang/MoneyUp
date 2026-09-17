@@ -89,6 +89,7 @@ struct CategoryManagementSheet: View {
             .background(Color.moneyUpBackground)
             .scrollDismissesKeyboard(.interactively)
             .navigationTitle(category?.name ?? AppLocalization.string("lifecycle.manage"))
+            .moneyUpNavigationSurface()
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { toolbar }
             .onAppear { loadOnce() }

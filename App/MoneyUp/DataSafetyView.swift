@@ -107,7 +107,7 @@ struct DataSafetyView: View {
                         "recovery.key_cliff.detail",
                         systemImage: "key.slash.fill"
                     )
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(Color.moneyUpWarning)
                     Text("recovery.key_cliff.steps")
                         .font(.callout)
                 } header: {
@@ -121,7 +121,7 @@ struct DataSafetyView: View {
                         "backup.first_reminder",
                         systemImage: "externaldrive.badge.exclamationmark"
                     )
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(Color.moneyUpWarning)
                 }
             }
 
@@ -131,7 +131,7 @@ struct DataSafetyView: View {
                         "capture.unavailable.detail",
                         systemImage: "exclamationmark.triangle.fill"
                     )
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(Color.moneyUpWarning)
                     Button("capture.unavailable.discard", role: .destructive) {
                         isConfirmingCaptureDiscard = true
                     }
@@ -149,7 +149,7 @@ struct DataSafetyView: View {
                             : "backup.pending_captures_included",
                         systemImage: "tray.full.fill"
                     )
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(Color.moneyUpWarning)
                     if model.state == .ready {
                         Button("backup.review_pending_captures") {
                             Task { await reviewPendingCaptures() }
@@ -288,7 +288,7 @@ struct DataSafetyView: View {
                     if !inventory.nestedActivityCountsComplete {
                         Label("inventory.partial", systemImage: "exclamationmark.triangle")
                             .font(.caption)
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(Color.moneyUpWarning)
                     }
 
                     Button {
@@ -370,7 +370,7 @@ struct DataSafetyView: View {
                 Section {
                     Label(message, systemImage: "checkmark.circle.fill")
                 }
-                    .foregroundStyle(.green)
+                    .foregroundStyle(Color.moneyUpPositive)
             }
             if let restoreSuccess = restorePresentation.visibleSuccess {
                 Section {
@@ -380,12 +380,13 @@ struct DataSafetyView: View {
                     )
                     .accessibilityFocused($successMessageIsFocused)
                 }
-                .foregroundStyle(.green)
+                .foregroundStyle(Color.moneyUpPositive)
             }
         }
         .scrollContentBackground(.hidden)
         .background(Color.moneyUpBackground)
         .navigationTitle("backup.data_safety")
+            .moneyUpNavigationSurface()
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $isShowingCloudBackup, onDismiss: {
             if let ticket = cloudRestoreTicket {

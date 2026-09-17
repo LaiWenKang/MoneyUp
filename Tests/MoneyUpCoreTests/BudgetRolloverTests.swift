@@ -531,15 +531,14 @@ final class BudgetRolloverTests: XCTestCase {
             from: try JSONSerialization.data(withJSONObject: object)
         ))
 
-        // GMT's offset and day are internally coherent for this instant, but
-        // they cannot be paired with the persisted +14 named zone.
+        // A coherent frozen offset/day survives later changes in named-zone rules.
         object = original
         object["originUTCOffsetSeconds"] = 0
         object["originDayKey"] = "2026-07-31"
-        XCTAssertThrowsError(try JSONDecoder().decode(
-            BudgetEntryAttribution.self,
-            from: try JSONSerialization.data(withJSONObject: object)
-        ))
+        let restored = try JSONDecoder().decode(BudgetEntryAttribution.self,
+            from: JSONSerialization.data(withJSONObject: object))
+        XCTAssertEqual(restored.originUTCOffsetSeconds, 0)
+        XCTAssertEqual(restored.originDayKey, "2026-07-31")
     }
 
     private func date(_ year: Int, _ month: Int, _ day: Int) -> Date {

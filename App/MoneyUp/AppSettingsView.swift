@@ -362,7 +362,8 @@ struct AppSettingsView: View {
 
         }
         .scrollContentBackground(.hidden)
-        .background(Color.moneyUpBackground)
+        .background { MoneyUpBackdrop() }
+        .moneyUpNavigationSurface()
         .navigationTitle("settings.title")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $isManagingCategories) {

@@ -206,7 +206,7 @@ struct AssetsView: View {
                                     if holding.needsLedgerConnection {
                                         Label("holding.needs_ledger", systemImage: "exclamationmark.triangle.fill")
                                             .font(.caption2)
-                                            .foregroundStyle(.orange)
+                                            .foregroundStyle(Color.moneyUpWarning)
                                     } else if let priceAsOf = holding.priceAsOf {
                                         HStack(spacing: 4) {
                                             Text("holding.price_as_of")
@@ -216,7 +216,7 @@ struct AssetsView: View {
                                                 calendar: model.reportingCalendar
                                             ) {
                                                 Text("holding.stale")
-                                                    .foregroundStyle(.orange)
+                                                    .foregroundStyle(Color.moneyUpWarning)
                                             }
                                         }
                                         .font(.caption2)
@@ -395,7 +395,7 @@ struct AssetsView: View {
             }
             .scrollContentBackground(.hidden)
             .contentMargins(.top, 8, for: .scrollContent)
-            .background(Color.moneyUpBackground)
+            .background { MoneyUpBackdrop() }
             .navigationTitle("tab.assets")
             .moneyUpNavigationSurface()
             .toolbar {

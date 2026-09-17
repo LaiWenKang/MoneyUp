@@ -7,6 +7,15 @@ import XCTest
 
 final class AppwideExperienceTests: XCTestCase {
     @MainActor
+    func testSpreadsheetTypeIsDeclaredInTheBuiltBundle() throws {
+        let declarations = try XCTUnwrap(Bundle.main.object(forInfoDictionaryKey: "UTImportedTypeDeclarations") as? [[String: Any]])
+        let spreadsheet = try XCTUnwrap(declarations.first { ($0["UTTypeIdentifier"] as? String) == "org.openxmlformats.spreadsheetml.sheet" })
+        let tags = try XCTUnwrap(spreadsheet["UTTypeTagSpecification"] as? [String: Any])
+        XCTAssertEqual(tags["public.filename-extension"] as? [String], ["xlsx"])
+        XCTAssertEqual(tags["public.mime-type"] as? String, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    }
+
+    @MainActor
     func testOverviewWaitsForAnUnlockedActiveSceneAndConsumesOnce() {
         let navigation = MoneyUpOverviewNavigation()
         navigation.request(.today)

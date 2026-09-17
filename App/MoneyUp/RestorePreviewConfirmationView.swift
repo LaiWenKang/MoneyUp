@@ -43,7 +43,7 @@ struct RestorePreviewConfirmationView: View {
                         "restore.preview.validated",
                         systemImage: "checkmark.shield.fill"
                     )
-                    .foregroundStyle(.green)
+                    .foregroundStyle(Color.moneyUpPositive)
                     LabeledContent(
                         "restore.preview.archive_format",
                         value: String(preview.archiveFormatVersion)
@@ -67,6 +67,7 @@ struct RestorePreviewConfirmationView: View {
                 }
             }
             .navigationTitle(confirmationTitleKey)
+            .moneyUpNavigationSurface()
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -101,7 +102,7 @@ struct RestorePreviewConfirmationView: View {
                     "restore.preview.current_inaccessible",
                     systemImage: "key.slash.fill"
                 )
-                .foregroundStyle(.orange)
+                .foregroundStyle(Color.moneyUpWarning)
             }
             countChangeRow(
                 "restore.preview.total_records",

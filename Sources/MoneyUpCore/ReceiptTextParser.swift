@@ -157,6 +157,7 @@ public enum ReceiptTextParser {
         let rangeLocation: Int
         let score: Int
         let isLabelled: Bool
+        let requiresReview: Bool
         let evidence: [ReceiptCandidateEvidence]
     }
 
@@ -192,6 +193,7 @@ public enum ReceiptTextParser {
         let range: NSRange
         let hasFraction: Bool
         let digitCount: Int
+        let requiresReview: Bool
     }
 
     static let payableLabels: [(String, Int)] = [
@@ -359,7 +361,7 @@ public enum ReceiptTextParser {
             categoryCandidateDetails: details.categories,
             recognizedText: input.lines.joined(separator: "\n"),
             currencyEvidence: currencyEvidence(in: input.lines),
-            requiresExplicitReview: requiresExplicitReview
+            requiresExplicitReview: requiresExplicitReview || amounts.contains(where: \.requiresReview)
         )
     }
 
@@ -370,12 +372,14 @@ public enum ReceiptTextParser {
         locale: Locale
     ) -> [RankedAmount] {
         guard !lines.isEmpty else { return [] }
+        let documentCurrency = currencyEvidence(in: lines).identifiedCurrency
         let candidates = lines.enumerated().flatMap { lineIndex, line in
             rankedAmountsForLine(
                 line,
                 lineIndex: lineIndex,
                 allLines: lines,
-                locale: locale
+                locale: locale,
+                documentCurrency: documentCurrency
             )
         }
         return candidates
@@ -409,7 +413,8 @@ public enum ReceiptTextParser {
         _ line: String,
         lineIndex: Int,
         allLines: [String],
-        locale: Locale
+        locale: Locale,
+        documentCurrency: CurrencyCode?
     ) -> [RankedAmount] {
         let normalized = normalizedLine(line)
         let previousLabelScore: Int
@@ -421,6 +426,8 @@ public enum ReceiptTextParser {
         } else {
             previousLabelScore = 0
         }
+        let currency = currencyEvidence(in: [line]).identifiedCurrency
+            ?? documentCurrency
         let context = AmountLineContext(
             line: line,
             normalized: normalized,
@@ -430,11 +437,11 @@ public enum ReceiptTextParser {
             previousLabelScore: previousLabelScore,
             exclusionScore: nonPayableScore(in: normalized),
             isInclusiveTotal: isInclusivePayableLine(normalized),
-            hasCurrency: hasCurrencyMarker(in: normalized),
+            hasCurrency: currency != nil || hasCurrencyMarker(in: normalized),
             identifierContext: containsAny(identifierLabels, in: normalized),
             protectedRanges: dateAndTimeRanges(in: line)
         )
-        return moneyTokens(in: line, locale: locale).compactMap {
+        return moneyTokens(in: line, locale: locale, currency: currency).compactMap {
             rankedAmount(for: $0, context: context)
         }
     }
@@ -491,7 +498,8 @@ public enum ReceiptTextParser {
             score -= 55
         }
         if !token.hasFraction, !context.hasCurrency, !isLabelled { score -= 90 }
-        if token.digitCount >= 7 { score -= 320 }
+        if token.digitCount >= 7,
+           !(isLabelled && context.hasCurrency && token.hasFraction) { score -= 320 }
         if token.value > Decimal(10_000_000) { score -= 300 }
         if context.labelScore > 0,
            context.exclusionScore < 0,
@@ -504,6 +512,7 @@ public enum ReceiptTextParser {
             rangeLocation: token.range.location,
             score: score,
             isLabelled: isLabelled,
+            requiresReview: token.requiresReview,
             evidence: evidence
         )
     }
@@ -545,80 +554,6 @@ public enum ReceiptTextParser {
             in: normalized
         )
         return explicitlyInclusive && includedCharge
-    }
-
-    /// Extracts currency-shaped numbers and repairs only the two OCR confusions
-    /// that are safe inside an otherwise numeric token (`O` -> `0`, `I/l` -> `1`).
-    static func moneyTokens(in line: String, locale: Locale) -> [MoneyToken] {
-        let pattern = #"(?<![0-9.,:])[-−]?(?:[0-9OoIl]{1,3}(?:[ '’][0-9OoIl]{3})+(?:[.,][0-9OoIl]{1,2})?|[0-9OoIl]+(?:[.,][0-9OoIl]+)*)(?![0-9.,:])"#
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
-        let range = NSRange(line.startIndex..<line.endIndex, in: line)
-
-        return regex.matches(in: line, range: range).compactMap { match in
-            guard let swiftRange = Range(match.range, in: line) else { return nil }
-            let raw = String(line[swiftRange])
-            guard raw.contains(where: \.isNumber) else { return nil }
-            let repaired = raw
-                .replacingOccurrences(of: "O", with: "0")
-                .replacingOccurrences(of: "o", with: "0")
-                .replacingOccurrences(of: "I", with: "1")
-                .replacingOccurrences(of: "l", with: "1")
-            guard let parsed = parseMoneyToken(repaired, locale: locale) else { return nil }
-            return MoneyToken(
-                value: parsed.value,
-                range: match.range,
-                hasFraction: parsed.hasFraction,
-                digitCount: repaired.filter(\.isNumber).count
-            )
-        }
-    }
-
-    static func parseMoneyToken(
-        _ raw: String,
-        locale: Locale
-    ) -> (value: Decimal, hasFraction: Bool)? {
-        var token = raw
-            .replacingOccurrences(of: " ", with: "")
-            .replacingOccurrences(of: "'", with: "")
-            .replacingOccurrences(of: "’", with: "")
-            .replacingOccurrences(of: "−", with: "-")
-        guard !token.hasPrefix("-") else { return nil }
-        token.removeAll(where: { $0 == "+" })
-        guard !token.isEmpty else { return nil }
-
-        let dotOffsets = token.indices.filter { token[$0] == "." }
-        let commaOffsets = token.indices.filter { token[$0] == "," }
-        let separatorOffsets = dotOffsets + commaOffsets
-        var decimalOffset: String.Index?
-
-        if let rightmost = separatorOffsets.max() {
-            let fractionCount = token.distance(from: token.index(after: rightmost), to: token.endIndex)
-            if fractionCount == 1 || fractionCount == 2 {
-                decimalOffset = rightmost
-            } else if separatorOffsets.count == 1,
-                      fractionCount != 3,
-                      String(token[rightmost]) == (locale.decimalSeparator ?? ".") {
-                decimalOffset = rightmost
-            }
-        }
-
-        var normalized = ""
-        for index in token.indices {
-            let character = token[index]
-            if character.isNumber {
-                normalized.append(character)
-            } else if let decimalOffset, index == decimalOffset {
-                normalized.append(".")
-            } else if character != "." && character != "," {
-                return nil
-            }
-        }
-
-        guard let value = Decimal(
-            string: normalized,
-            locale: Locale(identifier: "en_US_POSIX")
-        ) else { return nil }
-        return (value, decimalOffset != nil)
     }
 
     static func isPercentage(_ range: NSRange, in line: String) -> Bool {

@@ -94,6 +94,7 @@ struct EditableEntryValues {
 }
 
 struct TransactionEditView: View {
+    @Environment(\.moneyUpReduceMotion) var reduceMotion
     enum FieldFocus: Hashable {
         case amount
         case destinationAmount
@@ -441,7 +442,7 @@ struct TransactionEditView: View {
                         + sourceCurrency.value
                 )
                     .font(.subheadline.monospacedDigit().weight(.semibold))
-                    .foregroundStyle(remainder == .zero ? Color.green : Color.red)
+                    .foregroundStyle(remainder == .zero ? Color.moneyUpPositive : Color.moneyUpDanger)
             }
             .accessibilityHint(
                 remainder == .zero

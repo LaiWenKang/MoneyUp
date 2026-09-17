@@ -64,6 +64,9 @@ PRINTF_PLACEHOLDER = re.compile(
 LOCALIZED_STRING_REFERENCE = re.compile(
     r'(?:String\(localized:|AppLocalization\.string\()\s*"([^"]+)"'
 )
+LOCALIZED_METADATA_REFERENCE = re.compile(
+    r'(?:headlineKey|explanationKey|labelKey)\s*:\s*"([A-Za-z0-9_.-]+)"'
+)
 SWIFTUI_LOCALIZED_REFERENCE = re.compile(
     r'(?:Text|Button|Label|Picker|Toggle|SecureField|TextField|Section|'
     r'NavigationLink|DisclosureGroup|LabeledContent|confirmationDialog|'
@@ -2065,6 +2068,7 @@ def validate_localizations() -> None:
         for catalog in catalogs
     }
     source_catalogs = (
+        (ROOT / "Sources", catalog_keys[app_root / "Resources" / "Localizable.xcstrings"]),
         (
             app_root,
             catalog_keys[app_root / "Resources" / "Localizable.xcstrings"],
@@ -2081,6 +2085,7 @@ def validate_localizations() -> None:
                 match.group(1)
                 for pattern in (
                     LOCALIZED_STRING_REFERENCE,
+                    LOCALIZED_METADATA_REFERENCE,
                     SWIFTUI_LOCALIZED_REFERENCE,
                     ACCESSIBILITY_LOCALIZED_REFERENCE,
                 )
@@ -3316,6 +3321,16 @@ def validate_brand_palette() -> None:
                         f"meaningful graphical color {color} is below 3:1 "
                         f"against {canvas} in {slot}"
                     )
+        # Status tokens also carry text, so they need the stronger text threshold.
+        status_assets = {"moneyUpPositive": "ChartSeries1", "moneyUpWarning": "ChartSeries3",
+                         "moneyUpDanger": "ChartSeries5"}
+        theme = (ROOT / "App/MoneyUp/MoneyUpTheme.swift").read_text(encoding="utf-8")
+        for token, asset in status_assets.items():
+            if f'static let {token} = Color("{asset}")' not in theme:
+                fail(f"status token {token} must use its reviewed adaptive asset")
+            for canvas in canvases:
+                if contrast(actual_palette[asset][slot], canvas) < 4.5:
+                    fail(f"status text {token} is below 4.5:1 against {canvas} in {slot}")
         action = actual_palette["BrandAction"][slot]
         if contrast(action, "#FFFFFF") < 4.5:
             fail(f"BrandAction does not support a white foreground in {slot}: {action}")

@@ -29,6 +29,7 @@ struct CategoryManagementList: View {
             .searchable(text: $searchText, prompt: "lifecycle.search_categories")
             .scrollDismissesKeyboard(.interactively)
             .navigationTitle("lifecycle.manage_categories")
+            .moneyUpNavigationSurface()
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {

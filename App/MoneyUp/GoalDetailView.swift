@@ -153,7 +153,7 @@ struct GoalContributionSimulator: View {
                 .font(.subheadline).foregroundStyle(.secondary)
             if preview.completionDate > summary.targetDate {
                 Label("goal.simulator.after_target", systemImage: "exclamationmark.triangle")
-                    .font(.caption).foregroundStyle(.orange)
+                    .font(.caption).foregroundStyle(Color.moneyUpWarning)
             }
             Text("simulator.no_changes_saved").font(.caption).foregroundStyle(.secondary)
         case .failure(GoalContributionProjectionError.beyondHorizon):
