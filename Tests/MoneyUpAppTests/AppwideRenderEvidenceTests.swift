@@ -22,13 +22,18 @@ final class AppwideRenderEvidenceTests: XCTestCase {
             let chinese = language == .simplifiedChinese
             for (tab, name) in [(MoneyUpSection.today, "today"), (.log, "log"), (.plan, "plan"), (.history, "history"), (.assets, "assets")] {
                 if tab == .history { model.quickLogDraft = nil }
+                let dark = [MoneyUpSection.today, .assets, .log].contains(tab)
                 let screen = await capture(MainTabView(initialReportingSnapshot: snapshot, initialSection: tab)
-                    .environment(model).environment(MoneyUpOverviewNavigation()).preferredColorScheme(.light),
+                    .environment(model).environment(MoneyUpOverviewNavigation()).preferredColorScheme(dark ? .dark : .light),
                     name: prefix + name, width: 428, height: 926, language: language)
                 let copy = storeCopy(name, chinese: chinese)
-                await capture(AppStoreFeatureArtwork(title: copy.0, subtitle: copy.1, chinese: chinese) {
+                await capture(AppStoreFeatureArtwork(title: copy.0, subtitle: copy.1, chinese: chinese, dark: dark) {
                     Image(uiImage: screen).resizable().scaledToFit()
                 }, name: prefix + "feature-" + name, width: 428, height: 926, language: language)
+                if tab == .today {
+                    await capture(AppStoreBrandArtwork(chinese: chinese, screen: screen),
+                                  name: prefix + "feature-brand", width: 428, height: 926, language: language)
+                }
             }
             for (section, name) in [(PlanSection.goals, "goals"), (.calendar, "calendar")] {
                 let screen = await capture(MainTabView(initialReportingSnapshot: snapshot, initialSection: .plan, initialPlanSection: section)
@@ -38,6 +43,18 @@ final class AppwideRenderEvidenceTests: XCTestCase {
                 await capture(AppStoreFeatureArtwork(title: copy.0, subtitle: copy.1, chinese: chinese) {
                     Image(uiImage: screen).resizable().scaledToFit()
                 }, name: prefix + "feature-" + name, width: 428, height: 926, language: language)
+            }
+            let mode = ProcessInfo.processInfo.environment["MONEYUP_CAPTURE_STORE_VIDEO"]
+            let videoLanguage = ProcessInfo.processInfo.environment["MONEYUP_CAPTURE_VIDEO_LANGUAGE"]
+            if let mode, ["1", "brand-only"].contains(mode), videoLanguage == nil || videoLanguage == language.rawValue {
+                for brandOnly in mode == "brand-only" ? [true] : [false, true] {
+                    let video = try await AppStorePreviewRecorder.record(model: model, snapshot: snapshot,
+                        language: language, brandOnly: brandOnly)
+                    let attachment = XCTAttachment(contentsOfFile: video)
+                    attachment.name = prefix + (brandOnly ? "brand-video" : "preview-video")
+                    attachment.lifetime = .keepAlways
+                    add(attachment)
+                }
             }
             await fixture.store.close()
         }

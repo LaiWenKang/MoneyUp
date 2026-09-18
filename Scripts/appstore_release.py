@@ -19,6 +19,7 @@ from urllib.request import Request, build_opener
 from distribute_testflight import Client, NoRedirect, BUNDLE, availability, locate, one, query, safe_url, token
 from appstore_screenshots import sync_screenshots, screenshot_manifest
 from appstore_support import prepare_support, support_products
+from appstore_previews import movie, sync_preview
 
 EDITABLE = {"PREPARE_FOR_SUBMISSION", "DEVELOPER_REJECTED", "REJECTED"}
 LOCALES = {"en-US", "zh-Hans"}
@@ -61,10 +62,16 @@ class ReleaseClient(Client):
             raise RuntimeError(f"App Store HTTP {error.code} during {method}; codes={codes}; agreement_related={agreement}") from None
 
     def delete_screenshot(self, identifier):
+        self.delete_media("appScreenshots", identifier)
+
+    def delete_preview(self, identifier):
+        self.delete_media("appPreviews", identifier)
+
+    def delete_media(self, kind, identifier):
         # Only screenshots explicitly found inside the target draft are removed.
-        if not self.writable or not re.fullmatch(r"[A-Za-z0-9-]+", identifier):
+        if kind not in {"appScreenshots", "appPreviews"} or not self.writable or not re.fullmatch(r"[A-Za-z0-9-]+", identifier):
             raise ValueError("Screenshot deletion requires a writable draft client")
-        req = Request(safe_url(f"/v1/appScreenshots/{identifier}"), method="DELETE",
+        req = Request(safe_url(f"/v1/{kind}/{identifier}"), method="DELETE",
                       headers={"Authorization": "Bearer " + token(self.key, self.key_id, self.issuer)})
         try:
             with build_opener(NoRedirect()).open(req, timeout=45) as response:
@@ -125,6 +132,7 @@ def prepare(client, app, build, config, root):
     if availability(client, app["id"]) != {"france_available": False, "future_countries_enabled": False}:
         raise ValueError("Existing approved territory boundaries changed")
     manifests = validate_config(config, root)
+    movies = {locale: movie(config, root, locale) for locale in LOCALES}
     versions = app_versions(client, app["id"])
     matches = [v for v in versions if v["attributes"]["versionString"] == version_string]
     if matches:
@@ -141,6 +149,7 @@ def prepare(client, app, build, config, root):
     localizations = client.all(f"/v1/appStoreVersions/{version_id}/appStoreVersionLocalizations?limit=200")
     by_locale = {row["attributes"]["locale"]: row for row in localizations}
     uploaded = {}
+    previews = {}
     for locale, attrs in config["localizations"].items():
         if locale in by_locale:
             identifier = by_locale[locale]["id"]
@@ -151,6 +160,7 @@ def prepare(client, app, build, config, root):
                 dict(attrs, locale=locale), {"appStoreVersion": ("appStoreVersions", version_id)}))["data"]
             identifier = row["id"]
         uploaded[locale] = sync_screenshots(client, identifier, manifests[locale])
+        previews[locale] = sync_preview(client, identifier, movies[locale])
     # Keep the existing review contact entirely within Apple's service.
     # Never copy contact data into a repository, command line, log, or receipt.
     review = client.request("GET", f"/v1/appStoreVersions/{version_id}/appStoreReviewDetail").get("data")
@@ -174,7 +184,7 @@ def prepare(client, app, build, config, root):
         client.request("POST", "/v1/appStoreReviewDetails", resource("appStoreReviewDetails", review_attributes,
             {"appStoreVersion": ("appStoreVersions", version_id)}))
     return {"version_id": version_id, "version": version_string, "build": build["attributes"]["version"],
-            "screenshots": uploaded, "release_type": config["releaseType"], "prepared": True}
+            "screenshots": uploaded, "previews": previews, "release_type": config["releaseType"], "prepared": True}
 
 
 def submit(client, app, build, config, root):
@@ -193,6 +203,7 @@ def submit(client, app, build, config, root):
         if any(row["attributes"].get(k) != v for k, v in attrs.items()):
             raise ValueError("Reviewed metadata changed")
         sync_screenshots(client, row["id"], manifests[locale], verify_only=True)
+        sync_preview(client, row["id"], movie(config, root, locale), verify_only=True)
     if availability(client, app["id"]) != {"france_available": False, "future_countries_enabled": False}:
         raise ValueError("Approved territory boundaries changed")
     expected_items = {("appStoreVersion", "appStoreVersions", version_id)}
@@ -212,7 +223,7 @@ def submit(client, app, build, config, root):
     submission = draft[0] if draft else client.request("POST", "/v1/reviewSubmissions",
         resource("reviewSubmissions", {"platform": "IOS"}, {"app": ("apps", app["id"])}))["data"]
     sid = submission["id"]
-    items = client.all(f"/v1/reviewSubmissions/{sid}/items?limit=200")
+    items = client.all(f"/v1/reviewSubmissions/{sid}/items?include=appStoreVersion,inAppPurchaseVersion&limit=200")
     present = set()
     for item in items:
         linked = [(key, value["data"]["type"], value["data"]["id"])

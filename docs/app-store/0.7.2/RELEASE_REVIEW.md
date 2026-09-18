@@ -20,7 +20,7 @@ support on 18 September 2026. Existing France exclusion remains in place.
 
 - Marketing version 0.7.2; production ledger, migration and encryption behavior
   remain the reviewed main implementation.
-- Seven bilingual store compositions, each using an unaltered native app capture
+- Eight bilingual store compositions, each using an unaltered native app capture
   with a fictional three-month ledger, six budgets, three goals and three accounts.
   The sample never reads installed user records. Capture code is test-target only.
 - Optional repeatable StoreKit consumable tips in Settings. Core features remain
@@ -38,7 +38,7 @@ support on 18 September 2026. Existing France exclusion remains in place.
   targets are covered separately; this number is not the full repository count.
 - Baseline script suite: 109 tests passed. New public-release boundary tests: 8 passed.
 - Current structure, architecture and release-assets validators pass.
-- Native screenshot rendering passed; final 14 bilingual compositions were re-captured and visually reviewed with richer Today history and intact navigation.
+- Native screenshot rendering passed; final 16 bilingual compositions were re-captured and visually reviewed with richer Today history and intact navigation.
 - Support state tests passed locally. Xcode 27 local StoreKit testing showed product
   setup/transaction-finish inconsistencies. The complete app-model test step passed
   in pinned Xcode 16.4 CI run 35350179182, including the retained real StoreKit
@@ -62,3 +62,15 @@ support on 18 September 2026. Existing France exclusion remains in place.
 - https://developer.apple.com/documentation/appstoreconnectapi/uploading-assets-to-app-store-connect
 - https://developer.apple.com/help/app-store-connect/manage-submissions-to-app-review/submit-an-in-app-purchase
 - https://developer.apple.com/app-store/review/guidelines/
+
+## Import and media follow-up
+
+- Owner requested CSV, XLSX and JSON support after observing greyed-out Files picker items. The picker now accepts provider items, rejects directories, coordinates read-only access, and validates bounded contents. Parsing occurs off the UI actor.
+- XLSX supports stored/deflated ZIP, shared and inline strings, worksheet choice, date styles and 1900/1904 dates, sparse columns, CRC checks and bounded expansion. It never executes formulas or external XML entities. JSON preserves decimal precision and provides explicit table/column/type/date review. Nonzero fee/coupon columns are review-only; ambiguous reimbursement originals no longer become incoming refunds automatically.
+- Eleven targeted import tests passed; two additional Core cases cover reimbursement direction and fees/coupons. The entire expanded Core suite passed locally.
+- Sixteen English/Chinese posters now mix light and dark screens and lead with the existing 3D Money World artwork. Two 18-second 886x1920 H.264/30fps native-view previews and two 6-second brand clips are included.
+- A simulator recording run (PID 26404, 23:16, 0.7.2 source build 11) hit a Swift Charts assertion while an opaque brand animation unnecessarily mounted and invalidated the app chart tree. The recorder now isolates the animated layer and does not mount app charts for brand-only clips. The failing Chinese brand path passed at 23:31 after that change; this is recorder-path evidence, not an assertion of physical-device perfection.
+- Actual owner-file import and physical-device payment acceptance remain separate from fixture and simulator results.
+
+- Owner chose SGD as the base currency and S$3 / S$10 / S$20 support levels. Coffee / Dinner / Boost copy keeps the default audience broad; banking and paid-contract setup still require Account Holder action. The revised local StoreKit purchase/finish test passed on 19 September at 00:02, and its SGD review screenshot replaced the earlier USD fixture.
+- Structured numeric cells retain their type and are localized only at the existing CSV-parser boundary, preventing a decimal like 1.234 from becoming a grouping-based 1234 under a German locale. Targeted JSON and XLSX regressions cover this.

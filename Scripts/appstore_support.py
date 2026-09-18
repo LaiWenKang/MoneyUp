@@ -1,6 +1,7 @@
 """Configure optional consumable developer support; never accept agreements."""
 from decimal import Decimal
 import hashlib
+from urllib.parse import quote
 
 from distribute_testflight import one, query
 from appstore_screenshots import upload_parts
@@ -13,16 +14,39 @@ def support_products(client, app_id):
             for row in rows]
 
 
+def verify_price(client, product_id, base_territory, expected):
+    schedule = client.request("GET", f"/v2/inAppPurchases/{product_id}/iapPriceSchedule")["data"]
+    sid = schedule["id"]
+    base = client.request("GET", f"/v1/inAppPurchasePriceSchedules/{sid}/baseTerritory")["data"]
+    if base["id"] != base_territory:
+        raise ValueError("Existing support base territory differs from the reviewed configuration")
+    prices = client.all(query(f"/v1/inAppPurchasePriceSchedules/{sid}/manualPrices",
+        **{"filter[territory]": base_territory, "include": "inAppPurchasePricePoint", "limit": 200}))
+    price = one(prices, "reviewed base price schedule")
+    point_id = price["relationships"]["inAppPurchasePricePoint"]["data"]["id"]
+    point = client.request("GET", f"/v1/inAppPurchasePricePoints/{quote(point_id, safe='')}")["data"]
+    actual = point["attributes"]["customerPrice"]
+    if Decimal(actual) != Decimal(expected):
+        raise ValueError("Existing support price differs from the reviewed configuration")
+    return {"base_territory": base_territory, "customer_price": actual,
+            "start_date": price["attributes"].get("startDate"), "end_date": price["attributes"].get("endDate")}
+
+
 def prepare_support(client, app, config, root):
     from appstore_release import resource
     expected = config["supportProducts"]
+    base_territory = config["supportBaseTerritory"]
+    if base_territory not in {"USA", "SGP"}:
+        raise ValueError("Reviewed support base territory required")
+    if config.get("supportBaseCurrency") != {"USA": "USD", "SGP": "SGD"}[base_territory]:
+        raise ValueError("Support base currency differs from the selected territory")
     if len(expected) != 3 or {p["productId"] for p in expected} != {
             "com.laiwenkang.MoneyUp.support." + size for size in ("small", "medium", "large")}:
         raise ValueError("Exactly the reviewed three support products are required")
     for product in expected:
-        price = Decimal(product["usdPrice"])
+        price = Decimal(product["basePrice"])
         if not price.is_finite() or price <= 0 or price.as_tuple().exponent < -2:
-            raise ValueError("Support prices must be positive USD amounts in cents")
+            raise ValueError("Support prices must be positive base-currency amounts in cents")
         if set(product.get("localizations", {})) != {"en-US", "zh-Hans"}:
             raise ValueError("Bilingual support product metadata required")
         for attrs in product["localizations"].values():
@@ -37,6 +61,7 @@ def prepare_support(client, app, config, root):
     if hashlib.sha256(data).hexdigest() != config["supportScreenshot"]["sha256"]:
         raise ValueError("Support review screenshot changed")
     existing = {row["product_id"]: row for row in support_products(client, app["id"])}
+    pricing = {}
     for product in expected:
         current = existing.get(product["productId"])
         if current and current["type"] != "CONSUMABLE":
@@ -62,10 +87,10 @@ def prepare_support(client, app, config, root):
         detail = client.request("GET", f"/v2/inAppPurchases/{iid}?include=iapPriceSchedule,inAppPurchaseAvailability,appStoreReviewScreenshot")["data"]
         relationships = detail.get("relationships", {})
         if not relationships.get("iapPriceSchedule", {}).get("data"):
-            points = client.all(query(f"/v2/inAppPurchases/{iid}/pricePoints", **{"filter[territory]": "USA", "limit": 200}))
-            point = one([r for r in points if Decimal(r["attributes"]["customerPrice"]) == Decimal(product["usdPrice"])], "US price point")
+            points = client.all(query(f"/v2/inAppPurchases/{iid}/pricePoints", **{"filter[territory]": base_territory, "limit": 200}))
+            point = one([r for r in points if Decimal(r["attributes"]["customerPrice"]) == Decimal(product["basePrice"])], "base-territory price point")
             payload = resource("inAppPurchasePriceSchedules", relationships={
-                "inAppPurchase": ("inAppPurchases", iid), "baseTerritory": ("territories", "USA")})
+                "inAppPurchase": ("inAppPurchases", iid), "baseTerritory": ("territories", base_territory)})
             payload["data"]["relationships"]["manualPrices"] = {"data": [{"type": "inAppPurchasePrices", "id": "${support-price}"}]}
             payload["included"] = [{"type": "inAppPurchasePrices", "id": "${support-price}",
                 "attributes": {"startDate": None, "endDate": None}, "relationships": {
@@ -91,5 +116,6 @@ def prepare_support(client, app, config, root):
         if not versions:
             client.request("POST", "/v1/inAppPurchaseVersions", resource("inAppPurchaseVersions",
                 relationships={"inAppPurchase": ("inAppPurchases", iid)}))
-    return {"support_products": support_products(client, app["id"]), "agreements_accepted": False,
+        pricing[product["productId"]] = verify_price(client, iid, base_territory, product["basePrice"])
+    return {"support_products": support_products(client, app["id"]), "pricing": pricing, "agreements_accepted": False,
             "note": "Paid Apps Agreement, banking and tax setup remain Account Holder responsibilities."}

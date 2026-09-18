@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from appstore_release import prepare, validate_config, resource
 from appstore_screenshots import screenshot_manifest, upload_parts, sync_screenshots
 from appstore_support import prepare_support
+from appstore_previews import movie
 
 ROOT = Path(__file__).resolve().parents[2] / "docs/app-store/0.7.2"
 
@@ -21,7 +22,7 @@ class AppStoreReleaseTests(unittest.TestCase):
     def test_reviewed_bilingual_manifest_matches_real_pngs(self):
         manifest = validate_config(self.config, ROOT)
         self.assertEqual(set(manifest), {"en-US", "zh-Hans"})
-        self.assertEqual(len(manifest["en-US"]), 7)
+        self.assertEqual(len(manifest["en-US"]), 8)
 
     def test_rejects_unreviewed_images_and_path_escape(self):
         for field, value in [("sha256", "0" * 64), ("file", "../private.png")]:
@@ -29,6 +30,15 @@ class AppStoreReleaseTests(unittest.TestCase):
             config["screenshots"]["en-US"][0][field] = value
             with self.assertRaises(ValueError):
                 screenshot_manifest(config, ROOT)
+
+    def test_preview_movies_match_reviewed_digests_and_reject_escape(self):
+        for locale in ["en-US", "zh-Hans"]:
+            self.assertIsNotNone(movie(self.config, ROOT, locale))
+        for key, value in [("sha256", "0" * 64), ("file", "../private.mp4")]:
+            config = copy.deepcopy(self.config)
+            config["previews"]["en-US"][key] = value
+            with self.assertRaises(ValueError):
+                movie(config, ROOT, "en-US")
 
     def test_rejects_missing_locale_and_overlong_store_copy(self):
         config = copy.deepcopy(self.config)
@@ -61,7 +71,7 @@ class AppStoreReleaseTests(unittest.TestCase):
     def test_support_product_validation_precedes_external_writes(self):
         for price in ["0", "-1", "NaN", "0.999"]:
             config = copy.deepcopy(self.config)
-            config["supportProducts"][0]["usdPrice"] = price
+            config["supportProducts"][0]["basePrice"] = price
             client = Mock()
             with self.assertRaises(ValueError):
                 prepare_support(client, {"id": "app"}, config, ROOT)

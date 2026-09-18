@@ -3,48 +3,63 @@
   "nonRenewingSubscriptions": [],
   "products": [
     {
-      "displayPrice": "0.99",
+      "displayPrice": "3.00",
       "familyShareable": false,
       "internalID": "100000001",
       "localizations": [
         {
-          "description": "Optional one-time developer support. No features unlocked.",
-          "displayName": "A little thanks",
-          "locale": "en_US"
+          "locale": "en_US",
+          "displayName": "Buy me a coffee",
+          "description": "One-time developer support. No physical item."
+        },
+        {
+          "locale": "zh_Hans",
+          "displayName": "请我喝杯咖啡",
+          "description": "一次性自愿支持独立开发，不提供实物。"
         }
       ],
       "productID": "com.laiwenkang.MoneyUp.support.small",
-      "referenceName": "A little thanks",
+      "referenceName": "Buy me a coffee",
       "type": "Consumable"
     },
     {
-      "displayPrice": "2.99",
+      "displayPrice": "10.00",
       "familyShareable": false,
       "internalID": "100000002",
       "localizations": [
         {
-          "description": "Optional one-time developer support. No features unlocked.",
-          "displayName": "A cup of coffee",
-          "locale": "en_US"
+          "locale": "en_US",
+          "displayName": "Buy me dinner",
+          "description": "One-time developer support. No physical item."
+        },
+        {
+          "locale": "zh_Hans",
+          "displayName": "请我吃顿饭",
+          "description": "一次性自愿支持独立开发，不提供实物。"
         }
       ],
       "productID": "com.laiwenkang.MoneyUp.support.medium",
-      "referenceName": "A cup of coffee",
+      "referenceName": "Buy me dinner",
       "type": "Consumable"
     },
     {
-      "displayPrice": "4.99",
+      "displayPrice": "20.00",
       "familyShareable": false,
       "internalID": "100000003",
       "localizations": [
         {
-          "description": "Optional one-time developer support. No features unlocked.",
-          "displayName": "A generous boost",
-          "locale": "en_US"
+          "locale": "en_US",
+          "displayName": "Give MoneyUp a boost",
+          "description": "One-time developer support. No physical item."
+        },
+        {
+          "locale": "zh_Hans",
+          "displayName": "为 MoneyUp 加把劲",
+          "description": "一次性自愿支持独立开发，不提供实物。"
         }
       ],
       "productID": "com.laiwenkang.MoneyUp.support.large",
-      "referenceName": "A generous boost",
+      "referenceName": "Give MoneyUp a boost",
       "type": "Consumable"
     }
   ],
@@ -52,8 +67,8 @@
     "_applicationInternalID": "0",
     "_developerTeamID": "",
     "_failTransactionsEnabled": false,
-    "_locale": "en_US",
-    "_storefront": "USA"
+    "_locale": "en_SG",
+    "_storefront": "SGP"
   },
   "subscriptionGroups": [],
   "version": {

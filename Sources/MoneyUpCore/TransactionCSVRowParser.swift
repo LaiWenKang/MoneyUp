@@ -209,7 +209,7 @@ extension TransactionCSVImporter {
         case "expense", "outflow", "支出", "消费", "付款": .expense
         case "income", "inflow", "收入", "收款": .income
         case "transfer", "转账", "转出", "还款", "转账/还款": .transfer
-        case "refund", "reimbursement", "reimburse", "退款", "退货", "报销", "報銷": .refund
+        case "refund", "退款", "退货", "reimbursementreceived", "报销入账", "報銷入帳": .refund
         default: nil
         }
     }
@@ -322,6 +322,7 @@ extension TransactionCSVImporter {
             if let date = iso.date(from: value) { return date }
         }
         let fixedFormats = [
+            "yyyy-MM-dd HH:mm:ss.SSS",
             "yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd HH:mm", "yyyy-MM-dd",
             "yyyy/MM/dd HH:mm:ss", "yyyy/MM/dd HH:mm", "yyyy/MM/dd",
             "yyyy.MM.dd HH:mm:ss", "yyyy.MM.dd HH:mm", "yyyy.MM.dd"

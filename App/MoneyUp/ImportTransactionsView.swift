@@ -20,6 +20,14 @@ struct ImportTransactionsView: View {
     @State private var isImporting = false
     @State private var message: String?
     @State private var errorMessage: String?
+    @State private var document: ImportDocument?
+    @State private var selectedTableID: String?
+    @State private var dateEncoding = ImportDateEncoding.text
+    @State private var qianjiTypes = false
+    @State private var isReading = false
+    @State private var readTask: Task<Void, Never>?
+    @State private var readID = UUID()
+    @State private var typeOverrides: [String: String] = [:]
 
     private var eligibleAccounts: [LedgerAccount] {
         model.userAccounts.filter {
@@ -35,6 +43,8 @@ struct ImportTransactionsView: View {
                 } label: {
                     Label("import.choose_csv", systemImage: "tablecells.badge.ellipsis")
                 }
+                .disabled(isReading || isImporting)
+                if isReading { ProgressView("import.reading") }
                 if !fileName.isEmpty {
                     LabeledContent("import.file", value: fileName)
                 }
@@ -44,6 +54,46 @@ struct ImportTransactionsView: View {
                 Text("import.local_only_detail")
             }
 
+            if let document, !document.tables.isEmpty {
+                Section {
+                    Picker("import.table", selection: Binding(get: { selectedTableID }, set: { value in
+                        selectedTableID = value
+                        selectTable()
+                    })) {
+                        Text("import.choose_table").tag(Optional<String>.none)
+                        ForEach(document.tables) { table in Text(table.name).tag(Optional(table.id)) }
+                    }
+                    Picker("import.date_encoding", selection: Binding(get: { dateEncoding }, set: { value in
+                        dateEncoding = value; preview = nil
+                    })) {
+                        ForEach(ImportDateEncoding.allCases) { encoding in
+                            Text(LocalizedStringKey(encoding.titleKey)).tag(encoding)
+                        }
+                    }
+                    Toggle("import.qianji_type_codes", isOn: Binding(get: { qianjiTypes }, set: { value in
+                        qianjiTypes = value; preview = nil
+                    }))
+                    if !sourceKinds.isEmpty {
+                        DisclosureGroup("import.type_mapping") {
+                            ForEach(sourceKinds.prefix(32), id: \.self) { source in
+                                Picker(selection: Binding(get: { typeOverrides[source] }, set: { value in
+                                    typeOverrides[source] = value; preview = nil
+                                })) {
+                                    Text("import.keep_original_type").tag(Optional<String>.none)
+                                    ForEach([ImportedTransactionKind.expense, .income, .transfer, .refund], id: \.rawValue) { kind in
+                                        Text(localizedKind(kind)).tag(Optional(kind.rawValue))
+                                    }
+                                } label: { Text(verbatim: source) }
+                            }
+                        }
+                    }
+                } header: {
+                    Text("import.tables")
+                } footer: {
+                    Text("import.structured_detail")
+                }
+            }
+
             if let inspection {
                 Section {
                     ForEach(CSVImportMappedField.allCases) { field in
@@ -51,7 +101,11 @@ struct ImportTransactionsView: View {
                             localizedField(field),
                             selection: Binding(
                                 get: { columnMapping[field] },
-                                set: { columnMapping[field] = $0 }
+                                set: {
+                                    columnMapping[field] = $0; preview = nil
+                                    if field == .kind { typeOverrides = [:] }
+                                    if field == .date { dateEncoding = .text }
+                                }
                             )
                         ) {
                             Text("import.column_none").tag(Optional<Int>.none)
@@ -75,7 +129,7 @@ struct ImportTransactionsView: View {
                 if !inspection.sampleRows.isEmpty {
                     Section("import.raw_preview") {
                         ForEach(Array(inspection.sampleRows.enumerated()), id: \.offset) { _, row in
-                            Text(row.joined(separator: " · "))
+                            Text(row.prefix(12).map { String($0.prefix(160)) }.joined(separator: " · "))
                                 .font(.caption.monospaced())
                                 .lineLimit(2)
                         }
@@ -249,9 +303,10 @@ struct ImportTransactionsView: View {
             .moneyUpNavigationSurface()
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { selectDefaults() }
+        .onDisappear { readTask?.cancel(); readID = UUID(); isReading = false }
         .fileImporter(
             isPresented: $isChoosingFile,
-            allowedContentTypes: [.commaSeparatedText, .tabSeparatedText, .plainText],
+            allowedContentTypes: DelimitedImportFile.allowedContentTypes,
             allowsMultipleSelection: false
         ) { result in
             handleFileResult(result)
@@ -282,28 +337,49 @@ struct ImportTransactionsView: View {
             guard let url = try result.get().first else {
                 throw CocoaError(.fileReadNoSuchFile)
             }
-            let accessed = url.startAccessingSecurityScopedResource()
-            defer { if accessed { url.stopAccessingSecurityScopedResource() } }
-            let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize
-            if let size, size > 10_000_000 {
-                throw AppModelError.importTooLarge
+            readTask?.cancel()
+            clearImport()
+            readID = UUID()
+            let ticket = readID
+            isReading = true
+            readTask = Task {
+                let worker = Task.detached(priority: .userInitiated) { try ImportDocument.decode(DelimitedImportFile.readData(url)) }
+                do {
+                    let loaded = try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
+                    guard !Task.isCancelled, ticket == readID else { return }
+                    document = loaded
+                    selectedTableID = loaded.tables.count == 1 ? loaded.tables.first?.id : nil
+                    dateEncoding = .text
+                    qianjiTypes = false
+                    typeOverrides = [:]
+                    fileName = url.lastPathComponent
+                    selectTable()
+                } catch {
+                    guard !Task.isCancelled, ticket == readID else { return }
+                    clearImport()
+                    errorMessage = safeUserMessage(for: error, context: .read)
+                }
+                if ticket == readID { isReading = false }
             }
-            let handle = try FileHandle(forReadingFrom: url)
-            defer { try? handle.close() }
-            let data = try BoundedFileReader.read(
-                from: handle,
-                maximumByteCount: 10_000_000
-            )
-            guard data.count <= 10_000_000 else { throw AppModelError.importTooLarge }
-            let text = String(data: data, encoding: .utf8)
-                ?? String(data: data, encoding: .utf16)
-            guard let text else { throw CSVImportViewError.unsupportedEncoding }
-            sourceText = text
-            inspection = try TransactionCSVImporter.inspect(text)
+        } catch {
+            if (error as? CocoaError)?.code != .userCancelled {
+                errorMessage = safeUserMessage(for: error, context: .read)
+            }
+        }
+    }
+
+    private func selectTable() {
+        do {
+            dateEncoding = .text; qianjiTypes = false; typeOverrides = [:]
+            preview = nil
+            inspection = nil
+            sourceText = try selectedTable?.csv() ?? ""
+            guard !sourceText.isEmpty else { return }
+            inspection = try TransactionCSVImporter.inspect(sourceText)
             columnMapping = inspection?.suggestedMapping ?? CSVColumnMapping()
             if columnMapping.hasRequiredColumns {
                 preview = try TransactionCSVImporter.parse(
-                    text,
+                    sourceText,
                     mapping: columnMapping,
                     timeZone: model.reportingCalendar.timeZone
                 )
@@ -311,22 +387,32 @@ struct ImportTransactionsView: View {
             } else {
                 preview = nil
             }
-            fileName = url.lastPathComponent
             message = nil
             errorMessage = nil
         } catch {
-            preview = nil
-            inspection = nil
-            sourceText = ""
-            fileName = ""
+            clearImport()
             errorMessage = safeUserMessage(for: error, context: .read)
         }
+    }
+
+    private var selectedTable: ImportDataTable? { document?.tables.first { $0.id == selectedTableID } }
+    private var sourceKinds: [String] {
+        guard let table = selectedTable, let column = columnMapping[.kind] else { return [] }
+        return Set(table.rows.dropFirst().compactMap { row in
+            row.indices.contains(column) ? row[column].trimmingCharacters(in: .whitespacesAndNewlines) : nil
+        }).filter { !$0.isEmpty }.sorted()
+    }
+
+    private func clearImport() {
+        preview = nil; inspection = nil; sourceText = ""; fileName = ""
+        document = nil; selectedTableID = nil
     }
 
     private func applyColumnMapping() {
         do {
             preview = try TransactionCSVImporter.parse(
-                sourceText,
+                try selectedTable?.csv(mapping: columnMapping, dateEncoding: dateEncoding,
+                                       qianjiTypes: qianjiTypes, typeOverrides: typeOverrides) ?? sourceText,
                 mapping: columnMapping,
                 timeZone: model.reportingCalendar.timeZone
             )
@@ -478,6 +564,7 @@ struct ImportTransactionsView: View {
         case "invalid_destination_amount":
             AppLocalization.string("import.issue.invalid_destination_amount")
         case "unsupported_type": AppLocalization.string("import.issue.unsupported_type")
+        case "unsupported_adjustment": AppLocalization.string("import.issue.unsupported_adjustment")
         default: AppLocalization.string("import.issue.invalid_row")
         }
     }
@@ -494,9 +581,17 @@ struct ImportTransactionsView: View {
 
 enum CSVImportViewError: LocalizedError {
     case unsupportedEncoding
+    case requiresCSVExport
+    case unsupportedDocument
+    case documentTooLarge
 
     var errorDescription: String? {
-        AppLocalization.string("import.error.encoding")
+        switch self {
+        case .unsupportedEncoding: AppLocalization.string("import.error.encoding")
+        case .requiresCSVExport: AppLocalization.string("import.error.requires_csv")
+        case .unsupportedDocument: AppLocalization.string("import.error.document")
+        case .documentTooLarge: AppLocalization.string("import.error.too_large")
+        }
     }
 }
 

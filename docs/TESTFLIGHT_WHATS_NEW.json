@@ -1,4 +1,4 @@
 {
-  "en-US": "New optional account and spending-category lists: search grouped presets and enable only what you need. Existing accounts, categories, balances and history remain unchanged; new presets start off. Turning an option off only hides new-entry choices and preserves active drafts. Spreadsheet generation now runs in the background. Includes financial accuracy fixes for allowance rollover, regional CSV dates, receipt decimals and historical currency estimates, plus more consistent motion and accessibility. Please test toggles, draft resume, imports and exports, and receipt currency/amount review.",
-  "zh-Hans": "新增可选账户与消费分类清单：支持搜索、分组和按需开启。已有账户、分类、余额与历史保持不变，新预设默认关闭。关闭只隐藏新记账选项，并保留进行中的草稿。表格导出改在后台生成。另修复津贴结转、地区 CSV 日期、收据小数和历史汇率估算问题，并统一动效与无障碍体验。请重点测试开关、草稿恢复、导入导出，以及收据币种和金额复核。"
+  "en-US": "Import CSV, XLSX and JSON with local previews and field mapping. Files with generic provider labels can now be selected. Choose optional account and category presets, review clearer spending details, and enjoy improved financial accuracy and smoother exports. Optional one-time tips support independent development; all core features remain free.",
+  "zh-Hans": "支持导入 CSV、XLSX 和 JSON，提供本机预览与字段对应。修复文件因类型标签而变灰、无法选择的问题。新增可选账户与消费分类清单，支出明细更清晰，并改进财务计算与导出体验。可自愿一次性支持独立开发，所有核心功能继续免费。"
 }
