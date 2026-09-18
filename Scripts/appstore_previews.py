@@ -20,6 +20,8 @@ def movie(config, root, locale):
         raise ValueError("Movie differs from the reviewed digest")
     if entry.get("dimensions") != [886, 1920] or not 15 <= entry.get("duration", 0) <= 30:
         raise ValueError("Reviewed App Store preview dimensions and duration required")
+    if entry.get("audio") != {"codec": "AAC", "channels": 2, "sampleRate": 48000, "targetBitRate": 256000}:
+        raise ValueError("Reviewed stereo AAC audio metadata required")
     return path, data
 
 

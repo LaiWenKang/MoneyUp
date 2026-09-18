@@ -39,6 +39,10 @@ class AppStoreReleaseTests(unittest.TestCase):
             config["previews"]["en-US"][key] = value
             with self.assertRaises(ValueError):
                 movie(config, ROOT, "en-US")
+        config = copy.deepcopy(self.config)
+        del config["previews"]["en-US"]["audio"]
+        with self.assertRaises(ValueError):
+            movie(config, ROOT, "en-US")
 
     def test_rejects_missing_locale_and_overlong_store_copy(self):
         config = copy.deepcopy(self.config)

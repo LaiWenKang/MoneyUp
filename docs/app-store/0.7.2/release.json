@@ -143,21 +143,33 @@
   "previews": {
     "en-US": {
       "file": "videos/preview-en.mp4",
-      "sha256": "504075eeb2a94786b295194ca4d36572f1ec7e062806f8d555b51eaaf2c5621d",
+      "sha256": "6cc6bb2d785995d985ee433fa14870fc0634bfb6350fe16366b1053cdf6431b9",
       "dimensions": [
         886,
         1920
       ],
-      "duration": 18.0
+      "duration": 18.0,
+      "audio": {
+        "codec": "AAC",
+        "channels": 2,
+        "sampleRate": 48000,
+        "targetBitRate": 256000
+      }
     },
     "zh-Hans": {
       "file": "videos/preview-zh.mp4",
-      "sha256": "efac8236df7aea390059643d4b8c604b63955b536cd7f6170a5b35100ed764f1",
+      "sha256": "7cc88aa54d2a5afd6a89d610aa08323791f9b06ad07ea2e5d938c89f88326f6d",
       "dimensions": [
         886,
         1920
       ],
-      "duration": 18.0
+      "duration": 18.0,
+      "audio": {
+        "codec": "AAC",
+        "channels": 2,
+        "sampleRate": 48000,
+        "targetBitRate": 256000
+      }
     }
   },
   "supportBaseTerritory": "SGP",
