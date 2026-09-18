@@ -35,6 +35,15 @@ class PlatformActionsValidatorTests(unittest.TestCase):
     def test_current_repository_passes(self) -> None:
         self.assertEqual(VALIDATOR.validate_repository(ROOT), [])
 
+    def test_offline_movie_tool_is_exactly_pinned_without_ignoring_scripts(self) -> None:
+        relative = "Scripts/finalize_appstore_movie.swift"
+        source = self.source(relative)
+        self.assertEqual(self.inventory_with_extra(relative, source), [])
+        errors = self.inventory_with_extra(relative, source + "\nimport AppIntents\n")
+        self.assertTrue(any("offline Swift tool changed" in error for error in errors))
+        errors = self.inventory_with_extra("Scripts/Unexpected.swift", "import AppIntents\n")
+        self.assertTrue(any("outside the compiled inventory" in error for error in errors))
+
     def test_rejects_free_form_intent_parameter(self) -> None:
         source = self.source("App/Shared/MoneyUpQuickAction.swift")
         mutated = source.replace(

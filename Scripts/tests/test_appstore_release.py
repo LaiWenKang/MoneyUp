@@ -9,7 +9,7 @@ from unittest.mock import Mock, patch
 from urllib.error import HTTPError
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from appstore_release import prepare, validate_config, resource, ReleaseClient
+from appstore_release import prepare, validate_config, resource, ReleaseClient, AppStoreAPIError, optional_resource
 from appstore_screenshots import screenshot_manifest, upload_parts, sync_screenshots
 from appstore_support import prepare_support
 from appstore_previews import movie
@@ -40,6 +40,15 @@ class AppStoreReleaseTests(unittest.TestCase):
                         client.request(method, "/v1/apps", {"data": {}})
                     self.assertNotIn("private detail", str(caught.exception))
                 self.assertEqual(opener.return_value.open.call_count, expected_calls)
+
+    def test_optional_related_resource_accepts_only_not_found(self):
+        client = Mock()
+        client.request.side_effect = AppStoreAPIError(404, "GET", "/optional", ["NOT_FOUND"], False)
+        self.assertIsNone(optional_resource(client, "/optional"))
+        for status in [401, 403, 500]:
+            client.request.side_effect = AppStoreAPIError(status, "GET", "/optional", [], False)
+            with self.assertRaises(AppStoreAPIError):
+                optional_resource(client, "/optional")
 
     def test_reviewed_bilingual_manifest_matches_real_pngs(self):
         manifest = validate_config(self.config, ROOT)

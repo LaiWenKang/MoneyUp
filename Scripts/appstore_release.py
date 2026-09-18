@@ -21,9 +21,20 @@ from distribute_testflight import Client, NoRedirect, BUNDLE, availability, loca
 from appstore_screenshots import sync_screenshots, screenshot_manifest
 from appstore_support import prepare_support, support_products
 from appstore_previews import movie, sync_preview
+from appstore_api_errors import AppStoreAPIError
 
 EDITABLE = {"PREPARE_FOR_SUBMISSION", "DEVELOPER_REJECTED", "REJECTED"}
 LOCALES = {"en-US", "zh-Hans"}
+
+
+def optional_resource(client, path):
+    """Apple returns 404 for some unconfigured to-one related resources."""
+    try:
+        return client.request("GET", path).get("data")
+    except AppStoreAPIError as error:
+        if error.status == 404:
+            return None
+        raise
 
 
 def resource(kind, attributes=None, relationships=None, identifier=None):
@@ -68,7 +79,7 @@ class ReleaseClient(Client):
                     agreement = any("agreement" in str(e.get("detail", "")).lower() for e in errors)
                 except (ValueError, TypeError):
                     codes, agreement = [], False
-                raise RuntimeError(f"App Store HTTP {error.code} during {method} {endpoint}; codes={codes}; agreement_related={agreement}") from None
+                raise AppStoreAPIError(error.code, method, endpoint, codes, agreement) from None
 
     def delete_screenshot(self, identifier):
         self.delete_media("appScreenshots", identifier)
@@ -172,7 +183,7 @@ def prepare(client, app, build, config, root):
         previews[locale] = sync_preview(client, identifier, movies[locale])
     # Keep the existing review contact entirely within Apple's service.
     # Never copy contact data into a repository, command line, log, or receipt.
-    review = client.request("GET", f"/v1/appStoreVersions/{version_id}/appStoreReviewDetail").get("data")
+    review = optional_resource(client, f"/v1/appStoreVersions/{version_id}/appStoreReviewDetail")
     contact_keys = ["contactFirstName", "contactLastName", "contactPhone", "contactEmail"]
     contact = {k: (review or {}).get("attributes", {}).get(k) for k in contact_keys}
     if not all(contact.values()):
@@ -180,7 +191,7 @@ def prepare(client, app, build, config, root):
         previous.sort(key=lambda v: v["attributes"].get("createdDate", ""), reverse=True)
         if not previous:
             raise ValueError("No released version with an existing review contact")
-        prior = client.request("GET", f'/v1/appStoreVersions/{previous[0]["id"]}/appStoreReviewDetail').get("data")
+        prior = optional_resource(client, f'/v1/appStoreVersions/{previous[0]["id"]}/appStoreReviewDetail')
         for key in contact_keys:
             contact[key] = contact[key] or (prior or {}).get("attributes", {}).get(key)
         if not all(contact.values()):

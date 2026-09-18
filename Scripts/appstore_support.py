@@ -33,7 +33,7 @@ def verify_price(client, product_id, base_territory, expected):
 
 
 def prepare_support(client, app, config, root):
-    from appstore_release import resource
+    from appstore_release import resource, optional_resource
     expected = config["supportProducts"]
     base_territory = config["supportBaseTerritory"]
     if base_territory not in {"USA", "SGP"}:
@@ -84,9 +84,13 @@ def prepare_support(client, app, config, root):
             else:
                 client.request("POST", "/v1/inAppPurchaseLocalizations", resource("inAppPurchaseLocalizations",
                     dict(attrs, locale=locale), {"inAppPurchaseV2": ("inAppPurchases", iid)}))
-        detail = client.request("GET", f"/v2/inAppPurchases/{iid}?include=iapPriceSchedule,inAppPurchaseAvailability,appStoreReviewScreenshot")["data"]
-        relationships = detail.get("relationships", {})
-        if not relationships.get("iapPriceSchedule", {}).get("data"):
+        # Missing optional includes can make Apple's entire detail request 404.
+        # Verify the product, then inspect each to-one resource independently.
+        client.request("GET", f"/v2/inAppPurchases/{iid}")
+        schedule = optional_resource(client, f"/v2/inAppPurchases/{iid}/iapPriceSchedule")
+        availability = optional_resource(client, f"/v2/inAppPurchases/{iid}/inAppPurchaseAvailability")
+        review_image = optional_resource(client, f"/v2/inAppPurchases/{iid}/appStoreReviewScreenshot")
+        if not schedule:
             points = client.all(query(f"/v2/inAppPurchases/{iid}/pricePoints", **{"filter[territory]": base_territory, "limit": 200}))
             point = one([r for r in points if Decimal(r["attributes"]["customerPrice"]) == Decimal(product["basePrice"])], "base-territory price point")
             payload = resource("inAppPurchasePriceSchedules", relationships={
@@ -97,14 +101,14 @@ def prepare_support(client, app, config, root):
                     "inAppPurchaseV2": {"data": {"type": "inAppPurchases", "id": iid}},
                     "inAppPurchasePricePoint": {"data": {"type": "inAppPurchasePricePoints", "id": point["id"]}}}}]
             client.request("POST", "/v1/inAppPurchasePriceSchedules", payload)
-        if not relationships.get("inAppPurchaseAvailability", {}).get("data"):
+        if not availability:
             territories = client.all("/v1/territories?limit=200")
             payload = resource("inAppPurchaseAvailabilities", {"availableInNewTerritories": False},
                                {"inAppPurchase": ("inAppPurchases", iid)})
             payload["data"]["relationships"]["availableTerritories"] = {"data": [
                 {"type": "territories", "id": r["id"]} for r in territories if r["id"] != "FRA"]}
             client.request("POST", "/v1/inAppPurchaseAvailabilities", payload)
-        if not relationships.get("appStoreReviewScreenshot", {}).get("data"):
+        if not review_image:
             row = client.request("POST", "/v1/inAppPurchaseAppStoreReviewScreenshots", resource(
                 "inAppPurchaseAppStoreReviewScreenshots", {"fileName": screenshot.name, "fileSize": len(data)},
                 {"inAppPurchaseV2": ("inAppPurchases", iid)}))["data"]
