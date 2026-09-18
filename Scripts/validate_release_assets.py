@@ -4971,6 +4971,51 @@ def validate_ci_workflow() -> None:
     )
 
 
+def validate_storekit_release_gate(workflow: str) -> None:
+    def job(name: str) -> str:
+        match = re.search(r"(?ms)^  " + re.escape(name) + r":\n(.*?)(?=^  [A-Za-z][A-Za-z0-9_-]*:\n|\Z)", workflow)
+        if match is None:
+            fail(f"required TestFlight job is missing: {name}")
+        return match.group(1)
+
+    purchase = job("storekit-test")
+    signing = job("testflight")
+    if not re.search(r"(?m)^    needs: \[preflight, storekit-test\]$", signing):
+        fail("signing must require both release preflight and StoreKit integration")
+    for body in [purchase, signing]:
+        if re.search(r"(?m)^    (?:if|continue-on-error):", body):
+            fail("required release jobs must not bypass successful dependencies")
+    if re.search(r"(?m)^\s+continue-on-error:", purchase):
+        fail("StoreKit integration steps must not ignore failures")
+    for required in [
+        "runs-on: macos-15",
+        "DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer",
+        'ref: ${{ github.sha }}',
+        'test "$(git rev-parse HEAD)" = "$GITHUB_SHA"',
+        '"$GITHUB_SHA" = "$EXPECTED_SHA"',
+        '"Xcode 16.4"', '"Build version 16F6"',
+        'test "$(xcrun --sdk iphonesimulator --show-sdk-version)" = "18.5"',
+        "com.apple.CoreSimulator.SimRuntime.iOS-18-5",
+        "-maximum-test-execution-time-allowance 600",
+        "CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- test",
+        "storekit-purchase-integration",
+        "path: ${{ runner.temp }}/MoneyUpStoreKitTests.xcresult",
+    ]:
+        if required not in purchase:
+            fail(f"required StoreKit integration gate is missing {required}")
+    case = "MoneyUpTests/DeveloperSupportTests/testStoreKitConsumableSupportCanBeRepeatedAndFinished"
+    payment_test = workflow_step(workflow, "Run required StoreKit purchase and finish test")
+    if "set -euo pipefail" not in payment_test or "|| true" in payment_test or re.search(r"(?m)^\s+if:", payment_test):
+        fail("StoreKit integration must execute unconditionally and propagate failure")
+    if re.findall(r"-only-testing:\S+", payment_test) != ["-only-testing:" + case] or "-skip-testing:" in payment_test:
+        fail("the real StoreKit purchase test must run in its required job")
+    native_tests = workflow_step(workflow, "Run app-model tests on the booted iPhone Simulator")
+    if re.findall(r"-skip-testing:\S+", native_tests) != ["-skip-testing:" + case]:
+        fail("release runtime may relocate only the separately required StoreKit test")
+    if re.findall(r"-only-testing:\S+", native_tests) != ["-only-testing:MoneyUpTests"]:
+        fail("release preflight must retain the full remaining native test target")
+
+
 def validate_testflight_workflow() -> None:
     path = ROOT / ".github" / "workflows" / "testflight.yml"
     try:
@@ -5037,8 +5082,7 @@ def validate_testflight_workflow() -> None:
         "DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer"
     ) != 1:
         fail("TestFlight must globally select the reviewed Xcode 26.6 bundle")
-    if "needs: preflight" not in workflow:
-        fail("the signing job must depend on its secretless preflight")
+    validate_storekit_release_gate(workflow)
 
     authorization_body = workflow_step(
         workflow, "Require main and explicit upload confirmation"
