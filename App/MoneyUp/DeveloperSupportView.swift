@@ -2,6 +2,7 @@ import StoreKit
 import SwiftUI
 
 struct DeveloperSupportView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @State private var store: DeveloperSupportStore
 
     init(store: DeveloperSupportStore = .shared) {
@@ -60,5 +61,8 @@ struct DeveloperSupportView: View {
         .scrollContentBackground(.hidden)
         .background { MoneyUpBackdrop() }
         .task { await store.load() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { Task { await store.load() } }
+        }
     }
 }

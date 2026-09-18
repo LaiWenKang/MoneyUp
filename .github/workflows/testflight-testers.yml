@@ -32,6 +32,10 @@ on:
         description: Prior build with completed compliance for unchanged app encryption
         type: string
         required: false
+      reference_version:
+        description: Marketing version of the reviewed reference build (defaults to target version)
+        type: string
+        required: false
       encryption_unchanged:
         description: The target and reference app encryption and dependencies were compared and are unchanged
         type: boolean
@@ -95,6 +99,7 @@ jobs:
           VERSION: ${{ inputs.version }}
           OPERATION: ${{ inputs.operation }}
           REFERENCE_BUILD: ${{ inputs.reference_build }}
+          REFERENCE_VERSION: ${{ inputs.reference_version }}
           ENCRYPTION_UNCHANGED: ${{ inputs.encryption_unchanged }}
         run: |
           set -euo pipefail
@@ -106,6 +111,9 @@ jobs:
           fi
           if [[ -n "$REFERENCE_BUILD" ]]; then
             arguments+=(--reference-build "$REFERENCE_BUILD")
+          fi
+          if [[ -n "$REFERENCE_VERSION" ]]; then
+            arguments+=(--reference-version "$REFERENCE_VERSION")
           fi
           if [[ "$OPERATION" = inherit-compliance ]]; then
             test "$ENCRYPTION_UNCHANGED" = true

@@ -22,61 +22,61 @@
     "en-US": [
       {
         "file": "screenshots/en-today.png",
-        "sha256": "422eda609a069cbd16f69894372598e3deb35e50a1453fc43a8bc1cd003e7052"
+        "sha256": "7e14f1e461d5f5a5f47aada21815cd7cf98436af84129f30726167d3943485d1"
       },
       {
         "file": "screenshots/en-plan.png",
-        "sha256": "5dcca85b8bb927bdd2fb94631d5b01ac47eedadc372d02e295e08c5802b6d863"
+        "sha256": "d5c29bf61c85c215f2215a056b9aff9b163c90d2711bdb6d4f1d37dc27347cdb"
       },
       {
         "file": "screenshots/en-history.png",
-        "sha256": "da818b03b38121952140996c038ecea4b4af380db0730b35ff98054df6220521"
+        "sha256": "bb6b296a97afb92cebb4d898b332396bf3c8ca2115548156604ced5b3f9ba71b"
       },
       {
         "file": "screenshots/en-assets.png",
-        "sha256": "91595aeba855f620abd804187980d4538321d6733928a4f8de506cb27bfc465a"
+        "sha256": "aed2a4617d2b2bb50033aea5ed5ce0a69fb6c467c5869ed1ab9b180feb7e2874"
       },
       {
         "file": "screenshots/en-goals.png",
-        "sha256": "0966ee8518463793ca643aec1d354b2d894227c10a3531ddea52d18631faa13f"
+        "sha256": "c64fa17addf66f7109a715c366dd9055d23e7e631373ad7262a472b946f42378"
       },
       {
         "file": "screenshots/en-log.png",
-        "sha256": "b2a0281ec6f3d6b5e7fd0bb7756c12b081b30ec0db4edb3b4f027d355cc7d926"
+        "sha256": "ebb8f046c67761ae4dca83cfde0a29937c04860ddd951ffce1fcb58c24be59bd"
       },
       {
         "file": "screenshots/en-calendar.png",
-        "sha256": "9f627224f03f7cc619fe90e8b9b89e7435a913024d1fb2c93f2550cd8f63bf91"
+        "sha256": "6f51596b90cb572c557c0c7dac196ce92081839f87dc1bb167360261f896a7ff"
       }
     ],
     "zh-Hans": [
       {
         "file": "screenshots/zh-today.png",
-        "sha256": "012f2675a67683dd26ab6d49e3d5a8ffa9ab87b139e912b2b806d2a9d7277cd8"
+        "sha256": "e270867ab186a0d2474e2e10e21dae4bc340785175c22081b21ba77da0ccc602"
       },
       {
         "file": "screenshots/zh-plan.png",
-        "sha256": "e04a1a4301fe815a043c4a96ac8b1b0f53a92967960a06a852c9fbaa54984192"
+        "sha256": "fdf52574fc3048b0f6a1fee0cbfdd18478dd350a78121515962cf6031d933696"
       },
       {
         "file": "screenshots/zh-history.png",
-        "sha256": "cc03ab27ac94def8884b9b77a7c8b9df8e31d2f2c7b1a295e501ff73174838c5"
+        "sha256": "468f0ad323de565ad8e58592dcb627df5b03090086b46b010f27227f142d21d5"
       },
       {
         "file": "screenshots/zh-assets.png",
-        "sha256": "3ef0acffe318f78e4f2fd054729b09a3bca94f91d4e8a05948764543b92a7219"
+        "sha256": "8ea9965becd18c7e856778081c6d84e37453a09eeb99ed782d30a219b425eae1"
       },
       {
         "file": "screenshots/zh-goals.png",
-        "sha256": "37f6ae5eca4fcbc0e67f898193b6d18169b560399df05a603b3bb1c86c649909"
+        "sha256": "c52d223d40f2f346ad6a332c7be542aacbe5d4d5a04f11ed924c2a32411b790a"
       },
       {
         "file": "screenshots/zh-log.png",
-        "sha256": "4b288bdb6701894b9ca8b8325791b32d050970865aabd9760c494077407fd71a"
+        "sha256": "57f3211dda68df5571e7bf2711f683ef6435dfb020289c9e3f67cb04105085d4"
       },
       {
         "file": "screenshots/zh-calendar.png",
-        "sha256": "eee1a76e4e8d97f74339cdea6aa27c1c8ce5a3826b0ffb1bed38f4dd878737df"
+        "sha256": "df1065fc1ba6dd7fbb7b5515393cf9d84f4f66e717f99a8b4a00eaf90e016466"
       }
     ]
   },
@@ -89,7 +89,7 @@
       "localizations": {
         "en-US": {
           "name": "A little thanks",
-          "description": "Optional one-time support. No features unlocked."
+          "description": "One-time support. No features unlocked."
         },
         "zh-Hans": {
           "name": "一份小小心意",
@@ -104,7 +104,7 @@
       "localizations": {
         "en-US": {
           "name": "A cup of coffee",
-          "description": "Optional one-time support. No features unlocked."
+          "description": "One-time support. No features unlocked."
         },
         "zh-Hans": {
           "name": "请喝一杯咖啡",
@@ -119,7 +119,7 @@
       "localizations": {
         "en-US": {
           "name": "A generous boost",
-          "description": "Optional one-time support. No features unlocked."
+          "description": "One-time support. No features unlocked."
         },
         "zh-Hans": {
           "name": "为开发加把劲",

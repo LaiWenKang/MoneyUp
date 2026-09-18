@@ -77,6 +77,15 @@ enum AppStoreScreenshotFixture {
                     payee: chinese ? payees[index].1 : payees[index].0))
             }
         }
+        // A realistic busy day makes the default Today history useful in the
+        // store preview without changing the production filter behavior.
+        for (index, amount, hour) in [(0, "12.80", 8), (2, "3.20", 7), (1, "46.70", 10), (3, "29.90", 11)] {
+            let date = calendar.startOfDay(for: now).addingTimeInterval(TimeInterval(hour * 3600))
+            entries.append(try TransactionFactory.expense(
+                amount: Money(XCTUnwrap(Decimal(string: amount)), currency: fixture.sgd),
+                paidFrom: daily.id, category: categories[index].id, occurredAt: date,
+                payee: chinese ? payees[index].1 : payees[index].0))
+        }
         return entries
     }
 

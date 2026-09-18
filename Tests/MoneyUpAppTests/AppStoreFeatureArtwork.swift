@@ -12,7 +12,7 @@ struct AppStoreFeatureArtwork<Content: View>: View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 9) {
                 HStack(spacing: 7) {
-                    Image(systemName: "leaf.fill")
+                    Image("MoneyUpBrandMark").renderingMode(.template).resizable().scaledToFit().frame(width: 17, height: 17)
                     Text(verbatim: "MONEYUP").tracking(3)
                     Spacer()
                     Text(verbatim: chinese ? "私密 · 从容" : "PRIVATE BY DESIGN").tracking(1)

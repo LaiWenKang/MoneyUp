@@ -19,10 +19,21 @@ def prepare_support(client, app, config, root):
     if len(expected) != 3 or {p["productId"] for p in expected} != {
             "com.laiwenkang.MoneyUp.support." + size for size in ("small", "medium", "large")}:
         raise ValueError("Exactly the reviewed three support products are required")
+    for product in expected:
+        price = Decimal(product["usdPrice"])
+        if not price.is_finite() or price <= 0 or price.as_tuple().exponent < -2:
+            raise ValueError("Support prices must be positive USD amounts in cents")
+        if set(product.get("localizations", {})) != {"en-US", "zh-Hans"}:
+            raise ValueError("Bilingual support product metadata required")
+        for attrs in product["localizations"].values():
+            if not 1 <= len(attrs.get("name", "")) <= 30 or not 1 <= len(attrs.get("description", "")) <= 45:
+                raise ValueError("Invalid support product copy")
     screenshot = root / config["supportScreenshot"]["file"]
     if not screenshot.resolve().is_relative_to(root.resolve()):
         raise ValueError("Review screenshot path escaped release directory")
     data = screenshot.read_bytes()
+    if not 24 < len(data) <= 15_000_000 or data[:8] != b"\x89PNG\r\n\x1a\n":
+        raise ValueError("Invalid support review screenshot")
     if hashlib.sha256(data).hexdigest() != config["supportScreenshot"]["sha256"]:
         raise ValueError("Support review screenshot changed")
     existing = {row["product_id"]: row for row in support_products(client, app["id"])}
@@ -76,5 +87,9 @@ def prepare_support(client, app, config, root):
             client.request("PATCH", f'/v1/inAppPurchaseAppStoreReviewScreenshots/{row["id"]}', resource(
                 "inAppPurchaseAppStoreReviewScreenshots", {"uploaded": True,
                  "sourceFileChecksum": hashlib.md5(data, usedforsecurity=False).hexdigest()}, identifier=row["id"]))
+        versions = client.all(f"/v2/inAppPurchases/{iid}/versions?limit=200")
+        if not versions:
+            client.request("POST", "/v1/inAppPurchaseVersions", resource("inAppPurchaseVersions",
+                relationships={"inAppPurchase": ("inAppPurchases", iid)}))
     return {"support_products": support_products(client, app["id"]), "agreements_accepted": False,
             "note": "Paid Apps Agreement, banking and tax setup remain Account Holder responsibilities."}

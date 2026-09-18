@@ -151,14 +151,28 @@ def prepare(client, app, build, config, root):
                 dict(attrs, locale=locale), {"appStoreVersion": ("appStoreVersions", version_id)}))["data"]
             identifier = row["id"]
         uploaded[locale] = sync_screenshots(client, identifier, manifests[locale])
-    # A newly created update normally inherits Apple's existing private review contact.
+    # Keep the existing review contact entirely within Apple's service.
     # Never copy contact data into a repository, command line, log, or receipt.
     review = client.request("GET", f"/v1/appStoreVersions/{version_id}/appStoreReviewDetail").get("data")
+    contact_keys = ["contactFirstName", "contactLastName", "contactPhone", "contactEmail"]
+    contact = {k: (review or {}).get("attributes", {}).get(k) for k in contact_keys}
+    if not all(contact.values()):
+        previous = [v for v in versions if v["id"] != version_id and state(v) in {"READY_FOR_SALE", "READY_FOR_DISTRIBUTION"}]
+        previous.sort(key=lambda v: v["attributes"].get("createdDate", ""), reverse=True)
+        if not previous:
+            raise ValueError("No released version with an existing review contact")
+        prior = client.request("GET", f'/v1/appStoreVersions/{previous[0]["id"]}/appStoreReviewDetail').get("data")
+        for key in contact_keys:
+            contact[key] = contact[key] or (prior or {}).get("attributes", {}).get(key)
+        if not all(contact.values()):
+            raise ValueError("Existing Apple review contact is incomplete")
+    review_attributes = dict(contact, notes=config["reviewNotes"], demoAccountRequired=False)
     if review:
         client.request("PATCH", f'/v1/appStoreReviewDetails/{review["id"]}', resource("appStoreReviewDetails",
-            {"notes": config["reviewNotes"], "demoAccountRequired": False}, identifier=review["id"]))
+            review_attributes, identifier=review["id"]))
     else:
-        raise ValueError("Apple has not inherited the existing review contact; web completion is required")
+        client.request("POST", "/v1/appStoreReviewDetails", resource("appStoreReviewDetails", review_attributes,
+            {"appStoreVersion": ("appStoreVersions", version_id)}))
     return {"version_id": version_id, "version": version_string, "build": build["attributes"]["version"],
             "screenshots": uploaded, "release_type": config["releaseType"], "prepared": True}
 
@@ -212,8 +226,10 @@ def submit(client, app, build, config, root):
             "reviewSubmission": ("reviewSubmissions", sid), relation: (kind, identifier)}))
     client.request("PATCH", f"/v1/reviewSubmissions/{sid}", resource("reviewSubmissions", {"submitted": True}, identifier=sid))
     result = client.request("GET", f"/v1/reviewSubmissions/{sid}")["data"]
-    return {"submission_id": sid, "state": result["attributes"]["state"], "version": config["version"],
-            "submitted_now": True, "release_type": "AFTER_APPROVAL"}
+    current_state = result["attributes"]["state"]
+    return {"submission_id": sid, "state": current_state, "version": config["version"],
+            "submitted_now": current_state in {"WAITING_FOR_REVIEW", "IN_REVIEW", "COMPLETING", "COMPLETE"},
+            "release_type": "AFTER_APPROVAL"}
 
 
 def main():

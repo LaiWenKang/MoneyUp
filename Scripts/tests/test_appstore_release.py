@@ -9,6 +9,7 @@ from unittest.mock import Mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from appstore_release import prepare, validate_config, resource
 from appstore_screenshots import screenshot_manifest, upload_parts, sync_screenshots
+from appstore_support import prepare_support
 
 ROOT = Path(__file__).resolve().parents[2] / "docs/app-store/0.7.2"
 
@@ -56,6 +57,15 @@ class AppStoreReleaseTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 prepare(client, {"id": "app"}, {"id": "build", "attributes": attrs}, self.config, ROOT)
         client.request.assert_not_called()
+
+    def test_support_product_validation_precedes_external_writes(self):
+        for price in ["0", "-1", "NaN", "0.999"]:
+            config = copy.deepcopy(self.config)
+            config["supportProducts"][0]["usdPrice"] = price
+            client = Mock()
+            with self.assertRaises(ValueError):
+                prepare_support(client, {"id": "app"}, config, ROOT)
+            client.request.assert_not_called()
 
     def test_verify_only_never_replaces_or_uploads_screenshots(self):
         client = Mock()

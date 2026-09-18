@@ -21,6 +21,7 @@ final class AppwideRenderEvidenceTests: XCTestCase {
             let prefix = language == .english ? "store-en-" : "store-zh-"
             let chinese = language == .simplifiedChinese
             for (tab, name) in [(MoneyUpSection.today, "today"), (.log, "log"), (.plan, "plan"), (.history, "history"), (.assets, "assets")] {
+                if tab == .history { model.quickLogDraft = nil }
                 let screen = await capture(MainTabView(initialReportingSnapshot: snapshot, initialSection: tab)
                     .environment(model).environment(MoneyUpOverviewNavigation()).preferredColorScheme(.light),
                     name: prefix + name, width: 428, height: 926, language: language)

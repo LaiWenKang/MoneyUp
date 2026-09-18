@@ -74,6 +74,9 @@ final class DeveloperSupportTests: XCTestCase {
         let store = DeveloperSupportStore(purchaser: backend)
         await store.load()
         await captureSupportPage(store)
+        // Attach to the local test storefront after SKTestSession activates it,
+        // just as the app attaches to its storefront at production launch.
+        store.startObservingTransactions()
         let product = try XCTUnwrap(products.first)
         for _ in 0..<2 {
             let outcome = try await backend.purchase(id: product.id)

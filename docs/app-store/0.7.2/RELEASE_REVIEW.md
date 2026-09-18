@@ -36,12 +36,20 @@ support on 18 September 2026. Existing France exclusion remains in place.
 
 - Baseline local core suite: 410 XCTest + 53 Swift Testing passed. Other native
   targets are covered separately; this number is not the full repository count.
-- Baseline script suite: 109 tests passed. New public-release boundary tests: 7 passed.
+- Baseline script suite: 109 tests passed. New public-release boundary tests: 8 passed.
 - Current structure, architecture and release-assets validators pass.
-- Native screenshot rendering passed, with further layout review/re-capture in progress.
+- Native screenshot rendering passed; final 14 bilingual compositions were re-captured and visually reviewed with richer Today history and intact navigation.
 - Support state tests passed locally. Xcode 27 local StoreKit testing showed product
-  setup/transaction-finish inconsistencies; the real StoreKit integration assertion
-  is retained and must pass the pinned CI environment before merge.
+  setup/transaction-finish inconsistencies. The complete app-model test step passed
+  in pinned Xcode 16.4 CI run 35350179182, including the retained real StoreKit
+  integration assertion. iOS 26 interaction run 35350179229 passed. Final-head CI
+  is still required after the screenshot and workflow refinements.
+- Local full regression recorded 746 passes and one SIGTERM while an older test
+  harness using the same simulator was being stopped; that exact restore test
+  passed an isolated rerun alongside screenshot capture. It was not changed.
+- Platform ingress gate: retain adjacent durable-ingress reload and acknowledgement
+  at startup, then attach the payment listener. All 60 platform-validator tests
+  passed after this ordering correction.
 - Account Holder must have an active Paid Apps Agreement and completed banking/tax
   details. Existing private review contact is kept inside Apple's service.
 - CI, signed upload, Apple processing, product approval, public review and physical
