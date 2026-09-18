@@ -11,7 +11,7 @@ from urllib.error import HTTPError
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from appstore_release import prepare, validate_config, resource, ReleaseClient, AppStoreAPIError, optional_resource
 from appstore_screenshots import screenshot_manifest, upload_parts, sync_screenshots
-from appstore_support import prepare_support
+from appstore_support import prepare_support, verify_price
 from appstore_previews import movie
 
 ROOT = Path(__file__).resolve().parents[2] / "docs/app-store/0.7.2"
@@ -49,6 +49,21 @@ class AppStoreReleaseTests(unittest.TestCase):
             client.request.side_effect = AppStoreAPIError(status, "GET", "/optional", [], False)
             with self.assertRaises(AppStoreAPIError):
                 optional_resource(client, "/optional")
+
+    def test_price_readback_resolves_scheduled_id_in_authorized_product_list(self):
+        for actual in ["1.00", "5.00"]:
+            client = Mock()
+            client.request.side_effect = [{"data": {"id": "schedule"}}, {"data": {"id": "SGP"}}]
+            client.all.side_effect = [[{"id": "price", "attributes": {}, "relationships": {
+                "inAppPurchasePricePoint": {"data": {"id": "point"}}}}],
+                [{"id": "point", "attributes": {"customerPrice": actual}}]]
+            if actual == "1.00":
+                self.assertEqual(verify_price(client, "product", "SGP", "1.00")["customer_price"], "1.00")
+            else:
+                with self.assertRaisesRegex(ValueError, "price differs"):
+                    verify_price(client, "product", "SGP", "1.00")
+            self.assertTrue(client.all.call_args.args[0].startswith("/v2/inAppPurchases/product/pricePoints?"))
+            self.assertEqual(client.request.call_count, 2)
 
     def test_reviewed_bilingual_manifest_matches_real_pngs(self):
         manifest = validate_config(self.config, ROOT)

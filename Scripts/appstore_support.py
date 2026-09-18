@@ -1,7 +1,6 @@
 """Configure optional consumable developer support; never accept agreements."""
 from decimal import Decimal
 import hashlib
-from urllib.parse import quote
 
 from distribute_testflight import one, query
 from appstore_screenshots import upload_parts
@@ -24,7 +23,9 @@ def verify_price(client, product_id, base_territory, expected):
         **{"filter[territory]": base_territory, "include": "inAppPurchasePricePoint", "limit": 200}))
     price = one(prices, "reviewed base price schedule")
     point_id = price["relationships"]["inAppPurchasePricePoint"]["data"]["id"]
-    point = client.request("GET", f"/v1/inAppPurchasePricePoints/{quote(point_id, safe='')}")["data"]
+    points = client.all(query(f"/v2/inAppPurchases/{product_id}/pricePoints",
+                              **{"filter[territory]": base_territory, "limit": 200}))
+    point = one([row for row in points if row["id"] == point_id], "scheduled base price point")
     actual = point["attributes"]["customerPrice"]
     if Decimal(actual) != Decimal(expected):
         raise ValueError("Existing support price differs from the reviewed configuration")
