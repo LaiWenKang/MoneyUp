@@ -156,6 +156,12 @@ IGNORED_SWIFT_INVENTORY_ROOTS = {
     "Tests",
     "worktrees",
 }
+# Explicitly reviewed macOS-only release tooling. Target roots and the package
+# graph remain pinned below, and any new or modified tool still fails closed.
+REVIEWED_OFFLINE_SWIFT_TOOLS = {
+    "Scripts/finalize_appstore_movie.swift":
+        "6bb1e014ee6eede186c88a173e099f22c980a03fbcd5ba9782b37698e270638d",
+}
 APP_INTENTS_SOURCE_ALLOWLIST = {
     "App/MoneyUp/MoneyUpAppShortcuts.swift",
     "App/Shared/MoneyUpQuickAction.swift",
@@ -2431,6 +2437,13 @@ def validate_compiled_surface_inventory(root: Path) -> list[str]:
             continue
         if relative_path.parts[0] in IGNORED_SWIFT_INVENTORY_ROOTS:
             continue
+        if relative in REVIEWED_OFFLINE_SWIFT_TOOLS:
+            try:
+                if hashlib.sha256(path.read_bytes()).hexdigest() == REVIEWED_OFFLINE_SWIFT_TOOLS[relative]:
+                    continue
+            except OSError as error:
+                errors.append(f"cannot read reviewed offline Swift tool {relative}: {error}")
+            errors.append(f"reviewed offline Swift tool changed without review: {relative}")
         errors.append(
             "unreviewed production Swift source is outside the compiled "
             f"inventory: {relative}"
