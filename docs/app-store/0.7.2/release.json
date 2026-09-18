@@ -22,69 +22,69 @@
     "en-US": [
       {
         "file": "screenshots/en-brand.png",
-        "sha256": "6ac41320515ed5557fd6d208a9e75afebee59c9a65226c5340d1ecbacaeea702"
+        "sha256": "967c39e4ae93bceeed87e4f6d71435bc7a2b6ae794212c43f9b6bd68bb5b9897"
       },
       {
         "file": "screenshots/en-today.png",
-        "sha256": "ed4722e800e83aa5dae16a5b6148b760180201bfb78f6ed59f909ccc7e8786e2"
+        "sha256": "113b5926d40544d8789350a19b8768f43c395e351e47508c9706789fb256aae5"
       },
       {
         "file": "screenshots/en-plan.png",
-        "sha256": "d5c29bf61c85c215f2215a056b9aff9b163c90d2711bdb6d4f1d37dc27347cdb"
+        "sha256": "20c6de604fd16ef6f6d117befcb782ad1b20da4b8132b3664baf7825cff01cf6"
       },
       {
         "file": "screenshots/en-history.png",
-        "sha256": "bb6b296a97afb92cebb4d898b332396bf3c8ca2115548156604ced5b3f9ba71b"
+        "sha256": "ec5e697ab64fcef12a003005dc0f1455055b9542e7d718abd86d0ebb9bec65f5"
       },
       {
         "file": "screenshots/en-assets.png",
-        "sha256": "5974ed14d22b0686b67e4b0a1725828a7684753ed0fa58ee79216046992403ff"
+        "sha256": "e1f1c9f931f468ebccc921f760cde30836862ef64b5cd04339df61a3c8228084"
       },
       {
         "file": "screenshots/en-goals.png",
-        "sha256": "39fbd48ad41a9f4213c9dd129296b4328208ae9ec535490dd84083b2e08ed3cc"
+        "sha256": "81c5bba643fae96acf54a94fc3a43f48595b6f5ce7ae1b8da84c0aadb9272ff9"
       },
       {
         "file": "screenshots/en-log.png",
-        "sha256": "de336a942ec2176e08b5b4aff8aa03456edd8cbd57ec66295def0b11eab6a952"
+        "sha256": "d83d0090c12c6b3f43dbeeee45acdf72d770171f4d265dea294df1260ec816d2"
       },
       {
         "file": "screenshots/en-calendar.png",
-        "sha256": "b2f5b6d616add308e8165266dd72d4f76110ac540996f1a36c0443bd037adbb7"
+        "sha256": "5d7fe4094c14ba485a989f79e029e8ec208695c5c5fc0725511110203b6fd443"
       }
     ],
     "zh-Hans": [
       {
         "file": "screenshots/zh-brand.png",
-        "sha256": "733fcce2dacfe93cf0ffdb8273f0d1af98b8aceaec3c02ff002214da6e55aea0"
+        "sha256": "0ef090e963c4df5a27fab19d33be18a2e6eba06963d78d47560795098a04cae2"
       },
       {
         "file": "screenshots/zh-today.png",
-        "sha256": "d523162dc2526da94f8552fa0c92ad0948951935ad0f913fc9af0940439cf193"
+        "sha256": "f576c02d755e1a0cfe9eb006bbaf5390ac27a2c4181ef1f301d86060564ad2d3"
       },
       {
         "file": "screenshots/zh-plan.png",
-        "sha256": "fdf52574fc3048b0f6a1fee0cbfdd18478dd350a78121515962cf6031d933696"
+        "sha256": "18f040c1c8311144832de7e25b9e6076f2c1364afcf017614b642e0aeb5efbd7"
       },
       {
         "file": "screenshots/zh-history.png",
-        "sha256": "7a0d033f47304a6a60d39e3ac91ebf9e607ec53acc3d131c53c479860778f7d8"
+        "sha256": "856d1759dcc93874d6cc0f0d607abd4298b5417aef98cd45db06435026b5ae1b"
       },
       {
         "file": "screenshots/zh-assets.png",
-        "sha256": "80ac9bfe8d407c918f13f678bd46a9921cab50587234299bd872454c0d4d106e"
+        "sha256": "172d5ac354c554668f687305d56c8da11b9dc1873c80144270827c8b84f9a02b"
       },
       {
         "file": "screenshots/zh-goals.png",
-        "sha256": "c52d223d40f2f346ad6a332c7be542aacbe5d4d5a04f11ed924c2a32411b790a"
+        "sha256": "80036867ad8703e8ec79cf341cf4ae2cd44bac70f59aede80b7c268050f11706"
       },
       {
         "file": "screenshots/zh-log.png",
-        "sha256": "7e6e5397909db1201defa893a71f4fc8e3dc2c34f85cfae063d1f060d34eb77e"
+        "sha256": "2c393c8b5b7af905d1d405dcba4ccbc45eb0a52c669684af37ee6fa2fb762146"
       },
       {
         "file": "screenshots/zh-calendar.png",
-        "sha256": "bd93ae8f9ce81919741becc175bc9b4e1aad6f057fe206f5612312b846848662"
+        "sha256": "277d0a379449091f0f9d97a1430d62b890fe4533939be92036e5c1e0701d31be"
       }
     ]
   },
@@ -103,7 +103,7 @@
           "description": "一次性自愿支持独立开发，不提供实物，不解锁功能。"
         }
       },
-      "basePrice": "3.00"
+      "basePrice": "1.00"
     },
     {
       "productId": "com.laiwenkang.MoneyUp.support.medium",
@@ -118,7 +118,7 @@
           "description": "一次性自愿支持独立开发，不提供实物，不解锁功能。"
         }
       },
-      "basePrice": "10.00"
+      "basePrice": "5.00"
     },
     {
       "productId": "com.laiwenkang.MoneyUp.support.large",
@@ -133,17 +133,17 @@
           "description": "一次性自愿支持独立开发，不提供实物，不解锁功能。"
         }
       },
-      "basePrice": "20.00"
+      "basePrice": "10.00"
     }
   ],
   "supportScreenshot": {
     "file": "support-review.png",
-    "sha256": "dba36986c12377d01a2f45b8f8ad622798af8853fff57effbf0bb075cc64cc9e"
+    "sha256": "8fdfec2aa63a1c922d0f73c23eab64b28808467471ceb04f5a2ad96eb710a642"
   },
   "previews": {
     "en-US": {
       "file": "videos/preview-en.mp4",
-      "sha256": "3d9ef473012c61e75486403b6701f2cf9b734237ba2cab63e7817d6fe8884d46",
+      "sha256": "23dece19bdddc8fd89547614e1a86d9de3ae17fddefd07e4ecc4fc2cd1d347aa",
       "dimensions": [
         886,
         1920
@@ -152,7 +152,7 @@
     },
     "zh-Hans": {
       "file": "videos/preview-zh.mp4",
-      "sha256": "ad4756dae56702749e6ebf66a1b9c79cfef7a4084947fe4df97a5a8ebc7a1828",
+      "sha256": "efac8236df7aea390059643d4b8c604b63955b536cd7f6170a5b35100ed764f1",
       "dimensions": [
         886,
         1920

@@ -72,7 +72,7 @@ struct AppStoreBrandArtwork: View {
             }
             .foregroundStyle(Color(red: 0.62, green: 0.84, blue: 0.72))
             .padding(.horizontal, 28).padding(.top, 32)
-            Text(verbatim: chinese ? "你的钱，\n更清楚。" : "Your money.\nA little clearer.")
+            Text(verbatim: chinese ? "钱花得明白，\n生活有节拍。" : "Know your flow.\nChoose where to go.")
                 .font(.system(size: 42, weight: .bold, design: .rounded)).tracking(-1.5)
                 .foregroundStyle(Color(red: 0.94, green: 0.97, blue: 0.90))
                 .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 28).padding(.top, 26)

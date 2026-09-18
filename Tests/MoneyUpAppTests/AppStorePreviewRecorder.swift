@@ -50,7 +50,7 @@ private struct StoreMovieBrandLayer: View {
                         .offset(y: sin(phase.elapsed * 1.8) * 8)
                         .scaleEffect(0.95 + 0.025 * sin(phase.elapsed * 0.9))
                         .shadow(color: Color.green.opacity(0.12 + 0.05 * sin(phase.elapsed * 1.4)), radius: 38)
-                    Text(verbatim: chinese ? "你的钱，更清楚。" : "Your money. A little clearer.")
+                    Text(verbatim: chinese ? "钱花得明白，生活有节拍。" : "Know your flow. Choose where to go.")
                         .font(.system(size: 26, weight: .bold, design: .rounded))
                         .foregroundStyle(Color(red: 0.94, green: 0.97, blue: 0.91))
                     Text(verbatim: chinese ? "私密记账 · 从容生活" : "Private money. Calmer days.")
@@ -113,7 +113,10 @@ enum AppStorePreviewRecorder {
         try await frames(window: window, host: host, navigation: navigation, phase: phase,
                          writer: writer, input: input, adapter: adapter, duration: brandOnly ? 6 : 18, brandOnly: brandOnly)
         input.markAsFinished()
-        await writer.finishWriting()
+        // Keep the non-Sendable writer on this actor across older SDK overlays.
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            writer.finishWriting { continuation.resume() }
+        }
         guard writer.status == .completed else { throw writer.error ?? CocoaError(.fileWriteUnknown) }
         return url
     }

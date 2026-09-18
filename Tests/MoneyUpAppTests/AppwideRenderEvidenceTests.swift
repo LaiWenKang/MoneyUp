@@ -62,20 +62,20 @@ final class AppwideRenderEvidenceTests: XCTestCase {
 
     private func storeCopy(_ name: String, chinese: Bool) -> (String, String) {
         switch (name, chinese) {
-        case ("today", false): ("Make room for\nwhat matters.", "Your everyday budgets, at a glance.")
-        case ("today", true): ("每一笔钱，\n都有余地。", "关注日常预算，从容安排今天。")
-        case ("plan", false): ("A clearer plan.\nA calmer month.", "See what is spent and what is still yours.")
-        case ("plan", true): ("预算清晰，\n心里有底。", "已花多少，还剩多少，一眼明白。")
-        case ("history", false): ("Small moments.\nThe full picture.", "Your spending story, clearly recorded.")
-        case ("history", true): ("生活的点滴，\n账本都记得。", "收支记录清清楚楚，回顾更轻松。")
-        case ("assets", false): ("Know where\nyou stand.", "Accounts and currencies, side by side.")
-        case ("assets", true): ("家底有多少，\n一看就知道。", "账户与币种分别呈现，数字更清楚。")
-        case ("goals", false): ("Turn someday\ninto a plan.", "Watch your savings goals take shape.")
-        case ("goals", true): ("把心愿，\n慢慢存成现实。", "储蓄目标有进度，每一步都看得见。")
-        case ("log", false): ("Less effort.\nMore living.", "Record an expense and get on with your day.")
-        case ("log", true): ("轻松记一笔，\n继续好好生活。", "记录日常开销，不打断生活节奏。")
-        case (_, false): ("Your month,\nin perspective.", "Explore the rhythm of your cash flow.")
-        case (_, true): ("每月收支，\n自有节奏。", "在日历中回顾每一天的资金流。")
+        case ("today", false): ("Spending in view.\nMore room for you.", "Your everyday budgets, at a glance.")
+        case ("today", true): ("开销有记录，\n心里就有数。", "关注日常预算，从容安排今天。")
+        case ("plan", false): ("Plan with care.\nSee what’s spare.", "See what is spent and what is still yours.")
+        case ("plan", true): ("预算先分配，\n花钱有准备。", "已花多少，还剩多少，一眼明白。")
+        case ("history", false): ("See what went.\nKnow what you spent.", "Your spending story, clearly recorded.")
+        case ("history", true): ("每笔有来去，\n回头有依据。", "收支记录清清楚楚，回顾更轻松。")
+        case ("assets", false): ("Know what’s there.\nPlan with care.", "Accounts and currencies, side by side.")
+        case ("assets", true): ("账户分得开，\n家底看明白。", "账户与币种分别呈现，数字更清楚。")
+        case ("goals", false): ("A goal in sight.\nA future you write.", "Watch your savings goals take shape.")
+        case ("goals", true): ("心愿有方向，\n存钱有盼望。", "储蓄目标有进度，每一步都看得见。")
+        case ("log", false): ("Tap. Track.\nGet your day back.", "Record an expense and get on with your day.")
+        case ("log", true): ("开销随手记，\n生活有底气。", "记录日常开销，不打断生活节奏。")
+        case (_, false): ("See each day.\nPlan your way.", "Explore the rhythm of your cash flow.")
+        case (_, true): ("收支按天看，\n心里有盘算。", "在日历中回顾每一天的资金流。")
         }
     }
 
