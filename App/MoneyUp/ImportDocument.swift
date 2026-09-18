@@ -65,9 +65,9 @@ struct ImportDataTable: Identifiable, Sendable {
             guard row.count <= TransactionCSVImporter.maximumColumnCount else { throw TransactionCSVImportError.inputTooLarge }
             for (index, cell) in row.enumerated() {
                 guard cell.utf8.count <= TransactionCSVImporter.maximumFieldByteCount else { throw TransactionCSVImportError.inputTooLarge }
-                guard !cell.unicodeScalars.contains(where: {
-                    CharacterSet.controlCharacters.contains($0) && ![9, 10, 13].contains($0.value)
-                }) else { throw CSVImportViewError.unsupportedDocument }
+                guard !DelimitedImportFile.containsUnsupportedControls(cell) else {
+                    throw CSVImportViewError.unsupportedDocument
+                }
                 if index > 0 { output.append(",") }
                 output.append("\"" + cell.replacingOccurrences(of: "\"", with: "\"\"") + "\"")
             }

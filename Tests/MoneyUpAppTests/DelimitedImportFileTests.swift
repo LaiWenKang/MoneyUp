@@ -6,16 +6,24 @@ import UniformTypeIdentifiers
 import XCTest
 
 final class DelimitedImportFileTests: XCTestCase {
-    private let csv = "时间,类型,分类,金额,账户,备注\n2026-09-18 09:00:00,支出,餐饮,12.80,现金,早餐\n"
+    private let csv = "时间,类型,分类,金额,账户,备注\n2026-09-18 09:00:00,支出,餐饮,12.80,现金,早餐 👩‍🍳\n"
 
     func testQianjiCSVSurvivesUTF8BOMAndUTF16Exports() throws {
-        for bytes in [Data(csv.utf8), Data([0xef, 0xbb, 0xbf]) + Data(csv.utf8), try XCTUnwrap(csv.data(using: .utf16))] {
+        let encodings: [(String, Data)] = [
+            ("UTF-8", Data(csv.utf8)),
+            ("UTF-8 BOM", Data([0xef, 0xbb, 0xbf]) + Data(csv.utf8)),
+            ("UTF-16 LE BOM", Data([0xff, 0xfe]) + (try XCTUnwrap(csv.data(using: .utf16LittleEndian)))),
+            ("UTF-16 BE BOM", Data([0xfe, 0xff]) + (try XCTUnwrap(csv.data(using: .utf16BigEndian))))
+        ]
+        for (encoding, bytes) in encodings {
             let decoded = try DelimitedImportFile.decode(bytes)
+            XCTAssertEqual(decoded, csv, encoding)
             let preview = try TransactionCSVImporter.parse(decoded, locale: Locale(identifier: "zh_CN"), timeZone: TimeZone(secondsFromGMT: 0)!)
             XCTAssertEqual(preview.rows.count, 1)
             XCTAssertTrue(preview.issues.isEmpty)
             XCTAssertEqual(preview.rows.first?.amount, Decimal(string: "12.80"))
             XCTAssertEqual(preview.rows.first?.categoryName, "餐饮")
+            XCTAssertEqual(preview.rows.first?.note, "早餐 👩‍🍳")
         }
     }
 
@@ -51,6 +59,10 @@ final class DelimitedImportFileTests: XCTestCase {
             }
         }
         XCTAssertThrowsError(try DelimitedImportFile.decode(Data([65, 0, 66, 0])))
+        for scalar in [0x01, 0x1b, 0x7f, 0x85, 0x9f] {
+            let text = "A" + String(UnicodeScalar(scalar)!) + "B"
+            XCTAssertThrowsError(try DelimitedImportFile.decode(Data(text.utf8)))
+        }
     }
 
     func testEmptyAndOversizedFilesFailBeforeParsing() {

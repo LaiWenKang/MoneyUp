@@ -5,13 +5,15 @@ import XCTest
 
 final class ImportDocumentTests: XCTestCase {
     func testJSONKeepsDecimalAmountsAndLargeNumericIdentitiesExact() throws {
-        let json = #"[{"id":9007199254740993,"date":"2026-09-18 12:00:00","type":"expense","amount":12.80,"category":{"name":"Food"}}]"#
+        let json = #"[{"id":9007199254740993,"date":"2026-09-18 12:00:00","type":"expense","amount":12.80,"category":{"name":"Food"},"note":"早餐 👩‍🍳"}]"#
         let table = try XCTUnwrap(ImportDocument.decode(Data(json.utf8)).tables.first)
         let id = try XCTUnwrap(table.rows[0].firstIndex(of: "id"))
         XCTAssertEqual(table.rows[1][id], "9007199254740993")
         XCTAssertTrue(table.rows[0].contains("category.name"))
+        XCTAssertTrue(try table.csv().contains("早餐 👩‍🍳"))
         let preview = try TransactionCSVImporter.parse(table.csv())
         XCTAssertEqual(preview.rows.first?.amount, Decimal(string: "12.80"))
+        XCTAssertEqual(preview.rows.first?.note, "早餐 👩‍🍳")
         XCTAssertTrue(preview.rows.first?.hasExternalID == true)
         XCTAssertThrowsError(try JSONImportReader.tables(Data("[{\"amount\":1234567890123456789012345678901234567890123}]".utf8)))
         let decimalJSON = try ImportDocument.decode(Data(#"[{"date":"2026-09-18","type":"expense","amount":1.234,"currency":"KWD"}]"#.utf8))

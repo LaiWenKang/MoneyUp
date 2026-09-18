@@ -52,10 +52,19 @@ enum DelimitedImportFile {
             let encoding = CFStringConvertEncodingToNSStringEncoding(CFStringEncoding(CFStringEncodings.GB_18030_2000.rawValue))
             text = String(data: data, encoding: String.Encoding(rawValue: encoding))
         }
-        guard var text, !text.unicodeScalars.contains(where: {
-            CharacterSet.controlCharacters.contains($0) && ![9, 10, 13].contains($0.value)
-        }) else { throw CSVImportViewError.unsupportedEncoding }
+        guard var text else { throw CSVImportViewError.unsupportedEncoding }
         if text.first == "\u{feff}" { text.removeFirst() }
+        // Foundation's controlCharacters also includes format scalars on older
+        // systems. Keep valid Unicode (including emoji joiners), but reject
+        // binary C0/C1 controls independently of the OS character-set tables.
+        guard !containsUnsupportedControls(text) else { throw CSVImportViewError.unsupportedEncoding }
         return text
+    }
+
+    static func containsUnsupportedControls(_ text: String) -> Bool {
+        text.unicodeScalars.contains {
+            let value = $0.value
+            return (value < 0x20 || (0x7f...0x9f).contains(value)) && ![9, 10, 13].contains(value)
+        }
     }
 }
