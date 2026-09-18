@@ -50,7 +50,7 @@
       },
       {
         "file": "screenshots/en-calendar.png",
-        "sha256": "5d7fe4094c14ba485a989f79e029e8ec208695c5c5fc0725511110203b6fd443"
+        "sha256": "9d2edc4e6646f3ac4a31b8b5a1d43ab87c610dd6304112b24c04a8f284b1901f"
       }
     ],
     "zh-Hans": [
@@ -84,7 +84,7 @@
       },
       {
         "file": "screenshots/zh-calendar.png",
-        "sha256": "277d0a379449091f0f9d97a1430d62b890fe4533939be92036e5c1e0701d31be"
+        "sha256": "8a83defc1689f51bf52aefb6d12df41efbcf24bc293f617b57ee3bd0e0cb7561"
       }
     ]
   },
@@ -143,7 +143,7 @@
   "previews": {
     "en-US": {
       "file": "videos/preview-en.mp4",
-      "sha256": "23dece19bdddc8fd89547614e1a86d9de3ae17fddefd07e4ecc4fc2cd1d347aa",
+      "sha256": "504075eeb2a94786b295194ca4d36572f1ec7e062806f8d555b51eaaf2c5621d",
       "dimensions": [
         886,
         1920

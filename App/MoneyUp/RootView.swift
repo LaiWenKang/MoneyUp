@@ -294,7 +294,9 @@ struct MainTabView: View {
         navigation: MoneyUpTabNavigation? = nil
     ) {
         _navigation = State(initialValue: navigation ?? MoneyUpTabNavigation(section: initialSection))
-        _planWorkspace = State(initialValue: PlanWorkspaceState(section: initialPlanSection))
+        let workspace = PlanWorkspaceState(section: initialPlanSection)
+        workspace.calendarDate = initialReportingSnapshot.instant
+        _planWorkspace = State(initialValue: workspace)
         _reportingClock = State(
             initialValue: AppReportingClockState(
                 snapshot: initialReportingSnapshot

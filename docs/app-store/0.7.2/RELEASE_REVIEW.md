@@ -79,3 +79,5 @@ support on 18 September 2026. Existing France exclusion remains in place.
 
 - Regenerated all 16 posters and four movies with rhyming copy; native capture passed at 00:34 on 19 September. The Xcode 27 / iOS 26.5 StoreKit test service returned SKInternalErrorDomain 3 and no products; the matched Xcode 27 / iOS 27 run passed repeated consumable purchases and finishing at 00:36 with the SGD 1 / 5 / 10 screenshot. Final CI still independently verifies its pinned Xcode 16.4 runtime.
 - Older SDK overlays rejected the video recorder async finishWriting call under strict concurrency. The test-only recorder now bridges Apple’s completion-handler API while retaining writer access on MainActor; no production ledger or payment behavior changed.
+
+- Initial calendar selection now uses the same reporting snapshot as the rest of MainTabView, eliminating host-clock drift in fixed-date fixtures. Calendar screenshots passed with September 18 sample cash flow after midnight. Completion-handler video recording and the centered two-line English opening passed native capture at 00:50 on 19 September.
