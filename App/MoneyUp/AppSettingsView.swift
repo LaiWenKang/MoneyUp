@@ -371,6 +371,13 @@ struct AppSettingsView: View {
                 Text("assets.data")
             }
 
+            Section {
+                NavigationLink {
+                    DeveloperSupportView()
+                } label: {
+                    Label("support.title", systemImage: "cup.and.saucer.fill")
+                }
+            }
         }
         .scrollContentBackground(.hidden)
         .background { MoneyUpBackdrop() }

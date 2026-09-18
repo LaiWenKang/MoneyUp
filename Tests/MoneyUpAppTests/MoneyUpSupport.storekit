@@ -1,0 +1,63 @@
+{
+  "identifier": "3F365C93",
+  "nonRenewingSubscriptions": [],
+  "products": [
+    {
+      "displayPrice": "0.99",
+      "familyShareable": false,
+      "internalID": "100000001",
+      "localizations": [
+        {
+          "description": "Optional one-time developer support. No features unlocked.",
+          "displayName": "A little thanks",
+          "locale": "en_US"
+        }
+      ],
+      "productID": "com.laiwenkang.MoneyUp.support.small",
+      "referenceName": "A little thanks",
+      "type": "Consumable"
+    },
+    {
+      "displayPrice": "2.99",
+      "familyShareable": false,
+      "internalID": "100000002",
+      "localizations": [
+        {
+          "description": "Optional one-time developer support. No features unlocked.",
+          "displayName": "A cup of coffee",
+          "locale": "en_US"
+        }
+      ],
+      "productID": "com.laiwenkang.MoneyUp.support.medium",
+      "referenceName": "A cup of coffee",
+      "type": "Consumable"
+    },
+    {
+      "displayPrice": "4.99",
+      "familyShareable": false,
+      "internalID": "100000003",
+      "localizations": [
+        {
+          "description": "Optional one-time developer support. No features unlocked.",
+          "displayName": "A generous boost",
+          "locale": "en_US"
+        }
+      ],
+      "productID": "com.laiwenkang.MoneyUp.support.large",
+      "referenceName": "A generous boost",
+      "type": "Consumable"
+    }
+  ],
+  "settings": {
+    "_applicationInternalID": "0",
+    "_developerTeamID": "",
+    "_failTransactionsEnabled": false,
+    "_locale": "en_US",
+    "_storefront": "USA"
+  },
+  "subscriptionGroups": [],
+  "version": {
+    "major": 3,
+    "minor": 0
+  }
+}

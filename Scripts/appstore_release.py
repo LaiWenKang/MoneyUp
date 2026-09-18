@@ -1,0 +1,262 @@
+#!/usr/bin/env python3
+"""Prepare or submit an exact MoneyUp public update through Apple's API.
+
+Credentials stay in the protected GitHub environment. Public receipts omit
+review contacts, tokens, signed upload URLs, and raw Apple error responses.
+"""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import tempfile
+from urllib.error import HTTPError
+from urllib.request import Request, build_opener
+
+from distribute_testflight import Client, NoRedirect, BUNDLE, availability, locate, one, query, safe_url, token
+from appstore_screenshots import sync_screenshots, screenshot_manifest
+from appstore_support import prepare_support, support_products
+
+EDITABLE = {"PREPARE_FOR_SUBMISSION", "DEVELOPER_REJECTED", "REJECTED"}
+LOCALES = {"en-US", "zh-Hans"}
+
+
+def resource(kind, attributes=None, relationships=None, identifier=None):
+    data = {"type": kind}
+    if attributes is not None:
+        data["attributes"] = attributes
+    if relationships:
+        data["relationships"] = {key: {"data": {"type": value[0], "id": value[1]}}
+                                 for key, value in relationships.items()}
+    if identifier:
+        data["id"] = identifier
+    return {"data": data}
+
+
+class ReleaseClient(Client):
+    def request(self, method, path, payload=None):
+        if method not in {"GET", "POST", "PATCH"} or (method != "GET" and not self.writable):
+            raise ValueError("Read-only or unsupported operation")
+        req = Request(safe_url(path), data=None if payload is None else json.dumps(payload).encode(), method=method,
+                      headers={"Authorization": "Bearer " + token(self.key, self.key_id, self.issuer),
+                               "Content-Type": "application/json"})
+        try:
+            with build_opener(NoRedirect()).open(req, timeout=45) as response:
+                raw = response.read(4_000_001)
+                if len(raw) > 4_000_000:
+                    raise ValueError("App Store response exceeds bound")
+                return json.loads(raw) if raw else {}
+        except HTTPError as error:
+            raw = error.read(100_000)
+            try:
+                errors = json.loads(raw).get("errors", [])
+                codes = [e.get("code", "") for e in errors]
+                codes = [c for c in codes if re.fullmatch(r"[A-Z0-9_.-]{1,100}", c)]
+                agreement = any("agreement" in str(e.get("detail", "")).lower() for e in errors)
+            except (ValueError, TypeError):
+                codes, agreement = [], False
+            raise RuntimeError(f"App Store HTTP {error.code} during {method}; codes={codes}; agreement_related={agreement}") from None
+
+    def delete_screenshot(self, identifier):
+        # Only screenshots explicitly found inside the target draft are removed.
+        if not self.writable or not re.fullmatch(r"[A-Za-z0-9-]+", identifier):
+            raise ValueError("Screenshot deletion requires a writable draft client")
+        req = Request(safe_url(f"/v1/appScreenshots/{identifier}"), method="DELETE",
+                      headers={"Authorization": "Bearer " + token(self.key, self.key_id, self.issuer)})
+        try:
+            with build_opener(NoRedirect()).open(req, timeout=45) as response:
+                response.read(1024)
+        except HTTPError as error:
+            raise RuntimeError(f"App Store screenshot deletion HTTP {error.code}") from None
+
+
+def app_versions(client, app_id):
+    return client.all(query(f"/v1/apps/{app_id}/appStoreVersions", **{"filter[platform]": "IOS", "limit": 200}))
+
+
+def state(version):
+    return version["attributes"].get("appVersionState") or version["attributes"].get("appStoreState")
+
+
+def inspect(client, app):
+    versions = app_versions(client, app["id"])
+    summary = []
+    for version in versions:
+        build = client.request("GET", f'/v1/appStoreVersions/{version["id"]}/build').get("data")
+        summary.append({"id": version["id"], "version": version["attributes"]["versionString"],
+                        "state": state(version), "release_type": version["attributes"].get("releaseType"),
+                        "build": build["attributes"].get("version") if build else None})
+    record = client.request("GET", f'/v1/apps/{app["id"]}/appAvailabilityV2')["data"]
+    territories = client.all(f'/v2/appAvailabilities/{record["id"]}/territoryAvailabilities?include=territory&limit=200')
+    counts = {}
+    unavailable = []
+    for row in territories:
+        attrs = row["attributes"]
+        status = attrs.get("contentStatuses", [])
+        for item in status:
+            counts[item] = counts.get(item, 0) + 1
+        if not attrs.get("available"):
+            unavailable.append(row.get("relationships", {}).get("territory", {}).get("data", {}).get("id"))
+    return {"app_id": app["id"], "versions": summary, "support_products": support_products(client, app["id"]), "availability": availability(client, app["id"]),
+            "territories": len(territories), "unavailable_territories": unavailable, "content_status_counts": counts}
+
+
+def validate_config(config, root):
+    if not re.fullmatch(r"\d+\.\d+\.\d+", config.get("version", "")):
+        raise ValueError("Explicit three-part version required")
+    if config.get("releaseType") != "AFTER_APPROVAL" or set(config.get("localizations", {})) != LOCALES:
+        raise ValueError("Reviewed automatic public release and bilingual metadata required")
+    for locale, attrs in config["localizations"].items():
+        for field, maximum in [("whatsNew", 4000), ("description", 4000), ("keywords", 100), ("promotionalText", 170)]:
+            if not isinstance(attrs.get(field), str) or not 0 < len(attrs[field]) <= maximum:
+                raise ValueError(f"Invalid {locale} {field}")
+    return screenshot_manifest(config, root)
+
+
+def prepare(client, app, build, config, root):
+    version_string = config["version"]
+    if build["attributes"].get("processingState") != "VALID" or build["attributes"].get("expired"):
+        raise ValueError("Build must be processed and active")
+    if build["attributes"].get("buildAudienceType") != "APP_STORE_ELIGIBLE":
+        raise ValueError("Public-compatible build required")
+    if availability(client, app["id"]) != {"france_available": False, "future_countries_enabled": False}:
+        raise ValueError("Existing approved territory boundaries changed")
+    manifests = validate_config(config, root)
+    versions = app_versions(client, app["id"])
+    matches = [v for v in versions if v["attributes"]["versionString"] == version_string]
+    if matches:
+        version = one(matches, "target version")
+        if state(version) not in EDITABLE:
+            raise ValueError("Only the requested editable version may be prepared")
+    else:
+        version = client.request("POST", "/v1/appStoreVersions", resource("appStoreVersions",
+            {"platform": "IOS", "versionString": version_string, "releaseType": config["releaseType"],
+             "copyright": config["copyright"]}, {"app": ("apps", app["id"])}))["data"]
+    version_id = version["id"]
+    client.request("PATCH", f"/v1/appStoreVersions/{version_id}", resource("appStoreVersions",
+        {"releaseType": config["releaseType"]}, {"build": ("builds", build["id"])}, version_id))
+    localizations = client.all(f"/v1/appStoreVersions/{version_id}/appStoreVersionLocalizations?limit=200")
+    by_locale = {row["attributes"]["locale"]: row for row in localizations}
+    uploaded = {}
+    for locale, attrs in config["localizations"].items():
+        if locale in by_locale:
+            identifier = by_locale[locale]["id"]
+            client.request("PATCH", f"/v1/appStoreVersionLocalizations/{identifier}",
+                           resource("appStoreVersionLocalizations", attrs, identifier=identifier))
+        else:
+            row = client.request("POST", "/v1/appStoreVersionLocalizations", resource("appStoreVersionLocalizations",
+                dict(attrs, locale=locale), {"appStoreVersion": ("appStoreVersions", version_id)}))["data"]
+            identifier = row["id"]
+        uploaded[locale] = sync_screenshots(client, identifier, manifests[locale])
+    # A newly created update normally inherits Apple's existing private review contact.
+    # Never copy contact data into a repository, command line, log, or receipt.
+    review = client.request("GET", f"/v1/appStoreVersions/{version_id}/appStoreReviewDetail").get("data")
+    if review:
+        client.request("PATCH", f'/v1/appStoreReviewDetails/{review["id"]}', resource("appStoreReviewDetails",
+            {"notes": config["reviewNotes"], "demoAccountRequired": False}, identifier=review["id"]))
+    else:
+        raise ValueError("Apple has not inherited the existing review contact; web completion is required")
+    return {"version_id": version_id, "version": version_string, "build": build["attributes"]["version"],
+            "screenshots": uploaded, "release_type": config["releaseType"], "prepared": True}
+
+
+def submit(client, app, build, config, root):
+    manifests = validate_config(config, root)
+    version = one([v for v in app_versions(client, app["id"])
+                   if v["attributes"]["versionString"] == config["version"]], "target version")
+    version_id = version["id"]
+    if state(version) not in EDITABLE | {"READY_FOR_REVIEW"}:
+        return {"version": config["version"], "state": state(version), "submitted_now": False}
+    linked = client.request("GET", f"/v1/appStoreVersions/{version_id}/build")["data"]
+    if linked["id"] != build["id"] or version["attributes"].get("releaseType") != "AFTER_APPROVAL":
+        raise ValueError("Reviewed build or release setting changed")
+    localizations = client.all(f"/v1/appStoreVersions/{version_id}/appStoreVersionLocalizations?limit=200")
+    for locale, attrs in config["localizations"].items():
+        row = one([r for r in localizations if r["attributes"]["locale"] == locale], "localization")
+        if any(row["attributes"].get(k) != v for k, v in attrs.items()):
+            raise ValueError("Reviewed metadata changed")
+        sync_screenshots(client, row["id"], manifests[locale], verify_only=True)
+    if availability(client, app["id"]) != {"france_available": False, "future_countries_enabled": False}:
+        raise ValueError("Approved territory boundaries changed")
+    expected_items = {("appStoreVersion", "appStoreVersions", version_id)}
+    catalog = support_products(client, app["id"])
+    for expected in config.get("supportProducts", []):
+        product = one([r for r in catalog if r["product_id"] == expected["productId"]], "support product")
+        if product["state"] == "APPROVED":
+            continue
+        versions = client.all(f'/v2/inAppPurchases/{product["id"]}/versions?limit=200')
+        candidate = one([v for v in versions if v["attributes"]["state"] in {
+            "PREPARE_FOR_SUBMISSION", "READY_FOR_REVIEW", "REJECTED", "DEVELOPER_REJECTED"}], "support review version")
+        expected_items.add(("inAppPurchaseVersion", "inAppPurchaseVersions", candidate["id"]))
+    submissions = client.all(f'/v1/apps/{app["id"]}/reviewSubmissions?limit=200')
+    draft = [r for r in submissions if r["attributes"]["state"] == "READY_FOR_REVIEW"]
+    if len(draft) > 1:
+        raise ValueError("Ambiguous existing review drafts")
+    submission = draft[0] if draft else client.request("POST", "/v1/reviewSubmissions",
+        resource("reviewSubmissions", {"platform": "IOS"}, {"app": ("apps", app["id"])}))["data"]
+    sid = submission["id"]
+    items = client.all(f"/v1/reviewSubmissions/{sid}/items?limit=200")
+    present = set()
+    for item in items:
+        linked = [(key, value["data"]["type"], value["data"]["id"])
+                  for key, value in item.get("relationships", {}).items()
+                  if key != "reviewSubmission" and isinstance(value.get("data"), dict)]
+        if len(linked) != 1 or linked[0] not in expected_items:
+            raise ValueError("Review draft contains unrelated items")
+        present.add(linked[0])
+    for relation, kind, identifier in sorted(expected_items - present):
+        client.request("POST", "/v1/reviewSubmissionItems", resource("reviewSubmissionItems", relationships={
+            "reviewSubmission": ("reviewSubmissions", sid), relation: (kind, identifier)}))
+    client.request("PATCH", f"/v1/reviewSubmissions/{sid}", resource("reviewSubmissions", {"submitted": True}, identifier=sid))
+    result = client.request("GET", f"/v1/reviewSubmissions/{sid}")["data"]
+    return {"submission_id": sid, "state": result["attributes"]["state"], "version": config["version"],
+            "submitted_now": True, "release_type": "AFTER_APPROVAL"}
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--operation", choices=["inspect", "prepare-support", "prepare", "submit"], default="inspect")
+    parser.add_argument("--build")
+    parser.add_argument("--config", type=Path, required=True)
+    parser.add_argument("--receipt", type=Path, required=True)
+    args = parser.parse_args()
+    config = json.loads(args.config.read_text())
+    root = args.config.parent
+    if args.operation in {"prepare", "submit"}:
+        validate_config(config, root)
+        if not args.build or not re.fullmatch(r"\d+(?:\.\d+){0,2}", args.build):
+            raise ValueError("Exact build required for public changes")
+    secret = os.environ.pop("ASC_API_KEY_P8")
+    with tempfile.TemporaryDirectory(prefix="moneyup-public-asc-") as directory:
+        key = Path(directory) / "key.p8"
+        fd = os.open(key, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w") as handle:
+            handle.write(secret)
+        del secret
+        client = ReleaseClient(key, os.environ["ASC_KEY_ID"], os.environ["ASC_ISSUER_ID"], args.operation != "inspect")
+        app = one(client.all(query("/v1/apps", **{"filter[bundleId]": BUNDLE, "limit": 2})), "MoneyUp app")
+        if app["attributes"].get("bundleId") != BUNDLE:
+            raise ValueError("App identity mismatch")
+        if args.operation == "inspect":
+            result = inspect(client, app)
+        elif args.operation == "prepare-support":
+            result = prepare_support(client, app, config, root)
+        else:
+            target_app, build = locate(client, config["version"], args.build)
+            if target_app["id"] != app["id"]:
+                raise ValueError("Build app mismatch")
+            result = (prepare if args.operation == "prepare" else submit)(client, app, build, config, root)
+        result["source_sha"] = os.environ.get("GITHUB_SHA")
+        result["config_sha256"] = hashlib.sha256(args.config.read_bytes()).hexdigest()
+        args.receipt.write_text(json.dumps(result, indent=2) + "\n")
+        print(json.dumps(result, indent=2))
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (ValueError, RuntimeError) as error:
+        raise SystemExit(str(error)) from None

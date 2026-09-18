@@ -62,6 +62,7 @@ struct MoneyUpApp: App {
                     .frame(width: 0, height: 0)
                 }
                 .task {
+                    DeveloperSupportStore.shared.startObservingTransactions()
                     quickActionRouteBroker.reloadDurableIngress()
                     model.retryPresentedQuickActionAcknowledgement()
                     launchState.isActive = scenePhase == .active
