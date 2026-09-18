@@ -1,0 +1,177 @@
+{
+  "version": "0.7.2",
+  "releaseType": "AFTER_APPROVAL",
+  "copyright": "2026 Lai Wen Kang",
+  "localizations": {
+    "en-US": {
+      "description": "A calmer way to keep track of your money.\n\nMoneyUp brings your spending, budgets, accounts and savings goals together in a private, local-first iPhone app. No MoneyUp account required.\n\nMAKE EVERYDAY SPENDING CLEAR\nRecord expenses, income, transfers and refunds. Review your history by date or category. Read receipts and screenshots on your device, then check the details before saving.\n\nPLAN WITH CONFIDENCE\nCreate multi-level budgets, pin the categories you care about, track what remains, and explore budget scenarios without changing your records. Follow savings goals and see cash flow on your calendar.\n\nKEEP YOUR ACCOUNTS IN VIEW\nTrack account balances in their own currencies. Add your own exchange rates when you need a converted estimate. Accounts are manually maintained; MoneyUp does not connect to your bank.\n\nPRIVATE BY DESIGN\nYour book is encrypted on your iPhone. No ads or tracking. Export your records to CSV or Excel, or create an encrypted backup when you choose.\n\nMoneyUp is a recording and planning tool, not financial, investment, tax or legal advice.\n\nOPTIONAL DEVELOPER SUPPORT\nAll core features are free. If you would like to support development, optional one-time tips are available through Apple. Tips do not unlock features and are not subscriptions.\n\nBRING YOUR HISTORY\nImport CSV/TSV text, XLSX worksheets and JSON transaction tables locally. Choose the intended table, review fields and transaction types, and confirm before records are added. Encrypted workbooks and spreadsheet formulas are not evaluated.",
+      "keywords": "budget,expense,spending,money,finance,tracker,calendar,savings,accounts,private",
+      "promotionalText": "Your money, a little clearer. Track spending, plan budgets and grow savings goals with a private, encrypted ledger on your iPhone.",
+      "supportUrl": "https://github.com/LaiWenKang/MoneyUp/blob/main/SUPPORT.md",
+      "whatsNew": "Import CSV, XLSX and JSON with local previews and field mapping. Files with generic provider labels can now be selected. Choose optional account and category presets, review clearer spending details, and enjoy improved financial accuracy and smoother exports. Optional one-time tips support independent development; all core features remain free."
+    },
+    "zh-Hans": {
+      "description": "把收支看清楚，把生活安排得更从容。\n\nMoneyUp 将记账、预算、账户与储蓄目标放在一起，财务记录加密保存在你的 iPhone。无需注册 MoneyUp 账户。\n\n日常记账，清清楚楚\n记录支出、收入、转账与退款，按日期或分类回顾明细。在本机识别收据和截图，检查结果后再保存。\n\n预算有计划，心里更有底\n建立多层预算，置顶关心的分类，查看已用与剩余金额。通过预算情景模拟探索计划，不会修改实际账本。追踪储蓄目标，在日历中查看资金流。\n\n账户与币种，分别看清\n手动管理账户余额，按各自币种查看。需要换算估值时，可使用自己记录的汇率。MoneyUp 不连接银行，也不提供交易服务。\n\n隐私，从设计开始\n本地账本加密存储，不含广告或追踪。你可自主导出 CSV 或 Excel 文件，或创建加密备份。\n\nMoneyUp 是记录与规划工具，不构成财务、投资、税务或法律建议。\n\n自愿支持独立开发\n所有核心功能继续免费。如你愿意，可通过 Apple 进行一次性自愿支持。支持不会解锁功能，也不是订阅。\n\n带上你的记账历史\n本机读取 CSV／TSV、XLSX 工作表和 JSON 账单表。选择数据表，检查字段与账单类型后再确认导入；不会读取加密工作簿或执行表格公式。",
+      "keywords": "预算,记账,支出,收支,消费,账本,存钱,储蓄,目标,资金流,资产,隐私",
+      "promotionalText": "让每一笔钱更清楚。私密记账、规划预算、追踪储蓄目标，财务记录加密保存在你的 iPhone。",
+      "supportUrl": "https://github.com/LaiWenKang/MoneyUp/blob/main/SUPPORT.md",
+      "whatsNew": "支持导入 CSV、XLSX 和 JSON，提供本机预览与字段对应。修复文件因类型标签而变灰、无法选择的问题。新增可选账户与消费分类清单，支出明细更清晰，并改进财务计算与导出体验。可自愿一次性支持独立开发，所有核心功能继续免费。"
+    }
+  },
+  "screenshots": {
+    "en-US": [
+      {
+        "file": "screenshots/en-brand.png",
+        "sha256": "967c39e4ae93bceeed87e4f6d71435bc7a2b6ae794212c43f9b6bd68bb5b9897"
+      },
+      {
+        "file": "screenshots/en-today.png",
+        "sha256": "113b5926d40544d8789350a19b8768f43c395e351e47508c9706789fb256aae5"
+      },
+      {
+        "file": "screenshots/en-plan.png",
+        "sha256": "20c6de604fd16ef6f6d117befcb782ad1b20da4b8132b3664baf7825cff01cf6"
+      },
+      {
+        "file": "screenshots/en-history.png",
+        "sha256": "ec5e697ab64fcef12a003005dc0f1455055b9542e7d718abd86d0ebb9bec65f5"
+      },
+      {
+        "file": "screenshots/en-assets.png",
+        "sha256": "e1f1c9f931f468ebccc921f760cde30836862ef64b5cd04339df61a3c8228084"
+      },
+      {
+        "file": "screenshots/en-goals.png",
+        "sha256": "81c5bba643fae96acf54a94fc3a43f48595b6f5ce7ae1b8da84c0aadb9272ff9"
+      },
+      {
+        "file": "screenshots/en-log.png",
+        "sha256": "d83d0090c12c6b3f43dbeeee45acdf72d770171f4d265dea294df1260ec816d2"
+      },
+      {
+        "file": "screenshots/en-calendar.png",
+        "sha256": "9d2edc4e6646f3ac4a31b8b5a1d43ab87c610dd6304112b24c04a8f284b1901f"
+      }
+    ],
+    "zh-Hans": [
+      {
+        "file": "screenshots/zh-brand.png",
+        "sha256": "0ef090e963c4df5a27fab19d33be18a2e6eba06963d78d47560795098a04cae2"
+      },
+      {
+        "file": "screenshots/zh-today.png",
+        "sha256": "f576c02d755e1a0cfe9eb006bbaf5390ac27a2c4181ef1f301d86060564ad2d3"
+      },
+      {
+        "file": "screenshots/zh-plan.png",
+        "sha256": "18f040c1c8311144832de7e25b9e6076f2c1364afcf017614b642e0aeb5efbd7"
+      },
+      {
+        "file": "screenshots/zh-history.png",
+        "sha256": "856d1759dcc93874d6cc0f0d607abd4298b5417aef98cd45db06435026b5ae1b"
+      },
+      {
+        "file": "screenshots/zh-assets.png",
+        "sha256": "172d5ac354c554668f687305d56c8da11b9dc1873c80144270827c8b84f9a02b"
+      },
+      {
+        "file": "screenshots/zh-goals.png",
+        "sha256": "80036867ad8703e8ec79cf341cf4ae2cd44bac70f59aede80b7c268050f11706"
+      },
+      {
+        "file": "screenshots/zh-log.png",
+        "sha256": "2c393c8b5b7af905d1d405dcba4ccbc45eb0a52c669684af37ee6fa2fb762146"
+      },
+      {
+        "file": "screenshots/zh-calendar.png",
+        "sha256": "8a83defc1689f51bf52aefb6d12df41efbcf24bc293f617b57ee3bd0e0cb7561"
+      }
+    ]
+  },
+  "reviewNotes": "MoneyUp is a local-first personal bookkeeping app. No MoneyUp account, bank connection, investment trading, ads or tracking. Cloud backup is disabled in this public build. Start a local book to explore the app. This update improves entry options, financial edge cases and exports. Screenshots use fictional data rendered by the production views. The optional Support MoneyUp page in Settings uses consumable StoreKit purchases, with no subscription, entitlement or feature unlock. Each purchase is an optional one-time tip to the developer.",
+  "supportProducts": [
+    {
+      "productId": "com.laiwenkang.MoneyUp.support.small",
+      "name": "MoneyUp support small",
+      "localizations": {
+        "en-US": {
+          "name": "Buy me a coffee",
+          "description": "One-time developer support. No physical item."
+        },
+        "zh-Hans": {
+          "name": "请我喝杯咖啡",
+          "description": "一次性自愿支持独立开发，不提供实物，不解锁功能。"
+        }
+      },
+      "basePrice": "1.00"
+    },
+    {
+      "productId": "com.laiwenkang.MoneyUp.support.medium",
+      "name": "MoneyUp support medium",
+      "localizations": {
+        "en-US": {
+          "name": "Buy me dinner",
+          "description": "One-time developer support. No physical item."
+        },
+        "zh-Hans": {
+          "name": "请我吃顿饭",
+          "description": "一次性自愿支持独立开发，不提供实物，不解锁功能。"
+        }
+      },
+      "basePrice": "5.00"
+    },
+    {
+      "productId": "com.laiwenkang.MoneyUp.support.large",
+      "name": "MoneyUp support large",
+      "localizations": {
+        "en-US": {
+          "name": "Give MoneyUp a boost",
+          "description": "One-time developer support. No physical item."
+        },
+        "zh-Hans": {
+          "name": "为 MoneyUp 加把劲",
+          "description": "一次性自愿支持独立开发，不提供实物，不解锁功能。"
+        }
+      },
+      "basePrice": "10.00"
+    }
+  ],
+  "supportScreenshot": {
+    "file": "support-review.png",
+    "sha256": "8fdfec2aa63a1c922d0f73c23eab64b28808467471ceb04f5a2ad96eb710a642"
+  },
+  "previews": {
+    "en-US": {
+      "file": "videos/preview-en.mp4",
+      "sha256": "6cc6bb2d785995d985ee433fa14870fc0634bfb6350fe16366b1053cdf6431b9",
+      "dimensions": [
+        886,
+        1920
+      ],
+      "duration": 18.0,
+      "audio": {
+        "codec": "AAC",
+        "channels": 2,
+        "sampleRate": 48000,
+        "targetBitRate": 256000
+      }
+    },
+    "zh-Hans": {
+      "file": "videos/preview-zh.mp4",
+      "sha256": "7cc88aa54d2a5afd6a89d610aa08323791f9b06ad07ea2e5d938c89f88326f6d",
+      "dimensions": [
+        886,
+        1920
+      ],
+      "duration": 18.0,
+      "audio": {
+        "codec": "AAC",
+        "channels": 2,
+        "sampleRate": 48000,
+        "targetBitRate": 256000
+      }
+    }
+  },
+  "supportBaseTerritory": "SGP",
+  "supportBaseCurrency": "SGD"
+}

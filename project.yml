@@ -14,7 +14,7 @@ settings:
     SWIFT_EMIT_LOC_STRINGS: YES
     DEBUG_INFORMATION_FORMAT: dwarf-with-dsym
     CURRENT_PROJECT_VERSION: 11
-    MARKETING_VERSION: 0.7.1
+    MARKETING_VERSION: 0.7.2
 
 packages:
   MoneyUpPackage:
@@ -93,6 +93,9 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.laiwenkang.MoneyUpTests
         GENERATE_INFOPLIST_FILE: true
+        # Apple's StoreKitTest C headers expose deprecated StoreKit 1 types.
+        # Keep Swift warnings as errors; suppress only imported C deprecations.
+        OTHER_SWIFT_FLAGS: "$(inherited) -Xcc -Wno-deprecated-declarations"
 
   MoneyUpPerformanceTests:
     type: bundle.unit-test

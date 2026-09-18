@@ -1,6 +1,6 @@
 # MoneyUp Privacy Policy
 
-Effective for the cloud-backup candidate: 8 September 2026
+Updated for optional developer support: 18 September 2026
 
 MoneyUp is a local-first personal-finance app. Its core privacy rule is simple:
 financial records are processed on the user's iPhone and are not sent to a
@@ -111,6 +111,22 @@ original recovery password. Users can delete selected completed backups in
 MoneyUp after confirmation. No cloud transfer occurs in an unconfigured build
 or without the user's backup opt-in, except the account verification and backup
 listing/download actions the user explicitly starts.
+
+## Optional developer support
+
+MoneyUp's optional one-time tips use Apple's In-App Purchase system. Apple
+processes payment, purchase history, and refund requests under its policies.
+MoneyUp uses StoreKit on the device to load localized prices, verify purchase
+results, and finish transactions. Payment card details are not received by
+MoneyUp. Support purchases do not create ledger entries, unlock features, or
+start subscriptions. No purchase identifiers or history are sent to a MoneyUp
+server or an analytics service. Core bookkeeping remains free and works offline;
+loading products and making support purchases require access to Apple's services.
+
+可选的开发者支持通过 Apple 应用内购买完成。Apple 处理付款、购买记录和退款；
+MoneyUp 在设备上通过 StoreKit 获取当地价格、验证并完成交易，不接收银行卡资料，
+也不会将购买标识或记录发送到 MoneyUp 服务器或分析服务。支持不会写入账本、
+解锁功能或开启订阅。核心记账功能继续免费并可离线使用；获取商品和付款需要连接 Apple 服务。
 
 ## Exports and links
 

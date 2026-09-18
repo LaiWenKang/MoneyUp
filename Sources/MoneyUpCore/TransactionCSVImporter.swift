@@ -156,6 +156,11 @@ public enum TransactionCSVImporter {
     public static let maximumHeaderByteCount = 256
     public static let maximumFieldByteCount = 4_096
 
+    /// The same bounded, quote-aware parser backs all tabular import adapters.
+    public static func tableRows(_ text: String) throws -> [[String]] {
+        try parseRecords(text).map(\.fields)
+    }
+
     /// Canonical identity used only for namespacing persisted import hashes.
     /// User-facing `JournalEntry.sourceSystem` text remains unchanged.
     public static func canonicalSourceSystem(_ value: String) -> String {
@@ -199,14 +204,14 @@ public enum TransactionCSVImporter {
 
     static let aliases: [Field: [String]] = [
         .id: ["id", "transactionid", "账单id", "交易id", "订单号", "交易单号"],
-        .date: ["date", "time", "datetime", "日期", "时间", "账单日期", "账单时间", "交易时间", "创建时间"],
+        .date: ["date", "time", "datetime", "日期", "时间", "账单日期", "账单时间", "交易时间", "创建时间", "timestamp", "occurredat"],
         .kind: ["type", "kind", "transactiontype", "类型", "账单类型", "收支类型", "交易类型"],
-        .amount: ["amount", "value", "金额", "账单金额", "实际金额", "交易金额"],
+        .amount: ["amount", "value", "金额", "账单金额", "实际金额", "交易金额", "money"],
         .destinationAmount: ["destinationamount", "receivedamount", "转入金额", "到账金额"],
         .currency: ["currency", "currencycode", "币种", "货币"],
-        .account: ["account", "fromaccount", "账户", "账户1", "资产", "资产账户", "付款账户", "转出账户"],
-        .destinationAccount: ["toaccount", "destinationaccount", "账户2", "目标账户", "转入账户", "收款账户"],
-        .category: ["subcategory", "category", "二级分类", "分类", "一级分类"],
+        .account: ["account", "fromaccount", "账户", "账户1", "资产", "资产账户", "付款账户", "转出账户", "accountname"],
+        .destinationAccount: ["toaccount", "destinationaccount", "账户2", "目标账户", "转入账户", "收款账户", "accountname2"],
+        .category: ["subcategory", "category", "二级分类", "分类", "一级分类", "catename"],
         .payee: ["payee", "merchant", "counterparty", "商家", "商户", "交易对象", "交易对方", "项目"],
         .note: ["memo", "note", "remark", "备注", "说明", "标签"],
         .outflow: ["outflow", "支出金额"],
@@ -287,11 +292,20 @@ public enum TransactionCSVImporter {
 
         var rows: [ImportedTransaction] = []
         var issues: [CSVImportIssue] = []
+        let adjustmentColumns = headers.indices.filter {
+            ["fee", "手续费", "coupon", "优惠券"].contains(normalizedHeader(headers[$0]))
+        }
         for record in records.dropFirst() {
             let columns = record.fields
             let line = record.sourceLine
             if columns.allSatisfy({ normalizedValue($0).isEmpty }) { continue }
             do {
+                for index in adjustmentColumns where columns.indices.contains(index) {
+                    let text = normalizedValue(columns[index])
+                    if !text.isEmpty, parsedAmount(text, locale: locale) != .zero {
+                        throw RowError.unsupportedAdjustment
+                    }
+                }
                 rows.append(
                     try parseRow(
                         columns,
@@ -373,5 +387,6 @@ public enum TransactionCSVImporter {
         case invalidAmount = "invalid_amount"
         case invalidDestinationAmount = "invalid_destination_amount"
         case unsupportedType = "unsupported_type"
+        case unsupportedAdjustment = "unsupported_adjustment"
     }
 }

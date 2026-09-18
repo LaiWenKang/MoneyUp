@@ -339,6 +339,7 @@ def main():
     operation.add_argument("--distribute-internal", action="store_true")
     operation.add_argument("--inherit-compliance", action="store_true")
     parser.add_argument("--reference-build")
+    parser.add_argument("--reference-version")
     parser.add_argument("--encryption-unchanged", action="store_true")
     parser.add_argument("--notes", type=Path)
     parser.add_argument("--receipt", type=Path, required=True)
@@ -347,6 +348,8 @@ def main():
         raise ValueError("Invalid version or build number")
     if args.reference_build and not re.fullmatch(r"[0-9]+(?:\.[0-9]+){0,2}", args.reference_build):
         raise ValueError("Invalid reference build")
+    if args.reference_version and (not args.reference_build or not re.fullmatch(r"[0-9]+(?:\.[0-9]+){1,2}", args.reference_version)):
+        raise ValueError("Invalid reference version")
     if args.inherit_compliance and (not args.reference_build or not args.encryption_unchanged):
         raise ValueError("Explicit reference and unchanged-encryption review required")
     key_id, issuer = os.environ["ASC_KEY_ID"], os.environ["ASC_ISSUER_ID"]
@@ -365,7 +368,7 @@ def main():
         client = Client(key, key_id, issuer, args.distribute or args.distribute_internal or args.inherit_compliance)
         app, build = locate(client, args.version, args.build)
         if args.inherit_compliance:
-            reference_app, reference = locate(client, args.version, args.reference_build)
+            reference_app, reference = locate(client, args.reference_version or args.version, args.reference_build)
             if reference_app["id"] != app["id"]:
                 raise ValueError("Reference app differs from target")
             result = inherit_compliance(client, app, build, reference, args.encryption_unchanged)
@@ -375,7 +378,7 @@ def main():
             _, result["compliance"] = compliance(client, build)
             result["availability"] = availability(client, app["id"])
             if args.reference_build:
-                reference_app, reference = locate(client, args.version, args.reference_build)
+                reference_app, reference = locate(client, args.reference_version or args.version, args.reference_build)
                 if reference_app["id"] != app["id"]:
                     raise ValueError("Reference app differs from target")
                 _, result["reference_compliance"] = compliance(client, reference)

@@ -64,6 +64,7 @@ struct MoneyUpApp: App {
                 .task {
                     quickActionRouteBroker.reloadDurableIngress()
                     model.retryPresentedQuickActionAcknowledgement()
+                    DeveloperSupportStore.shared.startObservingTransactions()
                     launchState.isActive = scenePhase == .active
                     if scenePhase == .active {
                         // SwiftUI need not emit an initial scenePhase change.

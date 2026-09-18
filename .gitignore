@@ -34,6 +34,10 @@ CloudKit/Local.*
 *.moneyup-backup
 *.csv
 *.xlsx
+!Tests/MoneyUpAppTests/ImportFixtures/ledger.xlsx
+!Tests/MoneyUpAppTests/ImportFixtures/locale-decimal.xlsx
+!Tests/MoneyUpAppTests/ImportFixtures/formula.xlsx
+!Tests/MoneyUpAppTests/ImportFixtures/external-entity.xlsx
 *.xls
 
 # Editor state

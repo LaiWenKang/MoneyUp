@@ -1,5 +1,12 @@
 # App Store Submission Working Copy
 
+The current 0.7.2 public-update metadata and reviewed screenshot manifest are
+in `docs/app-store/0.7.2/release.json`. The 0.7.1 material below is historical.
+0.7.2 adds optional consumable developer-support tips through Apple StoreKit;
+all core functionality stays free. Public review must include the initial
+consumable products and requires the Account Holder's active Paid Apps Agreement,
+tax and banking setup. No agreement is accepted by the release tooling.
+
 Last reviewed: 4 September 2026 for the 0.7.1 source candidate
 
 This file is the source of truth for App Store Connect entry. Verify every

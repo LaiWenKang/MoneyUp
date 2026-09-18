@@ -1,0 +1,72 @@
+name: Public App Store release
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        type: choice
+        options: [inspect, prepare-support, prepare, submit]
+        default: inspect
+        required: true
+      build:
+        description: Exact public-compatible build
+        type: string
+      expected_sha:
+        description: Exact reviewed main commit
+        type: string
+        required: true
+      confirmation:
+        description: Type PREPARE_PUBLIC or SUBMIT_PUBLIC for writes
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: moneyup-public-appstore
+  cancel-in-progress: false
+jobs:
+  release:
+    if: github.actor == github.repository_owner
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: testflight
+    steps:
+      - name: Require main, exact revision, and explicit operation
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          OPERATION: ${{ inputs.operation }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main
+          [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$GITHUB_SHA" = "$EXPECTED_SHA"
+          case "$OPERATION" in
+            inspect) ;;
+            prepare|prepare-support) test "$CONFIRMATION" = PREPARE_PUBLIC ;;
+            submit) test "$CONFIRMATION" = SUBMIT_PUBLIC ;;
+            *) exit 1 ;;
+          esac
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Test public-release boundaries
+        run: python3 -m unittest discover -s Scripts/tests -p test_appstore_release.py -v
+      - name: Inspect or update the reviewed public version
+        env:
+          ASC_KEY_ID: ${{ vars.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ vars.ASC_ISSUER_ID }}
+          ASC_API_KEY_P8: ${{ secrets.ASC_API_KEY_P8 }}
+          OPERATION: ${{ inputs.operation }}
+          BUILD: ${{ inputs.build }}
+        run: |
+          set -euo pipefail
+          python3 Scripts/appstore_release.py --operation "$OPERATION" --build "$BUILD" \
+            --config docs/app-store/0.7.2/release.json --receipt public-release-receipt.json
+      - name: Preserve sanitized release receipt
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: public-release-receipt
+          path: public-release-receipt.json
+          if-no-files-found: ignore
+          retention-days: 30

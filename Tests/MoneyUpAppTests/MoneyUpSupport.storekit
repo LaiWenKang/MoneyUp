@@ -1,0 +1,78 @@
+{
+  "identifier": "3F365C93",
+  "nonRenewingSubscriptions": [],
+  "products": [
+    {
+      "displayPrice": "1.00",
+      "familyShareable": false,
+      "internalID": "100000001",
+      "localizations": [
+        {
+          "locale": "en_US",
+          "displayName": "Buy me a coffee",
+          "description": "One-time developer support. No physical item."
+        },
+        {
+          "locale": "zh_Hans",
+          "displayName": "请我喝杯咖啡",
+          "description": "一次性自愿支持独立开发，不提供实物。"
+        }
+      ],
+      "productID": "com.laiwenkang.MoneyUp.support.small",
+      "referenceName": "Buy me a coffee",
+      "type": "Consumable"
+    },
+    {
+      "displayPrice": "5.00",
+      "familyShareable": false,
+      "internalID": "100000002",
+      "localizations": [
+        {
+          "locale": "en_US",
+          "displayName": "Buy me dinner",
+          "description": "One-time developer support. No physical item."
+        },
+        {
+          "locale": "zh_Hans",
+          "displayName": "请我吃顿饭",
+          "description": "一次性自愿支持独立开发，不提供实物。"
+        }
+      ],
+      "productID": "com.laiwenkang.MoneyUp.support.medium",
+      "referenceName": "Buy me dinner",
+      "type": "Consumable"
+    },
+    {
+      "displayPrice": "10.00",
+      "familyShareable": false,
+      "internalID": "100000003",
+      "localizations": [
+        {
+          "locale": "en_US",
+          "displayName": "Give MoneyUp a boost",
+          "description": "One-time developer support. No physical item."
+        },
+        {
+          "locale": "zh_Hans",
+          "displayName": "为 MoneyUp 加把劲",
+          "description": "一次性自愿支持独立开发，不提供实物。"
+        }
+      ],
+      "productID": "com.laiwenkang.MoneyUp.support.large",
+      "referenceName": "Give MoneyUp a boost",
+      "type": "Consumable"
+    }
+  ],
+  "settings": {
+    "_applicationInternalID": "0",
+    "_developerTeamID": "",
+    "_failTransactionsEnabled": false,
+    "_locale": "en_SG",
+    "_storefront": "SGP"
+  },
+  "subscriptionGroups": [],
+  "version": {
+    "major": 3,
+    "minor": 0
+  }
+}

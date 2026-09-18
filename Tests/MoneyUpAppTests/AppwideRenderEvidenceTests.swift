@@ -9,8 +9,6 @@ import XCTest
 final class AppwideRenderEvidenceTests: XCTestCase {
     @MainActor
     func testCaptureAppStoreScreenshots() async throws {
-        let (fixture, model, snapshot) = try await makeFixture()
-        defer { fixture.removeFiles() }
         let previousPrivacy = UserDefaults.standard.object(forKey: MoneyAmountPrivacy.storageKey)
         UserDefaults.standard.set(false, forKey: MoneyAmountPrivacy.storageKey)
         defer {
@@ -18,14 +16,67 @@ final class AppwideRenderEvidenceTests: XCTestCase {
             else { UserDefaults.standard.removeObject(forKey: MoneyAmountPrivacy.storageKey) }
         }
         for language in [AppLanguagePreference.english, .simplifiedChinese] {
+            let (fixture, model, snapshot) = try await AppStoreScreenshotFixture.make(chinese: language == .simplifiedChinese)
+            defer { fixture.removeFiles() }
             let prefix = language == .english ? "store-en-" : "store-zh-"
+            let chinese = language == .simplifiedChinese
             for (tab, name) in [(MoneyUpSection.today, "today"), (.log, "log"), (.plan, "plan"), (.history, "history"), (.assets, "assets")] {
-                await capture(MainTabView(initialReportingSnapshot: snapshot, initialSection: tab)
+                if tab == .history { model.quickLogDraft = nil }
+                let dark = [MoneyUpSection.today, .assets, .log].contains(tab)
+                let screen = await capture(MainTabView(initialReportingSnapshot: snapshot, initialSection: tab)
+                    .environment(model).environment(MoneyUpOverviewNavigation()).preferredColorScheme(dark ? .dark : .light),
+                    name: prefix + name, width: 428, height: 926, language: language)
+                let copy = storeCopy(name, chinese: chinese)
+                await capture(AppStoreFeatureArtwork(title: copy.0, subtitle: copy.1, chinese: chinese, dark: dark) {
+                    Image(uiImage: screen).resizable().scaledToFit()
+                }, name: prefix + "feature-" + name, width: 428, height: 926, language: language)
+                if tab == .today {
+                    await capture(AppStoreBrandArtwork(chinese: chinese, screen: screen),
+                                  name: prefix + "feature-brand", width: 428, height: 926, language: language)
+                }
+            }
+            for (section, name) in [(PlanSection.goals, "goals"), (.calendar, "calendar")] {
+                let screen = await capture(MainTabView(initialReportingSnapshot: snapshot, initialSection: .plan, initialPlanSection: section)
                     .environment(model).environment(MoneyUpOverviewNavigation()).preferredColorScheme(.light),
                     name: prefix + name, width: 428, height: 926, language: language)
+                let copy = storeCopy(name, chinese: chinese)
+                await capture(AppStoreFeatureArtwork(title: copy.0, subtitle: copy.1, chinese: chinese) {
+                    Image(uiImage: screen).resizable().scaledToFit()
+                }, name: prefix + "feature-" + name, width: 428, height: 926, language: language)
             }
+            let mode = ProcessInfo.processInfo.environment["MONEYUP_CAPTURE_STORE_VIDEO"]
+            let videoLanguage = ProcessInfo.processInfo.environment["MONEYUP_CAPTURE_VIDEO_LANGUAGE"]
+            if let mode, ["1", "brand-only"].contains(mode), videoLanguage == nil || videoLanguage == language.rawValue {
+                for brandOnly in mode == "brand-only" ? [true] : [false, true] {
+                    let video = try await AppStorePreviewRecorder.record(model: model, snapshot: snapshot,
+                        language: language, brandOnly: brandOnly)
+                    let attachment = XCTAttachment(contentsOfFile: video)
+                    attachment.name = prefix + (brandOnly ? "brand-video" : "preview-video")
+                    attachment.lifetime = .keepAlways
+                    add(attachment)
+                }
+            }
+            await fixture.store.close()
         }
-        await fixture.store.close()
+    }
+
+    private func storeCopy(_ name: String, chinese: Bool) -> (String, String) {
+        switch (name, chinese) {
+        case ("today", false): ("Spending in view.\nMore room for you.", "Your everyday budgets, at a glance.")
+        case ("today", true): ("开销有记录，\n心里就有数。", "关注日常预算，从容安排今天。")
+        case ("plan", false): ("Plan with care.\nSee what’s spare.", "See what is spent and what is still yours.")
+        case ("plan", true): ("预算先分配，\n花钱有准备。", "已花多少，还剩多少，一眼明白。")
+        case ("history", false): ("See what went.\nKnow what you spent.", "Your spending story, clearly recorded.")
+        case ("history", true): ("每笔有来去，\n回头有依据。", "收支记录清清楚楚，回顾更轻松。")
+        case ("assets", false): ("Know what’s there.\nPlan with care.", "Accounts and currencies, side by side.")
+        case ("assets", true): ("账户分得开，\n家底看明白。", "账户与币种分别呈现，数字更清楚。")
+        case ("goals", false): ("A goal in sight.\nA future you write.", "Watch your savings goals take shape.")
+        case ("goals", true): ("心愿有方向，\n存钱有盼望。", "储蓄目标有进度，每一步都看得见。")
+        case ("log", false): ("Tap. Track.\nGet your day back.", "Record an expense and get on with your day.")
+        case ("log", true): ("开销随手记，\n生活有底气。", "记录日常开销，不打断生活节奏。")
+        case (_, false): ("See each day.\nPlan your way.", "Explore the rhythm of your cash flow.")
+        case (_, true): ("收支按天看，\n心里有盘算。", "在日历中回顾每一天的资金流。")
+        }
     }
 
     @MainActor
@@ -133,10 +184,11 @@ final class AppwideRenderEvidenceTests: XCTestCase {
     }
 
     @MainActor
+    @discardableResult
     private func capture<Content: View>(
         _ content: Content, name: String, width: CGFloat = 390, height: CGFloat = 844,
         language: AppLanguagePreference = .english
-    ) async {
+    ) async -> UIImage {
         let defaults = AppLanguagePreference.defaults
         let previous = defaults?.object(forKey: AppLanguagePreference.storageKey)
         defaults?.set(language.rawValue, forKey: AppLanguagePreference.storageKey)
@@ -155,11 +207,15 @@ final class AppwideRenderEvidenceTests: XCTestCase {
         controller.view.layoutIfNeeded()
         try? await Task.sleep(for: .milliseconds(800))
         controller.view.layoutIfNeeded()
-        let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in window.drawHierarchy(in: window.bounds, afterScreenUpdates: true) }
+        let format = UIGraphicsImageRendererFormat()
+        format.opaque = true
+        format.scale = 3
+        let image = UIGraphicsImageRenderer(bounds: window.bounds, format: format).image { _ in window.drawHierarchy(in: window.bounds, afterScreenUpdates: true) }
         let attachment = XCTAttachment(image: image)
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
+        return image
     }
 }
 
