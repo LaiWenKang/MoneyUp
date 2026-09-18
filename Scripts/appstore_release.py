@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 import re
 import tempfile
+import time
 from urllib.error import HTTPError
 from urllib.request import Request, build_opener
 
@@ -44,22 +45,30 @@ class ReleaseClient(Client):
         req = Request(safe_url(path), data=None if payload is None else json.dumps(payload).encode(), method=method,
                       headers={"Authorization": "Bearer " + token(self.key, self.key_id, self.issuer),
                                "Content-Type": "application/json"})
-        try:
-            with build_opener(NoRedirect()).open(req, timeout=45) as response:
-                raw = response.read(4_000_001)
-                if len(raw) > 4_000_000:
-                    raise ValueError("App Store response exceeds bound")
-                return json.loads(raw) if raw else {}
-        except HTTPError as error:
-            raw = error.read(100_000)
+        endpoint = re.sub(r"/[0-9a-fA-F-]{8,}(?=/|$)", "/{id}", path.split("?")[0])
+        for attempt in range(3):
             try:
-                errors = json.loads(raw).get("errors", [])
-                codes = [e.get("code", "") for e in errors]
-                codes = [c for c in codes if re.fullmatch(r"[A-Z0-9_.-]{1,100}", c)]
-                agreement = any("agreement" in str(e.get("detail", "")).lower() for e in errors)
-            except (ValueError, TypeError):
-                codes, agreement = [], False
-            raise RuntimeError(f"App Store HTTP {error.code} during {method}; codes={codes}; agreement_related={agreement}") from None
+                with build_opener(NoRedirect()).open(req, timeout=45) as response:
+                    raw = response.read(4_000_001)
+                    if len(raw) > 4_000_000:
+                        raise ValueError("App Store response exceeds bound")
+                    return json.loads(raw) if raw else {}
+            except HTTPError as error:
+                # Retry transient reads only. A failed write may already have
+                # applied, so its caller must inspect state before retrying.
+                if method == "GET" and error.code in {429, 500, 502, 503, 504} and attempt < 2:
+                    error.close()
+                    time.sleep(2 ** attempt)
+                    continue
+                raw = error.read(100_000)
+                try:
+                    errors = json.loads(raw).get("errors", [])
+                    codes = [e.get("code", "") for e in errors]
+                    codes = [c for c in codes if re.fullmatch(r"[A-Z0-9_.-]{1,100}", c)]
+                    agreement = any("agreement" in str(e.get("detail", "")).lower() for e in errors)
+                except (ValueError, TypeError):
+                    codes, agreement = [], False
+                raise RuntimeError(f"App Store HTTP {error.code} during {method} {endpoint}; codes={codes}; agreement_related={agreement}") from None
 
     def delete_screenshot(self, identifier):
         self.delete_media("appScreenshots", identifier)

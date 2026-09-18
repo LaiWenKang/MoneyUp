@@ -1,13 +1,15 @@
 import copy
 import hashlib
+import io
 import json
 from pathlib import Path
 import sys
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
+from urllib.error import HTTPError
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from appstore_release import prepare, validate_config, resource
+from appstore_release import prepare, validate_config, resource, ReleaseClient
 from appstore_screenshots import screenshot_manifest, upload_parts, sync_screenshots
 from appstore_support import prepare_support
 from appstore_previews import movie
@@ -18,6 +20,26 @@ ROOT = Path(__file__).resolve().parents[2] / "docs/app-store/0.7.2"
 class AppStoreReleaseTests(unittest.TestCase):
     def setUp(self):
         self.config = json.loads((ROOT / "release.json").read_text())
+
+    def test_transient_reads_retry_but_uncertain_writes_do_not(self):
+        client = ReleaseClient(Path("unused-test-key"), "test-key", "test-issuer", True)
+        for method, expected_calls in [("GET", 2), ("POST", 1)]:
+            error = HTTPError("https://api.appstoreconnect.apple.com/v1/apps", 500, "failure", {},
+                              io.BytesIO(b'{"errors":[{"code":"UNEXPECTED_ERROR","detail":"private detail"}]}'))
+            response = Mock()
+            response.__enter__ = Mock(return_value=response)
+            response.__exit__ = Mock(return_value=False)
+            response.read.return_value = b'{"data":[]}'
+            with patch("appstore_release.token", return_value="test-token"), \
+                 patch("appstore_release.time.sleep"), patch("appstore_release.build_opener") as opener:
+                opener.return_value.open.side_effect = [error, response]
+                if method == "GET":
+                    self.assertEqual(client.request(method, "/v1/apps"), {"data": []})
+                else:
+                    with self.assertRaisesRegex(RuntimeError, "HTTP 500 during POST /v1/apps") as caught:
+                        client.request(method, "/v1/apps", {"data": {}})
+                    self.assertNotIn("private detail", str(caught.exception))
+                self.assertEqual(opener.return_value.open.call_count, expected_calls)
 
     def test_reviewed_bilingual_manifest_matches_real_pngs(self):
         manifest = validate_config(self.config, ROOT)
