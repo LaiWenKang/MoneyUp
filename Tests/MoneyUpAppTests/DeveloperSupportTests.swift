@@ -68,11 +68,10 @@ final class DeveloperSupportTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(100))
         }
         let backend = StoreKitDeveloperSupport()
-        let products = try await backend.products()
-        XCTAssertEqual(Set(products.map(\.id)), StoreKitDeveloperSupport.productIDs)
-        XCTAssertTrue(products.allSatisfy { !$0.displayPrice.isEmpty && $0.price > 0 })
         let store = DeveloperSupportStore(purchaser: backend)
         await store.load()
+        XCTAssertEqual(Set(store.products.map(\.id)), StoreKitDeveloperSupport.productIDs)
+        XCTAssertTrue(store.products.allSatisfy { !$0.displayPrice.isEmpty && $0.price > 0 })
         let (window, previousKeyWindow) = try await captureSupportPage(store)
         // Purchases need a live presentation scene, just as they do when the
         // user taps a support option. Keep it until transaction checks finish.
@@ -83,10 +82,17 @@ final class DeveloperSupportTests: XCTestCase {
         }
         // The app host already owns its transaction observer. Do not create
         // another observer while the test storefront is being reset.
-        let product = try XCTUnwrap(products.first)
+        let product = try XCTUnwrap(store.products.first)
         for expectedCount in 1...2 {
-            let outcome = try await backend.purchase(id: product.id)
-            XCTAssertEqual(outcome, .completed)
+            // Exercise the same loading and duplicate-tap gates as the button.
+            for _ in 0..<50 where store.isLoading {
+                try await Task.sleep(for: .milliseconds(100))
+            }
+            XCTAssertFalse(store.isLoading)
+            guard !store.isLoading else { return }
+            await store.purchase(product.id)
+            XCTAssertEqual(store.messageKey, "support.thanks")
+            XCTAssertNil(store.purchasingID)
             guard await verifyFinishedPurchases(session, count: expectedCount) else { return }
         }
     }
