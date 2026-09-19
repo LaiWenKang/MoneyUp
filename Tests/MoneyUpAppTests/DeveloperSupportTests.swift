@@ -73,41 +73,58 @@ final class DeveloperSupportTests: XCTestCase {
         XCTAssertTrue(products.allSatisfy { !$0.displayPrice.isEmpty && $0.price > 0 })
         let store = DeveloperSupportStore(purchaser: backend)
         await store.load()
-        await captureSupportPage(store)
-        // Attach to the local test storefront after SKTestSession activates it,
-        // just as the app attaches to its storefront at production launch.
-        store.startObservingTransactions()
+        let (window, previousKeyWindow) = try await captureSupportPage(store)
+        // Purchases need a live presentation scene, just as they do when the
+        // user taps a support option. Keep it until transaction checks finish.
+        defer {
+            window.isHidden = true
+            window.rootViewController = nil
+            previousKeyWindow?.makeKey()
+        }
+        // The app host already owns its transaction observer. Do not create
+        // another observer while the test storefront is being reset.
         let product = try XCTUnwrap(products.first)
-        for _ in 0..<2 {
+        for expectedCount in 1...2 {
             let outcome = try await backend.purchase(id: product.id)
             XCTAssertEqual(outcome, .completed)
+            guard await verifyFinishedPurchases(session, count: expectedCount) else { return }
         }
-        XCTAssertEqual(session.allTransactions().count, 2)
-        var unfinished = 1
-        for _ in 0..<20 {
-            unfinished = 0
-            for await transaction in StoreKit.Transaction.unfinished {
-                if case let .verified(value) = transaction, StoreKitDeveloperSupport.productIDs.contains(value.productID) {
-                    unfinished += 1
-                }
-            }
-            if unfinished == 0 { break }
-            try await Task.sleep(for: .milliseconds(100))
-        }
-        XCTAssertEqual(unfinished, 0)
     }
 
     @MainActor
-    private func captureSupportPage(_ store: DeveloperSupportStore) async {
+    private func verifyFinishedPurchases(_ session: SKTestSession, count: Int) async -> Bool {
+        var unfinishedIDs: [UInt64] = []
+        var identifiers: [UInt] = []
+        // StoreKit updates its local transaction indexes asynchronously after
+        // finish returns. Verify each receipt before initiating the next buy.
+        for _ in 0..<50 {
+            identifiers = session.allTransactions().map(\.identifier)
+            unfinishedIDs = []
+            for await result in StoreKit.Transaction.unfinished {
+                if case let .verified(value) = result, StoreKitDeveloperSupport.productIDs.contains(value.productID) {
+                    unfinishedIDs.append(value.id)
+                }
+            }
+            if Set(identifiers).count == count, unfinishedIDs.isEmpty { return true }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        XCTAssertEqual(Set(identifiers).count, count, "Distinct local purchases: \(identifiers)")
+        XCTAssertTrue(unfinishedIDs.isEmpty, "Local purchases: \(identifiers); unfinished: \(unfinishedIDs)")
+        return false
+    }
+
+    @MainActor
+    private func captureSupportPage(_ store: DeveloperSupportStore) async throws -> (UIWindow, UIWindow?) {
         let controller = UIHostingController(rootView: NavigationStack {
             DeveloperSupportView(store: store)
         }.preferredColorScheme(.light).environment(\.locale, Locale(identifier: "en_US")))
-        let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
-        let window = scene.map(UIWindow.init(windowScene:)) ?? UIWindow(frame: .zero)
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            .first(where: { $0.activationState == .foregroundActive }))
+        let previousKeyWindow = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene)
         window.frame = CGRect(x: 0, y: 0, width: 428, height: 926)
         window.rootViewController = controller
-        window.isHidden = false
-        defer { window.isHidden = true; window.rootViewController = nil }
+        window.makeKeyAndVisible()
         controller.view.frame = window.bounds
         try? await Task.sleep(for: .milliseconds(600))
         controller.view.layoutIfNeeded()
@@ -121,6 +138,7 @@ final class DeveloperSupportTests: XCTestCase {
         attachment.name = "support-review"
         attachment.lifetime = .keepAlways
         add(attachment)
+        return (window, previousKeyWindow)
     }
 }
 
