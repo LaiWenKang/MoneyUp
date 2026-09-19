@@ -13,6 +13,7 @@ from appstore_release import prepare, validate_config, resource, ReleaseClient, 
 from appstore_screenshots import screenshot_manifest, upload_parts, sync_screenshots
 from appstore_support import prepare_support, verify_price
 from appstore_previews import movie
+from appstore_media_inspection import inspect_media
 
 ROOT = Path(__file__).resolve().parents[2] / "docs/app-store/0.7.2"
 
@@ -20,6 +21,22 @@ ROOT = Path(__file__).resolve().parents[2] / "docs/app-store/0.7.2"
 class AppStoreReleaseTests(unittest.TestCase):
     def setUp(self):
         self.config = json.loads((ROOT / "release.json").read_text())
+
+    def test_media_inspection_includes_other_display_families_and_processing_states(self):
+        client = Mock()
+        client.all.side_effect = [
+            [{"id": "locale", "attributes": {"locale": "en-US"}}],
+            [{"id": "new", "attributes": {"screenshotDisplayType": "APP_IPHONE_65"}},
+             {"id": "other", "attributes": {"screenshotDisplayType": "APP_IPHONE_69"}}],
+            [{"attributes": {"assetDeliveryState": {"state": "COMPLETE"}}}],
+            [{"attributes": {"assetDeliveryState": {"state": "UPLOAD_COMPLETE"}}}],
+            [],
+        ]
+        result = inspect_media(client, "version")["en-US"]
+        self.assertEqual([row["type"] for row in result["screenshots"]], ["APP_IPHONE_65", "APP_IPHONE_69"])
+        self.assertEqual(result["screenshots"][1]["states"], {"UPLOAD_COMPLETE": 1})
+        self.assertEqual(result["previews"], [])
+        client.request.assert_not_called()
 
     def test_transient_reads_retry_but_uncertain_writes_do_not(self):
         client = ReleaseClient(Path("unused-test-key"), "test-key", "test-issuer", True)
