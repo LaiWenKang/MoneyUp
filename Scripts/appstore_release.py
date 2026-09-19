@@ -22,6 +22,7 @@ from appstore_screenshots import sync_screenshots, screenshot_manifest
 from appstore_support import prepare_support, support_products
 from appstore_previews import movie, sync_preview
 from appstore_api_errors import AppStoreAPIError
+from appstore_media_inspection import inspect_media
 
 EDITABLE = {"PREPARE_FOR_SUBMISSION", "DEVELOPER_REJECTED", "REJECTED"}
 LOCALES = {"en-US", "zh-Hans"}
@@ -108,14 +109,17 @@ def state(version):
     return version["attributes"].get("appVersionState") or version["attributes"].get("appStoreState")
 
 
-def inspect(client, app):
+def inspect(client, app, requested_version=None):
     versions = app_versions(client, app["id"])
     summary = []
+    media = {}
     for version in versions:
         build = client.request("GET", f'/v1/appStoreVersions/{version["id"]}/build').get("data")
         summary.append({"id": version["id"], "version": version["attributes"]["versionString"],
                         "state": state(version), "release_type": version["attributes"].get("releaseType"),
                         "build": build["attributes"].get("version") if build else None})
+        if version["attributes"]["versionString"] == requested_version:
+            media = inspect_media(client, version["id"])
     record = client.request("GET", f'/v1/apps/{app["id"]}/appAvailabilityV2')["data"]
     territories = client.all(f'/v2/appAvailabilities/{record["id"]}/territoryAvailabilities?include=territory&limit=200')
     counts = {}
@@ -128,7 +132,7 @@ def inspect(client, app):
         if not attrs.get("available"):
             unavailable.append(row.get("relationships", {}).get("territory", {}).get("data", {}).get("id"))
     return {"app_id": app["id"], "versions": summary, "support_products": support_products(client, app["id"]), "availability": availability(client, app["id"]),
-            "territories": len(territories), "unavailable_territories": unavailable, "content_status_counts": counts}
+            "territories": len(territories), "unavailable_territories": unavailable, "content_status_counts": counts, "media": media}
 
 
 def validate_config(config, root):
@@ -288,7 +292,7 @@ def main():
         if app["attributes"].get("bundleId") != BUNDLE:
             raise ValueError("App identity mismatch")
         if args.operation == "inspect":
-            result = inspect(client, app)
+            result = inspect(client, app, config["version"])
         elif args.operation == "prepare-support":
             result = prepare_support(client, app, config, root)
         else:
