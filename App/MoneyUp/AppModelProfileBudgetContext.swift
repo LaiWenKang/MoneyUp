@@ -17,6 +17,7 @@ extension AppModel {
         previous.preferredIncomeCategoryID = updated.preferredIncomeCategoryID
         previous.showsBudgetStatusWidget = updated.showsBudgetStatusWidget
         previous.pinnedBudgetNodeIDs = updated.pinnedBudgetNodeIDs
+        previous.reviewedIntelligenceFindingIDs = updated.reviewedIntelligenceFindingIDs
         previous.displayPreferences = updated.displayPreferences
         previous.currencyDisplay = updated.currencyDisplay
         return previous == updated

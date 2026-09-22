@@ -78,7 +78,6 @@ struct AppSettingsView: View {
             }
             Section {
                 Picker(
-                    "settings.language",
                     selection: Binding(
                         get: { selectedAppLanguageRawValue },
                         set: { appLanguageRawValue = $0 }
@@ -87,6 +86,8 @@ struct AppSettingsView: View {
                     ForEach(AppLanguagePreference.allCases) { language in
                         Text(language.titleKey).tag(language.rawValue)
                     }
+                } label: {
+                    Label("settings.language", systemImage: "globe")
                 }
 
                 Button {
@@ -107,7 +108,6 @@ struct AppSettingsView: View {
 
             Section {
                 Toggle(
-                    "settings.intelligence",
                     isOn: Binding(
                         get: {
                             bindableModel.profile?.intelligenceEnabled ?? true
@@ -121,7 +121,9 @@ struct AppSettingsView: View {
                             }
                         }
                     )
-                )
+                ) {
+                    Label("settings.intelligence", systemImage: "sparkles")
+                }
             } header: {
                 Text("settings.intelligence_section")
             } footer: {
@@ -130,7 +132,6 @@ struct AppSettingsView: View {
 
             Section {
                 Toggle(
-                    "settings.on_device_assistance",
                     isOn: Binding(
                         get: {
                             bindableModel.profile?
@@ -145,7 +146,9 @@ struct AppSettingsView: View {
                             }
                         }
                     )
-                )
+                ) {
+                    Label("settings.on_device_assistance", systemImage: "cpu")
+                }
             } header: {
                 Text("settings.on_device_assistance_section")
             } footer: {
@@ -153,11 +156,12 @@ struct AppSettingsView: View {
             }
 
             Section {
-                Toggle("settings.hide_amounts", isOn: $hidesAmounts)
-                    .accessibilityHint("settings.hide_amounts_detail")
+                Toggle(isOn: $hidesAmounts) {
+                    Label("settings.hide_amounts", systemImage: "eye.slash")
+                }
+                .accessibilityHint("settings.hide_amounts_detail")
 
                 Picker(
-                    "settings.auto_lock",
                     selection: Binding(
                         get: { selectedAutoLockDelay },
                         set: { seconds in
@@ -176,10 +180,11 @@ struct AppSettingsView: View {
                         Text(legacyAutoLockTitle(seconds: legacyAutoLockDelay))
                             .tag(legacyAutoLockDelay)
                     }
+                } label: {
+                    Label("settings.auto_lock", systemImage: "timer")
                 }
 
                 Toggle(
-                    "settings.locked_capture",
                     isOn: Binding(
                         get: {
                             bindableModel.profile?.allowLockedQuickCapture ?? true
@@ -192,7 +197,9 @@ struct AppSettingsView: View {
                             }
                         }
                     )
-                )
+                ) {
+                    Label("settings.locked_capture", systemImage: "bolt.badge.clock")
+                }
 
                 Button {
                     bindableModel.lock()

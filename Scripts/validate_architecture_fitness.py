@@ -615,7 +615,7 @@ W3_SOURCE_FUNCTION_DIGESTS: tuple[
             r"[^{};]*\)\s*\{",
             re.DOTALL,
         ),
-        "1075d4ed5cebdc854858dcdf9c27006b8045372d6539ca8725b5641e8719da26",
+        "67bc8aa2d1cfb80d4efddd0ac218752406f7e0ea60dffa2afb4450ba4cf74815",
     ),
     (
         W3_PRODUCTION_SENTINEL_PATH,
@@ -624,7 +624,7 @@ W3_SOURCE_FUNCTION_DIGESTS: tuple[
             r"\bpublic\s+init\s*\(\s*from\s+decoder\s*:\s*Decoder\s*\)"
             r"\s*throws\s*\{"
         ),
-        "cf8be60fd0af50580784ebbbdc86f1d3d8eef9516221fc43ae325f07a6c4a9d9",
+        "adb4ee340a8c06a8b3ee38b46eb30c5ad833b14cd8a5bfe6613563e61e3a9f10",
     ),
     (
         W3_REVIEWED_ENTRY_PATH,

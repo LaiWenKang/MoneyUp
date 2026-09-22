@@ -11,18 +11,41 @@ struct IntelligenceSummaryLink: View {
             if model.intelligenceIsUnavailable || !model.intelligenceFindings.isEmpty {
                 attentionCard
             } else {
-                NavigationLink { IntelligenceView() } label: {
-                    HStack(spacing: 8) {
-                        Label("intelligence.title", systemImage: "sparkles")
-                        Spacer(minLength: 8)
-                        Text(summaryKey).font(.caption).foregroundStyle(.secondary)
-                        Image(systemName: "chevron.right").font(.caption2)
-                    }
-                    .font(.subheadline).frame(minHeight: 44)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
+                quietRow
             }
+        }
+    }
+
+    /// Nothing to do reads as a quiet, completed state: the same card shape as
+    /// every other Today surface, a check glyph, and two short words.
+    private var quietRow: some View {
+        MoneyUpCard(style: .flat) {
+            NavigationLink { IntelligenceView() } label: {
+                HStack(spacing: 12) {
+                    MoneyUpSymbolBadge(
+                        systemImage: model.isIntelligenceRefreshing ? "sparkles" : "checkmark.seal.fill",
+                        color: model.isIntelligenceRefreshing ? .accentColor : Color.moneyUpPositive
+                    )
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("intelligence.title")
+                            .font(.subheadline.weight(.semibold))
+                        Text(summaryKey)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 8)
+                    if model.isIntelligenceRefreshing {
+                        ProgressView()
+                    }
+                    Image(systemName: "chevron.right")
+                        .font(.caption.bold())
+                        .foregroundStyle(.tertiary)
+                }
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("today-insights-link")
         }
     }
 
@@ -77,8 +100,12 @@ struct IntelligenceSummaryLink: View {
 
 struct IntelligenceView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var historySelection: IntelligenceHistorySelection?
     @State private var scheduleSelection: IntelligenceScheduleSelection?
+    @State private var isShowingReviewed = false
+    @State private var busyFindingID: String?
+    @State private var errorMessage: String?
 
     var body: some View {
         ScrollView {
@@ -86,8 +113,7 @@ struct IntelligenceView: View {
                 statusCard
                 if model.isIntelligenceRefreshing {
                     MoneyUpCard {
-                        ProgressView("intelligence.summary.refreshing")
-                            .frame(maxWidth: .infinity)
+                        MoneyUpLoadingPlaceholder(title: "intelligence.summary.refreshing")
                     }
                 } else if model.intelligenceIsUnavailable {
                     EmptyView()
@@ -97,6 +123,9 @@ struct IntelligenceView: View {
                     ForEach(model.intelligenceFindings) { finding in
                         findingCard(finding)
                     }
+                }
+                if !model.isIntelligenceRefreshing, !model.intelligenceIsUnavailable {
+                    reviewedSection
                 }
             }
             .padding()
@@ -108,14 +137,26 @@ struct IntelligenceView: View {
             .moneyUpNavigationSurface()
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button {
-                    model.refreshIntelligence()
+                Menu {
+                    Button {
+                        model.refreshIntelligence()
+                    } label: {
+                        Label("action.refresh", systemImage: "arrow.clockwise")
+                    }
+                    .disabled(model.isIntelligenceRefreshing)
+                    Button {
+                        Task { await markAllReviewed() }
+                    } label: {
+                        Label("intelligence.mark_all_reviewed", systemImage: "checkmark.circle")
+                    }
+                    .disabled(model.intelligenceFindings.isEmpty || busyFindingID != nil)
                 } label: {
-                    Label("action.refresh", systemImage: "arrow.clockwise")
+                    Label("action.more", systemImage: "ellipsis.circle")
                 }
-                .disabled(model.isIntelligenceRefreshing)
+                .accessibilityIdentifier("intelligence-more")
             }
         }
+        .moneyUpOperationErrorAlert(message: $errorMessage)
         .sheet(item: $historySelection) { selection in
             IntelligenceHistoryReviewView(selection: selection)
         }
@@ -158,14 +199,108 @@ struct IntelligenceView: View {
 
     private var emptyCard: some View {
         MoneyUpCard {
-            VStack(alignment: .leading, spacing: 10) {
-                Label("intelligence.clear_title", systemImage: "checkmark.circle.fill")
-                    .font(.headline)
-                    .foregroundStyle(Color.moneyUpPositive)
-                Text("intelligence.clear_detail")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+            MoneyUpStatePlaceholder(
+                systemImage: "checkmark.seal.fill",
+                tint: Color.moneyUpPositive,
+                title: "intelligence.clear_title",
+                detail: "intelligence.clear_detail"
+            )
+        }
+    }
+
+    @ViewBuilder
+    private var reviewedSection: some View {
+        let reviewed = model.reviewedIntelligenceFindings
+        if !reviewed.isEmpty {
+            MoneyUpCard(style: .flat) {
+                DisclosureGroup(isExpanded: $isShowingReviewed) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("intelligence.reviewed_detail")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        ForEach(reviewed) { finding in
+                            reviewedRow(finding)
+                        }
+                    }
+                    .padding(.top, 6)
+                } label: {
+                    Label {
+                        HStack(spacing: 8) {
+                            Text("intelligence.reviewed_section")
+                            Text(reviewed.count.formatted())
+                                .font(.caption.bold().monospacedDigit())
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(Color.secondary.opacity(0.14), in: Capsule())
+                        }
+                    } icon: {
+                        Image(systemName: "checkmark.circle")
+                            .foregroundStyle(.secondary)
+                    }
+                    .font(.subheadline.weight(.medium))
+                }
+                .accessibilityIdentifier("intelligence-reviewed")
             }
+        }
+    }
+
+    private func reviewedRow(_ finding: IntelligenceFinding) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: finding.kind.systemImage)
+                .foregroundStyle(.secondary)
+                .frame(width: 22)
+            Text(LocalizedStringKey(finding.headlineKey))
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+            Spacer(minLength: 8)
+            Button {
+                Task { await restore(finding) }
+            } label: {
+                Label("intelligence.restore_finding", systemImage: "arrow.uturn.backward")
+                    .labelStyle(.iconOnly)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(busyFindingID != nil)
+            .accessibilityLabel(Text("intelligence.restore_finding"))
+        }
+        .frame(minHeight: 44)
+    }
+
+    @MainActor
+    private func markReviewed(_ finding: IntelligenceFinding) async {
+        guard busyFindingID == nil else { return }
+        busyFindingID = finding.id
+        defer { busyFindingID = nil }
+        do {
+            try await model.markIntelligenceFindingReviewed(finding.id)
+        } catch {
+            errorMessage = safeUserMessage(for: error, context: .save)
+        }
+    }
+
+    @MainActor
+    private func restore(_ finding: IntelligenceFinding) async {
+        guard busyFindingID == nil else { return }
+        busyFindingID = finding.id
+        defer { busyFindingID = nil }
+        do {
+            try await model.restoreIntelligenceFinding(finding.id)
+        } catch {
+            errorMessage = safeUserMessage(for: error, context: .save)
+        }
+    }
+
+    @MainActor
+    private func markAllReviewed() async {
+        guard busyFindingID == nil else { return }
+        busyFindingID = "all"
+        defer { busyFindingID = nil }
+        do {
+            try await model.markAllIntelligenceFindingsReviewed()
+        } catch {
+            errorMessage = safeUserMessage(for: error, context: .save)
         }
     }
 
@@ -208,9 +343,32 @@ struct IntelligenceView: View {
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                routeControl(finding)
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 10) {
+                        routeControl(finding)
+                        Spacer(minLength: 0)
+                        reviewedButton(finding)
+                    }
+                    VStack(alignment: .leading, spacing: 10) {
+                        routeControl(finding)
+                        reviewedButton(finding)
+                    }
+                }
             }
         }
+        .animation(MoneyUpMotion.animation(for: .stateChange, reduceMotion: reduceMotion), value: busyFindingID)
+    }
+
+    private func reviewedButton(_ finding: IntelligenceFinding) -> some View {
+        Button {
+            Task { await markReviewed(finding) }
+        } label: {
+            Label("intelligence.mark_reviewed", systemImage: "checkmark")
+        }
+        .buttonStyle(.bordered)
+        .tint(.secondary)
+        .disabled(busyFindingID != nil)
+        .accessibilityIdentifier("intelligence-mark-reviewed")
     }
 
     @ViewBuilder

@@ -18,10 +18,10 @@ struct ExchangeRatesView: View {
 
             Section {
                 if model.exchangeRates.isEmpty {
-                    ContentUnavailableView(
-                        "fx.no_rates",
+                    MoneyUpStatePlaceholder(
                         systemImage: "equal.circle",
-                        description: Text("fx.unconverted_detail")
+                        title: "fx.no_rates",
+                        detail: "fx.unconverted_detail"
                     )
                 } else {
                     ForEach(model.exchangeRates) { rate in

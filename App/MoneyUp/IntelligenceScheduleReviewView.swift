@@ -171,6 +171,9 @@ struct IntelligenceScheduleReviewView: View {
                 recurrenceTimeZoneIdentifier: model.reportingCalendar.timeZone.identifier
             )
             try await model.addScheduledTransaction(schedule)
+            // The schedule the user just confirmed answers this finding even
+            // when they adjusted the amount, so it must not linger.
+            try? await model.markIntelligenceFindingReviewed(selection.findingID)
             errorMessage = nil
             dismiss()
         } catch {

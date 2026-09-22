@@ -8,6 +8,10 @@ public struct UserProfile: Codable, Equatable, Sendable {
     public static let allowedAutoLockDelays = supportedAutoLockDelays
     /// One screen of pins. The board is a focus tool, not a second budget list.
     public static let maximumPinnedBudgetNodes = 8
+    /// Reviewed insight identifiers are stable per rule and entry, so a bounded
+    /// list keeps the profile record small while a finding stays quiet after
+    /// the user has looked at it.
+    public static let maximumReviewedIntelligenceFindingIDs = 400
 
     public var baseCurrency: CurrencyCode
     public var createdAt: Date
@@ -43,6 +47,10 @@ public struct UserProfile: Codable, Equatable, Sendable {
     /// they chose. Duplicates are removed and the list is bounded so the board
     /// and the profile record both stay small.
     public var pinnedBudgetNodeIDs: [UUID]
+    /// Private-insight findings the user has explicitly marked as reviewed.
+    /// Newest last; the oldest are dropped past the bound. Turning insights
+    /// off does not clear it, so re-enabling does not resurface old findings.
+    public var reviewedIntelligenceFindingIDs: [String]
     public var displayPreferences: MoneyUpDisplayPreferences
 
     public init(
@@ -61,6 +69,7 @@ public struct UserProfile: Codable, Equatable, Sendable {
         reportingTimeZoneIdentifier: String = TimeZone.current.identifier,
         currencyDisplay: MoneyCurrencyDisplay = .automatic,
         pinnedBudgetNodeIDs: [UUID] = [],
+        reviewedIntelligenceFindingIDs: [String] = [],
         displayPreferences: MoneyUpDisplayPreferences = .init()
     ) {
         self.baseCurrency = baseCurrency
@@ -81,7 +90,27 @@ public struct UserProfile: Codable, Equatable, Sendable {
         )?.identifier ?? "GMT"
         self.currencyDisplay = currencyDisplay
         self.pinnedBudgetNodeIDs = Self.normalizedPins(pinnedBudgetNodeIDs)
+        self.reviewedIntelligenceFindingIDs = Self.normalizedReviewedFindingIDs(
+            reviewedIntelligenceFindingIDs
+        )
         self.displayPreferences = displayPreferences
+    }
+
+    /// Keeps the newest distinct identifiers, dropping blanks and repeats, so
+    /// the stored list is bounded no matter how many findings were reviewed.
+    public static func normalizedReviewedFindingIDs(
+        _ candidates: [String]
+    ) -> [String] {
+        var seen = Set<String>()
+        var newestFirst: [String] = []
+        for candidate in candidates.reversed() {
+            let trimmed = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, trimmed.utf8.count <= 256,
+                  seen.insert(trimmed).inserted else { continue }
+            newestFirst.append(trimmed)
+            if newestFirst.count == maximumReviewedIntelligenceFindingIDs { break }
+        }
+        return newestFirst.reversed()
     }
 
     /// Keeps the stored order the user chose while removing repeats and
@@ -112,6 +141,7 @@ public struct UserProfile: Codable, Equatable, Sendable {
         case reportingTimeZoneIdentifier
         case currencyDisplay
         case pinnedBudgetNodeIDs
+        case reviewedIntelligenceFindingIDs
         case displayPreferences
     }
 
@@ -179,6 +209,11 @@ public struct UserProfile: Codable, Equatable, Sendable {
                 forKey: .pinnedBudgetNodeIDs
             ) ?? []
         )
+        reviewedIntelligenceFindingIDs = Self.normalizedReviewedFindingIDs(
+            try container.decodeIfPresent(
+                [String].self, forKey: .reviewedIntelligenceFindingIDs
+            ) ?? []
+        )
         displayPreferences = try container.decodeIfPresent(
             MoneyUpDisplayPreferences.self, forKey: .displayPreferences
         ) ?? .init()
@@ -221,6 +256,12 @@ public struct UserProfile: Codable, Equatable, Sendable {
         )
         try container.encode(currencyDisplay, forKey: .currencyDisplay)
         try container.encode(pinnedBudgetNodeIDs, forKey: .pinnedBudgetNodeIDs)
+        if !reviewedIntelligenceFindingIDs.isEmpty {
+            try container.encode(
+                reviewedIntelligenceFindingIDs,
+                forKey: .reviewedIntelligenceFindingIDs
+            )
+        }
         try container.encode(displayPreferences, forKey: .displayPreferences)
     }
 

@@ -255,23 +255,18 @@ struct CalendarView: View {
     ) -> some View {
         if isLoading {
             Section("calendar.money_flow") {
-                HStack(spacing: 10) {
-                    ProgressView()
-                    Text("calendar.loading_actuals")
-                        .foregroundStyle(.secondary)
-                }
+                MoneyUpLoadingPlaceholder(title: "calendar.loading_actuals")
             }
         } else if actualsUnavailable {
             Section("calendar.money_flow") {
-                ContentUnavailableView {
-                    Label(
-                        "calendar.actuals_unavailable",
-                        systemImage: "exclamationmark.arrow.triangle.2.circlepath"
-                    )
-                } description: {
-                    Text("calendar.actuals_unavailable_detail")
-                } actions: {
+                MoneyUpStatePlaceholder(
+                    systemImage: "exclamationmark.arrow.triangle.2.circlepath",
+                    tint: Color.moneyUpWarning,
+                    title: "calendar.actuals_unavailable",
+                    detail: "calendar.actuals_unavailable_detail"
+                ) {
                     Button("action.retry") { reloadGeneration += 1 }
+                        .buttonStyle(.bordered)
                 }
             }
         } else if let dateComputation,

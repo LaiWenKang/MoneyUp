@@ -73,10 +73,10 @@ struct BudgetSimulatorView: View {
                     )
                 case (.available(.none), _):
                     MoneyUpCard {
-                        ContentUnavailableView(
-                            "simulator.needs_budget",
+                        MoneyUpStatePlaceholder(
                             systemImage: "chart.pie",
-                            description: Text("simulator.needs_budget_detail")
+                            title: "simulator.needs_budget",
+                            detail: "simulator.needs_budget_detail"
                         )
                     }
                 case let (.unavailable(issue), _), let (_, .unavailable(issue)):

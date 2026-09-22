@@ -119,10 +119,16 @@ struct QuickLogDraft: Codable, Equatable, Sendable {
 
     /// An explicit account/category selection is worth preserving even before
     /// an amount is typed. It does not freeze an otherwise fresh timestamp.
+    ///
+    /// Choosing Expense/Income/Transfer/Refund is routing, not content: every
+    /// quick action and segment tap records it, and the next entry keeps it
+    /// anyway. Counting it made every visit to Log an "unfinished entry".
     var hasUserEdits: Bool {
         hasTransactionContent || accountWasEdited || categoryWasEdited || sourceCaptureID != nil
-            || !smartState.manualFields.isEmpty
+            || !smartState.manualFields.subtracting(Self.routingOnlySmartFields).isEmpty
     }
+
+    static let routingOnlySmartFields: Set<QuickLogSmartField> = [.kind]
 
     private enum CodingKeys: String, CodingKey {
         case batch, smartState, clearRecovery

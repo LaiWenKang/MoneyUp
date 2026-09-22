@@ -63,10 +63,11 @@ struct BudgetSuggestionReviewView: View {
         case let .some(.available(suggestions)):
             if suggestions.isEmpty {
                 Section {
-                    ContentUnavailableView(
-                        "intelligence.budget.empty",
-                        systemImage: "checkmark.circle",
-                        description: Text("intelligence.budget.empty_detail")
+                    MoneyUpStatePlaceholder(
+                        systemImage: "checkmark.seal.fill",
+                        tint: Color.moneyUpPositive,
+                        title: "intelligence.budget.empty",
+                        detail: "intelligence.budget.empty_detail"
                     )
                 }
             } else {

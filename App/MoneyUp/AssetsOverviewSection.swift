@@ -67,7 +67,11 @@ struct AssetsOverviewSection: View {
             }.foregroundStyle(.secondary)
         case .available(nil):
             if amounts.filter({ !$0.isZero }).count > 1 {
-                Text("fx.net_worth_complete_rate_needed").font(.caption).foregroundStyle(.secondary)
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Label("fx.total_needs_rates", systemImage: "arrow.left.arrow.right.circle")
+                        .font(.caption).foregroundStyle(.secondary)
+                    MoneyUpExplainer("fx.net_worth_complete_rate_needed").font(.caption)
+                }
             }
         case let .unavailable(issue):
             DerivedValueUnavailableView(issue: issue)

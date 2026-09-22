@@ -3688,7 +3688,7 @@ def validate_brand_palette() -> None:
         )
 
     flow_frame_anchor = ".frame(height: 240)"
-    category_frame_anchor = ".frame(height: max(190, CGFloat(points.count) * 34))"
+    category_frame_anchor = ".frame(height: CGFloat(points.count) * 44 + 28)"
     require_mutation_rejected(
         "cash-flow parent opacity",
         analysis=mutated(

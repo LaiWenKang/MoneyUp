@@ -36,15 +36,12 @@ struct SavingsGoalsView: View {
         .background(Color.moneyUpBackground)
         .overlay {
             if model.savingsGoals.isEmpty {
-                ContentUnavailableView {
-                    Label("goal.empty", systemImage: "target")
-                } description: {
-                    Text("goal.empty_detail")
-                } actions: {
+                MoneyUpStatePlaceholder(systemImage: "target", title: "goal.empty", detail: "goal.empty_detail") {
                     Button("goal.add") { isAddingGoal = true }
                         .buttonStyle(.borderedProminent)
                         .tint(.moneyUpAction)
                 }
+                .padding()
             }
         }
         .navigationTitle("plan.goals")
