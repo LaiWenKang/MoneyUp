@@ -116,7 +116,8 @@ enum ReleaseNotes {
     }
 
     private static var version072Highlights: [LocalizedStringKey] {
-        ["whats_new.0_7_2.import", "whats_new.0_7_2.capture",
+        ["whats_new.0_7_2.quick_log", "whats_new.0_7_2.insights",
+         "whats_new.0_7_2.import", "whats_new.0_7_2.capture",
          "whats_new.0_7_2.catalogs", "whats_new.0_7_2.accuracy",
          "whats_new.0_7_2.export", "whats_new.0_7_2.support"]
     }

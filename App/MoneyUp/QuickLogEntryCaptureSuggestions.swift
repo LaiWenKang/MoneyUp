@@ -154,24 +154,32 @@ extension QuickLogEntryView {
         if !historyPreloads.isEmpty, splitLines.isEmpty, selectedAllowanceID == nil,
            model.profile?.intelligenceEnabled == true,
            model.profile?.merchantSuggestionsEnabled != false {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("quick_log.preload_title").font(.caption.weight(.semibold))
-                ForEach(historyPreloads) { suggestion in
-                    let available = Set(QuickLogHistoryPreloadFill.fields.filter {
-                        preloadDraft(suggestion, fields: [$0]) != draftSnapshot
-                    })
-                    HistoryPreloadCard(suggestion: suggestion,
-                        accountName: sourceAccounts.first {
-                            $0.id == suggestion.fields.accountSuggestion?.ledgerAccountID
-                        }?.name ?? "",
-                        categoryName: suggestion.fields.categorySuggestion.map {
-                            model.categoryPathName(for: $0.ledgerAccountID)
-                        } ?? "", available: available,
-                        canApplyAll: preloadDraft(suggestion, fields: QuickLogHistoryPreloadFill.fields) != draftSnapshot
-                    ) { fields in applyHistoryPreload(suggestion, fields: fields) }
-                    .disabled(captureSuggestionTask != nil)
+            // One tap fills every untouched field; a long press picks fields.
+            // The explanation lives in the accessibility hint, not on screen.
+            VStack(alignment: .leading, spacing: 8) {
+                Label("quick_log.preload_title", systemImage: "clock.arrow.circlepath")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(historyPreloads) { suggestion in
+                            let available = Set(QuickLogHistoryPreloadFill.fields.filter {
+                                preloadDraft(suggestion, fields: [$0]) != draftSnapshot
+                            })
+                            HistoryPreloadChip(
+                                suggestion: suggestion,
+                                categoryName: suggestion.fields.categorySuggestion.map {
+                                    model.categoryPathName(for: $0.ledgerAccountID)
+                                } ?? "",
+                                available: available,
+                                canApplyAll: preloadDraft(suggestion, fields: QuickLogHistoryPreloadFill.fields) != draftSnapshot
+                            ) { fields in applyHistoryPreload(suggestion, fields: fields) }
+                            .disabled(captureSuggestionTask != nil)
+                        }
+                    }
+                    .padding(.vertical, 2)
                 }
-                Text("quick_log.preload_context_detail").font(.caption).foregroundStyle(.secondary)
+                .accessibilityHint("quick_log.preload_context_detail")
             }
         }
     }
@@ -264,11 +272,9 @@ extension QuickLogEntryView {
                     persistUserDraftChange { $0.categoryID = category.id }
                 }
             }
-            Text("quick_log.suggestions_book_scope")
-                .font(.caption)
-                .foregroundStyle(.secondary)
         }
         .accessibilityElement(children: .contain)
+        .accessibilityHint("quick_log.suggestions_book_scope")
         .disabled(captureSuggestionTask != nil)
     }
 
@@ -338,6 +344,63 @@ extension QuickLogEntryView {
     }
 }
 
+
+/// A recent entry as a capsule: payee, amount and category at a glance.
+struct HistoryPreloadChip: View {
+    let suggestion: HistoryPreloadSuggestion
+    let categoryName: String
+    let available: Set<QuickLogSmartField>
+    let canApplyAll: Bool
+    let apply: (Set<QuickLogSmartField>) -> Void
+
+    private var amountLabel: String {
+        guard let money = suggestion.amount else {
+            return AppLocalization.string("quick_log.preload_amount_uncertain")
+        }
+        return money.currency.value + " " + MoneyAmountPrivacy.protected(editableAmount(money.amount))
+    }
+
+    var body: some View {
+        Button { apply(QuickLogHistoryPreloadFill.fields) } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "arrow.up.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tint)
+                    .frame(width: 22, height: 22)
+                    .background(Color.accentColor.opacity(0.14), in: Circle())
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(suggestion.payee)
+                        .font(.subheadline.weight(.medium))
+                        .lineLimit(1)
+                    HStack(spacing: 4) {
+                        Text(amountLabel).monospacedDigit()
+                        if !categoryName.isEmpty {
+                            Text(verbatim: "·")
+                            Text(categoryName).lineLimit(1)
+                        }
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color.moneyUpSurface, in: Capsule())
+            .overlay(Capsule().stroke(Color.accentColor.opacity(0.18), lineWidth: 1))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .disabled(!canApplyAll)
+        .contextMenu {
+            Button("transaction.title_or_merchant") { apply([.payee]) }.disabled(!available.contains(.payee))
+            Button("quick_log.amount") { apply([.amount]) }.disabled(!available.contains(.amount))
+            Button("transaction.account") { apply([.account]) }.disabled(!available.contains(.account))
+            Button("transaction.category") { apply([.category]) }.disabled(!available.contains(.category))
+        }
+        .accessibilityLabel(Text(suggestion.payee) + Text(", ") + Text(amountLabel))
+        .accessibilityHint("quick_log.preload_preserve_detail")
+    }
+}
 
 struct HistoryPreloadCard: View {
     let suggestion: HistoryPreloadSuggestion

@@ -82,6 +82,68 @@ final class QuickLogDraftClearingTests: XCTestCase {
         XCTAssertFalse(model.isLifecycleMutationInProgress)
     }
 
+    /// Build 1059.1 feedback: a draft record exists as soon as Log has been
+    /// opened, so a widget capture made while locked was never promoted and
+    /// History announced it forever. A blank routing draft must yield.
+    @MainActor
+    func testBlankDraftYieldsToLockedCaptureButEditedDraftDoesNot() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let capture = LockedCapture(kind: .expense, amountText: "12.50", payee: "Kiosk")
+        let inbox = InMemoryLockedCaptureStore(captures: [capture])
+        var blank = QuickLogDraft(kind: .expense, amountText: "", destinationAmountText: "", accountID: UUID(),
+            destinationAccountID: nil, categoryID: UUID(), occurredAt: Date(), dateWasEdited: false,
+            payee: "", note: "", smartText: "")
+        blank.smartState.edited(.kind)
+        XCTAssertFalse(blank.hasUserEdits, "Kind plus default account and category is routing only")
+        let model = fixture.model(quickLogDraft: blank, lockedCaptureStore: inbox)
+        try await model.promotePendingLockedCapture()
+        let promoted = try XCTUnwrap(model.quickLogDraft)
+        XCTAssertEqual(promoted.sourceCaptureID, capture.id)
+        XCTAssertEqual(promoted.amountText, "12.50")
+        XCTAssertEqual(promoted.payee, "Kiosk")
+        XCTAssertEqual(model.pendingLockedCaptureCount, 0)
+        let remaining = try await inbox.all()
+        XCTAssertEqual(remaining, [])
+        XCTAssertEqual(model.requestedQuickLogMode, .expense, "Unlock routes straight into Log")
+
+        let second = LockedCapture(kind: .expense, amountText: "3", payee: "Later")
+        let secondInbox = InMemoryLockedCaptureStore(captures: [second])
+        var typed = draft()
+        typed.amountText = "9"
+        let busy = fixture.model(quickLogDraft: typed, lockedCaptureStore: secondInbox)
+        try await busy.promotePendingLockedCapture()
+        XCTAssertEqual(busy.quickLogDraft, typed, "Real input is never replaced silently")
+        XCTAssertEqual(busy.pendingLockedCaptureCount, 1)
+        XCTAssertTrue(PendingCaptureHistorySection.isVisible(
+            pendingLockedCaptureCount: busy.pendingLockedCaptureCount, draft: busy.quickLogDraft
+        ))
+    }
+
+    @MainActor
+    func testDiscardingPendingCapturesEmptiesInboxWithoutTouchingDraft() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let captures = [
+            LockedCapture(kind: .expense, amountText: "1", payee: "One"),
+            LockedCapture(kind: .income, amountText: "2", payee: "Two")
+        ]
+        let inbox = InMemoryLockedCaptureStore(captures: captures)
+        var typed = draft()
+        typed.amountText = "9"
+        let model = fixture.model(quickLogDraft: typed, lockedCaptureStore: inbox)
+        try await model.promotePendingLockedCapture()
+        XCTAssertEqual(model.pendingLockedCaptureCount, 2)
+        try await model.discardPendingLockedCaptures()
+        XCTAssertEqual(model.pendingLockedCaptureCount, 0)
+        let remainingAfterDiscard = try await inbox.all()
+        XCTAssertEqual(remainingAfterDiscard, [])
+        XCTAssertEqual(model.quickLogDraft, typed)
+        XCTAssertFalse(PendingCaptureHistorySection.isVisible(
+            pendingLockedCaptureCount: 0, draft: typed.cleared(at: Date())
+        ))
+    }
+
     @MainActor
     func testClearCurrentCaptureKeepsOtherPendingCaptures() async throws {
         let fixture = try AppModelFixture()

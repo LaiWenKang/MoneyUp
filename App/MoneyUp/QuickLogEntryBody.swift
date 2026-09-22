@@ -65,7 +65,7 @@ extension QuickLogEntryView {
                 } header: {
                     Text("transaction.details")
                 } footer: {
-                    Text("transaction.details_help")
+                    MoneyUpExplainer("transaction.details_help")
                 }
 
                 Section {

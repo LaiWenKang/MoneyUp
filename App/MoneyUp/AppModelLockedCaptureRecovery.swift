@@ -27,6 +27,25 @@ extension AppModel {
         requestedQuickLogMode = mode
     }
 
+    /// Deletes every waiting capture from the device inbox and the book copy.
+    /// Nothing was ever posted, so there is no journal effect. The current
+    /// draft is untouched even if it originated in a capture.
+    func discardPendingLockedCaptures() async throws {
+        try beginLockedCapturePromotion()
+        defer { endLockedCapturePromotion() }
+        let generation = storeGeneration
+        let captureStore = try requireStore()
+        let captures = try await pendingLockedCaptures(in: captureStore)
+        for capture in captures {
+            guard ownsStoreGeneration(generation) else { return }
+            pendingLockedCaptureCount = try await removePendingLockedCapture(
+                id: capture.id, in: captureStore
+            )
+        }
+        guard ownsStoreGeneration(generation) else { return }
+        recoveryIssues.removeAll { $0.hasPrefix("locked_captures/") }
+    }
+
     func promotePendingLockedCapture() async throws {
         try beginLockedCapturePromotion()
         defer { endLockedCapturePromotion() }
@@ -78,7 +97,10 @@ extension AppModel {
             recoveryIssues.removeAll { $0.hasPrefix("locked_captures/") }
             return
         }
-        guard quickLogDraft == nil else {
+        // A draft record exists as soon as Log has been opened once. Only a
+        // draft with real user input may keep a capture waiting; a blank
+        // routing draft is replaced so the capture opens straight in Log.
+        if let existing = quickLogDraft, existing.hasUserEdits {
             recoveryIssues.removeAll { $0.hasPrefix("locked_captures/") }
             return
         }

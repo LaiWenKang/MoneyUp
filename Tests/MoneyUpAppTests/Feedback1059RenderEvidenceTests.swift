@@ -61,6 +61,29 @@ final class Feedback1059RenderEvidenceTests: XCTestCase {
         await capture(MainTabView(initialReportingSnapshot: snapshot, initialSection: .log).environment(model)
             .environment(MoneyUpOverviewNavigation()).preferredColorScheme(.dark), name: "log-smart-entry-copy")
 
+        // Recent-entry capsules, rendered directly so the evidence does not
+        // depend on the debounced lookup finishing inside the capture window.
+        let preloads = await model.historyPreloadSuggestions(
+            for: CaptureSuggestionQuery(kind: .expense, payee: "", currency: fixture.currency, occurredAt: now),
+            eligibleCategoryIDs: [fixture.category.id, fixture.categoryTwo.id]
+        ).merchants
+        XCTAssertFalse(preloads.isEmpty, "Weekly Cafe should be offered as a recent entry")
+        await capture(
+            VStack(alignment: .leading, spacing: 8) {
+                Label("quick_log.preload_title", systemImage: "clock.arrow.circlepath")
+                    .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(preloads) { suggestion in
+                            HistoryPreloadChip(suggestion: suggestion, categoryName: "Food",
+                                available: QuickLogHistoryPreloadFill.fields, canApplyAll: true) { _ in }
+                        }
+                    }
+                }
+            }
+            .padding().background(Color.moneyUpBackground).environment(model).preferredColorScheme(.light),
+            name: "log-recent-capsules", height: 160
+        )
         await capture(MainTabView(initialReportingSnapshot: snapshot, initialSection: .plan, initialPlanSection: .calendar)
             .environment(model).environment(MoneyUpOverviewNavigation()).preferredColorScheme(.light), name: "calendar-flow-bars")
         await capture(NavigationStack { SavingsGoalsView() }.environment(model).environment(\.appReportingSnapshot, snapshot)
