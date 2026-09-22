@@ -1067,7 +1067,7 @@ struct PendingCaptureHistorySection: View {
 
     /// A draft record exists as soon as Log has been opened once; only a
     /// locked capture or a draft with real user input is unfinished work.
-    static func isVisible(pendingLockedCaptureCount: Int, draft: QuickLogDraft?) -> Bool {
+    nonisolated static func isVisible(pendingLockedCaptureCount: Int, draft: QuickLogDraft?) -> Bool {
         pendingLockedCaptureCount > 0 || draft?.hasUserEdits == true
     }
 
