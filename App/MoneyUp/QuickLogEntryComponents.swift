@@ -241,12 +241,15 @@ extension QuickLogEntryView {
         }
     }
 
+    /// One row: describe in words, or scan. The fill arrow appears only once
+    /// there is something to fill; the scan glyph takes its place otherwise.
     var smartEntrySection: some View {
-        let inputLayout = dynamicTypeSize.isAccessibilitySize
-            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
-            : AnyLayout(HStackLayout(alignment: .top, spacing: 8))
+        let hasSmartText = !smartText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         return Section {
-            inputLayout {
+            HStack(alignment: .center, spacing: 10) {
+                Image(systemName: "sparkles")
+                    .foregroundStyle(.tint)
+                    .accessibilityHidden(true)
                 TextField(
                     "quick_log.smart_placeholder",
                     text: trackedBinding(
@@ -265,21 +268,27 @@ extension QuickLogEntryView {
                         masked: hidesAmounts && focusedField != .smartEntry && !smartText.isEmpty,
                         accessibilityLabel: Text("quick_log.smart_entry")
                     ) { focusedField = .smartEntry }
-                Button("quick_log.smart_fill") { applyTypedPhrase() }
+                if hasSmartText {
+                    Button { applyTypedPhrase() } label: {
+                        Image(systemName: "arrow.right.circle.fill")
+                            .font(.title2)
+                            .frame(minWidth: 44, minHeight: 44)
+                    }
                     .buttonStyle(.borderless)
+                    .accessibilityLabel("quick_log.smart_fill")
                     .accessibilityIdentifier("quick-log-smart-fill")
-                    .frame(minWidth: 44, minHeight: 44)
-                    .disabled(
-                        smartText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                    )
+                } else {
+                    Button { isPresentingReceiptPicker = true } label: {
+                        Image(systemName: "doc.text.viewfinder")
+                            .font(.title3)
+                            .frame(minWidth: 44, minHeight: 44)
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(isScanning)
+                    .accessibilityLabel("quick_log.scan_receipt")
+                    .accessibilityIdentifier("quick-log-scan-receipt")
+                }
             }
-
-            Button {
-                isPresentingReceiptPicker = true
-            } label: {
-                Label("quick_log.scan_receipt", systemImage: "doc.text.viewfinder")
-            }
-            .disabled(isScanning)
             .photosPicker(
                 isPresented: $isPresentingReceiptPicker,
                 selection: $photoItem,
@@ -351,7 +360,7 @@ extension QuickLogEntryView {
                 .accessibilityLabel("quick_log.suggestion_options")
             }
         } footer: {
-            Text("quick_log.smart_footer")
+            MoneyUpExplainer("quick_log.smart_footer")
         }
     }
 

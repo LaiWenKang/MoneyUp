@@ -1,4 +1,4 @@
 {
-  "en-US": "Import CSV, XLSX and JSON with local previews and field mapping. Files with generic provider labels can now be selected. Choose optional account and category presets, review clearer spending details, and enjoy improved financial accuracy and smoother exports. Optional one-time tips support independent development; all core features remain free.",
-  "zh-Hans": "支持导入 CSV、XLSX 和 JSON，提供本机预览与字段对应。修复文件因类型标签而变灰、无法选择的问题。新增可选账户与消费分类清单，支出明细更清晰，并改进财务计算与导出体验。可自愿一次性支持独立开发，所有核心功能继续免费。"
+  "en-US": "Import CSV, XLSX and JSON with local previews and field mapping. Files with generic provider labels can now be selected. Choose optional account and category presets, review clearer spending details, and enjoy improved financial accuracy and smoother exports. Optional one-time tips support independent development; all core features remain free. Private insights can be marked reviewed. Widget captures open straight in Log after unlock, a blank Log visit no longer counts as an unfinished entry, and recent entries fill the form in one tap.",
+  "zh-Hans": "支持导入 CSV、XLSX 和 JSON，提供本机预览与字段对应。修复文件因类型标签而变灰、无法选择的问题。新增可选账户与消费分类清单，支出明细更清晰，并改进财务计算与导出体验。可自愿一次性支持独立开发，所有核心功能继续免费。私密洞察可标为已查看。小组件记录解锁后直接进入记账页，空白记账页不再算作未完成记录，最近条目一键填入。"
 }

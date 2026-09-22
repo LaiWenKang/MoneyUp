@@ -670,7 +670,7 @@ W3_PATH_TYPE_DIGESTS: tuple[tuple[str, str, str, str], ...] = (
         "App/MoneyUp/QuickLogEntryBody.swift",
         "extension",
         "QuickLogEntryView",
-        "ec999203c02f40c0ec445f4fd85203aaa53ce7213c768d815efea2634e3e01a3",
+        "4980b0b5b6a5077b550cd0c336ff0147a961213c1ad378201dfd89005405a6c0",
     ),
     (
         "App/MoneyUp/QuickLogEntryReceipt.swift",
@@ -4513,7 +4513,7 @@ def _w3_accessible_suggestion_actions(
                 r"\bfunc\s+captureSuggestions\s*\(\s*_\s+result\s*:"
                 r"\s*CaptureSuggestionResult\s*\)\s*->\s*some\s+View\s*\{"
             ),
-            "5bdfc5ce3cc952d1e30b7c2f81de9e259a7e97bcfe2dec90be4293c13a8792c7",
+            "7ea488dd935848b8cb28c76a2ca3fde0347c8e96cac604588f716fce174abaee",
         ),
     )
     use_literal = "quick_log.use_suggestion"

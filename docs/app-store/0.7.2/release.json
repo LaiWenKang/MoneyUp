@@ -8,14 +8,14 @@
       "keywords": "budget,expense,spending,money,finance,tracker,calendar,savings,accounts,private",
       "promotionalText": "Your money, a little clearer. Track spending, plan budgets and grow savings goals with a private, encrypted ledger on your iPhone.",
       "supportUrl": "https://github.com/LaiWenKang/MoneyUp/blob/main/SUPPORT.md",
-      "whatsNew": "Import CSV, XLSX and JSON with local previews and field mapping. Files with generic provider labels can now be selected. Choose optional account and category presets, review clearer spending details, and enjoy improved financial accuracy and smoother exports. Optional one-time tips support independent development; all core features remain free."
+      "whatsNew": "Import CSV, XLSX and JSON with local previews and field mapping. Files with generic provider labels can now be selected. Choose optional account and category presets, review clearer spending details, and enjoy improved financial accuracy and smoother exports. Optional one-time tips support independent development; all core features remain free. Private insights can be marked reviewed. Widget captures open straight in Log after unlock, a blank Log visit no longer counts as an unfinished entry, and recent entries fill the form in one tap."
     },
     "zh-Hans": {
       "description": "把收支看清楚，把生活安排得更从容。\n\nMoneyUp 将记账、预算、账户与储蓄目标放在一起，财务记录加密保存在你的 iPhone。无需注册 MoneyUp 账户。\n\n日常记账，清清楚楚\n记录支出、收入、转账与退款，按日期或分类回顾明细。在本机识别收据和截图，检查结果后再保存。\n\n预算有计划，心里更有底\n建立多层预算，置顶关心的分类，查看已用与剩余金额。通过预算情景模拟探索计划，不会修改实际账本。追踪储蓄目标，在日历中查看资金流。\n\n账户与币种，分别看清\n手动管理账户余额，按各自币种查看。需要换算估值时，可使用自己记录的汇率。MoneyUp 不连接银行，也不提供交易服务。\n\n隐私，从设计开始\n本地账本加密存储，不含广告或追踪。你可自主导出 CSV 或 Excel 文件，或创建加密备份。\n\nMoneyUp 是记录与规划工具，不构成财务、投资、税务或法律建议。\n\n自愿支持独立开发\n所有核心功能继续免费。如你愿意，可通过 Apple 进行一次性自愿支持。支持不会解锁功能，也不是订阅。\n\n带上你的记账历史\n本机读取 CSV／TSV、XLSX 工作表和 JSON 账单表。选择数据表，检查字段与账单类型后再确认导入；不会读取加密工作簿或执行表格公式。",
       "keywords": "预算,记账,支出,收支,消费,账本,存钱,储蓄,目标,资金流,资产,隐私",
       "promotionalText": "让每一笔钱更清楚。私密记账、规划预算、追踪储蓄目标，财务记录加密保存在你的 iPhone。",
       "supportUrl": "https://github.com/LaiWenKang/MoneyUp/blob/main/SUPPORT.md",
-      "whatsNew": "支持导入 CSV、XLSX 和 JSON，提供本机预览与字段对应。修复文件因类型标签而变灰、无法选择的问题。新增可选账户与消费分类清单，支出明细更清晰，并改进财务计算与导出体验。可自愿一次性支持独立开发，所有核心功能继续免费。"
+      "whatsNew": "支持导入 CSV、XLSX 和 JSON，提供本机预览与字段对应。修复文件因类型标签而变灰、无法选择的问题。新增可选账户与消费分类清单，支出明细更清晰，并改进财务计算与导出体验。可自愿一次性支持独立开发，所有核心功能继续免费。私密洞察可标为已查看。小组件记录解锁后直接进入记账页，空白记账页不再算作未完成记录，最近条目一键填入。"
     }
   },
   "screenshots": {
