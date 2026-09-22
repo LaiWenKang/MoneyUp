@@ -1,4 +1,4 @@
-# MoneyUp 0.7.2 (1060.1 and 1061.1) — build 1059.1 feedback delivery
+# MoneyUp 0.7.2 (1060.1, 1061.1 and 1063.1) — build 1059.1 feedback delivery
 
 Delivered to App Store Connect on 22 September 2026 from main commit
 `4cd0ad92eb4d6a762a74c782e4e5276c59f9026c` (pull request #75, squash-merged after all five CI jobs passed on the exact head).
@@ -18,6 +18,17 @@ Main commit `911e480` (pull request #77: locked widget captures open straight in
 - Readback ([run 35701197392](https://github.com/LaiWenKang/MoneyUp/actions/runs/35701197392)): processing `VALID`, internal `IN_BETA_TESTING` (3 internal testers covered), external `READY_FOR_BETA_SUBMISSION`. Receipt: `apple-inspect-1061.1.json`.
 - Apple needed roughly eight minutes after upload before the build was visible to the API; the first compliance attempt failed with "Expected exactly one matching iOS build" and succeeded once processing completed.
 - The public 0.7.2 version remains `WAITING_FOR_REVIEW` on 1059.1; see "Not done, by design" above.
+
+## Third delivery: 0.7.2 (1063.1)
+
+Main commit `cac08ff` (pull requests #79, #80 and #81: Log currency control and conversion, History scope-row filters and no capture card, header-line explainers, Today hero, category tints, Assets by currency, saved-amount banner, Insights privacy collapse, illustrations, onboarding copy, recovery notes, vendored Apple skills, release tooling).
+
+- Run 62 (`f26cc9f`) failed its StoreKit gate on the timing flake and did not upload; no 1062.x build exists in App Store Connect.
+- Signed build **0.7.2 (1063.1)**, IPA SHA-256 `d57e53bce033a845c92d372f83a02af15e2fefb648231202a1c74bddabad2bba`, uploaded by [TestFlight run 35750198040](https://github.com/LaiWenKang/MoneyUp/actions/runs/35750198040); the deadline-based StoreKit gate passed first time.
+- Export compliance inherited from 1061.1 ([run 35755210095](https://github.com/LaiWenKang/MoneyUp/actions/runs/35755210095)); the tester workflow's new processing wait meant no retry was needed. Receipt: `apple-compliance-1063.1.json`.
+- Distributed to the internal group with the bilingual notes ([run 35755510612](https://github.com/LaiWenKang/MoneyUp/actions/runs/35755510612)). Receipt: `apple-internal-1063.1.json`.
+- Readback ([run 35755605043](https://github.com/LaiWenKang/MoneyUp/actions/runs/35755605043)): processing `VALID`, internal `IN_BETA_TESTING` (3 covered), external `READY_FOR_BETA_SUBMISSION`. Receipt: `apple-inspect-1063.1.json`.
+- Public 0.7.2 remains `WAITING_FOR_REVIEW` on 1059.1 ([inspection 35745225764](https://github.com/LaiWenKang/MoneyUp/actions/runs/35745225764)). The owner reports the Paid Apps Agreement accepted; the API exposes no readback for it.
 
 ## Not done, by design
 
