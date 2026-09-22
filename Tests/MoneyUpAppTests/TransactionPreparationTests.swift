@@ -140,7 +140,8 @@ final class TransactionPreparationTests: XCTestCase {
         var typed = draft(amount: "4")
         typed.smartState.edited(.kind)
         XCTAssertTrue(typed.hasUserEdits)
-        XCTAssertTrue(PendingCaptureHistorySection.isVisible(
+        // A draft with input is shown in Log itself; History never nags about it.
+        XCTAssertFalse(PendingCaptureHistorySection.isVisible(
             pendingLockedCaptureCount: 0, draft: typed
         ))
         // A blank draft record exists as soon as Log has been opened once.

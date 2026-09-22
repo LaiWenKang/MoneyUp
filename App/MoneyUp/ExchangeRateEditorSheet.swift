@@ -74,9 +74,7 @@ struct ExchangeRateEditorSheet: View {
                 }
                 .disabled(!canSave || isSaving)
             } header: {
-                Text("fx.add_rate")
-            } footer: {
-                MoneyUpExplainer("fx.rate_detail")
+                MoneyUpSectionHeader("fx.add_rate", explanation: "fx.rate_detail")
             }
 
             }

@@ -670,7 +670,7 @@ W3_PATH_TYPE_DIGESTS: tuple[tuple[str, str, str, str], ...] = (
         "App/MoneyUp/QuickLogEntryBody.swift",
         "extension",
         "QuickLogEntryView",
-        "4980b0b5b6a5077b550cd0c336ff0147a961213c1ad378201dfd89005405a6c0",
+        "3663cf238adcd69c13a041633a27ad43c84cc01ec995f3e5bd27489cd4256487",
     ),
     (
         "App/MoneyUp/QuickLogEntryReceipt.swift",

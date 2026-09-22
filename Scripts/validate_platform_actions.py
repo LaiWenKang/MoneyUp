@@ -151,6 +151,7 @@ COMPILED_SWIFT_ROOTS = (
 )
 IGNORED_SWIFT_INVENTORY_ROOTS = {
     ".build",
+    ".claude",
     ".git",
     ".swiftpm",
     "Tests",

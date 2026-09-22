@@ -943,7 +943,7 @@ def production_swift_sources(root: Path) -> dict[str, str]:
         relative_path = path.relative_to(root)
         if relative_path.parts[0] == "Tests":
             continue
-        if any(part in {".build", "DerivedData"} for part in relative_path.parts):
+        if any(part in {".build", "DerivedData", ".claude"} for part in relative_path.parts):
             continue
         sources[relative_path.as_posix()] = path.read_text(encoding="utf-8")
     return sources

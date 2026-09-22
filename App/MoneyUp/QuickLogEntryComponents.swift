@@ -33,13 +33,7 @@ extension QuickLogEntryView {
             ) {
                 focusedField = .amount
             }
-            if let currency = selectedAccountCurrency {
-                Text(currency.value)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .accessibilityLabel("transaction.currency")
-                    .accessibilityValue(Text(currency.value))
-            }
+            amountCurrencyControl
         }
         if let amountValidationMessage {
             MoneyUpFieldError(message: amountValidationMessage)
@@ -351,16 +345,17 @@ extension QuickLogEntryView {
                     .foregroundStyle(.secondary)
             }
         } header: {
-            HStack {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text("quick_log.smart_entry")
                 Spacer()
+                MoneyUpExplainer("quick_log.smart_footer")
+                    .textCase(nil)
+                    .font(.footnote)
                 Menu { merchantLearningControl } label: {
                     Image(systemName: "ellipsis.circle").frame(minWidth: 44, minHeight: 44)
                 }
                 .accessibilityLabel("quick_log.suggestion_options")
             }
-        } footer: {
-            MoneyUpExplainer("quick_log.smart_footer")
         }
     }
 

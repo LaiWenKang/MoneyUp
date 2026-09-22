@@ -116,3 +116,25 @@ struct MoneyUpLoadingPlaceholder: View {
         .accessibilityElement(children: .combine)
     }
 }
+
+/// A section title with its explanation one glyph away, on the same line, so
+/// the explainer never floats alone under a card.
+struct MoneyUpSectionHeader: View {
+    let title: LocalizedStringKey
+    let explanation: LocalizedStringKey
+
+    init(_ title: LocalizedStringKey, explanation: LocalizedStringKey) {
+        self.title = title
+        self.explanation = explanation
+    }
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(title)
+            Spacer(minLength: 8)
+            MoneyUpExplainer(explanation)
+                .textCase(nil)
+                .font(.footnote)
+        }
+    }
+}

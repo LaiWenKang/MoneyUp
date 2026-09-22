@@ -365,9 +365,7 @@ struct GoalManagementSheet: View {
                         Label("goal.withdraw", systemImage: "minus.circle.fill")
                     }
                 } header: {
-                    Text("goal.movements")
-                } footer: {
-                    MoneyUpExplainer("goal.movements_detail")
+                    MoneyUpSectionHeader("goal.movements", explanation: "goal.movements_detail")
                 }
 
                 Section("goal.manage") {

@@ -762,9 +762,7 @@ struct AllowanceEditorSheet: View {
                         )
                     }
                 } header: {
-                    Text("allowance.categories")
-                } footer: {
-                    MoneyUpExplainer("allowance.categories_detail")
+                    MoneyUpSectionHeader("allowance.categories", explanation: "allowance.categories_detail")
                 }
 
                 if plan != nil {

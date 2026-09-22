@@ -406,22 +406,21 @@ struct HistoryView: View {
             PendingCaptureHistorySection()
             if allowsFiltering {
             Section {
-                HistoryScopeSelector(selection: $quickRange)
-                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+                HStack(alignment: .center, spacing: 8) {
+                    HistoryScopeSelector(selection: $quickRange)
+                    Spacer(minLength: 0)
+                    filterChips
+                }
+                .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+                if filters.categoryIDs != nil {
+                    LabeledContent("history.filter.category", value: categoryFilterValue)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .listRowInsets(EdgeInsets(top: 4, leading: 4, bottom: 0, trailing: 4))
+                }
             }
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
-
-            Section {
-                ViewThatFits(in: .horizontal) {
-                    filterActions(horizontal: true)
-                    filterActions(horizontal: false)
-                }
-                if filters.categoryIDs != nil {
-                    LabeledContent("history.filter.category", value: categoryFilterValue)
-                        .font(.subheadline)
-                }
-            }
 
             }
                 if !model.journalRecentEntriesAreCurrent {
@@ -726,6 +725,42 @@ struct HistoryView: View {
 }
 
 extension HistoryView {
+    /// Filter and clear live on the scope row as glyph chips. The count badge
+    /// says how many filters are active; the clear chip exists only when
+    /// there is something to clear.
+    private var filterChips: some View {
+        let activeCount = filters.advancedFilterCount(quickRange: quickRange)
+        let canClear = filters.hasActiveFilters || !searchText.isEmpty
+        return HStack(spacing: 6) {
+            Button { showingFilters = true } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: activeCount == 0
+                        ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
+                    if activeCount > 0 {
+                        Text(activeCount.formatted()).font(.caption.bold().monospacedDigit())
+                    }
+                }
+                .frame(minWidth: 44, minHeight: 44)
+            }
+            .buttonStyle(MoneyUpPressableButtonStyle())
+            .accessibilityLabel(Text(activeCount == 0
+                ? AppLocalization.string("history.filter_short")
+                : String(format: AppLocalization.string("history.filter_count"), activeCount)))
+            .accessibilityIdentifier("history-filter")
+            if canClear {
+                Button { clearHistoryFilters() } label: {
+                    Image(systemName: "xmark.circle")
+                        .frame(minWidth: 44, minHeight: 44)
+                }
+                .buttonStyle(MoneyUpPressableButtonStyle())
+                .accessibilityLabel("history.clear_filters")
+                .accessibilityIdentifier("history-clear-filters")
+            }
+        }
+        .font(.body)
+        .foregroundStyle(.tint)
+    }
+
     private func filterActions(horizontal: Bool) -> some View {
         let layout = horizontal ? AnyLayout(HStackLayout(spacing: 12)) : AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
         return layout {
@@ -1066,10 +1101,10 @@ struct PendingCaptureHistorySection: View {
     @State private var isConfirmingDiscard = false
     @State private var errorMessage: String?
 
-    /// A draft record exists as soon as Log has been opened once; only a
-    /// locked capture or a draft with real user input is unfinished work.
+    /// Only a capture made while locked belongs here. An in-progress Log
+    /// draft is visible in Log itself and must not be announced elsewhere.
     nonisolated static func isVisible(pendingLockedCaptureCount: Int, draft: QuickLogDraft?) -> Bool {
-        pendingLockedCaptureCount > 0 || draft?.hasUserEdits == true
+        pendingLockedCaptureCount > 0
     }
 
     var body: some View {

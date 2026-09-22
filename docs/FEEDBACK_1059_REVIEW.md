@@ -21,6 +21,10 @@ flowchart LR
     Content[amount · payee · note · splits · chosen account/category · date] --> Unfinished
 ```
 
+## Third pass (currency, History chrome, section headers)
+
+See [UX audit and elevation plan](UX_AUDIT_2026-09-22.md) for the Log currency control and conversion sheet, the History scope-row filter chips, the header-line explainers, the prioritized backlog, and engineering items found on the way. The Apple platform skill library is vendored for the assistant under `.claude/skills/apple/` (see [Apple skills](APPLE_SKILLS.md)).
+
 ## Release notes
 
 In-app What's New (0.7.2) leads with the Log and insights changes; `docs/TESTFLIGHT_WHATS_NEW.json` and `docs/app-store/0.7.2/release.json` carry the same two sentences in English and Chinese for TestFlight test notes and the public What's New.
