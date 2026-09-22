@@ -1,0 +1,95 @@
+{
+  "app_id": "6804665286",
+  "versions": [
+    {
+      "id": "a300e9f2-407a-4fa5-b52a-160c7cda848e",
+      "version": "0.7.2",
+      "state": "WAITING_FOR_REVIEW",
+      "release_type": "AFTER_APPROVAL",
+      "build": "1059.1"
+    },
+    {
+      "id": "c4ae03dd-b94a-4461-9bc4-712d6a610783",
+      "version": "0.7.1",
+      "state": "READY_FOR_DISTRIBUTION",
+      "release_type": "MANUAL",
+      "build": "1051.1"
+    }
+  ],
+  "support_products": [
+    {
+      "id": "6813625671",
+      "product_id": "com.laiwenkang.MoneyUp.support.large",
+      "state": "WAITING_FOR_REVIEW",
+      "type": "CONSUMABLE"
+    },
+    {
+      "id": "6813625326",
+      "product_id": "com.laiwenkang.MoneyUp.support.medium",
+      "state": "WAITING_FOR_REVIEW",
+      "type": "CONSUMABLE"
+    },
+    {
+      "id": "6813617660",
+      "product_id": "com.laiwenkang.MoneyUp.support.small",
+      "state": "WAITING_FOR_REVIEW",
+      "type": "CONSUMABLE"
+    }
+  ],
+  "availability": {
+    "france_available": false,
+    "future_countries_enabled": false
+  },
+  "territories": 175,
+  "unavailable_territories": [
+    "FRA"
+  ],
+  "content_status_counts": {
+    "AVAILABLE": 174,
+    "CANNOT_SELL": 1
+  },
+  "media": {
+    "en-US": {
+      "screenshots": [
+        {
+          "type": "APP_IPHONE_65",
+          "count": 8,
+          "states": {
+            "COMPLETE": 8
+          }
+        }
+      ],
+      "previews": [
+        {
+          "type": "IPHONE_65",
+          "count": 1,
+          "states": {
+            "COMPLETE": 1
+          }
+        }
+      ]
+    },
+    "zh-Hans": {
+      "screenshots": [
+        {
+          "type": "APP_IPHONE_65",
+          "count": 8,
+          "states": {
+            "COMPLETE": 8
+          }
+        }
+      ],
+      "previews": [
+        {
+          "type": "IPHONE_65",
+          "count": 1,
+          "states": {
+            "COMPLETE": 1
+          }
+        }
+      ]
+    }
+  },
+  "source_sha": "9d39a82d8d457bf6f7c458c8a4f9c16709d3218b",
+  "config_sha256": "cb86bb546153b52baffb136ad7a56661d1d9079e95999ea6040f30ffadbadedb"
+}
