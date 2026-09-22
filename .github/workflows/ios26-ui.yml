@@ -2,7 +2,7 @@ name: iOS 26 interaction review
 
 on:
   push:
-    branches: [main, "codex/**"]
+    branches: [main]
   pull_request:
   workflow_dispatch:
 

@@ -85,8 +85,9 @@ struct AssetsView: View {
             List {
                 AssetsOverviewSection(oldestPositionPriceDate: oldestPositionPriceDate)
 
-                Section("assets.accounts") {
-                    ForEach(model.userAccounts) { account in
+                ForEach(accountCurrencyGroups, id: \.currency) { group in
+                Section {
+                    ForEach(group.accounts) { account in
                         NavigationLink {
                             AccountSpendingHistoryView(accountID: account.id)
                         } label: {
@@ -126,6 +127,11 @@ struct AssetsView: View {
                         .buttonStyle(.plain)
                     }
 
+                } header: {
+                    accountGroupHeader(group)
+                }
+                }
+                Section {
                     Button {
                         isAddingAccount = true
                     } label: {
@@ -410,6 +416,9 @@ struct AssetsView: View {
                     MoneyUpAmountPrivacyButton()
                 }
                 ToolbarItem(placement: .primaryAction) {
+                    AssetsSnapshotToolbarButton()
+                }
+                ToolbarItem(placement: .primaryAction) {
                     Menu {
                         Button { isShowingAccountCatalog = true } label: {
                             Label("catalog.accounts_title", systemImage: "switch.2")
@@ -603,6 +612,61 @@ struct AccountSpendingHistoryView: View {
             .sheet(isPresented: $isEditing) { AccountManagementSheet(account: account) }
         } else {
             MoneyUpStatePlaceholder(systemImage: "wallet.bifold", tint: .secondary, title: "history.no_results")
+        }
+    }
+}
+
+
+/// Accounts grouped by the currency they hold, each group with its subtotal,
+/// so the list reads as a set of totals before a set of rows.
+struct AccountCurrencyGroup {
+    let currency: String
+    let accounts: [LedgerAccount]
+    let subtotal: Money?
+}
+
+extension AssetsView {
+    var accountCurrencyGroups: [AccountCurrencyGroup] {
+        let now = sharedReportingSnapshot?.instant ?? model.currentDateForUserAction()
+        var order: [String] = []
+        var byCurrency: [String: [LedgerAccount]] = [:]
+        for account in model.userAccounts {
+            let code = account.currency?.value ?? ""
+            if byCurrency[code] == nil { order.append(code) }
+            byCurrency[code, default: []].append(account)
+        }
+        return order.map { code in
+            let accounts = byCurrency[code] ?? []
+            var subtotal: Money? = accounts.first?.currency.map { Money.zero(currency: $0) }
+            for account in accounts {
+                guard let running = subtotal,
+                      case let .available(balance) = model.accountBalanceResultForPresentation(for: account, asOf: now),
+                      balance.currency == running.currency,
+                      let sum = try? running.adding(balance) else { subtotal = nil; break }
+                subtotal = sum
+            }
+            return AccountCurrencyGroup(currency: code, accounts: accounts, subtotal: subtotal)
+        }
+    }
+
+    /// One currency per group: the first group carries the section title,
+    /// later groups show just their currency code, each with its subtotal.
+    func accountGroupHeader(_ group: AccountCurrencyGroup) -> some View {
+        let groups = accountCurrencyGroups
+        return HStack(alignment: .firstTextBaseline, spacing: 6) {
+            if groups.count > 1, !group.currency.isEmpty {
+                Text(verbatim: group.currency)
+                    .fontWeight(.semibold)
+                    .accessibilityLabel(Text("assets.accounts") + Text(" \(group.currency)"))
+            } else {
+                Text("assets.accounts")
+            }
+            Spacer(minLength: 8)
+            if let subtotal = group.subtotal {
+                Text(formattedMoney(subtotal))
+                    .monospacedDigit()
+                    .textCase(nil)
+            }
         }
     }
 }

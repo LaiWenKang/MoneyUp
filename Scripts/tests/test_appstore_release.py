@@ -9,7 +9,7 @@ from unittest.mock import Mock, patch
 from urllib.error import HTTPError
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from appstore_release import prepare, validate_config, resource, ReleaseClient, AppStoreAPIError, optional_resource
+from appstore_release import prepare, validate_config, resource, ReleaseClient, AppStoreAPIError, optional_resource, withdraw
 from appstore_screenshots import screenshot_manifest, upload_parts, sync_screenshots
 from appstore_support import prepare_support, verify_price
 from appstore_previews import movie
@@ -126,6 +126,32 @@ class AppStoreReleaseTests(unittest.TestCase):
         ]:
             with self.assertRaises(ValueError):
                 upload_parts(operations, b"abc")
+
+    def test_withdraw_cancels_only_the_pending_submission_of_a_queued_version(self):
+        version = {"id": "v1", "attributes": {"versionString": self.config["version"], "appStoreState": "WAITING_FOR_REVIEW"}}
+        client = Mock()
+        client.all.side_effect = [
+            [version],
+            [{"id": "s1", "attributes": {"state": "WAITING_FOR_REVIEW"}},
+             {"id": "s0", "attributes": {"state": "COMPLETE"}}],
+            [dict(version, attributes=dict(version["attributes"], appStoreState="PREPARE_FOR_SUBMISSION"))],
+        ]
+        client.request.side_effect = [
+            {"data": {"id": "s1", "attributes": {"state": "CANCELING"}}},
+            {"data": {"id": "s1", "attributes": {"state": "CANCELED"}}},
+        ]
+        result = withdraw(client, {"id": "app"}, self.config)
+        patch_call = client.request.call_args_list[0]
+        self.assertEqual(patch_call.args[0], "PATCH")
+        self.assertEqual(patch_call.args[1], "/v1/reviewSubmissions/s1")
+        self.assertTrue(patch_call.args[2]["data"]["attributes"]["canceled"])
+        self.assertTrue(result["withdrawn_now"])
+        self.assertEqual(result["state"], "PREPARE_FOR_SUBMISSION")
+
+        editable = Mock()
+        editable.all.return_value = [{"id": "v1", "attributes": {"versionString": self.config["version"], "appStoreState": "PREPARE_FOR_SUBMISSION"}}]
+        self.assertFalse(withdraw(editable, {"id": "app"}, self.config)["withdrawn_now"])
+        editable.request.assert_not_called()
 
     def test_public_preparation_rejects_internal_only_and_unprocessed_builds(self):
         client = Mock()

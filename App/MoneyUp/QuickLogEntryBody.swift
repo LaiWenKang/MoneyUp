@@ -447,37 +447,7 @@ extension QuickLogEntryView {
         .safeAreaInset(edge: .bottom) {
             VStack(spacing: 0) {
             if clearRecovery != nil, !draftSnapshot.hasUserEdits { clearRecoveryBanner }
-            if let lastSavedEntryID {
-                HStack(spacing: 12) {
-                    Label("quick_log.saved", systemImage: "checkmark.circle.fill")
-                        .foregroundStyle(.primary)
-                    Spacer(minLength: 8)
-                    Button("action.undo") {
-                        Task { await undo(entryID: lastSavedEntryID) }
-                    }
-                    .fontWeight(.semibold)
-                    .disabled(isUndoing)
-                    Button {
-                        updateSavedEntry(nil)
-                    } label: {
-                        Image(systemName: "xmark")
-                            .frame(minWidth: 44, minHeight: 44)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("action.close")
-                    .disabled(isUndoing)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
-                .padding(.horizontal, 12)
-                .padding(.bottom, 4)
-                .transition(
-                    MoneyUpMotion.confirmationTransition(
-                        reduceMotion: accessibilityReduceMotion
-                    )
-                )
-            }
+            if let lastSavedEntryID { savedEntryBanner(entryID: lastSavedEntryID) }
                 Button {
                     Task { await attemptSave() }
                 } label: {

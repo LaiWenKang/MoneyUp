@@ -63,9 +63,12 @@ final class DeveloperSupportTests: XCTestCase {
         session.clearTransactions()
         defer { session.clearTransactions(); session.resetToDefaultState() }
         // Local StoreKit configuration propagates asynchronously to its daemon.
-        for _ in 0..<20 {
+        // The local StoreKit daemon publishes the configuration asynchronously
+        // and, on shared CI runners, slowly. Wait on a deadline, not a count.
+        let productsDeadline = Date().addingTimeInterval(20)
+        while Date() < productsDeadline {
             if try await Product.products(for: StoreKitDeveloperSupport.productIDs).count == 3 { break }
-            try await Task.sleep(for: .milliseconds(100))
+            try await Task.sleep(for: .milliseconds(200))
         }
         let backend = StoreKitDeveloperSupport()
         let store = DeveloperSupportStore(purchaser: backend)
@@ -85,7 +88,8 @@ final class DeveloperSupportTests: XCTestCase {
         let product = try XCTUnwrap(store.products.first)
         for expectedCount in 1...2 {
             // Exercise the same loading and duplicate-tap gates as the button.
-            for _ in 0..<50 where store.isLoading {
+            let loadingDeadline = Date().addingTimeInterval(15)
+            while store.isLoading, Date() < loadingDeadline {
                 try await Task.sleep(for: .milliseconds(100))
             }
             XCTAssertFalse(store.isLoading)
@@ -103,7 +107,8 @@ final class DeveloperSupportTests: XCTestCase {
         var identifiers: [UInt] = []
         // StoreKit updates its local transaction indexes asynchronously after
         // finish returns. Verify each receipt before initiating the next buy.
-        for _ in 0..<50 {
+        let deadline = Date().addingTimeInterval(20)
+        while Date() < deadline {
             identifiers = session.allTransactions().map(\.identifier)
             unfinishedIDs = []
             for await result in StoreKit.Transaction.unfinished {
@@ -112,7 +117,7 @@ final class DeveloperSupportTests: XCTestCase {
                 }
             }
             if Set(identifiers).count == count, unfinishedIDs.isEmpty { return true }
-            try? await Task.sleep(for: .milliseconds(100))
+            try? await Task.sleep(for: .milliseconds(200))
         }
         XCTAssertEqual(Set(identifiers).count, count, "Distinct local purchases: \(identifiers)")
         XCTAssertTrue(unfinishedIDs.isEmpty, "Local purchases: \(identifiers); unfinished: \(unfinishedIDs)")

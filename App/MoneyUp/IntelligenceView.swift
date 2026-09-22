@@ -106,6 +106,7 @@ struct IntelligenceView: View {
     @State private var isShowingReviewed = false
     @State private var busyFindingID: String?
     @State private var errorMessage: String?
+    @AppStorage("moneyup.insights.privacy_acknowledged") private var hasSeenPrivacyCard = false
 
     var body: some View {
         ScrollView {
@@ -167,16 +168,30 @@ struct IntelligenceView: View {
             historySelection = nil
             scheduleSelection = nil
         }
+        .onDisappear { hasSeenPrivacyCard = true }
     }
 
+    /// The privacy explanation is a full card on the first visit and a single
+    /// header-line glyph afterwards, so findings start at the top.
     private var statusCard: some View {
-        MoneyUpCard {
+        MoneyUpCard(style: hasSeenPrivacyCard ? .flat : .raised) {
             VStack(alignment: .leading, spacing: 10) {
-                Label("intelligence.private_title", systemImage: "lock.shield.fill")
-                    .font(.headline)
-                Text("intelligence.private_detail")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                if hasSeenPrivacyCard {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Label("intelligence.private_title", systemImage: "lock.shield.fill")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        Spacer(minLength: 8)
+                        MoneyUpExplainer("intelligence.private_detail")
+                            .font(.footnote)
+                    }
+                } else {
+                    Label("intelligence.private_title", systemImage: "lock.shield.fill")
+                        .font(.headline)
+                    Text("intelligence.private_detail")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
                 if model.intelligenceResultsAreLimited {
                     Label(
                         "intelligence.limited",

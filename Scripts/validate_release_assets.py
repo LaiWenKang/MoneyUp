@@ -3970,6 +3970,7 @@ def validate_design_primitive_usage() -> None:
         (app_root / name).read_text(encoding="utf-8")
         for name in (
             "QuickLogEntryBody.swift",
+            "QuickLogEntryChrome.swift",
             "QuickLogEntryCommit.swift",
             "LockedQuickCaptureView.swift",
         )

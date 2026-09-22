@@ -15,8 +15,12 @@ struct AssetsOverviewSection: View {
         let now = reportingSnapshot?.instant ?? model.currentDateForUserAction()
         Section {
             VStack(alignment: .leading, spacing: 14) {
-                Label("assets.account_net_worth", systemImage: "chart.line.uptrend.xyaxis")
-                    .font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Label("assets.account_net_worth", systemImage: "chart.line.uptrend.xyaxis")
+                        .font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+                    Spacer(minLength: 8)
+                    MoneyUpExplainer("assets.account_net_worth_note").font(.footnote)
+                }
                 switch model.netWorthByCurrencyResult() {
                 case let .available(amounts):
                     ForEach(amounts, id: \.currency) { value in
@@ -38,18 +42,7 @@ struct AssetsOverviewSection: View {
                         }) { Text("holding.stale").font(.caption).foregroundStyle(Color.moneyUpWarning) }
                     }.foregroundStyle(.secondary)
                 }
-                Button { Task { await capture() } } label: {
-                    HStack {
-                        Label("assets.capture_snapshot", systemImage: "camera.aperture")
-                        if isCapturing { ProgressView() }
-                    }
-                }
-                .disabled(isCapturing)
-                .buttonStyle(.borderless)
-                if didCapture { Label("assets.snapshot_saved", systemImage: "checkmark.circle.fill").font(.caption).foregroundStyle(.tint) }
             }.padding(.vertical, 8)
-        } footer: {
-            MoneyUpExplainer("assets.account_net_worth_note")
         }
         .moneyUpOperationErrorAlert(message: $errorMessage)
     }
@@ -85,5 +78,48 @@ struct AssetsOverviewSection: View {
         defer { isCapturing = false }
         do { try await model.captureNetWorthSnapshot(); didCapture = true }
         catch { errorMessage = safeUserMessage(for: error, context: .save) }
+    }
+}
+
+
+/// Snapshot lives in the toolbar as a camera glyph; the confirmation is a
+/// brief label that replaces the glyph, then returns.
+struct AssetsSnapshotToolbarButton: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isCapturing = false
+    @State private var didCapture = false
+    @State private var errorMessage: String?
+
+    var body: some View {
+        Button {
+            Task { await capture() }
+        } label: {
+            if isCapturing {
+                ProgressView()
+            } else if didCapture {
+                Label("assets.snapshot_saved", systemImage: "checkmark.circle.fill")
+                    .labelStyle(.titleAndIcon)
+                    .font(.caption.weight(.semibold))
+            } else {
+                Label("assets.capture_snapshot", systemImage: "camera.aperture")
+            }
+        }
+        .disabled(isCapturing)
+        .accessibilityIdentifier("assets-capture-snapshot")
+        .animation(MoneyUpMotion.animation(for: .confirmation, reduceMotion: reduceMotion), value: didCapture)
+        .moneyUpOperationErrorAlert(message: $errorMessage)
+    }
+
+    private func capture() async {
+        guard !isCapturing else { return }
+        isCapturing = true
+        defer { isCapturing = false }
+        do {
+            try await model.captureNetWorthSnapshot()
+            didCapture = true
+            try? await Task.sleep(for: .seconds(2))
+            didCapture = false
+        } catch { errorMessage = safeUserMessage(for: error, context: .save) }
     }
 }

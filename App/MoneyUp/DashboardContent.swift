@@ -84,6 +84,7 @@ extension DashboardView {
             if model.displayPreferences.showsDailyGuidance { safeToSpendHero }
             pinnedBoard
         } else {
+            pinnedRemainingHero
             pinnedBoard
         }
     }

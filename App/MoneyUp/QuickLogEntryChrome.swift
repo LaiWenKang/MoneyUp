@@ -80,4 +80,51 @@ extension QuickLogEntryView {
             }
     }
 
+    /// The confirmation names the money that was just posted and offers Undo.
+    func savedEntryBanner(entryID lastSavedEntryID: UUID) -> some View {
+            HStack(spacing: 12) {
+                Label {
+                    HStack(spacing: 6) {
+                        Text("quick_log.saved")
+                        if let lastSavedAmountLabel {
+                            Text(verbatim: "·").foregroundStyle(.secondary)
+                            Text(lastSavedAmountLabel)
+                                .fontWeight(.semibold)
+                                .monospacedDigit()
+                                .contentTransition(.numericText())
+                        }
+                    }
+                } icon: {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(Color.moneyUpPositive)
+                }
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                Spacer(minLength: 8)
+                Button("action.undo") {
+                    Task { await undo(entryID: lastSavedEntryID) }
+                }
+                .fontWeight(.semibold)
+                .disabled(isUndoing)
+                Button {
+                    updateSavedEntry(nil)
+                } label: {
+                    Image(systemName: "xmark")
+                        .frame(minWidth: 44, minHeight: 44)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("action.close")
+                .disabled(isUndoing)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
+            .padding(.horizontal, 12)
+            .padding(.bottom, 4)
+            .transition(
+                MoneyUpMotion.confirmationTransition(
+                    reduceMotion: accessibilityReduceMotion
+                )
+            )
+    }
 }
