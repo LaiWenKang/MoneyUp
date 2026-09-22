@@ -403,7 +403,6 @@ struct HistoryView: View {
     var body: some View {
         let _ = hidesAmounts
         return List {
-            PendingCaptureHistorySection()
             if allowsFiltering {
             Section {
                 HStack(alignment: .center, spacing: 8) {
@@ -1101,8 +1100,8 @@ struct PendingCaptureHistorySection: View {
     @State private var isConfirmingDiscard = false
     @State private var errorMessage: String?
 
-    /// Only a capture made while locked belongs here. An in-progress Log
-    /// draft is visible in Log itself and must not be announced elsewhere.
+    /// Retained for the Log banner's policy tests. History itself no longer
+    /// hosts this section: a waiting capture is Log's business.
     nonisolated static func isVisible(pendingLockedCaptureCount: Int, draft: QuickLogDraft?) -> Bool {
         pendingLockedCaptureCount > 0
     }

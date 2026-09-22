@@ -446,6 +446,7 @@ extension QuickLogEntryView {
         quickLogNavigation
         .safeAreaInset(edge: .bottom) {
             VStack(spacing: 0) {
+            if !dismissAfterSave, model.pendingLockedCaptureCount > 0 { pendingCaptureBanner }
             if clearRecovery != nil, !draftSnapshot.hasUserEdits { clearRecoveryBanner }
             if let lastSavedEntryID { savedEntryBanner(entryID: lastSavedEntryID) }
                 Button {

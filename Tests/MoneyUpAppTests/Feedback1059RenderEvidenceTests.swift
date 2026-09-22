@@ -60,6 +60,13 @@ final class Feedback1059RenderEvidenceTests: XCTestCase {
             .environment(MoneyUpOverviewNavigation()).preferredColorScheme(.light), name: "history-no-unfinished-banner")
         await capture(MainTabView(initialReportingSnapshot: snapshot, initialSection: .log).environment(model)
             .environment(MoneyUpOverviewNavigation()).preferredColorScheme(.dark), name: "log-smart-entry-copy")
+        // A capture that could not open automatically shows up in Log only.
+        model.pendingLockedCaptureCount = 1
+        await capture(MainTabView(initialReportingSnapshot: snapshot, initialSection: .log).environment(model)
+            .environment(MoneyUpOverviewNavigation()).preferredColorScheme(.light), name: "log-pending-capture-banner")
+        await capture(MainTabView(initialReportingSnapshot: snapshot, initialSection: .history).environment(model)
+            .environment(MoneyUpOverviewNavigation()).preferredColorScheme(.light), name: "history-never-shows-captures")
+        model.pendingLockedCaptureCount = 0
 
         // Recent-entry capsules, rendered directly so the evidence does not
         // depend on the debounced lookup finishing inside the capture window.
