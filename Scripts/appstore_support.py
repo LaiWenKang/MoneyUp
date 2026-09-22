@@ -122,5 +122,5 @@ def prepare_support(client, app, config, root):
             client.request("POST", "/v1/inAppPurchaseVersions", resource("inAppPurchaseVersions",
                 relationships={"inAppPurchase": ("inAppPurchases", iid)}))
         pricing[product["productId"]] = verify_price(client, iid, base_territory, product["basePrice"])
-    return {"support_products": support_products(client, app["id"]), "pricing": pricing, "agreements_accepted": False,
+    return {"support_products": support_products(client, app["id"]), "pricing": pricing, "agreements_inspected": False,
             "note": "Paid Apps Agreement, banking and tax setup remain Account Holder responsibilities."}

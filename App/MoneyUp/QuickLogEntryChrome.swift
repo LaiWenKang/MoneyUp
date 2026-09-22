@@ -127,4 +127,79 @@ extension QuickLogEntryView {
                 )
             )
     }
+
+    /// A capture made while locked that could not open automatically because
+    /// this form already holds typed input. One line, two actions, gone the
+    /// moment it is opened or discarded. It never appears anywhere else.
+    var pendingCaptureBanner: some View {
+        PendingCaptureBanner(
+            count: model.pendingLockedCaptureCount,
+            isBusy: isSaving || isClearingDraft || model.isWorking,
+            open: { Task { await openPendingCapture() } },
+            discard: { Task { await discardPendingCaptures() } }
+        )
+    }
+
+    @MainActor
+    func openPendingCapture() async {
+        do { try await model.reviewPendingLockedCapturesForBackup() }
+        catch { errorMessage = safeUserMessage(for: error, context: .save) }
+    }
+
+    @MainActor
+    func discardPendingCaptures() async {
+        do { try await model.discardPendingLockedCaptures() }
+        catch { errorMessage = safeUserMessage(for: error, context: .save) }
+    }
+}
+
+/// A concrete view type keeps SwiftUI's value copying simple for a banner
+/// that carries its own confirmation dialog.
+struct PendingCaptureBanner: View {
+    let count: Int
+    let isBusy: Bool
+    let open: () -> Void
+    let discard: () -> Void
+    @State private var isConfirmingDiscard = false
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "tray.and.arrow.down.fill")
+                .foregroundStyle(Color.moneyUpWarning)
+            Text(String(format: AppLocalization.string("capture.waiting_format"), count))
+                .font(.subheadline.weight(.medium))
+                .lineLimit(1)
+                .layoutPriority(1)
+            Spacer(minLength: 8)
+            Button("backup.review_pending_captures", action: open)
+                .fontWeight(.semibold)
+                .disabled(isBusy)
+                .accessibilityIdentifier("log-open-pending-capture")
+            Button {
+                isConfirmingDiscard = true
+            } label: {
+                Image(systemName: "trash")
+                    .frame(minWidth: 44, minHeight: 44)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.red)
+            .accessibilityLabel("capture.discard_pending")
+            .accessibilityIdentifier("log-discard-pending-captures")
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
+        .padding(.horizontal, 12)
+        .padding(.bottom, 4)
+        .confirmationDialog(
+            "capture.discard_pending",
+            isPresented: $isConfirmingDiscard,
+            titleVisibility: .visible
+        ) {
+            Button("capture.discard_pending", role: .destructive, action: discard)
+            Button("action.cancel", role: .cancel) {}
+        } message: {
+            Text("capture.discard_pending_detail")
+        }
+    }
 }

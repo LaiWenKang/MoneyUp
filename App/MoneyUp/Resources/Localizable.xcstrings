@@ -495,6 +495,7 @@
     "today.hero.today_share" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Today"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"今天"}}}},
     "recovery.issues_title" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Recovery notes"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"恢复记录"}}}},
     "recovery.issues_detail" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Redacted codes for anything MoneyUp could not finish, such as a locked capture that could not be handed to Log. Nothing here contains amounts or names."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"MoneyUp 未能完成事项的脱敏代码，例如未能交给记账页的锁定记录。此处不含金额或名称。"}}}},
+    "capture.waiting_format" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"%d from lock screen"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"锁屏记录 %d 条"}}}},
     "intelligence.title" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Private insights"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"私密洞察"}}}},
     "intelligence.summary.unavailable" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Insights are temporarily unavailable"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"洞察暂时不可用"}}}},
     "intelligence.summary.refreshing" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Reviewing your encrypted book…"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"正在分析你的加密账簿…"}}}},
