@@ -500,11 +500,12 @@ struct HistoryView: View {
                             .padding(.vertical, 16)
                             .listRowBackground(Color.clear)
                         } else {
-                            ContentUnavailableView {
-                                Label(unavailableTitle, systemImage: "line.3.horizontal.decrease.circle")
-                            } description: {
-                                Text(unavailableDetail)
-                            } actions: {
+                            MoneyUpStatePlaceholder(
+                                systemImage: "line.3.horizontal.decrease.circle",
+                                tint: .secondary,
+                                title: Text(unavailableTitle),
+                                detail: Text(unavailableDetail)
+                            ) {
                                 Button("history.clear_filters") { clearHistoryFilters() }
                                     .buttonStyle(.bordered)
                             }
@@ -1064,8 +1065,17 @@ struct PendingCaptureHistorySection: View {
     @State private var isReviewing = false
     @State private var errorMessage: String?
 
+    /// A draft record exists as soon as Log has been opened once; only a
+    /// locked capture or a draft with real user input is unfinished work.
+    nonisolated static func isVisible(pendingLockedCaptureCount: Int, draft: QuickLogDraft?) -> Bool {
+        pendingLockedCaptureCount > 0 || draft?.hasUserEdits == true
+    }
+
     var body: some View {
-        if model.pendingLockedCaptureCount > 0 || model.quickLogDraft != nil {
+        if Self.isVisible(
+            pendingLockedCaptureCount: model.pendingLockedCaptureCount,
+            draft: model.quickLogDraft
+        ) {
             Section("capture.review_title") {
                 Text("capture.review_detail").font(.caption).foregroundStyle(.secondary)
                 Button("backup.review_pending_captures") {

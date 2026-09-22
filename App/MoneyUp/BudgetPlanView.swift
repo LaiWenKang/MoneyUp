@@ -196,8 +196,11 @@ struct BudgetPlanView: View {
         }
         if outline.isEmpty {
             Section {
-                ContentUnavailableView("plan.empty", systemImage: "square.grid.2x2")
-                Button("category.add") { isAddingCategory = true }
+                MoneyUpStatePlaceholder(systemImage: "square.grid.2x2", title: "plan.empty") {
+                    Button("category.add") { isAddingCategory = true }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.moneyUpAction)
+                }
             }
         }
     }
@@ -402,7 +405,7 @@ struct BudgetSpendingHistoryView: View {
                     childAllocation: progress.childAllocation)
             }
         } else {
-            ContentUnavailableView("history.no_results", systemImage: "square.grid.2x2")
+            MoneyUpStatePlaceholder(systemImage: "square.grid.2x2", tint: .secondary, title: "history.no_results")
         }
     }
 }

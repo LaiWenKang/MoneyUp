@@ -291,6 +291,12 @@ state changes only after that call succeeds and the captured store generation
 is still current. Cancellation, rollback, and quarantine therefore retain the
 same durable boundary and ordering as before decomposition.
 
+Build 1059.1 adds `reviewedIntelligenceFindingIDs` to that record: a bounded
+(400, newest kept) list of review keys for private-insight findings the user
+has marked as reviewed. Recurring-series findings key on the series, price
+increases on series plus stepped amount, other findings on their detector
+identifier. Legacy profiles decode as empty and an empty list is not written.
+
 Settings continue to use the single primary `UserProfile` record. A FIFO
 mutation lane re-reads the latest committed profile for each queued change; it
 does not introduce an event log or new representation. A failed candidate is

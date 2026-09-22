@@ -121,6 +121,37 @@ final class TransactionPreparationTests: XCTestCase {
         XCTAssertTrue(restored.hasUserEdits)
     }
 
+    /// Every quick action and kind-segment tap records the kind as a manual
+    /// smart-entry field. That is routing, not content: it must never make an
+    /// empty Log form count as an unfinished entry (build 1059.1 feedback).
+    func testChoosingOnlyTheEntryKindIsNotAnUnfinishedEntry() throws {
+        var entry = draft(amount: "")
+        entry.smartState.edited(.kind)
+        XCTAssertFalse(entry.hasUserEdits)
+        XCTAssertFalse(entry.hasTransactionContent)
+        XCTAssertFalse(PendingCaptureHistorySection.isVisible(
+            pendingLockedCaptureCount: 0, draft: entry
+        ))
+        XCTAssertTrue(PendingCaptureHistorySection.isVisible(
+            pendingLockedCaptureCount: 1, draft: entry
+        ))
+        entry.smartState.edited(.payee)
+        XCTAssertTrue(entry.hasUserEdits, "Other manual fields still protect the draft")
+        var typed = draft(amount: "4")
+        typed.smartState.edited(.kind)
+        XCTAssertTrue(typed.hasUserEdits)
+        XCTAssertTrue(PendingCaptureHistorySection.isVisible(
+            pendingLockedCaptureCount: 0, draft: typed
+        ))
+        // A blank draft record exists as soon as Log has been opened once.
+        XCTAssertFalse(PendingCaptureHistorySection.isVisible(
+            pendingLockedCaptureCount: 0, draft: draft(amount: "")
+        ))
+        XCTAssertFalse(PendingCaptureHistorySection.isVisible(
+            pendingLockedCaptureCount: 0, draft: nil
+        ))
+    }
+
     private func draft(amount: String) -> QuickLogDraft {
         QuickLogDraft(kind: .expense, amountText: amount, destinationAmountText: "",
             accountID: nil, destinationAccountID: nil, categoryID: nil,

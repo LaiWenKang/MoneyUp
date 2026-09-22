@@ -602,7 +602,7 @@ struct AccountSpendingHistoryView: View {
             }
             .sheet(isPresented: $isEditing) { AccountManagementSheet(account: account) }
         } else {
-            ContentUnavailableView("history.no_results", systemImage: "wallet.bifold")
+            MoneyUpStatePlaceholder(systemImage: "wallet.bifold", tint: .secondary, title: "history.no_results")
         }
     }
 }

@@ -15,8 +15,109 @@ struct WidgetIntelligencePublicationState {
 extension AppModel {
     static let maximumIntelligenceHistoryReviewCount = 100
 
+    /// Findings that still need the user's attention: not already covered by
+    /// a schedule and not explicitly marked as reviewed.
     var intelligenceFindings: [IntelligenceFinding] {
-        intelligenceService.findings.filter { !isCoveredByExistingSchedule($0) }
+        let reviewed = reviewedIntelligenceFindingIDs
+        return intelligenceService.findings.filter {
+            !Self.isReviewed($0, in: reviewed) && !isCoveredByExistingSchedule($0)
+        }
+    }
+
+    /// Current findings the user has already reviewed. They stay available so
+    /// a dismissal can be undone; they never count toward attention badges.
+    var reviewedIntelligenceFindings: [IntelligenceFinding] {
+        let reviewed = reviewedIntelligenceFindingIDs
+        guard !reviewed.isEmpty else { return [] }
+        return intelligenceService.findings.filter {
+            Self.isReviewed($0, in: reviewed) && !isCoveredByExistingSchedule($0)
+        }
+    }
+
+    var reviewedIntelligenceFindingIDs: Set<String> {
+        Set(profile?.reviewedIntelligenceFindingIDs ?? [])
+    }
+
+    func isIntelligenceFindingReviewed(_ id: String) -> Bool {
+        let reviewed = reviewedIntelligenceFindingIDs
+        guard let finding = intelligenceService.findings.first(where: { $0.id == id }) else {
+            return reviewed.contains(id)
+        }
+        return Self.isReviewed(finding, in: reviewed)
+    }
+
+    private static func isReviewed(_ finding: IntelligenceFinding, in reviewed: Set<String>) -> Bool {
+        reviewed.contains(intelligenceReviewKey(for: finding)) || reviewed.contains(finding.id)
+    }
+
+    /// What "reviewed" attaches to. Detector identifiers for a recurring
+    /// series are keyed on the newest occurrence, so the same subscription
+    /// would resurface as a "new" finding every time it was paid. Reviewing a
+    /// series therefore keys on the series itself; a price increase also keys
+    /// on the stepped amount so a further increase is shown again. Duplicate
+    /// and anomaly findings are already stable per entry.
+    static func intelligenceReviewKey(for finding: IntelligenceFinding) -> String {
+        switch (finding.kind, finding.route) {
+        case let (.recurrence, .scheduleOffer(offer)):
+            return "series:recurrence:\(offer.kind):\(offer.accountID.uuidString.lowercased()):"
+                + "\(offer.categoryID.uuidString.lowercased()):\(offer.payeeKey)"
+        case let (.lapsedSubscription, .history(entryIDs, _)):
+            guard let first = entryIDs.first else { return finding.id }
+            return "series:lapsed:\(first.uuidString.lowercased())"
+        case let (.priceIncrease, .history(entryIDs, _)):
+            guard let first = entryIDs.first else { return finding.id }
+            var key = "series:price:\(first.uuidString.lowercased())"
+            if let latest = finding.figures.first(where: { $0.labelKey == "intelligence.figure.latest" }),
+               case let .money(money) = latest.value {
+                key += ":\(money.amount):\(money.currency.value)"
+            }
+            return key
+        default:
+            return finding.id
+        }
+    }
+
+    private func reviewKey(forFindingID id: String) -> String {
+        intelligenceService.findings.first { $0.id == id }
+            .map(Self.intelligenceReviewKey(for:)) ?? id
+    }
+
+    /// Hides one finding after the user has looked at it. The stored key is
+    /// stable across refreshes, relaunches and backups of this book.
+    func markIntelligenceFindingReviewed(_ id: String) async throws {
+        guard state == .ready, profile != nil else { throw AppModelError.missingRecord }
+        guard !isIntelligenceFindingReviewed(id) else { return }
+        let key = reviewKey(forFindingID: id)
+        try await mutateProfile { profile in
+            profile.reviewedIntelligenceFindingIDs = UserProfile.normalizedReviewedFindingIDs(
+                profile.reviewedIntelligenceFindingIDs + [key]
+            )
+        }
+        refreshBudgetWidgetSnapshot()
+    }
+
+    /// Brings a reviewed finding back to the attention list.
+    func restoreIntelligenceFinding(_ id: String) async throws {
+        guard state == .ready, profile != nil else { throw AppModelError.missingRecord }
+        guard isIntelligenceFindingReviewed(id) else { return }
+        let key = reviewKey(forFindingID: id)
+        try await mutateProfile { profile in
+            profile.reviewedIntelligenceFindingIDs.removeAll { $0 == id || $0 == key }
+        }
+        refreshBudgetWidgetSnapshot()
+    }
+
+    /// Marks every currently visible finding as reviewed in one profile write.
+    func markAllIntelligenceFindingsReviewed() async throws {
+        guard state == .ready, profile != nil else { throw AppModelError.missingRecord }
+        let keys = intelligenceFindings.map(Self.intelligenceReviewKey(for:))
+        guard !keys.isEmpty else { return }
+        try await mutateProfile { profile in
+            profile.reviewedIntelligenceFindingIDs = UserProfile.normalizedReviewedFindingIDs(
+                profile.reviewedIntelligenceFindingIDs + keys
+            )
+        }
+        refreshBudgetWidgetSnapshot()
     }
 
     var isIntelligenceRefreshing: Bool {

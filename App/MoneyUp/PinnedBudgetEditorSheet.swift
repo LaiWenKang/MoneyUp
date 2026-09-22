@@ -21,10 +21,10 @@ struct PinnedBudgetEditorSheet: View {
             List {
                 Section {
                     if model.budgetNodeOutline.isEmpty {
-                        ContentUnavailableView(
-                            "today.pinned.needs_budget",
+                        MoneyUpStatePlaceholder(
                             systemImage: "chart.pie",
-                            description: Text("today.pinned.needs_budget_detail")
+                            title: "today.pinned.needs_budget",
+                            detail: "today.pinned.needs_budget_detail"
                         )
                     } else {
                         ForEach(model.budgetNodeOutline) { outlined in

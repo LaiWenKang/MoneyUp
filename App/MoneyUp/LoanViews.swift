@@ -57,10 +57,10 @@ struct LoanCenterView: View {
                 }
             }
             if model.loanPlans.isEmpty {
-                    ContentUnavailableView(
-                        "loan.empty",
-                        systemImage: "building.columns.fill",
-                    description: Text("loan.empty_detail")
+                MoneyUpStatePlaceholder(
+                    systemImage: "building.columns.fill",
+                    title: "loan.empty",
+                    detail: "loan.empty_detail"
                 )
             } else {
                 Section("loan.active") {

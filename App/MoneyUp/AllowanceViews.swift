@@ -8,10 +8,10 @@ struct AllowanceCenterView: View {
     var body: some View {
         List {
             if model.allowancePlans.filter({ !$0.isArchived }).isEmpty {
-                ContentUnavailableView(
-                    "allowance.empty",
+                MoneyUpStatePlaceholder(
                     systemImage: "fork.knife.circle",
-                    description: Text("allowance.empty_detail")
+                    title: "allowance.empty",
+                    detail: "allowance.empty_detail"
                 )
             } else {
                 Section("allowance.current") {

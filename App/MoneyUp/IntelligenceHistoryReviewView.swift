@@ -20,6 +20,7 @@ struct IntelligenceHistoryReviewView: View {
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var editingEntry: JournalEntry?
+    @State private var isMarkingReviewed = false
 
     var body: some View {
         NavigationStack {
@@ -74,8 +75,17 @@ struct IntelligenceHistoryReviewView: View {
             .moneyUpNavigationSurface()
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button("action.done") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        Task { await markReviewedAndDismiss() }
+                    } label: {
+                        Label("intelligence.mark_reviewed", systemImage: "checkmark")
+                    }
+                    .disabled(isMarkingReviewed || model.isIntelligenceFindingReviewed(selection.findingID))
+                    .accessibilityIdentifier("intelligence-history-mark-reviewed")
                 }
             }
             .task(id: model.logicalBookRevision) { await load() }
@@ -86,6 +96,19 @@ struct IntelligenceHistoryReviewView: View {
             .sheet(item: $editingEntry) { entry in
                 NavigationStack { TransactionEditView(entry: entry) }
             }
+        }
+    }
+
+    @MainActor
+    private func markReviewedAndDismiss() async {
+        guard !isMarkingReviewed else { return }
+        isMarkingReviewed = true
+        defer { isMarkingReviewed = false }
+        do {
+            try await model.markIntelligenceFindingReviewed(selection.findingID)
+            dismiss()
+        } catch {
+            errorMessage = safeUserMessage(for: error, context: .save)
         }
     }
 

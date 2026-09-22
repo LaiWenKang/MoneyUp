@@ -327,7 +327,8 @@ struct InsightsView: View {
             }
         }
         .chartYSelection(value: $selectedCategoryKey)
-        .frame(height: max(190, CGFloat(points.count) * 34))
+        // One readable row per category; a single category is a bar, not a slab.
+        .frame(height: CGFloat(points.count) * 44 + 28)
         .accessibilityLabel(Text("insights.category_chart"))
         .accessibilityHidden(hidesAmounts)
         .accessibilityValue(Text(categoryChartSummary(points)))

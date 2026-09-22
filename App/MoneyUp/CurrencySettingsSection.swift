@@ -45,15 +45,16 @@ struct CurrencySettingsSection: View {
     var body: some View {
         Section {
             if let baseCurrency {
-                LabeledContent("settings.base_currency") {
+                LabeledContent {
                     Text(currencyLabel(baseCurrency))
                         .foregroundStyle(.secondary)
+                } label: {
+                    Label("settings.base_currency", systemImage: "banknote")
                 }
                 .accessibilityElement(children: .combine)
             }
 
             Picker(
-                "settings.currency_display",
                 selection: Binding(
                     get: { selectedDisplay },
                     set: { display in
@@ -64,6 +65,8 @@ struct CurrencySettingsSection: View {
                 ForEach(MoneyCurrencyDisplay.allCases) { display in
                     Text(display.titleKey).tag(display)
                 }
+            } label: {
+                Label("settings.currency_display", systemImage: "textformat.123")
             }
             .accessibilityHint(selectedDisplay.detailKey)
             .moneyUpOperationErrorAlert(message: $errorMessage)

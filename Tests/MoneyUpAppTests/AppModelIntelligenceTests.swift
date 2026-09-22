@@ -108,6 +108,81 @@ final class AppModelIntelligenceTests: XCTestCase {
     }
 
     @MainActor
+    func testReviewedFindingStaysHiddenAcrossRefreshAndReload() async throws {
+        let fixture = try IntelligenceAppFixture()
+        defer { fixture.removeFiles() }
+        let profile = fixture.profile()
+        let dates = fixture.weeklyDates
+        let entries = try fixture.expenses(dates: dates, amount: 8, payee: "Weekly Cafe")
+        try await fixture.seed(profile: profile, entries: entries)
+        let currentDate = dates[3].addingTimeInterval(86_400)
+        let model = fixture.model(profile: profile, currentDate: { currentDate })
+
+        model.refreshIntelligence()
+        await model.waitForCurrentIntelligenceRefresh()
+        let finding = try XCTUnwrap(model.intelligenceFindings.first { $0.kind == .recurrence })
+        XCTAssertTrue(model.reviewedIntelligenceFindings.isEmpty)
+
+        try await model.markIntelligenceFindingReviewed(finding.id)
+        XCTAssertFalse(model.intelligenceFindings.contains { $0.id == finding.id })
+        XCTAssertEqual(model.reviewedIntelligenceFindings.map(\.id), [finding.id])
+        XCTAssertTrue(model.isIntelligenceFindingReviewed(finding.id))
+
+        // Re-running the analysis produces the same stable identifier and
+        // must not bring the reviewed finding back.
+        model.refreshIntelligence()
+        await model.waitForCurrentIntelligenceRefresh()
+        XCTAssertFalse(model.intelligenceFindings.contains { $0.id == finding.id })
+
+        // The next payment changes the detector identifier (it is keyed on
+        // the newest occurrence). The reviewed series must stay quiet.
+        let nextPayment = try fixture.expenses(
+            dates: [dates[3].addingTimeInterval(7 * 86_400)], amount: 8, payee: "Weekly Cafe"
+        )
+        try await fixture.store.write(nextPayment.map {
+            try RecordWrite($0, id: $0.id.uuidString, in: .journalEntries)
+        })
+        let laterDate = dates[3].addingTimeInterval(8 * 86_400)
+        let later = fixture.model(profile: try XCTUnwrap(model.profile), currentDate: { laterDate })
+        later.refreshIntelligence()
+        await later.waitForCurrentIntelligenceRefresh()
+        let renewed = try XCTUnwrap(later.reviewedIntelligenceFindings.first { $0.kind == .recurrence })
+        XCTAssertNotEqual(renewed.id, finding.id, "A new occurrence produces a new detector id")
+        XCTAssertFalse(later.intelligenceFindings.contains { $0.kind == .recurrence })
+        XCTAssertEqual(
+            AppModel.intelligenceReviewKey(for: renewed),
+            AppModel.intelligenceReviewKey(for: finding)
+        )
+
+        let persisted = try await fixture.store.fetch(
+            UserProfile.self, id: UserProfile.primaryRecordID, from: .profile
+        )
+        XCTAssertEqual(persisted?.reviewedIntelligenceFindingIDs, [AppModel.intelligenceReviewKey(for: finding)])
+
+        // A fresh model over the same book (relaunch) honors the stored review.
+        let relaunched = fixture.model(
+            profile: try XCTUnwrap(persisted), currentDate: { currentDate }
+        )
+        relaunched.refreshIntelligence()
+        await relaunched.waitForCurrentIntelligenceRefresh()
+        XCTAssertFalse(relaunched.intelligenceFindings.contains { $0.id == finding.id })
+        XCTAssertEqual(relaunched.reviewedIntelligenceFindings.map(\.id), [finding.id])
+
+        try await relaunched.restoreIntelligenceFinding(finding.id)
+        XCTAssertTrue(relaunched.intelligenceFindings.contains { $0.id == finding.id })
+        XCTAssertTrue(relaunched.reviewedIntelligenceFindings.isEmpty)
+        let restored = try await fixture.store.fetch(
+            UserProfile.self, id: UserProfile.primaryRecordID, from: .profile
+        )
+        XCTAssertEqual(restored?.reviewedIntelligenceFindingIDs, [])
+
+        try await relaunched.markAllIntelligenceFindingsReviewed()
+        XCTAssertTrue(relaunched.intelligenceFindings.isEmpty)
+        XCTAssertFalse(relaunched.reviewedIntelligenceFindings.isEmpty)
+        await fixture.store.close()
+    }
+
+    @MainActor
     func testMonthEndProjectionSeparatesCurrenciesAndConfirmedSchedules() async throws {
         let fixture = try IntelligenceAppFixture()
         defer { fixture.removeFiles() }
@@ -304,7 +379,7 @@ final class AppModelIntelligenceTests: XCTestCase {
 
 }
 
-private struct IntelligenceAppFixture {
+struct IntelligenceAppFixture {
     let directoryURL: URL
     let store: EncryptedRecordStore
     let currency: CurrencyCode

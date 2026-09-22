@@ -1,4 +1,3 @@
-import Charts
 import MoneyUpCore
 import SwiftUI
 
@@ -30,29 +29,54 @@ struct MoneyUpProgressDial: View {
 /// Actual, signed flows share a zero baseline. Refunds and negative corrections
 /// stay negative; currencies are never merged to make a prettier chart.
 struct MoneyUpCashFlowGraphic: View {
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let income: Money
     let expense: Money
 
+    /// Two labeled, same-scale bars. A zero flow keeps its row so the pair is
+    /// always comparable; the exact amounts are listed by the caller, so the
+    /// graphic itself is decorative for assistive technology.
     var body: some View {
-        if !dynamicTypeSize.isAccessibilitySize, income.currency == expense.currency, !income.isZero || !expense.isZero {
-            Chart {
-                BarMark(
-                    x: .value(AppLocalization.string("chart.dimension.amount"), NSDecimalNumber(decimal: income.amount).doubleValue),
-                    y: .value(AppLocalization.string("chart.dimension.category"), AppLocalization.string("transaction.income"))
-                ).foregroundStyle(MoneyUpChartPalette.income)
-                BarMark(
-                    x: .value(AppLocalization.string("chart.dimension.amount"), NSDecimalNumber(decimal: expense.amount).doubleValue),
-                    y: .value(AppLocalization.string("chart.dimension.category"), AppLocalization.string("transaction.expense"))
-                ).foregroundStyle(MoneyUpChartPalette.expense)
-                RuleMark(x: .value(AppLocalization.string("chart.dimension.amount"), 0))
-                    .foregroundStyle(Color.primary.opacity(0.5))
+        if income.currency == expense.currency, !income.isZero || !expense.isZero {
+            VStack(alignment: .leading, spacing: 6) {
+                flowRow("transaction.income", amount: income.amount, color: MoneyUpChartPalette.income)
+                flowRow("transaction.expense", amount: expense.amount, color: MoneyUpChartPalette.expense)
             }
-            .chartXAxis(.hidden)
-            .chartYAxis(.automatic)
-            .frame(height: 52)
             .accessibilityHidden(true)
             .allowsHitTesting(false)
+        }
+    }
+
+    private var scale: Double {
+        let largest = max(abs(income.amount), abs(expense.amount))
+        return NSDecimalNumber(decimal: largest).doubleValue
+    }
+
+    private func fraction(_ amount: Decimal) -> CGFloat {
+        guard scale > 0 else { return 0 }
+        let value = NSDecimalNumber(decimal: abs(amount)).doubleValue / scale
+        return CGFloat(min(max(value, 0), 1))
+    }
+
+    private func flowRow(_ title: LocalizedStringKey, amount: Decimal, color: Color) -> some View {
+        HStack(spacing: 8) {
+            Circle().fill(color).frame(width: 8, height: 8)
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+                .layoutPriority(1)
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(color.opacity(0.14))
+                    if amount != .zero {
+                        Capsule()
+                            .fill(color)
+                            .frame(width: max(proxy.size.width * fraction(amount), 4))
+                    }
+                }
+            }
+            .frame(height: 10)
         }
     }
 }

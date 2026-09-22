@@ -150,6 +150,48 @@ final class UserProfileMigrationTests: XCTestCase {
         XCTAssertEqual(decoded.pinnedBudgetNodeIDs, pins)
     }
 
+    func testReviewedInsightIDsRoundTripAndLegacyProfilesDecodeEmpty() throws {
+        let profile = UserProfile(
+            baseCurrency: try CurrencyCode("SGD"),
+            reviewedIntelligenceFindingIDs: ["recurrence:a", " duplicate:b:c ", "", "recurrence:a"]
+        )
+        // A repeated review moves the identifier to the newest position.
+        XCTAssertEqual(profile.reviewedIntelligenceFindingIDs, ["duplicate:b:c", "recurrence:a"])
+        let encoded = try JSONEncoder().encode(profile)
+        let decoded = try JSONDecoder().decode(UserProfile.self, from: encoded)
+        XCTAssertEqual(decoded, profile)
+
+        var object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+        )
+        object.removeValue(forKey: "reviewedIntelligenceFindingIDs")
+        let legacy = try JSONDecoder().decode(
+            UserProfile.self,
+            from: try JSONSerialization.data(withJSONObject: object)
+        )
+        XCTAssertTrue(legacy.reviewedIntelligenceFindingIDs.isEmpty)
+        // An empty list is not written, so untouched books keep their exact shape.
+        let plain = UserProfile(baseCurrency: try CurrencyCode("SGD"))
+        let plainObject = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: try JSONEncoder().encode(plain)) as? [String: Any]
+        )
+        XCTAssertNil(plainObject["reviewedIntelligenceFindingIDs"])
+    }
+
+    func testReviewedInsightIDsKeepTheNewestWithinTheBound() throws {
+        let limit = UserProfile.maximumReviewedIntelligenceFindingIDs
+        let ids = (0..<(limit + 25)).map { "finding:\($0)" }
+        let normalized = UserProfile.normalizedReviewedFindingIDs(ids)
+        XCTAssertEqual(normalized.count, limit)
+        XCTAssertEqual(normalized.first, "finding:25")
+        XCTAssertEqual(normalized.last, "finding:\(limit + 24)")
+        // A repeat keeps its newest position so re-reviewing refreshes it.
+        XCTAssertEqual(
+            UserProfile.normalizedReviewedFindingIDs(["a", "b", "a"]),
+            ["b", "a"]
+        )
+    }
+
     func testPinnedCategoriesKeepChosenOrderWhileDroppingRepeatsAndOverflow() throws {
         let unique = (0..<UserProfile.maximumPinnedBudgetNodes).map { _ in UUID() }
         let overflowing = [unique[0]] + unique + [UUID()]

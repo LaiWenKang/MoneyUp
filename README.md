@@ -31,6 +31,10 @@ Build 1039 feedback now has a source follow-up: bounded navigation backgrounds,
 horizontally expanding selected sections, denser History and Budget layouts,
 allowances in Assets, useful widget capture fallbacks, and draft-safe editors.
 See [feedback implementation and verification](docs/FEEDBACK_1039_REVIEW.md).
+Build 1059.1 feedback makes private insights dismissible with a persisted
+reviewed state, stops a blank Log visit from counting as an unfinished entry,
+and introduces one shared empty/loading/error state language across screens.
+See [1059.1 feedback review](docs/FEEDBACK_1059_REVIEW.md).
 The app-wide follow-up adds exact goal contribution previews, snapshot-history
 charts, Log direction graphics, further draft/keyboard fixes, and explicit
 Smart Overview cold routing. See [app-wide review and evidence](docs/APPWIDE_EXPERIENCE_REVIEW.md).

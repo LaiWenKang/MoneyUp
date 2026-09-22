@@ -117,11 +117,12 @@ struct DataSafetyView: View {
                 }
             } else if !hasCreatedPortableBackup {
                 Section {
-                    Label(
-                        "backup.first_reminder",
-                        systemImage: "externaldrive.badge.exclamationmark"
+                    MoneyUpStatePlaceholder(
+                        systemImage: "externaldrive.badge.exclamationmark",
+                        tint: Color.moneyUpWarning,
+                        title: "backup.first_reminder_title",
+                        detail: "backup.first_reminder"
                     )
-                    .foregroundStyle(Color.moneyUpWarning)
                 }
             }
 
