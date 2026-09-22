@@ -1,0 +1,34 @@
+{
+  "groups": [
+    {
+      "internal": true,
+      "testers": 3,
+      "assigned": true
+    },
+    {
+      "internal": false,
+      "testers": 2,
+      "assigned": false
+    }
+  ],
+  "testers": 4,
+  "covered_testers": 3,
+  "tester_states": {
+    "INSTALLED": 3,
+    "INVITED": 1
+  },
+  "internal_state": "IN_BETA_TESTING",
+  "external_state": "READY_FOR_BETA_SUBMISSION",
+  "auto_notify": true,
+  "processing_state": "VALID",
+  "compliance": {
+    "uses_non_exempt_encryption": false,
+    "declaration": null
+  },
+  "availability": {
+    "france_available": false,
+    "future_countries_enabled": false
+  },
+  "version": "0.7.2",
+  "build": "1061.1"
+}
