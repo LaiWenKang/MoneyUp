@@ -126,6 +126,18 @@ struct DataSafetyView: View {
                 }
             }
 
+            if !model.recoveryIssues.isEmpty {
+                Section {
+                    ForEach(model.recoveryIssues, id: \.self) { issue in
+                        Label(issue, systemImage: "exclamationmark.triangle")
+                            .font(.footnote.monospaced())
+                            .foregroundStyle(.secondary)
+                    }
+                } header: {
+                    MoneyUpSectionHeader("recovery.issues_title", explanation: "recovery.issues_detail")
+                }
+            }
+
             if model.lockedCaptureInboxIsUnrecoverable {
                 Section {
                     Label(

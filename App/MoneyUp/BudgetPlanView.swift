@@ -196,7 +196,7 @@ struct BudgetPlanView: View {
         }
         if outline.isEmpty {
             Section {
-                MoneyUpStatePlaceholder(systemImage: "square.grid.2x2", title: "plan.empty") {
+                MoneyUpStatePlaceholder(systemImage: "square.grid.2x2", title: "plan.empty", illustration: "MoneyUpScenarioStudio") {
                     Button("category.add") { isAddingCategory = true }
                         .buttonStyle(.borderedProminent)
                         .tint(.moneyUpAction)

@@ -211,6 +211,34 @@ def prepare(client, app, build, config, root):
             "screenshots": uploaded, "previews": previews, "release_type": config["releaseType"], "prepared": True}
 
 
+REVIEW_QUEUE_STATES = {"WAITING_FOR_REVIEW", "IN_REVIEW"}
+
+
+def withdraw(client, app, config):
+    """Cancel the pending review submission for the reviewed version.
+
+    Apple only lets a version's build change while the version is editable, so
+    replacing a build under review means leaving the queue first. This never
+    deletes the version, its metadata, media or the build; it only flips the
+    open review submission to cancelled and reports the resulting state.
+    """
+    version = one([v for v in app_versions(client, app["id"])
+                   if v["attributes"]["versionString"] == config["version"]], "target version")
+    if state(version) not in REVIEW_QUEUE_STATES:
+        return {"version": config["version"], "state": state(version), "withdrawn_now": False}
+    submissions = client.all(f'/v1/apps/{app["id"]}/reviewSubmissions?limit=200')
+    pending = [r for r in submissions if r["attributes"]["state"] in REVIEW_QUEUE_STATES]
+    submission = one(pending, "pending review submission")
+    sid = submission["id"]
+    client.request("PATCH", f"/v1/reviewSubmissions/{sid}", resource("reviewSubmissions", {"canceled": True}, identifier=sid))
+    result = client.request("GET", f"/v1/reviewSubmissions/{sid}")["data"]
+    refreshed = one([v for v in app_versions(client, app["id"])
+                     if v["attributes"]["versionString"] == config["version"]], "target version")
+    return {"version": config["version"], "submission_id": sid,
+            "submission_state": result["attributes"]["state"], "state": state(refreshed),
+            "withdrawn_now": result["attributes"]["state"] in {"CANCELING", "CANCELED", "UNRESOLVED_ISSUES"}}
+
+
 def submit(client, app, build, config, root):
     manifests = validate_config(config, root)
     version = one([v for v in app_versions(client, app["id"])
@@ -269,7 +297,7 @@ def submit(client, app, build, config, root):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--operation", choices=["inspect", "prepare-support", "prepare", "submit"], default="inspect")
+    parser.add_argument("--operation", choices=["inspect", "prepare-support", "prepare", "withdraw", "submit"], default="inspect")
     parser.add_argument("--build")
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--receipt", type=Path, required=True)
@@ -295,6 +323,8 @@ def main():
             result = inspect(client, app, config["version"])
         elif args.operation == "prepare-support":
             result = prepare_support(client, app, config, root)
+        elif args.operation == "withdraw":
+            result = withdraw(client, app, config)
         else:
             target_app, build = locate(client, config["version"], args.build)
             if target_app["id"] != app["id"]:

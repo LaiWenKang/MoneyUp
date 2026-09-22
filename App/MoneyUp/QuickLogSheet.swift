@@ -452,6 +452,7 @@ struct QuickLogEntryView: View {
     @State var historyPreloads: [HistoryPreloadSuggestion] = []
     @State var isEnteringManualRate = false
     @State var isConvertingCurrency = false
+    @State var lastSavedAmountLabel: String?
     @State var captureSuggestionResult: CaptureSuggestionResult?
     @State var captureSuggestionTask: Task<Void, Never>?
     @State var captureSuggestionGeneration = 0

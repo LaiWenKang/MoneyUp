@@ -130,12 +130,19 @@ def locate(client, version: str, build_number: str):
     app = one(client.all(query("/v1/apps", **{"filter[bundleId]": BUNDLE, "limit": 2})), "MoneyUp app")
     if app["attributes"]["bundleId"] != BUNDLE:
         raise ValueError("App identity mismatch")
-    builds = client.all(query("/v1/builds", **{"filter[app]": app["id"], "filter[version]": build_number, "limit": 200}))
-    matching = []
-    for build in builds:
-        release = client.request("GET", f'/v1/builds/{build["id"]}/preReleaseVersion')["data"]
-        if release["attributes"]["version"] == version and release["attributes"]["platform"] == "IOS":
-            matching.append(build)
+    # Apple publishes an uploaded build to the API only after processing, which
+    # takes several minutes. Callers may allow a bounded wait instead of failing.
+    deadline = time.monotonic() + max(0, int(os.environ.get("MONEYUP_BUILD_WAIT_SECONDS", "0")))
+    while True:
+        builds = client.all(query("/v1/builds", **{"filter[app]": app["id"], "filter[version]": build_number, "limit": 200}))
+        matching = []
+        for build in builds:
+            release = client.request("GET", f'/v1/builds/{build["id"]}/preReleaseVersion')["data"]
+            if release["attributes"]["version"] == version and release["attributes"]["platform"] == "IOS":
+                matching.append(build)
+        if matching or time.monotonic() >= deadline:
+            break
+        time.sleep(30)
     build = one(matching, "matching iOS build")
     if build["attributes"]["version"] != build_number:
         raise ValueError("Build identity mismatch")

@@ -4,7 +4,7 @@ on:
     inputs:
       operation:
         type: choice
-        options: [inspect, prepare-support, prepare, submit]
+        options: [inspect, prepare-support, prepare, withdraw, submit]
         default: inspect
         required: true
       build:
@@ -15,7 +15,7 @@ on:
         type: string
         required: true
       confirmation:
-        description: Type PREPARE_PUBLIC or SUBMIT_PUBLIC for writes
+        description: Type PREPARE_PUBLIC, WITHDRAW_PUBLIC or SUBMIT_PUBLIC for writes
         type: string
 permissions:
   contents: read
@@ -42,6 +42,7 @@ jobs:
           case "$OPERATION" in
             inspect) ;;
             prepare|prepare-support) test "$CONFIRMATION" = PREPARE_PUBLIC ;;
+            withdraw) test "$CONFIRMATION" = WITHDRAW_PUBLIC ;;
             submit) test "$CONFIRMATION" = SUBMIT_PUBLIC ;;
             *) exit 1 ;;
           esac

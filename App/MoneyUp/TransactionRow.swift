@@ -166,13 +166,32 @@ struct TransactionRow: View {
         .accessibilityValue(accessibilityValue)
     }
 
+    /// The kind glyph carries a small, stable category tint so a day of
+    /// rows can be scanned by colour before reading a single label.
     private var transactionIcon: some View {
         Image(systemName: icon)
             .foregroundStyle(iconColor)
             .frame(width: 34, height: 34)
             .background(iconColor.opacity(0.11))
             .clipShape(Circle())
+            .overlay(alignment: .bottomTrailing) {
+                if let tint = categoryTint {
+                    Circle()
+                        .fill(tint)
+                        .frame(width: 9, height: 9)
+                        .overlay(Circle().stroke(Color.moneyUpSurfaceElevated, lineWidth: 1.5))
+                }
+            }
             .accessibilityHidden(true)
+    }
+
+    private var categoryTint: Color? {
+        guard let categoryID = entry.postings.lazy.compactMap({ posting -> UUID? in
+            let account = model.accountsByID[posting.accountID]
+            return account?.kind == .expense || account?.kind == .income ? posting.accountID : nil
+        }).first else { return nil }
+        let hash = categoryID.uuidString.unicodeScalars.reduce(0) { ($0 &* 31 &+ Int($1.value)) & 0xFFFF }
+        return MoneyUpChartPalette.color(at: hash % 6)
     }
 
     private var transactionMetadata: some View {

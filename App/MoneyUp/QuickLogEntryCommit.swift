@@ -185,6 +185,12 @@ extension QuickLogEntryView {
     /// category, transaction kind, and transfer destination remain selected so
     /// the next routine entry takes only an amount and a tap on Save.
     func completeSuccessfulSave(entryID: UUID?) {
+        // Remember what was just posted so the confirmation names the money,
+        // not just the fact. Masked when exact amounts are hidden.
+        let trimmedAmount = amountText.trimmingCharacters(in: .whitespacesAndNewlines)
+        lastSavedAmountLabel = (selectedAccountCurrency.map(\.value)).flatMap { code in
+            trimmedAmount.isEmpty ? nil : code + " " + MoneyAmountPrivacy.protected(trimmedAmount)
+        }
         batch = nil
         pendingBatchRemoval = nil
         cancelSmartParsing()

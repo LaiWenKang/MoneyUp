@@ -101,6 +101,7 @@ jobs:
           REFERENCE_BUILD: ${{ inputs.reference_build }}
           REFERENCE_VERSION: ${{ inputs.reference_version }}
           ENCRYPTION_UNCHANGED: ${{ inputs.encryption_unchanged }}
+          MONEYUP_BUILD_WAIT_SECONDS: ${{ inputs.operation == 'inspect' && '0' || '600' }}
         run: |
           set -euo pipefail
           arguments=(--build "$BUILD" --version "$VERSION" --receipt testflight-distribution-receipt.json)
