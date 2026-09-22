@@ -54,9 +54,7 @@ struct ExchangeRatesView: View {
                     }
                 }
             } header: {
-                Text("fx.saved_rates")
-            } footer: {
-                MoneyUpExplainer("fx.estimated_detail")
+                MoneyUpSectionHeader("fx.saved_rates", explanation: "fx.estimated_detail")
             }
 
         }

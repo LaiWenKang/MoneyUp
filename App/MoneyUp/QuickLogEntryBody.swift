@@ -63,9 +63,7 @@ extension QuickLogEntryView {
                     .id(QuickLogFieldFocus.note)
                     .accessibilityIdentifier("quick-log-note")
                 } header: {
-                    Text("transaction.details")
-                } footer: {
-                    MoneyUpExplainer("transaction.details_help")
+                    MoneyUpSectionHeader("transaction.details", explanation: "transaction.details_help")
                 }
 
                 Section {
@@ -424,6 +422,7 @@ extension QuickLogEntryView {
             .scrollDismissesKeyboard(.interactively)
             .contentMargins(.bottom, focusedField == nil ? 72 : 200, for: .scrollContent)
             .sheet(isPresented: $isEnteringManualRate) { manualTransferRateSheet }
+            .sheet(isPresented: $isConvertingCurrency) { currencyConversionSheet }
             .sheet(isPresented: $isAddingAccount, onDismiss: {
                 selectDefaults()
                 if isActive { focusedField = .amount }

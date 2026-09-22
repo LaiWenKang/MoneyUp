@@ -26,9 +26,7 @@ struct AssetAllowancesSection: View {
                 }
             }
         } header: {
-            Text("allowance.title")
-        } footer: {
-            MoneyUpExplainer("allowance.assets_detail")
+            MoneyUpSectionHeader("allowance.title", explanation: "allowance.assets_detail")
         }
         .sheet(isPresented: $isAdding) { AllowanceEditorSheet(plan: nil) }
     }

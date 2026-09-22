@@ -87,9 +87,7 @@ struct CurrencySettingsSection: View {
                 Label("fx.title", systemImage: "arrow.left.arrow.right.circle")
             }
         } header: {
-            Text("settings.currency_section")
-        } footer: {
-            MoneyUpExplainer("settings.currency_section_detail")
+            MoneyUpSectionHeader("settings.currency_section", explanation: "settings.currency_section_detail")
         }
     }
 

@@ -451,6 +451,7 @@ struct QuickLogEntryView: View {
     @State var historyPreloadBookRevision: UInt64?
     @State var historyPreloads: [HistoryPreloadSuggestion] = []
     @State var isEnteringManualRate = false
+    @State var isConvertingCurrency = false
     @State var captureSuggestionResult: CaptureSuggestionResult?
     @State var captureSuggestionTask: Task<Void, Never>?
     @State var captureSuggestionGeneration = 0

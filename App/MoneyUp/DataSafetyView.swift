@@ -315,9 +315,7 @@ struct DataSafetyView: View {
                 }
                 .disabled(isWorking)
                 } header: {
-                    Text("inventory.title")
-                } footer: {
-                    MoneyUpExplainer("inventory.detail")
+                    MoneyUpSectionHeader("inventory.title", explanation: "inventory.detail")
                 }
 
                 Section {

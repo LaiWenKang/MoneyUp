@@ -84,6 +84,18 @@ final class Feedback1059RenderEvidenceTests: XCTestCase {
             .padding().background(Color.moneyUpBackground).environment(model).preferredColorScheme(.light),
             name: "log-recent-capsules", height: 160
         )
+        await capture(
+            QuickLogCurrencyConversionSheet(
+                destination: fixture.currency,
+                candidates: [fixture.foreignCurrency],
+                occurredAt: now,
+                savedRate: { _, _ in nil }
+            ) { _ in }
+            .environment(model).preferredColorScheme(.light),
+            name: "log-currency-conversion", height: 700
+        )
+        await capture(NavigationStack { AppSettingsView() }.environment(model).environment(MoneyUpOverviewNavigation())
+            .environment(\.appReportingSnapshot, snapshot).preferredColorScheme(.dark), name: "settings-header-explainers", height: 1300)
         await capture(MainTabView(initialReportingSnapshot: snapshot, initialSection: .plan, initialPlanSection: .calendar)
             .environment(model).environment(MoneyUpOverviewNavigation()).preferredColorScheme(.light), name: "calendar-flow-bars")
         await capture(NavigationStack { SavingsGoalsView() }.environment(model).environment(\.appReportingSnapshot, snapshot)

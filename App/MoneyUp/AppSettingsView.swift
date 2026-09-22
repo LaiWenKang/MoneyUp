@@ -99,9 +99,7 @@ struct AppSettingsView: View {
                     )
                 }
             } header: {
-                Text("settings.customization")
-            } footer: {
-                MoneyUpExplainer("settings.customization_detail")
+                MoneyUpSectionHeader("settings.customization", explanation: "settings.customization_detail")
             }
 
             CurrencySettingsSection()
@@ -125,9 +123,7 @@ struct AppSettingsView: View {
                     Label("settings.intelligence", systemImage: "sparkles")
                 }
             } header: {
-                Text("settings.intelligence_section")
-            } footer: {
-                MoneyUpExplainer("settings.intelligence_detail")
+                MoneyUpSectionHeader("settings.intelligence_section", explanation: "settings.intelligence_detail")
             }
 
             Section {
@@ -150,9 +146,7 @@ struct AppSettingsView: View {
                     Label("settings.on_device_assistance", systemImage: "cpu")
                 }
             } header: {
-                Text("settings.on_device_assistance_section")
-            } footer: {
-                MoneyUpExplainer("settings.on_device_assistance_detail")
+                MoneyUpSectionHeader("settings.on_device_assistance_section", explanation: "settings.on_device_assistance_detail")
             }
 
             Section {
@@ -214,9 +208,7 @@ struct AppSettingsView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             } header: {
-                Text("settings.security")
-            } footer: {
-                MoneyUpExplainer("settings.auto_lock_detail")
+                MoneyUpSectionHeader("settings.security", explanation: "settings.auto_lock_detail")
             }
 
             Section("catalog.settings_section") {
@@ -295,9 +287,7 @@ struct AppSettingsView: View {
                     }
                 }
             } header: {
-                Text("settings.quick_log")
-            } footer: {
-                MoneyUpExplainer("settings.smart_default_detail")
+                MoneyUpSectionHeader("settings.quick_log", explanation: "settings.smart_default_detail")
             }
 
             Section {
@@ -338,9 +328,7 @@ struct AppSettingsView: View {
                     }
                 }
             } header: {
-                Text("settings.widgets_and_reports")
-            } footer: {
-                MoneyUpExplainer("settings.widget.budget_status_detail")
+                MoneyUpSectionHeader("settings.widgets_and_reports", explanation: "settings.widget.budget_status_detail")
             }
 
             Section {
