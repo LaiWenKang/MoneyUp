@@ -466,6 +466,9 @@ struct SmartOverviewWidgetView: View {
             return .systemSmall
         case .systemMedium:
             return .systemMedium
+        // Large is "Today + Log": the medium summary above Quick Log.
+        case .systemLarge:
+            return .systemMedium
         case .accessoryInline:
             return .accessoryInline
         case .accessoryCircular:

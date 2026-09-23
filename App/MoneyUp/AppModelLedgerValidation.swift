@@ -275,6 +275,9 @@ extension AppModel {
             updated.pinnedBudgetNodeIDs.map { $0 == sourceID ? targetID : $0 }
         )
         updated.displayPreferences.mergeCategory(sourceID, into: targetID)
+        updated.quickLogFavourites = QuickLogFavourite.remapping(
+            updated.quickLogFavourites, from: sourceID, to: targetID
+        )
         profile = updated
     }
 

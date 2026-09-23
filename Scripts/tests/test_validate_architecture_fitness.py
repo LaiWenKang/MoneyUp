@@ -101,6 +101,7 @@ class ArchitectureFitnessTests(unittest.TestCase):
             "App/MoneyUp/QuickLogEntryCaptureSuggestions.swift",
             "App/MoneyUp/QuickLogLaunchMode.swift",
             "App/Shared/MoneyUpQuickAction.swift",
+            "App/Shared/QuickLogWidgetCard.swift",
         )
         sources = {
             relative: (repository / relative).read_text(encoding="utf-8")

@@ -291,6 +291,10 @@ struct AppSettingsView: View {
             }
 
             Section {
+                NavigationLink { WidgetsQuickAccessView() }
+                label: { Label("quick_access.title", systemImage: "square.grid.2x2") }
+                    .accessibilityIdentifier("settings-widgets-quick-access")
+
                 Toggle(
                     "settings.widget.budget_status",
                     isOn: Binding(

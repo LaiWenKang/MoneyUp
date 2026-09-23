@@ -28,6 +28,8 @@ extension QuickLogEntryView {
 
                 batchReviewControls
 
+                favouritesSection
+
                 Section { primaryAmountControl }
 
                 if !historyPreloads.isEmpty { Section { historyPreloadRows } }

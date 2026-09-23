@@ -26,7 +26,7 @@ LOCKED_CAPTURE_STORE_SHA256 = (
     "7421cac819be5c3b4cf7f3bc2ab52368dd526bdc9e372a60a44a7feeabde79b4"
 )
 SHARED_ACTION_SOURCE_SHA256 = (
-    "fee3f0db239b9d60238747e2c4375529f3c66dfba8822b1b2e4528d543662260"
+    "5ebaedc492156bfb9249184fc4929715d488b09aee7f085bd99542e990ea6454"
 )
 APP_ROUTER_SOURCE_SHA256 = (
     "4efedc06179e798945c1b654b475072d7ddbef7d48abdc239297f8c745220fb7"
@@ -186,6 +186,8 @@ PLATFORM_REFERENCE_ALLOWLIST = APP_INTENTS_SOURCE_ALLOWLIST | {
     "App/MoneyUp/QuickLogLaunchMode.swift",
     "App/MoneyUp/QuickLogSheet.swift",
     "App/MoneyUp/RootView.swift",
+    "App/MoneyUp/WidgetsQuickAccessView.swift",
+    "App/Shared/QuickLogWidgetCard.swift",
 }
 PLATFORM_REFERENCE_MARKERS = (
     "MoneyUpQuickAction",
@@ -224,8 +226,10 @@ COMPILED_REFERENCE_INVENTORY = {
         "App/MoneyUp/AppModelLifecycle.swift": 1,
         "App/MoneyUp/MoneyUpApp.swift": 1,
         "App/MoneyUp/QuickLogLaunchMode.swift": 1,
+        "App/MoneyUp/WidgetsQuickAccessView.swift": 3,
         "App/Shared/MoneyUpQuickAction.swift": 10,
-        "App/MoneyUpWidget/MoneyUpWidget.swift": 12,
+        "App/Shared/QuickLogWidgetCard.swift": 11,
+        "App/MoneyUpWidget/MoneyUpWidget.swift": 8,
     },
     r"\bMoneyUpQuickActionRouteBroker\b": {
         "App/MoneyUp/AppModel.swift": 5,
@@ -301,7 +305,7 @@ COMPILED_REFERENCE_INVENTORY = {
     },
     r"\bLink\s*\(": {
         "App/MoneyUp/PrivacyAndBetaView.swift": 2,
-        "App/MoneyUpWidget/MoneyUpWidget.swift": 5,
+        "App/MoneyUpWidget/MoneyUpWidget.swift": 4,
     },
     r"\.widgetURL\s*\(": {"App/MoneyUpWidget/MoneyUpWidget.swift": 1},
     r"\.onOpenURL\s*\{": {
@@ -1632,7 +1636,7 @@ def validate_widget_source(source: str) -> list[str]:
         errors.append("persisted MoneyUpQuickLog widget kind drifted")
     if "MoneyUpQuickLogControl()" not in source:
         errors.append("WidgetBundle does not include the iOS 18 quick-log control")
-    if source.count("Link(destination: action.deepLink)") != 5 or source.count("Link(") != 5:
+    if source.count("Link(destination: action.deepLink)") != 4 or source.count("Link(") != 4:
         errors.append("every quick-action widget family must use an allowlisted navigation link")
     url = ".widgetURL(destinationURL)"
     if url not in re.sub(r"\s+", " ", source) or source.count(".widgetURL(") != 1:
@@ -1645,7 +1649,7 @@ def validate_widget_source(source: str) -> list[str]:
     )
     if destination is None or " ".join(destination.split()) != expected_destination:
         errors.append("passive widgets must use their exact, data-free overview destination")
-    if source.count(".deepLink") != 6 or "Button(intent:" in source:
+    if source.count(".deepLink") != 5 or "Button(intent:" in source:
         errors.append("widget navigation must not perform an intent or construct a payload")
     if (
         source.count("let snapshot = store.readPublishedSnapshot(now: now)") != 1
@@ -1698,18 +1702,25 @@ def validate_widget_source(source: str) -> list[str]:
             "density policy"
         )
 
-    small_action = declaration_body(source, "private struct SmallQuickActionView")
-    medium_actions = declaration_body(
-        source,
-        "private struct MediumQuickActionsView",
+    home_action = declaration_body(source, "private struct QuickLogHomeWidgetView")
+    quick_content = declaration_body(source, "private var quickActionContent: some View")
+    home_family_routes = (
+        "case .systemSmall: QuickLogHomeWidgetView(action: entry.action, "
+        "family: .small, homeDensity: homeDensity)",
+        "case .systemMedium: QuickLogHomeWidgetView(action: entry.action, "
+        "family: .medium, homeDensity: homeDensity)",
+        "case .systemLarge: QuickLogHomeWidgetView(action: entry.action, "
+        "family: .large, homeDensity: homeDensity)",
     )
+    normalized_quick_content = normalized_swift_body(quick_content)
     action_density_contract = (
-        small_action is not None
-        and "if homeDensity == .accessibility" in small_action
-        and "WidgetActionGlyph(action: action, size: 32)" in small_action
-        and medium_actions is not None
-        and ".prefix(homeDensity.mediumQuickActionLimit)" in medium_actions
-        and "if homeDensity == .accessibility" in medium_actions
+        home_action is not None
+        and "QuickLogWidgetCard(primary: action, family: family, density: homeDensity)"
+            in home_action
+        and "Link(destination: action.deepLink)" in home_action
+        and "QuickLogWidgetTile(action: action, role: role)" in home_action
+        and quick_content is not None
+        and all(route in normalized_quick_content for route in home_family_routes)
     )
     if not action_density_contract:
         errors.append(
@@ -2006,6 +2017,56 @@ def validate_widget_source(source: str) -> list[str]:
     return errors
 
 
+def validate_quick_log_widget_card_source(source: str) -> list[str]:
+    """The shared Quick Log card draws only the closed action enum.
+
+    It is compiled into the app and the widget, so it must never link, open
+    a URL, perform an intent, or accept book data; the widget file wraps its
+    tiles in the allowlisted route.
+    """
+    errors: list[str] = []
+    for forbidden in (
+        "Link(", "moneyup://", "URL(", "Button(intent:", ".widgetURL(",
+        "OpenQuickLogIntent", "BudgetWidgetSnapshot", "MoneyUpWidgetInsights",
+        "UserDefaults", "AppModel",
+    ):
+        if forbidden in source:
+            errors.append(
+                "shared Quick Log widget card must stay data-free and "
+                "non-navigating; found " + forbidden
+            )
+    tile = declaration_body(source, "struct QuickLogWidgetTile")
+    stored = [] if tile is None else re.findall(
+        r"^\s{4}let\s+([A-Za-z][A-Za-z0-9]*)\s*:\s*([A-Za-z][A-Za-z0-9]*)",
+        tile,
+        flags=re.MULTILINE,
+    )
+    if stored != [("action", "MoneyUpQuickAction"), ("role", "QuickLogWidgetTileRole")]:
+        errors.append(
+            "Quick Log widget tiles may receive only the closed action and "
+            f"their layout role; found {stored}"
+        )
+    if tile is None or any(
+        marker not in tile
+        for marker in (
+            ".accessibilityElement(children: .ignore)",
+            ".accessibilityLabel(Text(QuickLogWidgetCopy.heroTitle(action)))",
+            ".accessibilityHint(action.accessibilityHintKey)",
+        )
+    ):
+        errors.append(
+            "Quick Log widget tiles must announce the consequence of the tap "
+            "and the neutral unlock hint"
+        )
+    card = declaration_body(source, "struct QuickLogWidgetCard<Tile: View>")
+    if card is None or "case (.small, _), (.medium, .accessibility):" not in card:
+        errors.append(
+            "Quick Log widget card must drop secondary shortcuts at "
+            "accessibility sizes"
+        )
+    return errors
+
+
 def validate_smart_overview_widget_source(source: str) -> list[str]:
     """Pin the passive family routing and state-specific recovery guidance."""
     errors: list[str] = []
@@ -2036,6 +2097,8 @@ def validate_smart_overview_widget_source(source: str) -> list[str]:
     expected_mappings = [
         ("systemSmall", "systemSmall"),
         ("systemMedium", "systemMedium"),
+        # Large is "Today + Log": the medium summary above Quick Log.
+        ("systemLarge", "systemMedium"),
         ("accessoryInline", "accessoryInline"),
         ("accessoryCircular", "accessoryCircular"),
         ("accessoryRectangular", "accessoryRectangular"),
@@ -2838,6 +2901,10 @@ def validate_repository(root: Path = ROOT) -> list[str]:
         (
             "App/MoneyUpWidget/SmartOverviewWidgetView.swift",
             validate_smart_overview_widget_source,
+        ),
+        (
+            "App/Shared/QuickLogWidgetCard.swift",
+            validate_quick_log_widget_card_source,
         ),
         (
             "App/Shared/AppLocalization.swift",

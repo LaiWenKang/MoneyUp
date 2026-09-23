@@ -221,6 +221,20 @@ Lock Screen family beside them.
    Smart Entry and Receipt must not reset merely because their persisted raw
    values use `smartEntry` and `scanReceipt` while their URL paths use hyphens.
 
+7. Add a **Large** widget three times: Quick actions, Budget status, and Smart
+   Overview. Quick actions shows one hero action and the five remaining actions
+   in a fixed order that never changes with use. Budget status and Smart
+   Overview become "Today + Log": the medium summary on top and the medium
+   Quick Log card below. Every Quick Log tile in every size must open exactly
+   its allowlisted route; the summary part keeps its existing overview route.
+   Repeat with the Home Screen tinted and at AX5 text size, where secondary
+   shortcuts give way to the single hero action.
+8. The Quick Log card (`App/Shared/QuickLogWidgetCard.swift`) is compiled into
+   both the widget and the app's Widgets & Quick Access preview. It receives
+   only the closed action enum and a layout role; `validate_platform_actions.py`
+   rejects links, URLs, intents, snapshots, or any extra tile input there.
+   In-app favourites never reach any platform surface.
+
 Record before/after screenshots and the installed prior/candidate build
 numbers. Widget configuration preservation remains a physical migration gate.
 

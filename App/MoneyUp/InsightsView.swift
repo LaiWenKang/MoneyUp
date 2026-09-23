@@ -203,13 +203,13 @@ struct InsightsView: View {
             title: "transaction.income",
             value: formattedMoney(report.baseFlow.income),
             color: Color.moneyUpPositive,
-            systemImage: "arrow.down.left"
+            systemImage: MoneyUpEntryGlyph.income
         )
         MetricCard(
             title: "transaction.expense",
             value: formattedMoney(report.baseFlow.expense),
             color: .accentColor,
-            systemImage: "arrow.up.right"
+            systemImage: MoneyUpEntryGlyph.expense
         )
         MetricCard(
             title: "insights.net",
