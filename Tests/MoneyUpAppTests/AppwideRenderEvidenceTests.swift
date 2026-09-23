@@ -188,6 +188,62 @@ final class AppwideRenderEvidenceTests: XCTestCase {
         await fixture.store.close()
     }
 
+    /// Regression for the 1064.1 Log-tab crash: the tab must render for any
+    /// book shape a real device can hold — duplicated account records,
+    /// hidden and archived categories, deep hierarchies, no categories, no
+    /// accounts, and a long recent journal — in every appearance that
+    /// changes layout. A trap anywhere in the Log body fails this test.
+    @MainActor
+    func testLogTabRendersForEveryBookShape() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-09-06T04:00:00Z"))
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "Asia/Singapore"))
+        let snapshot = AppReportingSnapshot(instant: now, calendar: calendar)
+        let profile = UserProfile(baseCurrency: fixture.sgd, reportingTimeZoneIdentifier: calendar.timeZone.identifier)
+        let group = LedgerAccount(name: "Essentials", kind: .expense)
+        let child = LedgerAccount(name: "Groceries", kind: .expense, parentID: group.id)
+        let grandchild = LedgerAccount(name: "Coffee", kind: .expense, parentID: child.id)
+        let hidden = LedgerAccount(name: "Hidden", kind: .expense, isHiddenFromEntry: true)
+        let archived = LedgerAccount(name: "Old", kind: .expense, isArchived: true)
+        let preset = LedgerAccount(name: "Dining", kind: .expense, presetID: "expense.dining")
+        let salary = LedgerAccount(name: "工资", kind: .income)
+        let card = LedgerAccount(name: "Card", kind: .liability, currency: fixture.sgd, accountType: .creditCard)
+        let journalCategories: [UUID] = [fixture.food.id, child.id, grandchild.id, preset.id]
+        var journal: [JournalEntry] = []
+        for index in 0..<120 {
+            let amount = try Money(Decimal(index % 9 + 1), currency: fixture.sgd)
+            let occurredAt = now.addingTimeInterval(Double(-index) * 3_600)
+            journal.append(try TransactionFactory.expense(amount: amount, paidFrom: fixture.wallet.id,
+                category: journalCategories[index % 4], occurredAt: occurredAt))
+        }
+        let duplicated: [LedgerAccount] = [fixture.wallet, fixture.food, fixture.food, fixture.wallet, preset, preset]
+        let deep: [LedgerAccount] = [fixture.wallet, card, group, child, grandchild, hidden, archived, preset, salary]
+        let noEntries: [JournalEntry] = []
+        var shapes: [(String, [LedgerAccount], [JournalEntry])] = []
+        shapes.append(("duplicated-records", duplicated, journal))
+        shapes.append(("deep-hidden-archived", deep, journal))
+        shapes.append(("no-categories", [fixture.wallet], noEntries))
+        shapes.append(("no-accounts", [fixture.food], noEntries))
+        shapes.append(("empty-book", [], noEntries))
+        for (name, accounts, entries) in shapes {
+            let model = fixture.model(profile: profile, accounts: accounts, entries: entries, currentDate: { now })
+            for kind in QuickLogKind.allCases {
+                for (scheme, size) in [(ColorScheme.light, DynamicTypeSize.large), (.dark, .accessibility3)] {
+                    await capture(MainTabView(initialReportingSnapshot: snapshot, initialSection: .log)
+                        .environment(model).environment(MoneyUpOverviewNavigation())
+                        .environment(\.dynamicTypeSize, size).preferredColorScheme(scheme),
+                        name: "log-shape-\(name)-\(kind.rawValue)-\(scheme == .light ? "light" : "dark")", recordsAttachment: false)
+                }
+                model.quickLogDraft = QuickLogDraft(kind: kind, amountText: "", destinationAmountText: "",
+                    accountID: accounts.first?.id, destinationAccountID: nil, categoryID: accounts.first?.id,
+                    occurredAt: now, dateWasEdited: false, payee: "", note: "", smartText: "")
+            }
+        }
+        await fixture.store.close()
+    }
+
     @MainActor
     private func makeFixture() async throws -> (AppModelFixture, AppModel, AppReportingSnapshot) {
         let fixture = try AppModelFixture()
@@ -226,7 +282,7 @@ final class AppwideRenderEvidenceTests: XCTestCase {
     @discardableResult
     private func capture<Content: View>(
         _ content: Content, name: String, width: CGFloat = 390, height: CGFloat = 844,
-        language: AppLanguagePreference = .english
+        language: AppLanguagePreference = .english, recordsAttachment: Bool = true
     ) async -> UIImage {
         let defaults = AppLanguagePreference.defaults
         let previous = defaults?.object(forKey: AppLanguagePreference.storageKey)
@@ -250,10 +306,12 @@ final class AppwideRenderEvidenceTests: XCTestCase {
         format.opaque = true
         format.scale = 3
         let image = UIGraphicsImageRenderer(bounds: window.bounds, format: format).image { _ in window.drawHierarchy(in: window.bounds, afterScreenUpdates: true) }
-        let attachment = XCTAttachment(image: image)
-        attachment.name = name
-        attachment.lifetime = .keepAlways
-        add(attachment)
+        if recordsAttachment {
+            let attachment = XCTAttachment(image: image)
+            attachment.name = name
+            attachment.lifetime = .keepAlways
+            add(attachment)
+        }
         return image
     }
 }

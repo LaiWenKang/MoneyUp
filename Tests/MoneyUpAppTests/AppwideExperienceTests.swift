@@ -345,4 +345,69 @@ final class AppwideExperienceTests: XCTestCase {
         XCTAssertEqual(marks[calendar.startOfDay(for: day.addingTimeInterval(86_400))], CalendarDayMarks(received: true))
         XCTAssertNil(marks[calendar.startOfDay(for: day.addingTimeInterval(2 * 86_400))])
     }
+
+    /// Largest `<…>` nesting in a runtime type name: how deep SwiftUI's
+    /// recursive type decoder must go the first time a screen renders.
+    nonisolated static func genericNestingDepth(_ type: Any.Type) -> Int {
+        var depth = 0
+        var deepest = 0
+        for character in _typeName(type, qualified: false) {
+            if character == "<" { depth += 1; deepest = max(deepest, depth) }
+            if character == ">" { depth -= 1 }
+        }
+        return deepest
+    }
+
+    nonisolated static let screenBodyTypes: [(String, Any.Type)] = [
+        ("Log entry", QuickLogEntryView.Body.self),
+        ("Log tab", LogView.Body.self),
+        ("Tabs", MainTabView.Body.self),
+        ("Today", DashboardView.Body.self),
+        ("History", HistoryView.Body.self),
+        ("Plan", PlanView.Body.self),
+        ("Assets", AssetsView.Body.self),
+        ("Transaction edit", TransactionEditView.Body.self),
+        ("Onboarding", OnboardingView.Body.self),
+        ("Settings", AppSettingsView.Body.self),
+        ("Calendar", CalendarView.Body.self),
+        ("Insights", InsightsView.Body.self),
+        ("BudgetPlanView", BudgetPlanView.Body.self),
+        ("SavingsGoalsView", SavingsGoalsView.Body.self),
+        ("GoalDetailView", GoalDetailView.Body.self),
+        ("DataSafetyView", DataSafetyView.Body.self),
+        ("StarterBudgetSetupSheet", StarterBudgetSetupSheet.Body.self),
+        ("LockedQuickCaptureView", LockedQuickCaptureView.Body.self),
+        ("RootView", RootView.Body.self),
+        ("ImportTransactionsView", ImportTransactionsView.Body.self),
+        ("IntelligenceView", IntelligenceView.Body.self),
+        ("AddAccountSheet", AddAccountSheet.Body.self),
+        ("AccountManagementSheet", AccountManagementSheet.Body.self),
+        ("CategoryManagementSheet", CategoryManagementSheet.Body.self),
+        ("BudgetEditorSheet", BudgetEditorSheet.Body.self),
+        ("BudgetSimulatorView", BudgetSimulatorView.Body.self),
+        ("LoanCenterView", LoanCenterView.Body.self),
+        ("AllowanceEditorSheet", AllowanceEditorSheet.Body.self),
+        ("ExchangeRateEditorSheet", ExchangeRateEditorSheet.Body.self),
+        ("DisplaySettingsView", DisplaySettingsView.Body.self),
+        ("PrivacyAndBetaView", PrivacyAndBetaView.Body.self),
+        ("EntryCatalogView", EntryCatalogView.Body.self),
+        ("PinnedBudgetEditorSheet", PinnedBudgetEditorSheet.Body.self),
+        ("FlexibleTodayBreakdownSheet", FlexibleTodayBreakdownSheet.Body.self)
+    ]
+
+    /// SwiftUI decodes a screen's full generic type recursively the first
+    /// time it renders. A real iPhone's main-thread stack is far smaller than
+    /// the simulator's, so an over-nested screen crashes only on device: the
+    /// 0.7.2 (1064.1) Log tab reached depth 108 and overflowed, while 98 has
+    /// shipped safely since 0.6. No screen may grow past its proven ceiling;
+    /// new sections belong in concrete `View` structs, not inline
+    /// `@ViewBuilder` properties.
+    func testScreenTypesStayWithinDeviceSafeDepth() {
+        let ceilings = ["Log entry": 98]
+        for (name, type) in Self.screenBodyTypes {
+            let depth = Self.genericNestingDepth(type)
+            XCTAssertLessThanOrEqual(depth, ceilings[name] ?? 60,
+                "\(name) body type nests \(depth) levels; extract a concrete View struct")
+        }
+    }
 }
