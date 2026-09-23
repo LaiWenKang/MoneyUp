@@ -151,33 +151,71 @@ private struct MoneyUpWidgetView: View {
 
     var body: some View {
         Group {
-            switch entry.content {
-            case .budgetStatus where entry.budgetSnapshot.usesQuickActionFallback,
-                 .smartOverview where entry.budgetSnapshot.usesQuickActionFallback:
-                quickActionContent
-
-            case .budgetStatus:
-                BudgetStatusWidgetView(
-                    snapshot: entry.budgetSnapshot,
-                    family: family,
-                    homeDensity: homeDensity
-                )
-            case .smartOverview:
-                SmartOverviewWidgetView(
-                    snapshot: entry.budgetSnapshot,
-                    insights: entry.insights,
-                    family: family,
-                    homeDensity: homeDensity,
-                    focus: entry.focus
-                )
-            case .quickAction:
-                quickActionContent
+            if showsTodayPlusLog {
+                // Large summaries are "Today + Log": one readable status on
+                // top and the same data-free Quick Log shortcuts below.
+                VStack(spacing: 12) {
+                    passiveContent
+                        .frame(maxHeight: .infinity)
+                    QuickLogHomeWidgetView(
+                        action: entry.action,
+                        family: .medium,
+                        homeDensity: homeDensity
+                    )
+                    .frame(height: homeDensity == .accessibility ? 88 : 132)
+                }
+            } else {
+                passiveContent
             }
         }
         .environment(\.locale, AppLanguagePreference.current.locale)
         .widgetURL(destinationURL)
-        .containerBackground(Color.moneyUpWidgetBackground, for: .widget)
+        .containerBackground(for: .widget) {
+            if showsQuickLogCanvas {
+                // The small Quick Log widget is itself the action: one
+                // full-bleed MoneyUp green surface instead of a framed button.
+                QuickLogWidgetPalette.heroGradient
+            } else {
+                Color.moneyUpWidgetBackground
+            }
+        }
         .tint(.moneyUpSoftGreen)
+    }
+
+    @ViewBuilder
+    private var passiveContent: some View {
+        switch entry.content {
+        case .budgetStatus where entry.budgetSnapshot.usesQuickActionFallback,
+             .smartOverview where entry.budgetSnapshot.usesQuickActionFallback:
+            quickActionContent
+
+        case .budgetStatus:
+            BudgetStatusWidgetView(
+                snapshot: entry.budgetSnapshot,
+                family: family,
+                homeDensity: homeDensity
+            )
+        case .smartOverview:
+            SmartOverviewWidgetView(
+                snapshot: entry.budgetSnapshot,
+                insights: entry.insights,
+                family: family,
+                homeDensity: homeDensity,
+                focus: entry.focus
+            )
+        case .quickAction:
+            quickActionContent
+        }
+    }
+
+    private var showsTodayPlusLog: Bool {
+        family == .systemLarge && entry.content != .quickAction
+            && !entry.budgetSnapshot.usesQuickActionFallback
+    }
+
+    private var showsQuickLogCanvas: Bool {
+        family == .systemSmall
+            && (entry.content == .quickAction || entry.budgetSnapshot.usesQuickActionFallback)
     }
 
     private var destinationURL: URL? {
@@ -192,25 +230,11 @@ private struct MoneyUpWidgetView: View {
     private var quickActionContent: some View {
         switch family {
         case .systemSmall:
-            ZStack {
-                if homeDensity == .standard {
-                    WidgetAmbientGraphic()
-                }
-                SmallQuickActionView(
-                    action: entry.action,
-                    homeDensity: homeDensity
-                )
-            }
+            QuickLogHomeWidgetView(action: entry.action, family: .small, homeDensity: homeDensity)
         case .systemMedium:
-            ZStack {
-                if homeDensity == .standard {
-                    WidgetAmbientGraphic()
-                }
-                MediumQuickActionsView(
-                    preferredAction: entry.action,
-                    homeDensity: homeDensity
-                )
-            }
+            QuickLogHomeWidgetView(action: entry.action, family: .medium, homeDensity: homeDensity)
+        case .systemLarge:
+            QuickLogHomeWidgetView(action: entry.action, family: .large, homeDensity: homeDensity)
         case .accessoryCircular:
             AccessoryCircularActionView(action: entry.action)
         case .accessoryRectangular:
@@ -218,10 +242,7 @@ private struct MoneyUpWidgetView: View {
         case .accessoryInline:
             AccessoryInlineActionView(action: entry.action)
         default:
-            SmallQuickActionView(
-                action: entry.action,
-                homeDensity: homeDensity
-            )
+            QuickLogHomeWidgetView(action: entry.action, family: .small, homeDensity: homeDensity)
         }
     }
 }
@@ -239,7 +260,8 @@ private struct BudgetStatusWidgetView: View {
         language: AppLanguagePreference = .current
     ) {
         self.snapshot = snapshot
-        self.family = family
+        // Large is "Today + Log": the medium status sits above Quick Log.
+        self.family = family == .systemLarge ? .systemMedium : family
         self.homeDensity = homeDensity
         self.language = language
     }
@@ -553,134 +575,19 @@ private struct BudgetStatusWidgetView: View {
     }
 }
 
-private struct SmallQuickActionView: View {
+/// Wraps each tile of the shared, data-free Quick Log card in the closed
+/// action's allowlisted route. This is the only place a Home tile links out.
+private struct QuickLogHomeWidgetView: View {
     let action: MoneyUpQuickAction
+    let family: QuickLogWidgetLayoutFamily
     let homeDensity: MoneyUpWidgetHomeDensity
 
     var body: some View {
-        Link(destination: action.deepLink) {
-            if homeDensity == .accessibility {
-                HStack(spacing: 10) {
-                    WidgetActionGlyph(action: action, size: 32)
-                    Text(action.titleKey)
-                        .font(.body.weight(.semibold))
-                }
-                .frame(
-                    maxWidth: .infinity,
-                    maxHeight: .infinity,
-                    alignment: .leading
-                )
-                .contentShape(Rectangle())
-            } else {
-                VStack(alignment: .leading, spacing: 8) {
-                    WidgetBrandHeader()
-
-                    Spacer(minLength: 0)
-
-                    WidgetActionGlyph(action: action, size: 48)
-                        .accessibilityHidden(true)
-
-                    Text(action.titleKey)
-                        .font(.headline)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                    if action.requiresUnlock {
-                        Label(
-                            "platform_action.unlock_required",
-                            systemImage: "lock.fill"
-                        )
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                    }
-                }
-                .frame(
-                    maxWidth: .infinity,
-                    maxHeight: .infinity,
-                    alignment: .leading
-                )
-                .contentShape(Rectangle())
+        QuickLogWidgetCard(primary: action, family: family, density: homeDensity) { action, role in
+            Link(destination: action.deepLink) {
+                QuickLogWidgetTile(action: action, role: role)
             }
-        }
-        .buttonStyle(.plain)
-        .accessibilityElement(children: .combine)
-        .accessibilityHint(action.accessibilityHintKey)
-    }
-}
-
-private struct MediumQuickActionsView: View {
-    let preferredAction: MoneyUpQuickAction
-    let homeDensity: MoneyUpWidgetHomeDensity
-
-    private var actions: [MoneyUpQuickAction] {
-        Array(
-            MoneyUpQuickAction.mediumActions(preferred: preferredAction)
-                .prefix(homeDensity.mediumQuickActionLimit)
-        )
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if homeDensity == .standard {
-                HStack(spacing: 6) {
-                    WidgetBrandHeader()
-                    Spacer(minLength: 0)
-                    Text("widget.quick_actions")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            HStack(spacing: 8) {
-                ForEach(actions) { action in
-                    Link(destination: action.deepLink) {
-                        if homeDensity == .accessibility {
-                            HStack(spacing: 10) {
-                                WidgetActionGlyph(action: action, size: 32)
-                                Text(action.titleKey)
-                                    .font(.body.weight(.semibold))
-                            }
-                            .padding(.horizontal, 12)
-                            .frame(
-                                maxWidth: .infinity,
-                                maxHeight: .infinity,
-                                alignment: .leading
-                            )
-                            .contentShape(Rectangle())
-                        } else {
-                            VStack(spacing: 7) {
-                                WidgetActionGlyph(action: action, size: 38)
-                                Text(action.titleKey)
-                                    .font(.caption2.weight(.semibold))
-                                    .foregroundStyle(.primary)
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.65)
-                            }
-                            .padding(.vertical, 7)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .background(
-                                Color.moneyUpSoftGreen.opacity(0.09),
-                                in: RoundedRectangle(
-                                    cornerRadius: 14,
-                                    style: .continuous
-                                )
-                            )
-                            .overlay {
-                                RoundedRectangle(
-                                    cornerRadius: 14,
-                                    style: .continuous
-                                )
-                                .stroke(
-                                    Color.moneyUpSoftGreen.opacity(0.15),
-                                    lineWidth: 1
-                                )
-                            }
-                            .contentShape(Rectangle())
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityHint(action.accessibilityHintKey)
-                }
-            }
+            .buttonStyle(.plain)
         }
     }
 }
@@ -765,97 +672,6 @@ struct WidgetBrandHeader: View {
                 .accessibilityLabel("widget.private")
         }
         .accessibilityElement(children: .combine)
-    }
-}
-
-private struct WidgetActionGlyph: View {
-    @Environment(\.widgetRenderingMode) private var renderingMode
-    let action: MoneyUpQuickAction
-    let size: CGFloat
-
-    var body: some View {
-        ZStack {
-            if renderingMode == .fullColor {
-                Circle()
-                    .fill(Color.moneyUpAction.opacity(0.22))
-                    .offset(y: 3)
-                Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [Color.moneyUpAction, Color.moneyUpActionDeep],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .padding(2)
-                Circle()
-                    .stroke(Color.white.opacity(0.34), lineWidth: 1)
-                    .padding(3)
-                Image(systemName: action.systemImage)
-                    .font(.system(size: size * 0.36, weight: .bold))
-                    .foregroundStyle(.white)
-            } else {
-                Circle()
-                    .fill(.secondary.opacity(0.18))
-                Circle()
-                    .stroke(.primary.opacity(0.72), lineWidth: 1.5)
-                    .padding(2)
-                Image(systemName: action.systemImage)
-                    .font(.system(size: size * 0.36, weight: .bold))
-                    .foregroundStyle(.primary)
-                    .widgetAccentable()
-            }
-            if action.requiresUnlock {
-                Image(systemName: "lock.fill")
-                    .font(.system(size: size * 0.18, weight: .bold))
-                    .foregroundStyle(
-                        renderingMode == .fullColor ? Color.moneyUpAction : Color.primary
-                    )
-                    .padding(4)
-                    .background(
-                        renderingMode == .fullColor ? Color.white : Color.clear,
-                        in: Circle()
-                    )
-                    .offset(x: size * 0.34, y: size * 0.34)
-            }
-        }
-        .frame(width: size, height: size)
-        .accessibilityHidden(true)
-    }
-}
-
-/// A decorative, data-free diagram. It adds visual depth without exposing a
-/// balance, payee, account, holding, or even an invented percentage.
-private struct WidgetAmbientGraphic: View {
-    var body: some View {
-        GeometryReader { proxy in
-            ZStack(alignment: .topTrailing) {
-                Circle()
-                    .fill(Color.moneyUpSoftGreen.opacity(0.12))
-                    .frame(width: proxy.size.width * 0.72)
-                    .offset(x: proxy.size.width * 0.24, y: -proxy.size.height * 0.38)
-
-                Image("MoneyUpBrandMark")
-                    .renderingMode(.template)
-                    .resizable()
-                    .scaledToFit()
-                    .foregroundStyle(Color.moneyUpSoftGreen.opacity(0.075))
-                    .frame(width: min(proxy.size.width, proxy.size.height) * 0.78)
-                    .offset(x: proxy.size.width * 0.08, y: proxy.size.height * 0.34)
-
-                HStack(alignment: .bottom, spacing: 4) {
-                    ForEach([0.36, 0.56, 0.82], id: \.self) { fraction in
-                        Capsule()
-                            .fill(Color.moneyUpSoftGreen.opacity(0.10))
-                            .frame(width: 7, height: proxy.size.height * fraction * 0.34)
-                    }
-                }
-                .padding(.trailing, 4)
-                .padding(.top, proxy.size.height * 0.50)
-            }
-        }
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
     }
 }
 
@@ -1033,6 +849,7 @@ private struct MoneyUpQuickActionsWidget: Widget {
         .supportedFamilies([
             .systemSmall,
             .systemMedium,
+            .systemLarge,
             .accessoryCircular,
             .accessoryRectangular,
             .accessoryInline
@@ -1101,6 +918,13 @@ private struct MoneyUpWidgetAccessibilityPreviewSurface: View {
     MoneyUpQuickActionsWidget()
 } timeline: {
     MoneyUpWidgetEntry.preview(content: .quickAction)
+}
+
+#Preview("Quick action · Large", as: .systemLarge) {
+    MoneyUpQuickActionsWidget()
+} timeline: {
+    MoneyUpWidgetEntry.preview(content: .quickAction)
+    MoneyUpWidgetEntry.preview(content: .quickAction, action: .smartEntry)
 }
 
 #Preview("Smart overview · Small", as: .systemSmall) {

@@ -52,6 +52,9 @@ public struct UserProfile: Codable, Equatable, Sendable {
     /// off does not clear it, so re-enabling does not resurface old findings.
     public var reviewedIntelligenceFindingIDs: [String]
     public var displayPreferences: MoneyUpDisplayPreferences
+    /// Saved Log shortcuts in the order the user chose. They prefill the form
+    /// only and never leave this encrypted record.
+    public var quickLogFavourites: [QuickLogFavourite]
 
     public init(
         baseCurrency: CurrencyCode,
@@ -70,7 +73,8 @@ public struct UserProfile: Codable, Equatable, Sendable {
         currencyDisplay: MoneyCurrencyDisplay = .automatic,
         pinnedBudgetNodeIDs: [UUID] = [],
         reviewedIntelligenceFindingIDs: [String] = [],
-        displayPreferences: MoneyUpDisplayPreferences = .init()
+        displayPreferences: MoneyUpDisplayPreferences = .init(),
+        quickLogFavourites: [QuickLogFavourite] = []
     ) {
         self.baseCurrency = baseCurrency
         self.createdAt = createdAt
@@ -94,6 +98,7 @@ public struct UserProfile: Codable, Equatable, Sendable {
             reviewedIntelligenceFindingIDs
         )
         self.displayPreferences = displayPreferences
+        self.quickLogFavourites = QuickLogFavourite.normalized(quickLogFavourites)
     }
 
     /// Keeps the newest distinct identifiers, dropping blanks and repeats, so
@@ -143,6 +148,7 @@ public struct UserProfile: Codable, Equatable, Sendable {
         case pinnedBudgetNodeIDs
         case reviewedIntelligenceFindingIDs
         case displayPreferences
+        case quickLogFavourites
     }
 
     public init(from decoder: Decoder) throws {
@@ -217,6 +223,11 @@ public struct UserProfile: Codable, Equatable, Sendable {
         displayPreferences = try container.decodeIfPresent(
             MoneyUpDisplayPreferences.self, forKey: .displayPreferences
         ) ?? .init()
+        quickLogFavourites = QuickLogFavourite.normalized(
+            try container.decodeIfPresent(
+                [QuickLogFavourite].self, forKey: .quickLogFavourites
+            ) ?? []
+        )
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -263,6 +274,9 @@ public struct UserProfile: Codable, Equatable, Sendable {
             )
         }
         try container.encode(displayPreferences, forKey: .displayPreferences)
+        if !quickLogFavourites.isEmpty {
+            try container.encode(quickLogFavourites, forKey: .quickLogFavourites)
+        }
     }
 
     /// Older builds persisted additional whole-minute choices. Keep those books

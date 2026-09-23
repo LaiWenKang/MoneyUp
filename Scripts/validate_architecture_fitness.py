@@ -576,6 +576,7 @@ W3_STATE_REFERENCE_INVENTORIES = {
         ("App/MoneyUp/QuickLogEntryReceipt.swift", 1),
         ("App/MoneyUp/QuickLogLaunchMode.swift", 4),
         ("App/Shared/MoneyUpQuickAction.swift", 7),
+        ("App/Shared/QuickLogWidgetCard.swift", 2),
     ),
     "receiptScanTask": (
         ("App/MoneyUp/QuickLogEntryBody.swift", 4),
@@ -615,7 +616,7 @@ W3_SOURCE_FUNCTION_DIGESTS: tuple[
             r"[^{};]*\)\s*\{",
             re.DOTALL,
         ),
-        "67bc8aa2d1cfb80d4efddd0ac218752406f7e0ea60dffa2afb4450ba4cf74815",
+        "d7860121225d9385292b961626d1603b8fa87d31c3ca47550f983a8aabd04ca0",
     ),
     (
         W3_PRODUCTION_SENTINEL_PATH,
@@ -624,7 +625,7 @@ W3_SOURCE_FUNCTION_DIGESTS: tuple[
             r"\bpublic\s+init\s*\(\s*from\s+decoder\s*:\s*Decoder\s*\)"
             r"\s*throws\s*\{"
         ),
-        "adb4ee340a8c06a8b3ee38b46eb30c5ad833b14cd8a5bfe6613563e61e3a9f10",
+        "638146816d373ec62bfdcf8b9b6afba6f8c399fdbc977df493741922bd44ce7d",
     ),
     (
         W3_REVIEWED_ENTRY_PATH,
@@ -665,12 +666,12 @@ W3_PATH_TYPE_DIGESTS: tuple[tuple[str, str, str, str], ...] = (
     ('App/MoneyUp/QuickLogSmartFill.swift', 'struct', 'QuickLogSmartFill', '3c98e0dc2f72aae58ef9626c1953a3239b930ad5fb465a45c8ba2e8f08ddd998'),
     ('Sources/MoneyUpCore/SmartEntryTextReading.swift', 'struct', 'SmartEntryAmountReading', '088699b5ce5d5f969b345f2d81ab3a8cca9609baa0cafd17afabaf21e802403c'),
     ('Sources/MoneyUpCore/SmartEntryTextReading.swift', 'struct', 'SmartEntryTextParts', 'a84bf4da2c0b336f570103ee82b2f176ba7d30019cad745611022bae5e7b5ea4'),
-    ("App/MoneyUp/QuickLogEntryChrome.swift", "extension", "QuickLogEntryView", "3297629a841c7469a32b8d9feace59eb04fccc1e9b5e8227fa4566a42256b97f"),
+    ("App/MoneyUp/QuickLogEntryChrome.swift", "extension", "QuickLogEntryView", "1dfa356663fa0741a6faf5c39e86faa7bfa3a7453d8269540b26ec2cc2ff0d0f"),
     (
         "App/MoneyUp/QuickLogEntryBody.swift",
         "extension",
         "QuickLogEntryView",
-        "8d2d1a139c8e02f8994715971277863321476d877abd75e1ff92735462306d3e",
+        "34bc225a389184e5f7fe78bc65f33c4caf1c90e50a3e27af46fcc5a7a521ed5a",
     ),
     (
         "App/MoneyUp/QuickLogEntryReceipt.swift",

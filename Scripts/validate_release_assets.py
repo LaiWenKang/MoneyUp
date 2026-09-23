@@ -3475,7 +3475,47 @@ def validate_brand_palette() -> None:
     widget_source = (
         ROOT / "App" / "MoneyUpWidget" / "MoneyUpWidget.swift"
     ).read_text(encoding="utf-8")
-    if "colors: [Color.moneyUpAction, Color.moneyUpActionDeep]" not in widget_source:
+    card_source = (
+        ROOT / "App" / "Shared" / "QuickLogWidgetCard.swift"
+    ).read_text(encoding="utf-8")
+
+    def card_palette(name: str) -> dict[str, str] | None:
+        match = re.search(
+            rf"static let {name} = Color\(uiColor: adaptive\(\s*"
+            r"light: \((0x[0-9A-F]{2}), (0x[0-9A-F]{2}), (0x[0-9A-F]{2})\), "
+            r"dark: \((0x[0-9A-F]{2}), (0x[0-9A-F]{2}), (0x[0-9A-F]{2})\),\s*"
+            r"highContrastLight: \((0x[0-9A-F]{2}), (0x[0-9A-F]{2}), (0x[0-9A-F]{2})\), "
+            r"highContrastDark: \((0x[0-9A-F]{2}), (0x[0-9A-F]{2}), (0x[0-9A-F]{2})\)",
+            card_source,
+        )
+        if match is None:
+            return None
+        values = [int(value, 16) for value in match.groups()]
+        hexes = [
+            "#" + "".join(f"{component:02X}" for component in values[index:index + 3])
+            for index in range(0, 12, 3)
+        ]
+        return dict(zip((light_normal, dark_normal, light_high, dark_high), hexes))
+
+    # White hero text and symbols sit on both gradient stops of the Quick
+    # Log widget; the glyph plate carries its own ink colour.
+    hero_top = card_palette("heroTop")
+    hero_bottom = card_palette("heroBottom")
+    glyph_plate = card_palette("glyphPlate")
+    glyph_ink = card_palette("glyphInk")
+    if (
+        "colors: [heroTop, heroBottom]" not in card_source
+        or None in (hero_top, hero_bottom, glyph_plate, glyph_ink)
+        or any(
+            contrast(stop[slot], "#FFFFFF") < 4.5
+            for stop in (hero_top, hero_bottom)
+            for slot in (light_normal, dark_normal, light_high, dark_high)
+        )
+        or any(
+            contrast(glyph_plate[slot], glyph_ink[slot]) < 4.5
+            for slot in (light_normal, dark_normal, light_high, dark_high)
+        )
+    ):
         fail("widget action gradient must keep every white-bearing stop contrast-safe")
     widget_palette = {
         "moneyUpSoftGreen": {

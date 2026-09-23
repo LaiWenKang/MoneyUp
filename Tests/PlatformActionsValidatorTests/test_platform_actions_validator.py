@@ -652,16 +652,16 @@ class PlatformActionsValidatorTests(unittest.TestCase):
             (
                 "active family handoff",
                 source.replace(
-                    "                BudgetStatusWidgetView(\n"
-                    "                    snapshot: entry.budgetSnapshot,\n"
-                    "                    family: family,\n"
-                    "                    homeDensity: homeDensity\n"
-                    "                )",
-                    "                BudgetStatusWidgetView(\n"
-                    "                    snapshot: entry.budgetSnapshot,\n"
-                    "                    family: .systemSmall,\n"
-                    "                    homeDensity: homeDensity\n"
-                    "                )",
+                    "            BudgetStatusWidgetView(\n"
+                    "                snapshot: entry.budgetSnapshot,\n"
+                    "                family: family,\n"
+                    "                homeDensity: homeDensity\n"
+                    "            )",
+                    "            BudgetStatusWidgetView(\n"
+                    "                snapshot: entry.budgetSnapshot,\n"
+                    "                family: .systemSmall,\n"
+                    "                homeDensity: homeDensity\n"
+                    "            )",
                     1,
                 ),
                 "active widget family",
@@ -716,8 +716,8 @@ class PlatformActionsValidatorTests(unittest.TestCase):
             (
                 "accessibility quick-action density",
                 source.replace(
-                    ".prefix(homeDensity.mediumQuickActionLimit)",
-                    ".prefix(4)",
+                    "family: .large, homeDensity: homeDensity)",
+                    "family: .large, homeDensity: .standard)",
                     1,
                 ),
                 "Home quick actions",
@@ -881,8 +881,8 @@ class PlatformActionsValidatorTests(unittest.TestCase):
     def test_rejects_smart_overview_integration_family_or_guidance_drift(self) -> None:
         widget = self.source("App/MoneyUpWidget/MoneyUpWidget.swift")
         split_generation = widget.replace(
-            "                    insights: entry.insights,\n",
-            "                    insights: nil,\n",
+            "                insights: entry.insights,\n",
+            "                insights: nil,\n",
             1,
         )
         self.assertTrue(
@@ -911,6 +911,17 @@ class PlatformActionsValidatorTests(unittest.TestCase):
                     "        case .accessoryRectangular:\n"
                     "            return .accessoryRectangular\n",
                     "        case .accessoryRectangular:\n"
+                    "            return .systemSmall\n",
+                    1,
+                ),
+                "mapping must preserve",
+            ),
+            (
+                "Today + Log large mapping",
+                overview.replace(
+                    "        case .systemLarge:\n"
+                    "            return .systemMedium\n",
+                    "        case .systemLarge:\n"
                     "            return .systemSmall\n",
                     1,
                 ),
@@ -970,6 +981,57 @@ class PlatformActionsValidatorTests(unittest.TestCase):
             with self.subTest(label=label):
                 self.assertNotEqual(mutated, overview)
                 errors = VALIDATOR.validate_smart_overview_widget_source(mutated)
+                self.assertTrue(
+                    any(expected_error in error for error in errors),
+                    errors,
+                )
+
+    def test_rejects_quick_log_widget_card_navigation_payload_or_density_drift(self) -> None:
+        card = self.source("App/Shared/QuickLogWidgetCard.swift")
+        self.assertEqual(VALIDATOR.validate_quick_log_widget_card_source(card), [])
+        mutations = [
+            (
+                "embedded link",
+                card.replace(
+                    "        case .small:\n            tile(primary, .canvas)\n",
+                    "        case .small:\n            Link(destination: primary.deepLink) "
+                    "{ tile(primary, .canvas) }\n",
+                    1,
+                ),
+                "data-free and non-navigating",
+            ),
+            (
+                "book data in a tile",
+                card.replace(
+                    "    let role: QuickLogWidgetTileRole\n",
+                    "    let role: QuickLogWidgetTileRole\n    let payee: String\n",
+                    1,
+                ),
+                "only the closed action",
+            ),
+            (
+                "unlabelled tile",
+                card.replace(
+                    ".accessibilityHint(action.accessibilityHintKey)",
+                    ".accessibilityHint(Text(verbatim: \"\"))",
+                    1,
+                ),
+                "consequence of the tap",
+            ),
+            (
+                "accessibility density",
+                card.replace(
+                    "case (.small, _), (.medium, .accessibility):",
+                    "case (.small, _):",
+                    1,
+                ),
+                "accessibility sizes",
+            ),
+        ]
+        for label, mutated, expected_error in mutations:
+            with self.subTest(label=label):
+                self.assertNotEqual(mutated, card)
+                errors = VALIDATOR.validate_quick_log_widget_card_source(mutated)
                 self.assertTrue(
                     any(expected_error in error for error in errors),
                     errors,

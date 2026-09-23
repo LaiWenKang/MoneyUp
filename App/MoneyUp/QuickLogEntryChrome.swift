@@ -113,6 +113,13 @@ extension QuickLogEntryView {
                 .foregroundStyle(.primary)
                 .lineLimit(1)
                 Spacer(minLength: 8)
+                if let lastSavedFavouriteCandidate {
+                    SaveAsFavouriteButton(
+                        candidate: lastSavedFavouriteCandidate,
+                        isPresenting: $isNamingFavourite
+                    )
+                    .disabled(isUndoing)
+                }
                 Button("action.undo") {
                     Task { await undo(entryID: lastSavedEntryID) }
                 }

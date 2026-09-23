@@ -194,6 +194,7 @@ extension QuickLogEntryView {
         // One category is shown beside the amount; a transfer or a split has
         // no single category, so the banner keeps to the amount.
         lastSavedCategoryID = kind != .transfer && splitLines.isEmpty ? categoryID : nil
+        lastSavedFavouriteCandidate = favouriteCandidateForSavedEntry()
         batch = nil
         pendingBatchRemoval = nil
         cancelSmartParsing()
@@ -253,7 +254,8 @@ extension QuickLogEntryView {
 
         Task {
             try? await Task.sleep(for: .seconds(6))
-            guard !isUndoing, !isSaving, lastSavedEntryID == entryID else { return }
+            guard !isUndoing, !isSaving, !isNamingFavourite,
+                  lastSavedEntryID == entryID else { return }
             // VoiceOver users dismiss the persistent correction affordance
             // explicitly, so it cannot vanish before they navigate to Undo.
             guard !isVoiceOverEnabled else { return }

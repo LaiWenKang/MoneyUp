@@ -356,7 +356,15 @@
     "widget.smart.days" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"%dd"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"%d天"}}}},
     "widget.smart.one_day" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"1 day"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"1 天"}}}},
     "widget.smart.days_long" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"%d days"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"%d 天"}}}},
-    "control.quick_log.description" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Open a private logging screen without showing financial information."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"打开私密记账界面，不显示财务信息。"}}}}
+    "control.quick_log.description" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Open a private logging screen without showing financial information."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"打开私密记账界面，不显示财务信息。"}}}},
+    "widget.hero.expense" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Log expense"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"记支出"}}}},
+    "widget.hero.income" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Log income"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"记收入"}}}},
+    "widget.hero.transfer" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Log transfer"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"记转账"}}}},
+    "widget.hero.refund" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Log refund"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"记退款"}}}},
+    "widget.hero.smart_entry" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Smart Entry"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"智能记账"}}}},
+    "widget.hero.scan_receipt" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Add receipt"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"添加小票"}}}},
+    "widget.hero.detail_amount" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Amount first"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"先输入金额"}}}},
+    "widget.hero.detail_transfer" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Between accounts"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"账户之间"}}}}
   },
   "version" : "1.0"
 }

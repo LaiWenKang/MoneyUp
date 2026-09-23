@@ -20,6 +20,7 @@ extension AppModel {
         previous.reviewedIntelligenceFindingIDs = updated.reviewedIntelligenceFindingIDs
         previous.displayPreferences = updated.displayPreferences
         previous.currencyDisplay = updated.currencyDisplay
+        previous.quickLogFavourites = updated.quickLogFavourites
         return previous == updated
     }
 

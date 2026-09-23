@@ -369,6 +369,7 @@ final class AppwideExperienceTests: XCTestCase {
         ("Transaction edit", TransactionEditView.Body.self),
         ("Onboarding", OnboardingView.Body.self),
         ("Settings", AppSettingsView.Body.self),
+        ("Widgets & Quick Access", WidgetsQuickAccessView.Body.self),
         ("Calendar", CalendarView.Body.self),
         ("Insights", InsightsView.Body.self),
         ("BudgetPlanView", BudgetPlanView.Body.self),
