@@ -8,87 +8,87 @@
       "keywords": "budget,expense,spending,money,finance,tracker,calendar,savings,accounts,private",
       "promotionalText": "Your money, a little clearer. Track spending, plan budgets and grow savings goals with a private, encrypted ledger on your iPhone.",
       "supportUrl": "https://github.com/LaiWenKang/MoneyUp/blob/main/SUPPORT.md",
-      "whatsNew": "Import CSV, XLSX and JSON with local previews and field mapping. Files with generic provider labels can now be selected. Choose optional account and category presets, review clearer spending details, and enjoy improved financial accuracy and smoother exports. Optional one-time tips support independent development; all core features remain free. Private insights can be marked reviewed. Widget captures open straight in Log after unlock, a blank Log visit no longer counts as an unfinished entry, and recent entries fill the form in one tap."
+      "whatsNew": "Faster, clearer everyday money.\n• Log in three taps: amount, a category icon, Save. Your account and most-used categories now sit right under the amount.\n• Every category has its own icon across History, Today, Plan and Reports, so a day scans at a glance.\n• Set your first budget on one screen: enter a monthly figure and adjust a suggested split.\n• Budgets tell you where you stand: On pace, Ahead of pace or Over budget.\n• The calendar marks spending, income and scheduled days before you tap.\n• New books start with a simple two-step checklist on Today.\n• Log a purchase in another currency at the rate you were charged. History filters sit on one row, and Assets group accounts by currency.\n• Import CSV, XLSX and JSON with local previews and field mapping, and choose optional account and category presets.\n• Widget captures open straight in Log after unlock, and recent entries fill the form in one tap.\n• Optional one-time tips support independent development; all core features remain free."
     },
     "zh-Hans": {
       "description": "把收支看清楚，把生活安排得更从容。\n\nMoneyUp 将记账、预算、账户与储蓄目标放在一起，财务记录加密保存在你的 iPhone。无需注册 MoneyUp 账户。\n\n日常记账，清清楚楚\n记录支出、收入、转账与退款，按日期或分类回顾明细。在本机识别收据和截图，检查结果后再保存。\n\n预算有计划，心里更有底\n建立多层预算，置顶关心的分类，查看已用与剩余金额。通过预算情景模拟探索计划，不会修改实际账本。追踪储蓄目标，在日历中查看资金流。\n\n账户与币种，分别看清\n手动管理账户余额，按各自币种查看。需要换算估值时，可使用自己记录的汇率。MoneyUp 不连接银行，也不提供交易服务。\n\n隐私，从设计开始\n本地账本加密存储，不含广告或追踪。你可自主导出 CSV 或 Excel 文件，或创建加密备份。\n\nMoneyUp 是记录与规划工具，不构成财务、投资、税务或法律建议。\n\n自愿支持独立开发\n所有核心功能继续免费。如你愿意，可通过 Apple 进行一次性自愿支持。支持不会解锁功能，也不是订阅。\n\n带上你的记账历史\n本机读取 CSV／TSV、XLSX 工作表和 JSON 账单表。选择数据表，检查字段与账单类型后再确认导入；不会读取加密工作簿或执行表格公式。",
       "keywords": "预算,记账,支出,收支,消费,账本,存钱,储蓄,目标,资金流,资产,隐私",
       "promotionalText": "让每一笔钱更清楚。私密记账、规划预算、追踪储蓄目标，财务记录加密保存在你的 iPhone。",
       "supportUrl": "https://github.com/LaiWenKang/MoneyUp/blob/main/SUPPORT.md",
-      "whatsNew": "支持导入 CSV、XLSX 和 JSON，提供本机预览与字段对应。修复文件因类型标签而变灰、无法选择的问题。新增可选账户与消费分类清单，支出明细更清晰，并改进财务计算与导出体验。可自愿一次性支持独立开发，所有核心功能继续免费。私密洞察可标为已查看。小组件记录解锁后直接进入记账页，空白记账页不再算作未完成记录，最近条目一键填入。"
+      "whatsNew": "日常记账，更快更清楚。\n• 三步记一笔：输入金额、点分类图标、保存。账户和常用分类就在金额下方。\n• 每个分类都有专属图标，明细、今日、规划与报表一眼可辨。\n• 一个页面设好第一个预算：输入月度金额，按建议比例微调即可。\n• 预算进度直接告诉你：进度正常、花得偏快或已超支。\n• 日历直接标出有支出、收入和计划的日子。\n• 新账本在今日页有两步入门清单。\n• 外币消费可按实际扣款汇率记录；明细筛选收在一行；资产按币种分组。\n• 支持导入 CSV、XLSX 和 JSON，提供本机预览与字段对应；可选账户与分类清单。\n• 小组件记录解锁后直接进入记账页，最近条目一键填入。\n• 可自愿一次性支持独立开发，所有核心功能继续免费。"
     }
   },
   "screenshots": {
     "en-US": [
       {
         "file": "screenshots/en-brand.png",
-        "sha256": "967c39e4ae93bceeed87e4f6d71435bc7a2b6ae794212c43f9b6bd68bb5b9897"
+        "sha256": "8f1c98a1c3b8a2c6d1a0018e5d64d5430f3ceba79bd6e16763b992b8af15f713"
       },
       {
         "file": "screenshots/en-today.png",
-        "sha256": "113b5926d40544d8789350a19b8768f43c395e351e47508c9706789fb256aae5"
+        "sha256": "ee25179b68ee6db973f8bba08cac697cf5da5c9bbe69ec36ec9e164d09159571"
       },
       {
         "file": "screenshots/en-plan.png",
-        "sha256": "20c6de604fd16ef6f6d117befcb782ad1b20da4b8132b3664baf7825cff01cf6"
+        "sha256": "c3583c235d483c05281ee7fb2e380b21eb817cd7f9c8517aab558ebb118de3ad"
       },
       {
         "file": "screenshots/en-history.png",
-        "sha256": "ec5e697ab64fcef12a003005dc0f1455055b9542e7d718abd86d0ebb9bec65f5"
+        "sha256": "b47229fbed90aa13e725d1cdb98157007ef97784fc7e4977b240bd0b96eed697"
       },
       {
         "file": "screenshots/en-assets.png",
-        "sha256": "e1f1c9f931f468ebccc921f760cde30836862ef64b5cd04339df61a3c8228084"
+        "sha256": "7d1d92ecabc601971f4d762efad2e76f3c8e314b1582fae0e7f3514c0228d69e"
       },
       {
         "file": "screenshots/en-goals.png",
-        "sha256": "81c5bba643fae96acf54a94fc3a43f48595b6f5ce7ae1b8da84c0aadb9272ff9"
+        "sha256": "4929a24db9b6092c3e559a593dcc72043c799afe1183b20fa5b6a306f8b62415"
       },
       {
         "file": "screenshots/en-log.png",
-        "sha256": "d83d0090c12c6b3f43dbeeee45acdf72d770171f4d265dea294df1260ec816d2"
+        "sha256": "c5e459d4cbab3797f1142928b0aae53cde9e0adb6c53a44d2e606932c445a86a"
       },
       {
         "file": "screenshots/en-calendar.png",
-        "sha256": "9d2edc4e6646f3ac4a31b8b5a1d43ab87c610dd6304112b24c04a8f284b1901f"
+        "sha256": "f1bf4748104177533ad91b0d75bb9139515e6e3318c0a4dd2952fd6e5106b739"
       }
     ],
     "zh-Hans": [
       {
         "file": "screenshots/zh-brand.png",
-        "sha256": "0ef090e963c4df5a27fab19d33be18a2e6eba06963d78d47560795098a04cae2"
+        "sha256": "12deca0605844b641dcb6f8cf4ca6ea5f42c29ff604bf28e50b094baafb24dc0"
       },
       {
         "file": "screenshots/zh-today.png",
-        "sha256": "f576c02d755e1a0cfe9eb006bbaf5390ac27a2c4181ef1f301d86060564ad2d3"
+        "sha256": "2c7ff0ab7ae476ad0f63b1ed83c3060a9bdc1e1ae8ffe31049d0591e5da91915"
       },
       {
         "file": "screenshots/zh-plan.png",
-        "sha256": "18f040c1c8311144832de7e25b9e6076f2c1364afcf017614b642e0aeb5efbd7"
+        "sha256": "0faf985d3c179764669db9c27faab028d52de26d6d16a3360268374c5e295aab"
       },
       {
         "file": "screenshots/zh-history.png",
-        "sha256": "856d1759dcc93874d6cc0f0d607abd4298b5417aef98cd45db06435026b5ae1b"
+        "sha256": "88f5ddcd25c227a11b4dd1c280ebddd3111acff4b3909cea329208276ced1391"
       },
       {
         "file": "screenshots/zh-assets.png",
-        "sha256": "172d5ac354c554668f687305d56c8da11b9dc1873c80144270827c8b84f9a02b"
+        "sha256": "1c3d366390ee968e69b323dc86475066cb836e3e23ae6d969dbf68c7163fed90"
       },
       {
         "file": "screenshots/zh-goals.png",
-        "sha256": "80036867ad8703e8ec79cf341cf4ae2cd44bac70f59aede80b7c268050f11706"
+        "sha256": "d3d6985e0584b10567ab4169eab6b9ab63d285d29dcfcfd4320e7fcc43428c4e"
       },
       {
         "file": "screenshots/zh-log.png",
-        "sha256": "2c393c8b5b7af905d1d405dcba4ccbc45eb0a52c669684af37ee6fa2fb762146"
+        "sha256": "cae20986b53b74e0b6e88871458bc21be7c2ef9e9be5907976d338bf0192a19b"
       },
       {
         "file": "screenshots/zh-calendar.png",
-        "sha256": "8a83defc1689f51bf52aefb6d12df41efbcf24bc293f617b57ee3bd0e0cb7561"
+        "sha256": "e240ad57e90d134389d002e59c2a7df66e962c67511e85b63d407325bdff97b2"
       }
     ]
   },
-  "reviewNotes": "MoneyUp is a local-first personal bookkeeping app. No MoneyUp account, bank connection, investment trading, ads or tracking. Cloud backup is disabled in this public build. Start a local book to explore the app. This update improves entry options, financial edge cases and exports. Screenshots use fictional data rendered by the production views. The optional Support MoneyUp page in Settings uses consumable StoreKit purchases, with no subscription, entitlement or feature unlock. Each purchase is an optional one-time tip to the developer.",
+  "reviewNotes": "MoneyUp is a local-first personal bookkeeping app. No MoneyUp account, bank connection, investment trading, ads or tracking. Cloud backup is disabled in this public build. Start a local book to explore the app. This update makes logging and first-budget setup faster and improves entry options, financial edge cases and exports. Screenshots use fictional data rendered by the production views. The optional Support MoneyUp page in Settings uses consumable StoreKit purchases, with no subscription, entitlement or feature unlock. Each purchase is an optional one-time tip to the developer.",
   "supportProducts": [
     {
       "productId": "com.laiwenkang.MoneyUp.support.small",

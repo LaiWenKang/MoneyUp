@@ -187,3 +187,196 @@ struct BudgetEditorSheet: View {
         } catch { errorMessage = safeUserMessage(for: error, context: .save) }
     }
 }
+
+/// A suggested first split of one monthly figure across the starter
+/// categories. Shares are whole multiples of five that add to 100, so every
+/// row reads as a round number the person can nudge.
+enum StarterBudgetSplit {
+    struct Share: Equatable, Identifiable {
+        let id: UUID
+        let name: String
+        var percent: Int
+        let purpose: BudgetPurpose
+    }
+
+    static func suggested(for nodes: [BudgetNode]) -> [Share] {
+        let open = nodes.filter { $0.limit == nil }
+        let topLevel = open.filter { $0.parentID == nil }
+        let candidates = Array((topLevel.isEmpty ? open : topLevel).prefix(6))
+        guard !candidates.isEmpty else { return [] }
+        let weights = candidates.map { weight(forName: $0.name) }
+        let total = weights.reduce(0, +)
+        var percents = weights.map { Int((Double($0) / Double(total) * 20).rounded()) * 5 }
+        let drift = 100 - percents.reduce(0, +)
+        if let largest = percents.indices.max(by: { percents[$0] < percents[$1] }) {
+            percents[largest] = max(0, percents[largest] + drift)
+        }
+        return zip(candidates, percents).map { node, percent in
+            Share(id: node.id, name: node.name, percent: percent,
+                  purpose: isCommitment(node.name) ? .commitment : .flexible)
+        }
+        .sorted { $0.percent > $1.percent }
+    }
+
+    /// Whole-unit amount for a share; the remainder of rounding stays
+    /// unallocated rather than inflating a row.
+    static func amount(total: Decimal, percent: Int) -> Decimal {
+        var raw = total * Decimal(percent) / 100
+        var rounded = Decimal()
+        NSDecimalRound(&rounded, &raw, 0, .down)
+        return rounded
+    }
+
+    private static func weight(forName name: String) -> Int {
+        if isCommitment(name) { return 40 }
+        switch MoneyUpCategorySymbol.symbol(forName: name) {
+        case "cart.fill", "fork.knife", "basket.fill", "bus.fill": return 35
+        case "sparkles", "bag.fill", "film.fill": return 25
+        default: return 15
+        }
+    }
+
+    private static func isCommitment(_ name: String) -> Bool {
+        ["house.fill", "bolt.fill", "wifi", "iphone", "shield.fill"]
+            .contains(MoneyUpCategorySymbol.symbol(forName: name) ?? "")
+    }
+}
+
+/// One screen from "no budget" to a working month: a single monthly figure,
+/// a suggested split with ±5% steppers, and one Save.
+struct StarterBudgetSetupSheet: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    @State private var totalText = ""
+    @State private var shares: [StarterBudgetSplit.Share] = []
+    @State private var isSaving = false
+    @State private var errorMessage: String?
+    @FocusState private var isTotalFocused: Bool
+
+    private var currency: CurrencyCode? { model.profile?.baseCurrency }
+    private var total: Decimal? { decimalAmount(from: totalText).flatMap { $0 > 0 ? $0 : nil } }
+    private var allocated: Int { shares.map(\.percent).reduce(0, +) }
+    private var canSave: Bool { total != nil && allocated > 0 && allocated <= 100 && !isSaving }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    HStack(alignment: .firstTextBaseline) {
+                        TextField(text: $totalText, prompt: Text(verbatim: "0")) {
+                            Text("budget.setup.total")
+                        }
+                            .moneyAmountKeyboard(currency: currency)
+                            .moneyUpFinancialValue(.hero)
+                            .focused($isTotalFocused)
+                        Text(currency?.value ?? "")
+                            .font(.headline.monospaced())
+                            .foregroundStyle(.secondary)
+                    }
+                } header: {
+                    Text("budget.setup.total")
+                } footer: {
+                    Text("budget.setup.total_hint")
+                }
+                Section {
+                    ForEach($shares) { $share in
+                        shareRow($share)
+                    }
+                } footer: {
+                    allocationFooter
+                }
+            }
+            .navigationTitle("budget.setup.title")
+            .navigationBarTitleDisplayMode(.inline)
+            .moneyUpNavigationSurface()
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("action.cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("action.save") { Task { await save() } }
+                        .disabled(!canSave)
+                }
+            }
+            .moneyUpOperationErrorAlert(message: $errorMessage)
+            .onAppear {
+                if shares.isEmpty { shares = StarterBudgetSplit.suggested(for: model.budgetNodes) }
+                isTotalFocused = true
+            }
+        }
+    }
+
+    private func shareRow(_ share: Binding<StarterBudgetSplit.Share>) -> some View {
+        let value = share.wrappedValue
+        return HStack(alignment: .top, spacing: 12) {
+            MoneyUpCategoryBadge(
+                systemImage: MoneyUpCategorySymbol.symbol(for: value.id, accountsByID: model.accountsByID),
+                tint: MoneyUpCategorySymbol.tint(for: value.id),
+                size: 34
+            )
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(value.name).font(.subheadline.weight(.semibold))
+                    Spacer(minLength: 8)
+                    Text(amountText(for: value.percent))
+                        .font(.subheadline.monospacedDigit().weight(.semibold))
+                }
+                HStack(spacing: 8) {
+                    Label(value.purpose.titleKey, systemImage: value.purpose.systemImage)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                    Spacer(minLength: 4)
+                    Text("\(value.percent)%")
+                        .font(.caption.monospacedDigit().weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Stepper(value.name, value: share.percent, in: 0...100, step: 5)
+                        .labelsHidden()
+                }
+            }
+        }
+        .padding(.vertical, 2)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var allocationFooter: some View {
+        HStack(spacing: 6) {
+            Image(systemName: allocated > 100 ? "exclamationmark.triangle.fill"
+                : allocated == 100 ? "checkmark.circle.fill" : "circle.dashed")
+            Text(String(format: AppLocalization.string("budget.setup.allocated"), allocated))
+                .monospacedDigit()
+        }
+        .foregroundStyle(allocated > 100 ? Color.moneyUpDanger : allocated == 100 ? Color.moneyUpPositive : .secondary)
+    }
+
+    private func amountText(for percent: Int) -> String {
+        guard let total, let currency,
+              let money = try? Money(StarterBudgetSplit.amount(total: total, percent: percent), currency: currency)
+        else { return "—" }
+        return formattedMoney(money)
+    }
+
+    private func save() async {
+        guard let total else { return }
+        isSaving = true
+        defer { isSaving = false }
+        let limits = shares.filter { $0.percent > 0 }.map {
+            (categoryID: $0.id, amount: StarterBudgetSplit.amount(total: total, percent: $0.percent), purpose: $0.purpose)
+        }
+        do {
+            try await model.setStarterBudgetLimits(limits)
+            // Flexible shares go straight onto Today so the next screen shows
+            // what is left; pinning is a display preference and never blocks.
+            if model.pinnedBudgetNodes.isEmpty {
+                for share in shares where share.purpose == .flexible && share.percent > 0
+                    && model.canPinAnotherBudgetNode {
+                    try? await model.setBudgetNodePinned(share.id, isPinned: true)
+                }
+            }
+            dismiss()
+        } catch {
+            errorMessage = safeUserMessage(for: error, context: .save)
+        }
+    }
+}

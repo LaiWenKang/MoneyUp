@@ -220,7 +220,16 @@ struct BudgetRow: View {
     var body: some View {
         let ratioResult = ratio
         VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
+            HStack(alignment: .center, spacing: 8) {
+                if showsName, depth == 0 {
+                    MoneyUpCategoryBadge(
+                        systemImage: MoneyUpCategorySymbol.symbol(
+                            for: node.id, accountsByID: model.accountsByID
+                        ),
+                        tint: MoneyUpCategorySymbol.tint(for: node.id),
+                        size: 28
+                    )
+                }
                 Text(showsName ? node.name : AppLocalization.string("budget.group_total"))
                     .fontWeight(depth == 0 ? .semibold : .regular)
                     .foregroundStyle(depth == 0 ? .primary : .secondary)
@@ -302,9 +311,9 @@ struct BudgetRow: View {
             } else if case let .unavailable(issue) = ratioResult {
                 DerivedValueUnavailableView(issue: issue)
             } else {
-                Text("plan.tap_to_set_limit")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Label("plan.tap_to_set_limit", systemImage: "plus.circle")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tint)
             }
         }
         .padding(.vertical, 5)
@@ -366,12 +375,11 @@ struct BudgetSummaryCard: View {
             .font(.caption)
             .foregroundStyle(.secondary)
 
-            ViewThatFits(in: .horizontal) {
-                HStack {
-                    Label("budget.spending_progress", systemImage: "circle.lefthalf.filled")
-                    Spacer()
-                    MoneyUpExplainer("plan.pace_hint")
+            HStack(alignment: .top) {
+                if case let .available(ratio) = ratioResult {
+                    MoneyUpPaceStatusChip(status: MoneyUpPaceStatus(ratio: ratio, elapsed: elapsed))
                 }
+                Spacer(minLength: 8)
                 MoneyUpExplainer("plan.pace_hint")
             }
             .font(.caption)

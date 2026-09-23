@@ -665,7 +665,7 @@ W3_PATH_TYPE_DIGESTS: tuple[tuple[str, str, str, str], ...] = (
     ('App/MoneyUp/QuickLogSmartFill.swift', 'struct', 'QuickLogSmartFill', '3c98e0dc2f72aae58ef9626c1953a3239b930ad5fb465a45c8ba2e8f08ddd998'),
     ('Sources/MoneyUpCore/SmartEntryTextReading.swift', 'struct', 'SmartEntryAmountReading', '088699b5ce5d5f969b345f2d81ab3a8cca9609baa0cafd17afabaf21e802403c'),
     ('Sources/MoneyUpCore/SmartEntryTextReading.swift', 'struct', 'SmartEntryTextParts', 'a84bf4da2c0b336f570103ee82b2f176ba7d30019cad745611022bae5e7b5ea4'),
-    ("App/MoneyUp/QuickLogEntryChrome.swift", "extension", "QuickLogEntryView", "bb6aaf5e2ffc1334609668105657ece78f1974c17d5ec4ffd3f1d16bb44244fb"),
+    ("App/MoneyUp/QuickLogEntryChrome.swift", "extension", "QuickLogEntryView", "3297629a841c7469a32b8d9feace59eb04fccc1e9b5e8227fa4566a42256b97f"),
     (
         "App/MoneyUp/QuickLogEntryBody.swift",
         "extension",

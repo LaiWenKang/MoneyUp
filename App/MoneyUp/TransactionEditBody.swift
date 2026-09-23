@@ -107,8 +107,13 @@ extension TransactionEditView {
                             } else {
                                 Picker("transaction.category", selection: $categoryID) {
                                     ForEach(categories) { category in
-                                        Text(verbatim: editorLabel(for: category))
-                                            .tag(Optional(category.id))
+                                        Label(
+                                            editorLabel(for: category),
+                                            systemImage: MoneyUpCategorySymbol.symbol(
+                                                for: category.id, accountsByID: model.accountsByID
+                                            )
+                                        )
+                                        .tag(Optional(category.id))
                                     }
                                 }
                             }

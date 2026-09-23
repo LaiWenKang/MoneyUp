@@ -309,14 +309,17 @@ struct HistoryView: View {
     let title: String?
     let returnOrigin: HistoryReturnOrigin?
     let onReturnToOrigin: @MainActor () -> Void
+    let onOpenLog: (@MainActor () -> Void)?
 
     init(
         preset: HistoryPreset? = nil,
         allowsFiltering: Bool = true,
         title: String? = nil,
         returnOrigin: HistoryReturnOrigin? = nil,
-        onReturnToOrigin: @escaping @MainActor () -> Void = {}
+        onReturnToOrigin: @escaping @MainActor () -> Void = {},
+        onOpenLog: (@MainActor () -> Void)? = nil
     ) {
+        self.onOpenLog = onOpenLog
         _filters = State(initialValue: HistoryFilterDraft(preset: preset))
         _quickRange = State(initialValue: preset == nil ? .today : nil)
         self.allowsFiltering = allowsFiltering
@@ -461,41 +464,36 @@ struct HistoryView: View {
 
                     if dayGroups.isEmpty {
                         if let initialPageErrorMessage {
-                            VStack(alignment: .leading, spacing: 10) {
-                                Label(
-                                    "history.entries_unavailable",
-                                    systemImage: "exclamationmark.circle"
-                                )
-                                .font(.headline)
-                                Text(initialPageErrorMessage)
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
+                            MoneyUpStatePlaceholder(
+                                systemImage: "exclamationmark.triangle.fill",
+                                tint: .moneyUpWarning,
+                                title: Text("history.entries_unavailable"),
+                                detail: Text(initialPageErrorMessage)
+                            ) {
                                 Button("action.retry") {
                                     refreshGeneration &+= 1
                                 }
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        } else if isInitialHistoryLoadInProgress {
-                            HStack {
-                                Spacer()
-                                ProgressView()
-                                    .controlSize(.large)
-                                    .accessibilityLabel("history.loading")
-                                Spacer()
+                                .buttonStyle(.bordered)
                             }
                             .listRowBackground(Color.clear)
+                        } else if isInitialHistoryLoadInProgress {
+                            MoneyUpLoadingPlaceholder(title: "history.loading")
+                                .listRowBackground(Color.clear)
                         } else if !model.hasJournalEntries {
-                            VStack(spacing: 10) {
-                                MoneyUpIllustration("MoneyUpMoneyWorld", role: .empty)
-                                Text(unavailableTitle)
-                                    .font(.title2.bold())
-                                Text(unavailableDetail)
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                                    .multilineTextAlignment(.center)
+                            MoneyUpStatePlaceholder(
+                                systemImage: "clock.arrow.circlepath",
+                                title: unavailableTitle,
+                                detail: unavailableDetail,
+                                illustration: "MoneyUpMoneyWorld"
+                            ) {
+                                if let onOpenLog {
+                                    Button { onOpenLog() } label: {
+                                        Label("dashboard.log_first", systemImage: "plus.circle.fill")
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                    .tint(.moneyUpAction)
+                                }
                             }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 16)
                             .listRowBackground(Color.clear)
                         } else {
                             MoneyUpStatePlaceholder(

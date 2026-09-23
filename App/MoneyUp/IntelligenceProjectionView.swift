@@ -17,6 +17,9 @@ struct IntelligenceProjectionCard: View {
                         )
                         .font(.headline)
                         Spacer(minLength: 8)
+                        MoneyUpExplainer("intelligence.projection.detail")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
                         Button {
                             Task { await load() }
                         } label: {
@@ -24,9 +27,6 @@ struct IntelligenceProjectionCard: View {
                         }
                         .accessibilityLabel("action.refresh")
                     }
-                    Text("intelligence.projection.detail")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
                     projectionContent
                 }
             }

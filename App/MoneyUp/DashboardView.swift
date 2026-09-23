@@ -41,6 +41,7 @@ struct DashboardView: View {
     var hidesAmounts = MoneyAmountPrivacy.defaultHidesAmounts
     @State var isShowingFlexibleTodayBreakdown = false
     @State var isEditingPins = false
+    @State var isSettingUpBudget = false
     let onOpenLog: () -> Void
     let onOpenPlan: () -> Void
     let onReviewSchedule: (Date) -> Void

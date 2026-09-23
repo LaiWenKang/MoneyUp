@@ -231,4 +231,118 @@ final class AppwideExperienceTests: XCTestCase {
             contribution: Money(contribution, currency: currency), cadence: cadence, asOf: asOf, calendar: resolved
         )
     }
+
+    func testCategoryGlyphsPreferPresetThenNameThenAncestor() {
+        let dining = LedgerAccount(name: "Anything", kind: .expense, presetID: "expense.dining")
+        let transport = LedgerAccount(name: "Transport", kind: .expense)
+        let child = LedgerAccount(name: "Weekday rides", kind: .expense, parentID: transport.id)
+        let unknown = LedgerAccount(name: "Zzz", kind: .expense)
+        let salary = LedgerAccount(name: "工资", kind: .income)
+        let otherIncome = LedgerAccount(name: "Zzz", kind: .income)
+        let accounts = Dictionary(uniqueKeysWithValues: [dining, transport, child, unknown, salary, otherIncome].map { ($0.id, $0) })
+        XCTAssertEqual(MoneyUpCategorySymbol.symbol(for: dining.id, accountsByID: accounts), "fork.knife")
+        XCTAssertEqual(MoneyUpCategorySymbol.symbol(for: transport.id, accountsByID: accounts), "bus.fill")
+        XCTAssertEqual(MoneyUpCategorySymbol.symbol(for: child.id, accountsByID: accounts), "bus.fill")
+        XCTAssertEqual(MoneyUpCategorySymbol.symbol(for: unknown.id, accountsByID: accounts), MoneyUpCategorySymbol.fallbackExpense)
+        XCTAssertEqual(MoneyUpCategorySymbol.symbol(for: salary.id, accountsByID: accounts), "briefcase.fill")
+        XCTAssertEqual(MoneyUpCategorySymbol.symbol(for: otherIncome.id, accountsByID: accounts), MoneyUpCategorySymbol.fallbackIncome)
+        XCTAssertEqual(MoneyUpCategorySymbol.symbol(for: UUID(), accountsByID: accounts), MoneyUpCategorySymbol.fallbackExpense)
+    }
+
+    func testCategoryNameKeywordsAvoidShortWordFalseMatches() {
+        XCTAssertEqual(MoneyUpCategorySymbol.symbol(forName: "Food & coffee"), "fork.knife")
+        XCTAssertEqual(MoneyUpCategorySymbol.symbol(forName: "Coffee"), "cup.and.saucer.fill")
+        XCTAssertEqual(MoneyUpCategorySymbol.symbol(forName: "Groceries"), "basket.fill")
+        XCTAssertEqual(MoneyUpCategorySymbol.symbol(forName: "Everyday essentials"), "cart.fill")
+        XCTAssertEqual(MoneyUpCategorySymbol.symbol(forName: "水电网费"), "bolt.fill")
+        XCTAssertEqual(MoneyUpCategorySymbol.symbol(forName: "餐饮"), "fork.knife")
+        XCTAssertEqual(MoneyUpCategorySymbol.symbol(forName: "Taxi"), "car.fill")
+        XCTAssertEqual(MoneyUpCategorySymbol.symbol(forName: "Taxes"), "doc.text.fill")
+        XCTAssertNil(MoneyUpCategorySymbol.symbol(forName: "Petty cash"))
+        XCTAssertNil(MoneyUpCategorySymbol.symbol(forName: "Category nine"))
+        let id = UUID()
+        XCTAssertEqual(MoneyUpCategorySymbol.tint(for: id), MoneyUpCategorySymbol.tint(for: id))
+    }
+
+    func testPaceStatusMatchesTheSharedPaceReading() {
+        XCTAssertEqual(MoneyUpPaceStatus(ratio: 0.40, elapsed: 0.50), .within)
+        XCTAssertEqual(MoneyUpPaceStatus(ratio: 0.55, elapsed: 0.50), .within)
+        XCTAssertEqual(MoneyUpPaceStatus(ratio: 0.56, elapsed: 0.50), .ahead)
+        XCTAssertEqual(MoneyUpPaceStatus(ratio: 1.01, elapsed: 0.99), .over)
+        XCTAssertEqual(MoneyUpPaceStatus(ratio: 2, elapsed: 0), .over)
+    }
+
+    @MainActor
+    func testIncomingRowAmountsCarryAnExplicitSign() throws {
+        let previous = UserDefaults.standard.object(forKey: MoneyAmountPrivacy.storageKey)
+        defer {
+            if let previous { UserDefaults.standard.set(previous, forKey: MoneyAmountPrivacy.storageKey) }
+            else { UserDefaults.standard.removeObject(forKey: MoneyAmountPrivacy.storageKey) }
+        }
+        UserDefaults.standard.set(false, forKey: MoneyAmountPrivacy.storageKey)
+        let money = try Money(12, currency: CurrencyCode("SGD"))
+        XCTAssertTrue(rowFormattedAmount(TransactionDisplayAmount(money: money, role: .income)).hasPrefix("+"))
+        XCTAssertTrue(rowFormattedAmount(TransactionDisplayAmount(money: money.negated, role: .refund)).hasPrefix("+"))
+        XCTAssertFalse(rowFormattedAmount(TransactionDisplayAmount(money: money, role: .expense)).hasPrefix("+"))
+        UserDefaults.standard.set(true, forKey: MoneyAmountPrivacy.storageKey)
+        XCTAssertEqual(rowFormattedAmount(TransactionDisplayAmount(money: money, role: .income)), MoneyAmountPrivacy.placeholder)
+    }
+
+    func testQuickCategoryChipsRankByUseAndNeverMoveTheSelection() throws {
+        let usd = try CurrencyCode("USD")
+        let wallet = LedgerAccount(name: "Wallet", kind: .asset, currency: usd)
+        let group = LedgerAccount(name: "Essentials", kind: .expense)
+        let food = LedgerAccount(name: "Food", kind: .expense, parentID: group.id)
+        let transport = LedgerAccount(name: "Transport", kind: .expense, parentID: group.id)
+        let rent = LedgerAccount(name: "Rent", kind: .expense)
+        let fun = LedgerAccount(name: "Fun", kind: .expense)
+        let choices = [group, food, transport, rent, fun]
+        let entries = try [transport, transport, rent].map {
+            try TransactionFactory.expense(amount: Money(5, currency: usd), paidFrom: wallet.id, category: $0.id)
+        }
+        let ranked = QuickLogCategoryRanking.ranked(choices: choices, recentEntries: entries, selected: nil, limit: 3)
+        XCTAssertEqual(ranked.map(\.name), ["Transport", "Rent", "Food"], "used first, unused group heading left out")
+        let withSelection = QuickLogCategoryRanking.ranked(choices: choices, recentEntries: entries, selected: rent.id, limit: 3)
+        XCTAssertEqual(withSelection.map(\.name), ["Transport", "Rent", "Food"], "a visible selection keeps its place")
+        let outside = QuickLogCategoryRanking.ranked(choices: choices, recentEntries: entries, selected: fun.id, limit: 3)
+        XCTAssertEqual(outside.map(\.name), ["Transport", "Rent", "Fun"], "an off-list selection takes the last slot")
+    }
+
+    func testStarterBudgetSplitAddsToOneHundredAndMarksBills() throws {
+        let nodes = [
+            BudgetNode(name: "Everyday essentials"), BudgetNode(name: "Housing"), BudgetNode(name: "Lifestyle"),
+            BudgetNode(parentID: UUID(), name: "Food")
+        ]
+        let shares = StarterBudgetSplit.suggested(for: nodes)
+        XCTAssertEqual(shares.map(\.name), ["Housing", "Everyday essentials", "Lifestyle"])
+        XCTAssertEqual(shares.map(\.percent), [40, 35, 25])
+        XCTAssertEqual(shares.first?.purpose, .commitment)
+        XCTAssertEqual(Set(shares.dropFirst().map(\.purpose)), [.flexible])
+        XCTAssertTrue(shares.allSatisfy { $0.percent % 5 == 0 })
+        XCTAssertEqual(StarterBudgetSplit.amount(total: 3001, percent: 35), 1050)
+        let limited = try BudgetNode(name: "Housing", limit: Money(10, currency: CurrencyCode("USD")))
+        XCTAssertTrue(StarterBudgetSplit.suggested(for: [limited]).isEmpty, "existing limits are never proposed again")
+    }
+
+    func testCalendarDayMarksSeparateSpendingIncomeAndTransfers() throws {
+        let usd = try CurrencyCode("USD")
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "UTC"))
+        let day = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-09-10T10:00:00Z"))
+        let wallet = LedgerAccount(name: "Wallet", kind: .asset, currency: usd)
+        let savings = LedgerAccount(name: "Savings", kind: .asset, currency: usd)
+        let food = LedgerAccount(name: "Food", kind: .expense)
+        let salary = LedgerAccount(name: "Salary", kind: .income)
+        let entries = try [
+            TransactionFactory.expense(amount: Money(5, currency: usd), paidFrom: wallet.id, category: food.id, occurredAt: day),
+            TransactionFactory.income(amount: Money(50, currency: usd), depositedInto: wallet.id, category: salary.id,
+                occurredAt: day.addingTimeInterval(86_400)),
+            TransactionFactory.transfer(amount: Money(5, currency: usd), from: wallet.id, to: savings.id,
+                occurredAt: day.addingTimeInterval(2 * 86_400))
+        ]
+        let marks = CalendarDayMarks.byDay(entries: entries, calendar: calendar)
+        XCTAssertEqual(marks[calendar.startOfDay(for: day)], CalendarDayMarks(spent: true))
+        XCTAssertEqual(marks[calendar.startOfDay(for: day.addingTimeInterval(86_400))], CalendarDayMarks(received: true))
+        XCTAssertNil(marks[calendar.startOfDay(for: day.addingTimeInterval(2 * 86_400))])
+    }
 }

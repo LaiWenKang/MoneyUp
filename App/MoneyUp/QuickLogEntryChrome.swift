@@ -93,6 +93,18 @@ extension QuickLogEntryView {
                                 .monospacedDigit()
                                 .contentTransition(.numericText())
                         }
+                        // The glyph alone says where it went; a name here
+                        // would truncate the amount on a phone-width banner.
+                        if let lastSavedCategoryID,
+                           model.accountsByID[lastSavedCategoryID] != nil {
+                            MoneyUpCategoryBadge(
+                                systemImage: MoneyUpCategorySymbol.symbol(
+                                    for: lastSavedCategoryID, accountsByID: model.accountsByID
+                                ),
+                                tint: MoneyUpCategorySymbol.tint(for: lastSavedCategoryID),
+                                size: 24
+                            )
+                        }
                     }
                 } icon: {
                     Image(systemName: "checkmark.circle.fill")

@@ -149,6 +149,45 @@ final class AppwideRenderEvidenceTests: XCTestCase {
         await fixture.store.close()
     }
 
+    /// Empty, launching, locked, and recovery states for the visual-first
+    /// audit: a fresh book with one account and no budgets, plus the root
+    /// lifecycle screens a person sees before the tabs.
+    @MainActor
+    func testRenderEmptyAndLifecycleStates() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let previousPrivacy = UserDefaults.standard.object(forKey: MoneyAmountPrivacy.storageKey)
+        UserDefaults.standard.set(false, forKey: MoneyAmountPrivacy.storageKey)
+        defer {
+            if let previousPrivacy { UserDefaults.standard.set(previousPrivacy, forKey: MoneyAmountPrivacy.storageKey) }
+            else { UserDefaults.standard.removeObject(forKey: MoneyAmountPrivacy.storageKey) }
+        }
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-09-06T04:00:00Z"))
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "Asia/Singapore"))
+        let profile = UserProfile(baseCurrency: fixture.sgd, reportingTimeZoneIdentifier: calendar.timeZone.identifier)
+        let accounts = [fixture.wallet, fixture.food]
+        try await fixture.seed(profile: profile, accounts: accounts)
+        let model = fixture.model(profile: profile, accounts: accounts, currentDate: { now })
+        let snapshot = AppReportingSnapshot(instant: now, calendar: calendar)
+        for (tab, name) in [(MoneyUpSection.today, "today"), (.history, "history"), (.log, "log"), (.plan, "plan"), (.assets, "assets")] {
+            await capture(MainTabView(initialReportingSnapshot: snapshot, initialSection: tab).environment(model)
+                .environment(MoneyUpOverviewNavigation()).preferredColorScheme(.light), name: "empty-" + name)
+        }
+        await capture(MainTabView(initialReportingSnapshot: snapshot, initialSection: .plan, initialPlanSection: .goals)
+            .environment(model).environment(MoneyUpOverviewNavigation()).preferredColorScheme(.dark), name: "empty-goals")
+        await capture(MainTabView(initialReportingSnapshot: snapshot, initialSection: .plan, initialPlanSection: .calendar)
+            .environment(model).environment(MoneyUpOverviewNavigation()).preferredColorScheme(.light), name: "empty-calendar")
+        let starterNodes = [BudgetNode(id: fixture.food.id, name: "Food and dining")]
+        let starterModel = fixture.model(profile: profile, accounts: accounts, budgetNodes: starterNodes, currentDate: { now })
+        await capture(StarterBudgetSetupSheet().environment(starterModel).preferredColorScheme(.light), name: "starter-budget-sheet")
+        for (state, name) in [(AppModel.State.launching, "launching"), (.locked, "locked"), (.failed("MoneyUp could not open its encrypted database."), "recovery")] {
+            model.state = state
+            await capture(RootView().environment(model).environment(MoneyUpOverviewNavigation()).preferredColorScheme(.dark), name: "state-" + name)
+        }
+        await fixture.store.close()
+    }
+
     @MainActor
     private func makeFixture() async throws -> (AppModelFixture, AppModel, AppReportingSnapshot) {
         let fixture = try AppModelFixture()

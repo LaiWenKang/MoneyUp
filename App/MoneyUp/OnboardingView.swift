@@ -9,15 +9,6 @@ struct OnboardingView: View {
         case review
 
         var number: Int { rawValue + 1 }
-
-        var title: LocalizedStringKey {
-            switch self {
-            case .welcome: "onboarding.welcome_title"
-            case .currency: "onboarding.currency_step_title"
-            case .account: "onboarding.account_step_title"
-            case .review: "onboarding.review_title"
-            }
-        }
     }
 
     private enum FocusedField: Hashable {
@@ -35,6 +26,7 @@ struct OnboardingView: View {
     @State private var showsAccountErrors = false
     @State private var errorMessage: String?
     @FocusState private var focusedField: FocusedField?
+    @Environment(\.moneyUpReduceMotion) private var reduceMotion
 
     private var startingBalance: Decimal? {
         parsedOpeningBalance(from: startingBalanceText, accountType: accountType)
@@ -98,21 +90,9 @@ struct OnboardingView: View {
 
     private var progressHeader: some View {
         VStack(alignment: .leading, spacing: 10) {
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .firstTextBaseline) {
-                    progressText
-                    Spacer()
-                    Text(step.title)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.tint)
-                }
-                VStack(alignment: .leading, spacing: 4) {
-                    progressText
-                    Text(step.title)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.tint)
-                }
-            }
+            // The step's own headline sits right below; repeating it here
+            // was a second read of the same words.
+            progressText
 
             ProgressView(value: Double(step.number), total: Double(Step.allCases.count))
                 .tint(.accentColor)
@@ -197,9 +177,6 @@ struct OnboardingView: View {
 
             MoneyUpCard {
                 VStack(alignment: .leading, spacing: 14) {
-                    Text("onboarding.base_currency")
-                        .font(.headline)
-
                     SearchableCurrencyPicker(
                         title: "onboarding.base_currency",
                         selection: $currencyCode
@@ -226,7 +203,8 @@ struct OnboardingView: View {
             stepIntroduction(
                 icon: "wallet.bifold.fill",
                 title: "onboarding.account_step_title",
-                detail: "onboarding.account_step_detail"
+                detail: "onboarding.account_step_detail",
+                compact: focusedField != nil
             )
 
             MoneyUpCard {
@@ -265,9 +243,11 @@ struct OnboardingView: View {
                             .font(.headline)
                         HStack(spacing: 10) {
                             TextField(
-                                accountType.openingBalanceLabel,
-                                text: $startingBalanceText
-                            )
+                                text: $startingBalanceText,
+                                prompt: Text(verbatim: "0.00")
+                            ) {
+                                Text(accountType.openingBalanceLabel)
+                            }
                             .moneyAmountKeyboard(
                                 currency: try? CurrencyCode(currencyCode),
                                 allowsNegative: !accountType.isLiabilityAccount
@@ -486,22 +466,30 @@ struct OnboardingView: View {
         .accessibilityElement(children: .combine)
     }
 
+    /// While a field is being typed into, the introduction shrinks to its
+    /// title so the fields stay above the keyboard.
     private func stepIntroduction(
         icon: String,
         title: LocalizedStringKey,
-        detail: LocalizedStringKey
+        detail: LocalizedStringKey,
+        compact: Bool = false
     ) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Image(systemName: icon)
-                .font(.title.bold())
-                .foregroundStyle(.tint)
-                .accessibilityHidden(true)
+            if !compact {
+                Image(systemName: icon)
+                    .font(.title.bold())
+                    .foregroundStyle(.tint)
+                    .accessibilityHidden(true)
+            }
             Text(title)
-                .font(.largeTitle.bold())
-            Text(detail)
-                .font(.body)
-                .foregroundStyle(.secondary)
+                .font(compact ? .title2.bold() : .largeTitle.bold())
+            if !compact {
+                Text(detail)
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+            }
         }
+        .animation(MoneyUpMotion.animation(for: .disclosure, reduceMotion: reduceMotion), value: compact)
     }
 
     private func reviewRow(_ title: LocalizedStringKey, value: String) -> some View {

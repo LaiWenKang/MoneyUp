@@ -130,6 +130,7 @@ private struct RecoveryView: View {
                         .accessibilityHidden(true)
                     Text("error.could_not_open")
                         .font(.title2.bold())
+                        .multilineTextAlignment(.center)
                     Text(message)
                         .multilineTextAlignment(.center)
                         .foregroundStyle(.secondary)
@@ -158,6 +159,7 @@ private struct RecoveryView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(.moneyUpAction)
+                    .controlSize(.large)
                     .disabled(model.isWorking)
 
                     Button {
@@ -322,7 +324,8 @@ struct MainTabView: View {
                 HistoryView(
                     preset: historyPreset(for: historyReviewDate),
                     returnOrigin: historyCrossTabNavigation.origin,
-                    onReturnToOrigin: returnFromHistory
+                    onReturnToOrigin: returnFromHistory,
+                    onOpenLog: { selectedSection = .log }
                 )
             }
                 .id(historyReviewSequence)
