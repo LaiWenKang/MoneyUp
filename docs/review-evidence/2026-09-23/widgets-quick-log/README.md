@@ -153,3 +153,27 @@ flagship Quick Log widget ships first.
 
 Renders are from `QuickLogFavouriteAppTests.testRenderQuickLogWidgetsQuickAccessAndFavouriteStrip`
 on the iOS 27.0 simulator (Xcode 27); see the PNGs in this folder.
+
+## Internal TestFlight delivery (0.7.2, build 1069.1)
+
+- **Merged:** #86 as `4e226a4`, with the tester notes in #87 as `91b746a`.
+  - All five CI jobs passed on the PR.
+  - The full local run passed: 781 app tests, the package suite, and every
+    validator and validator test.
+- **Upload:** `testflight.yml` run 69 (`35906773898`) built, signed, and uploaded
+  `4e226a4`. Earlier attempts hit CI problems, not app code:
+  - Run 66 was cancelled at the 45-minute preflight limit right after
+    `BUILD SUCCEEDED`, because the release build took 16.3 minutes.
+  - Runs 67 and 68 failed the pre-existing flaky StoreKit simulator test
+    (a 10-minute hang, then a transaction still unfinished after 20 s).
+  - Each attempt used a build number.
+- **Processing:** `VALID` (`apple-inspect-1069.1.json`).
+- **Export compliance:** copied from 1064.1, with non-exempt encryption false
+  (`apple-compliance-1069.1.json`). Nothing changed between `2db53da` and
+  `91b746a` in `Package.swift`, `Package.resolved`, `project.yml`,
+  entitlements, Info.plists, or privacy manifests.
+- **Internal:** `IN_BETA_TESTING` for 3 of 3 internal testers, using the
+  updated `docs/TESTFLIGHT_WHATS_NEW.json` notes (`apple-internal-1069.1.json`).
+- **Not done:** App Store submission. 0.7.2 stays in review with 1064.1.
+  These features are for 0.7.3, after the owner has opened every tab and
+  tried each widget size on a physical iPhone running 1069.1.
