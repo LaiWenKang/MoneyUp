@@ -264,6 +264,18 @@ extension QuickLogFavouriteAppTests {
             name: "log-favourites-strip", size: CGSize(width: 390, height: 844), scheme: .light
         )
         XCTAssertTrue(model.entries.isEmpty)
+        let emptyModel = fixture.model(profile: UserProfile(baseCurrency: fixture.sgd),
+                                       accounts: [fixture.wallet, fixture.food])
+        await capture(
+            QuickLogEntryView(kind: .constant(.expense), dismissAfterSave: false, isActive: false,
+                launchRequest: nil, onRequestHandled: { _ in }, onNavigate: { _ in })
+                .environment(emptyModel),
+            name: "log-favourites-empty", size: CGSize(width: 390, height: 844), scheme: .dark
+        )
+        let request = QuickLogRouteRequest(id: 1, ingressToken: UUID(), requiresIngressAcknowledgement: false,
+                                           generation: 0, mode: .expense)
+        await capture(LockedQuickCaptureView(request: request).environment(emptyModel),
+                      name: "locked-capture", size: CGSize(width: 390, height: 844), scheme: .dark)
         model.flushQuickLogDraftImmediately()
         await model.waitForPendingQuickLogDraftFlush()
         await fixture.store.close()

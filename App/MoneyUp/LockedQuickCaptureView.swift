@@ -128,16 +128,11 @@ struct LockedQuickCaptureView: View {
                     }
                 } else {
                     Section {
-                        Label("capture.private", systemImage: "lock.shield.fill")
-                            .foregroundStyle(.tint)
-                        Text("capture.detail")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                        if model.pendingLockedCaptureCount > 0 {
-                            Text(pendingCaptureCountText)
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                        }
+                        LockedCaptureHeader(
+                            mode: mode,
+                            pendingText: model.pendingLockedCaptureCount > 0
+                                ? pendingCaptureCountText : nil
+                        )
                         switch replayInspectionState {
                         case .checking:
                             ProgressView()
@@ -155,12 +150,15 @@ struct LockedQuickCaptureView: View {
                             EmptyView()
                         }
                     }
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 4, leading: 4, bottom: 4, trailing: 4))
 
                     Section {
                         TextField("quick_log.amount", text: $amountText)
                             .keyboardType(.decimalPad)
-                            .font(.system(.largeTitle, design: .rounded, weight: .bold))
+                            .font(.system(size: 44, weight: .bold, design: .rounded))
                             .monospacedDigit()
+                            .minimumScaleFactor(0.6)
                             .focused($focusedField, equals: .amount)
                             .moneyUpFieldValidation(amountValidationMessage)
                         if let amountValidationMessage {
@@ -178,52 +176,33 @@ struct LockedQuickCaptureView: View {
                             text: $note,
                             axis: .vertical
                         )
-                        .lineLimit(2...4)
+                        .lineLimit(1...4)
                         .focused($focusedField, equals: .note)
                         .moneyUpFieldValidation(noteValidationMessage)
                         if let noteValidationMessage {
                             MoneyUpFieldError(message: noteValidationMessage)
                         }
-                    } header: {
-                        Text(mode.kind.title)
-                    } footer: {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("capture.currency_unassigned")
-                            Text("capture.reconcile_later")
-                        }
                     }
                     .disabled(replayInspectionState != .ready)
-
-                    Section {
-                        Button {
-                            Task { await save() }
-                        } label: {
-                            Label("capture.save", systemImage: "tray.and.arrow.down.fill")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(.moneyUpAction)
-                        .disabled(!canSave || isSaving)
-
-                        Button {
-                            Task { await unlock() }
-                        } label: {
-                            Label(
-                                "capture.unlock_instead",
-                                systemImage: unlockMethod.systemImage
-                            )
-                                .frame(maxWidth: .infinity)
-                        }
-                        .disabled(!unlockMethod.isAvailable)
-                    }
-
                 }
             }
-            .scrollDismissesKeyboard(.interactively)
             .scrollContentBackground(.hidden)
             .background(Color.moneyUpBackground)
             .scrollDismissesKeyboard(.interactively)
             .disabled(isSaving)
+            .safeAreaInset(edge: .bottom) {
+                if !didSave, replayInspectionState == .ready {
+                    // Pinned above the keyboard so Save is never hidden, with
+                    // the full-Log route one tap away for favourites.
+                    LockedCaptureActionBar(
+                        canSave: canSave && !isSaving,
+                        canUnlock: unlockMethod.isAvailable && !isSaving,
+                        unlockSymbol: unlockMethod.systemImage,
+                        save: { Task { await save() } },
+                        unlock: { Task { await unlock() } }
+                    )
+                }
+            }
             .navigationTitle("capture.title")
             .moneyUpNavigationSurface()
             .navigationBarTitleDisplayMode(.inline)
@@ -231,15 +210,6 @@ struct LockedQuickCaptureView: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("action.cancel") {
                         model.consumeQuickLogRequest(request)
-                    }
-                }
-                if !didSave, replayInspectionState == .ready {
-                    ToolbarItemGroup(placement: .keyboard) {
-                        Button("capture.save") { Task { await save() } }
-                            .disabled(!canSave || isSaving)
-                        Spacer()
-                        Button("action.done") { focusedField = nil }
-                            .fontWeight(.semibold)
                     }
                 }
             }
@@ -338,5 +308,92 @@ struct LockedQuickCaptureView: View {
             replayInspectionState = .failed
             errorMessage = safeUserMessage(for: error, context: .read)
         }
+    }
+}
+
+/// The same mark and verb as the widget that opened this screen, plus one
+/// line on what stays private. Nothing else competes with the amount.
+struct LockedCaptureHeader: View {
+    let mode: QuickLogLaunchMode
+    let pendingText: String?
+
+    private var glyph: String {
+        switch mode.kind {
+        case .expense: MoneyUpEntryGlyph.expense
+        case .income: MoneyUpEntryGlyph.income
+        case .transfer: MoneyUpEntryGlyph.transfer
+        case .refund: MoneyUpEntryGlyph.refund
+        }
+    }
+
+    private var title: LocalizedStringKey {
+        switch mode.kind {
+        case .expense: "widget.hero.expense"
+        case .income: "widget.hero.income"
+        case .transfer: "widget.hero.transfer"
+        case .refund: "widget.hero.refund"
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
+                Image(systemName: glyph)
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 36, height: 36)
+                    .background(Color.moneyUpAction, in: Circle())
+                    .accessibilityHidden(true)
+                Text(title)
+                    .font(.system(.title2, design: .rounded, weight: .semibold))
+            }
+            Label("capture.minimal_note", systemImage: "lock.fill")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            if let pendingText {
+                Text(pendingText)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+struct LockedCaptureActionBar: View {
+    let canSave: Bool
+    let canUnlock: Bool
+    let unlockSymbol: String
+    let save: () -> Void
+    let unlock: () -> Void
+
+    var body: some View {
+        VStack(spacing: 6) {
+            Button(action: save) {
+                Label("capture.save", systemImage: "tray.and.arrow.down.fill")
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, minHeight: 50)
+                    // Dimmed brand green, not grey, so the one action stays
+                    // recognisable before an amount makes it available.
+                    .background(
+                        Color.moneyUpAction.opacity(canSave ? 1 : 0.4),
+                        in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    )
+            }
+            .buttonStyle(.plain)
+            .disabled(!canSave)
+            Button(action: unlock) {
+                Label("capture.unlock_for_favourites", systemImage: unlockSymbol)
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .disabled(!canUnlock)
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+        .padding(.bottom, 6)
+        .background(.bar)
     }
 }

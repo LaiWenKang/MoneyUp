@@ -70,7 +70,7 @@ extension QuickLogEntryView {
     /// Favourites are shown for a single expense or income entry. A batch,
     /// split, or allowance draft has structure a favourite cannot represent.
     var showsFavouritesStrip: Bool {
-        !dismissAfterSave && !model.quickLogFavourites.isEmpty
+        !dismissAfterSave && model.profile != nil
             && (kind == .expense || kind == .income)
             && batch == nil && splitLines.isEmpty && selectedAllowanceID == nil
     }
@@ -139,6 +139,7 @@ struct QuickLogFavouritesStrip: View {
     @Environment(\.moneyUpReduceMotion) private var reduceMotion
     @Environment(\.accessibilityVoiceOverEnabled) private var isVoiceOverEnabled
     @State private var justApplied: UUID?
+    @State private var isCreating = false
     let isVisible: Bool
     let isDisabled: Bool
     let hidesAmounts: Bool
@@ -154,6 +155,9 @@ struct QuickLogFavouritesStrip: View {
                         ForEach(model.quickLogFavourites) { favourite in
                             chip(for: favourite)
                         }
+                        if model.canAddQuickLogFavourite {
+                            addChip
+                        }
                     }
                     .padding(.vertical, 2)
                 }
@@ -163,6 +167,9 @@ struct QuickLogFavouritesStrip: View {
             }
             .sheet(item: $editing) { favourite in
                 QuickLogFavouriteEditor(favourite: favourite, isNew: false)
+            }
+            .sheet(isPresented: $isCreating) {
+                QuickLogFavouriteEditor(favourite: QuickLogFavourite(name: "", kind: .expense), isNew: true)
             }
             .moneyUpOperationErrorAlert(message: $errorMessage)
         }
@@ -220,6 +227,31 @@ struct QuickLogFavouritesStrip: View {
         .accessibilityLabel(accessibilityLabel(for: favourite, needsRepair: needsRepair))
         .accessibilityHint(needsRepair ? "favourites.repair_hint" : "favourites.prefill_hint")
         .accessibilityIdentifier("quick-log-favourite-\(favourite.name)")
+    }
+
+    /// A quiet outlined chip: the way in when there are no favourites yet,
+    /// and one tap to add another when there are.
+    private var addChip: some View {
+        Button {
+            isCreating = true
+        } label: {
+            Label(
+                model.quickLogFavourites.isEmpty ? "favourites.add_first" : "favourites.new",
+                systemImage: "plus"
+            )
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(Color.moneyUpAction)
+            .padding(.horizontal, 14)
+            .frame(minHeight: 44)
+            .overlay(
+                Capsule().strokeBorder(Color.moneyUpAction.opacity(0.35),
+                                       style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+            )
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .disabled(isDisabled)
+        .accessibilityIdentifier("quick-log-add-favourite")
     }
 
     private func amountLabel(for favourite: QuickLogFavourite) -> String? {

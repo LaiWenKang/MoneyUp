@@ -929,8 +929,6 @@
     "whats_new.0_4_1.import" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Preview and import Qianji or generic CSV exports locally, with duplicate detection and atomic saving."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"可在本机预览并导入钱迹或通用 CSV，自动查重并以事务方式保存。"}}}},
     "whats_new.0_4_1.safety" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Password-protected portable backup and transactional restore help your TestFlight data move safely to future releases."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"密码保护的便携备份与事务恢复，让 TestFlight 数据可安全迁移到后续正式版本。"}}}},
     "whats_new.0_4_1.speed" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Log remains leftmost, tab navigation is no longer blocked, smart defaults are configurable, and auto-lock defaults to one minute."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"记账仍在最左侧，标签切换不再受阻，可配置智能默认值，自动锁定默认为 1 分钟。"}}}},
-    "capture.detail" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Enter only an amount and save—no MoneyUp unlock or balance access is needed."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"只需输入金额并保存；无需解锁 MoneyUp，也不会读取余额。"}}}},
-    "capture.currency_unassigned" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Currency isn’t assigned while locked. Review the amount and choose an account after unlocking."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"锁定时不会指定币种。解锁后请检查金额并选择账户。"}}}},
     "capture.error.full" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"The secure capture inbox is full. Unlock MoneyUp to process pending entries."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"安全速记收件箱已满。请解锁 MoneyUp 处理待办记录。"}}}},
     "capture.error.invalid" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"The secure capture inbox could not be read. Your main ledger is unaffected."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"无法读取安全速记收件箱。主账本不受影响。"}}}},
     "capture.input_too_long" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"This optional detail is too long. Shorten it before saving."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"此可选详情过长，请缩短后再保存。"}}}},
@@ -941,10 +939,7 @@
     "capture.unavailable.discard" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Discard unavailable captures"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"丢弃不可用的锁定记录"}}}},
     "capture.unavailable.discarded" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"The unavailable locked-capture inbox was discarded. Your main ledger was not changed."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"已丢弃不可用的锁定记录收件箱。主账本未被更改。"}}}},
     "capture.unavailable.title" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Locked captures unavailable"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"锁定记录不可用"}}}},
-    "capture.private" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Balances stay locked"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"余额仍保持锁定"}}}},
-    "capture.reconcile_later" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Account and category are reviewed after your next intentional unlock."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"下次主动解锁后再检查账户与分类。"}}}},
     "capture.title" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Log"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"记账"}}}},
-    "capture.unlock_instead" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Unlock full MoneyUp instead"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"改为解锁完整 MoneyUp"}}}},
     "capture.add_details" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Add optional details"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"添加可选详情"}}}},
     "capture.save" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Capture privately"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"私密记录"}}}},
     "capture.saved_title" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Captured privately"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"已私密记录"}}}},
@@ -1894,7 +1889,10 @@
     "favourites.save_as" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Save as favourite"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"存为常用记录"}}}},
     "widget.budget_pace_within_format" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Within pace · %d%% of the month gone"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"未超进度 · 本月已过 %d%%"}}}},
     "widget.budget_pace_ahead_format" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Ahead of pace · %d%% of the month gone"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"超出进度 · 本月已过 %d%%"}}}},
-    "favourites.applied_format" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"%@ filled in. Review, then Save."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"已填入“%@”。请确认后保存。"}}}}
+    "favourites.applied_format" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"%@ filled in. Review, then Save."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"已填入“%@”。请确认后保存。"}}}},
+    "capture.minimal_note" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Private until you unlock. Choose the account and category then."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"解锁前保持私密，届时再选择账户和类别。"}}}},
+    "capture.unlock_for_favourites" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Unlock for favourites and accounts"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"解锁以使用常用记录和账户"}}}},
+    "favourites.add_first" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Add a favourite"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"添加常用记录"}}}}
   },
   "version" : "1.0"
 }
