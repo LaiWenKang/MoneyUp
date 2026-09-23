@@ -152,6 +152,57 @@ final class QuickLogFavouriteAppTests: XCTestCase {
 }
 
 extension QuickLogFavouriteAppTests {
+    private func reportingMidnight(_ year: Int, _ month: Int, _ day: Int, zone: String) throws -> Date {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: zone))
+        return try XCTUnwrap(calendar.date(from: DateComponents(year: year, month: month, day: day)))
+    }
+
+    func testBudgetPaceFindsTodaysPlaceInTheMonthForEveryReportingZone() throws {
+        for zone in ["Asia/Singapore", "Pacific/Kiritimati", "Pacific/Pago_Pago", "UTC", "America/New_York"] {
+            let end = try reportingMidnight(2026, 10, 1, zone: zone)
+            let middle = try reportingMidnight(2026, 9, 16, zone: zone)
+            let pace = try XCTUnwrap(BudgetPeriodPace.elapsedFraction(periodEnd: end, now: middle), zone)
+            XCTAssertEqual(pace, 0.5, accuracy: 0.002, zone)
+            XCTAssertNil(BudgetPeriodPace.elapsedFraction(periodEnd: end, now: end), zone)
+            XCTAssertNil(BudgetPeriodPace.elapsedFraction(
+                periodEnd: end, now: try reportingMidnight(2026, 8, 31, zone: zone)), zone)
+        }
+        // February in a leap year is 29 days, derived without the zone.
+        let leapEnd = try reportingMidnight(2028, 3, 1, zone: "Asia/Singapore")
+        let leapDay = try reportingMidnight(2028, 2, 29, zone: "Asia/Singapore")
+        XCTAssertEqual(try XCTUnwrap(BudgetPeriodPace.elapsedFraction(periodEnd: leapEnd, now: leapDay)),
+                       28.0 / 29.0, accuracy: 0.0001)
+        XCTAssertFalse(BudgetPeriodPace.isAheadOfPace(percentUsed: 50, elapsed: 0.5))
+        XCTAssertFalse(BudgetPeriodPace.isAheadOfPace(percentUsed: 54, elapsed: 0.5))
+        XCTAssertTrue(BudgetPeriodPace.isAheadOfPace(percentUsed: 60, elapsed: 0.5))
+    }
+
+    func testBudgetStatusTimelineRedatesTheSameGenerationUntilExpiry() {
+        let now = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let expiry = now.addingTimeInterval(2 * 86_400)
+        let snapshot = MoneyUpWidgetPublishedSnapshot(
+            budget: .available(percentUsed: 40, validUntil: expiry), insights: nil
+        )
+        let budget = MoneyUpWidgetTimelinePlanner.generations(
+            startingAt: now, snapshot: snapshot, surface: .budgetStatus
+        )
+        XCTAssertEqual(budget.count, 1 + 7 + 1)
+        XCTAssertEqual(budget.first?.date, now)
+        XCTAssertEqual(budget.last?.date, expiry)
+        XCTAssertEqual(budget.last?.snapshot.budget, .stale)
+        XCTAssertTrue(budget.dropLast().allSatisfy { $0.snapshot == snapshot })
+        XCTAssertEqual(zip(budget, budget.dropFirst()).filter { $0.date >= $1.date }.count, 0)
+        // Smart Overview and Quick Log keep their existing two-point and
+        // single-entry timelines.
+        XCTAssertEqual(MoneyUpWidgetTimelinePlanner.generations(
+            startingAt: now, snapshot: snapshot, surface: .smartOverview
+        ).count, 2)
+        XCTAssertEqual(MoneyUpWidgetTimelinePlanner.generations(
+            startingAt: now, snapshot: snapshot, surface: .quickAction
+        ).count, 1)
+    }
+
     /// Visual evidence for review: every widget size in light and dark, a
     /// Chinese and an AX5 variant, the in-app page, and Log with favourites.
     @MainActor
@@ -173,6 +224,15 @@ extension QuickLogFavouriteAppTests {
         await capture(QuickLogWidgetPreviewPanel(family: .medium, action: .smartEntry),
                       name: "quick-log-widget-medium-smart-entry-zh", size: CGSize(width: 364, height: 170),
                       scheme: .light, language: .simplifiedChinese)
+        await capture(
+            VStack(alignment: .leading, spacing: 14) {
+                ForEach([(35, 0.5), (62, 0.5), (112, 0.8)], id: \.0) { used, elapsed in
+                    BudgetPaceBar(percentUsed: used, elapsed: elapsed)
+                }
+            }
+            .padding(20).tint(Color.moneyUpAction),
+            name: "budget-pace-bars", size: CGSize(width: 338, height: 120), scheme: .light
+        )
         await capture(QuickLogWidgetCard(primary: .expense, family: .medium, density: .accessibility) {
                 QuickLogWidgetTile(action: $0, role: $1)
             }

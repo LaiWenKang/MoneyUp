@@ -169,6 +169,7 @@ private struct MoneyUpWidgetView: View {
             }
         }
         .environment(\.locale, AppLanguagePreference.current.locale)
+        .environment(\.moneyUpWidgetEntryDate, entry.date)
         .widgetURL(destinationURL)
         .containerBackground(for: .widget) {
             if showsQuickLogCanvas {
@@ -248,6 +249,7 @@ private struct MoneyUpWidgetView: View {
 }
 
 private struct BudgetStatusWidgetView: View {
+    @Environment(\.moneyUpWidgetEntryDate) private var entryDate
     let snapshot: BudgetWidgetSnapshot
     let family: WidgetFamily
     let homeDensity: MoneyUpWidgetHomeDensity
@@ -398,9 +400,8 @@ private struct BudgetStatusWidgetView: View {
                 .font(.system(.title, design: .rounded, weight: .bold))
                 .monospacedDigit()
                 .minimumScaleFactor(0.65)
-            ProgressView(value: min(Double(percentUsed), 100), total: 100)
-                .widgetAccentable()
-                .accessibilityHidden(true)
+                .contentTransition(.numericText(value: Double(percentUsed)))
+            BudgetPaceBar(percentUsed: percentUsed, elapsed: paceElapsed)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("widget.budget_status")
@@ -435,10 +436,16 @@ private struct BudgetStatusWidgetView: View {
                     .font(.system(.title, design: .rounded, weight: .bold))
                     .monospacedDigit()
                     .minimumScaleFactor(0.7)
+                    .contentTransition(.numericText(value: Double(percentUsed)))
             }
-            ProgressView(value: min(Double(percentUsed), 100), total: 100)
-                .widgetAccentable()
-                .accessibilityHidden(true)
+            BudgetPaceBar(percentUsed: percentUsed, elapsed: paceElapsed)
+            if let paceElapsed {
+                Text(paceCaption(percentUsed: percentUsed, elapsed: paceElapsed))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("widget.budget_status")
@@ -554,7 +561,7 @@ private struct BudgetStatusWidgetView: View {
         let status = isOver
             ? AppLocalization.string("widget.budget_over", language: language)
             : AppLocalization.string("widget.budget_on_plan", language: language)
-        return String(
+        let usage = String(
             format: AppLocalization.string(
                 "widget.budget_accessibility",
                 language: language
@@ -562,6 +569,21 @@ private struct BudgetStatusWidgetView: View {
             percent,
             status
         )
+        guard let paceElapsed else { return usage }
+        return usage + " " + paceCaption(percentUsed: percent, elapsed: paceElapsed)
+    }
+
+    /// Where today falls in the budget month, from this entry's own date.
+    private var paceElapsed: Double? {
+        guard case let .available(_, validUntil) = snapshot else { return nil }
+        return BudgetPeriodPace.elapsedFraction(periodEnd: validUntil, now: entryDate ?? Date())
+    }
+
+    private func paceCaption(percentUsed: Int, elapsed: Double) -> String {
+        let monthGone = Int((elapsed * 100).rounded())
+        let key = BudgetPeriodPace.isAheadOfPace(percentUsed: percentUsed, elapsed: elapsed)
+            ? "widget.budget_pace_ahead_format" : "widget.budget_pace_within_format"
+        return String(format: AppLocalization.string(key, language: language), monthGone)
     }
 
     private func visiblePercentUsed(_ percent: Int) -> String {

@@ -1,6 +1,7 @@
 import Foundation
 import MoneyUpCore
 import SwiftUI
+import UIKit
 
 /// Pure mapping between a saved favourite and the Log draft. Keeping it free
 /// of view state makes the "prefill, never post" contract directly testable.
@@ -135,6 +136,9 @@ extension QuickLogEntryView {
 /// repair sheet, so presenting it never adds a modifier to the form chain.
 struct QuickLogFavouritesStrip: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.moneyUpReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityVoiceOverEnabled) private var isVoiceOverEnabled
+    @State private var justApplied: UUID?
     let isVisible: Bool
     let isDisabled: Bool
     let hidesAmounts: Bool
@@ -164,6 +168,26 @@ struct QuickLogFavouritesStrip: View {
         }
     }
 
+    /// The filled form is the real result; the chip briefly confirms which
+    /// favourite produced it. Reduce Motion keeps the confirmation, without
+    /// the animation, and VoiceOver hears it.
+    private func applyWithConfirmation(_ favourite: QuickLogFavourite) {
+        apply(favourite)
+        let animation = MoneyUpMotion.animation(for: .confirmation, reduceMotion: reduceMotion)
+        withAnimation(animation) { justApplied = favourite.id }
+        if isVoiceOverEnabled {
+            UIAccessibility.post(
+                notification: .announcement,
+                argument: String(format: AppLocalization.string("favourites.applied_format"), favourite.name)
+            )
+        }
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1.4))
+            guard justApplied == favourite.id else { return }
+            withAnimation(animation) { justApplied = nil }
+        }
+    }
+
     private func delete(_ favourite: QuickLogFavourite) async {
         do {
             try await model.deleteQuickLogFavourite(id: favourite.id)
@@ -175,13 +199,14 @@ struct QuickLogFavouritesStrip: View {
     private func chip(for favourite: QuickLogFavourite) -> some View {
         let needsRepair = !model.quickLogFavouriteRepairs(favourite).isEmpty
         return Button {
-            if needsRepair { editing = favourite } else { apply(favourite) }
+            if needsRepair { editing = favourite } else { applyWithConfirmation(favourite) }
         } label: {
             QuickLogFavouriteChip(
                 favourite: favourite,
                 amountLabel: amountLabel(for: favourite),
                 categoryID: favourite.categoryID.flatMap { model.accountsByID[$0] == nil ? nil : $0 },
-                needsRepair: needsRepair
+                needsRepair: needsRepair,
+                isJustApplied: justApplied == favourite.id
             )
         }
         .buttonStyle(.plain)
@@ -241,14 +266,17 @@ struct QuickLogFavouriteChip: View {
     let amountLabel: String?
     let categoryID: UUID?
     let needsRepair: Bool
+    var isJustApplied = false
 
     var body: some View {
         HStack(spacing: 8) {
             MoneyUpCategoryBadge(
-                systemImage: needsRepair ? "exclamationmark.triangle.fill" : symbol,
-                tint: needsRepair ? .moneyUpWarning : tint,
+                systemImage: needsRepair ? "exclamationmark.triangle.fill"
+                    : isJustApplied ? "checkmark" : symbol,
+                tint: needsRepair ? .moneyUpWarning : isJustApplied ? .moneyUpPositive : tint,
                 size: 30
             )
+            .contentTransition(.symbolEffect(.replace))
             VStack(alignment: .leading, spacing: 1) {
                 Text(favourite.name)
                     .font(.subheadline.weight(.semibold))
@@ -275,7 +303,10 @@ struct QuickLogFavouriteChip: View {
         .padding(.vertical, 6)
         .frame(minHeight: 44)
         .background(Color.moneyUpSurfaceElevated, in: Capsule())
-        .overlay(Capsule().strokeBorder(Color.moneyUpAction.opacity(0.18), lineWidth: 1))
+        .overlay(Capsule().strokeBorder(
+            isJustApplied ? Color.moneyUpPositive : Color.moneyUpAction.opacity(0.18),
+            lineWidth: isJustApplied ? 1.5 : 1
+        ))
         .contentShape(Capsule())
     }
 

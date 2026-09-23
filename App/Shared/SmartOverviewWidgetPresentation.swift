@@ -197,8 +197,19 @@ enum MoneyUpWidgetTimelinePlanner {
         }
         guard expiry > now else { return [current] }
 
-        return [
-            current,
+        // Budget Status draws today's place in the month from each entry's
+        // date, so the same generation is re-dated every few hours until it
+        // expires. The data itself never changes between these entries.
+        var paced: [MoneyUpWidgetTimelineGeneration] = []
+        if surface == .budgetStatus, case .available = snapshot.budget {
+            var date = now.addingTimeInterval(BudgetPeriodPace.refreshInterval)
+            while date < expiry, paced.count < BudgetPeriodPace.maximumIntermediateEntries {
+                paced.append(MoneyUpWidgetTimelineGeneration(date: date, snapshot: snapshot))
+                date = date.addingTimeInterval(BudgetPeriodPace.refreshInterval)
+            }
+        }
+
+        return [current] + paced + [
             MoneyUpWidgetTimelineGeneration(
                 date: expiry,
                 snapshot: MoneyUpWidgetPublishedSnapshot(

@@ -364,7 +364,9 @@
     "widget.hero.smart_entry" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Smart Entry"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"智能记账"}}}},
     "widget.hero.scan_receipt" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Add receipt"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"添加小票"}}}},
     "widget.hero.detail_amount" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Amount first"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"先输入金额"}}}},
-    "widget.hero.detail_transfer" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Between accounts"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"账户之间"}}}}
+    "widget.hero.detail_transfer" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Between accounts"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"账户之间"}}}},
+    "widget.budget_pace_within_format" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Within pace · %d%% of the month gone"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"未超进度 · 本月已过 %d%%"}}}},
+    "widget.budget_pace_ahead_format" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Ahead of pace · %d%% of the month gone"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"超出进度 · 本月已过 %d%%"}}}}
   },
   "version" : "1.0"
 }

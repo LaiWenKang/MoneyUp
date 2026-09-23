@@ -76,6 +76,28 @@ flagship Quick Log widget ships first.
    - the Control Center, Lock Screen, Action button and Siri entry points;
    - the two privacy switches with plain explanations.
 
+4. **Budget pace marker.** Budget Status (small, medium, and the large "Today +
+   Log") now draws usage as a bar with a tick at today's place in the budget
+   month, plus the line "Within pace / Ahead of pace · N% of the month gone".
+   - The month is derived from the period end the snapshot already carried.
+     Thirteen hours before the reporting-zone midnight is always inside the
+     month in UTC, so no schema, zone, or new shared data was added.
+   - Timeline: Budget Status re-dates the same generation every 6 hours
+     (at most 124 entries) so the tick moves without the app. The stale entry
+     at expiry is unchanged. Smart Overview and Quick Log timelines are
+     unchanged.
+   - "Ahead of pace" needs more than 5 points over the month's elapsed share,
+     and spending more is never styled as progress.
+5. **Feedback and motion.**
+   - Budget percentages animate with a numeric content transition between
+     entries.
+   - A tapped favourite briefly shows a checkmark. Reduce Motion keeps the
+     confirmation without the animation, and VoiceOver announces "Lunch filled
+     in. Review, then Save."
+   - No haptic was added, because the app's feedback policy reserves haptics
+     for consequential results and a prefill isn't one. Save keeps its
+     existing success haptic.
+
 ## Guardrails updated deliberately
 
 - **`validate_platform_actions.py`:**
@@ -101,9 +123,8 @@ flagship Quick Log widget ships first.
 
 - Saving directly from the widget, and per-widget favourites. The owner
   declined these because they require payloads on platform surfaces.
-- A budget-period pace marker in "Today + Log". It reuses the existing
-  record-free summary today.
-- Animated transitions between timeline entries.
+- A pace marker on Smart Overview's budget dial. Its presentation carries no
+  period end today; Budget Status has the marker.
 - Measured tap-to-save timing on devices.
 - **Physical-device check, required before any submission:** open every tab
   and the new widget sizes on a physical iPhone running the TestFlight build.

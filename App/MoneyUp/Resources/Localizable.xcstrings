@@ -1893,7 +1893,10 @@
     "favourites.fill_amount_accessibility_format" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Open %@ entry, you enter the amount"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"打开“%@”，由你输入金额"}}}},
     "favourites.needs_attention" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Needs attention"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"需要处理"}}}},
     "favourites.amount_each_time" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Amount each time"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"每次输入金额"}}}},
-    "favourites.save_as" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Save as favourite"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"存为常用记录"}}}}
+    "favourites.save_as" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Save as favourite"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"存为常用记录"}}}},
+    "widget.budget_pace_within_format" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Within pace · %d%% of the month gone"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"未超进度 · 本月已过 %d%%"}}}},
+    "widget.budget_pace_ahead_format" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Ahead of pace · %d%% of the month gone"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"超出进度 · 本月已过 %d%%"}}}},
+    "favourites.applied_format" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"%@ filled in. Review, then Save."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"已填入“%@”。请确认后保存。"}}}}
   },
   "version" : "1.0"
 }
