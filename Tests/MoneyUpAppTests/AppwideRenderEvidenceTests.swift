@@ -210,18 +210,23 @@ final class AppwideRenderEvidenceTests: XCTestCase {
         let preset = LedgerAccount(name: "Dining", kind: .expense, presetID: "expense.dining")
         let salary = LedgerAccount(name: "工资", kind: .income)
         let card = LedgerAccount(name: "Card", kind: .liability, currency: fixture.sgd, accountType: .creditCard)
-        let journal = try (0..<120).map { index in
-            try TransactionFactory.expense(amount: Money(Decimal(index % 9 + 1), currency: fixture.sgd),
-                paidFrom: fixture.wallet.id, category: [fixture.food.id, child.id, grandchild.id, preset.id][index % 4],
-                occurredAt: now.addingTimeInterval(Double(-index) * 3_600))
+        let journalCategories: [UUID] = [fixture.food.id, child.id, grandchild.id, preset.id]
+        var journal: [JournalEntry] = []
+        for index in 0..<120 {
+            let amount = try Money(Decimal(index % 9 + 1), currency: fixture.sgd)
+            let occurredAt = now.addingTimeInterval(Double(-index) * 3_600)
+            journal.append(try TransactionFactory.expense(amount: amount, paidFrom: fixture.wallet.id,
+                category: journalCategories[index % 4], occurredAt: occurredAt))
         }
-        let shapes: [(String, [LedgerAccount], [JournalEntry])] = [
-            ("duplicated-records", [fixture.wallet, fixture.food, fixture.food, fixture.wallet, preset, preset], journal),
-            ("deep-hidden-archived", [fixture.wallet, card, group, child, grandchild, hidden, archived, preset, salary], journal),
-            ("no-categories", [fixture.wallet], []),
-            ("no-accounts", [fixture.food], []),
-            ("empty-book", [], [])
-        ]
+        let duplicated: [LedgerAccount] = [fixture.wallet, fixture.food, fixture.food, fixture.wallet, preset, preset]
+        let deep: [LedgerAccount] = [fixture.wallet, card, group, child, grandchild, hidden, archived, preset, salary]
+        let noEntries: [JournalEntry] = []
+        var shapes: [(String, [LedgerAccount], [JournalEntry])] = []
+        shapes.append(("duplicated-records", duplicated, journal))
+        shapes.append(("deep-hidden-archived", deep, journal))
+        shapes.append(("no-categories", [fixture.wallet], noEntries))
+        shapes.append(("no-accounts", [fixture.food], noEntries))
+        shapes.append(("empty-book", [], noEntries))
         for (name, accounts, entries) in shapes {
             let model = fixture.model(profile: profile, accounts: accounts, entries: entries, currentDate: { now })
             for kind in QuickLogKind.allCases {
