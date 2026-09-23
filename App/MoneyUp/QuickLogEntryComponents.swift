@@ -565,20 +565,26 @@ extension QuickLogEntryView {
 /// moved, so chips do not shift under a finger as selection changes.
 enum QuickLogCategoryRanking {
     static func ranked(
-        choices: [LedgerAccount],
+        choices rawChoices: [LedgerAccount],
         recentEntries: [JournalEntry],
         selected: UUID?,
         limit: Int
     ) -> [LedgerAccount] {
-        let choiceIDs = Set(choices.map(\.id))
+        // A real book can hold the same account record twice; every other
+        // account table in the app keeps the first, and so does this one.
+        var seen = Set<UUID>()
+        let choices = rawChoices.filter { seen.insert($0.id).inserted }
         let parents = Set(choices.compactMap(\.parentID))
         var counts: [UUID: Int] = [:]
         for entry in recentEntries {
-            for posting in entry.postings where choiceIDs.contains(posting.accountID) {
+            for posting in entry.postings where seen.contains(posting.accountID) {
                 counts[posting.accountID, default: 0] += 1
             }
         }
-        let order = Dictionary(uniqueKeysWithValues: choices.enumerated().map { ($1.id, $0) })
+        let order = Dictionary(
+            choices.enumerated().map { ($1.id, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
         // A group with children is a heading, not somewhere money usually
         // lands; it appears only once it has actually been used.
         let candidates = choices.filter { !parents.contains($0.id) || counts[$0.id] != nil }
@@ -599,41 +605,54 @@ enum QuickLogCategoryRanking {
 
 extension QuickLogEntryView {
     /// Where this entry goes, kept beside the amount so it stays visible above
-    /// the keyboard: the paying account, then the likeliest categories as
-    /// one-tap chips. Selection goes through the same tracked bindings as the
-    /// full pickers further down, so drafts and smart entry behave the same.
-    @ViewBuilder
-    var quickRouteBar: some View {
+    /// the keyboard. It is a concrete view on purpose: an inline `@ViewBuilder`
+    /// here splices the whole bar's generic type into the Log form's type,
+    /// which a real iPhone's main-thread stack cannot decode (0.7.2 1064.1).
+    var quickRouteBar: QuickLogRouteBar {
+        QuickLogRouteBar(
+            kind: kind,
+            isSplit: !splitLines.isEmpty,
+            sourceAccounts: sourceAccounts,
+            destinationAccounts: recordingAccounts.filter { $0.id != accountID },
+            categories: categories,
+            limit: dynamicTypeSize.isAccessibilitySize ? 3 : 5,
+            category: trackedBinding($categoryID, \.categoryID, onUserEdit: {
+                categoryWasEdited = true
+                autoAppliedCategorySuggestionID = nil
+            }),
+            account: trackedBinding($accountID, \.accountID, onUserEdit: {
+                accountWasEdited = true
+                autoAppliedAccountSuggestionID = nil
+                invalidateCaptureSuggestions(preservingAccount: true)
+            }),
+            destination: trackedBinding($destinationAccountID, \.destinationAccountID, onUserEdit: {
+                accountWasEdited = true
+            })
+        )
+    }
+}
+
+/// The paying account, then the likeliest categories as one-tap glyph chips.
+/// Selection goes through the same tracked bindings as the full pickers
+/// further down, so drafts and smart entry behave the same.
+struct QuickLogRouteBar: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.moneyUpReduceMotion) private var reduceMotion
+    let kind: QuickLogKind
+    let isSplit: Bool
+    let sourceAccounts: [LedgerAccount]
+    let destinationAccounts: [LedgerAccount]
+    let categories: [LedgerAccount]
+    let limit: Int
+    let category: Binding<UUID?>
+    let account: Binding<UUID?>
+    let destination: Binding<UUID?>
+
+    var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                accountRouteChip(
-                    selection: routeAccountBinding,
-                    choices: sourceAccounts,
-                    label: "transaction.account"
-                )
-                if kind == .transfer {
-                    Image(systemName: "arrow.right")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(.secondary)
-                        .accessibilityHidden(true)
-                    accountRouteChip(
-                        selection: routeDestinationBinding,
-                        choices: recordingAccounts.filter { $0.id != accountID },
-                        label: "transaction.to_account"
-                    )
-                } else if !splitLines.isEmpty {
-                    Label("flow.split_categories", systemImage: "square.split.2x1")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 12)
-                        .frame(minHeight: 44)
-                } else {
-                    Divider().frame(height: 24)
-                    ForEach(quickCategoryChoices) { category in
-                        categoryChip(category)
-                    }
-                    moreCategoriesMenu
-                }
+                QuickLogAccountChip(selection: account, choices: sourceAccounts, label: "transaction.account")
+                trailing
             }
             .padding(.vertical, 2)
         }
@@ -642,52 +661,55 @@ extension QuickLogEntryView {
         .accessibilityIdentifier("quick-log-route-bar")
     }
 
-    private var quickCategoryChoices: [LedgerAccount] {
-        QuickLogCategoryRanking.ranked(
-            choices: categories,
-            recentEntries: model.entries,
-            selected: categoryID,
-            limit: dynamicTypeSize.isAccessibilitySize ? 3 : 5
-        )
-    }
-
-    private var routeCategoryBinding: Binding<UUID?> {
-        trackedBinding($categoryID, \.categoryID, onUserEdit: {
-            categoryWasEdited = true
-            autoAppliedCategorySuggestionID = nil
-        })
-    }
-
-    private var routeAccountBinding: Binding<UUID?> {
-        trackedBinding($accountID, \.accountID, onUserEdit: {
-            accountWasEdited = true
-            autoAppliedAccountSuggestionID = nil
-            invalidateCaptureSuggestions(preservingAccount: true)
-        })
-    }
-
-    private var routeDestinationBinding: Binding<UUID?> {
-        trackedBinding($destinationAccountID, \.destinationAccountID, onUserEdit: {
-            accountWasEdited = true
-        })
-    }
-
-    private func categoryChip(_ category: LedgerAccount) -> some View {
-        let isSelected = categoryID == category.id
-        let tint = MoneyUpCategorySymbol.tint(for: category.id)
-        return Button {
-            withAnimation(MoneyUpMotion.animation(for: .selection, reduceMotion: accessibilityReduceMotion)) {
-                routeCategoryBinding.wrappedValue = category.id
+    @ViewBuilder
+    private var trailing: some View {
+        if kind == .transfer {
+            Image(systemName: "arrow.right")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            QuickLogAccountChip(selection: destination, choices: destinationAccounts, label: "transaction.to_account")
+        } else if isSplit {
+            Label("flow.split_categories", systemImage: "square.split.2x1")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 12)
+                .frame(minHeight: 44)
+        } else {
+            Divider().frame(height: 24)
+            ForEach(QuickLogCategoryRanking.ranked(
+                choices: categories, recentEntries: model.entries,
+                selected: category.wrappedValue, limit: limit
+            )) { choice in
+                QuickLogCategoryChip(
+                    category: choice,
+                    isSelected: category.wrappedValue == choice.id,
+                    select: {
+                        withAnimation(MoneyUpMotion.animation(for: .selection, reduceMotion: reduceMotion)) {
+                            category.wrappedValue = choice.id
+                        }
+                    }
+                )
             }
-        } label: {
-            // Only the chosen chip spells its name; the others are glyphs so
-            // five or six choices fit in view. Each still has its full name
-            // for VoiceOver, and tapping one names it.
+            QuickLogAllCategoriesMenu(selection: category, categories: categories)
+        }
+    }
+}
+
+/// Only the chosen chip spells its name; the others are glyphs so five or
+/// six choices fit in view. Each keeps its full path for VoiceOver.
+struct QuickLogCategoryChip: View {
+    @Environment(AppModel.self) private var model
+    let category: LedgerAccount
+    let isSelected: Bool
+    let select: () -> Void
+
+    var body: some View {
+        let tint = MoneyUpCategorySymbol.tint(for: category.id)
+        Button(action: select) {
             HStack(spacing: 6) {
                 MoneyUpCategoryBadge(
-                    systemImage: MoneyUpCategorySymbol.symbol(
-                        for: category.id, accountsByID: model.accountsByID
-                    ),
+                    systemImage: MoneyUpCategorySymbol.symbol(for: category.id, accountsByID: model.accountsByID),
                     tint: tint,
                     size: isSelected ? 28 : 34
                 )
@@ -701,13 +723,8 @@ extension QuickLogEntryView {
             .padding(.leading, isSelected ? 6 : 5)
             .padding(.trailing, isSelected ? 12 : 5)
             .frame(minWidth: 44, minHeight: 44)
-            .background(
-                isSelected ? tint.opacity(0.16) : Color.primary.opacity(0.05),
-                in: Capsule()
-            )
-            .overlay {
-                Capsule().stroke(isSelected ? tint : .clear, lineWidth: 1.5)
-            }
+            .background(isSelected ? tint.opacity(0.16) : Color.primary.opacity(0.05), in: Capsule())
+            .overlay { Capsule().stroke(isSelected ? tint : .clear, lineWidth: 1.5) }
             .contentShape(Capsule())
         }
         .buttonStyle(MoneyUpPressableButtonStyle())
@@ -715,16 +732,20 @@ extension QuickLogEntryView {
         .accessibilityLabel(model.categoryPathName(for: category.id))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
+}
 
-    private var moreCategoriesMenu: some View {
+struct QuickLogAllCategoriesMenu: View {
+    @Environment(AppModel.self) private var model
+    let selection: Binding<UUID?>
+    let categories: [LedgerAccount]
+
+    var body: some View {
         Menu {
-            Picker("transaction.category", selection: routeCategoryBinding) {
-                ForEach(categories) { category in
+            Picker("transaction.category", selection: selection) {
+                ForEach(uniqueCategories) { category in
                     Label(
                         model.categoryPathName(for: category.id),
-                        systemImage: MoneyUpCategorySymbol.symbol(
-                            for: category.id, accountsByID: model.accountsByID
-                        )
+                        systemImage: MoneyUpCategorySymbol.symbol(for: category.id, accountsByID: model.accountsByID)
                     )
                     .tag(Optional(category.id))
                 }
@@ -738,15 +759,22 @@ extension QuickLogEntryView {
         .accessibilityLabel("quick_log.more_categories")
     }
 
-    private func accountRouteChip(
-        selection: Binding<UUID?>,
-        choices: [LedgerAccount],
-        label: LocalizedStringKey
-    ) -> some View {
+    private var uniqueCategories: [LedgerAccount] {
+        var seen = Set<UUID>()
+        return categories.filter { seen.insert($0.id).inserted }
+    }
+}
+
+struct QuickLogAccountChip: View {
+    let selection: Binding<UUID?>
+    let choices: [LedgerAccount]
+    let label: LocalizedStringKey
+
+    var body: some View {
         let selected = choices.first { $0.id == selection.wrappedValue }
-        return Menu {
+        Menu {
             Picker(label, selection: selection) {
-                ForEach(choices) { account in
+                ForEach(uniqueChoices) { account in
                     Label(
                         accountCurrencyLabel(account),
                         systemImage: account.accountType?.systemImage ?? "wallet.bifold"
@@ -771,5 +799,10 @@ extension QuickLogEntryView {
         }
         .accessibilityLabel(label)
         .accessibilityValue(selected.map(accountCurrencyLabel) ?? "")
+    }
+
+    private var uniqueChoices: [LedgerAccount] {
+        var seen = Set<UUID>()
+        return choices.filter { seen.insert($0.id).inserted }
     }
 }
