@@ -35,11 +35,10 @@ flagship Quick Log widget ships first.
    in-app preview (`App/Shared/QuickLogWidgetCard.swift`) and draws only the
    closed action enum.
    - **Small:** the whole widget is the action, with a full-bleed MoneyUp
-     green, the glyph, "Log expense" and "Amount first".
+     green, the mark, and "Log expense".
    - **Medium:** a dominant hero plus three labelled shortcuts in a fixed
      order.
-   - **Large (new):** the hero plus all five other actions, laid out as rows of
-     three with no empty slot.
+   - **Large (new):** a compact hero plus all five other actions as a list.
    - **Budget status / Smart Overview at Large ("Today + Log"):** the medium
      summary sits on top, with the medium Quick Log card below it.
    - **AX sizes:** secondary shortcuts give way to one large hero.
@@ -54,7 +53,7 @@ flagship Quick Log widget ships first.
      `UserProfile`. At most 12, trimmed and bounded. An empty list is not
      written, so older builds never meet the key.
    - **Two kinds:** fixed amount ("Coffee · SGD 3.20") or amount each time
-     ("Lunch"). The chip shows the amount or a keypad prompt.
+     ("Lunch"). The chip shows the amount, or only the name.
    - **Log strip:**
      - One tap fills the form.
      - An amount-only favourite focuses the amount field and keeps an amount
@@ -97,6 +96,26 @@ flagship Quick Log widget ships first.
    - No haptic was added, because the app's feedback policy reserves haptics
      for consequential results and a prefill isn't one. Save keeps its
      existing success haptic.
+
+6. **Minimal visual pass (one glyph system).**
+   - **Signs, not directions:** − expense, + income, ⇄ transfer, ↩ refund,
+     sparkles for Smart Entry, and a receipt symbol for Receipt. These live in
+     `MoneyUpEntryGlyph` and drive the widget, Control Center, Siri tiles,
+     History rows, Insights totals, and the Log receipt button. A test keeps
+     `MoneyUpQuickAction.systemImage` in sync with it.
+   - **One container per tile:**
+     - The hero is a single white disc with the glyph cut in, plus the verb.
+       No brand mark, subtitle, or echo glyph.
+     - Shortcuts are one soft surface with a tinted glyph and a label. No
+       discs or borders.
+     - Large is a compact hero with shortcuts as a list, so there is no empty
+       space.
+   - **Favourite chips:** a fixed amount shows its figure; amount-only shows the
+     name alone.
+   - **Contrast:** row glyphs are at least 3:1 on their surface (non-text), and
+     hero white is at least 4.5:1. Both are validator-enforced.
+   - **Unchanged:** the Insights chart legend keeps its filled versus outlined
+     ± rectangles, which are the reviewed non-colour encoding.
 
 ## Guardrails updated deliberately
 

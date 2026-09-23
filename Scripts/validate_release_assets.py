@@ -3501,18 +3501,19 @@ def validate_brand_palette() -> None:
     # Log widget; the glyph plate carries its own ink colour.
     hero_top = card_palette("heroTop")
     hero_bottom = card_palette("heroBottom")
-    glyph_plate = card_palette("glyphPlate")
-    glyph_ink = card_palette("glyphInk")
+    # Shortcut glyphs are non-text UI graphics on their row surface (3:1).
+    accent_ink = card_palette("accentInk")
+    shortcut_fill = card_palette("shortcutFill")
     if (
         "colors: [heroTop, heroBottom]" not in card_source
-        or None in (hero_top, hero_bottom, glyph_plate, glyph_ink)
+        or None in (hero_top, hero_bottom, accent_ink, shortcut_fill)
         or any(
             contrast(stop[slot], "#FFFFFF") < 4.5
             for stop in (hero_top, hero_bottom)
             for slot in (light_normal, dark_normal, light_high, dark_high)
         )
         or any(
-            contrast(glyph_plate[slot], glyph_ink[slot]) < 4.5
+            contrast(accent_ink[slot], shortcut_fill[slot]) < 3.0
             for slot in (light_normal, dark_normal, light_high, dark_high)
         )
     ):

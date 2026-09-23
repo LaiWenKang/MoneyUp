@@ -134,6 +134,11 @@ final class QuickLogFavouriteAppTests: XCTestCase {
     }
 
     func testWidgetShortcutsAreStableLabelledAndExcludeTheMainAction() {
+        // Every surface draws the same sign for the same meaning.
+        XCTAssertEqual(MoneyUpQuickAction.allCases.map(\.systemImage), [
+            MoneyUpEntryGlyph.expense, MoneyUpEntryGlyph.income, MoneyUpEntryGlyph.transfer,
+            MoneyUpEntryGlyph.refund, MoneyUpEntryGlyph.smartEntry, MoneyUpEntryGlyph.receipt
+        ])
         typealias Card = QuickLogWidgetCard<EmptyView>
         for primary in MoneyUpQuickAction.allCases {
             XCTAssertTrue(Card.shortcuts(for: primary, family: .small, density: .standard).isEmpty)

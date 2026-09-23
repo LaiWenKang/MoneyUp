@@ -576,7 +576,7 @@ W3_STATE_REFERENCE_INVENTORIES = {
         ("App/MoneyUp/QuickLogEntryReceipt.swift", 1),
         ("App/MoneyUp/QuickLogLaunchMode.swift", 4),
         ("App/Shared/MoneyUpQuickAction.swift", 7),
-        ("App/Shared/QuickLogWidgetCard.swift", 2),
+        ("App/Shared/QuickLogWidgetCard.swift", 1),
     ),
     "receiptScanTask": (
         ("App/MoneyUp/QuickLogEntryBody.swift", 4),

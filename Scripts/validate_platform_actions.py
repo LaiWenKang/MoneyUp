@@ -26,7 +26,7 @@ LOCKED_CAPTURE_STORE_SHA256 = (
     "7421cac819be5c3b4cf7f3bc2ab52368dd526bdc9e372a60a44a7feeabde79b4"
 )
 SHARED_ACTION_SOURCE_SHA256 = (
-    "fee3f0db239b9d60238747e2c4375529f3c66dfba8822b1b2e4528d543662260"
+    "5ebaedc492156bfb9249184fc4929715d488b09aee7f085bd99542e990ea6454"
 )
 APP_ROUTER_SOURCE_SHA256 = (
     "4efedc06179e798945c1b654b475072d7ddbef7d48abdc239297f8c745220fb7"
@@ -228,7 +228,7 @@ COMPILED_REFERENCE_INVENTORY = {
         "App/MoneyUp/QuickLogLaunchMode.swift": 1,
         "App/MoneyUp/WidgetsQuickAccessView.swift": 3,
         "App/Shared/MoneyUpQuickAction.swift": 10,
-        "App/Shared/QuickLogWidgetCard.swift": 14,
+        "App/Shared/QuickLogWidgetCard.swift": 11,
         "App/MoneyUpWidget/MoneyUpWidget.swift": 8,
     },
     r"\bMoneyUpQuickActionRouteBroker\b": {

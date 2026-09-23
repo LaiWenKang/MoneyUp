@@ -274,7 +274,7 @@ extension QuickLogEntryView {
                     .accessibilityIdentifier("quick-log-smart-fill")
                 } else {
                     Button { isPresentingReceiptPicker = true } label: {
-                        Image(systemName: "doc.text.viewfinder")
+                        Image(systemName: MoneyUpEntryGlyph.receipt)
                             .font(.title3)
                             .frame(minWidth: 44, minHeight: 44)
                     }

@@ -51,9 +51,9 @@ struct TransactionRow: View {
 
     private var icon: String {
         switch entry.kind {
-        case .expense: isRefund ? "arrow.uturn.backward.circle" : "arrow.up.right"
-        case .income: "arrow.down.left"
-        case .transfer: "arrow.left.arrow.right"
+        case .expense: isRefund ? MoneyUpEntryGlyph.refund : MoneyUpEntryGlyph.expense
+        case .income: MoneyUpEntryGlyph.income
+        case .transfer: MoneyUpEntryGlyph.transfer
         case .adjustment: "slider.horizontal.3"
         case .investment: "chart.line.uptrend.xyaxis"
         }

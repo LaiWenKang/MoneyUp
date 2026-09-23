@@ -85,17 +85,17 @@ enum MoneyUpQuickAction: String, AppEnum, CaseIterable, Codable, Identifiable,
     var systemImage: String {
         switch self {
         case .expense:
-            "arrow.up.right"
+            "minus"
         case .income:
-            "arrow.down.left"
+            "plus"
         case .transfer:
             "arrow.left.arrow.right"
         case .refund:
-            "arrow.uturn.backward.circle"
+            "arrow.uturn.backward"
         case .smartEntry:
             "sparkles"
         case .scanReceipt:
-            "doc.text.viewfinder"
+            "receipt"
         }
     }
 

@@ -9,7 +9,6 @@ enum QuickLogWidgetTileRole: Equatable, Sendable {
     case canvas
     case hero
     case shortcutRow
-    case shortcutTile
 }
 
 enum QuickLogWidgetLayoutFamily: Equatable, Sendable {
@@ -21,6 +20,9 @@ enum QuickLogWidgetLayoutFamily: Equatable, Sendable {
 /// Data-free composition shared by the widget extension and the in-app
 /// preview. It receives only the closed action enum; the caller decides how a
 /// tile becomes interactive, so every navigation link stays in the widget file.
+///
+/// One rule shapes every size: a single green action, then plain labelled
+/// rows. One container per tile, one glyph weight, no decoration.
 struct QuickLogWidgetCard<Tile: View>: View {
     let primary: MoneyUpQuickAction
     let family: QuickLogWidgetLayoutFamily
@@ -46,14 +48,6 @@ struct QuickLogWidgetCard<Tile: View>: View {
         }
     }
 
-    nonisolated static func rows(
-        of actions: [MoneyUpQuickAction], size: Int
-    ) -> [[MoneyUpQuickAction]] {
-        stride(from: 0, to: actions.count, by: size).map {
-            Array(actions[$0..<min($0 + size, actions.count)])
-        }
-    }
-
     private var shortcuts: [MoneyUpQuickAction] {
         Self.shortcuts(for: primary, family: family, density: density)
     }
@@ -63,36 +57,27 @@ struct QuickLogWidgetCard<Tile: View>: View {
         case .small:
             tile(primary, .canvas)
         case .medium:
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 tile(primary, .hero)
                 if !shortcuts.isEmpty {
                     VStack(spacing: 6) {
                         ForEach(shortcuts) { action in tile(action, .shortcutRow) }
                     }
-                    .frame(maxWidth: .infinity)
                 }
             }
         case .large:
-            VStack(spacing: 8) {
+            VStack(spacing: 6) {
                 tile(primary, .hero)
-                if density == .accessibility {
-                    ForEach(shortcuts) { action in tile(action, .shortcutRow) }
-                } else {
-                    // Rows of three; a shorter last row widens its tiles
-                    // instead of leaving an empty, tappable-looking hole.
-                    ForEach(Self.rows(of: shortcuts, size: 3), id: \.self) { row in
-                        HStack(spacing: 8) {
-                            ForEach(row) { action in tile(action, .shortcutTile) }
-                        }
-                    }
-                }
+                    .frame(height: density == .accessibility ? nil : 104)
+                    .padding(.bottom, 2)
+                ForEach(shortcuts) { action in tile(action, .shortcutRow) }
             }
         }
     }
 }
 
-/// One tile's artwork. It never renders an amount, account, payee, or other
-/// book data; the label names the consequence of the tap.
+/// One tile. It never renders an amount, account, payee, or other book data;
+/// the label names the consequence of the tap.
 struct QuickLogWidgetTile: View {
     @Environment(\.widgetRenderingMode) private var renderingMode
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -104,193 +89,98 @@ struct QuickLogWidgetTile: View {
     var body: some View {
         Group {
             switch role {
-            case .canvas: canvas
-            case .hero: hero
+            case .canvas: heroContent(glyphSize: 40).padding(2)
+            case .hero:
+                heroContent(glyphSize: 34)
+                    .padding(14)
+                    .background {
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .fill(isFullColor ? AnyShapeStyle(QuickLogWidgetPalette.heroGradient)
+                                : AnyShapeStyle(Color.primary.opacity(0.12)))
+                    }
             case .shortcutRow: shortcutRow
-            case .shortcutTile: shortcutTile
             }
         }
+        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(QuickLogWidgetCopy.heroTitle(action)))
         .accessibilityHint(action.accessibilityHintKey)
     }
 
-    private var canvas: some View {
+    /// Mark at the top, verb at the bottom. Nothing else competes.
+    private func heroContent(glyphSize: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .top) {
-                QuickLogWidgetGlyph(action: action, size: 44, onColor: true)
-                Spacer(minLength: 0)
-                QuickLogWidgetBrandMark(onColor: true)
+            QuickLogWidgetHeroMark(action: action, size: glyphSize, isFullColor: isFullColor)
+            Spacer(minLength: 8)
+            HStack(alignment: .firstTextBaseline, spacing: 5) {
+                Text(QuickLogWidgetCopy.heroTitle(action))
+                    .font(.system(.title3, design: .rounded, weight: .semibold))
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                    .minimumScaleFactor(0.8)
+                if action.requiresUnlock {
+                    Image(systemName: "lock.fill")
+                        .font(.caption2.weight(.bold))
+                        .opacity(0.7)
+                        .accessibilityHidden(true)
+                }
             }
-            Spacer(minLength: 6)
-            heroText(titleFont: .system(.title3, design: .rounded, weight: .bold))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .foregroundStyle(isFullColor ? Color.white : Color.primary)
-        .contentShape(Rectangle())
-    }
-
-    private var hero: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .top) {
-                QuickLogWidgetGlyph(action: action, size: 38, onColor: true)
-                Spacer(minLength: 0)
-                QuickLogWidgetBrandMark(onColor: true)
-            }
-            Spacer(minLength: 6)
-            heroText(titleFont: .system(.headline, design: .rounded, weight: .bold))
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        .foregroundStyle(isFullColor ? Color.white : Color.primary)
-        .background {
-            QuickLogWidgetHeroSurface(isFullColor: isFullColor)
-                .overlay(alignment: .bottomTrailing) {
-                    if isFullColor {
-                        // A quiet, oversized echo of the action symbol gives the
-                        // hero depth without a chart or number to misread.
-                        Image(systemName: action.systemImage)
-                            .font(.system(size: 88, weight: .bold))
-                            .foregroundStyle(.white.opacity(0.07))
-                            .offset(x: 14, y: 18)
-                            .accessibilityHidden(true)
-                    }
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        }
-        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-    }
-
-    private func heroText(titleFont: Font) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(QuickLogWidgetCopy.heroTitle(action))
-                .font(titleFont)
-                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
-                .minimumScaleFactor(0.85)
-            if !dynamicTypeSize.isAccessibilitySize {
-                Label {
-                    Text(QuickLogWidgetCopy.heroDetail(action))
-                } icon: {
-                    Image(systemName: action.requiresUnlock ? "lock.fill" : "keyboard")
-                }
-                .font(.caption2.weight(.semibold))
-                .opacity(0.82)
-                .lineLimit(1)
-            }
-        }
     }
 
     private var shortcutRow: some View {
-        HStack(spacing: 8) {
-            QuickLogWidgetGlyph(action: action, size: 26, onColor: false)
+        HStack(spacing: 10) {
+            Image(systemName: action.systemImage)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(isFullColor ? QuickLogWidgetPalette.accentInk : Color.primary)
+                .frame(width: 20)
+                .widgetAccentable()
+                .accessibilityHidden(true)
             Text(action.titleKey)
-                .font(.caption.weight(.semibold))
+                .font(.subheadline.weight(.medium))
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
             Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 8)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        .background { QuickLogWidgetShortcutSurface(isFullColor: isFullColor) }
-        .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-    }
-
-    private var shortcutTile: some View {
-        VStack(spacing: 6) {
-            QuickLogWidgetGlyph(action: action, size: 32, onColor: false)
-            Text(action.titleKey)
-                .font(.caption2.weight(.semibold))
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
-        }
-        .padding(.vertical, 10)
-        .frame(maxWidth: .infinity, minHeight: 64)
-        .background { QuickLogWidgetShortcutSurface(isFullColor: isFullColor) }
-        .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-    }
-}
-
-/// The small widget's full-bleed background, and the medium/large hero's fill.
-struct QuickLogWidgetHeroSurface: View {
-    let isFullColor: Bool
-
-    var body: some View {
-        let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
-        if isFullColor {
-            shape
-                .fill(QuickLogWidgetPalette.heroGradient)
-                .overlay {
-                    shape.strokeBorder(
-                        LinearGradient(
-                            colors: [.white.opacity(0.30), .white.opacity(0.04)],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        ),
-                        lineWidth: 1
-                    )
-                }
-        } else {
-            shape.fill(Color.primary.opacity(0.10))
-                .overlay { shape.strokeBorder(Color.primary.opacity(0.35), lineWidth: 1) }
-        }
-    }
-}
-
-struct QuickLogWidgetShortcutSurface: View {
-    let isFullColor: Bool
-
-    var body: some View {
-        let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
-        shape
-            .fill(isFullColor ? QuickLogWidgetPalette.shortcutFill : Color.primary.opacity(0.08))
-            .overlay {
-                shape.strokeBorder(
-                    isFullColor ? QuickLogWidgetPalette.shortcutStroke : Color.primary.opacity(0.22),
-                    lineWidth: 1
-                )
+            if action.requiresUnlock {
+                Image(systemName: "lock.fill")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
             }
+        }
+        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .background {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(isFullColor ? QuickLogWidgetPalette.shortcutFill : Color.primary.opacity(0.08))
+        }
     }
 }
 
-/// A consistent symbol plate: one stroke weight and optical size per role.
-struct QuickLogWidgetGlyph: View {
-    @Environment(\.widgetRenderingMode) private var renderingMode
+/// One solid disc with the glyph cut in: a single mark, not a plate holding an
+/// icon. Tinted and accented modes fall back to the bare glyph.
+struct QuickLogWidgetHeroMark: View {
     let action: MoneyUpQuickAction
     let size: CGFloat
-    let onColor: Bool
+    let isFullColor: Bool
 
     var body: some View {
-        let isFullColor = renderingMode == .fullColor
-        ZStack {
-            Circle().fill(
-                !isFullColor ? Color.primary.opacity(0.14)
-                    : onColor ? Color.white.opacity(0.20) : QuickLogWidgetPalette.glyphPlate
-            )
-            Image(systemName: action.systemImage)
-                .font(.system(size: size * 0.44, weight: .bold))
-                .foregroundStyle(
-                    !isFullColor ? Color.primary
-                        : onColor ? Color.white : QuickLogWidgetPalette.glyphInk
-                )
-                .widgetAccentable()
+        Group {
+            if isFullColor {
+                Image(systemName: action.systemImage)
+                    .font(.system(size: size * 0.5, weight: .bold))
+                    .foregroundStyle(QuickLogWidgetPalette.heroBottom)
+                    .frame(width: size, height: size)
+                    .background(Color.white, in: Circle())
+            } else {
+                Image(systemName: action.systemImage)
+                    .font(.system(size: size * 0.6, weight: .semibold))
+                    .frame(width: size, height: size, alignment: .leading)
+                    .widgetAccentable()
+            }
         }
-        .frame(width: size, height: size)
         .accessibilityHidden(true)
-    }
-}
-
-/// A quiet signature in the hero corner instead of a competing header.
-struct QuickLogWidgetBrandMark: View {
-    let onColor: Bool
-
-    var body: some View {
-        Image("MoneyUpBrandMark")
-            .renderingMode(.template)
-            .resizable()
-            .scaledToFit()
-            .frame(width: 18, height: 18)
-            .opacity(onColor ? 0.55 : 0.4)
-            .accessibilityHidden(true)
     }
 }
 
@@ -305,18 +195,11 @@ enum QuickLogWidgetCopy {
         case .scanReceipt: "widget.hero.scan_receipt"
         }
     }
-
-    static func heroDetail(_ action: MoneyUpQuickAction) -> LocalizedStringKey {
-        switch action {
-        case .expense, .income, .refund: "widget.hero.detail_amount"
-        case .transfer: "widget.hero.detail_transfer"
-        case .smartEntry, .scanReceipt: "platform_action.unlock_required"
-        }
-    }
 }
 
 /// MoneyUp's deep green (#34785F) and mint (#82CEAE) expressed as adaptive
-/// widget tokens. White hero text keeps at least 4.5:1 on both gradient ends.
+/// widget tokens. White hero text keeps at least 4.5:1 on both gradient ends;
+/// the shortcut glyph keeps at least 3:1 on its row.
 enum QuickLogWidgetPalette {
     static let heroTop = Color(uiColor: adaptive(
         light: (0x34, 0x78, 0x5F), dark: (0x2F, 0x76, 0x5B),
@@ -330,20 +213,12 @@ enum QuickLogWidgetPalette {
         colors: [heroTop, heroBottom], startPoint: .topLeading, endPoint: .bottomTrailing
     )
     static let shortcutFill = Color(uiColor: adaptive(
-        light: (0xEA, 0xF3, 0xEE), dark: (0x22, 0x31, 0x2A),
+        light: (0xEC, 0xF3, 0xEF), dark: (0x22, 0x2E, 0x28),
         highContrastLight: (0xE1, 0xEE, 0xE7), highContrastDark: (0x1C, 0x2A, 0x23)
     ))
-    static let shortcutStroke = Color(uiColor: adaptive(
-        light: (0xD2, 0xE6, 0xDB), dark: (0x33, 0x4A, 0x3F),
-        highContrastLight: (0x34, 0x78, 0x5F), highContrastDark: (0x82, 0xCE, 0xAE)
-    ))
-    static let glyphPlate = Color(uiColor: adaptive(
+    static let accentInk = Color(uiColor: adaptive(
         light: (0x34, 0x78, 0x5F), dark: (0x82, 0xCE, 0xAE),
         highContrastLight: (0x1F, 0x60, 0x47), highContrastDark: (0xA4, 0xE7, 0xCA)
-    ))
-    static let glyphInk = Color(uiColor: adaptive(
-        light: (0xFF, 0xFF, 0xFF), dark: (0x10, 0x2B, 0x20),
-        highContrastLight: (0xFF, 0xFF, 0xFF), highContrastDark: (0x0B, 0x1F, 0x17)
     ))
 
     private typealias RGB = (Int, Int, Int)

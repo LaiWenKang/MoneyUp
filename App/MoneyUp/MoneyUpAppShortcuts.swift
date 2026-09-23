@@ -7,13 +7,13 @@ struct MoneyUpAppShortcuts: AppShortcutsProvider {
             intent: OpenQuickLogIntent(action: .expense),
             phrases: ["Log an expense in \(.applicationName)"],
             shortTitle: "shortcut.quick_log.expense",
-            systemImageName: "arrow.up.right"
+            systemImageName: "minus"
         )
         AppShortcut(
             intent: OpenQuickLogIntent(action: .income),
             phrases: ["Log income in \(.applicationName)"],
             shortTitle: "shortcut.quick_log.income",
-            systemImageName: "arrow.down.left"
+            systemImageName: "plus"
         )
         AppShortcut(
             intent: OpenQuickLogIntent(action: .transfer),
@@ -25,7 +25,7 @@ struct MoneyUpAppShortcuts: AppShortcutsProvider {
             intent: OpenQuickLogIntent(action: .refund),
             phrases: ["Log a refund in \(.applicationName)"],
             shortTitle: "shortcut.quick_log.refund",
-            systemImageName: "arrow.uturn.backward.circle"
+            systemImageName: "arrow.uturn.backward"
         )
         AppShortcut(
             intent: OpenQuickLogIntent(action: .smartEntry),
@@ -37,7 +37,7 @@ struct MoneyUpAppShortcuts: AppShortcutsProvider {
             intent: OpenQuickLogIntent(action: .scanReceipt),
             phrases: ["Choose a receipt in \(.applicationName)"],
             shortTitle: "shortcut.quick_log.scan_receipt",
-            systemImageName: "doc.text.viewfinder"
+            systemImageName: "receipt"
         )
     }
 

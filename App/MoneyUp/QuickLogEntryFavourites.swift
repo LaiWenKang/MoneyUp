@@ -259,7 +259,7 @@ enum QuickLogFavouriteFormatting {
 }
 
 /// Fixed-amount and amount-only favourites are told apart by their second
-/// line: a figure, or a keypad prompt. Colour is never the only signal.
+/// line: a figure, or none. Colour is never the only signal.
 struct QuickLogFavouriteChip: View {
     @Environment(AppModel.self) private var model
     let favourite: QuickLogFavourite
@@ -281,21 +281,15 @@ struct QuickLogFavouriteChip: View {
                 Text(favourite.name)
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
-                Group {
-                    if needsRepair {
-                        Text("favourites.needs_attention")
-                    } else if let amountLabel {
-                        Text(verbatim: amountLabel).monospacedDigit()
-                    } else {
-                        HStack(spacing: 4) {
-                            Image(systemName: "keyboard").imageScale(.small)
-                            Text("favourites.amount_each_time")
-                        }
-                    }
+                // A figure means "fixed amount"; no second line means the
+                // amount is typed each time. The accessibility label says so.
+                if needsRepair {
+                    Text("favourites.needs_attention")
+                        .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                } else if let amountLabel {
+                    Text(verbatim: amountLabel)
+                        .font(.caption).monospacedDigit().foregroundStyle(.secondary).lineLimit(1)
                 }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
             }
         }
         .padding(.leading, 6)
