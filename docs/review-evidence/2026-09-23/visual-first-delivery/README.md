@@ -1,4 +1,4 @@
-# MoneyUp 0.7.2 (1064.1) — visual-first pass, resubmitted for public release
+# MoneyUp 0.7.2 — visual-first pass: 1064.1 withdrawn, 1065.1 submitted for public release
 
 Delivered on 23 September 2026 from main commit
 `ab1b333c8ddea7d8d985fe4f42d1596eb8b6a79f` (pull request #83, squash-merged
@@ -51,6 +51,45 @@ submission.
    `AFTER_APPROVAL`; all three support products `WAITING_FOR_REVIEW`; en-US and
    zh-Hans each 8 screenshots and 1 preview `COMPLETE`. Receipt:
    `apple-inspect-public-0.7.2.json`.
+
+Superseded the same day; see "Hotfix" below.
+
+## Hotfix: 1064.1 crashed on device, replaced by 1065.1
+
+1064.1 crashed on every Log-tab open on a physical iPhone (iPhone17,2,
+iOS 27.0). The Log form's SwiftUI type nesting had grown from 98 to 108 and
+overflowed the device main-thread stack; simulators have larger stacks, so no
+simulator test could fail. Post-mortem: `docs/INCIDENT_2026-09-23_LOG_TAB_CRASH.md`.
+
+1. The pending review was withdrawn at the owner's request before any decision
+   ([run 35822345358](https://github.com/LaiWenKang/MoneyUp/actions/runs/35822345358)).
+   Receipt: `apple-withdraw-1064.1.json`.
+2. Fix merged as `2db53da3e49c92eb31a5dcb7a6a3b3d3c38fa72d` (pull request #85)
+   after every CI job passed. The first run of "iOS Simulator build" failed
+   only in the known-flaky StoreKit `DeveloperSupportTests`; rerun passed.
+3. Signed build **0.7.2 (1065.1)**, IPA SHA-256
+   `789e03c4ca8dd9991b39c5358a3f84350e3d9594258f25bbc5fbd75ff50da56b`, uploaded by
+   [TestFlight run 35832255904](https://github.com/LaiWenKang/MoneyUp/actions/runs/35832255904)
+   (run 65); preflight, StoreKit gate and signing passed.
+4. Export compliance inherited from 1064.1 after confirming the
+   encryption-relevant inputs are byte-identical to `cac08ff`
+   ([run 35836852594](https://github.com/LaiWenKang/MoneyUp/actions/runs/35836852594)).
+   Receipt: `apple-compliance-1065.1.json`.
+5. Internal TestFlight distribution
+   ([run 35837023029](https://github.com/LaiWenKang/MoneyUp/actions/runs/35837023029)).
+   Receipt: `apple-internal-1065.1.json`. **The owner opened the build on a
+   physical iPhone and confirmed it before resubmission.**
+6. Prepared on 1065.1 with the same screenshots, previews and notes
+   ([run 35844089080](https://github.com/LaiWenKang/MoneyUp/actions/runs/35844089080))
+   and submitted with the three support products
+   ([run 35844260249](https://github.com/LaiWenKang/MoneyUp/actions/runs/35844260249)).
+   Receipts: `apple-prepare-0.7.2-1065.1.json`, `apple-submission-0.7.2-1065.1.json`.
+7. Final readback
+   ([run 35844425719](https://github.com/LaiWenKang/MoneyUp/actions/runs/35844425719)):
+   0.7.2 **`WAITING_FOR_REVIEW` on build 1065.1**, `AFTER_APPROVAL`; all three
+   support products `WAITING_FOR_REVIEW`; both locales 8 screenshots and 1
+   preview `COMPLETE`. 0.7.1 (1051.1) remains live. Receipt:
+   `apple-inspect-public-0.7.2-1065.1.json`.
 
 Release is automatic after Apple approves; this record does not mean 0.7.2 is
 already public.
