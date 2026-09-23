@@ -295,7 +295,7 @@ COMPILED_REFERENCE_INVENTORY = {
         "App/MoneyUp/AppModelLifecycle.swift": 2,
         "App/MoneyUp/AppModelLockedCaptureRecovery.swift": 2,
         "App/MoneyUp/AppModelServices.swift": 3,
-        "App/MoneyUp/LockedQuickCaptureView.swift": 1,
+        "App/MoneyUp/LockedQuickCaptureView.swift": 2,
         "App/MoneyUp/QuickLogEntryDraft.swift": 1,
         "App/MoneyUp/QuickLogLaunchMode.swift": 2,
     },

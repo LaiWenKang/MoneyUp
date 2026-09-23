@@ -117,6 +117,20 @@ flagship Quick Log widget ships first.
    - **Unchanged:** the Insights chart legend keeps its filled versus outlined
      ± rectangles, which are the reviewed non-colour encoding.
 
+7. **Owner device feedback on build 1069.1 was that it looked the same, and it
+   largely did.** A widget tap on a locked phone opens Locked Quick Capture,
+   which this work hadn't touched. Favourites also stayed invisible until one
+   existed. Fixes:
+   - **Locked Quick Capture:**
+     - The same "− Log expense" mark and verb as the widget, a 44 pt amount,
+       and one privacy line. The banner, paragraph, and two footnotes are gone.
+     - "Capture privately" is pinned above the keyboard. On device it had been
+       hidden behind the keypad, because the keyboard toolbar didn't render.
+     - "Unlock for favourites and accounts" opens full Log in one tap.
+   - **Log:** the favourites row always shows. With none saved it offers a
+     dashed "Add a favourite" chip, and afterwards a trailing "New favourite".
+   - **Renders:** `locked-capture.png` and `log-favourites-empty.png`.
+
 ## Guardrails updated deliberately
 
 - **`validate_platform_actions.py`:**
