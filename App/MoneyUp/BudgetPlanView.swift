@@ -169,7 +169,8 @@ struct BudgetPlanView: View {
                 }
             }
         }
-        if isCurrentMonth, model.displayPreferences.showsDailyGuidance {
+        if isCurrentMonth, outline.contains(where: { $0.node.limit != nil }),
+           model.displayPreferences.showsDailyGuidance {
             Section {
                 if dynamicTypeSize.isAccessibilitySize {
                     pacingPicker.pickerStyle(.menu)

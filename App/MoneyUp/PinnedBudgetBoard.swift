@@ -164,7 +164,14 @@ struct PinnedBudgetRow: View {
     }
 
     private var headline: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
+        HStack(alignment: .center, spacing: 10) {
+            MoneyUpCategoryBadge(
+                systemImage: MoneyUpCategorySymbol.symbol(
+                    for: summary.node.id, accountsByID: model.accountsByID
+                ),
+                tint: MoneyUpCategorySymbol.tint(for: summary.node.id),
+                size: 30
+            )
             Text(summary.node.name)
                 .font(.subheadline.weight(.semibold))
                 .lineLimit(2)

@@ -202,17 +202,20 @@ struct InsightsView: View {
         MetricCard(
             title: "transaction.income",
             value: formattedMoney(report.baseFlow.income),
-            color: Color.moneyUpPositive
+            color: Color.moneyUpPositive,
+            systemImage: "arrow.down.left"
         )
         MetricCard(
             title: "transaction.expense",
             value: formattedMoney(report.baseFlow.expense),
-            color: .accentColor
+            color: .accentColor,
+            systemImage: "arrow.up.right"
         )
         MetricCard(
             title: "insights.net",
             value: formattedMoney(report.baseFlow.net),
-            color: report.baseFlow.net.amount >= .zero ? .accentColor : Color.moneyUpDanger
+            color: report.baseFlow.net.amount >= .zero ? .accentColor : Color.moneyUpDanger,
+            systemImage: report.baseFlow.net.amount >= .zero ? "equal.circle.fill" : "exclamationmark.circle.fill"
         )
     }
 
@@ -340,12 +343,18 @@ private struct MetricCard: View {
     let title: LocalizedStringKey
     let value: String
     let color: Color
+    let systemImage: String
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Label {
+                Text(title).foregroundStyle(.secondary)
+            } icon: {
+                Image(systemName: systemImage)
+                    .fontWeight(.bold)
+                    .foregroundStyle(color)
+            }
+            .font(.caption)
             Text(value)
                 .font(.subheadline.monospacedDigit().weight(.semibold))
                 .lineLimit(1)

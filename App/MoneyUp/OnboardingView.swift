@@ -9,15 +9,6 @@ struct OnboardingView: View {
         case review
 
         var number: Int { rawValue + 1 }
-
-        var title: LocalizedStringKey {
-            switch self {
-            case .welcome: "onboarding.welcome_title"
-            case .currency: "onboarding.currency_step_title"
-            case .account: "onboarding.account_step_title"
-            case .review: "onboarding.review_title"
-            }
-        }
     }
 
     private enum FocusedField: Hashable {
@@ -98,21 +89,9 @@ struct OnboardingView: View {
 
     private var progressHeader: some View {
         VStack(alignment: .leading, spacing: 10) {
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .firstTextBaseline) {
-                    progressText
-                    Spacer()
-                    Text(step.title)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.tint)
-                }
-                VStack(alignment: .leading, spacing: 4) {
-                    progressText
-                    Text(step.title)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.tint)
-                }
-            }
+            // The step's own headline sits right below; repeating it here
+            // was a second read of the same words.
+            progressText
 
             ProgressView(value: Double(step.number), total: Double(Step.allCases.count))
                 .tint(.accentColor)
@@ -197,9 +176,6 @@ struct OnboardingView: View {
 
             MoneyUpCard {
                 VStack(alignment: .leading, spacing: 14) {
-                    Text("onboarding.base_currency")
-                        .font(.headline)
-
                     SearchableCurrencyPicker(
                         title: "onboarding.base_currency",
                         selection: $currencyCode
@@ -265,9 +241,11 @@ struct OnboardingView: View {
                             .font(.headline)
                         HStack(spacing: 10) {
                             TextField(
-                                accountType.openingBalanceLabel,
-                                text: $startingBalanceText
-                            )
+                                text: $startingBalanceText,
+                                prompt: Text(verbatim: "0.00")
+                            ) {
+                                Text(accountType.openingBalanceLabel)
+                            }
                             .moneyAmountKeyboard(
                                 currency: try? CurrencyCode(currencyCode),
                                 allowsNegative: !accountType.isLiabilityAccount

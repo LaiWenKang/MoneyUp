@@ -231,4 +231,60 @@ final class AppwideExperienceTests: XCTestCase {
             contribution: Money(contribution, currency: currency), cadence: cadence, asOf: asOf, calendar: resolved
         )
     }
+
+    func testCategoryGlyphsPreferPresetThenNameThenAncestor() {
+        let dining = LedgerAccount(name: "Anything", kind: .expense, presetID: "expense.dining")
+        let transport = LedgerAccount(name: "Transport", kind: .expense)
+        let child = LedgerAccount(name: "Weekday rides", kind: .expense, parentID: transport.id)
+        let unknown = LedgerAccount(name: "Zzz", kind: .expense)
+        let salary = LedgerAccount(name: "工资", kind: .income)
+        let otherIncome = LedgerAccount(name: "Zzz", kind: .income)
+        let accounts = Dictionary(uniqueKeysWithValues: [dining, transport, child, unknown, salary, otherIncome].map { ($0.id, $0) })
+        XCTAssertEqual(MoneyUpCategorySymbol.symbol(for: dining.id, accountsByID: accounts), "fork.knife")
+        XCTAssertEqual(MoneyUpCategorySymbol.symbol(for: transport.id, accountsByID: accounts), "bus.fill")
+        XCTAssertEqual(MoneyUpCategorySymbol.symbol(for: child.id, accountsByID: accounts), "bus.fill")
+        XCTAssertEqual(MoneyUpCategorySymbol.symbol(for: unknown.id, accountsByID: accounts), MoneyUpCategorySymbol.fallbackExpense)
+        XCTAssertEqual(MoneyUpCategorySymbol.symbol(for: salary.id, accountsByID: accounts), "briefcase.fill")
+        XCTAssertEqual(MoneyUpCategorySymbol.symbol(for: otherIncome.id, accountsByID: accounts), MoneyUpCategorySymbol.fallbackIncome)
+        XCTAssertEqual(MoneyUpCategorySymbol.symbol(for: UUID(), accountsByID: accounts), MoneyUpCategorySymbol.fallbackExpense)
+    }
+
+    func testCategoryNameKeywordsAvoidShortWordFalseMatches() {
+        XCTAssertEqual(MoneyUpCategorySymbol.symbol(forName: "Food & coffee"), "fork.knife")
+        XCTAssertEqual(MoneyUpCategorySymbol.symbol(forName: "Coffee"), "cup.and.saucer.fill")
+        XCTAssertEqual(MoneyUpCategorySymbol.symbol(forName: "Groceries"), "basket.fill")
+        XCTAssertEqual(MoneyUpCategorySymbol.symbol(forName: "Everyday essentials"), "cart.fill")
+        XCTAssertEqual(MoneyUpCategorySymbol.symbol(forName: "水电网费"), "bolt.fill")
+        XCTAssertEqual(MoneyUpCategorySymbol.symbol(forName: "餐饮"), "fork.knife")
+        XCTAssertEqual(MoneyUpCategorySymbol.symbol(forName: "Taxi"), "car.fill")
+        XCTAssertEqual(MoneyUpCategorySymbol.symbol(forName: "Taxes"), "doc.text.fill")
+        XCTAssertNil(MoneyUpCategorySymbol.symbol(forName: "Petty cash"))
+        XCTAssertNil(MoneyUpCategorySymbol.symbol(forName: "Category nine"))
+        let id = UUID()
+        XCTAssertEqual(MoneyUpCategorySymbol.tint(for: id), MoneyUpCategorySymbol.tint(for: id))
+    }
+
+    func testPaceStatusMatchesTheSharedPaceReading() {
+        XCTAssertEqual(MoneyUpPaceStatus(ratio: 0.40, elapsed: 0.50), .within)
+        XCTAssertEqual(MoneyUpPaceStatus(ratio: 0.55, elapsed: 0.50), .within)
+        XCTAssertEqual(MoneyUpPaceStatus(ratio: 0.56, elapsed: 0.50), .ahead)
+        XCTAssertEqual(MoneyUpPaceStatus(ratio: 1.01, elapsed: 0.99), .over)
+        XCTAssertEqual(MoneyUpPaceStatus(ratio: 2, elapsed: 0), .over)
+    }
+
+    @MainActor
+    func testIncomingRowAmountsCarryAnExplicitSign() throws {
+        let previous = UserDefaults.standard.object(forKey: MoneyAmountPrivacy.storageKey)
+        defer {
+            if let previous { UserDefaults.standard.set(previous, forKey: MoneyAmountPrivacy.storageKey) }
+            else { UserDefaults.standard.removeObject(forKey: MoneyAmountPrivacy.storageKey) }
+        }
+        UserDefaults.standard.set(false, forKey: MoneyAmountPrivacy.storageKey)
+        let money = try Money(12, currency: CurrencyCode("SGD"))
+        XCTAssertTrue(rowFormattedAmount(TransactionDisplayAmount(money: money, role: .income)).hasPrefix("+"))
+        XCTAssertTrue(rowFormattedAmount(TransactionDisplayAmount(money: money.negated, role: .refund)).hasPrefix("+"))
+        XCTAssertFalse(rowFormattedAmount(TransactionDisplayAmount(money: money, role: .expense)).hasPrefix("+"))
+        UserDefaults.standard.set(true, forKey: MoneyAmountPrivacy.storageKey)
+        XCTAssertEqual(rowFormattedAmount(TransactionDisplayAmount(money: money, role: .income)), MoneyAmountPrivacy.placeholder)
+    }
 }

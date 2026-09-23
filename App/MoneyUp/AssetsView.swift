@@ -145,10 +145,15 @@ struct AssetsView: View {
                     NavigationLink {
                         LoanCenterView()
                     } label: {
-                        Label("loan.title", systemImage: "car.side.fill")
+                        let activeLoans = model.loanPlans.filter { $0.closedAt == nil }.count
+                        Label(
+                            model.loanPlans.isEmpty ? "loan.empty" : "loan.active",
+                            systemImage: "car.side.fill"
+                        )
+                        .badge(activeLoans)
                     }
-                } footer: {
-                    MoneyUpExplainer("loan.assets_detail")
+                } header: {
+                    MoneyUpSectionHeader("loan.title", explanation: "loan.assets_detail")
                 }
 
                 if !archivedFinancialAccounts.isEmpty {

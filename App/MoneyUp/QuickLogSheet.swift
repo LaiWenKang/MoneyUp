@@ -453,6 +453,7 @@ struct QuickLogEntryView: View {
     @State var isEnteringManualRate = false
     @State var isConvertingCurrency = false
     @State var lastSavedAmountLabel: String?
+    @State var lastSavedCategoryID: UUID?
     @State var captureSuggestionResult: CaptureSuggestionResult?
     @State var captureSuggestionTask: Task<Void, Never>?
     @State var captureSuggestionGeneration = 0

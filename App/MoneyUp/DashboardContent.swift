@@ -80,7 +80,20 @@ extension DashboardView {
     /// book is not a blank board.
     @ViewBuilder
     var headline: some View {
-        if model.pinnedBudgetNodes.isEmpty {
+        if isFirstRun {
+            TodayFirstRunChecklist(
+                hasTransactions: model.hasJournalEntries,
+                hasBudget: hasBudgetLimit,
+                onOpenLog: onOpenLog,
+                onOpenPlan: onOpenPlan
+            )
+            // With no limit yet the checklist owns the "set a budget" step;
+            // the hero and board would only repeat it.
+            if hasBudgetLimit {
+                if !model.pinnedBudgetNodes.isEmpty { pinnedRemainingHero }
+                pinnedBoard
+            }
+        } else if model.pinnedBudgetNodes.isEmpty {
             if model.displayPreferences.showsDailyGuidance { safeToSpendHero }
             pinnedBoard
         } else {
@@ -238,6 +251,9 @@ extension DashboardView {
                 budgetProgress(summary)
                 foreignSpendingNotice
             }
+        case .available(.none) where !hasBudgetLimit:
+            // The first-run checklist already offers this step.
+            EmptyView()
         case .available(.none):
             MoneyUpCard {
                 Button {
@@ -419,29 +435,20 @@ extension DashboardView {
                     .buttonStyle(.bordered)
                 }
             }
-        } else if !model.hasJournalEntries {
-            MoneyUpCard {
-                VStack(alignment: .leading, spacing: 12) {
-                    MoneyUpIllustration("MoneyUpMoneyWorld", role: .empty)
-                    Text("dashboard.no_transactions")
-                        .font(.title3.weight(.semibold))
-                        .frame(maxWidth: .infinity, alignment: .center)
-                    Text("dashboard.no_transactions_detail")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: .infinity)
-                    Button {
-                        onOpenLog()
-                    } label: {
-                        Label("dashboard.log_first", systemImage: "plus.circle.fill")
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.moneyUpAction)
-                    .frame(maxWidth: .infinity)
-                }
-            }
         }
+    }
+
+    /// A book missing either first step leads with the checklist. A failed
+    /// journal projection is not "first run" — it keeps its retry card.
+    var isFirstRun: Bool {
+        model.journalRecentEntriesAreCurrent
+            && (!model.hasJournalEntries || !hasBudgetLimit)
+    }
+
+    /// A new book starts with starter categories but no limits; setting the
+    /// first limit is what "set a budget" means.
+    var hasBudgetLimit: Bool {
+        model.budgetNodes.contains { $0.limit != nil }
     }
 
     var reportingSnapshot: AppReportingSnapshot {

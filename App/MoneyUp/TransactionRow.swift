@@ -29,9 +29,12 @@ struct TransactionRow: View {
         }.first
     }
 
+    /// Without a merchant the row leads with the category's own name; the
+    /// glyph already places it, and VoiceOver still hears the full path.
     private var title: String {
         entry.payee
             ?? transferRouteTitle
+            ?? categoryID.flatMap { model.accountsByID[$0]?.name }
             ?? categoryName
             ?? localizedKind
     }
@@ -166,39 +169,40 @@ struct TransactionRow: View {
         .accessibilityValue(accessibilityValue)
     }
 
-    /// The kind glyph carries a small, stable category tint so a day of
-    /// rows can be scanned by colour before reading a single label.
+    /// Spending and income lead with their category's glyph, so a day of
+    /// rows scans by shape; a corner mark and the signed amount carry the
+    /// direction. Transfers and investment events keep their movement glyph
+    /// because no category explains them.
     private var transactionIcon: some View {
-        Image(systemName: icon)
-            .foregroundStyle(iconColor)
-            .frame(width: 34, height: 34)
-            .background(iconColor.opacity(0.11))
-            .clipShape(Circle())
-            .overlay(alignment: .bottomTrailing) {
-                if let tint = categoryTint {
-                    Circle()
-                        .fill(tint)
-                        .frame(width: 9, height: 9)
-                        .overlay(Circle().stroke(Color.moneyUpSurfaceElevated, lineWidth: 1.5))
-                }
-            }
-            .accessibilityHidden(true)
+        MoneyUpCategoryBadge(
+            systemImage: categoryID.map {
+                MoneyUpCategorySymbol.symbol(for: $0, accountsByID: model.accountsByID)
+            } ?? icon,
+            tint: categoryID.map(MoneyUpCategorySymbol.tint(for:)) ?? iconColor,
+            cornerSymbol: cornerSymbol
+        )
     }
 
-    private var categoryTint: Color? {
-        guard let categoryID = entry.postings.lazy.compactMap({ posting -> UUID? in
+    private var categoryID: UUID? {
+        guard entry.kind == .expense || entry.kind == .income else { return nil }
+        return entry.postings.lazy.compactMap { posting -> UUID? in
+            if let budgetCategoryIDs, !budgetCategoryIDs.contains(posting.accountID) { return nil }
             let account = model.accountsByID[posting.accountID]
             return account?.kind == .expense || account?.kind == .income ? posting.accountID : nil
-        }).first else { return nil }
-        let hash = categoryID.uuidString.unicodeScalars.reduce(0) { ($0 &* 31 &+ Int($1.value)) & 0xFFFF }
-        return MoneyUpChartPalette.color(at: hash % 6)
+        }.first
+    }
+
+    private var cornerSymbol: String? {
+        guard categoryID != nil else { return nil }
+        if isRefund { return "arrow.uturn.backward" }
+        return entry.kind == .income ? "arrow.down" : nil
     }
 
     private var transactionMetadata: some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 5) {
                 Text(reportingDateDescription)
-                if let categoryName, categoryName != title {
+                if let categoryName, entry.payee != nil || transferRouteTitle != nil {
                     Text("•")
                     Text(categoryName)
                 }
@@ -231,7 +235,7 @@ struct TransactionRow: View {
                 }
                 ForEach(Array(amounts.prefix(2).enumerated()), id: \.offset) {
                     _, amount in
-                    Text(formattedTransactionAmount(amount))
+                    Text(rowFormattedAmount(amount))
                         .moneyUpFinancialValue(.compact)
                         .foregroundStyle(
                             amount.role == .income
@@ -262,6 +266,16 @@ struct TransactionRow: View {
                 .foregroundStyle(.secondary)
         }
     }
+}
+
+/// Money coming back (income, refund) reads with an explicit plus in a row,
+/// so its direction never depends on the green alone.
+@MainActor
+func rowFormattedAmount(_ amount: TransactionDisplayAmount) -> String {
+    let value = formattedTransactionAmount(amount)
+    guard !MoneyAmountPrivacy.hidesAmounts,
+          amount.role == .income || amount.role == .refund else { return value }
+    return "+" + value
 }
 
 private extension JournalEntryKind {

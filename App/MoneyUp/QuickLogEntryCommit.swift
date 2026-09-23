@@ -191,6 +191,9 @@ extension QuickLogEntryView {
         lastSavedAmountLabel = (selectedAccountCurrency.map(\.value)).flatMap { code in
             trimmedAmount.isEmpty ? nil : code + " " + MoneyAmountPrivacy.protected(trimmedAmount)
         }
+        // One category is shown beside the amount; a transfer or a split has
+        // no single category, so the banner keeps to the amount.
+        lastSavedCategoryID = kind != .transfer && splitLines.isEmpty ? categoryID : nil
         batch = nil
         pendingBatchRemoval = nil
         cancelSmartParsing()

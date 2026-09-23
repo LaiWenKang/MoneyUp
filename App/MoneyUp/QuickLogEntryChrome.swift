@@ -93,6 +93,19 @@ extension QuickLogEntryView {
                                 .monospacedDigit()
                                 .contentTransition(.numericText())
                         }
+                        if let lastSavedCategoryID,
+                           let category = model.accountsByID[lastSavedCategoryID] {
+                            MoneyUpCategoryBadge(
+                                systemImage: MoneyUpCategorySymbol.symbol(
+                                    for: lastSavedCategoryID, accountsByID: model.accountsByID
+                                ),
+                                tint: MoneyUpCategorySymbol.tint(for: lastSavedCategoryID),
+                                size: 24
+                            )
+                            Text(category.name)
+                                .foregroundStyle(.secondary)
+                                .truncationMode(.tail)
+                        }
                     }
                 } icon: {
                     Image(systemName: "checkmark.circle.fill")

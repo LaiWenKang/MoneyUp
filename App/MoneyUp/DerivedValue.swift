@@ -178,9 +178,15 @@ struct DerivedValueUnavailableView: View {
                     .font(prominent ? .largeTitle.bold() : .headline)
                     .monospacedDigit()
 
-                Text(issue.localizedDescription)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                Label {
+                    Text(issue.localizedDescription)
+                        .foregroundStyle(.secondary)
+                } icon: {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(Color.moneyUpWarning)
+                        .accessibilityHidden(true)
+                }
+                .font(.footnote)
 
                 Button("derived.show_diagnostic") {
                     isShowingDiagnostic = true

@@ -71,9 +71,18 @@ struct SearchableCurrencyPicker: View {
                 }
                 .frame(minHeight: 44)
             } else {
+                // Tinted value and chevrons match the app's menu pickers, so
+                // the row reads as a choice rather than a fixed fact.
                 LabeledContent {
-                    Text(selection).monospaced().foregroundStyle(.primary)
+                    HStack(spacing: 4) {
+                        Text(selection).monospaced()
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.caption)
+                            .accessibilityHidden(true)
+                    }
+                    .foregroundStyle(.tint)
                 } label: { Text(title) }
+                .contentShape(Rectangle())
             }
         }
         .buttonStyle(.plain)

@@ -97,14 +97,21 @@ struct MoneyUpIllustration: View {
 /// Spending versus limit with the elapsed-month marker used across Today,
 /// Plan, and the simulator. Overspend gets a warning glyph as well as color.
 struct MoneyUpPaceBar: View {
+    @Environment(\.moneyUpReduceMotion) private var reduceMotion
     let ratio: Double
     let elapsed: Double
     var announcesStatus = true
 
+    private var status: MoneyUpPaceStatus {
+        MoneyUpPaceStatus(ratio: ratio, elapsed: elapsed)
+    }
+
     private var statusKey: LocalizedStringKey {
-        if ratio > 1 { return "dashboard.budget_pace.over" }
-        if ratio > elapsed + 0.05 { return "dashboard.budget_pace.ahead" }
-        return "dashboard.budget_pace.within"
+        switch status {
+        case .over: "dashboard.budget_pace.over"
+        case .ahead: "dashboard.budget_pace.ahead"
+        case .within: "dashboard.budget_pace.within"
+        }
     }
 
     var body: some View {
@@ -117,8 +124,10 @@ struct MoneyUpPaceBar: View {
                 Capsule()
                     .fill(Color(.tertiarySystemFill))
 
+                // The fill passing the month marker is the signal; the tint
+                // only reinforces it (and the status chip names it).
                 Capsule()
-                    .fill(ratio > 1 ? Color.moneyUpDanger : Color.moneyUpPositive)
+                    .fill(status.tint)
                     .frame(width: width * clampedRatio)
 
                 Rectangle()
@@ -138,12 +147,68 @@ struct MoneyUpPaceBar: View {
             }
         }
         .frame(height: 14)
+        // After a save elsewhere, the fill moves to its new length so the eye
+        // sees what the entry did; the amounts beside it are never delayed.
+        .animation(MoneyUpMotion.animation(for: .stateChange, reduceMotion: reduceMotion), value: ratio)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(statusKey)
         .accessibilityValue(String(format: AppLocalization.string("dashboard.budget_pace.accessibility"),
             ratio.formatted(.percent.precision(.fractionLength(0))),
             elapsed.formatted(.percent.precision(.fractionLength(0)))))
         .accessibilityHidden(!announcesStatus)
+    }
+}
+
+/// One reading of spending against the calendar, shared by the bar tint and
+/// the status chip so Today and Plan never disagree about "on pace".
+enum MoneyUpPaceStatus: Equatable {
+    case within
+    case ahead
+    case over
+
+    init(ratio: Double, elapsed: Double) {
+        if ratio > 1 { self = .over }
+        else if ratio > elapsed + 0.05 { self = .ahead }
+        else { self = .within }
+    }
+
+    var tint: Color {
+        switch self {
+        case .within: .moneyUpPositive
+        case .ahead: .moneyUpWarning
+        case .over: .moneyUpDanger
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .within: "checkmark.circle.fill"
+        case .ahead: "hare.fill"
+        case .over: "exclamationmark.circle.fill"
+        }
+    }
+
+    var titleKey: LocalizedStringKey {
+        switch self {
+        case .within: "plan.pace.within"
+        case .ahead: "plan.pace.ahead"
+        case .over: "plan.pace.over"
+        }
+    }
+}
+
+/// A glyph-and-word verdict on the pace bar above it, so nobody has to decode
+/// the month marker to learn whether they are on track.
+struct MoneyUpPaceStatusChip: View {
+    let status: MoneyUpPaceStatus
+
+    var body: some View {
+        Label(status.titleKey, systemImage: status.systemImage)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(status.tint)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 4)
+            .background(status.tint.opacity(0.12), in: Capsule())
     }
 }
 
@@ -243,16 +308,15 @@ struct MoneyUpBudgetOrbit: View {
                     .offset(y: -radius)
                     .rotationEffect(.degrees(clampedElapsed * 360))
 
-                Image(
-                    systemName: ratio > 1
-                        ? "exclamationmark"
-                        : "gauge.with.dots.needle.50percent"
-                )
-                .font(.caption2.weight(.bold))
-                .foregroundStyle(ratio > 1 ? Color.moneyUpDanger : Color.secondary)
+                Text(ratio.formatted(.percent.precision(.fractionLength(0))))
+                    .font(.system(size: 11, weight: .bold).monospacedDigit())
+                    .foregroundStyle(ratio > 1 ? Color.moneyUpDanger : Color.primary)
+                    .minimumScaleFactor(0.7)
+                    .lineLimit(1)
+                    .padding(.horizontal, 7)
             }
         }
-        .frame(width: 48, height: 48)
+        .frame(width: 52, height: 52)
         .accessibilityHidden(true)
     }
 }
@@ -344,5 +408,167 @@ struct MoneyUpSymbolBadge: View {
         }
         .frame(width: 44, height: 44)
         .accessibilityHidden(true)
+    }
+}
+
+/// One recognisable glyph per category, so a row, a pinned budget, or a plan
+/// line can be found by shape before its name is read. The name always stays
+/// visible beside it; the glyph is recognition, never the only label.
+///
+/// Resolution is deterministic and local: a catalogue preset's own symbol,
+/// then a keyword in the category's name (English or Chinese), then the
+/// nearest ancestor's glyph, then a neutral tag.
+enum MoneyUpCategorySymbol {
+    static let fallbackExpense = "tag.fill"
+    static let fallbackIncome = "tray.and.arrow.down.fill"
+
+    static func symbol(
+        for categoryID: UUID,
+        accountsByID: [UUID: LedgerAccount]
+    ) -> String {
+        var visited: Set<UUID> = []
+        var cursor = accountsByID[categoryID]
+        let kind = cursor?.kind
+        while let account = cursor, visited.insert(account.id).inserted {
+            if let presetID = account.presetID,
+               let preset = LedgerPresetCatalog.preset(id: presetID) {
+                return preset.symbol
+            }
+            if let symbol = symbol(forName: account.name) { return symbol }
+            cursor = account.parentID.flatMap { accountsByID[$0] }
+        }
+        return kind == .income ? fallbackIncome : fallbackExpense
+    }
+
+    /// The earliest keyword in the name wins ("Food & coffee" is food), and
+    /// the table order breaks ties, so specific entries ("personal care")
+    /// sit above broad ones.
+    static func symbol(forName name: String) -> String? {
+        let lowered = name.lowercased()
+        var words: [(offset: Int, word: String)] = []
+        var current = ""
+        var currentStart = 0
+        for (offset, character) in lowered.enumerated() {
+            if character.isLetter || character.isNumber {
+                if current.isEmpty { currentStart = offset }
+                current.append(character)
+            } else if !current.isEmpty {
+                words.append((currentStart, current))
+                current = ""
+            }
+        }
+        if !current.isEmpty { words.append((currentStart, current)) }
+
+        var best: (offset: Int, symbol: String)?
+        for (keywords, symbol) in keywordTable {
+            for keyword in keywords {
+                let offset: Int?
+                if keyword.contains(" ")
+                    || keyword.unicodeScalars.contains(where: { $0.value > 0x2E7F }) {
+                    offset = lowered.range(of: keyword).map {
+                        lowered.distance(from: lowered.startIndex, to: $0.lowerBound)
+                    }
+                } else {
+                    // Short keywords ("tea", "bus", "pet") must be whole
+                    // words so "petty cash" or "category" never match.
+                    offset = words.first {
+                        $0.word == keyword || (keyword.count >= 4 && $0.word.hasPrefix(keyword))
+                    }?.offset
+                }
+                if let offset, offset < (best?.offset ?? .max) {
+                    best = (offset, symbol)
+                }
+            }
+        }
+        return best?.symbol
+    }
+
+    private static let keywordTable: [([String], String)] = [
+        (["salary", "wage", "payroll", "paycheck", "工资", "薪"], "briefcase.fill"),
+        (["bonus", "奖金"], "star.fill"),
+        (["dividend", "invest", "投资", "股息", "理财"], "chart.line.uptrend.xyaxis"),
+        (["refund", "rebate", "cashback", "退款", "返现"], "arrow.uturn.backward"),
+        (["personal care", "beauty", "hair", "salon", "美容", "护理", "理发"], "sparkles"),
+        (["coffee", "cafe", "café", "tea", "咖啡", "奶茶", "茶"], "cup.and.saucer.fill"),
+        (["grocer", "supermarket", "超市", "买菜", "生鲜"], "basket.fill"),
+        (["food", "dining", "restaurant", "meal", "lunch", "dinner", "breakfast", "snack",
+          "餐", "饭", "吃", "外卖"], "fork.knife"),
+        (["fuel", "petrol", "gasoline", "加油", "油费"], "fuelpump.fill"),
+        (["parking", "停车"], "parkingsign.circle.fill"),
+        (["taxi", "grab", "uber", "rideshare", "打车", "出租"], "car.fill"),
+        (["transport", "transit", "commute", "bus", "train", "metro", "mrt", "subway",
+          "交通", "地铁", "公交", "通勤"], "bus.fill"),
+        (["vehicle", "auto", "汽车", "车"], "car.fill"),
+        (["rent", "mortgage", "housing", "home", "house", "房", "居住", "住房"], "house.fill"),
+        (["internet", "wifi", "broadband", "网费", "宽带"], "wifi"),
+        (["phone", "mobile", "话费", "手机"], "iphone"),
+        (["utilit", "electric", "power", "water", "gas", "水电", "电费", "水费", "燃气"], "bolt.fill"),
+        (["subscri", "streaming", "订阅", "会员"], "repeat.circle.fill"),
+        (["cloth", "apparel", "fashion", "shoe", "衣", "鞋", "服装"], "tshirt.fill"),
+        (["electronic", "gadget", "computer", "数码", "电子"], "laptopcomputer"),
+        (["shop", "购物", "网购"], "bag.fill"),
+        (["entertain", "leisure", "cinema", "movie", "film", "game", "games",
+          "娱乐", "电影", "休闲", "游戏"], "film.fill"),
+        (["travel", "trip", "flight", "hotel", "holiday", "vacation",
+          "旅行", "旅游", "机票", "酒店"], "airplane"),
+        (["dental", "dentist", "牙"], "cross.case"),
+        (["health", "medical", "doctor", "clinic", "pharmacy", "medicine",
+          "医", "药", "健康"], "cross.case.fill"),
+        (["insur", "保险"], "shield.fill"),
+        (["fitness", "gym", "sport", "workout", "健身", "运动"], "figure.walk"),
+        (["educat", "school", "tuition", "course", "教育", "学费", "培训"], "graduationcap.fill"),
+        (["book", "书"], "books.vertical.fill"),
+        (["child", "kid", "kids", "baby", "孩", "儿童", "育儿"], "figure.and.child.holdinghands"),
+        (["pets", "pet", "dog", "dogs", "cat", "cats", "宠物"], "pawprint.fill"),
+        (["gift", "礼"], "gift.fill"),
+        (["donat", "charity", "捐", "慈善"], "heart.fill"),
+        (["tax", "taxes", "税"], "doc.text.fill"),
+        (["interest", "利息"], "percent"),
+        (["fee", "fees", "charge", "手续费", "费用"], "doc.plaintext"),
+        (["essential", "everyday", "daily", "household", "日常", "必需", "家居", "日用"], "cart.fill"),
+        (["lifestyle", "生活"], "sparkles"),
+        (["other", "misc", "其他", "杂项"], "ellipsis.circle")
+    ]
+
+    /// A stable palette slot per category so the same category keeps the same
+    /// tint on every screen. Colour only reinforces the glyph and name.
+    static func tint(for categoryID: UUID) -> Color {
+        let hash = categoryID.uuidString.unicodeScalars.reduce(0) {
+            ($0 &* 31 &+ Int($1.value)) & 0xFFFF
+        }
+        return MoneyUpChartPalette.color(at: hash % MoneyUpChartPalette.ordered.count)
+    }
+}
+
+/// The circular glyph that fronts a category or transaction row. An optional
+/// corner mark carries the movement (income, refund) without a second label.
+struct MoneyUpCategoryBadge: View {
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+    let systemImage: String
+    var tint: Color = .accentColor
+    var size: CGFloat = 34
+    var cornerSymbol: String?
+
+    var body: some View {
+        Image(systemName: systemImage)
+            .font(.system(size: size * 0.44, weight: .semibold))
+            .foregroundStyle(tint)
+            .frame(width: size, height: size)
+            .background(
+                tint.opacity(colorSchemeContrast == .increased ? 0.20 : 0.13),
+                in: Circle()
+            )
+            .overlay(alignment: .bottomTrailing) {
+                if let cornerSymbol {
+                    Image(systemName: cornerSymbol)
+                        .font(.system(size: size * 0.24, weight: .heavy))
+                        .foregroundStyle(Color.moneyUpSurfaceElevated)
+                        .frame(width: size * 0.42, height: size * 0.42)
+                        .background(tint, in: Circle())
+                        .overlay(Circle().stroke(Color.moneyUpSurfaceElevated, lineWidth: 1.5))
+                        .offset(x: 3, y: 3)
+                }
+            }
+            .accessibilityHidden(true)
     }
 }

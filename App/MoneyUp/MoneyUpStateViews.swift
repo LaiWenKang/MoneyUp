@@ -6,6 +6,7 @@ import SwiftUI
 /// mood; the text carries the meaning, so color is never the only signal.
 struct MoneyUpStatePlaceholder<Actions: View>: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.moneyUpShowsIllustrations) private var showsIllustrations
     let systemImage: String
     let tint: Color
     let title: Text
@@ -50,7 +51,7 @@ struct MoneyUpStatePlaceholder<Actions: View>: View {
             // The badge and copy read as one announcement; the action stays
             // its own element so VoiceOver can activate it directly.
             VStack(spacing: 12) {
-                if let illustration {
+                if let illustration, showsIllustrations {
                     MoneyUpIllustration(illustration, role: .empty)
                 } else {
                     MoneyUpStateBadge(systemImage: systemImage, tint: tint)

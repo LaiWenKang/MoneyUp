@@ -18,6 +18,23 @@ mascot.
 - Large Dynamic Type switches dense horizontal groups to vertical layouts.
 - No decorative asset is required to understand or operate a screen.
 
+## Category glyphs and pace verdicts (0.7.2)
+
+`MoneyUpCategorySymbol` gives every category one SF Symbol, resolved locally
+and deterministically: the catalogue preset's symbol, else the earliest
+English or Chinese keyword in the category name, else the nearest ancestor's
+glyph, else a neutral tag (income: tray). `MoneyUpCategoryBadge` draws it in
+the category's stable palette slot. The glyph is recognition only: the name is
+always visible beside it and VoiceOver reads the name, never the symbol.
+Income and refunds add a corner mark and an explicit `+` so direction does not
+depend on green.
+
+`MoneyUpPaceStatus` is the single reading of spending against the calendar
+(over the limit; more than five points ahead of the month marker; otherwise on
+pace). The pace bar fill and `MoneyUpPaceStatusChip` both use it, so the tint
+and the glyph-and-word verdict never disagree. Bar length changes animate with
+the shared state-change curve and are immediate under Reduce Motion.
+
 ## 0.7.0 W6 design primitives
 
 `MoneyUpTypography` defines Dynamic Type-relative financial-value roles with
