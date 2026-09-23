@@ -26,6 +26,7 @@ struct OnboardingView: View {
     @State private var showsAccountErrors = false
     @State private var errorMessage: String?
     @FocusState private var focusedField: FocusedField?
+    @Environment(\.moneyUpReduceMotion) private var reduceMotion
 
     private var startingBalance: Decimal? {
         parsedOpeningBalance(from: startingBalanceText, accountType: accountType)
@@ -202,7 +203,8 @@ struct OnboardingView: View {
             stepIntroduction(
                 icon: "wallet.bifold.fill",
                 title: "onboarding.account_step_title",
-                detail: "onboarding.account_step_detail"
+                detail: "onboarding.account_step_detail",
+                compact: focusedField != nil
             )
 
             MoneyUpCard {
@@ -464,22 +466,30 @@ struct OnboardingView: View {
         .accessibilityElement(children: .combine)
     }
 
+    /// While a field is being typed into, the introduction shrinks to its
+    /// title so the fields stay above the keyboard.
     private func stepIntroduction(
         icon: String,
         title: LocalizedStringKey,
-        detail: LocalizedStringKey
+        detail: LocalizedStringKey,
+        compact: Bool = false
     ) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Image(systemName: icon)
-                .font(.title.bold())
-                .foregroundStyle(.tint)
-                .accessibilityHidden(true)
+            if !compact {
+                Image(systemName: icon)
+                    .font(.title.bold())
+                    .foregroundStyle(.tint)
+                    .accessibilityHidden(true)
+            }
             Text(title)
-                .font(.largeTitle.bold())
-            Text(detail)
-                .font(.body)
-                .foregroundStyle(.secondary)
+                .font(compact ? .title2.bold() : .largeTitle.bold())
+            if !compact {
+                Text(detail)
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+            }
         }
+        .animation(MoneyUpMotion.animation(for: .disclosure, reduceMotion: reduceMotion), value: compact)
     }
 
     private func reviewRow(_ title: LocalizedStringKey, value: String) -> some View {

@@ -1,6 +1,14 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "calendar.next_month" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Next month"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"下个月"}}}},
+    "calendar.previous_month" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Previous month"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"上个月"}}}},
+    "budget.setup.cta_detail" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"One monthly figure, split for you."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"输入一个月度金额，自动分配。"}}}},
+    "budget.setup.allocated" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"%d%% allocated"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"已分配 %d%%"}}}},
+    "budget.setup.total_hint" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"We suggest a split below. Adjust any share, then Save."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"下方已建议分配比例，可调整后保存。"}}}},
+    "budget.setup.total" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Monthly spending"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"每月支出"}}}},
+    "budget.setup.title" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Your first budget"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"第一个预算"}}}},
+    "quick_log.more_categories" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"All categories"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"全部分类"}}}},
     "state.not_done" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Not done yet"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"尚未完成"}}}},
     "state.done" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Done"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"已完成"}}}},
     "today.start.progress" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"%1$d of %2$d done"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"已完成 %1$d/%2$d"}}}},

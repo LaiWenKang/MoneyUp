@@ -60,35 +60,27 @@ struct PinnedBudgetBoard: View {
                 .font(.headline)
             Spacer(minLength: 8)
             if !model.pinnedBudgetNodes.isEmpty {
-                Button {
-                    withAnimation(
-                        MoneyUpMotion.animation(
-                            for: .disclosure,
-                            reduceMotion: reduceMotion
-                        )
-                    ) {
-                        showsDetail.toggle()
+                // One control for the board's two occasional settings keeps
+                // the header to a title and a single glyph.
+                Menu {
+                    Toggle(isOn: $showsDetail.animation(
+                        MoneyUpMotion.animation(for: .disclosure, reduceMotion: reduceMotion)
+                    )) {
+                        Label("today.pinned.toggle_detail", systemImage: "text.alignleft")
+                    }
+                    Button {
+                        isEditingPins = true
+                    } label: {
+                        Label("today.pinned.edit", systemImage: "pin")
                     }
                 } label: {
-                    Label("display.details", systemImage: "text.alignleft")
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.tint)
-                .accessibilityLabel("today.pinned.toggle_detail")
-                .accessibilityValue(
-                    showsDetail ? "state.expanded" : "state.collapsed"
-                )
-
-                Button {
-                    isEditingPins = true
-                } label: {
-                    Image(systemName: "slider.horizontal.3")
+                    Image(systemName: "ellipsis.circle")
+                        .font(.title3)
+                        .frame(minWidth: 44, minHeight: 44)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
                 .foregroundStyle(.tint)
-                .accessibilityLabel("today.pinned.edit")
+                .accessibilityLabel("display.details")
             }
         }
         .font(.subheadline)

@@ -38,6 +38,7 @@ extension QuickLogEntryView {
         if let amountValidationMessage {
             MoneyUpFieldError(message: amountValidationMessage)
         }
+        quickRouteBar
     }
 
     @ViewBuilder
@@ -556,4 +557,219 @@ extension QuickLogEntryView {
         }
     }
 
+}
+
+/// Most-used categories first, from the recent entries already in memory, so
+/// the chips under the amount are usually the one a person wants. Ties keep
+/// the book's own order. The current choice is always present but never
+/// moved, so chips do not shift under a finger as selection changes.
+enum QuickLogCategoryRanking {
+    static func ranked(
+        choices: [LedgerAccount],
+        recentEntries: [JournalEntry],
+        selected: UUID?,
+        limit: Int
+    ) -> [LedgerAccount] {
+        let choiceIDs = Set(choices.map(\.id))
+        let parents = Set(choices.compactMap(\.parentID))
+        var counts: [UUID: Int] = [:]
+        for entry in recentEntries {
+            for posting in entry.postings where choiceIDs.contains(posting.accountID) {
+                counts[posting.accountID, default: 0] += 1
+            }
+        }
+        let order = Dictionary(uniqueKeysWithValues: choices.enumerated().map { ($1.id, $0) })
+        // A group with children is a heading, not somewhere money usually
+        // lands; it appears only once it has actually been used.
+        let candidates = choices.filter { !parents.contains($0.id) || counts[$0.id] != nil }
+        let sorted = candidates.sorted {
+            let left = counts[$0.id] ?? 0
+            let right = counts[$1.id] ?? 0
+            return left != right ? left > right : (order[$0.id] ?? 0) < (order[$1.id] ?? 0)
+        }
+        var result = Array(sorted.prefix(limit))
+        if let selected, !result.contains(where: { $0.id == selected }),
+           let chosen = choices.first(where: { $0.id == selected }) {
+            if result.count >= limit { result.removeLast() }
+            result.append(chosen)
+        }
+        return result
+    }
+}
+
+extension QuickLogEntryView {
+    /// Where this entry goes, kept beside the amount so it stays visible above
+    /// the keyboard: the paying account, then the likeliest categories as
+    /// one-tap chips. Selection goes through the same tracked bindings as the
+    /// full pickers further down, so drafts and smart entry behave the same.
+    @ViewBuilder
+    var quickRouteBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                accountRouteChip(
+                    selection: routeAccountBinding,
+                    choices: sourceAccounts,
+                    label: "transaction.account"
+                )
+                if kind == .transfer {
+                    Image(systemName: "arrow.right")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                    accountRouteChip(
+                        selection: routeDestinationBinding,
+                        choices: recordingAccounts.filter { $0.id != accountID },
+                        label: "transaction.to_account"
+                    )
+                } else if !splitLines.isEmpty {
+                    Label("flow.split_categories", systemImage: "square.split.2x1")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 12)
+                        .frame(minHeight: 44)
+                } else {
+                    Divider().frame(height: 24)
+                    ForEach(quickCategoryChoices) { category in
+                        categoryChip(category)
+                    }
+                    moreCategoriesMenu
+                }
+            }
+            .padding(.vertical, 2)
+        }
+        .scrollClipDisabled()
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("quick-log-route-bar")
+    }
+
+    private var quickCategoryChoices: [LedgerAccount] {
+        QuickLogCategoryRanking.ranked(
+            choices: categories,
+            recentEntries: model.entries,
+            selected: categoryID,
+            limit: dynamicTypeSize.isAccessibilitySize ? 3 : 5
+        )
+    }
+
+    private var routeCategoryBinding: Binding<UUID?> {
+        trackedBinding($categoryID, \.categoryID, onUserEdit: {
+            categoryWasEdited = true
+            autoAppliedCategorySuggestionID = nil
+        })
+    }
+
+    private var routeAccountBinding: Binding<UUID?> {
+        trackedBinding($accountID, \.accountID, onUserEdit: {
+            accountWasEdited = true
+            autoAppliedAccountSuggestionID = nil
+            invalidateCaptureSuggestions(preservingAccount: true)
+        })
+    }
+
+    private var routeDestinationBinding: Binding<UUID?> {
+        trackedBinding($destinationAccountID, \.destinationAccountID, onUserEdit: {
+            accountWasEdited = true
+        })
+    }
+
+    private func categoryChip(_ category: LedgerAccount) -> some View {
+        let isSelected = categoryID == category.id
+        let tint = MoneyUpCategorySymbol.tint(for: category.id)
+        return Button {
+            withAnimation(MoneyUpMotion.animation(for: .selection, reduceMotion: accessibilityReduceMotion)) {
+                routeCategoryBinding.wrappedValue = category.id
+            }
+        } label: {
+            // Only the chosen chip spells its name; the others are glyphs so
+            // five or six choices fit in view. Each still has its full name
+            // for VoiceOver, and tapping one names it.
+            HStack(spacing: 6) {
+                MoneyUpCategoryBadge(
+                    systemImage: MoneyUpCategorySymbol.symbol(
+                        for: category.id, accountsByID: model.accountsByID
+                    ),
+                    tint: tint,
+                    size: isSelected ? 28 : 34
+                )
+                if isSelected {
+                    Text(category.name)
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                        .transition(.opacity)
+                }
+            }
+            .padding(.leading, isSelected ? 6 : 5)
+            .padding(.trailing, isSelected ? 12 : 5)
+            .frame(minWidth: 44, minHeight: 44)
+            .background(
+                isSelected ? tint.opacity(0.16) : Color.primary.opacity(0.05),
+                in: Capsule()
+            )
+            .overlay {
+                Capsule().stroke(isSelected ? tint : .clear, lineWidth: 1.5)
+            }
+            .contentShape(Capsule())
+        }
+        .buttonStyle(MoneyUpPressableButtonStyle())
+        .foregroundStyle(.primary)
+        .accessibilityLabel(model.categoryPathName(for: category.id))
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    private var moreCategoriesMenu: some View {
+        Menu {
+            Picker("transaction.category", selection: routeCategoryBinding) {
+                ForEach(categories) { category in
+                    Label(
+                        model.categoryPathName(for: category.id),
+                        systemImage: MoneyUpCategorySymbol.symbol(
+                            for: category.id, accountsByID: model.accountsByID
+                        )
+                    )
+                    .tag(Optional(category.id))
+                }
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.subheadline.weight(.bold))
+                .frame(width: 44, height: 44)
+                .background(Color.primary.opacity(0.05), in: Circle())
+        }
+        .accessibilityLabel("quick_log.more_categories")
+    }
+
+    private func accountRouteChip(
+        selection: Binding<UUID?>,
+        choices: [LedgerAccount],
+        label: LocalizedStringKey
+    ) -> some View {
+        let selected = choices.first { $0.id == selection.wrappedValue }
+        return Menu {
+            Picker(label, selection: selection) {
+                ForEach(choices) { account in
+                    Label(
+                        accountCurrencyLabel(account),
+                        systemImage: account.accountType?.systemImage ?? "wallet.bifold"
+                    )
+                    .tag(Optional(account.id))
+                }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: selected?.accountType?.systemImage ?? "wallet.bifold")
+                    .font(.subheadline.weight(.semibold))
+                Text(selected?.name ?? AppLocalization.string("quick_log.choose_account"))
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.caption2)
+            }
+            .foregroundStyle(selected == nil ? Color.moneyUpWarning : Color.accentColor)
+            .padding(.horizontal, 12)
+            .frame(minHeight: 44)
+            .background(Color.accentColor.opacity(0.10), in: Capsule())
+        }
+        .accessibilityLabel(label)
+        .accessibilityValue(selected.map(accountCurrencyLabel) ?? "")
+    }
 }

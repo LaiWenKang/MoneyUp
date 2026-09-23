@@ -178,6 +178,9 @@ final class AppwideRenderEvidenceTests: XCTestCase {
             .environment(model).environment(MoneyUpOverviewNavigation()).preferredColorScheme(.dark), name: "empty-goals")
         await capture(MainTabView(initialReportingSnapshot: snapshot, initialSection: .plan, initialPlanSection: .calendar)
             .environment(model).environment(MoneyUpOverviewNavigation()).preferredColorScheme(.light), name: "empty-calendar")
+        let starterNodes = [BudgetNode(id: fixture.food.id, name: "Food and dining")]
+        let starterModel = fixture.model(profile: profile, accounts: accounts, budgetNodes: starterNodes, currentDate: { now })
+        await capture(StarterBudgetSetupSheet().environment(starterModel).preferredColorScheme(.light), name: "starter-budget-sheet")
         for (state, name) in [(AppModel.State.launching, "launching"), (.locked, "locked"), (.failed("MoneyUp could not open its encrypted database."), "recovery")] {
             model.state = state
             await capture(RootView().environment(model).environment(MoneyUpOverviewNavigation()).preferredColorScheme(.dark), name: "state-" + name)

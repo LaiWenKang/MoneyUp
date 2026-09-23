@@ -20,7 +20,7 @@ extension DashboardView {
                     upcomingCard
                     IntelligenceSummaryLink()
                     if model.displayPreferences.showsTodayTrend { insightsCard }
-                    positionCard
+                    if showsPositionCard { positionCard }
                     monthlyBudgetCard
                     if !model.pinnedBudgetNodes.isEmpty,
                        model.displayPreferences.showsDailyGuidance { safeToSpendSummary }
@@ -54,6 +54,9 @@ extension DashboardView {
         .sheet(isPresented: $isEditingPins) {
             PinnedBudgetEditorSheet()
         }
+        .sheet(isPresented: $isSettingUpBudget) {
+            StarterBudgetSetupSheet()
+        }
         .environment(\.calendar, reportingSnapshot.calendar)
         .environment(\.timeZone, reportingSnapshot.calendar.timeZone)
         .background {
@@ -85,7 +88,7 @@ extension DashboardView {
                 hasTransactions: model.hasJournalEntries,
                 hasBudget: hasBudgetLimit,
                 onOpenLog: onOpenLog,
-                onOpenPlan: onOpenPlan
+                onOpenPlan: { isSettingUpBudget = true }
             )
             // With no limit yet the checklist owns the "set a budget" step;
             // the hero and board would only repeat it.
@@ -435,6 +438,17 @@ extension DashboardView {
                     .buttonStyle(.bordered)
                 }
             }
+        }
+    }
+
+    /// Cash and debt earns its card once any account holds money or owes it;
+    /// a row of zeroes on a new book is not information.
+    var showsPositionCard: Bool {
+        switch (cashDebtPosition, otherCurrencyBalances) {
+        case let (.available(position), .available(others)):
+            return !position.cash.isZero || !position.debt.isZero || !others.isEmpty
+        default:
+            return true
         }
     }
 

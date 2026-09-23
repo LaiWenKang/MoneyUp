@@ -287,4 +287,62 @@ final class AppwideExperienceTests: XCTestCase {
         UserDefaults.standard.set(true, forKey: MoneyAmountPrivacy.storageKey)
         XCTAssertEqual(rowFormattedAmount(TransactionDisplayAmount(money: money, role: .income)), MoneyAmountPrivacy.placeholder)
     }
+
+    func testQuickCategoryChipsRankByUseAndNeverMoveTheSelection() throws {
+        let usd = try CurrencyCode("USD")
+        let wallet = LedgerAccount(name: "Wallet", kind: .asset, currency: usd)
+        let group = LedgerAccount(name: "Essentials", kind: .expense)
+        let food = LedgerAccount(name: "Food", kind: .expense, parentID: group.id)
+        let transport = LedgerAccount(name: "Transport", kind: .expense, parentID: group.id)
+        let rent = LedgerAccount(name: "Rent", kind: .expense)
+        let fun = LedgerAccount(name: "Fun", kind: .expense)
+        let choices = [group, food, transport, rent, fun]
+        let entries = try [transport, transport, rent].map {
+            try TransactionFactory.expense(amount: Money(5, currency: usd), paidFrom: wallet.id, category: $0.id)
+        }
+        let ranked = QuickLogCategoryRanking.ranked(choices: choices, recentEntries: entries, selected: nil, limit: 3)
+        XCTAssertEqual(ranked.map(\.name), ["Transport", "Rent", "Food"], "used first, unused group heading left out")
+        let withSelection = QuickLogCategoryRanking.ranked(choices: choices, recentEntries: entries, selected: rent.id, limit: 3)
+        XCTAssertEqual(withSelection.map(\.name), ["Transport", "Rent", "Food"], "a visible selection keeps its place")
+        let outside = QuickLogCategoryRanking.ranked(choices: choices, recentEntries: entries, selected: fun.id, limit: 3)
+        XCTAssertEqual(outside.map(\.name), ["Transport", "Rent", "Fun"], "an off-list selection takes the last slot")
+    }
+
+    func testStarterBudgetSplitAddsToOneHundredAndMarksBills() throws {
+        let nodes = [
+            BudgetNode(name: "Everyday essentials"), BudgetNode(name: "Housing"), BudgetNode(name: "Lifestyle"),
+            BudgetNode(parentID: UUID(), name: "Food")
+        ]
+        let shares = StarterBudgetSplit.suggested(for: nodes)
+        XCTAssertEqual(shares.map(\.name), ["Housing", "Everyday essentials", "Lifestyle"])
+        XCTAssertEqual(shares.map(\.percent), [40, 35, 25])
+        XCTAssertEqual(shares.first?.purpose, .commitment)
+        XCTAssertEqual(Set(shares.dropFirst().map(\.purpose)), [.flexible])
+        XCTAssertTrue(shares.allSatisfy { $0.percent % 5 == 0 })
+        XCTAssertEqual(StarterBudgetSplit.amount(total: 3001, percent: 35), 1050)
+        let limited = try BudgetNode(name: "Housing", limit: Money(10, currency: CurrencyCode("USD")))
+        XCTAssertTrue(StarterBudgetSplit.suggested(for: [limited]).isEmpty, "existing limits are never proposed again")
+    }
+
+    func testCalendarDayMarksSeparateSpendingIncomeAndTransfers() throws {
+        let usd = try CurrencyCode("USD")
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "UTC"))
+        let day = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-09-10T10:00:00Z"))
+        let wallet = LedgerAccount(name: "Wallet", kind: .asset, currency: usd)
+        let savings = LedgerAccount(name: "Savings", kind: .asset, currency: usd)
+        let food = LedgerAccount(name: "Food", kind: .expense)
+        let salary = LedgerAccount(name: "Salary", kind: .income)
+        let entries = try [
+            TransactionFactory.expense(amount: Money(5, currency: usd), paidFrom: wallet.id, category: food.id, occurredAt: day),
+            TransactionFactory.income(amount: Money(50, currency: usd), depositedInto: wallet.id, category: salary.id,
+                occurredAt: day.addingTimeInterval(86_400)),
+            TransactionFactory.transfer(amount: Money(5, currency: usd), from: wallet.id, to: savings.id,
+                occurredAt: day.addingTimeInterval(2 * 86_400))
+        ]
+        let marks = CalendarDayMarks.byDay(entries: entries, calendar: calendar)
+        XCTAssertEqual(marks[calendar.startOfDay(for: day)], CalendarDayMarks(spent: true))
+        XCTAssertEqual(marks[calendar.startOfDay(for: day.addingTimeInterval(86_400))], CalendarDayMarks(received: true))
+        XCTAssertNil(marks[calendar.startOfDay(for: day.addingTimeInterval(2 * 86_400))])
+    }
 }

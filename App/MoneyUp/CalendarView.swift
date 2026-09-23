@@ -25,6 +25,7 @@ struct CalendarView: View {
     }
 
     @Environment(AppModel.self) private var model
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Bindable private var workspace: PlanWorkspaceState
     private var selectedDate: Date { workspace.calendarDate }
     @State private var isAddingSchedule = false
@@ -94,12 +95,18 @@ struct CalendarView: View {
                 Button("history.scope.today") { workspace.calendarDate = model.currentDateForUserAction() }
                     .font(.subheadline.weight(.semibold))
             }
-            DatePicker(
-            "calendar.select_date",
-            selection: $workspace.calendarDate,
-            displayedComponents: .date
-        )
-            .datePickerStyle(.graphical)
+            if dynamicTypeSize.isAccessibilitySize {
+                // Seven columns cannot hold accessibility-size digits; the
+                // system picker reflows where a custom grid would clip.
+                DatePicker(
+                    "calendar.select_date",
+                    selection: $workspace.calendarDate,
+                    displayedComponents: .date
+                )
+                .datePickerStyle(.graphical)
+            } else {
+                CalendarMonthGrid(selection: $workspace.calendarDate)
+            }
         }
     }
 
@@ -878,6 +885,203 @@ private extension RecurrenceFrequency {
         case .weekly: "schedule.weekly"
         case .monthly: "schedule.monthly"
         case .yearly: "schedule.yearly"
+        }
+    }
+}
+
+/// What happened on one day, reduced to three marks. Kept separate from the
+/// grid so the reading is testable without rendering.
+struct CalendarDayMarks: Equatable, Sendable {
+    var spent = false
+    var received = false
+    var scheduled = false
+
+    static func byDay(
+        entries: [JournalEntry],
+        calendar: Calendar
+    ) -> [Date: CalendarDayMarks] {
+        var marks: [Date: CalendarDayMarks] = [:]
+        for entry in entries {
+            let day = calendar.startOfDay(
+                for: entry.originContext.attributedDate(in: calendar) ?? entry.occurredAt
+            )
+            switch entry.kind {
+            case .expense: marks[day, default: .init()].spent = true
+            case .income: marks[day, default: .init()].received = true
+            case .transfer, .adjustment, .investment: break
+            }
+        }
+        return marks
+    }
+}
+
+/// A month grid that shows, before any tap, which days had spending, income,
+/// or a scheduled item. The system graphical picker cannot carry per-day
+/// marks. Swipe or the arrows change month; tapping a day selects it.
+private struct CalendarMonthGrid: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.moneyUpReduceMotion) private var reduceMotion
+    @Binding var selection: Date
+    @State private var displayedMonth: Date?
+    @State private var marks: [Date: CalendarDayMarks] = [:]
+
+    private var calendar: Calendar { model.reportingCalendar }
+    private var month: Date {
+        calendar.dateInterval(of: .month, for: displayedMonth ?? selection)?.start ?? selection
+    }
+    private var today: Date { calendar.startOfDay(for: model.currentDateForUserAction()) }
+
+    private var days: [Date?] {
+        guard let range = calendar.range(of: .day, in: .month, for: month) else { return [] }
+        let weekday = calendar.component(.weekday, from: month)
+        let leading = (weekday - calendar.firstWeekday + 7) % 7
+        let dates = range.compactMap { calendar.date(byAdding: .day, value: $0 - 1, to: month) }
+        return Array(repeating: nil, count: leading) + dates.map(Optional.some)
+    }
+
+    var body: some View {
+        VStack(spacing: 10) {
+            header
+            weekdayRow
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 0), count: 7), spacing: 4) {
+                ForEach(Array(days.enumerated()), id: \.offset) { _, day in
+                    if let day { dayCell(day) } else { Color.clear.frame(height: 46) }
+                }
+            }
+            .gesture(DragGesture(minimumDistance: 24).onEnded { value in
+                guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                shiftMonth(value.translation.width < 0 ? 1 : -1)
+            })
+            legend
+        }
+        .padding(.vertical, 4)
+        .task(id: "\(month.timeIntervalSince1970)-\(model.logicalBookRevision)-\(model.journalProjectionRevision)") {
+            await loadMarks()
+        }
+        .onChange(of: selection) { _, newValue in
+            if !calendar.isDate(newValue, equalTo: month, toGranularity: .month) {
+                displayedMonth = newValue
+            }
+        }
+    }
+
+    private var header: some View {
+        HStack {
+            Text(month, format: .dateTime.year().month(.wide))
+                .font(.headline)
+            Spacer()
+            Button { shiftMonth(-1) } label: {
+                Image(systemName: "chevron.left").frame(width: 44, height: 44)
+            }
+            .accessibilityLabel("calendar.previous_month")
+            Button { shiftMonth(1) } label: {
+                Image(systemName: "chevron.right").frame(width: 44, height: 44)
+            }
+            .accessibilityLabel("calendar.next_month")
+        }
+        .buttonStyle(.borderless)
+    }
+
+    private var weekdayRow: some View {
+        let symbols = calendar.veryShortStandaloneWeekdaySymbols
+        let ordered = Array(symbols[(calendar.firstWeekday - 1)...] + symbols[..<(calendar.firstWeekday - 1)])
+        return HStack(spacing: 0) {
+            ForEach(Array(ordered.enumerated()), id: \.offset) { _, symbol in
+                Text(symbol)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+            }
+        }
+        .accessibilityHidden(true)
+    }
+
+    private func dayCell(_ day: Date) -> some View {
+        let isSelected = calendar.isDate(day, inSameDayAs: selection)
+        let isToday = calendar.isDate(day, inSameDayAs: today)
+        var dayMarks = marks[calendar.startOfDay(for: day)] ?? .init()
+        dayMarks.scheduled = model.scheduledTransactions.contains { $0.occurs(on: day, calendar: calendar) }
+        return Button {
+            withAnimation(MoneyUpMotion.animation(for: .selection, reduceMotion: reduceMotion)) {
+                selection = day
+            }
+        } label: {
+            VStack(spacing: 3) {
+                Text(day, format: .dateTime.day())
+                    .font(.callout.monospacedDigit().weight(isSelected || isToday ? .bold : .regular))
+                    .foregroundStyle(isSelected ? Color.white : isToday ? Color.accentColor : Color.primary)
+                    .frame(width: 32, height: 32)
+                    .background {
+                        if isSelected {
+                            Circle().fill(Color.moneyUpAction)
+                        } else if isToday {
+                            Circle().stroke(Color.accentColor, lineWidth: 1.5)
+                        }
+                    }
+                HStack(spacing: 3) {
+                    if dayMarks.spent { Circle().fill(MoneyUpChartPalette.expense).frame(width: 5, height: 5) }
+                    if dayMarks.received { Circle().fill(Color.moneyUpPositive).frame(width: 5, height: 5) }
+                    if dayMarks.scheduled {
+                        Circle().stroke(Color.moneyUpWarning, lineWidth: 1.2).frame(width: 5, height: 5)
+                    }
+                }
+                .frame(height: 6)
+            }
+            .frame(maxWidth: .infinity, minHeight: 46)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(day, format: .dateTime.weekday(.wide).month(.wide).day()))
+        .accessibilityValue(accessibilityValue(dayMarks))
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    private var legend: some View {
+        HStack(spacing: 14) {
+            legendItem("history.spent") { Circle().fill(MoneyUpChartPalette.expense) }
+            legendItem("transaction.income") { Circle().fill(Color.moneyUpPositive) }
+            legendItem("calendar.scheduled") { Circle().stroke(Color.moneyUpWarning, lineWidth: 1.2) }
+            Spacer(minLength: 0)
+        }
+        .font(.caption2)
+        .foregroundStyle(.secondary)
+        .accessibilityHidden(true)
+    }
+
+    private func legendItem<Mark: View>(_ title: LocalizedStringKey, @ViewBuilder mark: () -> Mark) -> some View {
+        HStack(spacing: 4) {
+            mark().frame(width: 6, height: 6)
+            Text(title)
+        }
+    }
+
+    private func accessibilityValue(_ marks: CalendarDayMarks) -> String {
+        var parts: [String] = []
+        if marks.spent { parts.append(AppLocalization.string("history.spent")) }
+        if marks.received { parts.append(AppLocalization.string("transaction.income")) }
+        if marks.scheduled { parts.append(AppLocalization.string("calendar.scheduled")) }
+        return parts.joined(separator: ", ")
+    }
+
+    private func shiftMonth(_ delta: Int) {
+        guard let next = calendar.date(byAdding: .month, value: delta, to: month) else { return }
+        withAnimation(MoneyUpMotion.animation(for: .selection, reduceMotion: reduceMotion)) {
+            displayedMonth = next
+        }
+    }
+
+    private func loadMarks() async {
+        guard let interval = calendar.dateInterval(of: .month, for: month) else { return }
+        let requested = month
+        do {
+            let entries = try await model.calendarEntries(in: interval)
+            guard !Task.isCancelled, requested == month else { return }
+            marks = CalendarDayMarks.byDay(entries: entries, calendar: calendar)
+        } catch {
+            // Marks are a glance aid; the selected day's list still reports
+            // its own unavailable state, so a failed month read shows no dots.
+            guard requested == month else { return }
+            marks = [:]
         }
     }
 }

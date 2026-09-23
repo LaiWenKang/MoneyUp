@@ -46,6 +46,47 @@ extension AppModel {
         budgetNodes = candidate
     }
 
+    /// Sets several recurring limits in one write, so a first budget either
+    /// lands whole or not at all. Used by the one-screen starter setup.
+    func setStarterBudgetLimits(
+        _ limits: [(categoryID: UUID, amount: Decimal, purpose: BudgetPurpose)]
+    ) async throws {
+        try beginJournalMutation()
+        defer { endJournalMutation() }
+        guard let currency = profile?.baseCurrency, !limits.isEmpty else {
+            throw AppModelError.missingRecord
+        }
+        var candidate = budgetNodes
+        var updatedNodes: [BudgetNode] = []
+        for limit in limits {
+            guard let index = candidate.firstIndex(where: { $0.id == limit.categoryID }) else {
+                throw AppModelError.missingRecord
+            }
+            let updated = try budgetNodeUpdating(
+                candidate[index],
+                amount: limit.amount,
+                purpose: limit.purpose,
+                rolloverRule: nil,
+                currency: currency
+            )
+            candidate[index] = updated
+            updatedNodes.append(updated)
+        }
+        _ = try BudgetTree(currency: currency, nodes: candidate)
+        let candidateTimeline = try budgetConfigurationTimelineRecording(
+            nodes: candidate
+        )
+        let generation = storeGeneration
+        try await requireStore().write(
+            try updatedNodes.map {
+                try RecordWrite($0, id: $0.id.uuidString, in: .budgetNodes)
+            } + [try budgetConfigurationTimelineWrite(candidateTimeline)]
+        )
+        guard isCurrentStoreGeneration(generation) else { return }
+        budgetConfigurationTimeline = candidateTimeline
+        budgetNodes = candidate
+    }
+
     func budgetNodeUpdating(
         _ original: BudgetNode,
         amount: Decimal?,

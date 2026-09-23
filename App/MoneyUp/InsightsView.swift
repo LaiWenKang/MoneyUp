@@ -275,6 +275,28 @@ struct InsightsView: View {
         }
     }
 
+    /// The glyph matches the category's icon elsewhere and takes the bar's
+    /// own certified colour; the name stays beside it. Kept outside the chart
+    /// body so the chart's reviewed style inventory is unchanged.
+    func categoryAxisLabel(_ point: InsightsCategoryPoint, among allPoints: [InsightsCategoryPoint]) -> some View {
+        let barTint = categoryChartColor(point, in: allPoints)
+        return Label {
+            Text(point.name)
+        } icon: {
+            Image(systemName: categoryChartSymbol(point))
+                .foregroundStyle(barTint)
+        }
+    }
+
+    func categoryChartSymbol(_ point: InsightsCategoryPoint) -> String {
+        if point.isAggregate { return "ellipsis.circle" }
+        if point.categoryIDs.count == 1, let id = point.categoryIDs.first {
+            return MoneyUpCategorySymbol.symbol(for: id, accountsByID: model.accountsByID)
+        }
+        return MoneyUpCategorySymbol.symbol(forName: point.name)
+            ?? MoneyUpCategorySymbol.fallbackExpense
+    }
+
     func categoryChart(_ points: [InsightsCategoryPoint]) -> some View {
         Chart {
             ForEach(points) { point in
@@ -324,7 +346,7 @@ struct InsightsView: View {
                        let point = points.first(where: {
                            $0.selectionKey == key
                        }) {
-                        Text(point.name)
+                        categoryAxisLabel(point, among: points)
                     }
                 }
             }

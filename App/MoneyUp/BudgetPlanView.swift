@@ -16,6 +16,7 @@ struct BudgetPlanView: View {
     @State private var editingNode: BudgetNode?
     @State private var isAddingCategory = false
     @State private var isManagingCategories = false
+    @State private var isSettingUpStarterBudget = false
     @State private var errorMessage: String?
     @AppStorage(MoneyUpDisclosureSection.planBudgetDetail.rawValue)
     private var showsRowDetail = false
@@ -101,6 +102,7 @@ struct BudgetPlanView: View {
             }
         }
         .sheet(isPresented: $isAddingCategory) { AddCategorySheet(kind: .expense) }
+        .sheet(isPresented: $isSettingUpStarterBudget) { StarterBudgetSetupSheet() }
         .sheet(isPresented: $isManagingCategories) { CategoryManagementList() }
         .moneyUpOperationErrorAlert(message: $errorMessage)
     }
@@ -147,6 +149,10 @@ struct BudgetPlanView: View {
                 )
                 Text("plan.purpose_review_detail").font(.caption).foregroundStyle(.secondary)
             }
+        }
+        if isCurrentMonth, currency == model.profile?.baseCurrency,
+           !outline.isEmpty, !outline.contains(where: { $0.node.limit != nil }) {
+            starterBudgetSection
         }
         if let summary = snapshot.summary {
             Section {
@@ -203,6 +209,30 @@ struct BudgetPlanView: View {
                         .tint(.moneyUpAction)
                 }
             }
+        }
+    }
+
+    /// A book whose categories have no limits yet gets the one-screen setup
+    /// first; editing limits one row at a time stays available below.
+    private var starterBudgetSection: some View {
+        Section {
+            Button { isSettingUpStarterBudget = true } label: {
+                HStack(spacing: 12) {
+                    MoneyUpSymbolBadge(systemImage: "wand.and.stars")
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("budget.setup.title").font(.headline)
+                        Text("budget.setup.cta_detail")
+                            .font(.subheadline).foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(MoneyUpPressableButtonStyle())
+            .foregroundStyle(.primary)
+            .accessibilityIdentifier("plan-starter-budget")
         }
     }
 

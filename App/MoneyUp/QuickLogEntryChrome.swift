@@ -93,8 +93,10 @@ extension QuickLogEntryView {
                                 .monospacedDigit()
                                 .contentTransition(.numericText())
                         }
+                        // The glyph alone says where it went; a name here
+                        // would truncate the amount on a phone-width banner.
                         if let lastSavedCategoryID,
-                           let category = model.accountsByID[lastSavedCategoryID] {
+                           model.accountsByID[lastSavedCategoryID] != nil {
                             MoneyUpCategoryBadge(
                                 systemImage: MoneyUpCategorySymbol.symbol(
                                     for: lastSavedCategoryID, accountsByID: model.accountsByID
@@ -102,9 +104,6 @@ extension QuickLogEntryView {
                                 tint: MoneyUpCategorySymbol.tint(for: lastSavedCategoryID),
                                 size: 24
                             )
-                            Text(category.name)
-                                .foregroundStyle(.secondary)
-                                .truncationMode(.tail)
                         }
                     }
                 } icon: {
