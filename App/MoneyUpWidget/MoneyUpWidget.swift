@@ -59,16 +59,16 @@ struct MoneyUpWidgetConfigurationIntent: WidgetConfigurationIntent {
 
     // "Today shows" only matters for the Today layout; hide it elsewhere.
     static var parameterSummary: some ParameterSummary {
-        When(\.$content, .equalTo, .smartOverview) {
+        When(\MoneyUpWidgetConfigurationIntent.$content, .equalTo, MoneyUpWidgetContent.smartOverview) {
             Summary {
-                \.$content
-                \.$defaultAction
-                \.$focus
+                \MoneyUpWidgetConfigurationIntent.$content
+                \MoneyUpWidgetConfigurationIntent.$defaultAction
+                \MoneyUpWidgetConfigurationIntent.$focus
             }
         } otherwise: {
             Summary {
-                \.$content
-                \.$defaultAction
+                \MoneyUpWidgetConfigurationIntent.$content
+                \MoneyUpWidgetConfigurationIntent.$defaultAction
             }
         }
     }
