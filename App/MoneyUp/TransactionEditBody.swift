@@ -13,7 +13,7 @@ extension TransactionEditView {
             Form {
                 if isEditable {
                     if dynamicTypeSize.isAccessibilitySize {
-                        kindPicker(style: .menu)
+                        QuickLogKindMenuPicker(selection: $kind)
                     } else {
                         kindPicker(style: .segmented)
                     }

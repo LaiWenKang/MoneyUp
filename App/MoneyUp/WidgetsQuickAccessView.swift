@@ -97,7 +97,11 @@ struct WidgetsQuickAccessView: View {
             HStack {
                 MoneyUpSectionHeader("favourites.title", explanation: "favourites.section_detail")
                 Spacer()
-                if model.quickLogFavourites.count > 1 { EditButton().font(.caption.weight(.semibold)) }
+                if model.quickLogFavourites.count > 1 {
+                    EditButton()
+                        .font(.caption.weight(.semibold))
+                        .padding(13).contentShape(Rectangle()).padding(-13)
+                }
             }
         } footer: {
             Text("favourites.privacy_footer")
@@ -142,6 +146,7 @@ struct WidgetsQuickAccessView: View {
                 }
             }
             .disabled(!(model.profile?.allowLockedQuickCapture ?? true))
+            .accessibilityIdentifier("quick-access-favourites-while-locked")
         } header: {
             MoneyUpSectionHeader("quick_access.privacy_title", explanation: "quick_access.privacy_detail")
         } footer: {

@@ -8,7 +8,7 @@ struct BudgetMonthPicker: View {
     var body: some View {
         HStack(spacing: 12) {
             Button { move(by: -1) } label: {
-                Image(systemName: "chevron.left").frame(minWidth: 44, minHeight: 44)
+                Image(systemName: "chevron.left").frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
             }.accessibilityLabel("budget.previous_month")
             Button { isChoosingMonth = true } label: {
                 Text(selection, format: .dateTime.month(.wide).year())
@@ -16,7 +16,7 @@ struct BudgetMonthPicker: View {
             }
             .accessibilityHint("budget.choose_month")
             Button { move(by: 1) } label: {
-                Image(systemName: "chevron.right").frame(minWidth: 44, minHeight: 44)
+                Image(systemName: "chevron.right").frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
             }.accessibilityLabel("budget.next_month")
         }
         .buttonStyle(.plain)

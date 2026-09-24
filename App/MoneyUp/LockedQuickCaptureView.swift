@@ -114,6 +114,7 @@ struct LockedQuickCaptureView: View {
                             Label("action.done", systemImage: "checkmark")
                                 .frame(maxWidth: .infinity)
                         }
+                        .accessibilityIdentifier("locked-capture-done")
                         .buttonStyle(.borderedProminent)
                         .tint(.moneyUpAction)
 
@@ -166,6 +167,7 @@ struct LockedQuickCaptureView: View {
                             .monospacedDigit()
                             .minimumScaleFactor(0.6)
                             .focused($focusedField, equals: .amount)
+                            .accessibilityIdentifier("locked-capture-amount")
                             .moneyUpFieldValidation(amountValidationMessage)
                         if let amountValidationMessage {
                             MoneyUpFieldError(message: amountValidationMessage)
@@ -415,12 +417,14 @@ struct LockedCaptureActionBar: View {
             }
             .buttonStyle(.plain)
             .disabled(!canSave)
+            .accessibilityIdentifier("locked-capture-save")
             Button(action: unlock) {
                 Label("capture.unlock_for_favourites", systemImage: unlockSymbol)
                     .font(.subheadline.weight(.semibold))
                     .frame(maxWidth: .infinity, minHeight: 44)
             }
             .disabled(!canUnlock)
+            .accessibilityIdentifier("locked-capture-unlock")
         }
         .padding(.horizontal, 16)
         .padding(.top, 8)
@@ -455,6 +459,7 @@ struct LockedFavouriteChipsRow: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityHint("favourites.prefill_hint")
+                    .accessibilityIdentifier("locked-favourite-\(favourite.name)")
                 }
             }
             .padding(.vertical, 2)

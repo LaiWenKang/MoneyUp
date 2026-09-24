@@ -69,7 +69,8 @@ struct SearchableCurrencyPicker: View {
                     Text(selection).font(.subheadline.monospaced().weight(.semibold))
                     Image(systemName: "chevron.down").font(.caption2).accessibilityHidden(true)
                 }
-                .frame(minHeight: 44)
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
             } else {
                 // Tinted value and chevrons match the app's menu pickers, so
                 // the row reads as a choice rather than a fixed fact.

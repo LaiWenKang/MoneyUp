@@ -111,6 +111,8 @@ struct AssetsView: View {
                                 case let .available(balance):
                                     Text(formattedMoney(balance))
                                         .font(.subheadline.monospacedDigit())
+                                        .accessibilityLabel(Text("account.current_balance"))
+                                        .accessibilityValue(Text(accessibleFormattedMoney(balance)))
                                 case let .unavailable(issue):
                                     VStack(alignment: .trailing, spacing: 2) {
                                         Text("—")
@@ -673,5 +675,7 @@ extension AssetsView {
                     .textCase(nil)
             }
         }
+        // One VoiceOver stop: "Accounts and cards, SGD 0.00", not a bare figure.
+        .accessibilityElement(children: .combine)
     }
 }

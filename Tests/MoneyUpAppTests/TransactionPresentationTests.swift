@@ -430,13 +430,14 @@ final class TransactionPresentationTests: XCTestCase {
             .smartEntry,
             .payee,
             .note,
-            .splitAmount(lineID),
-            .splitMemo(lineID)
+            .splitAmount(lineID)
         ]
 
         for field in fields {
             XCTAssertEqual(QuickLogFocusScrollPolicy.target(for: field), field)
         }
+        // A split line's memo shares its amount's row, which carries the id.
+        XCTAssertEqual(QuickLogFocusScrollPolicy.target(for: .splitMemo(lineID)), .splitAmount(lineID))
         XCTAssertNil(QuickLogFocusScrollPolicy.target(for: nil))
     }
 

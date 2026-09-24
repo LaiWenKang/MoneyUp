@@ -351,8 +351,17 @@ enum QuickLogFocusScrollPolicy {
     /// split memo above the keyboard on compact devices.
     static let layoutSettlingNanoseconds: UInt64 = 360_000_000
 
+    /// Where a focused field lands. The list's centre is measured as if the
+    /// keypad were absent, which left lower fields (Smart Entry, its Fill
+    /// button) behind the keypad and the pinned Save bar; the upper third is
+    /// visible above every keypad.
+    static let anchor = UnitPoint(x: 0.5, y: 0.3)
+
+    /// The row id to scroll to. A Form resolves `scrollTo` by row, so a
+    /// split line's amount and memo both scroll to that line's row.
     static func target(for focus: QuickLogFieldFocus?) -> QuickLogFieldFocus? {
-        focus
+        if case .splitMemo(let lineID) = focus { return .splitAmount(lineID) }
+        return focus
     }
 }
 

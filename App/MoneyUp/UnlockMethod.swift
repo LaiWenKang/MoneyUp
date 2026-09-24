@@ -15,6 +15,11 @@ enum UnlockMethod: Sendable {
     /// `biometryType` is only populated after a policy evaluation check, so
     /// the order here matters.
     static var current: UnlockMethod {
+        #if DEBUG
+        // UI-test simulators have no passcode; the harness book opens with a
+        // fixed test key instead, so unlock controls stay usable there.
+        if ProcessInfo.processInfo.arguments.contains("-MoneyUpUITest") { return .passcode }
+        #endif
         let context = LAContext()
         guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: nil) else {
             return .unavailable

@@ -27,56 +27,6 @@ extension QuickLogEntryView {
                             .disabled(isSaving)
                     }
                 }
-                ToolbarItemGroup(placement: .keyboard) {
-                    if !dismissAfterSave {
-                        Menu {
-                            Button {
-                                navigate(to: .today)
-                            } label: {
-                                Label("tab.today", systemImage: "house.fill")
-                            }
-                            Button {
-                                navigate(to: .history(nil))
-                            } label: {
-                                Label("tab.history", systemImage: "clock.arrow.circlepath")
-                            }
-                            Button {
-                                navigate(to: .plan)
-                            } label: {
-                                Label("tab.plan", systemImage: "chart.pie.fill")
-                            }
-                            Button {
-                                navigate(to: .assets)
-                            } label: {
-                                Label("tab.assets", systemImage: "wallet.bifold.fill")
-                            }
-                        } label: {
-                            Label("quick_log.switch_tab", systemImage: "square.grid.2x2")
-                        }
-                    }
-
-                    Button {
-                        focusedField = .note
-                    } label: {
-                        Label("transaction.notes", systemImage: "note.text")
-                    }
-                    .accessibilityIdentifier("quick-log-keyboard-notes")
-
-                    Button {
-                        Task { await attemptSave() }
-                    } label: {
-                        Label("action.save", systemImage: "checkmark.circle.fill")
-                    }
-                    .disabled(!canSave || isSaving || isUndoing || isPreparingEvidence)
-
-                    Spacer()
-                    Button {
-                        dismissKeyboard()
-                    } label: {
-                        Label("action.done", systemImage: "keyboard.chevron.compact.down")
-                    }
-                    .fontWeight(.semibold)
-                }
             }
     }
 
@@ -123,6 +73,7 @@ extension QuickLogEntryView {
                 Button("action.undo") {
                     Task { await undo(entryID: lastSavedEntryID) }
                 }
+                .accessibilityIdentifier("log-undo")
                 .fontWeight(.semibold)
                 .disabled(isUndoing)
                 Button {
@@ -220,5 +171,42 @@ struct PendingCaptureBanner: View {
         } message: {
             Text("capture.discard_pending_detail")
         }
+    }
+}
+
+/// Save pinned above the keyboard, with a keyboard-dismiss control beside it
+/// while a field is focused. The system keyboard toolbar does not render in
+/// every configuration, so neither action may depend on it.
+struct LogSaveBar: View {
+    let canSave: Bool
+    let showsKeyboardDismiss: Bool
+    let save: () -> Void
+    let dismissKeyboard: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Button(action: save) {
+                Label("action.save", systemImage: "checkmark.circle.fill")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .tint(.moneyUpAction)
+            .disabled(!canSave)
+            .accessibilityIdentifier("log-save")
+            if showsKeyboardDismiss {
+                Button(action: dismissKeyboard) {
+                    Image(systemName: "keyboard.chevron.compact.down")
+                        .font(.body.weight(.semibold))
+                        .frame(width: 50, height: 50)
+                }
+                .buttonStyle(.bordered)
+                .accessibilityLabel("action.hide_keyboard")
+                .accessibilityIdentifier("log-dismiss-keyboard")
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background { Color.moneyUpBackground }
     }
 }

@@ -5,7 +5,7 @@ import WidgetKit
 @main
 @MainActor
 struct MoneyUpApp: App {
-    @State private var model = AppModel()
+    @State private var model = MoneyUpApp.initialModel()
     @State private var overviewNavigation = MoneyUpOverviewNavigation()
     @State private var launchState = MoneyUpSceneLaunchState()
     @State private var quickActionRouteBroker =
@@ -19,6 +19,13 @@ struct MoneyUpApp: App {
 
     private var appLanguage: AppLanguagePreference {
         AppLanguagePreference(rawValue: appLanguageRawValue) ?? .system
+    }
+
+    private static func initialModel() -> AppModel {
+        #if DEBUG
+        if let model = MoneyUpUITestHarness.makeModelIfRequested() { return model }
+        #endif
+        return AppModel()
     }
 
     var body: some Scene {

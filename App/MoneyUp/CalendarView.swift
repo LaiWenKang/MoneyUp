@@ -971,11 +971,11 @@ private struct CalendarMonthGrid: View {
                 .font(.headline)
             Spacer()
             Button { shiftMonth(-1) } label: {
-                Image(systemName: "chevron.left").frame(width: 44, height: 44)
+                Image(systemName: "chevron.left").frame(width: 44, height: 44).contentShape(Rectangle())
             }
             .accessibilityLabel("calendar.previous_month")
             Button { shiftMonth(1) } label: {
-                Image(systemName: "chevron.right").frame(width: 44, height: 44)
+                Image(systemName: "chevron.right").frame(width: 44, height: 44).contentShape(Rectangle())
             }
             .accessibilityLabel("calendar.next_month")
         }

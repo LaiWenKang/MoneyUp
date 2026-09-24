@@ -44,9 +44,13 @@ struct MoneyUpExplainer: View {
             } label: {
                 Image(systemName: isExpanded ? "info.circle.fill" : "info.circle")
                     .font(.callout)
+                    .frame(minWidth: 44, minHeight: 44)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            // A real 44-pt target; the negative padding keeps section headers
+            // at their text height.
+            .padding(-13)
             .foregroundStyle(.tint)
             .accessibilityLabel("action.explain")
             .accessibilityHint(explanation)

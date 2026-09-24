@@ -16,7 +16,9 @@ concurrency:
 jobs:
   native-review:
     runs-on: macos-26
-    timeout-minutes: 30
+    # Includes the end-to-end journeys (MoneyUpJourneyTests), which need an
+    # ad-hoc signature for the App Group the widget-route queue uses.
+    timeout-minutes: 60
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
     steps:
@@ -68,7 +70,7 @@ jobs:
             -derivedDataPath "$RUNNER_TEMP/MoneyUpUI26DerivedData" \
             -resultBundlePath "$RUNNER_TEMP/MoneyUpColdLaunch.xcresult" \
             -parallel-testing-enabled NO \
-            SWIFT_TREAT_WARNINGS_AS_ERRORS=YES CODE_SIGNING_ALLOWED=NO test
+            SWIFT_TREAT_WARNINGS_AS_ERRORS=YES CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- test
       - name: Export review evidence
         if: ${{ always() }}
         run: |

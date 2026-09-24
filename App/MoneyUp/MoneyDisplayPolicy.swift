@@ -50,6 +50,9 @@ struct MoneyUpAmountPrivacyButton: View {
             Image(systemName: hidesAmounts ? "eye.slash.fill" : "eye.fill")
                 .foregroundStyle(Color.accentColor)
                 .contentTransition(.symbolEffect(.replace))
+                // A 44-pt target, not the glyph's own bounds.
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
         }
         .accessibilityLabel(
             hidesAmounts

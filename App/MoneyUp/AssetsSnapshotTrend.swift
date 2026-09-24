@@ -59,9 +59,9 @@ struct AssetsSnapshotTrend: View {
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer(minLength: 8)
-                    Button { step(-1) } label: { Image(systemName: "chevron.left").frame(width: 44, height: 44) }
+                    Button { step(-1) } label: { Image(systemName: "chevron.left").frame(width: 44, height: 44).contentShape(Rectangle()) }
                         .disabled(selected.id == points.first?.id).accessibilityLabel("assets.snapshot_previous")
-                    Button { step(1) } label: { Image(systemName: "chevron.right").frame(width: 44, height: 44) }
+                    Button { step(1) } label: { Image(systemName: "chevron.right").frame(width: 44, height: 44).contentShape(Rectangle()) }
                         .disabled(selected.id == points.last?.id).accessibilityLabel("assets.snapshot_next")
                 }
                 .buttonStyle(.borderless)

@@ -12,7 +12,12 @@ extension QuickLogEntryView {
             text: amountText,
             currency: selectedAccountCurrency
         )
-        HStack(alignment: .firstTextBaseline) {
+        // At accessibility sizes the currency moves under the amount so the
+        // hero figure keeps the full width instead of clipping.
+        let amountLayout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
+            : AnyLayout(HStackLayout(alignment: .firstTextBaseline))
+        amountLayout {
             TextField(
                 "quick_log.amount",
                 text: trackedBinding(
@@ -23,6 +28,7 @@ extension QuickLogEntryView {
             )
             .moneyAmountKeyboard(currency: selectedAccountCurrency)
             .moneyUpFinancialValue(.hero)
+            .accessibilityIdentifier("quick-log-amount")
             .focused($focusedField, equals: .amount)
             .id(QuickLogFieldFocus.amount)
             .moneyUpFieldValidation(amountValidationMessage)
@@ -257,7 +263,6 @@ extension QuickLogEntryView {
                     .lineLimit(1...3)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .focused($focusedField, equals: .smartEntry)
-                    .id(QuickLogFieldFocus.smartEntry)
                     .accessibilityIdentifier("quick-log-smart-input")
                     .moneyUpPrivateAmountInput(
                         masked: hidesAmounts && focusedField != .smartEntry && !smartText.isEmpty,
@@ -291,6 +296,9 @@ extension QuickLogEntryView {
                 .accessibilityLabel("quick_log.suggestion_options")
             }
             .accessibilityHint("quick_log.smart_footer")
+            // The row carries the scroll id: a Form resolves `scrollTo` by
+            // row, so an id nested inside the row never scrolls it into view.
+            .id(QuickLogFieldFocus.smartEntry)
             .photosPicker(
                 isPresented: $isPresentingReceiptPicker,
                 selection: $photoItem,
@@ -450,7 +458,6 @@ extension QuickLogEntryView {
                     )
                     .moneyAmountKeyboard(currency: selectedAccountCurrency)
                     .focused($focusedField, equals: .splitAmount(lineID))
-                    .id(QuickLogFieldFocus.splitAmount(lineID))
                     .moneyUpFieldValidation(lineValidationMessage)
                     .accessibilityLabel(Text(amountAccessibilityLabel))
                     .moneyUpPrivateAmountInput(
@@ -511,7 +518,6 @@ extension QuickLogEntryView {
                 )
                 .font(.caption)
                 .focused($focusedField, equals: .splitMemo(lineID))
-                .id(QuickLogFieldFocus.splitMemo(lineID))
                 .accessibilityLabel(
                     Text(
                         String(
@@ -522,6 +528,8 @@ extension QuickLogEntryView {
                 )
             }
             .padding(.vertical, 4)
+            // The row carries the scroll id for both its amount and memo.
+            .id(QuickLogFieldFocus.splitAmount(lineID))
         }
 
         Button {
@@ -799,5 +807,22 @@ struct QuickLogAccountChip: View {
     private var uniqueChoices: [LedgerAccount] {
         var seen = Set<UUID>()
         return choices.filter { seen.insert($0.id).inserted }
+    }
+}
+
+/// At accessibility text sizes the kind is a bare menu ("Expense ⌃") so
+/// nothing competes for the row's width; VoiceOver still hears the full
+/// "Transaction type, Expense" from the picker's label.
+struct QuickLogKindMenuPicker: View {
+    let selection: Binding<QuickLogKind>
+
+    var body: some View {
+        Picker("transaction.kind", selection: selection) {
+            ForEach(QuickLogKind.allCases) { item in
+                Text(item.title).tag(item)
+            }
+        }
+        .labelsHidden()
+        .pickerStyle(.menu)
     }
 }
