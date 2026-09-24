@@ -131,6 +131,48 @@ flagship Quick Log widget ships first.
      dashed "Add a favourite" chip, and afterwards a trailing "New favourite".
    - **Renders:** `locked-capture.png` and `log-favourites-empty.png`.
 
+8. **Second design pass, after the owner asked whether this is the best
+   version yet.**
+   - **Widget configuration:** the options now read "Show: Quick Log /
+     Budget / Today" and "Main action". "Today shows" appears only for Today.
+     Medium and large Budget/Today widgets with summaries off say "Summaries
+     are off · turn on in MoneyUp" instead of silently showing Quick Log.
+   - **Large widget:** a bento grid. The main action spans two columns beside
+     two tiles, with three tiles below: every cell is a target and none is
+     empty. Unlock locks sit in the tile corner so labels never truncate.
+   - **Locked Quick Capture:**
+     - The duplicate "Log" title is gone.
+     - The privacy line is one line ("Private until you unlock").
+     - Save reads "Save privately".
+     - The action bar is pinned above the keyboard.
+   - **Log:**
+     - Favourites are a compact first row inside the amount card, with no
+       header.
+     - The Smart entry and Details headers are removed. Smart entry's
+       suggestion menu now sits in its row.
+     - Date and time collapse to one row that opens the picker.
+     - The detailed account/category pickers stay below the fold: folding
+       them away would push Log past its device-safe type depth of 98.
+   - **Show favourites while locked** (opt-in, off by default; Settings ›
+     Widgets & Quick Access › Privacy):
+     - What's stored: names, kinds, fixed amounts, titles, and notes, in
+       `locked-favourites.bin`, sealed with AES-GCM under a separate
+       device-only, after-first-unlock Keychain key. There is no account,
+       category, balance, or book identifier.
+     - Who can read it: only the app, never the widget or App Group.
+     - When it's written: only with an open book and while both the option
+       and Locked Quick Capture are on. Turning either off, erasing, or
+       restoring a different book rewrites or deletes it.
+     - After unlock: the capture's exact title and kind match the favourite
+       inside the book, and it regains only still-valid accounts and
+       categories.
+     - Guardrails: `validate_launch_safety.py` now inventories its single
+       Keychain read and requires the store to stay a non-main actor. The
+       store is injected like the capture inbox, so tests and restore
+       validation never touch the Keychain.
+   - **Renders:** `quick-log-widget-large-*.png`, `locked-capture.png`
+     (with opted-in chips), `log-favourites-*.png`.
+
 ## Guardrails updated deliberately
 
 - **`validate_platform_actions.py`:**

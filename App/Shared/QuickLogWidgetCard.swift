@@ -9,6 +9,8 @@ enum QuickLogWidgetTileRole: Equatable, Sendable {
     case canvas
     case hero
     case shortcutRow
+    /// A square tile in the large widget's grid: glyph above, label below.
+    case shortcutTile
 }
 
 enum QuickLogWidgetLayoutFamily: Equatable, Sendable {
@@ -65,12 +67,35 @@ struct QuickLogWidgetCard<Tile: View>: View {
                     }
                 }
             }
-        case .large:
+        case .large where density == .accessibility || shortcuts.count != 5:
             VStack(spacing: 6) {
                 tile(primary, .hero)
-                    .frame(height: density == .accessibility ? nil : 104)
-                    .padding(.bottom, 2)
                 ForEach(shortcuts) { action in tile(action, .shortcutRow) }
+            }
+        case .large:
+            // A 3-column grid: the main action spans two columns beside two
+            // tiles, and three tiles run beneath. Every cell is a target and
+            // no slot is left empty.
+            GeometryReader { proxy in
+                let gap: CGFloat = 8
+                let column = (proxy.size.width - gap * 2) / 3
+                let topHeight = (proxy.size.height - gap) * 0.56
+                VStack(spacing: gap) {
+                    HStack(spacing: gap) {
+                        tile(primary, .hero).frame(width: column * 2 + gap)
+                        VStack(spacing: gap) {
+                            tile(shortcuts[0], .shortcutTile)
+                            tile(shortcuts[1], .shortcutTile)
+                        }
+                        .frame(width: column)
+                    }
+                    .frame(height: topHeight)
+                    HStack(spacing: gap) {
+                        ForEach(shortcuts.suffix(3)) { action in
+                            tile(action, .shortcutTile).frame(width: column)
+                        }
+                    }
+                }
             }
         }
     }
@@ -99,6 +124,7 @@ struct QuickLogWidgetTile: View {
                                 : AnyShapeStyle(Color.primary.opacity(0.12)))
                     }
             case .shortcutRow: shortcutRow
+            case .shortcutTile: shortcutTile
             }
         }
         .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -127,6 +153,38 @@ struct QuickLogWidgetTile: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .foregroundStyle(isFullColor ? Color.white : Color.primary)
+    }
+
+    private var shortcutTile: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .top) {
+                Image(systemName: action.systemImage)
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(isFullColor ? QuickLogWidgetPalette.accentInk : Color.primary)
+                    .widgetAccentable()
+                    .accessibilityHidden(true)
+                Spacer(minLength: 0)
+                // The unlock mark sits in the corner so the label never
+                // truncates to make room for it.
+                if action.requiresUnlock {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.tertiary)
+                        .accessibilityHidden(true)
+                }
+            }
+            Spacer(minLength: 4)
+            Text(action.titleKey)
+                .font(.subheadline.weight(.medium))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .background {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(isFullColor ? QuickLogWidgetPalette.shortcutFill : Color.primary.opacity(0.08))
+        }
     }
 
     private var shortcutRow: some View {

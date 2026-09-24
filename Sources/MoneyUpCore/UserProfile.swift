@@ -55,6 +55,9 @@ public struct UserProfile: Codable, Equatable, Sendable {
     /// Saved Log shortcuts in the order the user chose. They prefill the form
     /// only and never leave this encrypted record.
     public var quickLogFavourites: [QuickLogFavourite]
+    /// Opt-in: show favourite names and fixed amounts on Locked Quick Capture
+    /// without unlocking MoneyUp. Off by default; legacy profiles decode off.
+    public var showsFavouritesWhileLocked: Bool
 
     public init(
         baseCurrency: CurrencyCode,
@@ -74,7 +77,8 @@ public struct UserProfile: Codable, Equatable, Sendable {
         pinnedBudgetNodeIDs: [UUID] = [],
         reviewedIntelligenceFindingIDs: [String] = [],
         displayPreferences: MoneyUpDisplayPreferences = .init(),
-        quickLogFavourites: [QuickLogFavourite] = []
+        quickLogFavourites: [QuickLogFavourite] = [],
+        showsFavouritesWhileLocked: Bool = false
     ) {
         self.baseCurrency = baseCurrency
         self.createdAt = createdAt
@@ -99,6 +103,7 @@ public struct UserProfile: Codable, Equatable, Sendable {
         )
         self.displayPreferences = displayPreferences
         self.quickLogFavourites = QuickLogFavourite.normalized(quickLogFavourites)
+        self.showsFavouritesWhileLocked = showsFavouritesWhileLocked
     }
 
     /// Keeps the newest distinct identifiers, dropping blanks and repeats, so
@@ -149,6 +154,7 @@ public struct UserProfile: Codable, Equatable, Sendable {
         case reviewedIntelligenceFindingIDs
         case displayPreferences
         case quickLogFavourites
+        case showsFavouritesWhileLocked
     }
 
     public init(from decoder: Decoder) throws {
@@ -228,6 +234,9 @@ public struct UserProfile: Codable, Equatable, Sendable {
                 [QuickLogFavourite].self, forKey: .quickLogFavourites
             ) ?? []
         )
+        showsFavouritesWhileLocked = try container.decodeIfPresent(
+            Bool.self, forKey: .showsFavouritesWhileLocked
+        ) ?? false
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -276,6 +285,9 @@ public struct UserProfile: Codable, Equatable, Sendable {
         try container.encode(displayPreferences, forKey: .displayPreferences)
         if !quickLogFavourites.isEmpty {
             try container.encode(quickLogFavourites, forKey: .quickLogFavourites)
+        }
+        if showsFavouritesWhileLocked {
+            try container.encode(true, forKey: .showsFavouritesWhileLocked)
         }
     }
 

@@ -941,7 +941,7 @@
     "capture.unavailable.title" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Locked captures unavailable"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"锁定记录不可用"}}}},
     "capture.title" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Log"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"记账"}}}},
     "capture.add_details" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Add optional details"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"添加可选详情"}}}},
-    "capture.save" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Capture privately"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"私密记录"}}}},
+    "capture.save" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Save privately"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"私密保存"}}}},
     "capture.saved_title" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Captured privately"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"已私密记录"}}}},
     "capture.saved_detail" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Saved. Unlock MoneyUp and Log opens with it filled in."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"已保存。解锁 MoneyUp 后，记账页会自动带入这笔内容。"}}}},
     "capture.pending_count" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Pending captures: %d"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"%d 笔待检查记录"}}}},
@@ -1866,7 +1866,7 @@
     "quick_access.privacy_footer" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Widget summaries share only a budget percentage and a few counts, never amounts or names. Quick Capture while locked keeps new entries in a separate encrypted inbox until you unlock and review them."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"小组件摘要只共享预算百分比和少量计数，绝不共享金额或名称。锁定时快速记账会先将新记录存入单独的加密收件箱，待你解锁并确认后再入账。"}}}},
     "favourites.title" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Favourites"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"常用记录"}}}},
     "favourites.section_detail" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Tap a favourite in Log to fill the form. You still review and tap Save."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"在记账页点按常用记录即可填入表单，确认后再点按“保存”。"}}}},
-    "favourites.privacy_footer" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Favourites are stored inside your encrypted book and never appear on widgets, controls, or Siri."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"常用记录保存在你的加密账本中，不会出现在小组件、控件或 Siri 中。"}}}},
+    "favourites.privacy_footer" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Favourites stay in your encrypted book and never appear on widgets, controls, or Siri. They show on locked Quick Capture only if you turn that on in Privacy."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"常用记录保存在你的加密账本中，不会出现在小组件、控件或 Siri 中。仅当你在“隐私”中开启后，才会显示在锁定时的快速记录中。"}}}},
     "favourites.new" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"New favourite"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"新建常用记录"}}}},
     "favourites.edit" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Edit favourite"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"编辑常用记录"}}}},
     "favourites.delete" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Delete favourite"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"删除常用记录"}}}},
@@ -1890,9 +1890,11 @@
     "widget.budget_pace_within_format" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Within pace · %d%% of the month gone"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"未超进度 · 本月已过 %d%%"}}}},
     "widget.budget_pace_ahead_format" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Ahead of pace · %d%% of the month gone"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"超出进度 · 本月已过 %d%%"}}}},
     "favourites.applied_format" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"%@ filled in. Review, then Save."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"已填入“%@”。请确认后保存。"}}}},
-    "capture.minimal_note" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Private until you unlock. Choose the account and category then."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"解锁前保持私密，届时再选择账户和类别。"}}}},
+    "capture.minimal_note" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Private until you unlock"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"解锁前保持私密"}}}},
     "capture.unlock_for_favourites" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Unlock for favourites and accounts"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"解锁以使用常用记录和账户"}}}},
-    "favourites.add_first" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Add a favourite"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"添加常用记录"}}}}
+    "favourites.add_first" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Add a favourite"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"添加常用记录"}}}},
+    "quick_access.favourites_while_locked" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Show favourites while locked"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"锁定时显示常用记录"}}}},
+    "quick_access.favourites_while_locked_detail" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Favourite names and fixed amounts appear on Quick Capture without Face ID. Anyone holding your unlocked iPhone could see them."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"常用记录的名称和固定金额会在无需面容 ID 的快速记录中显示。拿着你已解锁 iPhone 的人也能看到。"}}}}
   },
   "version" : "1.0"
 }

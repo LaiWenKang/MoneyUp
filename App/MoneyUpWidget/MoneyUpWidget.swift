@@ -56,6 +56,22 @@ struct MoneyUpWidgetConfigurationIntent: WidgetConfigurationIntent {
 
     @Parameter(title: "widget.configuration.focus", default: SmartOverviewFocus.automatic)
     var focus: SmartOverviewFocus
+
+    // "Today shows" only matters for the Today layout; hide it elsewhere.
+    static var parameterSummary: some ParameterSummary {
+        When(\.$content, .equalTo, .smartOverview) {
+            Summary {
+                \.$content
+                \.$defaultAction
+                \.$focus
+            }
+        } otherwise: {
+            Summary {
+                \.$content
+                \.$defaultAction
+            }
+        }
+    }
 }
 
 private struct MoneyUpWidgetEntry: TimelineEntry {
@@ -164,6 +180,17 @@ private struct MoneyUpWidgetView: View {
                     )
                     .frame(height: homeDensity == .accessibility ? 88 : 132)
                 }
+            } else if showsSummariesOffNote {
+                // The chosen Budget/Today layout needs summaries the user has
+                // switched off. Quick Log stays useful, and says why it shows.
+                VStack(alignment: .leading, spacing: 6) {
+                    passiveContent
+                    Label("widget.summaries_off", systemImage: "eye.slash")
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
             } else {
                 passiveContent
             }
@@ -207,6 +234,11 @@ private struct MoneyUpWidgetView: View {
         case .quickAction:
             quickActionContent
         }
+    }
+
+    private var showsSummariesOffNote: Bool {
+        entry.content != .quickAction && entry.budgetSnapshot == .disabled
+            && (family == .systemMedium || family == .systemLarge)
     }
 
     private var showsTodayPlusLog: Bool {

@@ -192,25 +192,14 @@ extension QuickLogEntryView {
     }
 
     var occurrenceSection: some View {
+        // One row: when it happened. The picker and time zone open on tap.
         Section {
-            LabeledContent("quick_log.occurred_at") {
-                Text(
-                    occurredAt.formattedForReporting(
-                        .dateTime.month().day().hour().minute(),
-                        calendar: captureCalendar
-                    )
-                )
-                .foregroundStyle(.secondary)
-            }
-            LabeledContent("quick_log.time_zone") {
-                Text(verbatim: userActionTimeContext.displayName(at: occurredAt))
-                    .font(.subheadline.monospacedDigit())
-                    .foregroundStyle(.secondary)
-            }
-            DisclosureGroup(
-                "quick_log.date_and_time",
-                isExpanded: $isShowingOptionalDetails
-            ) {
+            DisclosureGroup(isExpanded: $isShowingOptionalDetails) {
+                LabeledContent("quick_log.time_zone") {
+                    Text(verbatim: userActionTimeContext.displayName(at: occurredAt))
+                        .font(.subheadline.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
                 DatePicker(
                     "quick_log.date",
                     selection: Binding(
@@ -230,9 +219,20 @@ extension QuickLogEntryView {
                     ),
                     displayedComponents: [.date, .hourAndMinute]
                 )
+                Text("quick_log.time_zone_detail")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } label: {
+                LabeledContent("quick_log.occurred_at") {
+                    Text(
+                        occurredAt.formattedForReporting(
+                            .dateTime.month().day().hour().minute(),
+                            calendar: captureCalendar
+                        )
+                    )
+                    .foregroundStyle(.secondary)
+                }
             }
-        } footer: {
-            Text("quick_log.time_zone_detail")
         }
     }
 
@@ -283,7 +283,14 @@ extension QuickLogEntryView {
                     .accessibilityLabel("quick_log.scan_receipt")
                     .accessibilityIdentifier("quick-log-scan-receipt")
                 }
+                Menu { merchantLearningControl } label: {
+                    Image(systemName: "ellipsis")
+                        .foregroundStyle(.secondary)
+                        .frame(minWidth: 32, minHeight: 44)
+                }
+                .accessibilityLabel("quick_log.suggestion_options")
             }
+            .accessibilityHint("quick_log.smart_footer")
             .photosPicker(
                 isPresented: $isPresentingReceiptPicker,
                 selection: $photoItem,
@@ -344,18 +351,6 @@ extension QuickLogEntryView {
                 Text(receiptRetentionMessage)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-            }
-        } header: {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text("quick_log.smart_entry")
-                Spacer()
-                MoneyUpExplainer("quick_log.smart_footer")
-                    .textCase(nil)
-                    .font(.footnote)
-                Menu { merchantLearningControl } label: {
-                    Image(systemName: "ellipsis.circle").frame(minWidth: 44, minHeight: 44)
-                }
-                .accessibilityLabel("quick_log.suggestion_options")
             }
         }
     }

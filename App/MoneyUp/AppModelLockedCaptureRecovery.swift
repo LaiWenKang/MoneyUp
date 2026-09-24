@@ -136,20 +136,7 @@ extension AppModel {
             kind = .refund
             mode = .refund
         }
-        let draft = QuickLogDraft(
-            kind: kind,
-            amountText: capture.amountText,
-            destinationAmountText: "",
-            accountID: nil,
-            destinationAccountID: nil,
-            categoryID: nil,
-            occurredAt: capture.occurredAt,
-            dateWasEdited: true,
-            payee: capture.payee,
-            note: capture.note,
-            smartText: "",
-            sourceCaptureID: capture.id
-        )
+        let draft = lockedCaptureDraft(capture, kind: kind)
         try await store.upsert(
             draft,
             id: QuickLogDraft.primaryRecordID,
@@ -163,6 +150,28 @@ extension AppModel {
         pendingLockedCaptureCount = remainingCaptureCount
         recoveryIssues.removeAll { $0.hasPrefix("locked_captures/") }
         if requestLogRoute { requestedQuickLogMode = mode }
+    }
+
+    /// A capture made from an opted-in locked favourite regains that
+    /// favourite's account and category, matched inside the open book.
+    func lockedCaptureDraft(_ capture: LockedCapture, kind: QuickLogKind) -> QuickLogDraft {
+        let routing = lockedFavouriteRouting(for: capture)
+        return QuickLogDraft(
+            kind: kind,
+            amountText: capture.amountText,
+            destinationAmountText: "",
+            accountID: routing?.accountID,
+            destinationAccountID: nil,
+            categoryID: routing?.categoryID,
+            occurredAt: capture.occurredAt,
+            dateWasEdited: true,
+            payee: capture.payee,
+            note: capture.note,
+            smartText: "",
+            sourceCaptureID: capture.id,
+            accountWasEdited: routing?.accountID != nil,
+            categoryWasEdited: routing?.categoryID != nil
+        )
     }
 
     func recordRecoveryIssue(_ issue: String) {

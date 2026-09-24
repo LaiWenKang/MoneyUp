@@ -149,8 +149,9 @@ struct QuickLogFavouritesStrip: View {
 
     var body: some View {
         if isVisible {
-            Section {
-                ScrollView(.horizontal, showsIndicators: false) {
+            // One compact row at the top of the amount card: no header, no
+            // extra section, so Log keeps its height.
+            ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
                         ForEach(model.quickLogFavourites) { favourite in
                             chip(for: favourite)
@@ -160,11 +161,10 @@ struct QuickLogFavouritesStrip: View {
                         }
                     }
                     .padding(.vertical, 2)
-                }
-                .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
-            } header: {
-                Label("favourites.title", systemImage: "star.fill")
             }
+            .listRowInsets(EdgeInsets(top: 10, leading: 12, bottom: 6, trailing: 12))
+            .listRowSeparator(.hidden)
+            .accessibilityLabel("favourites.title")
             .sheet(item: $editing) { favourite in
                 QuickLogFavouriteEditor(favourite: favourite, isNew: false)
             }

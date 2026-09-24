@@ -21,6 +21,7 @@ extension AppModel {
         previous.displayPreferences = updated.displayPreferences
         previous.currencyDisplay = updated.currencyDisplay
         previous.quickLogFavourites = updated.quickLogFavourites
+        previous.showsFavouritesWhileLocked = updated.showsFavouritesWhileLocked
         return previous == updated
     }
 

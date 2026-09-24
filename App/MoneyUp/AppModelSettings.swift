@@ -125,6 +125,7 @@ extension AppModel {
             budgetNodes = budgetChange.nodes
         }
         profile = updatedProfile
+        scheduleLockedFavouriteSync()
     }
 
     func eraseAllDataAndRestart() async {
@@ -187,7 +188,6 @@ extension AppModel {
             _ = try? await pendingCommit.value
         }
         await storeToClose?.close()
-
         do {
             let databaseURL = try databaseURLForErase ?? Self.databaseURL()
             try await Self.completePendingDataErase(
@@ -196,6 +196,7 @@ extension AppModel {
                 lockedCaptureStore: lockedCaptureStore,
                 removeKeyCliffRecoveryArtifacts: { try KeyCliffRecoveryTransaction.removeAll(for: databaseURL) },
                 eraseCloudBackupState: { try await self.eraseCloudBackupLocalStateIfProduction() },
+                eraseLockedFavourites: { [lockedFavouriteStore] in try await lockedFavouriteStore.eraseAll() },
                 clearEraseIntent: dataEraseIntent.clear
             )
             finishSuccessfulEraseRecoveryState()
