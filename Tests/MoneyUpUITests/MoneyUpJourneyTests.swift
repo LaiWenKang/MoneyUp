@@ -102,7 +102,8 @@ final class MoneyUpJourneyTests: XCTestCase {
             app.tabBars.buttons.element(boundBy: 0).tap()
             if settings.waitForExistence(timeout: 5) { break }
         }
-        expectTrue(settings.waitForExistence(timeout: timeout), "Settings is unreachable", file: file, line: line)
+        if !settings.waitForExistence(timeout: timeout) { printScreen(app) }
+        expectTrue(settings.exists, "Settings is unreachable", file: file, line: line)
         settings.tap()
     }
 
@@ -111,8 +112,15 @@ final class MoneyUpJourneyTests: XCTestCase {
     func eventually(_ format: String, _ element: XCUIElement, _ message: String,
                     file: StaticString = #filePath, line: UInt = #line) {
         let expectation = XCTNSPredicateExpectation(predicate: NSPredicate(format: format), object: element)
-        expectEqual(XCTWaiter().wait(for: [expectation], timeout: timeout), .completed, message,
-                    file: file, line: line)
+        let result = XCTWaiter().wait(for: [expectation], timeout: timeout)
+        if result != .completed { printScreen(XCUIApplication()) }
+        expectEqual(result, .completed, message, file: file, line: line)
+    }
+
+    /// On a failure, writes what is on screen into the test log, so a CI
+    /// failure can be diagnosed without downloading its result bundle.
+    func printScreen(_ app: XCUIApplication) {
+        print("JOURNEY-SCREEN-BEGIN\n\(app.debugDescription)\nJOURNEY-SCREEN-END")
     }
 
     /// Delivers a widget/control deep link the way the system does, to the
