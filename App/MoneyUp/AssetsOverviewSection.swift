@@ -27,6 +27,9 @@ struct AssetsOverviewSection: View {
                         if hidesAmounts { Text(value.currency.value).font(.caption.weight(.semibold)).foregroundStyle(.secondary) }
                         Text(formattedMoneyWithCurrencyCode(value)).moneyUpFinancialValue(.hero)
                             .fixedSize(horizontal: false, vertical: true)
+                            // VoiceOver hears what the figure is, not a bare number.
+                            .accessibilityLabel(Text("assets.account_net_worth"))
+                            .accessibilityValue(Text(accessibleFormattedMoney(value)))
                     }
                     estimate(amounts: amounts)
                 case let .unavailable(issue):

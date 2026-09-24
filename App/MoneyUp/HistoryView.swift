@@ -738,6 +738,7 @@ extension HistoryView {
                     }
                 }
                 .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
             }
             .buttonStyle(MoneyUpPressableButtonStyle())
             .accessibilityLabel(Text(activeCount == 0
@@ -748,6 +749,7 @@ extension HistoryView {
                 Button { clearHistoryFilters() } label: {
                     Image(systemName: "xmark.circle")
                         .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(MoneyUpPressableButtonStyle())
                 .accessibilityLabel("history.clear_filters")

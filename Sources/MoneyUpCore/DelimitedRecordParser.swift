@@ -46,7 +46,7 @@ extension TransactionCSVImporter {
                 return false
             }
             try appendToField(character)
-            if character == "\n" || (character == "\r" && next != "\n") {
+            if TransactionCSVImporter.isLineBreak(character) && !(character == "\r" && next == "\n") {
                 physicalLine += 1
             }
             return false
@@ -61,7 +61,7 @@ extension TransactionCSVImporter {
                 closedQuotedField = false
                 return false
             }
-            guard character == "\n" || character == "\r" else {
+            guard TransactionCSVImporter.isLineBreak(character) else {
                 throw TransactionCSVImportError.malformedCSV
             }
             try finishRecordLine()
@@ -78,7 +78,7 @@ extension TransactionCSVImporter {
                 inQuotes = true
             } else if character == delimiter {
                 try appendCurrentField()
-            } else if character == "\n" || character == "\r" {
+            } else if TransactionCSVImporter.isLineBreak(character) {
                 try finishRecordLine()
                 return character == "\r" && next == "\n"
             } else {
@@ -138,6 +138,13 @@ extension TransactionCSVImporter {
         }
     }
 
+    /// Swift reads Windows "\r\n" as one Character, so it must be named
+    /// explicitly or every CRLF file (Excel, banks, MoneyUp's own ledger
+    /// export) would be rejected as malformed.
+    static func isLineBreak(_ character: Character) -> Bool {
+        character == "\n" || character == "\r" || character == "\r\n"
+    }
+
     static func parseRecords(_ text: String) throws -> [DelimitedRecord] {
         guard !text.isEmpty else { throw TransactionCSVImportError.emptyFile }
         guard text.utf8.count <= maximumInputByteCount else {
@@ -181,7 +188,7 @@ extension TransactionCSVImporter {
                 inQuotes.toggle()
             } else if !inQuotes, character == delimiter {
                 count += 1
-            } else if !inQuotes, character == "\n" || character == "\r" {
+            } else if !inQuotes, isLineBreak(character) {
                 break
             }
             index = next

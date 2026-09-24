@@ -188,6 +188,8 @@ PLATFORM_REFERENCE_ALLOWLIST = APP_INTENTS_SOURCE_ALLOWLIST | {
     "App/MoneyUp/RootView.swift",
     "App/MoneyUp/WidgetsQuickAccessView.swift",
     "App/Shared/QuickLogWidgetCard.swift",
+    # DEBUG-only UI-test harness: it passes the shared broker unchanged.
+    "App/MoneyUp/MoneyUpUITestHarness.swift",
 }
 PLATFORM_REFERENCE_MARKERS = (
     "MoneyUpQuickAction",
@@ -244,6 +246,7 @@ COMPILED_REFERENCE_INVENTORY = {
         "App/MoneyUp/AppModelLifecycle.swift": 10,
         "App/MoneyUp/AppModelQuickActionIngress.swift": 2,
         "App/MoneyUp/MoneyUpApp.swift": 6,
+        "App/MoneyUp/MoneyUpUITestHarness.swift": 1,
         "App/MoneyUp/MoneyUpQuickActionRouting.swift": 2,
         "App/MoneyUp/RootView.swift": 3,
     },

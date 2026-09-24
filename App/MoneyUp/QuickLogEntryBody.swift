@@ -21,7 +21,7 @@ extension QuickLogEntryView {
         let historicalFXConversionResult = historicalFXConversion
         Form {
                 if dynamicTypeSize.isAccessibilitySize {
-                    kindPicker(style: .menu)
+                    QuickLogKindMenuPicker(selection: trackedBinding($kind, \.kind))
                 } else {
                     kindPicker(style: .segmented)
                 }
@@ -51,6 +51,7 @@ extension QuickLogEntryView {
                     )
                     .focused($focusedField, equals: .payee)
                     .id(QuickLogFieldFocus.payee)
+                    .accessibilityIdentifier("quick-log-payee")
 
                     TextField(
                         "transaction.description_or_notes",
@@ -450,19 +451,12 @@ extension QuickLogEntryView {
             if !dismissAfterSave, model.pendingLockedCaptureCount > 0 { pendingCaptureBanner }
             if clearRecovery != nil, !draftSnapshot.hasUserEdits { clearRecoveryBanner }
             if let lastSavedEntryID { savedEntryBanner(entryID: lastSavedEntryID) }
-                Button {
-                    Task { await attemptSave() }
-                } label: {
-                    Label("action.save", systemImage: "checkmark.circle.fill")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .tint(.moneyUpAction)
-                .disabled(!canSave || isSaving || isUndoing || isPreparingEvidence || isClearingDraft)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background { Color.moneyUpBackground }
+                LogSaveBar(
+                    canSave: canSave && !isSaving && !isUndoing && !isPreparingEvidence && !isClearingDraft,
+                    showsKeyboardDismiss: focusedField != nil,
+                    save: { Task { await attemptSave() } },
+                    dismissKeyboard: dismissKeyboard
+                )
             }
         }
         .moneyUpFeedback(

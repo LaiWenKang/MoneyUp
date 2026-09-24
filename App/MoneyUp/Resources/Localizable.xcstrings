@@ -1894,7 +1894,8 @@
     "capture.unlock_for_favourites" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Unlock for favourites and accounts"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"解锁以使用常用记录和账户"}}}},
     "favourites.add_first" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Add a favourite"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"添加常用记录"}}}},
     "quick_access.favourites_while_locked" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Show favourites while locked"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"锁定时显示常用记录"}}}},
-    "quick_access.favourites_while_locked_detail" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Favourite names and fixed amounts appear on Quick Capture without Face ID. Anyone holding your unlocked iPhone could see them."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"常用记录的名称和固定金额会在无需面容 ID 的快速记录中显示。拿着你已解锁 iPhone 的人也能看到。"}}}}
+    "quick_access.favourites_while_locked_detail" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Favourite names and fixed amounts appear on Quick Capture without Face ID. Anyone holding your unlocked iPhone could see them."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"常用记录的名称和固定金额会在无需面容 ID 的快速记录中显示。拿着你已解锁 iPhone 的人也能看到。"}}}},
+    "action.hide_keyboard" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Hide keyboard"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"收起键盘"}}}}
   },
   "version" : "1.0"
 }

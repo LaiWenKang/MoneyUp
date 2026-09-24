@@ -44,7 +44,10 @@ struct MoneyUpExplainer: View {
             } label: {
                 Image(systemName: isExpanded ? "info.circle.fill" : "info.circle")
                     .font(.callout)
+                    // A 44-pt target without making section headers taller.
+                    .padding(13)
                     .contentShape(Rectangle())
+                    .padding(-13)
             }
             .buttonStyle(.plain)
             .foregroundStyle(.tint)
