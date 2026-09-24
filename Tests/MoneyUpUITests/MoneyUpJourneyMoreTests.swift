@@ -34,7 +34,7 @@ extension MoneyUpJourneyTests {
         fill.tap()
         dismissKeyboard(app)
         expectTrue(app.buttons["log-save"].waitForExistence(timeout: timeout))
-        expectTrue(app.buttons["log-save"].isEnabled, "Smart Entry did not produce a savable entry")
+        eventually("isEnabled == true", app.buttons["log-save"], "Smart Entry did not produce a savable entry")
         app.buttons["log-save"].tap()
         expectTrue(app.buttons["log-undo"].waitForExistence(timeout: timeout))
     }
@@ -68,6 +68,7 @@ extension MoneyUpJourneyTests {
         let app = launch()
         type("7", into: openLog(app))
         let save = app.buttons["log-save"]
+        eventually("isEnabled == true", save, "The entry never became savable")
         for _ in 0..<5 where save.isEnabled { save.tap() }
         expectTrue(app.buttons["log-undo"].waitForExistence(timeout: timeout))
         dismissKeyboard(app)
@@ -132,7 +133,7 @@ extension MoneyUpJourneyTests {
         let app = launch(language: "zh-Hans")
         expectTrue(app.tabBars.buttons["记账"].waitForExistence(timeout: timeout))
         type("25", into: openLog(app))
-        expectTrue(app.buttons["log-save"].isEnabled)
+        eventually("isEnabled == true", app.buttons["log-save"], "A Chinese-language entry must be savable")
         app.buttons["log-save"].tap()
         expectTrue(app.buttons["log-undo"].waitForExistence(timeout: timeout))
         attachScreenshot(app, "journey-zh-saved")

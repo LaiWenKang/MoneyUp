@@ -94,12 +94,25 @@ final class MoneyUpJourneyTests: XCTestCase {
         if dismiss.exists { dismiss.tap() }
     }
 
-    func openSettings(_ app: XCUIApplication) {
+    func openSettings(_ app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
         dismissKeyboard(app)
-        app.tabBars.buttons.element(boundBy: 0).tap()
         let settings = app.navigationBars.buttons["Settings"]
-        expectTrue(settings.waitForExistence(timeout: timeout))
+        // Just after launch the tab bar can exist before it takes taps.
+        for _ in 0..<3 where !settings.exists {
+            app.tabBars.buttons.element(boundBy: 0).tap()
+            if settings.waitForExistence(timeout: 5) { break }
+        }
+        expectTrue(settings.waitForExistence(timeout: timeout), "Settings is unreachable", file: file, line: line)
         settings.tap()
+    }
+
+    /// Waits for a state the app reaches asynchronously, such as Save
+    /// becoming enabled once a fill has been applied.
+    func eventually(_ format: String, _ element: XCUIElement, _ message: String,
+                    file: StaticString = #filePath, line: UInt = #line) {
+        let expectation = XCTNSPredicateExpectation(predicate: NSPredicate(format: format), object: element)
+        expectEqual(XCTWaiter().wait(for: [expectation], timeout: timeout), .completed, message,
+                    file: file, line: line)
     }
 
     /// Delivers a widget/control deep link the way the system does, to the
@@ -179,7 +192,7 @@ final class MoneyUpJourneyTests: XCTestCase {
         let save = app.navigationBars.buttons["Save"]
         expectTrue(save.waitForExistence(timeout: timeout))
         attachScreenshot(app, "journey-favourite-editor")
-        expectTrue(save.isEnabled, "The editor prefilled from Kopi must be savable")
+        eventually("isEnabled == true", save, "The editor prefilled from Kopi must be savable")
         save.tap()
         attachScreenshot(app, "journey-after-favourite-save")
         // The favourites row is the first row of the form; scroll back to it.
