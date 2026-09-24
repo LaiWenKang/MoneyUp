@@ -73,6 +73,7 @@ extension AppModel {
                         try KeyCliffRecoveryTransaction.removeAll(for: databaseURL)
                     },
                     eraseCloudBackupState: { try await self.eraseCloudBackupLocalStateIfProduction() },
+                    eraseLockedFavourites: { [lockedFavouriteStore] in try await lockedFavouriteStore.eraseAll() },
                     clearEraseIntent: dataEraseIntent.clear
                 )
                 pendingDataEraseIsIncomplete = false

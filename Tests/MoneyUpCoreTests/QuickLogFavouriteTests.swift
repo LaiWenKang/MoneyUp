@@ -71,6 +71,12 @@ final class QuickLogFavouriteTests: XCTestCase {
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: empty) as? [String: Any])
         XCTAssertNil(object["quickLogFavourites"])
         XCTAssertEqual(try JSONDecoder().decode(UserProfile.self, from: empty).quickLogFavourites, [])
+        XCTAssertFalse(try JSONDecoder().decode(UserProfile.self, from: empty).showsFavouritesWhileLocked)
+        XCTAssertNil(object["showsFavouritesWhileLocked"])
+        let optedIn = UserProfile(baseCurrency: sgd, showsFavouritesWhileLocked: true)
+        XCTAssertTrue(try JSONDecoder().decode(
+            UserProfile.self, from: JSONEncoder().encode(optedIn)
+        ).showsFavouritesWhileLocked)
     }
 
     func testDecodingRejectsNothingButRepairsOversizedOrDuplicateLists() throws {

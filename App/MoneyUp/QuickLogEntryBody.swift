@@ -28,9 +28,10 @@ extension QuickLogEntryView {
 
                 batchReviewControls
 
-                favouritesSection
-
-                Section { primaryAmountControl }
+                Section {
+                    favouritesSection
+                    primaryAmountControl
+                }
 
                 if !historyPreloads.isEmpty { Section { historyPreloadRows } }
 
@@ -64,8 +65,6 @@ extension QuickLogEntryView {
                     .focused($focusedField, equals: .note)
                     .id(QuickLogFieldFocus.note)
                     .accessibilityIdentifier("quick-log-note")
-                } header: {
-                    MoneyUpSectionHeader("transaction.details", explanation: "transaction.details_help")
                 }
 
                 Section {

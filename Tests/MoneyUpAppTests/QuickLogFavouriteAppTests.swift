@@ -157,6 +157,69 @@ final class QuickLogFavouriteAppTests: XCTestCase {
 }
 
 extension QuickLogFavouriteAppTests {
+    @MainActor
+    func testLockedFavouritesExistOnlyWhileOptedInAndAreErasedWithTheBook() async throws {
+        let store = InMemoryLockedFavouriteShortcutStore()
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let lunch = QuickLogFavourite(name: "Lunch", kind: .expense, accountID: fixture.wallet.id,
+                                      categoryID: fixture.food.id)
+        var profile = UserProfile(baseCurrency: fixture.sgd, quickLogFavourites: [lunch])
+        let model = fixture.model(profile: profile, accounts: [fixture.wallet, fixture.food],
+                                  lockedFavouriteStore: store)
+
+        await model.syncLockedFavourites()
+        let offByDefault = await store.all()
+        XCTAssertTrue(offByDefault.isEmpty, "Nothing is readable while locked unless opted in")
+
+        profile.showsFavouritesWhileLocked = true
+        model.profile = profile
+        await model.syncLockedFavourites()
+        let optedIn = await store.all()
+        XCTAssertEqual(optedIn.map(\.name), ["Lunch"])
+        XCTAssertEqual(optedIn.first?.capturePayee, "Lunch")
+
+        profile.allowLockedQuickCapture = false
+        model.profile = profile
+        await model.syncLockedFavourites()
+        let captureOff = await store.all()
+        XCTAssertTrue(captureOff.isEmpty, "Turning off locked capture removes the labels")
+
+        try await store.replace(with: [LockedFavouriteShortcut(lunch)])
+        try await AppModel.completePendingDataErase(
+            databaseURL: fixture.databaseURL,
+            deleteDatabaseKey: {},
+            lockedCaptureStore: InMemoryLockedCaptureStore(captures: []),
+            eraseLockedFavourites: { try await store.eraseAll() },
+            clearEraseIntent: {}
+        )
+        let erased = await store.all()
+        XCTAssertTrue(erased.isEmpty, "Erase removes locked favourites")
+    }
+
+    @MainActor
+    func testLockedFavouriteCaptureRegainsItsAccountAndCategoryAfterUnlock() throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        let lunch = QuickLogFavourite(name: "Lunch", kind: .expense, accountID: fixture.wallet.id,
+                                      categoryID: fixture.food.id)
+        let stale = QuickLogFavourite(name: "Old", kind: .expense, accountID: UUID(), categoryID: UUID())
+        var profile = UserProfile(baseCurrency: fixture.sgd, quickLogFavourites: [lunch, stale],
+                                  showsFavouritesWhileLocked: true)
+        let model = fixture.model(profile: profile, accounts: [fixture.wallet, fixture.food])
+        let capture = LockedCapture(kind: .expense, amountText: "8.5", payee: "Lunch")
+        let routing = try XCTUnwrap(model.lockedFavouriteRouting(for: capture))
+        XCTAssertEqual(routing.accountID, fixture.wallet.id)
+        XCTAssertEqual(routing.categoryID, fixture.food.id)
+        XCTAssertNil(model.lockedFavouriteRouting(for: LockedCapture(kind: .income, amountText: "8", payee: "Lunch")))
+        XCTAssertNil(model.lockedFavouriteRouting(for: LockedCapture(kind: .expense, amountText: "8", payee: "Dinner")))
+        XCTAssertNil(model.lockedFavouriteRouting(for: LockedCapture(kind: .expense, amountText: "8", payee: "Old")),
+                     "Missing references are never guessed")
+        profile.showsFavouritesWhileLocked = false
+        model.profile = profile
+        XCTAssertNil(model.lockedFavouriteRouting(for: capture), "Opt-out ignores the match")
+    }
+
     private func reportingMidnight(_ year: Int, _ month: Int, _ day: Int, zone: String) throws -> Date {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = try XCTUnwrap(TimeZone(identifier: zone))
@@ -274,7 +337,12 @@ extension QuickLogFavouriteAppTests {
         )
         let request = QuickLogRouteRequest(id: 1, ingressToken: UUID(), requiresIngressAcknowledgement: false,
                                            generation: 0, mode: .expense)
-        await capture(LockedQuickCaptureView(request: request).environment(emptyModel),
+        let lockedModel = fixture.model(profile: UserProfile(baseCurrency: fixture.sgd),
+            accounts: [fixture.wallet, fixture.food],
+            lockedFavouriteStore: InMemoryLockedFavouriteShortcutStore(
+                favourites.prefix(2).map { LockedFavouriteShortcut($0) }
+            ))
+        await capture(LockedQuickCaptureView(request: request).environment(lockedModel),
                       name: "locked-capture", size: CGSize(width: 390, height: 844), scheme: .dark)
         model.flushQuickLogDraftImmediately()
         await model.waitForPendingQuickLogDraftFlush()

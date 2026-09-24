@@ -348,6 +348,9 @@ final class AppModel {
 
     var store: EncryptedRecordStore?
     let lockedCaptureStore: any LockedCaptureStoring
+    /// Opt-in locked favourite labels; injected like the capture inbox so
+    /// tests and restore validation never touch the process Keychain.
+    let lockedFavouriteStore: any LockedFavouriteShortcutStoring
     let receiptRecognizer: ReceiptLineRecognizer
     let lifecycleHooks: AppModelLifecycleHooks
     let databaseURLForErase: URL?
@@ -457,6 +460,7 @@ final class AppModel {
     ) {
         services = AppModelServices()
         lockedCaptureStore = LockedCaptureStore()
+        lockedFavouriteStore = LockedFavouriteShortcutStore()
         receiptRecognizer = { data in
             try await ReceiptScanner.recognize(inImageData: data)
         }
@@ -498,6 +502,7 @@ final class AppModel {
         allowancePlans: [AllowancePlan] = [],
         quickLogDraft: QuickLogDraft? = nil,
         lockedCaptureStore: any LockedCaptureStoring = LockedCaptureStore(),
+        lockedFavouriteStore: any LockedFavouriteShortcutStoring = InMemoryLockedFavouriteShortcutStore(),
         receiptRecognizer: @escaping ReceiptLineRecognizer = { data in
             try await ReceiptScanner.recognize(inImageData: data)
         },
@@ -525,6 +530,7 @@ final class AppModel {
     ) {
         self.services = services ?? AppModelServices()
         self.lockedCaptureStore = lockedCaptureStore
+        self.lockedFavouriteStore = lockedFavouriteStore
         self.receiptRecognizer = receiptRecognizer
         self.lifecycleHooks = lifecycleHooks
         self.databaseURLForErase = databaseURLForErase
@@ -591,6 +597,7 @@ final class AppModel {
     ) {
         services = AppModelServices()
         self.lockedCaptureStore = lockedCaptureStore
+        self.lockedFavouriteStore = InMemoryLockedFavouriteShortcutStore()
         self.receiptRecognizer = receiptRecognizer
         lifecycleHooks = .none
         databaseURLForErase = nil

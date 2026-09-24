@@ -137,6 +137,7 @@ def validate(root: Path = ROOT) -> list[str]:
         "DatabaseKeyStore.swift": 2,
         "LockedCaptureStore.swift": 2,
         "CloudBackupVault.swift": 1,
+        "LockedFavouriteShortcutStore.swift": 1,
     }
     if keychain_sites != expected_keychain_sites:
         errors.append(
@@ -148,6 +149,12 @@ def validate(root: Path = ROOT) -> list[str]:
     if ("actor CloudBackupKeychainVault" not in cloud_vault or "@MainActor" in cloud_vault
             or "nonisolated func load" in cloud_vault):
         errors.append("cloud backup Keychain reads must remain isolated to their non-main actor")
+    locked_favourites = mask_comments_and_strings(read(root,
+        Path("App/MoneyUp/LockedFavouriteShortcutStore.swift"), errors))
+    if ("actor LockedFavouriteShortcutStore" not in locked_favourites
+            or "@MainActor" in locked_favourites
+            or "nonisolated func" in locked_favourites):
+        errors.append("locked favourite Keychain reads must remain isolated to their non-main actor")
 
     forbidden_launch_fragments = (
         "DatabaseKeyStore.loadOrCreateKey(",

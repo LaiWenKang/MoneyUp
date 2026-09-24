@@ -23,6 +23,7 @@ class LaunchSafetyValidatorTests(unittest.TestCase):
         "App/MoneyUp/DatabaseKeyStore.swift",
         "App/MoneyUp/LockedCaptureStore.swift",
         "App/MoneyUp/CloudBackup/CloudBackupVault.swift",
+        "App/MoneyUp/LockedFavouriteShortcutStore.swift",
         "Tests/MoneyUpAppTests/DatabaseStoreOpenerTests.swift",
     )
 

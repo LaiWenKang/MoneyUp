@@ -335,6 +335,8 @@ extension AppModel {
                 forKey: Self.lockedQuickCapturePreferenceKey
             )
         }
+        // A restored book replaces the locked labels too, never keeps them.
+        scheduleLockedFavouriteSync()
         state = .ready
     }
 

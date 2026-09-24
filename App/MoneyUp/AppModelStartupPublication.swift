@@ -56,6 +56,7 @@ extension AppModel {
                 forKey: Self.lockedQuickCapturePreferenceKey
             )
         }
+        scheduleLockedFavouriteSync()
         do {
             try await promoteLockedCaptureIfPossible(
                 to: openedStore,

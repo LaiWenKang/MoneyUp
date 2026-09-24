@@ -28,6 +28,8 @@ struct LockedQuickCaptureView: View {
     @State private var didSave = false
     @State private var showsFieldErrors = false
     @State private var replayInspectionState: ReplayInspectionState = .checking
+    /// Present only when the owner opted in to favourites while locked.
+    @State private var lockedFavourites: [LockedFavouriteShortcut] = []
     @FocusState private var focusedField: FocusedField?
 
     private var hasValidAmount: Bool {
@@ -133,6 +135,9 @@ struct LockedQuickCaptureView: View {
                             pendingText: model.pendingLockedCaptureCount > 0
                                 ? pendingCaptureCountText : nil
                         )
+                        if !matchingFavourites.isEmpty, replayInspectionState == .ready {
+                            LockedFavouriteChipsRow(favourites: matchingFavourites, apply: applyLockedFavourite)
+                        }
                         switch replayInspectionState {
                         case .checking:
                             ProgressView()
@@ -151,6 +156,7 @@ struct LockedQuickCaptureView: View {
                         }
                     }
                     .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets(top: 4, leading: 4, bottom: 4, trailing: 4))
 
                     Section {
@@ -203,7 +209,8 @@ struct LockedQuickCaptureView: View {
                     )
                 }
             }
-            .navigationTitle("capture.title")
+            // The header already names the action; no second "Log" title.
+            .navigationTitle(Text(verbatim: ""))
             .moneyUpNavigationSurface()
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -215,6 +222,7 @@ struct LockedQuickCaptureView: View {
             }
         }
         .task {
+            lockedFavourites = await model.lockedFavouriteStore.all()
             await inspectCommittedCapture()
         }
         .moneyUpFeedback(
@@ -223,6 +231,23 @@ struct LockedQuickCaptureView: View {
             visibleStatus: didSave
         )
         .moneyUpOperationErrorAlert(message: $errorMessage)
+    }
+
+    private var matchingFavourites: [LockedFavouriteShortcut] {
+        switch mode.kind {
+        case .expense: lockedFavourites.filter { $0.kind == .expense }
+        case .income: lockedFavourites.filter { $0.kind == .income }
+        case .transfer, .refund: []
+        }
+    }
+
+    /// Fills only what the favourite fixes; a typed amount survives an
+    /// amount-each-time favourite. Nothing is captured until Save.
+    private func applyLockedFavourite(_ favourite: LockedFavouriteShortcut) {
+        if let amount = favourite.amountText { amountText = amount }
+        payee = favourite.capturePayee
+        if !favourite.note.isEmpty { note = favourite.note }
+        focusedField = amountText.isEmpty ? .amount : nil
     }
 
     private func save() async {
@@ -347,9 +372,15 @@ struct LockedCaptureHeader: View {
                 Text(title)
                     .font(.system(.title2, design: .rounded, weight: .semibold))
             }
-            Label("capture.minimal_note", systemImage: "lock.fill")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Image(systemName: "lock.fill")
+                    .font(.caption2)
+                    .accessibilityHidden(true)
+                Text("capture.minimal_note")
+            }
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .padding(.leading, 48)
             if let pendingText {
                 Text(pendingText)
                     .font(.caption.weight(.semibold))
@@ -395,5 +426,39 @@ struct LockedCaptureActionBar: View {
         .padding(.top, 8)
         .padding(.bottom, 6)
         .background(.bar)
+    }
+}
+
+/// Opted-in favourites on the locked screen: names and fixed amounts only.
+struct LockedFavouriteChipsRow: View {
+    let favourites: [LockedFavouriteShortcut]
+    let apply: (LockedFavouriteShortcut) -> Void
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(favourites) { favourite in
+                    Button { apply(favourite) } label: {
+                        HStack(spacing: 6) {
+                            Text(favourite.name).font(.subheadline.weight(.semibold))
+                            if let amount = favourite.displayAmount {
+                                Text(verbatim: amount)
+                                    .font(.subheadline.monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .lineLimit(1)
+                        .padding(.horizontal, 14)
+                        .frame(minHeight: 40)
+                        .background(Color.moneyUpSurfaceElevated, in: Capsule())
+                        .overlay(Capsule().strokeBorder(Color.moneyUpAction.opacity(0.25), lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint("favourites.prefill_hint")
+                }
+            }
+            .padding(.vertical, 2)
+        }
+        .accessibilityLabel("favourites.title")
     }
 }

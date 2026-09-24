@@ -616,7 +616,7 @@ W3_SOURCE_FUNCTION_DIGESTS: tuple[
             r"[^{};]*\)\s*\{",
             re.DOTALL,
         ),
-        "d7860121225d9385292b961626d1603b8fa87d31c3ca47550f983a8aabd04ca0",
+        "a2745a0c23abbd90ddc27e732496a10870f50e0184053c8452dda1df994a094e",
     ),
     (
         W3_PRODUCTION_SENTINEL_PATH,
@@ -625,7 +625,7 @@ W3_SOURCE_FUNCTION_DIGESTS: tuple[
             r"\bpublic\s+init\s*\(\s*from\s+decoder\s*:\s*Decoder\s*\)"
             r"\s*throws\s*\{"
         ),
-        "638146816d373ec62bfdcf8b9b6afba6f8c399fdbc977df493741922bd44ce7d",
+        "7d9f7c47a4abb2e91f7a21ba5926874c0ef0c35f946ddfd75a02f202fea55b73",
     ),
     (
         W3_REVIEWED_ENTRY_PATH,
@@ -671,7 +671,7 @@ W3_PATH_TYPE_DIGESTS: tuple[tuple[str, str, str, str], ...] = (
         "App/MoneyUp/QuickLogEntryBody.swift",
         "extension",
         "QuickLogEntryView",
-        "34bc225a389184e5f7fe78bc65f33c4caf1c90e50a3e27af46fcc5a7a521ed5a",
+        "4a30cbdcaf2374ccd9db20dc554fdec0abf84099b698b1949201b6b41e7a4fa5",
     ),
     (
         "App/MoneyUp/QuickLogEntryReceipt.swift",

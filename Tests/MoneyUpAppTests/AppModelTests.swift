@@ -16741,6 +16741,7 @@ struct AppModelFixture {
         lockedCaptureStore: any LockedCaptureStoring = InMemoryLockedCaptureStore(
             captures: []
         ),
+        lockedFavouriteStore: any LockedFavouriteShortcutStoring = InMemoryLockedFavouriteShortcutStore(),
         receiptRecognizer: @escaping ReceiptLineRecognizer = { data in
             try await ReceiptScanner.recognize(inImageData: data)
         },
@@ -16781,6 +16782,7 @@ struct AppModelFixture {
             allowancePlans: allowancePlans,
             quickLogDraft: quickLogDraft,
             lockedCaptureStore: lockedCaptureStore,
+            lockedFavouriteStore: lockedFavouriteStore,
             receiptRecognizer: receiptRecognizer,
             lifecycleHooks: lifecycleHooks,
             databaseURLForErase: databaseURL,
