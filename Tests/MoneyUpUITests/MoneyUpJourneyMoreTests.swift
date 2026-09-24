@@ -31,6 +31,12 @@ extension MoneyUpJourneyTests {
         type("lunch 12.50", into: smart)
         let fill = app.buttons["quick-log-smart-fill"]
         expectTrue(fill.waitForExistence(timeout: timeout))
+        // A person must be able to reach Fill with the keypad up; the Save
+        // bar rides the keypad and must never cover it.
+        let keypad = app.keyboards.firstMatch
+        attachScreenshot(app, "journey-smart-before-fill")
+        expectTrue(fill.isHittable, "Fill is covered: fill \(fill.frame), save "
+            + "\(app.buttons["log-save"].frame), keypad \(keypad.exists ? keypad.frame : .zero)")
         fill.tap()
         dismissKeyboard(app)
         expectTrue(app.buttons["log-save"].waitForExistence(timeout: timeout))

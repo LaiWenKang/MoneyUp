@@ -35,9 +35,18 @@ arguments and would silently test a different app.
   ledger export: Swift reads `"\r\n"` as one `Character`. Fixed in
   `DelimitedRecordParser`; `testCSVImportIsIdenticalForLFCRLFAndCRLineEndings`
   fails without the fix.
-- The keyboard toolbar (Save / Notes / Done) does not render on current iOS, so
-  Log had no way to hide the keyboard. Log now pins Save with a hide-keyboard
-  button beside it.
+- Log's keyboard toolbar (tabs / Notes / Save / Done) rendered only some of
+  the time, so Log sometimes had no way to hide the keyboard; and when it did
+  render, it covered the Smart Entry row, Fill included, which the list
+  never scrolled clear of. Log now pins Save with a hide-keyboard button above
+  the keypad and has no keyboard toolbar. The Smart Entry journey asserts Fill
+  is reachable with the keypad up.
+- Focusing Smart Entry or a split line never scrolled it into view: their
+  scroll ids sat inside their Form rows, where `scrollTo` cannot find them,
+  so the phrase and its Fill button stayed behind the keypad. The ids are now
+  on the rows, and focused fields land in the upper third of the list.
+- Journeys run with the shipped default (amounts hidden). A simulator that
+  had amounts shown hid the two bugs above.
 - Accessibility: the amount-privacy eye, History filter/clear, and the budget,
   calendar, and asset month chevrons had glyph-sized tap targets; the kind
   menu clipped its label at the largest text size; Assets read net worth,

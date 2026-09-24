@@ -24,6 +24,9 @@ enum MoneyUpUITestHarness {
             .appendingPathComponent("MoneyUpUITestBook", isDirectory: true)
         if arguments.contains(resetArgument) {
             try? FileManager.default.removeItem(at: directory)
+            // Journeys run with the shipped default (amounts hidden), never
+            // with whatever an earlier session left on this simulator.
+            UserDefaults.standard.removeObject(forKey: MoneyAmountPrivacy.storageKey)
         }
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let databaseURL = directory.appendingPathComponent("book.sqlite3")

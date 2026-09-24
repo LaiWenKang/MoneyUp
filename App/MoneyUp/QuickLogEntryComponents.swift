@@ -263,7 +263,6 @@ extension QuickLogEntryView {
                     .lineLimit(1...3)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .focused($focusedField, equals: .smartEntry)
-                    .id(QuickLogFieldFocus.smartEntry)
                     .accessibilityIdentifier("quick-log-smart-input")
                     .moneyUpPrivateAmountInput(
                         masked: hidesAmounts && focusedField != .smartEntry && !smartText.isEmpty,
@@ -297,6 +296,9 @@ extension QuickLogEntryView {
                 .accessibilityLabel("quick_log.suggestion_options")
             }
             .accessibilityHint("quick_log.smart_footer")
+            // The row carries the scroll id: a Form resolves `scrollTo` by
+            // row, so an id nested inside the row never scrolls it into view.
+            .id(QuickLogFieldFocus.smartEntry)
             .photosPicker(
                 isPresented: $isPresentingReceiptPicker,
                 selection: $photoItem,
@@ -456,7 +458,6 @@ extension QuickLogEntryView {
                     )
                     .moneyAmountKeyboard(currency: selectedAccountCurrency)
                     .focused($focusedField, equals: .splitAmount(lineID))
-                    .id(QuickLogFieldFocus.splitAmount(lineID))
                     .moneyUpFieldValidation(lineValidationMessage)
                     .accessibilityLabel(Text(amountAccessibilityLabel))
                     .moneyUpPrivateAmountInput(
@@ -517,7 +518,6 @@ extension QuickLogEntryView {
                 )
                 .font(.caption)
                 .focused($focusedField, equals: .splitMemo(lineID))
-                .id(QuickLogFieldFocus.splitMemo(lineID))
                 .accessibilityLabel(
                     Text(
                         String(
@@ -528,6 +528,8 @@ extension QuickLogEntryView {
                 )
             }
             .padding(.vertical, 4)
+            // The row carries the scroll id for both its amount and memo.
+            .id(QuickLogFieldFocus.splitAmount(lineID))
         }
 
         Button {

@@ -388,14 +388,14 @@ extension QuickLogEntryView {
                     return
                 }
                 withAnimation(MoneyUpMotion.animation(for: .stateChange, reduceMotion: accessibilityReduceMotion)) {
-                    scrollProxy.scrollTo(field, anchor: .center)
+                    scrollProxy.scrollTo(field, anchor: QuickLogFocusScrollPolicy.anchor)
                 }
                 Task { @MainActor in
                     try? await Task.sleep(
                         nanoseconds: QuickLogFocusScrollPolicy.layoutSettlingNanoseconds)
                     guard focusedField == field else { return }
                     withAnimation(MoneyUpMotion.animation(for: .stateChange, reduceMotion: accessibilityReduceMotion)) {
-                        scrollProxy.scrollTo(field, anchor: .center)
+                        scrollProxy.scrollTo(field, anchor: QuickLogFocusScrollPolicy.anchor)
                     }
                 }
             }
