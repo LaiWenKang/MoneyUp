@@ -69,7 +69,19 @@ final class MoneyUpJourneyTests: XCTestCase {
             var attempts = 0
             while !field.isHittable && attempts < 4 { app.swipeUp(); attempts += 1 }
         }
-        field.tap()
+        // A tap during a scroll or keyboard animation can land before the
+        // field can take focus, or on the Save bar riding the keypad. Hide
+        // the keypad, bring the field into view, and tap again.
+        let focused = NSPredicate(format: "hasKeyboardFocus == true")
+        for attempt in 0..<3 {
+            if attempt > 0 {
+                dismissKeyboard(app)
+                if !field.isHittable { app.swipeUp() }
+            }
+            field.tap()
+            let wait = XCTNSPredicateExpectation(predicate: focused, object: field)
+            if XCTWaiter().wait(for: [wait], timeout: 3) == .completed { break }
+        }
         field.typeText(text)
         let value = field.value as? String ?? ""
         expectTrue(value.contains(text) || value.contains("•"),
