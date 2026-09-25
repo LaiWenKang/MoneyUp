@@ -54,51 +54,51 @@ private struct LockedView: View {
     @State private var method: UnlockMethod?
 
     var body: some View {
-        GeometryReader { proxy in
-            ScrollView {
-                VStack(spacing: 20) {
-                    Image(systemName: method?.systemImage ?? "lock.fill")
-                        .font(.system(size: 52))
-                        .foregroundStyle(
-                            method == .unavailable ? Color.moneyUpWarning : Color.accentColor
-                        )
-                        .accessibilityHidden(true)
-                    Text("lock.title")
-                        .font(.largeTitle.bold())
-                        .accessibilityAddTraits(.isHeader)
+        ScrollView {
+            VStack(spacing: 20) {
+                Image(systemName: method?.systemImage ?? "lock.fill")
+                    .font(.system(size: 52))
+                    .foregroundStyle(
+                        method == .unavailable ? Color.moneyUpWarning : Color.accentColor
+                    )
+                    .accessibilityHidden(true)
+                Text("lock.title")
+                    .font(.largeTitle.bold())
+                    .accessibilityAddTraits(.isHeader)
 
-                    if let method, method.isAvailable {
-                        Text("lock.detail")
-                            .multilineTextAlignment(.center)
-                            .foregroundStyle(.secondary)
-                        Button {
-                            Task { await model.start() }
-                        } label: {
-                            Label(method.unlockTitle, systemImage: method.systemImage)
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(.moneyUpAction)
-                        .controlSize(.large)
-                        .disabled(model.isWorking)
-                    } else if method == .unavailable {
-                        // The database key is stored WhenPasscodeSetThisDeviceOnly, so
-                        // without a device passcode there is nothing to unlock with.
-                        Text("lock.no_passcode")
-                            .multilineTextAlignment(.center)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ProgressView()
+                if let method, method.isAvailable {
+                    Text("lock.detail")
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(.secondary)
+                    Button {
+                        Task { await model.start() }
+                    } label: {
+                        Label(method.unlockTitle, systemImage: method.systemImage)
+                            .frame(maxWidth: .infinity)
                     }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.moneyUpAction)
+                    .controlSize(.large)
+                    .disabled(model.isWorking)
+                } else if method == .unavailable {
+                    // The database key is stored WhenPasscodeSetThisDeviceOnly, so
+                    // without a device passcode there is nothing to unlock with.
+                    Text("lock.no_passcode")
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ProgressView()
                 }
-                .padding(32)
-                .frame(maxWidth: 480)
-                .frame(maxWidth: .infinity, minHeight: proxy.size.height)
             }
-            // On the scroll view, as every audited screen does: on the
-            // geometry reader the decoration surfaced as an unlabelled element.
-            .background { MoneyUpBackdrop() }
+            .padding(32)
+            .frame(maxWidth: 480)
+            .frame(maxWidth: .infinity)
         }
+        // Centers the short lock content while long text still scrolls. A
+        // GeometryReader did this before, but VoiceOver saw it as an
+        // unlabelled element spanning the whole screen.
+        .defaultScrollAnchor(.center, for: .alignment)
+        .background { MoneyUpBackdrop() }
         .task {
             method = await Task.detached(priority: .userInitiated) {
                 UnlockMethod.current

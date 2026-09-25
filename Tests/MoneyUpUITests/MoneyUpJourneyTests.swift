@@ -295,6 +295,8 @@ final class MoneyUpJourneyTests: XCTestCase {
         let locked = launch(favourites: true, locked: true)
         issues += try auditIssues(locked, audits, screen: "Lock screen")
         add(XCTAttachment(string: issues.joined(separator: "\n")))
+        // The element tree names the parent of anything the audit flags.
+        if !issues.isEmpty { add(XCTAttachment(string: locked.debugDescription)) }
         expectTrue(issues.isEmpty, "Accessibility issues:\n" + issues.joined(separator: "\n"))
     }
 }
