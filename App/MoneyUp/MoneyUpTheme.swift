@@ -109,7 +109,11 @@ struct MoneyUpBackdrop: View {
         .clipped()
         .ignoresSafeArea()
         .allowsHitTesting(false)
-        .accessibilityHidden(true)
+        // No accessibility modifier: colors, gradients and shapes carry no
+        // accessibility content, so nothing here reaches VoiceOver. An
+        // explicit accessibilityHidden made SwiftUI create a node for the
+        // backdrop, which the iOS 26 audit reported on the lock screen as an
+        // unlabelled element as wide as its offset glows.
     }
 }
 
