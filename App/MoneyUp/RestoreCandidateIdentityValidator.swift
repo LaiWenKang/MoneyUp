@@ -22,6 +22,8 @@ extension RestoreCandidateValidator {
         var allowancePeriodWorkCount = 0
         var allowanceArchiveTransitionCount = 0
         var pendingCapturePositions = Set<Int>()
+        /// Rows a confirmed recovering restore keeps set aside, unread.
+        var exemptedRecordCount = 0
     }
 
     static func validateSnapshotIdentities(
@@ -55,12 +57,14 @@ extension RestoreCandidateValidator {
     /// the disposable SQLCipher store: nested collection sizes are rejected
     /// across the complete candidate before AppModel performs its collection-
     /// wide domain load, then canonical physical/logical identities are
-    /// verified.
+    /// verified. Returns how many rows `damage` let through as set aside.
+    @discardableResult
     static func validateStoredRecords(
         in store: EncryptedRecordStore,
         expectedRecordCount: Int,
-        maximumAggregatePayloadByteCount: Int
-    ) async throws {
+        maximumAggregatePayloadByteCount: Int,
+        damage: RestoreDamagePolicy = .reject
+    ) async throws -> Int {
         guard isWithinCandidateRecordLimit(expectedRecordCount) else {
             throw AppModelError.invalidBook
         }
@@ -90,12 +94,14 @@ extension RestoreCandidateValidator {
                     record,
                     index: index,
                     decoder: identityDecoder,
+                    damage: damage,
                     state: &state
                 )
             }
             guard identityState.recordCount == expectedRecordCount else {
                 throw AppModelError.invalidBook
             }
+            return identityState.exemptedRecordCount
         } catch is CancellationError {
             throw CancellationError()
         } catch {
@@ -112,6 +118,7 @@ extension RestoreCandidateValidator {
         _ record: StoredRecordSnapshot,
         index: Int,
         decoder: JSONDecoder,
+        damage: RestoreDamagePolicy = .reject,
         state: inout SnapshotIdentityState
     ) throws {
         if index.isMultiple(of: 256) { try Task.checkCancellation() }
@@ -125,15 +132,30 @@ extension RestoreCandidateValidator {
             record,
             state: &state
         )
-        guard let logicalID = try decodeLogicalIdentity(
-            record,
-            collection: collection,
-            decoder: decoder,
-            state: &state
-        ) else { return }
+        let setsAside = damage.setsAside(collection, recordID: record.recordID)
+        let decodedID: UUID?
+        do {
+            decodedID = try decodeLogicalIdentity(
+                record,
+                collection: collection,
+                decoder: decoder,
+                state: &state
+            )
+        } catch where setsAside
+            && !(error is AppModelError)
+            && !(error is CancellationError) {
+            // Only a failed domain decode lands here: envelope, size and work
+            // limits throw AppModelError. The recovering open sets it aside.
+            state.exemptedRecordCount += 1
+            return
+        }
+        guard let logicalID = decodedID else { return }
         // UUID records are always addressed by their exact canonical key.
         guard record.recordID == logicalID.uuidString else {
-            throw AppModelError.invalidBook
+            // The recovering read sets a non-canonical alias aside too.
+            guard setsAside else { throw AppModelError.invalidBook }
+            state.exemptedRecordCount += 1
+            return
         }
         let inserted = state.logicalIDsByCollection[
             collection.rawValue,

@@ -108,8 +108,11 @@ extension AppModel {
             in: store,
             persistsCheckpoint: mode.persistsBudgetTimelineMigration
         )
-        if mode.rejectsRecoveryIssues, !recoveryIssues.isEmpty {
-            throw AppModelError.invalidBook
+        if case let .restoreValidation(damage) = mode {
+            _ = try damage.verifiedSetAsideCount(
+                exemptedRowCount: 0,
+                recoveryIssueCount: recoveryIssueCount
+            )
         }
     }
 
@@ -567,6 +570,11 @@ extension AppModel {
                 try? await store.remove(
                     id: QuickLogDraft.primaryRecordID,
                     from: .quickLogDrafts
+                )
+            } else {
+                // Kept byte for byte, so it is reported as set aside.
+                recoveryIssues.append(
+                    "\(RecordCollection.quickLogDrafts.rawValue)/\(QuickLogDraft.primaryRecordID)"
                 )
             }
         }

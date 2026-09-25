@@ -101,9 +101,9 @@ final class AppModel {
         /// Normal unlock/recovery keeps readable records available and reports
         /// damaged rows for the recovery UI.
         case recovering
-        /// Restore validation is intentionally all-or-nothing. No convenience
-        /// record is repaired or discarded while evaluating an archive.
-        case restoreValidation
+        /// Restore validation never repairs or discards a convenience record.
+        /// It is all-or-nothing unless a confirmed preview keeps damaged rows.
+        case restoreValidation(RestoreDamagePolicy)
         /// Rebuilds UI state after the original snapshot is put back without
         /// allowing recovery conveniences to rewrite any restored byte.
         case rollbackRecovery
@@ -117,7 +117,7 @@ final class AppModel {
 
         var rejectsRecoveryIssues: Bool {
             switch self {
-            case .restoreValidation: return true
+            case let .restoreValidation(damage): return damage == .reject
             case .recovering, .rollbackRecovery: return false
             }
         }

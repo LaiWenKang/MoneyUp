@@ -116,6 +116,73 @@ struct RestorePreviewTicket: Identifiable, Sendable {
         self.stagedArchiveURL = stagedArchiveURL
         self.archiveFingerprint = archiveFingerprint
     }
+
+    /// Confirming this preview keeps exactly the damaged rows it showed.
+    var damagePolicy: RestoreDamagePolicy {
+        RestoreDamagePolicy(confirmedCount: preview.candidate.quarantinedRecordCount)
+    }
+}
+
+/// What a restore does with rows the normal recovering open sets aside: rows
+/// in a collection it reads with recovery that fail their domain decode or
+/// carry a non-canonical key. Backups keep those rows byte for byte, so a
+/// restore either refuses them or, once confirmed, keeps them set aside just
+/// as the source book did. Envelope, size and work limits never relax.
+enum RestoreDamagePolicy: Equatable, Sendable {
+    /// All or nothing: one damaged row rejects the archive.
+    case reject
+    /// Preview: set damaged rows aside and report how many.
+    case report
+    /// Commit of a confirmed preview: require exactly the count it showed.
+    case confirmed(Int)
+
+    /// A ticket authorizes setting rows aside only when its preview showed some.
+    init(confirmedCount: Int) {
+        self = confirmedCount > 0 ? .confirmed(confirmedCount) : .reject
+    }
+
+    var confirmedCount: Int {
+        guard case let .confirmed(count) = self else { return 0 }
+        return count
+    }
+
+    func setsAside(_ collection: RecordCollection, recordID: String) -> Bool {
+        guard self != .reject else { return false }
+        switch collection {
+        case .accounts, .journalEntries, .budgetNodes, .scheduledTransactions,
+             .investmentHoldings, .netWorthSnapshots, .quickLogDrafts,
+             .receiptAttachments, .exchangeRates, .savingsGoals, .loanPlans,
+             .allowancePlans, .budgetEntryAttributions:
+            return true
+        case .budgetConfigurationTimelines:
+            return recordID == BudgetConfigurationTimeline.primaryRecordID
+        case .profile, .journalEntryRevisions, .cloudBackupIdentity,
+             .pendingLockedCaptures, .accountLifecycleAudit:
+            return false
+        }
+    }
+
+    /// The set-aside count a validated book may publish. Every row the raw
+    /// gate let through must be one the recovering open reported.
+    func verifiedSetAsideCount(
+        exemptedRowCount: Int,
+        recoveryIssueCount: Int
+    ) throws -> Int {
+        guard exemptedRowCount == 0 || recoveryIssueCount > 0 else {
+            throw AppModelError.invalidBook
+        }
+        switch self {
+        case .reject:
+            guard recoveryIssueCount == 0 else { throw AppModelError.invalidBook }
+        case .report:
+            break
+        case let .confirmed(count):
+            guard recoveryIssueCount == count else {
+                throw AppModelError.restorePreviewChanged
+            }
+        }
+        return recoveryIssueCount
+    }
 }
 
 struct RestoreArchiveFingerprint: Equatable, Sendable {
