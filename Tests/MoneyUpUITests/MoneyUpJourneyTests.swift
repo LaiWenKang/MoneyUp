@@ -83,10 +83,16 @@ final class MoneyUpJourneyTests: XCTestCase {
             if XCTWaiter().wait(for: [wait], timeout: 3) == .completed { break }
         }
         field.typeText(text)
-        let value = field.value as? String ?? ""
-        expectTrue(value.contains(text) || value.contains("•"),
-                      "Typed \(text.debugDescription) but the field shows \(value.debugDescription)",
-                      file: file, line: line)
+        // SwiftUI can publish the last keystrokes to the field's value just
+        // after XCUITest reports the app idle, so wait for them before judging.
+        func shown() -> String { field.value as? String ?? "" }
+        func landed() -> Bool { shown().contains(text) || shown().contains("•") }
+        if !landed() {
+            let typed = NSPredicate(format: "value CONTAINS %@ OR value CONTAINS %@", text, "•")
+            _ = XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: typed, object: field)], timeout: timeout)
+        }
+        expectTrue(landed(), "Typed \(text.debugDescription) but the field shows \(shown().debugDescription)",
+                   file: file, line: line)
     }
 
     func dismissKeyboard(_ app: XCUIApplication) {
@@ -95,10 +101,12 @@ final class MoneyUpJourneyTests: XCTestCase {
     }
 
     func openSettings(_ app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
-        dismissKeyboard(app)
         let settings = app.navigationBars.buttons["Settings"]
-        // Just after launch the tab bar can exist before it takes taps.
+        // Just after launch the tab bar can exist before it takes taps, and a
+        // widget route still pending from an earlier launch can open Log and
+        // raise its keypad over the tab bar after any single check.
         for _ in 0..<3 where !settings.exists {
+            dismissKeyboard(app)
             app.tabBars.buttons.element(boundBy: 0).tap()
             if settings.waitForExistence(timeout: 5) { break }
         }

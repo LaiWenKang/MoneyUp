@@ -13,6 +13,7 @@ extension Date {
     /// Programmatic strings do not inherit SwiftUI's locale environment, so
     /// the in-app language is applied here; otherwise a Chinese interface on
     /// an English device shows "Sep 18 at 11:00 AM" beside Chinese labels.
+    /// `locale` replaces any locale set on `format`: pass it here instead.
     func formattedForReporting(
         _ format: Date.FormatStyle,
         calendar: Calendar,

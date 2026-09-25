@@ -8726,6 +8726,9 @@ final class AppModelTests: XCTestCase {
             baseCurrency: fixture.sgd,
             reportingTimeZoneIdentifier: "America/Los_Angeles"
         )
+        // A series advances in its own zone (T1), and the model pins new
+        // series to the reporting zone. A legacy series without one is where
+        // the model's calendar still decides, so that is what this checks.
         let schedule = try ScheduledTransaction(
             kind: .expense,
             name: "Reporting-zone bill",
@@ -8733,7 +8736,8 @@ final class AppModelTests: XCTestCase {
             accountID: fixture.wallet.id,
             categoryAccountID: fixture.food.id,
             nextOccurrence: anchor,
-            frequency: .monthly
+            frequency: .monthly,
+            recurrenceTimeZoneIdentifier: nil
         )
         let model = fixture.model(
             profile: profile,
@@ -8762,6 +8766,10 @@ final class AppModelTests: XCTestCase {
         )
 
         XCTAssertEqual(model.scheduledTransactions.first?.nextOccurrence, expected.nextOccurrence)
+        XCTAssertEqual(
+            model.scheduledTransactions.first?.recurrenceTimeZoneIdentifier,
+            "America/Los_Angeles"
+        )
         XCTAssertEqual(model.entries.first?.originContext.timeZoneIdentifier, "America/Los_Angeles")
         XCTAssertEqual(model.entries.first?.originContext.dayKey, 20260215)
         await fixture.store.close()
