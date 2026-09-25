@@ -102,8 +102,7 @@ Description:
 > re-encoded without source location
 > or camera metadata. Privacy-redacted Home and Lock Screen widgets open Expense, Income,
 > Transfer, Refund, Smart Entry, or Receipt actions without displaying financial
-> values. Basic actions can use a separate encrypted capture inbox while the
-> full book remains locked. Optional Budget Status and Smart Overview
+> values. Every action opens Log only after Face ID or the passcode. Optional Budget Status and Smart Overview
 > configurations receive only bounded state, a bounded reporting-period token,
 > budget and allowance percentages, review and active expense-commitment counts, expiry,
 > and a reporting-calendar-derived due-day distance - never an exact due date,
@@ -207,7 +206,7 @@ Beta description:
 What to test:
 
 > Follow the in-app Privacy and beta guide. Focus on onboarding, background
-> locking, locked capture, expense/income/transfer/refund logging, History/edit,
+> locking, widget actions opening Log after unlock, expense/income/transfer/refund logging, History/edit,
 > nested budget roll-up, Flexible Today classification/arithmetic, the what-if simulator,
 > schedule edit/post/match, chart inspection/drill-through, rollover/goals,
 > holding purchases/sales/repricing/lots, privacy-safe Budget Status and Smart
@@ -260,9 +259,8 @@ beta but is not a replacement for a public support contact.
 > Attachment bytes and search text never enter drafts, widgets, readable
 > exports, logs, or diagnostics. The app has no advertising, analytics,
 > remote AI, or financial-data backend. The widget contains no financial
-> amounts in quick-action timelines. Its basic actions can open a separate
-> encrypted Quick Capture form; this contains no balances or database key and
-> moves into the full ledger only after authenticated unlock. If the reviewer
+> amounts in quick-action timelines. Its actions open Log only after
+> authenticated unlock, and nothing is written before then. If the reviewer
 > explicitly enables **Allow widget summaries** in Settings, the atomic bounded
 > schema-4 App Group summary for Budget Status and Smart Overview contains only
 > state, a reporting-period token, budget/allowance percentages, review/active

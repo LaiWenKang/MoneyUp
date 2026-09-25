@@ -28,7 +28,7 @@ and App Review remain separate release gates.
 | System-backup exclusion for ciphertext whose key cannot migrate | Implemented |
 | Confirmed deletion for transactions, schedules, and holdings | Implemented |
 | Wrong-key, plaintext-leak, decimal round-trip, and atomic-rollback tests | Test coverage present; exact-candidate execution open |
-| Separate encrypted, no-balance Quick Capture inbox while locked | Implemented |
+| Widget, control and Shortcut actions open Log only after the normal unlock; captures an earlier build kept in its separate encrypted inbox are promoted only after authentication | Implemented |
 | File-backed chunk-authenticated portable backup and transactional restore | Implemented with v1 compatibility and test coverage; exact-candidate/physical execution open |
 | Missing-device-key detection and keyless `.moneyup` recovery transaction | Implemented with isolated validation, crash-resume, and rollback tests; physical passcode-removal drill open |
 | Previewable local CSV/Qianji import with atomic commit | Implemented with test coverage; exact-candidate execution open |

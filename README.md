@@ -156,9 +156,8 @@ The beta includes:
   transaction editing, including exact N-way category splits with live
   remainder; prior versions are retained in the encrypted revision collection;
 - configurable privacy-redacted Home and Lock Screen widgets for expense,
-  income, transfer, refund, smart entry, and receipt scanning; a separate
-  encrypted Quick Capture inbox that does not reveal balances while locked;
-  and configurable Budget Status or Smart Overview surfaces whose opt-in App
+  income, transfer, refund, smart entry, and receipt scanning, each opening
+  the one Log after the normal unlock; and configurable Budget Status or Smart Overview surfaces whose opt-in App
   Group snapshot contains only state, a bounded reporting-period token,
   budget/allowance percentages, a bounded review count, a bounded active
   expense-commitment count, expiry, and a relative due-day count,
