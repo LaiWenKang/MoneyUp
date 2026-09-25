@@ -286,12 +286,15 @@ final class MoneyUpJourneyTests: XCTestCase {
     // MARK: Accessibility audits
 
     func testAccessibilityAuditOfLogAndTheLockScreen() throws {
+        let audits: XCUIAccessibilityAuditType = [.sufficientElementDescription, .hitRegion, .trait]
         let app = launch(favourites: true)
         _ = openLog(app)
-        try app.performAccessibilityAudit(for: [.sufficientElementDescription, .hitRegion, .trait])
+        var issues = try auditIssues(app, audits, screen: "Log")
         app.terminate()
         // The lock screen now fronts every widget tap made while locked.
         let locked = launch(favourites: true, locked: true)
-        try locked.performAccessibilityAudit(for: [.sufficientElementDescription, .hitRegion, .trait])
+        issues += try auditIssues(locked, audits, screen: "Lock screen")
+        add(XCTAttachment(string: issues.joined(separator: "\n")))
+        expectTrue(issues.isEmpty, "Accessibility issues:\n" + issues.joined(separator: "\n"))
     }
 }

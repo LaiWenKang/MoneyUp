@@ -95,8 +95,10 @@ private struct LockedView: View {
                 .frame(maxWidth: 480)
                 .frame(maxWidth: .infinity, minHeight: proxy.size.height)
             }
+            // On the scroll view, as every audited screen does: on the
+            // geometry reader the decoration surfaced as an unlabelled element.
+            .background { MoneyUpBackdrop() }
         }
-        .background { MoneyUpBackdrop() }
         .task {
             method = await Task.detached(priority: .userInitiated) {
                 UnlockMethod.current
