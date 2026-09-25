@@ -30,9 +30,33 @@ struct AppModelTransactionImportState: Sendable {
     var newBudgetNodes: [BudgetNode] = []
     var importedEntries: [JournalEntry] = []
     var fingerprints: Set<String>
-    var duplicateKeys: Set<String>
+    /// Earlier entries a row without a source ID may still be, counted by
+    /// semantic key. Each match uses one up, so N matching statement rows
+    /// import beside M such entries only when N > M.
+    var unmatchedDuplicateKeys: [String: Int]
+    /// The semantic key of each earlier entry by stored fingerprint, so a
+    /// fingerprint match uses up that entry's semantic match as well.
+    var duplicateKeysByFingerprint: [String: String]
     var duplicates = 0
     var skipped = 0
+
+    /// Uses up one earlier entry with this key; false when none is left.
+    mutating func useEarlierMatch(for key: String) -> Bool {
+        guard let count = unmatchedDuplicateKeys[key], count > 0 else { return false }
+        unmatchedDuplicateKeys[key] = count - 1
+        return true
+    }
+
+    /// The earlier entry stored under one of these fingerprints is this row.
+    mutating func useEarlierMatch(storedAs fingerprints: [String]) {
+        for fingerprint in fingerprints {
+            guard let key = duplicateKeysByFingerprint.removeValue(
+                forKey: fingerprint
+            ) else { continue }
+            _ = useEarlierMatch(for: key)
+            return
+        }
+    }
 }
 
 struct AppModelTransactionImportIdentity: Sendable {
@@ -46,7 +70,6 @@ struct AppModelTransactionImportSemantics: Sendable {
     let destination: LedgerAccount?
     let destinationAmount: Decimal?
     let duplicateKey: String
-    let insertedDuplicateKey: Bool
 }
 
 struct AppModelTransactionImportBudgetPlan: Sendable {
@@ -226,15 +249,23 @@ extension AppModel {
         existing: AppModelTransactionImportExisting,
         context: AppModelTransactionImportContext
     ) -> AppModelTransactionImportState {
-        AppModelTransactionImportState(
+        var unmatched: [String: Int] = [:]
+        var keysByFingerprint: [String: String] = [:]
+        for entry in existing.entries {
+            guard let key = transactionImportDuplicateKey(
+                for: entry,
+                accountKinds: context.initialAccountKinds
+            ) else { continue }
+            unmatched[key, default: 0] += 1
+            if let fingerprint = entry.sourceFingerprint {
+                keysByFingerprint[fingerprint] = key
+            }
+        }
+        return AppModelTransactionImportState(
             candidateAccounts: accounts,
             fingerprints: existing.fingerprints,
-            duplicateKeys: Set(existing.entries.compactMap {
-                transactionImportDuplicateKey(
-                    for: $0,
-                    accountKinds: context.initialAccountKinds
-                )
-            })
+            unmatchedDuplicateKeys: unmatched,
+            duplicateKeysByFingerprint: keysByFingerprint
         )
     }
 
@@ -478,14 +509,17 @@ extension AppModel {
                         ?? reportingOriginContext(for: baseEntry.occurredAt)
                 )
             )
+            // A row its source identifies stands for that transaction, so a
+            // later row without an ID and the same meaning (such as a pending
+            // copy) is a duplicate of it.
+            if row.hasExternalID {
+                state.unmatchedDuplicateKeys[semantics.duplicateKey, default: 0] += 1
+            }
         } catch {
             state.candidateAccounts.removeSubrange(accountCheckpoint...)
             state.newAccounts.removeSubrange(newAccountCheckpoint...)
             state.newBudgetNodes.removeSubrange(budgetCheckpoint...)
             state.fingerprints.remove(identity.persistedFingerprint)
-            if semantics.insertedDuplicateKey {
-                state.duplicateKeys.remove(semantics.duplicateKey)
-            }
             state.skipped += 1
         }
     }
@@ -506,6 +540,7 @@ extension AppModel {
             .isDisjoint(with: context.sameSourceLegacyFingerprints)
         guard inserted, !matchesUnscopedIdentity else {
             if inserted { state.fingerprints.remove(persistedFingerprint) }
+            state.useEarlierMatch(storedAs: [persistedFingerprint, row.id])
             state.duplicates += 1
             return nil
         }
@@ -619,15 +654,20 @@ extension AppModel {
             // in-batch key must match the key reconstructed after reopening.
             payee: row.payee
         )
-        let insertedDuplicateKey = state.duplicateKeys.insert(duplicateKey)
-            .inserted
+        let matchesEarlierEntry = state.unmatchedDuplicateKeys[
+            duplicateKey,
+            default: 0
+        ] > 0
         // FNV-era candidates are collision-prone and interim SHA candidates
         // contain mutable fields. Accept a legacy duplicate only when the
         // reconstructed ledger semantics also match.
         let matchesSafeLegacyDuplicate = identity.matchesLegacyCandidate
-            && !insertedDuplicateKey
+            && matchesEarlierEntry
+        // Rows earlier in this file never count: a statement lists each
+        // transaction once, so its identical rows are separate transactions.
         guard !matchesSafeLegacyDuplicate,
-              row.hasExternalID || insertedDuplicateKey else {
+              row.hasExternalID || !matchesEarlierEntry else {
+            _ = state.useEarlierMatch(for: duplicateKey)
             state.fingerprints.remove(identity.persistedFingerprint)
             state.duplicates += 1
             return nil
@@ -637,8 +677,7 @@ extension AppModel {
             sourceCurrency: sourceCurrency,
             destination: destination,
             destinationAmount: destinationAmount,
-            duplicateKey: duplicateKey,
-            insertedDuplicateKey: insertedDuplicateKey
+            duplicateKey: duplicateKey
         )
     }
 }
