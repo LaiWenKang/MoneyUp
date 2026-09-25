@@ -293,8 +293,6 @@ final class Audit1074RegressionTests: XCTestCase {
         XCTAssertNil(AccountCurrencyGroup.net([], currency: sgd))
     }
 
-    // MARK: - Today's hero names its scope
-
     // MARK: - Budget replay reads an unattributed row on its origin day
 
     @MainActor
@@ -351,9 +349,12 @@ final class Audit1074RegressionTests: XCTestCase {
             let boundary = try sgt(2026, random.next() % 2 == 0 ? 9 : 10, 1)
             let instant = boundary + TimeInterval(Int(random.next() % 172_800) - 86_400)
             let pick = Int(random.next() % UInt64(zones.count + 1))
-            let origin: TransactionOriginContext = pick == zones.count
-                ? .inferredUTC(for: instant)
-                : .capture(for: instant, timeZone: try XCTUnwrap(TimeZone(identifier: zones[pick])))
+            let origin: TransactionOriginContext
+            if pick == zones.count {
+                origin = .inferredUTC(for: instant)
+            } else {
+                origin = .capture(for: instant, timeZone: try XCTUnwrap(TimeZone(identifier: zones[pick])))
+            }
             entries.append(try foodExpense(
                 fixture, at: instant, origin: origin, amount: Decimal(Int(random.next() % 90) + 1)
             ))
@@ -626,7 +627,7 @@ final class Audit1074RegressionTests: XCTestCase {
         XCTAssertEqual(saved.splitLines.map(\.categoryID), [nil, fixture.food.id])
         XCTAssertNotEqual(model.quickLogPreparationRevision, beforeTyping, "The form re-syncs to the repaired draft")
         // Restore rejects a whole book over a bad draft; this one passes.
-        XCTAssertNoThrow(try RestoreCandidateRelationshipValidator.validateRelationshipDraft(
+        XCTAssertNoThrow(try RestoreCandidateValidator.validateRelationshipDraft(
             saved, accountByID: model.accountsByID
         ))
         await model.waitForPendingQuickLogDraftFlush()

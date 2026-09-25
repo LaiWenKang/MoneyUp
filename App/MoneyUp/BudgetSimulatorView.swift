@@ -250,7 +250,7 @@ struct BudgetSimulatorView: View {
             budgetUsage: budgetUsage,
             monthElapsed: monthElapsed
         )
-        forecastSummaryCard(forecast, isOver: isOver)
+        forecastSummaryCard(forecast, netAfter: netAfter, isOver: isOver)
     }
 
     private func forecastSpendingCard(
@@ -335,6 +335,7 @@ struct BudgetSimulatorView: View {
 
     private func forecastSummaryCard(
         _ forecast: BudgetScenarioForecast,
+        netAfter: Money?,
         isOver: Bool
     ) -> some View {
         MoneyUpCard {
