@@ -589,11 +589,14 @@ final class Audit1074RegressionTests: XCTestCase {
         XCTAssertEqual(model.quickLogDraft, promoted)
         XCTAssertNotEqual(model.quickLogPreparationRevision, beforeLaunch)
 
-        // Once adopted, the capture draft is edited normally.
+        // Once adopted, the capture draft is edited normally, and an edit never
+        // makes the form re-sync mid-typing (that would drop keystrokes).
         var edited = promoted
         edited.note = "Airport"
+        let beforeEdit = model.quickLogPreparationRevision
         model.updateQuickLogDraft(edited)
         XCTAssertEqual(model.quickLogDraft, edited)
+        XCTAssertEqual(model.quickLogPreparationRevision, beforeEdit)
         await model.waitForPendingQuickLogDraftFlush()
         await fixture.store.close()
     }
@@ -630,6 +633,13 @@ final class Audit1074RegressionTests: XCTestCase {
         XCTAssertNoThrow(try RestoreCandidateValidator.validateRelationshipDraft(
             saved, accountByID: model.accountsByID
         ))
+        // Keystrokes on the repaired draft are stored as typed, with no re-sync.
+        var next = saved
+        next.amountText = "4.5"
+        let beforeNext = model.quickLogPreparationRevision
+        model.updateQuickLogDraft(next)
+        XCTAssertEqual(model.quickLogDraft, next)
+        XCTAssertEqual(model.quickLogPreparationRevision, beforeNext, "Valid keystrokes never re-sync the form")
         await model.waitForPendingQuickLogDraftFlush()
         await fixture.store.close()
     }
