@@ -37,7 +37,6 @@ extension AppModel {
         }
         guard !isLifecycleMutationInProgress,
               !isWorking,
-              !lockedCaptureWriteInProgress,
               requestedQuickLogMode == nil else { return .deferTransiently }
         return .route
     }
@@ -47,6 +46,7 @@ extension AppModel {
 /// Transient app work leaves FIFO state untouched. An authoritative lifecycle
 /// boundary discards the complete old-book queue before any action is taken;
 /// an authoritative denial discovered after dequeue discards the tail too.
+/// A locked app authenticates first; the request then opens the one Log.
 @MainActor
 enum MoneyUpQuickActionRouting {
     static func routeNext(
@@ -77,8 +77,7 @@ enum MoneyUpQuickActionRouting {
             broker.discardAllPendingActions()
             return .discarded
         }
-        guard model.state == .locked,
-              !model.isLockSafeQuickCaptureRequested else { return .routed }
+        guard model.state == .locked else { return .routed }
         return .requiresStart
     }
 }

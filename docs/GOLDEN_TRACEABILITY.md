@@ -178,7 +178,7 @@ exact-candidate run.
 | ID | Implementation and evidence anchor | Current evidence state |
 |---|---|---|
 | SET-01 | `UserProfile` and Settings offer Immediately/1/5/15 minutes/1 hour with one-minute default; AppModel lock scheduling honors the choice. | Source implemented; physical timing matrix open. |
-| SET-02 | Settings controls Locked Quick Capture and Lock Now independently from normal authentication. | Source implemented; physical lock/capture matrix open. |
+| SET-02 | Lock Now stays locked for the visit, independent of normal authentication; widgets open Log after unlock, with no separate locked-capture switch. | Source implemented; physical lock matrix open. |
 | SET-03 | Settings stores smart/fixed account/expense/income defaults while Log keeps each selection editable. | Source implemented; Mac/UI check open. |
 | SET-04 | Settings links Data Safety, backup/restore, import, privacy/beta, pending captures, and quarantined counts/actions. | Source implemented; bilingual navigation review open. |
 | SET-05 | Widget configuration chooses preferred actions across supported Home/Lock families and semantic appearances. | Source implemented; physical family/light/dark/tinted/redacted gate open. |
@@ -224,7 +224,7 @@ exact-candidate run.
 | SEC-01 | Package/app architecture, privacy manifest, policy, and local-only flows include no account, backend, ads, analytics, financial telemetry, or remote AI. | Source implemented; exact-binary dependency/network review open. |
 | SEC-02 | `DatabaseKeyStore` generates a random 256-bit this-device-only, non-synchronizing, user-presence Keychain key for SQLCipher. | Source implemented; physical passcode/biometry behavior open. |
 | SEC-03 | Scene privacy cover, timeout, safe draft flush, store close, and decoded/cache clearing live in AppModel. | Source implemented; physical timing/background matrix open. |
-| SEC-04 | Locked Quick Capture uses a separate encrypted store and has no live book key, snapshot, balance, history payee, or account data. | Source implemented; physical widget/capture privacy gate open. |
+| SEC-04 | A locked widget, control or Shortcut request shows only the unlock screen; captures from earlier builds' separate encrypted inbox are promoted only after authentication. | Source implemented; physical widget privacy gate open. |
 | SEC-05 | Bilingual setup/Security/Data Safety/first-backup copy warns that passcode removal or app deletion can make the live book unrecoverable. Missing key plus ciphertext is a dedicated state. Keyless `.moneyup` recovery copies and validates an isolated SQLCipher candidate before a durable artifact-mask/key/install transaction, preserves the external archive, and rolls back on reopen/load failure. Current writes cannot outgrow the v2 envelope. | Source implemented with rejection/cancellation/filesystem rollback tests; exact-candidate and physical passcode-removal/interruption drill open. |
 | SEC-06 | Vision processing is on device; receipt sources are transient unless explicitly retained, then orientation-applied pixels are bounded and re-encoded without GPS/EXIF/TIFF device metadata before SQLCipher/archive persistence. They are never exported/read by widgets. | Source implemented with metadata fixture; exact-candidate and physical retention/network observation open. |
 | SEC-07 | Runtime data egress is explicit export only; privacy/security docs require new review before any network integration. | Source implemented; exact-binary network review open. |

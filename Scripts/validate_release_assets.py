@@ -401,7 +401,7 @@ def security_recovery_invariant_violations(
     deep_link = source_section(
         lifecycle,
         "func handleDeepLink",
-        "func routeLockSafeRequestIfPossible",
+        "var hasDeferredAuthenticationLock",
     )
     if not ordered_fragments_are_present(
         deep_link,
@@ -409,7 +409,7 @@ def security_recovery_invariant_violations(
             "guard !isBookReplacementInProgress",
             "startupFailureKind != .missingDeviceBoundKey",
             "hasPendingKeyCliffRecoveryTransaction()",
-            "requestedQuickLogMode = mode",
+            "requestedQuickLogMode = QuickLogLaunchMode(action)",
         ),
     ):
         violations.append(
@@ -2320,7 +2320,7 @@ def validate_key_cliff_recovery_boundary() -> None:
         fail("ordinary startup must retain recovering-mode load semantics")
 
     for declaration, source in (
-        ("UserDefaults.standard.set(", startup_publication),
+        ("scheduleRetiredLockedFavouritesErase()", startup_publication),
         ("locked_captures/promotion-unavailable", startup_publication),
         ("if !isBookReplacementInProgress", startup_publication),
         ("func finishBookReplacementMutation", ledger_validation),
@@ -4028,7 +4028,6 @@ def validate_design_primitive_usage() -> None:
             "QuickLogEntryBody.swift",
             "QuickLogEntryChrome.swift",
             "QuickLogEntryCommit.swift",
-            "LockedQuickCaptureView.swift",
         )
     )
     for declaration in [

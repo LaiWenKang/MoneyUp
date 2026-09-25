@@ -569,7 +569,6 @@ W3_TYPE_REFERENCE_INVENTORIES = {
 
 W3_STATE_REFERENCE_INVENTORIES = {
     "scanReceipt": (
-        ("App/MoneyUp/AppModelLifecycle.swift", 2),
         ("App/MoneyUp/MoneyUpAppShortcuts.swift", 1),
         ("App/MoneyUp/QuickLogEntryBody.swift", 1),
         (W3_REVIEWED_ENTRY_PATH, 1),

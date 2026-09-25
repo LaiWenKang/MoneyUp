@@ -29,7 +29,7 @@ SHARED_ACTION_SOURCE_SHA256 = (
     "5ebaedc492156bfb9249184fc4929715d488b09aee7f085bd99542e990ea6454"
 )
 APP_ROUTER_SOURCE_SHA256 = (
-    "4efedc06179e798945c1b654b475072d7ddbef7d48abdc239297f8c745220fb7"
+    "7fdcbbbd2b29e16b91c9d190e8704afaa15e6a2227095d35f2b10774d57d66dd"
 )
 PACKAGE_MANIFEST_SHA256 = (
     "47842f01189d9dba4167cd6d4f60d38dd05329367ee59d3adcc11359feb998de"
@@ -179,7 +179,6 @@ PLATFORM_REFERENCE_ALLOWLIST = APP_INTENTS_SOURCE_ALLOWLIST | {
     "App/MoneyUp/AppModelRestorePreview.swift",
     "App/MoneyUp/AppModelSettings.swift",
     "App/MoneyUp/AppModelValidation.swift",
-    "App/MoneyUp/LockedQuickCaptureView.swift",
     "App/MoneyUp/MoneyUpApp.swift",
     "App/MoneyUp/MoneyUpQuickActionRouting.swift",
     "App/MoneyUp/QuickLogEntryDraft.swift",
@@ -243,8 +242,8 @@ COMPILED_REFERENCE_INVENTORY = {
         "App/MoneyUp/AppModel.swift": 12,
         "App/MoneyUp/AppModelAutomaticUnlock.swift": 1,
         "App/MoneyUp/AppModelKeyCliffRecovery.swift": 1,
-        "App/MoneyUp/AppModelLifecycle.swift": 10,
-        "App/MoneyUp/AppModelQuickActionIngress.swift": 2,
+        "App/MoneyUp/AppModelLifecycle.swift": 8,
+        "App/MoneyUp/AppModelQuickActionIngress.swift": 1,
         "App/MoneyUp/MoneyUpApp.swift": 6,
         "App/MoneyUp/MoneyUpUITestHarness.swift": 1,
         "App/MoneyUp/MoneyUpQuickActionRouting.swift": 2,
@@ -261,21 +260,18 @@ COMPILED_REFERENCE_INVENTORY = {
     },
     r"\bQuickLogRouteRequest\b": {
         "App/MoneyUp/AppModel.swift": 3,
-        "App/MoneyUp/AppModelLifecycle.swift": 3,
-        "App/MoneyUp/AppModelQuickActionIngress.swift": 1,
-        "App/MoneyUp/LockedQuickCaptureView.swift": 1,
+        "App/MoneyUp/AppModelLifecycle.swift": 2,
         "App/MoneyUp/QuickLogEntryDraft.swift": 1,
         "App/MoneyUp/QuickLogLaunchMode.swift": 1,
         "App/MoneyUp/QuickLogSheet.swift": 5,
     },
     r"\brequestedQuickLogRequest\b": {
         "App/MoneyUp/AppModel.swift": 3,
-        "App/MoneyUp/AppModelLifecycle.swift": 4,
-        "App/MoneyUp/AppModelQuickActionIngress.swift": 3,
-        "App/MoneyUp/LockedQuickCaptureView.swift": 1,
+        "App/MoneyUp/AppModelLifecycle.swift": 3,
+        "App/MoneyUp/AppModelQuickActionIngress.swift": 1,
         "App/MoneyUp/MoneyUpApp.swift": 1,
         "App/MoneyUp/MoneyUpQuickActionRouting.swift": 1,
-        "App/MoneyUp/RootView.swift": 3,
+        "App/MoneyUp/RootView.swift": 2,
     },
     r"\bpresentedQuickLogRequest\b": {
         "App/MoneyUp/AppModel.swift": 2,
@@ -288,17 +284,16 @@ COMPILED_REFERENCE_INVENTORY = {
         "App/MoneyUp/AppModel.swift": 3,
         "App/MoneyUp/AppModelBackupRestore.swift": 1,
         "App/MoneyUp/AppModelKeyCliffRecovery.swift": 2,
-        "App/MoneyUp/AppModelLifecycle.swift": 10,
+        "App/MoneyUp/AppModelLifecycle.swift": 6,
         "App/MoneyUp/AppModelLockedCaptureRecovery.swift": 2,
         "App/MoneyUp/AppModelServices.swift": 5,
         "App/MoneyUp/MoneyUpQuickActionRouting.swift": 2,
     },
     r"\bQuickLogLaunchMode\b": {
         "App/MoneyUp/AppModel.swift": 1,
-        "App/MoneyUp/AppModelLifecycle.swift": 2,
+        "App/MoneyUp/AppModelLifecycle.swift": 1,
         "App/MoneyUp/AppModelLockedCaptureRecovery.swift": 2,
         "App/MoneyUp/AppModelServices.swift": 3,
-        "App/MoneyUp/LockedQuickCaptureView.swift": 2,
         "App/MoneyUp/QuickLogEntryDraft.swift": 1,
         "App/MoneyUp/QuickLogLaunchMode.swift": 2,
     },
@@ -851,8 +846,6 @@ def validate_root_handoff_source(source: str) -> list[str]:
         ".isAuthoritativeLifecycleBoundaryActive",
         ".id(model.quickActionRouteBroker.handoffGeneration)",
         "let request = model.requestedQuickLogRequest",
-        "LockedQuickCaptureView(request: request)",
-        ".id(request.id)",
         "launchRequest: model.presentedQuickLogRequest",
         "model.consumeQuickLogRequest(request)",
         ".onChange(of: model.requestedQuickLogRequest)",
@@ -872,6 +865,17 @@ def validate_root_handoff_source(source: str) -> list[str]:
         )
     if "quickLogLaunchMode" in source or "logRequestSequence" in source:
         errors.append("RootView must not retain an unversioned quick-log launch")
+    locked = source.find("case .locked:")
+    onboarding = source.find("case .onboarding:", locked)
+    if locked < 0 or onboarding < 0 or " ".join(
+        re.sub(r"//[^\n]*", "", source[locked:onboarding]).split()
+    ) != "case .locked: LockedView()":
+        errors.append(
+            "RootView must answer every locked request with the normal unlock; "
+            "widget, control and Shortcut logging opens the one Log"
+        )
+    if "LockedQuickCaptureView" in source:
+        errors.append("RootView must not present a separate locked Log")
     return errors
 
 
@@ -957,54 +961,12 @@ def validate_log_request_body_source(source: str) -> list[str]:
     return errors
 
 
-def validate_locked_handoff_source(source: str) -> list[str]:
-    errors: list[str] = []
-    required = [
-        "let request: QuickLogRouteRequest",
-        "private var mode: QuickLogLaunchMode { request.mode }",
-        "model.consumeQuickLogRequest(request)",
-        "request: request",
-        "resumeCommittedLockedCaptureIfPresent(",
-        "replayInspectionState = .failed",
-        "guard model.requestedQuickLogRequest == request else { return }",
-    ]
-    for declaration in required:
-        if declaration not in source:
-            errors.append(f"locked capture handoff is missing {declaration}")
-    if source.count("model.consumeQuickLogRequest(request)") != 2:
-        errors.append("locked capture must acknowledge the exact request on both exits")
-    if source.count("request: request") != 3:
-        errors.append(
-            "locked capture must bind both saves and replay inspection to the "
-            "exact request"
-        )
-    return errors
-
-
 def validate_model_quick_action_ingress_source(source: str) -> list[str]:
     errors: list[str] = []
-    resume = declaration_body(
-        source,
-        "func resumeCommittedLockedCaptureIfPresent(",
-    )
-    normalized_resume = normalized_swift_body(resume)
-    for declaration in (
-        "request.requiresIngressAcknowledgement",
-        "requestedQuickLogRequest == request",
-        "state == .locked",
-        "canPresentLockedQuickCapture",
-        "let captures = try await lockedCaptureStore.all()",
-        "$0.id == request.ingressToken",
-        "allowingCommittedCaptureReplay: true",
-    ):
-        if declaration not in normalized_resume:
-            errors.append(
-                "locked-capture replay recovery is missing " + declaration
-            )
-    if normalized_resume.count("requestedQuickLogRequest == request") != 2:
+    if "LockedCapture" in source or "lockedCaptureStore" in source:
         errors.append(
-            "locked-capture replay must revalidate exact request ownership "
-            "after the inbox read"
+            "quick-action ingress must not write to or replay the retired "
+            "locked inbox; a locked request waits for the normal unlock"
         )
     retry = declaration_body(
         source,
@@ -1046,7 +1008,7 @@ def validate_app_router_source(source: str) -> list[str]:
         "startupFailureKind != .missingDeviceBoundKey, (try? "
         "hasPendingKeyCliffRecoveryTransaction()) == false else { return "
         ".denyAuthoritatively } guard !isLifecycleMutationInProgress, !isWorking, "
-        "!lockedCaptureWriteInProgress, requestedQuickLogMode == nil else { "
+        "requestedQuickLogMode == nil else { "
         "return .deferTransiently } return .route"
     ):
         errors.append(
@@ -1067,8 +1029,7 @@ def validate_app_router_source(source: str) -> list[str]:
         "model.requestedQuickLogMode != nil, model.requestedQuickLogRequest?"
         ".ingressToken == record.token else { "
         "broker.discardAllPendingActions() return .discarded } guard "
-        "model.state == .locked, !model.isLockSafeQuickCaptureRequested else { "
-        "return .routed } return .requiresStart"
+        "model.state == .locked else { return .routed } return .requiresStart"
     ):
         errors.append(
             "app router must discard every post-dequeue authoritative denial, "
@@ -1433,8 +1394,8 @@ def validate_boundary_lifecycle_sources(
         "!= .missingDeviceBoundKey, (try? hasPendingKeyCliffRecoveryTransaction()) "
         "== false else { requestedQuickLogMode = nil return false } guard let "
         "action = MoneyUpQuickAction(exactDeepLink: url) "
-        "else { return false } let mode = QuickLogLaunchMode(action) "
-        "requestedQuickLogMode = mode _ = routeLockSafeRequestIfPossible() "
+        "else { return false } "
+        "requestedQuickLogMode = QuickLogLaunchMode(action) "
         "return true"
     ):
         errors.append(
@@ -2888,10 +2849,6 @@ def validate_repository(root: Path = ROOT) -> list[str]:
         (
             "App/MoneyUp/QuickLogEntryBody.swift",
             validate_log_request_body_source,
-        ),
-        (
-            "App/MoneyUp/LockedQuickCaptureView.swift",
-            validate_locked_handoff_source,
         ),
         (
             "App/MoneyUp/MoneyUpQuickActionRouting.swift",

@@ -189,7 +189,8 @@ class PlatformActionsValidatorTests(unittest.TestCase):
             "        guard let action = MoneyUpQuickAction(exactDeepLink: url) else {\n"
             "            return false\n"
             "        }\n"
-            "        let mode = QuickLogLaunchMode(action)\n"
+            "        // Every route opens the one Log; a locked app authenticates first.\n"
+            "        requestedQuickLogMode = QuickLogLaunchMode(action)\n"
         )
         mutated_lifecycle = lifecycle.replace(
             original,
@@ -199,9 +200,11 @@ class PlatformActionsValidatorTests(unittest.TestCase):
             "                  rawValue: url.lastPathComponent.lowercased()\n"
             "              ) else {\n"
             "            return false\n"
-            "        }\n",
+            "        }\n"
+            "        requestedQuickLogMode = mode\n",
             1,
         )
+        self.assertNotEqual(mutated_lifecycle, lifecycle)
 
         errors = VALIDATOR.validate_boundary_lifecycle_sources(
             model,
@@ -1604,28 +1607,48 @@ class PlatformActionsValidatorTests(unittest.TestCase):
 
         self.assertTrue(any("AppModel request setter" in error for error in errors))
 
-    def test_rejects_unversioned_locked_and_main_tab_handoffs(self) -> None:
+    def test_rejects_unversioned_main_tab_handoff_and_a_separate_locked_log(self) -> None:
         root = self.source("App/MoneyUp/RootView.swift")
-        locked = self.source("App/MoneyUp/LockedQuickCaptureView.swift")
-        mutated_root = root.replace("                        .id(request.id)\n", "", 1)
-        mutated_locked = locked.replace(
-            "model.consumeQuickLogRequest(request)",
-            "model.consumeQuickLogRequest(mode)",
-            1,
+        unversioned = root.replace(
+            "                    .id(model.quickActionRouteBroker.handoffGeneration)\n", "", 1
+        )
+        self.assertNotEqual(unversioned, root)
+        self.assertTrue(
+            any(
+                "by generation" in error
+                for error in VALIDATOR.validate_root_handoff_source(unversioned)
+            )
         )
 
-        self.assertTrue(
-            any(
-                "generation-bound handoff" in error
-                for error in VALIDATOR.validate_root_handoff_source(mutated_root)
-            )
+        # Widget logging while locked must wait for the normal unlock and open
+        # the one Log, never a second, reduced form.
+        separate = root.replace(
+            "                LockedView()\n",
+            "                if let request = model.requestedQuickLogRequest {\n"
+            "                    LockedQuickCaptureView(request: request)\n"
+            "                } else {\n"
+            "                    LockedView()\n"
+            "                }\n",
+            1,
         )
-        self.assertTrue(
-            any(
-                "acknowledge the exact request" in error
-                for error in VALIDATOR.validate_locked_handoff_source(mutated_locked)
-            )
+        self.assertNotEqual(separate, root)
+        errors = VALIDATOR.validate_root_handoff_source(separate)
+        self.assertTrue(any("normal unlock" in error for error in errors), errors)
+        self.assertTrue(any("separate locked Log" in error for error in errors), errors)
+
+    def test_rejects_quick_action_ingress_that_replays_the_locked_inbox(self) -> None:
+        source = self.source("App/MoneyUp/AppModelQuickActionIngress.swift")
+        mutated = source.replace(
+            "extension AppModel {\n",
+            "extension AppModel {\n"
+            "    func replayLockedCapture() async throws -> Bool {\n"
+            "        try await !lockedCaptureStore.all().isEmpty\n"
+            "    }\n",
+            1,
         )
+        self.assertNotEqual(mutated, source)
+        errors = VALIDATOR.validate_model_quick_action_ingress_source(mutated)
+        self.assertTrue(any("retired locked inbox" in error for error in errors), errors)
 
     def test_rejects_restore_cleanup_installed_after_suspension(self) -> None:
         model = self.source("App/MoneyUp/AppModel.swift")

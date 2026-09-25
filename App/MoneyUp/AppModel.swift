@@ -32,7 +32,6 @@ struct BudgetPurposeOverview: Equatable {
 @MainActor
 @Observable
 final class AppModel {
-    static let lockedQuickCapturePreferenceKey = "moneyup.allowLockedQuickCapture"
     enum State: Equatable {
         case launching
         case locked
@@ -375,11 +374,6 @@ final class AppModel {
     var scheduleEntryMatchesInProgress = Set<UUID>()
     var investmentMutationsInProgress = Set<UUID>()
     var lockedCapturePromotionInProgress = false
-    /// Closes the erase/capture time-of-check-to-time-of-use gap while the
-    /// redacted inbox actor is writing. An erase that starts after the marker
-    /// check must wait for (or, through the public guard, decline during) this
-    /// write rather than deleting a capture the UI has just reported as saved.
-    var lockedCaptureWriteInProgress = false
     var storeCloseTask: Task<Void, Never>?
     var autoLockTask: Task<Void, Never>?
     var automaticUnlockIsPending = true
@@ -480,9 +474,6 @@ final class AppModel {
         retainsCompleteJournal = false
         budgetWidgetSnapshotStore = BudgetWidgetSnapshotStore()
         currentDate = Date.init
-        UserDefaults.standard.register(defaults: [
-            Self.lockedQuickCapturePreferenceKey: true
-        ])
     }
 
     /// Dependency-injected construction for app-level tests and previews.
@@ -548,9 +539,6 @@ final class AppModel {
         self.budgetConfigurationTimeline = budgetConfigurationTimeline
         self.budgetEntryAttributions = budgetEntryAttributions
         budgetAttributionCacheIsComplete = retainsCompleteJournal
-        UserDefaults.standard.register(defaults: [
-            Self.lockedQuickCapturePreferenceKey: true
-        ])
         self.store = store
         storeGeneration = 1
         self.profile = profile

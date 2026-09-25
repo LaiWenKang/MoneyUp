@@ -493,7 +493,7 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
-    func testPendingKeyCliffReplacementDeniesLockedCapture() throws {
+    func testPendingKeyCliffReplacementDeniesQuickLogRoute() throws {
         let fixture = try AppModelFixture()
         defer { fixture.removeFiles() }
         try KeyCliffRecoveryTransaction.prepareCandidateDirectory(
@@ -514,10 +514,13 @@ final class AppModelTests: XCTestCase {
         )
         let model = fixture.model()
         model.state = .locked
-        model.requestedQuickLogMode = .expense
 
-        XCTAssertFalse(model.lockedCaptureIsAllowedByLifecycleAndEraseIntent)
-        XCTAssertFalse(model.canPresentLockedQuickCapture)
+        let handled = model.handleDeepLink(
+            try XCTUnwrap(URL(string: "moneyup://quick-log/expense"))
+        )
+
+        XCTAssertFalse(handled)
+        XCTAssertNil(model.requestedQuickLogMode)
     }
 
     @MainActor
@@ -695,25 +698,6 @@ final class AppModelTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let widgetStore = BudgetWidgetSnapshotStore(defaults: defaults)
         let services = AppModelServices()
-        let priorCapturePreference = UserDefaults.standard.object(
-            forKey: AppModel.lockedQuickCapturePreferenceKey
-        )
-        defer {
-            if let priorCapturePreference {
-                UserDefaults.standard.set(
-                    priorCapturePreference,
-                    forKey: AppModel.lockedQuickCapturePreferenceKey
-                )
-            } else {
-                UserDefaults.standard.removeObject(
-                    forKey: AppModel.lockedQuickCapturePreferenceKey
-                )
-            }
-        }
-        UserDefaults.standard.set(
-            true,
-            forKey: AppModel.lockedQuickCapturePreferenceKey
-        )
         widgetStore.publish(
             .available(percentUsed: 87, validUntil: .distantFuture),
             periodToken: "2026-08"
@@ -757,9 +741,6 @@ final class AppModelTests: XCTestCase {
                 for: fixture.databaseURL
             )
         )
-        XCTAssertTrue(UserDefaults.standard.bool(
-            forKey: AppModel.lockedQuickCapturePreferenceKey
-        ))
         XCTAssertEqual(widgetStore.read(), .disabled)
         let inboxReadsBeforeCompletion = await inbox.allReadCount()
         let manifestStatesBeforeCompletion = await inbox
@@ -789,9 +770,6 @@ final class AppModelTests: XCTestCase {
                 for: fixture.databaseURL
             )
         )
-        XCTAssertFalse(UserDefaults.standard.bool(
-            forKey: AppModel.lockedQuickCapturePreferenceKey
-        ))
         let inboxReadsAfterCompletion = await inbox.allReadCount()
         let manifestStates = await inbox.manifestStatesAtAllReads()
         XCTAssertEqual(inboxReadsAfterCompletion, 2)
@@ -874,25 +852,6 @@ final class AppModelTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let widgetStore = BudgetWidgetSnapshotStore(defaults: defaults)
         let services = AppModelServices()
-        let priorCapturePreference = UserDefaults.standard.object(
-            forKey: AppModel.lockedQuickCapturePreferenceKey
-        )
-        defer {
-            if let priorCapturePreference {
-                UserDefaults.standard.set(
-                    priorCapturePreference,
-                    forKey: AppModel.lockedQuickCapturePreferenceKey
-                )
-            } else {
-                UserDefaults.standard.removeObject(
-                    forKey: AppModel.lockedQuickCapturePreferenceKey
-                )
-            }
-        }
-        UserDefaults.standard.set(
-            true,
-            forKey: AppModel.lockedQuickCapturePreferenceKey
-        )
         widgetStore.publish(
             .available(percentUsed: 87, validUntil: .distantFuture),
             periodToken: "2026-08"
@@ -941,9 +900,6 @@ final class AppModelTests: XCTestCase {
                 for: fixture.databaseURL
             )
         )
-        XCTAssertTrue(UserDefaults.standard.bool(
-            forKey: AppModel.lockedQuickCapturePreferenceKey
-        ))
         XCTAssertEqual(widgetStore.read(), .disabled)
         XCTAssertEqual(services.intelligence.refreshInvocationCount, 0)
         let manifestStates = await inbox.manifestStatesAtAllReads()
@@ -2098,25 +2054,6 @@ final class AppModelTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let widgetStore = BudgetWidgetSnapshotStore(defaults: defaults)
-        let priorCapturePreference = UserDefaults.standard.object(
-            forKey: AppModel.lockedQuickCapturePreferenceKey
-        )
-        defer {
-            if let priorCapturePreference {
-                UserDefaults.standard.set(
-                    priorCapturePreference,
-                    forKey: AppModel.lockedQuickCapturePreferenceKey
-                )
-            } else {
-                UserDefaults.standard.removeObject(
-                    forKey: AppModel.lockedQuickCapturePreferenceKey
-                )
-            }
-        }
-        UserDefaults.standard.set(
-            true,
-            forKey: AppModel.lockedQuickCapturePreferenceKey
-        )
         let model = fixture.model(
             profile: profile,
             lockedCaptureStore: inbox,
@@ -2262,9 +2199,6 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(widgetStore.read(), .disabled)
         let inboxReadsAtBoundary = await inbox.allReadCount()
         XCTAssertEqual(inboxReadsAtBoundary, inboxReadsBeforeCommit + 2)
-        XCTAssertTrue(UserDefaults.standard.bool(
-            forKey: AppModel.lockedQuickCapturePreferenceKey
-        ))
 
         await publicationGate.release()
         try await restoreTask.value
@@ -2275,9 +2209,6 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.state, .ready)
         XCTAssertNil(model.startupFailureKind)
         XCTAssertEqual(model.profile, profile)
-        XCTAssertFalse(UserDefaults.standard.bool(
-            forKey: AppModel.lockedQuickCapturePreferenceKey
-        ))
         let inboxReadsAfterPublication = await inbox.allReadCount()
         XCTAssertEqual(inboxReadsAfterPublication, inboxReadsBeforeCommit + 3)
         guard case .needsBudget = widgetStore.read() else {
@@ -2331,25 +2262,6 @@ final class AppModelTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let widgetStore = BudgetWidgetSnapshotStore(defaults: defaults)
         let services = AppModelServices()
-        let priorCapturePreference = UserDefaults.standard.object(
-            forKey: AppModel.lockedQuickCapturePreferenceKey
-        )
-        defer {
-            if let priorCapturePreference {
-                UserDefaults.standard.set(
-                    priorCapturePreference,
-                    forKey: AppModel.lockedQuickCapturePreferenceKey
-                )
-            } else {
-                UserDefaults.standard.removeObject(
-                    forKey: AppModel.lockedQuickCapturePreferenceKey
-                )
-            }
-        }
-        UserDefaults.standard.set(
-            true,
-            forKey: AppModel.lockedQuickCapturePreferenceKey
-        )
         let model = fixture.model(
             profile: profile,
             lockedCaptureStore: inbox,
@@ -2423,9 +2335,6 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(manifestStates, [false, false, false, true])
         XCTAssertEqual(widgetStore.read(), .disabled)
         XCTAssertEqual(services.intelligence.refreshInvocationCount, 0)
-        XCTAssertTrue(UserDefaults.standard.bool(
-            forKey: AppModel.lockedQuickCapturePreferenceKey
-        ))
         XCTAssertFalse(
             KeyCliffRecoveryTransaction.hasPendingManifest(
                 for: fixture.databaseURL
@@ -9162,99 +9071,88 @@ final class AppModelTests: XCTestCase {
         await fixture.store.close()
     }
 
+    /// One Log: a widget, control or Shortcut tap while locked waits behind
+    /// the normal unlock and then opens Log in the requested mode. There is no
+    /// reduced locked form and nothing is written to the locked inbox.
     @MainActor
-    func testExpenseDeepLinkWhileLockedOffersOnlyLockedCapture() async throws {
+    func testWidgetTapWhileLockedOpensTheOneLogAfterUnlock() async throws {
+        let fixture = try AppModelFixture()
+        defer { fixture.removeFiles() }
+        try await fixture.seed(
+            profile: UserProfile(baseCurrency: fixture.sgd),
+            accounts: [fixture.wallet, fixture.usAccount, fixture.food]
+        )
+        let reopened = try fixture.reopenStore()
+        let inbox = InMemoryLockedCaptureStore(captures: [])
+        let broker = MoneyUpQuickActionRouteBroker()
+        let model = fixture.model(
+            lockedCaptureStore: inbox,
+            quickActionRouteBroker: broker,
+            openDatabaseStore: { _ in
+                OpenedDatabaseStore(store: reopened, unlockToFirstUsefulContentInterval: nil)
+            }
+        )
+        model.lock()
+        XCTAssertEqual(model.state, .locked)
+        XCTAssertTrue(broker.submit(.expense))
+
+        XCTAssertEqual(
+            MoneyUpQuickActionRouting.routeNext(from: broker, into: model),
+            .requiresStart
+        )
+        XCTAssertEqual(model.state, .locked, "Nothing opens before the normal unlock")
+        let request = try XCTUnwrap(model.requestedQuickLogRequest)
+        XCTAssertEqual(request.mode, .expense)
+
+        let started = await model.start()
+        XCTAssertTrue(started)
+        XCTAssertEqual(model.state, .ready)
+        XCTAssertEqual(model.requestedQuickLogRequest, request, "Unlock keeps the tap for Log")
+        XCTAssertTrue(model.presentQuickLogRequest(request))
+        model.consumeQuickLogRequest(request)
+        XCTAssertNil(model.requestedQuickLogRequest)
+        XCTAssertEqual(broker.pendingCount, 0)
+        let captures = try await inbox.all()
+        XCTAssertTrue(captures.isEmpty, "The retired locked inbox is never written")
+        await reopened.close()
+        await fixture.store.close()
+    }
+
+    @MainActor
+    func testEveryQuickLogRouteWhileLockedWaitsForTheNormalUnlock() async throws {
         let fixture = try AppModelFixture()
         defer { fixture.removeFiles() }
         let model = fixture.model()
-        UserDefaults.standard.set(
-            true,
-            forKey: AppModel.lockedQuickCapturePreferenceKey
-        )
-
         model.lock()
-        let handled = model.handleDeepLink(
-            try XCTUnwrap(URL(string: "moneyup://quick-log/expense"))
-        )
 
-        XCTAssertTrue(handled)
-        XCTAssertEqual(model.state, .locked)
-        XCTAssertEqual(model.requestedQuickLogMode, .expense)
-        XCTAssertTrue(model.canPresentLockedQuickCapture)
+        for action in MoneyUpQuickAction.allCases {
+            let handled = model.handleDeepLink(action.deepLink)
+            XCTAssertTrue(handled, "\(action)")
+            XCTAssertEqual(model.state, .locked, "\(action)")
+            XCTAssertEqual(model.requestedQuickLogMode, QuickLogLaunchMode(action), "\(action)")
+        }
         await fixture.store.close()
     }
 
     @MainActor
-    func testColdBasicDeepLinkRoutesBeforeProtectedBookStartup() throws {
-        let model = AppModel(
-            dataEraseIntent: .none,
-            quickActionRouteBroker: MoneyUpQuickActionRouteBroker()
-        )
-        UserDefaults.standard.set(
-            true,
-            forKey: AppModel.lockedQuickCapturePreferenceKey
-        )
+    func testColdQuickLogDeepLinkKeepsTheNormalProtectedStartup() throws {
+        for path in ["expense", "scan-receipt"] {
+            let model = AppModel(
+                dataEraseIntent: .none,
+                quickActionRouteBroker: MoneyUpQuickActionRouteBroker()
+            )
+            let handled = model.handleDeepLink(
+                try XCTUnwrap(URL(string: "moneyup://quick-log/\(path)"))
+            )
 
-        let handled = model.handleDeepLink(
-            try XCTUnwrap(URL(string: "moneyup://quick-log/expense"))
-        )
-
-        XCTAssertTrue(handled)
-        XCTAssertEqual(model.state, .locked)
-        XCTAssertTrue(model.canPresentLockedQuickCapture)
+            XCTAssertTrue(handled, path)
+            XCTAssertEqual(model.state, .launching, "\(path) must not skip startup")
+            XCTAssertNotNil(model.requestedQuickLogMode, path)
+        }
     }
 
     @MainActor
-    func testColdReceiptDeepLinkDoesNotEnterRedactedCapture() throws {
-        let model = AppModel(
-            dataEraseIntent: .none,
-            quickActionRouteBroker: MoneyUpQuickActionRouteBroker()
-        )
-        UserDefaults.standard.set(
-            true,
-            forKey: AppModel.lockedQuickCapturePreferenceKey
-        )
-
-        let handled = model.handleDeepLink(
-            try XCTUnwrap(URL(string: "moneyup://quick-log/scan-receipt"))
-        )
-
-        XCTAssertTrue(handled)
-        XCTAssertEqual(model.state, .launching)
-        XCTAssertFalse(model.canPresentLockedQuickCapture)
-    }
-
-    @MainActor
-    func testLockedCaptureKeepsRouteUntilSuccessScreenIsDismissed() async throws {
-        let fixture = try AppModelFixture()
-        defer { fixture.removeFiles() }
-        let inbox = InMemoryLockedCaptureStore(captures: [])
-        let model = fixture.model(lockedCaptureStore: inbox)
-        UserDefaults.standard.set(
-            true,
-            forKey: AppModel.lockedQuickCapturePreferenceKey
-        )
-        model.lock()
-        _ = model.handleDeepLink(
-            try XCTUnwrap(URL(string: "moneyup://quick-log/expense"))
-        )
-
-        try await model.saveLockedCapture(
-            mode: .expense,
-            amountText: "12.50",
-            payee: "",
-            note: ""
-        )
-
-        XCTAssertEqual(model.requestedQuickLogMode, .expense)
-        XCTAssertEqual(model.pendingLockedCaptureCount, 1)
-        let captures = try await inbox.all()
-        XCTAssertEqual(captures.count, 1)
-        await fixture.store.close()
-    }
-
-    @MainActor
-    func testPendingEraseIntentDeniesAndForgetsLockedCaptureRoute() async throws {
+    func testPendingEraseIntentDeniesAndForgetsQuickLogRoute() async throws {
         let fixture = try AppModelFixture()
         defer { fixture.removeFiles() }
         let inbox = InMemoryLockedCaptureStore(captures: [])
@@ -9266,42 +9164,25 @@ final class AppModelTests: XCTestCase {
                 clear: {}
             )
         )
-        UserDefaults.standard.set(
-            true,
-            forKey: AppModel.lockedQuickCapturePreferenceKey
-        )
         model.lock()
 
         let handled = model.handleDeepLink(
             try XCTUnwrap(URL(string: "moneyup://quick-log/expense"))
         )
 
+        // Startup must resume the erase instead of opening doomed input.
         XCTAssertFalse(handled)
         XCTAssertNil(model.requestedQuickLogMode)
-        XCTAssertFalse(model.canPresentLockedQuickCapture)
-        do {
-            try await model.saveLockedCapture(
-                mode: .expense,
-                amountText: "12.50",
-                payee: "",
-                note: ""
-            )
-            XCTFail("A pending erase must deny redacted capture")
-        } catch AppModelError.locked {
-            // Startup must resume the erase instead of accepting doomed input.
-        }
         let captures = try await inbox.all()
         XCTAssertTrue(captures.isEmpty)
         await fixture.store.close()
     }
 
     @MainActor
-    func testEraseIntentReadFailureFailsClosedForLockedCapture() async throws {
+    func testEraseIntentReadFailureFailsClosedForQuickLogRoute() async throws {
         let fixture = try AppModelFixture()
         defer { fixture.removeFiles() }
-        let inbox = InMemoryLockedCaptureStore(captures: [])
         let model = fixture.model(
-            lockedCaptureStore: inbox,
             dataEraseIntent: DataEraseIntentAccess(
                 isPending: {
                     throw DatabaseKeyStoreError.unexpectedStatus(-31_339)
@@ -9310,10 +9191,6 @@ final class AppModelTests: XCTestCase {
                 clear: {}
             )
         )
-        UserDefaults.standard.set(
-            true,
-            forKey: AppModel.lockedQuickCapturePreferenceKey
-        )
         model.lock()
 
         _ = model.handleDeepLink(
@@ -9321,101 +9198,6 @@ final class AppModelTests: XCTestCase {
         )
 
         XCTAssertNil(model.requestedQuickLogMode)
-        XCTAssertFalse(model.canPresentLockedQuickCapture)
-        let captures = try await inbox.all()
-        XCTAssertTrue(captures.isEmpty)
-        await fixture.store.close()
-    }
-
-    @MainActor
-    func testAcceptedLockedCaptureWriteBlocksEraseUntilAppendFinishes() async throws {
-        let fixture = try AppModelFixture()
-        defer { fixture.removeFiles() }
-        let gate = AsyncGate()
-        let inbox = PausingAppendLockedCaptureStore(gate: gate)
-        let events = EraseEventRecorder()
-        let model = fixture.model(
-            lockedCaptureStore: inbox,
-            dataEraseIntent: DataEraseIntentAccess(
-                isPending: { false },
-                markPending: { events.record("intent-marked") },
-                clear: {}
-            )
-        )
-        UserDefaults.standard.set(
-            true,
-            forKey: AppModel.lockedQuickCapturePreferenceKey
-        )
-        model.lock()
-        _ = model.handleDeepLink(
-            try XCTUnwrap(URL(string: "moneyup://quick-log/expense"))
-        )
-        let saveTask = Task { @MainActor in
-            try await model.saveLockedCapture(
-                mode: .expense,
-                amountText: "12.50",
-                payee: "",
-                note: ""
-            )
-        }
-        await gate.waitUntilReached()
-
-        await model.eraseAllDataAndRestart()
-
-        XCTAssertTrue(events.snapshot().isEmpty)
-        XCTAssertTrue(FileManager.default.fileExists(atPath: fixture.databaseURL.path))
-        await gate.release()
-        try await saveTask.value
-        let captures = try await inbox.all()
-        XCTAssertEqual(captures.count, 1)
-        await fixture.store.close()
-    }
-
-    @MainActor
-    func testLockedCaptureRejectsMismatchedAndProtectedRoutes() async throws {
-        let fixture = try AppModelFixture()
-        defer { fixture.removeFiles() }
-        let inbox = InMemoryLockedCaptureStore(captures: [])
-        let model = fixture.model(lockedCaptureStore: inbox)
-        UserDefaults.standard.set(
-            true,
-            forKey: AppModel.lockedQuickCapturePreferenceKey
-        )
-        model.lock()
-        _ = model.handleDeepLink(
-            try XCTUnwrap(URL(string: "moneyup://quick-log/expense"))
-        )
-
-        do {
-            try await model.saveLockedCapture(
-                mode: .income,
-                amountText: "12.50",
-                payee: "",
-                note: ""
-            )
-            XCTFail("Expected a mismatched locked route to be rejected")
-        } catch AppModelError.locked {
-            // The redacted form may only save the route the user opened.
-        }
-
-        _ = model.handleDeepLink(
-            try XCTUnwrap(URL(string: "moneyup://quick-log/scan-receipt"))
-        )
-        do {
-            try await model.saveLockedCapture(
-                mode: .scanReceipt,
-                amountText: "12.50",
-                payee: "",
-                note: ""
-            )
-            XCTFail("Expected a protected receipt route to require unlock")
-        } catch AppModelError.locked {
-            // Receipt capture never writes to the redacted inbox.
-        }
-
-        let captures = try await inbox.all()
-        XCTAssertTrue(captures.isEmpty)
-        XCTAssertEqual(model.pendingLockedCaptureCount, 0)
         await fixture.store.close()
     }
 
@@ -17153,36 +16935,6 @@ actor InMemoryLockedCaptureStore: LockedCaptureStoring {
             removeFailuresRemaining -= 1
             throw LockedCaptureStoreError.unavailable
         }
-        captures.removeAll { $0.id == id }
-        return captures.count
-    }
-
-    func eraseAll() async throws {
-        captures.removeAll()
-    }
-}
-
-private actor PausingAppendLockedCaptureStore: LockedCaptureStoring {
-    private let gate: AsyncGate
-    private var captures: [LockedCapture] = []
-
-    init(gate: AsyncGate) {
-        self.gate = gate
-    }
-
-    func all() async throws -> [LockedCapture] {
-        captures
-    }
-
-    @discardableResult
-    func append(_ capture: LockedCapture) async throws -> Int {
-        await gate.suspend()
-        captures.append(capture)
-        return captures.count
-    }
-
-    @discardableResult
-    func remove(id: UUID) async throws -> Int {
         captures.removeAll { $0.id == id }
         return captures.count
     }

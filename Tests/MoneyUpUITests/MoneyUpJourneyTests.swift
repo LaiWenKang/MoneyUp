@@ -218,47 +218,25 @@ final class MoneyUpJourneyTests: XCTestCase {
         expectTrue(chip.waitForExistence(timeout: timeout))
     }
 
-    // MARK: Locked capture, widget route, and unlock
+    // MARK: Widget route while locked
 
-    func testWidgetRouteWhileLockedCapturesPrivatelyWithAFavourite() {
+    /// One Log: a widget tap while locked shows no reduced form. It waits for
+    /// the normal unlock (the harness opens the book without Face ID) and lands
+    /// in the full Log, favourites included, ready to save.
+    func testWidgetTapWhileLockedOpensTheFullLogAfterUnlock() {
         let app = launch(favourites: true, locked: true)
         openWidgetLink("expense", in: app)
-        let amount = app.textFields["locked-capture-amount"]
-        expectTrue(amount.waitForExistence(timeout: timeout), "Locked capture did not open")
-        let lunch = app.buttons["locked-favourite-Lunch"]
-        expectTrue(lunch.waitForExistence(timeout: timeout), "Opted-in favourites are missing")
+        let amount = app.textFields["quick-log-amount"]
+        expectTrue(amount.waitForExistence(timeout: timeout), "The widget did not open Log")
+        expectFalse(app.textFields["locked-capture-amount"].exists, "There is no separate locked form")
+        let lunch = app.buttons["quick-log-favourite-Lunch"]
+        expectTrue(lunch.waitForExistence(timeout: timeout), "Favourites belong to the one Log")
         lunch.tap()
-        amount.tap()
-        amount.typeText("8")
-        let save = app.buttons["locked-capture-save"]
-        expectTrue(save.isHittable, "Save must stay above the keyboard")
-        save.tap()
-        expectTrue(app.buttons["locked-capture-done"].waitForExistence(timeout: timeout))
-        attachScreenshot(app, "journey-locked-captured")
-        app.buttons["locked-capture-done"].tap()
-    }
-
-    func testLockedCaptureArrivesInLogWithItsFavouriteAfterUnlock() {
-        let app = launch(favourites: true, locked: true)
-        openWidgetLink("expense", in: app)
-        let amount = app.textFields["locked-capture-amount"]
-        expectTrue(amount.waitForExistence(timeout: timeout))
-        app.buttons["locked-favourite-Lunch"].tap()
-        amount.tap()
-        amount.typeText("9")
-        app.buttons["locked-capture-unlock"].tap()
-        let payee = app.textFields["quick-log-payee"]
-        expectTrue(payee.waitForExistence(timeout: timeout), "Unlock did not open Log")
-        expectEqual(payee.value as? String, "Lunch", "The capture did not arrive in Log")
-    }
-
-    func testUnlockFromLockedCaptureShowsFavourites() {
-        let app = launch(favourites: true, locked: true)
-        openWidgetLink("expense", in: app)
-        let unlock = app.buttons["locked-capture-unlock"]
-        expectTrue(unlock.waitForExistence(timeout: timeout))
-        unlock.tap()
-        expectTrue(app.buttons["quick-log-favourite-Lunch"].waitForExistence(timeout: timeout))
+        type("8", into: amount)
+        eventually("isEnabled == true", app.buttons["log-save"], "The widget entry must be savable")
+        app.buttons["log-save"].tap()
+        expectTrue(app.buttons["log-undo"].waitForExistence(timeout: timeout), "Saved confirmation did not appear")
+        attachScreenshot(app, "journey-widget-while-locked")
     }
 
     // MARK: Negative paths and conflicts
@@ -307,14 +285,13 @@ final class MoneyUpJourneyTests: XCTestCase {
 
     // MARK: Accessibility audits
 
-    func testAccessibilityAuditOfLogAndLockedCapture() throws {
+    func testAccessibilityAuditOfLogAndTheLockScreen() throws {
         let app = launch(favourites: true)
         _ = openLog(app)
         try app.performAccessibilityAudit(for: [.sufficientElementDescription, .hitRegion, .trait])
         app.terminate()
+        // The lock screen now fronts every widget tap made while locked.
         let locked = launch(favourites: true, locked: true)
-        openWidgetLink("expense", in: locked)
-        expectTrue(locked.textFields["locked-capture-amount"].waitForExistence(timeout: timeout))
         try locked.performAccessibilityAudit(for: [.sufficientElementDescription, .hitRegion, .trait])
     }
 }

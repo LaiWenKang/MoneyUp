@@ -157,46 +157,39 @@ final class QuickLogFavouriteAppTests: XCTestCase {
 }
 
 extension QuickLogFavouriteAppTests {
+    /// Favourites are never shown while locked any more. Labels an earlier
+    /// build left in the separate locked store are deleted when a book opens,
+    /// and by Erase all data.
     @MainActor
-    func testLockedFavouritesExistOnlyWhileOptedInAndAreErasedWithTheBook() async throws {
-        let store = InMemoryLockedFavouriteShortcutStore()
+    func testRetiredLockedFavouritesAreErasedWhenABookOpensAndOnErase() async throws {
         let fixture = try AppModelFixture()
         defer { fixture.removeFiles() }
-        let lunch = QuickLogFavourite(name: "Lunch", kind: .expense, accountID: fixture.wallet.id,
-                                      categoryID: fixture.food.id)
-        var profile = UserProfile(baseCurrency: fixture.sgd, quickLogFavourites: [lunch])
-        let model = fixture.model(profile: profile, accounts: [fixture.wallet, fixture.food],
-                                  lockedFavouriteStore: store)
+        let store = InMemoryLockedFavouriteShortcutStore(holdsRetiredLabels: true)
+        let model = fixture.model(lockedFavouriteStore: store)
 
-        await model.syncLockedFavourites()
-        let offByDefault = await store.all()
-        XCTAssertTrue(offByDefault.isEmpty, "Nothing is readable while locked unless opted in")
+        model.scheduleRetiredLockedFavouritesErase()
+        for _ in 0..<200 {
+            if await store.holdsRetiredLabels == false { break }
+            await Task.yield()
+        }
+        let afterOpen = await store.holdsRetiredLabels
+        XCTAssertFalse(afterOpen, "Opening a book deletes labels an earlier build left")
 
-        profile.showsFavouritesWhileLocked = true
-        model.profile = profile
-        await model.syncLockedFavourites()
-        let optedIn = await store.all()
-        XCTAssertEqual(optedIn.map(\.name), ["Lunch"])
-        XCTAssertEqual(optedIn.first?.capturePayee, "Lunch")
-
-        profile.allowLockedQuickCapture = false
-        model.profile = profile
-        await model.syncLockedFavourites()
-        let captureOff = await store.all()
-        XCTAssertTrue(captureOff.isEmpty, "Turning off locked capture removes the labels")
-
-        try await store.replace(with: [LockedFavouriteShortcut(lunch)])
+        let erasedWithTheBook = InMemoryLockedFavouriteShortcutStore(holdsRetiredLabels: true)
         try await AppModel.completePendingDataErase(
             databaseURL: fixture.databaseURL,
             deleteDatabaseKey: {},
             lockedCaptureStore: InMemoryLockedCaptureStore(captures: []),
-            eraseLockedFavourites: { try await store.eraseAll() },
+            eraseLockedFavourites: { try await erasedWithTheBook.eraseAll() },
             clearEraseIntent: {}
         )
-        let erased = await store.all()
-        XCTAssertTrue(erased.isEmpty, "Erase removes locked favourites")
+        let afterErase = await erasedWithTheBook.holdsRetiredLabels
+        XCTAssertFalse(afterErase, "Erase removes them too")
+        await fixture.store.close()
     }
 
+    /// A capture saved while locked by an earlier build still regains its
+    /// favourite's account and category when it is promoted into Log.
     @MainActor
     func testLockedFavouriteCaptureRegainsItsAccountAndCategoryAfterUnlock() throws {
         let fixture = try AppModelFixture()
@@ -335,15 +328,6 @@ extension QuickLogFavouriteAppTests {
                 .environment(emptyModel),
             name: "log-favourites-empty", size: CGSize(width: 390, height: 844), scheme: .dark
         )
-        let request = QuickLogRouteRequest(id: 1, ingressToken: UUID(), requiresIngressAcknowledgement: false,
-                                           generation: 0, mode: .expense)
-        let lockedModel = fixture.model(profile: UserProfile(baseCurrency: fixture.sgd),
-            accounts: [fixture.wallet, fixture.food],
-            lockedFavouriteStore: InMemoryLockedFavouriteShortcutStore(
-                favourites.prefix(2).map { LockedFavouriteShortcut($0) }
-            ))
-        await capture(LockedQuickCaptureView(request: request).environment(lockedModel),
-                      name: "locked-capture", size: CGSize(width: 390, height: 844), scheme: .dark)
         model.flushQuickLogDraftImmediately()
         await model.waitForPendingQuickLogDraftFlush()
         await fixture.store.close()

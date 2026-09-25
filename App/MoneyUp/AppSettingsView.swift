@@ -178,23 +178,6 @@ struct AppSettingsView: View {
                     Label("settings.auto_lock", systemImage: "timer")
                 }
 
-                Toggle(
-                    isOn: Binding(
-                        get: {
-                            bindableModel.profile?.allowLockedQuickCapture ?? true
-                        },
-                        set: { enabled in
-                            Task {
-                                await update {
-                                    try await bindableModel.updateLockedQuickCapture(enabled)
-                                }
-                            }
-                        }
-                    )
-                ) {
-                    Label("settings.locked_capture", systemImage: "bolt.badge.clock")
-                }
-
                 Button {
                     // Like Assets: an explicit lock must not re-authenticate on the next activation.
                     bindableModel.lockManually()

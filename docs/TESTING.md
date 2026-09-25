@@ -8,10 +8,10 @@ device lane passes on a physical iPhone.
 |---|---|---|---|
 | Domain and property tests | `Tests/MoneyUpCoreTests` (incl. `FuzzAndPropertyTests`) | Money, parsing, import/export, and profile invariants hold for seeded random and hostile input: no crash, no NaN, conservation, idempotence, CRLF/LF parity | `swift test --parallel` |
 | Persistence | `Tests/MoneyUpPersistenceTests` | SQLCipher store integrity, bounds, migrations | `swift test --parallel` |
-| App model and cross-feature | `Tests/MoneyUpAppTests` (incl. `CrossFeatureAndStressTests`) | Every entry kind × split × currency × favourite balances per currency and undoes exactly; locked-capture routing matrix; rapid-save and favourite-churn stress; 5,000-entry projection; injected store failures leave nothing half-applied | `xcodebuild -scheme MoneyUp … test` |
-| Lifecycle, interruption, security | `Tests/MoneyUpAppTests` (`AppModelTests`, `PlatformQuickLogActionTests`, …) | Erase/restore/key-cliff interruption at every checkpoint, crash replay of widget ingress, locked-capture isolation | same |
+| App model and cross-feature | `Tests/MoneyUpAppTests` (incl. `CrossFeatureAndStressTests`) | Every entry kind × split × currency × favourite balances per currency and undoes exactly; earlier builds' locked-capture routing matrix; rapid-save and favourite-churn stress; 5,000-entry projection; injected store failures leave nothing half-applied | `xcodebuild -scheme MoneyUp … test` |
+| Lifecycle, interruption, security | `Tests/MoneyUpAppTests` (`AppModelTests`, `PlatformQuickLogActionTests`, …) | Erase/restore/key-cliff interruption at every checkpoint, crash replay of widget ingress, locked widget taps waiting for the normal unlock | same |
 | Render evidence | `…RenderTests`, `QuickLogFavouriteAppTests` | Screens and widget cards in light/dark, English/Chinese, AX5 | same; export attachments with `xcresulttool` |
-| End-to-end journeys | `Tests/MoneyUpUITests/MoneyUpJourney*` | Real taps through the running app: every tab, log/undo, favourites, save-as-favourite, widget route while locked, unlock into Log, conflicts, relaunch, locking mid-entry, rapid taps, Smart Entry, History search, Settings, Chinese, AX5, and accessibility audits of every tab | `xcodebuild -scheme MoneyUpColdLaunch … CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- test` |
+| End-to-end journeys | `Tests/MoneyUpUITests/MoneyUpJourney*` | Real taps through the running app: every tab, log/undo, favourites, save-as-favourite, widget tap while locked opening the full Log after unlock, conflicts, relaunch, locking mid-entry, rapid taps, Smart Entry, History search, Settings, Chinese, AX5, and accessibility audits of every tab | `xcodebuild -scheme MoneyUpColdLaunch … CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- test` |
 | Performance baselines | `Tests/MoneyUpPerformanceTests` | 10,000-entry open/save/query/export/restore timings on a fixed simulator | `MoneyUpPerformance` scheme (CI) |
 | Device lane | `Scripts/run_device_lane.sh` | The device-only failures the simulator cannot reproduce (the 1064.1 type-depth crash): crash guards plus every journey on a connected iPhone | `DEVELOPMENT_TEAM=<id> Scripts/run_device_lane.sh` |
 | Static validators | `Scripts/validate_*.py` + their tests | Privacy boundary, pinned reviewed code, launch safety, localisation, contrast, structure limits | `python3 Scripts/validate_<name>.py`, `python3 -m unittest discover -s Scripts/tests` |
@@ -21,9 +21,10 @@ device lane passes on a physical iPhone.
 `App/MoneyUp/MoneyUpUITestHarness.swift` exists only in Debug builds (the
 Release binary contains no trace of it). Launching with `-MoneyUpUITest`
 opens a seeded, fixed-key temporary book through the normal startup path,
-so lock, unlock, locked capture, and routing run production code; only the
-Face ID prompt a simulator cannot answer is replaced. Options:
-`-MoneyUpUITestReset`, `-MoneyUpUITestFavourites`, `-MoneyUpUITestStartLocked`.
+so lock, unlock, and routing run production code; only the Face ID prompt a
+simulator cannot answer is replaced. Options: `-MoneyUpUITestReset` (also
+clears widget taps an earlier journey left queued), `-MoneyUpUITestFavourites`,
+`-MoneyUpUITestStartLocked`.
 
 Journeys deliver widget links with `XCUIDevice.shared.system.open`, the way the
 system does. `XCUIApplication.open(_:)` relaunches the app without its launch

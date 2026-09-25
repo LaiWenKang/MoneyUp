@@ -137,10 +137,6 @@ extension AppModel {
             from: .profile
         )
         if let profile, mode.updatesPreferences {
-            UserDefaults.standard.set(
-                profile.allowLockedQuickCapture,
-                forKey: Self.lockedQuickCapturePreferenceKey
-            )
             // Re-encode on open so legacy profiles persist the inferred
             // opt-out and reporting zone instead of re-inferring after travel.
             try await store.upsert(

@@ -15,13 +15,9 @@ struct RootView: View {
             case .launching:
                 LaunchingView()
             case .locked:
-                if model.canPresentLockedQuickCapture,
-                   let request = model.requestedQuickLogRequest {
-                    LockedQuickCaptureView(request: request)
-                        .id(request.id)
-                } else {
-                    LockedView()
-                }
+                // A widget, control or Shortcut request waits here for the
+                // normal unlock, then opens the one Log.
+                LockedView()
             case .onboarding:
                 OnboardingView()
             case .ready:
@@ -69,6 +65,7 @@ private struct LockedView: View {
                         .accessibilityHidden(true)
                     Text("lock.title")
                         .font(.largeTitle.bold())
+                        .accessibilityAddTraits(.isHeader)
 
                     if let method, method.isAvailable {
                         Text("lock.detail")

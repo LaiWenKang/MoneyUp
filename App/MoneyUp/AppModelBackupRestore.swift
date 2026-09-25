@@ -329,14 +329,7 @@ extension AppModel {
             allowancePlans: allowancePlans,
             in: store
         )
-        if let profile {
-            UserDefaults.standard.set(
-                profile.allowLockedQuickCapture,
-                forKey: Self.lockedQuickCapturePreferenceKey
-            )
-        }
-        // A restored book replaces the locked labels too, never keeps them.
-        scheduleLockedFavouriteSync()
+        scheduleRetiredLockedFavouritesErase()
         state = .ready
     }
 

@@ -7,11 +7,12 @@ import MoneyUpPersistence
 /// Release builds entirely. When the process is launched with `-MoneyUpUITest`
 /// it replaces only the key and database location: a fixed test key opens a
 /// temporary, seeded SQLCipher book through the normal startup path, so lock,
-/// unlock, Quick Log, and locked capture all run production code.
+/// unlock, Quick Log, and widget routes all run production code.
 @MainActor
 enum MoneyUpUITestHarness {
     static let enableArgument = "-MoneyUpUITest"
-    /// Wipe the harness book before launch; without it state survives relaunch.
+    /// Wipe the harness book and any widget route an earlier journey left
+    /// queued before launch; without it state survives relaunch.
     static let resetArgument = "-MoneyUpUITestReset"
     static let favouritesArgument = "-MoneyUpUITestFavourites"
     static let startLockedArgument = "-MoneyUpUITestStartLocked"
@@ -27,6 +28,7 @@ enum MoneyUpUITestHarness {
             // Journeys run with the shipped default (amounts hidden), never
             // with whatever an earlier session left on this simulator.
             UserDefaults.standard.removeObject(forKey: MoneyAmountPrivacy.storageKey)
+            removeQueuedWidgetRoutes()
         }
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let databaseURL = directory.appendingPathComponent("book.sqlite3")
@@ -59,10 +61,21 @@ enum MoneyUpUITestHarness {
             // Open the seeded book through the normal startup path.
             _ = await model.start()
             guard startsLocked, model.state == .ready else { return }
-            await model.syncLockedFavourites()
             model.lock()
         }
         return model
+    }
+
+    /// A widget tap is durable until Log consumes it, so a journey that ends
+    /// before unlocking would otherwise open Log in the next journey. This runs
+    /// before the shared broker first reads its queue.
+    private static func removeQueuedWidgetRoutes() {
+        guard let container = FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: BudgetWidgetSnapshotStore.appGroupIdentifier
+        ) else { return }
+        try? FileManager.default.removeItem(at: container
+            .appendingPathComponent("Library/Application Support", isDirectory: true)
+            .appendingPathComponent(MoneyUpQuickActionIngressFileStore.storageDirectoryName, isDirectory: true))
     }
 
     static func seedWrites(withFavourites: Bool) throws -> [RecordWrite] {
@@ -75,12 +88,7 @@ enum MoneyUpUITestHarness {
             QuickLogFavourite(name: "Coffee", kind: .expense, amount: Decimal(string: "3.2"),
                               accountID: wallet.id, categoryID: food?.id)
         ] : []
-        let profile = UserProfile(
-            baseCurrency: sgd,
-            allowLockedQuickCapture: true,
-            quickLogFavourites: favourites,
-            showsFavouritesWhileLocked: withFavourites
-        )
+        let profile = UserProfile(baseCurrency: sgd, quickLogFavourites: favourites)
         var writes = [try RecordWrite(profile, id: UserProfile.primaryRecordID, in: .profile)]
         writes += try book.accounts.map { try RecordWrite($0, id: $0.id.uuidString, in: .accounts) }
         writes += try book.budgetNodes.map { try RecordWrite($0, id: $0.id.uuidString, in: .budgetNodes) }

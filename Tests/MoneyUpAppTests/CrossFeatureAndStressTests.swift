@@ -306,8 +306,6 @@ final class CrossFeatureAndStressTests: XCTestCase {
             XCTAssertLessThanOrEqual(favourite.name.count, QuickLogFavourite.maximumNameLength)
             XCTAssertLessThanOrEqual(favourite.payee.count, QuickLogFavourite.maximumPayeeLength)
             XCTAssertLessThanOrEqual(favourite.note.count, QuickLogFavourite.maximumNoteLength)
-            let locked = LockedFavouriteShortcut(favourite)
-            XCTAssertTrue(locked.isStructurallyValid, "Every saved favourite must fit the locked store")
         }
         let beyond = QuickLogFavourite(name: "Too much", kind: .expense, amount: QuickLogFavourite.maximumAmount + 1)
         XCTAssertNil(beyond.amount, "Amounts past the ceiling are rejected, not truncated")
