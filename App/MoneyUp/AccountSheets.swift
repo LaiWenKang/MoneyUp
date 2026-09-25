@@ -34,7 +34,9 @@ struct AddAccountSheet: View {
     @State private var errorMessage: String?
 
     private var startingBalance: Decimal? {
-        parsedOpeningBalance(from: startingBalanceText, accountType: type)
+        parsedOpeningBalance(
+            from: startingBalanceText, accountType: type, currency: try? CurrencyCode(currencyCode)
+        )
     }
 
     var body: some View {
@@ -198,7 +200,7 @@ struct AccountManagementSheet: View {
     }
 
     private var editedBalance: Decimal? {
-        guard let value = decimalAmount(from: balanceText) else { return nil }
+        guard let value = moneyAmount(from: balanceText, currency: currentAccount.currency) else { return nil }
         return validatedManagedBalance(
             value,
             accountKind: currentAccount.kind,

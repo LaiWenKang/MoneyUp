@@ -402,6 +402,7 @@ final class AppModel {
     var manualJournalMutationIsActive = false
     var widgetSnapshotRefreshWasDeferred = false
     var lockAfterLifecycleMutation = false
+    var lockAfterDisplayPreferenceWrite = false
     var goalMutationsInProgress = 0
     var goalMutationBarrierClosed = false
     var goalMutationDrainWaiters: [CheckedContinuation<Void, Never>] = []

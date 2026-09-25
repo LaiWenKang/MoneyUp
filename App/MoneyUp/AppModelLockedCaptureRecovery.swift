@@ -144,7 +144,7 @@ extension AppModel {
         )
         await lifecycleHooks.checkpoint(.afterCaptureDraftPersisted)
         guard ownsStoreGeneration(generation) else { return }
-        quickLogDraft = draft
+        publishModelQuickLogDraft(draft)
         let remainingCaptureCount = try await removePendingLockedCapture(id: capture.id, in: store)
         guard ownsStoreGeneration(generation) else { return }
         pendingLockedCaptureCount = remainingCaptureCount

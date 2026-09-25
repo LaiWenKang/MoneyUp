@@ -93,7 +93,8 @@ extension AppModel {
             ) else { throw AppModelError.invalidBook }
             date = attributedDate
         } else {
-            date = entry.occurredAt
+            // The origin day, as the SQL replay and reports read it.
+            date = entry.originContext.attributedDate(in: reportingCalendar) ?? entry.occurredAt
         }
         guard let month = reportingCalendar.dateInterval(
             of: .month,

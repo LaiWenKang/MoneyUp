@@ -354,7 +354,7 @@ struct BudgetSummaryCard: View {
                 }
                 Spacer(minLength: 0)
                 if !dynamicTypeSize.isAccessibilitySize, case let .available(ratio) = ratioResult {
-                    MoneyUpBudgetOrbit(ratio: ratio, elapsed: elapsed)
+                    MoneyUpBudgetOrbit(ratio: ratio, elapsed: elapsed, showsPercent: limit.amount > .zero)
                 }
             }
 

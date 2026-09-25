@@ -10,7 +10,8 @@ extension QuickLogEntryView {
     var primaryAmountControl: some View {
         let amountValidationMessage = monetaryInputError(
             text: amountText,
-            currency: selectedAccountCurrency
+            currency: selectedAccountCurrency,
+            isEditing: focusedField == .amount
         )
         // At accessibility sizes the currency moves under the amount so the
         // hero figure keeps the full width instead of clipping.
@@ -51,7 +52,8 @@ extension QuickLogEntryView {
     var destinationAmountControl: some View {
         let destinationAmountValidationMessage = monetaryInputError(
             text: destinationAmountText,
-            currency: selectedDestinationCurrency
+            currency: selectedDestinationCurrency,
+            isEditing: focusedField == .destinationAmount
         )
         HStack {
             TextField(
@@ -408,7 +410,8 @@ extension QuickLogEntryView {
             let lineID = line.id
             let lineValidationMessage = monetaryInputError(
                 text: line.amountText,
-                currency: selectedAccountCurrency
+                currency: selectedAccountCurrency,
+                isEditing: focusedField == .splitAmount(lineID)
             )
             let masksLineAmount = hidesAmounts
                 && focusedField != .splitAmount(lineID)

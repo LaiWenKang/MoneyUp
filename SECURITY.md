@@ -3,7 +3,7 @@
 MoneyUp handles sensitive financial data. Security claims here distinguish
 implemented controls from planned work and known limits.
 
-## Founders Beta 0.7.1 source controls
+## Founders Beta 0.7.2 source controls
 
 "Implemented" below describes the source-integrated candidate. Exact-candidate
 Mac CI, signed-entitlement inspection, physical-device checks, beta evidence,
@@ -32,7 +32,7 @@ and App Review remain separate release gates.
 | File-backed chunk-authenticated portable backup and transactional restore | Implemented with v1 compatibility and test coverage; exact-candidate/physical execution open |
 | Missing-device-key detection and keyless `.moneyup` recovery transaction | Implemented with isolated validation, crash-resume, and rollback tests; physical passcode-removal drill open |
 | Previewable local CSV/Qianji import with atomic commit | Implemented with test coverage; exact-candidate execution open |
-| SQLCipher schema-9 journal/posting/receipt/budget/intelligence/evidence indexes, store metrics, and compact exact balances | Implemented; exact-candidate tests open |
+| SQLCipher schema-10 journal/posting/receipt/budget/intelligence/evidence indexes, store metrics, and compact exact balances | Implemented; exact-candidate tests open |
 | Optional explainable local intelligence with review-only actions and derived-data opt-out clearing | Implemented; exact-candidate and physical review open |
 | Default-on, explicitly opt-out Foundation Models ordinal matching over at most 16 existing names per list, with no financial/free-text output | Implemented; Xcode 26 compile and eligible-device behavior gates open |
 | Optional end-to-end-encrypted device sync | Explicitly deferred from 1.0 |
@@ -133,7 +133,7 @@ The guarantee does not cover:
   mutations update each
   projection in the same transaction; rebuild is reserved for migration,
   restore, or repair.
-- Allowance archive history is additive inside the existing schema-9 encrypted
+- Allowance archive history is additive inside the existing encrypted
   payload and does not require a SQL migration. Current-format plans bind a
   supported per-plan marker, effective-dated transition timeline, and current
   state; partial, null, unsupported, unordered, or inconsistent forms fail

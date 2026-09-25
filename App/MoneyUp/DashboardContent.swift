@@ -246,7 +246,8 @@ extension DashboardView {
                     if case let .available(ratio) = budgetRatio(summary) {
                         MoneyUpBudgetOrbit(
                             ratio: ratio,
-                            elapsed: monthElapsed
+                            elapsed: monthElapsed,
+                            showsPercent: summary.limit.amount > .zero
                         )
                     }
                 }

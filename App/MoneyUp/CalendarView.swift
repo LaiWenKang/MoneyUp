@@ -25,13 +25,12 @@ struct CalendarView: View {
     }
 
     @Environment(AppModel.self) private var model
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Bindable private var workspace: PlanWorkspaceState
     private var selectedDate: Date { workspace.calendarDate }
     @State private var isAddingSchedule = false
     @State private var errorMessage: String?
     @State private var entryPendingDeletion: JournalEntry?
-    @State private var schedulePendingDeletion: ScheduledTransaction?
+    @State private var schedulePendingChange: PendingScheduleChange?
     @State private var scheduleBeingEdited: ScheduledTransaction?
     @State private var selectedEntries: [JournalEntry] = []
     @State private var isLoadingActuals = true
@@ -95,18 +94,7 @@ struct CalendarView: View {
                 Button("history.scope.today") { workspace.calendarDate = model.currentDateForUserAction() }
                     .font(.subheadline.weight(.semibold))
             }
-            if dynamicTypeSize.isAccessibilitySize {
-                // Seven columns cannot hold accessibility-size digits; the
-                // system picker reflows where a custom grid would clip.
-                DatePicker(
-                    "calendar.select_date",
-                    selection: $workspace.calendarDate,
-                    displayedComponents: .date
-                )
-                .datePickerStyle(.graphical)
-            } else {
-                CalendarMonthGrid(selection: $workspace.calendarDate)
-            }
+            ReportingDaySelector(selection: $workspace.calendarDate, calendar: model.reportingCalendar)
         }
     }
 
@@ -178,7 +166,7 @@ struct CalendarView: View {
         scheduleMatchCandidates = [:]
         scheduleMatchesLoading = []
         entryPendingDeletion = nil
-        schedulePendingDeletion = nil
+        schedulePendingChange = nil
         scheduleBeingEdited = nil
         isAddingSchedule = false
         errorMessage = nil
@@ -237,20 +225,24 @@ struct CalendarView: View {
                 Text("transaction.delete_detail")
             }
             .confirmationDialog(
-                "schedule.delete_title",
-                isPresented: deletionBinding(for: $schedulePendingDeletion),
+                schedulePendingChange?.title ?? "schedule.delete_title",
+                isPresented: deletionBinding(for: $schedulePendingChange),
                 titleVisibility: .visible,
-                presenting: schedulePendingDeletion
-            ) { item in
-                Button("action.delete", role: .destructive) {
-                    schedulePendingDeletion = nil
-                    Task { await delete(item) }
+                presenting: schedulePendingChange
+            ) { change in
+                Button(change.action, role: .destructive) {
+                    schedulePendingChange = nil
+                    if change.ends {
+                        perform { try await model.endScheduledTransaction(id: change.item.id) }
+                    } else {
+                        Task { await delete(change.item) }
+                    }
                 }
                 Button("action.cancel", role: .cancel) {
-                    schedulePendingDeletion = nil
+                    schedulePendingChange = nil
                 }
-            } message: { _ in
-                Text("schedule.delete_detail")
+            } message: { change in
+                Text(change.detail)
             }
             .moneyUpOperationErrorAlert(message: $errorMessage)
     }
@@ -317,7 +309,7 @@ struct CalendarView: View {
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(selectedEntries) { entry in
-                    TransactionRow(entry: entry)
+                    TransactionRow(entry: entry, listedDay: selectedDate)
                         .swipeActions {
                             if !model.isProtectedJournalEntry(entry) {
                                 Button(role: .destructive) {
@@ -371,7 +363,7 @@ struct CalendarView: View {
         .contextMenu { scheduleActions(for: item) }
         .swipeActions {
             Button(role: .destructive) {
-                schedulePendingDeletion = item
+                schedulePendingChange = PendingScheduleChange(item: item, ends: false)
             } label: {
                 Label("action.delete", systemImage: "trash")
             }
@@ -438,7 +430,7 @@ struct CalendarView: View {
 
         if item.status != .ended {
             Button(role: .destructive) {
-                perform { try await model.endScheduledTransaction(id: item.id) }
+                schedulePendingChange = PendingScheduleChange(item: item, ends: true)
             } label: {
                 Label("schedule.end", systemImage: "stop.circle")
             }
@@ -746,7 +738,7 @@ private struct AddScheduleSheet: View {
 
     private var canSave: Bool {
         guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              let amount = decimalAmount(from: amountText), amount > .zero,
+              let amount = moneyAmount(from: amountText, currency: selectedCurrency), amount > .zero,
               let accountID,
               eligibleAccounts.contains(where: { $0.id == accountID }),
               categoryID != nil else { return false }
@@ -837,10 +829,10 @@ private struct AddScheduleSheet: View {
     }
 
     private func save() async {
-        guard let amount = decimalAmount(from: amountText),
-              let accountID,
+        guard let accountID,
               let categoryID,
-              let currency = model.accounts.first(where: { $0.id == accountID })?.currency else {
+              let currency = model.accounts.first(where: { $0.id == accountID })?.currency,
+              let amount = moneyAmount(from: amountText, currency: currency) else {
             return
         }
         isSaving = true
@@ -915,12 +907,52 @@ struct CalendarDayMarks: Equatable, Sendable {
     }
 }
 
+/// A schedule change that asks first: deleting it, or ending it for good.
+private struct PendingScheduleChange {
+    let item: ScheduledTransaction
+    let ends: Bool
+    var title: LocalizedStringKey { ends ? "schedule.end_title" : "schedule.delete_title" }
+    var action: LocalizedStringKey { ends ? "schedule.end" : "action.delete" }
+    var detail: LocalizedStringKey { ends ? "schedule.end_detail" : "schedule.delete_detail" }
+}
+
+/// Picks a reporting day. Grid days are reporting-zone midnights, so the
+/// system picker used at accessibility sizes gets the same zone; in the device
+/// zone it would show and select the previous day west of the reporting zone.
+private struct ReportingDaySelector: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Binding var selection: Date
+    let calendar: Calendar
+
+    private var displayCalendar: Calendar {
+        var display = calendar
+        display.firstWeekday = Calendar.autoupdatingCurrent.firstWeekday
+        return display
+    }
+
+    var body: some View {
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                // Seven columns cannot hold accessibility-size digits; the
+                // system picker reflows where a custom grid would clip.
+                DatePicker("calendar.select_date", selection: $selection, displayedComponents: .date)
+                    .datePickerStyle(.graphical)
+            } else {
+                CalendarMonthGrid(selection: $selection)
+            }
+        }
+        .environment(\.calendar, displayCalendar)
+        .environment(\.timeZone, calendar.timeZone)
+    }
+}
+
 /// A month grid that shows, before any tap, which days had spending, income,
 /// or a scheduled item. The system graphical picker cannot carry per-day
 /// marks. Swipe or the arrows change month; tapping a day selects it.
 private struct CalendarMonthGrid: View {
     @Environment(AppModel.self) private var model
     @Environment(\.moneyUpReduceMotion) private var reduceMotion
+    @Environment(\.locale) private var locale
     @Binding var selection: Date
     @State private var displayedMonth: Date?
     @State private var marks: [Date: CalendarDayMarks] = [:]
@@ -931,12 +963,13 @@ private struct CalendarMonthGrid: View {
     }
     private var today: Date { calendar.startOfDay(for: model.currentDateForUserAction()) }
 
-    private var days: [Date?] {
-        guard let range = calendar.range(of: .day, in: .month, for: month) else { return [] }
-        let weekday = calendar.component(.weekday, from: month)
-        let leading = (weekday - calendar.firstWeekday + 7) % 7
-        let dates = range.compactMap { calendar.date(byAdding: .day, value: $0 - 1, to: month) }
-        return Array(repeating: nil, count: leading) + dates.map(Optional.some)
+    private var layout: CalendarMonthLayout {
+        CalendarMonthLayout(
+            month: month,
+            calendar: calendar,
+            firstWeekday: Calendar.autoupdatingCurrent.firstWeekday,
+            locale: locale
+        )
     }
 
     var body: some View {
@@ -944,7 +977,7 @@ private struct CalendarMonthGrid: View {
             header
             weekdayRow
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 0), count: 7), spacing: 4) {
-                ForEach(Array(days.enumerated()), id: \.offset) { _, day in
+                ForEach(Array(layout.cells.enumerated()), id: \.offset) { _, day in
                     if let day { dayCell(day) } else { Color.clear.frame(height: 46) }
                 }
             }
@@ -967,7 +1000,7 @@ private struct CalendarMonthGrid: View {
 
     private var header: some View {
         HStack {
-            Text(month, format: .dateTime.year().month(.wide))
+            Text(month.formattedForReporting(.dateTime.year().month(.wide), calendar: calendar))
                 .font(.headline)
             Spacer()
             Button { shiftMonth(-1) } label: {
@@ -983,10 +1016,8 @@ private struct CalendarMonthGrid: View {
     }
 
     private var weekdayRow: some View {
-        let symbols = calendar.veryShortStandaloneWeekdaySymbols
-        let ordered = Array(symbols[(calendar.firstWeekday - 1)...] + symbols[..<(calendar.firstWeekday - 1)])
-        return HStack(spacing: 0) {
-            ForEach(Array(ordered.enumerated()), id: \.offset) { _, symbol in
+        HStack(spacing: 0) {
+            ForEach(Array(layout.weekdaySymbols.enumerated()), id: \.offset) { _, symbol in
                 Text(symbol)
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
@@ -1007,7 +1038,8 @@ private struct CalendarMonthGrid: View {
             }
         } label: {
             VStack(spacing: 3) {
-                Text(day, format: .dateTime.day())
+                // A bare numeral: a localized "18日" cannot fit the circle.
+                Text(verbatim: CalendarMonthLayout.dayNumeral(day, calendar: calendar))
                     .font(.callout.monospacedDigit().weight(isSelected || isToday ? .bold : .regular))
                     .foregroundStyle(isSelected ? Color.white : isToday ? Color.accentColor : Color.primary)
                     .frame(width: 32, height: 32)
@@ -1031,7 +1063,10 @@ private struct CalendarMonthGrid: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(Text(day, format: .dateTime.weekday(.wide).month(.wide).day()))
+        .accessibilityLabel(Text(day.formattedForReporting(
+            .dateTime.weekday(.wide).month(.wide).day(),
+            calendar: calendar
+        )))
         .accessibilityValue(accessibilityValue(dayMarks))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }

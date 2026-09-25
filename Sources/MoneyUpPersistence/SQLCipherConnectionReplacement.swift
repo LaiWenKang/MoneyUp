@@ -128,8 +128,11 @@ extension SQLCipherConnection {
         allowedCollections: Set<String>,
         identities: inout Set<String>
     ) throws {
+        // SQLite text binding stops at NUL, so "id\0a" and "id\0b" would pass
+        // the identity check below yet collapse into one silently overwritten row.
         guard allowedCollections.contains(record.collection),
               !record.recordID.isEmpty,
+              !record.recordID.utf8.contains(0),
               record.recordID.utf8.count <= RecordWrite.maximumRecordIDByteCount,
               !record.payload.isEmpty,
               record.payload.count <= RecordWrite.maximumReceiptPayloadByteCount,

@@ -29,7 +29,9 @@ struct SmartEntryAmountReading {
     let consumedText: String?
     let needsReview: Bool
 
-    private static let number = #"(?<![0-9.,])[0-9]+(?:[.,][0-9]+)*(?![0-9.,])"#
+    // A separator ends the number unless a digit follows it: "25，" (the IME
+    // comma normalised) and "12.50." keep their amounts; ".5" still never reads as 5.
+    private static let number = #"(?<![0-9.,])[0-9]+(?:[.,][0-9]+)*(?![0-9])(?![.,][0-9])"#
     private static let totalPrefix = #"(?i)(?<![a-z])(?:total|合计|合計|总计|總計)\s*[:：]?\s*(?:(?:[a-z]{3}|US\$|S\$|HK\$|A\$|RM|RMB|[$€£₹¥￥])\s*)?$"#
 
     private static let numberRegex = try? NSRegularExpression(pattern: number)

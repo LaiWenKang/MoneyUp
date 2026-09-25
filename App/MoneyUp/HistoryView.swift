@@ -179,10 +179,29 @@ private struct HistoryPerformanceMeasurement {
     let interval: MoneyUpPerformanceInterval?
 }
 
-private struct HistoryDayGroup: Identifiable {
+struct HistoryDayGroup: Identifiable {
     let date: Date
     let entries: [JournalEntry]
     var id: Date { date }
+
+    /// Pages accumulate while scrolling and grouping runs on every body pass,
+    /// so entries group by their stored civil-day key (integer work) and each
+    /// day, not each entry, resolves its date in the reporting calendar.
+    static func grouped(_ entries: [JournalEntry], calendar: Calendar) -> [HistoryDayGroup] {
+        var groups: [Date: [JournalEntry]] = [:]
+        for sameDay in Dictionary(grouping: entries, by: \.originContext.dayKey).values {
+            if let day = sameDay[0].originContext.attributedDate(in: calendar) {
+                groups[calendar.startOfDay(for: day), default: []].append(contentsOf: sameDay)
+            } else {
+                for entry in sameDay {
+                    groups[calendar.startOfDay(for: entry.occurredAt), default: []].append(entry)
+                }
+            }
+        }
+        return groups
+            .map { HistoryDayGroup(date: $0.key, entries: $0.value) }
+            .sorted { $0.date > $1.date }
+    }
 }
 
 struct HistoryHotCategory: Equatable, Identifiable {
@@ -383,14 +402,7 @@ struct HistoryView: View {
     }
 
     private var dayGroups: [HistoryDayGroup] {
-        Dictionary(grouping: loadedEntries) {
-            let calendar = model.reportingCalendar
-            return calendar.startOfDay(
-                for: $0.originContext.attributedDate(in: calendar) ?? $0.occurredAt
-            )
-        }
-        .map { HistoryDayGroup(date: $0.key, entries: $0.value) }
-        .sorted { $0.date > $1.date }
+        HistoryDayGroup.grouped(loadedEntries, calendar: model.reportingCalendar)
     }
 
     private var unavailableTitle: LocalizedStringKey {
@@ -520,7 +532,8 @@ struct HistoryView: View {
                                                 attachmentMatchesByEntryID[entry.id]
                                             ),
                                             budgetCategoryIDs: allowsFiltering ? nil : filters.categoryIDs,
-                                            budgetCurrency: allowsFiltering ? nil : filters.categoryPostingCurrency
+                                            budgetCurrency: allowsFiltering ? nil : filters.categoryPostingCurrency,
+                                            listedDay: group.date
                                         )
                                             .contentShape(Rectangle())
                                     }
@@ -546,7 +559,12 @@ struct HistoryView: View {
                                     }
                                 }
                             } header: {
-                                Text(group.date, format: .dateTime.weekday(.wide).month().day().year())
+                                // Groups are reporting-zone days; the device zone
+                                // would name the previous day west of it.
+                                Text(group.date.formattedForReporting(
+                                    .dateTime.weekday(.wide).month().day().year(),
+                                    calendar: model.reportingCalendar
+                                ))
                             }
                         }
 

@@ -28,21 +28,16 @@ enum MoneyUpIllustrationRole {
 
 /// Shared pace semantics prevent Today and Plan from describing the same
 /// financial state differently. Spending against a zero limit is explicitly
-/// over plan (ratio 2), never the merely-full ratio 1.
+/// over plan (ratio 2), never the merely-full ratio 1. Full-balance rollover
+/// can truthfully make a limit negative; that month is over plan, not an
+/// arithmetic failure.
 func moneyUpPaceRatio(
     spent: Decimal,
     limit: Decimal,
     operation: String
 ) -> DerivedValue<Double> {
-    guard limit >= .zero else {
-        DerivedValueDiagnostics.record(
-            .amountCalculationFailed,
-            operation: operation
-        )
-        return .unavailable(.amountCalculationFailed)
-    }
     guard limit > .zero else {
-        return .available(spent > .zero ? 2 : 0)
+        return .available(spent > .zero || limit < .zero ? 2 : 0)
     }
     do {
         return .available(
@@ -281,6 +276,9 @@ struct MoneyUpPositionOrbit: View {
 struct MoneyUpBudgetOrbit: View {
     let ratio: Double
     let elapsed: Double
+    /// False when the limit is zero or negative: a percentage of it would be
+    /// invented, so the orbit shows only whether the month is over plan.
+    var showsPercent = true
 
     var body: some View {
         GeometryReader { proxy in
@@ -308,12 +306,18 @@ struct MoneyUpBudgetOrbit: View {
                     .offset(y: -radius)
                     .rotationEffect(.degrees(clampedElapsed * 360))
 
-                Text(ratio.formatted(.percent.precision(.fractionLength(0))))
-                    .font(.system(size: 11, weight: .bold).monospacedDigit())
-                    .foregroundStyle(ratio > 1 ? Color.moneyUpDanger : Color.primary)
-                    .minimumScaleFactor(0.7)
-                    .lineLimit(1)
-                    .padding(.horizontal, 7)
+                if showsPercent {
+                    Text(ratio.formatted(.percent.precision(.fractionLength(0))))
+                        .font(.system(size: 11, weight: .bold).monospacedDigit())
+                        .foregroundStyle(ratio > 1 ? Color.moneyUpDanger : Color.primary)
+                        .minimumScaleFactor(0.7)
+                        .lineLimit(1)
+                        .padding(.horizontal, 7)
+                } else {
+                    Image(systemName: ratio > 1 ? "exclamationmark" : "checkmark")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(ratio > 1 ? Color.moneyUpDanger : Color.primary)
+                }
             }
         }
         .frame(width: 52, height: 52)

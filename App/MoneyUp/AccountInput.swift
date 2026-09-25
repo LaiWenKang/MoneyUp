@@ -30,11 +30,12 @@ extension FinancialAccountType {
 /// for an overdraft; a liability is entered as a non-negative amount owed.
 func parsedOpeningBalance(
     from text: String,
-    accountType: FinancialAccountType
+    accountType: FinancialAccountType,
+    currency: CurrencyCode? = nil
 ) -> Decimal? {
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
     if trimmed.isEmpty { return .zero }
-    guard let value = decimalAmount(from: trimmed) else { return nil }
+    guard let value = moneyAmount(from: trimmed, currency: currency) else { return nil }
     guard !(accountType.isLiabilityAccount || accountType == .restrictedAllowance)
             || value >= .zero else { return nil }
     return value

@@ -111,7 +111,9 @@ struct AssetsView: View {
                                 case let .available(balance):
                                     Text(formattedMoney(balance))
                                         .font(.subheadline.monospacedDigit())
-                                        .accessibilityLabel(Text("account.current_balance"))
+                                        .accessibilityLabel(account.kind == .liability
+                                            ? Text("account.amount_owed")
+                                            : Text("account.current_balance"))
                                         .accessibilityValue(Text(accessibleFormattedMoney(balance)))
                                 case let .unavailable(issue):
                                     VStack(alignment: .trailing, spacing: 2) {
@@ -630,6 +632,30 @@ struct AccountCurrencyGroup {
     let currency: String
     let accounts: [LedgerAccount]
     let subtotal: Money?
+    /// The group holds debt, so its subtotal is a net and says so.
+    let netsDebt: Bool
+    /// With several currencies each header names its own currency.
+    let showsCurrency: Bool
+
+    /// A group's total on the net-worth headline's rules: debt subtracts and
+    /// policy-bound restricted value stays out. Adding owed amounts to cash
+    /// read a card balance as money the user has.
+    static func net(
+        _ balances: [(account: LedgerAccount, balance: DerivedValue<Money>)],
+        currency: CurrencyCode
+    ) -> Money? {
+        let counted = balances.filter { $0.account.accountType != .restrictedAllowance }
+        guard !counted.isEmpty else { return nil }
+        var total = Money.zero(currency: currency)
+        for item in counted {
+            guard case let .available(balance) = item.balance, balance.currency == currency,
+                  let next = try? (item.account.kind == .liability
+                      ? total.subtracting(balance)
+                      : total.adding(balance)) else { return nil }
+            total = next
+        }
+        return total
+    }
 }
 
 extension AssetsView {
@@ -644,24 +670,27 @@ extension AssetsView {
         }
         return order.map { code in
             let accounts = byCurrency[code] ?? []
-            var subtotal: Money? = accounts.first?.currency.map { Money.zero(currency: $0) }
-            for account in accounts {
-                guard let running = subtotal,
-                      case let .available(balance) = model.accountBalanceResultForPresentation(for: account, asOf: now),
-                      balance.currency == running.currency,
-                      let sum = try? running.adding(balance) else { subtotal = nil; break }
-                subtotal = sum
+            let subtotal = accounts.first?.currency.flatMap { currency in
+                AccountCurrencyGroup.net(
+                    accounts.map { (account: $0, balance: model.accountBalanceResultForPresentation(for: $0, asOf: now)) },
+                    currency: currency
+                )
             }
-            return AccountCurrencyGroup(currency: code, accounts: accounts, subtotal: subtotal)
+            return AccountCurrencyGroup(
+                currency: code,
+                accounts: accounts,
+                subtotal: subtotal,
+                netsDebt: accounts.contains { $0.kind == .liability },
+                showsCurrency: order.count > 1
+            )
         }
     }
 
     /// One currency per group: the first group carries the section title,
     /// later groups show just their currency code, each with its subtotal.
     func accountGroupHeader(_ group: AccountCurrencyGroup) -> some View {
-        let groups = accountCurrencyGroups
-        return HStack(alignment: .firstTextBaseline, spacing: 6) {
-            if groups.count > 1, !group.currency.isEmpty {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            if group.showsCurrency, !group.currency.isEmpty {
                 Text(verbatim: group.currency)
                     .fontWeight(.semibold)
                     .accessibilityLabel(Text("assets.accounts") + Text(" \(group.currency)"))
@@ -670,7 +699,9 @@ extension AssetsView {
             }
             Spacer(minLength: 8)
             if let subtotal = group.subtotal {
-                Text(formattedMoney(subtotal))
+                Text(group.netsDebt
+                    ? String(format: AppLocalization.string("assets.group_net_format"), formattedMoney(subtotal))
+                    : formattedMoney(subtotal))
                     .monospacedDigit()
                     .textCase(nil)
             }

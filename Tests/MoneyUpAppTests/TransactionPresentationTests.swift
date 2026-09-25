@@ -645,14 +645,24 @@ final class TransactionPresentationTests: XCTestCase {
         XCTAssertEqual(ratio, 2)
     }
 
-    func testNegativeBudgetLimitIsUnavailable() {
-        guard case .unavailable = moneyUpPaceRatio(
-            spent: 1,
-            limit: -1,
-            operation: "test-invalid-pace"
-        ) else {
-            return XCTFail("An invalid limit must not be presented as zero or full")
+    /// Full-balance rollover can truthfully carry a deficit larger than the
+    /// limit (the widget's `.negativeBudget`). That month is over plan even
+    /// before anything is spent; it was once shown as an arithmetic failure.
+    func testNegativeBudgetLimitIsOverPlanNotAnError() {
+        for spent: Decimal in [0, 1] {
+            guard case let .available(ratio) = moneyUpPaceRatio(
+                spent: spent,
+                limit: -300,
+                operation: "test-negative-pace"
+            ) else {
+                return XCTFail("A negative effective limit is a valid state")
+            }
+            XCTAssertEqual(ratio, 2)
         }
+        guard case let .available(untouched) = moneyUpPaceRatio(spent: 0, limit: 0, operation: "test-zero-pace") else {
+            return XCTFail("A zero plan is a valid state")
+        }
+        XCTAssertEqual(untouched, 0)
     }
 
     func testIncomePresentsPositiveUserFacingAmount() throws {

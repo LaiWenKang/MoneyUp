@@ -368,9 +368,11 @@ final class ScheduledAndHoldingTests: XCTestCase {
         var misanchored = try XCTUnwrap(
             JSONSerialization.jsonObject(with: encoded) as? [String: Any]
         )
+        // Zone-rule revisions within the anchoring tolerance are accepted;
+        // a different day is still a misanchored occurrence.
         misanchored["nextOccurrence"] = try XCTUnwrap(
             misanchored["nextOccurrence"] as? Double
-        ) + 3_600
+        ) + 2 * 86_400
         XCTAssertThrowsError(try JSONDecoder().decode(
             ScheduledTransaction.self,
             from: JSONSerialization.data(withJSONObject: misanchored)

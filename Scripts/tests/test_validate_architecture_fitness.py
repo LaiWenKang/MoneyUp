@@ -291,6 +291,32 @@ final class AppModelHelper {
         self.assertEqual(violations[0].rule, "view-posting")
         self.assertEqual(violations[0].line, 9)
 
+    def test_views_lock_manually_so_an_explicit_lock_stays_locked(self) -> None:
+        self.write(
+            "App/MoneyUp/LockButtons.swift",
+            """\
+import SwiftUI
+
+struct SettingsView: View {
+    let model: AppModel
+    var body: some View {
+        Button("lock.lock_now") { model.lock() }
+        Button("lock.lock_now") { model.lockManually() }
+    }
+}
+
+final class LifecycleCoordinator {
+    func background(_ model: AppModel) {
+        model.lock()
+        // model.lock()
+        let example = "model.lock()"
+    }
+}
+""",
+        )
+        violations = fitness.validate_view_posting_boundary(self.root)
+        self.assertEqual([(v.rule, v.line) for v in violations], [("view-manual-lock", 6)])
+
     def test_view_factory_follows_protocol_and_generic_conformance(self) -> None:
         self.write(
             "App/MoneyUp/TransitiveView.swift",

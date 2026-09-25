@@ -196,7 +196,8 @@ struct AppSettingsView: View {
                 }
 
                 Button {
-                    bindableModel.lock()
+                    // Like Assets: an explicit lock must not re-authenticate on the next activation.
+                    bindableModel.lockManually()
                 } label: {
                     Label("lock.lock_now", systemImage: "lock.fill")
                 }

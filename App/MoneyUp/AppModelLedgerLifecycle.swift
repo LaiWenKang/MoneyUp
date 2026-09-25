@@ -529,7 +529,7 @@ extension AppModel {
         guard isCurrentStoreGeneration(generation) else { return }
         accounts[index] = updated
         profile = candidateProfile
-        quickLogDraft = candidateDraft
+        publishModelQuickLogDraft(candidateDraft)
     }
 
     func mergeLedgerItem(id sourceID: UUID, into targetID: UUID) async throws {
@@ -614,7 +614,7 @@ extension AppModel {
         if let candidateTimeline { budgetConfigurationTimeline = candidateTimeline }
         budgetNodes = candidateBudgets
         profile = candidateProfile
-        quickLogDraft = candidateDraft
+        publishModelQuickLogDraft(candidateDraft)
     }
 
     func setAccountBalance(accountID: UUID, displayBalance: Decimal) async throws {

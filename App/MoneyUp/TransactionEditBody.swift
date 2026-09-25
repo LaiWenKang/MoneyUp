@@ -448,7 +448,7 @@ extension TransactionEditView {
     }
 
     func save(confirmingClaimInvalidation: Bool = false) async {
-        guard let amount = decimalAmount(from: amountText),
+        guard let amount = editedAmount(amountText, currency: sourceCurrency),
               let accountID else { return }
         isSaving = true
         defer { isSaving = false }
@@ -458,7 +458,7 @@ extension TransactionEditView {
                 id: entry.id,
                 kind: kind,
                 amount: amount,
-                destinationAmount: decimalAmount(from: destinationAmountText),
+                destinationAmount: editedAmount(destinationAmountText, currency: destinationCurrency),
                 accountID: accountID,
                 destinationAccountID: destinationAccountID,
                 categoryID: categoryID,
@@ -480,7 +480,7 @@ extension TransactionEditView {
     func splitTransactionLines() throws -> [TransactionSplitLine]? {
         guard isSplitTransaction, kind != .transfer else { return nil }
         guard let currency = sourceCurrency else { throw AppModelError.accountHasNoCurrency }
-        guard let amount = decimalAmount(from: amountText) else {
+        guard let amount = editedAmount(amountText, currency: currency) else {
             throw AppModelError.missingRecord
         }
         let lines = try transactionSplitLines(currency: currency)
@@ -496,7 +496,7 @@ extension TransactionEditView {
     ) throws -> [TransactionSplitLine] {
         try splitLines.map { line in
             guard let categoryID = line.categoryID,
-                  let amount = decimalAmount(from: line.amountText) else {
+                  let amount = editedAmount(line.amountText, currency: currency) else {
                 throw AppModelError.missingRecord
             }
             return TransactionSplitLine(

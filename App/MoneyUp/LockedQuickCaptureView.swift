@@ -56,7 +56,8 @@ struct LockedQuickCaptureView: View {
     }
 
     private var amountValidationMessage: String? {
-        guard (showsFieldErrors || !amountText.isEmpty), !hasValidAmount else {
+        guard (showsFieldErrors || !amountText.isEmpty), !hasValidAmount,
+              showsFieldErrors || focusedField != .amount || !isIncompleteAmount(amountText) else {
             return nil
         }
         return AppLocalization.string("error.invalid_amount")

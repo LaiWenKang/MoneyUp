@@ -29,7 +29,9 @@ struct OnboardingView: View {
     @Environment(\.moneyUpReduceMotion) private var reduceMotion
 
     private var startingBalance: Decimal? {
-        parsedOpeningBalance(from: startingBalanceText, accountType: accountType)
+        parsedOpeningBalance(
+            from: startingBalanceText, accountType: accountType, currency: try? CurrencyCode(currencyCode)
+        )
     }
 
     private var normalizedAccountName: String {

@@ -283,7 +283,7 @@ public extension FinanceCalculator {
         }
     }
 
-    private static func monthStarts(
+    static func monthStarts(
         in interval: DateInterval,
         calendar: Calendar
     ) -> [Date] {
@@ -300,7 +300,8 @@ public extension FinanceCalculator {
                 value: 1,
                 to: current
             ) else { break }
-            current = next
+            // Re-anchor as the rollover replay does after a 01:00 month start.
+            current = calendar.dateInterval(of: .month, for: next)?.start ?? next
         }
         return months
     }

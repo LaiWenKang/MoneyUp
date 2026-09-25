@@ -252,15 +252,23 @@ extension AppModel {
         await start()
     }
 
-    func lock() {
-        if pendingDisplayPreferences != nil, let write = displayPreferenceWriteTask {
-            requiresAuthenticationPrivacyCover = true
-            Task { @MainActor in
-                await write.value
-                lock()
-            }
-            return
+    /// A display-preference write in flight finishes before the lock. One
+    /// waiter; its flag keeps the cover up (and counts as a deferred lock).
+    private func deferLockForDisplayPreferenceWrite() -> Bool {
+        guard pendingDisplayPreferences != nil, let write = displayPreferenceWriteTask else { return false }
+        requiresAuthenticationPrivacyCover = true
+        guard !lockAfterDisplayPreferenceWrite else { return true }
+        lockAfterDisplayPreferenceWrite = true
+        Task { @MainActor in
+            await write.value
+            lockAfterDisplayPreferenceWrite = false
+            lock()
         }
+        return true
+    }
+
+    func lock() {
+        if deferLockForDisplayPreferenceWrite() { return }
         // Stop day-boundary work as soon as authentication is required, even
         // when an atomic mutation must drain before decoded state is cleared.
         cancelWidgetReportingDayRefresh()
@@ -418,8 +426,9 @@ extension AppModel {
             cancelWidgetReportingDayRefresh()
             return
         }
+        // A requested lock still draining keeps the book covered.
         guard let leftActiveAt else {
-            requiresAuthenticationPrivacyCover = false
+            requiresAuthenticationPrivacyCover = hasDeferredAuthenticationLock
             if wasAlreadyActive {
                 rearmWidgetReportingDayRefreshIfEligible()
             } else {
@@ -433,7 +442,7 @@ extension AppModel {
         if !elapsed.isFinite || elapsed < 0 || elapsed >= delay {
             lock()
         } else {
-            requiresAuthenticationPrivacyCover = false
+            requiresAuthenticationPrivacyCover = hasDeferredAuthenticationLock
             refreshWidgetForSceneActivationIfEligible()
         }
     }
@@ -522,7 +531,7 @@ extension AppModel {
     /// decoded-content presentation, even though an atomic operation is still
     /// draining in `.ready` or `.launching`.
     var hasDeferredAuthenticationLock: Bool {
-        lockAfterStart || lockAfterLifecycleMutation
+        lockAfterStart || lockAfterLifecycleMutation || lockAfterDisplayPreferenceWrite
     }
 
     func saveLockedCapture(

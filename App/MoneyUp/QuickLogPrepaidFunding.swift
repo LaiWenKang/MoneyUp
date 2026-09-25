@@ -80,7 +80,7 @@ extension QuickLogEntryView {
         for line in splitLines {
             guard let categoryID = line.categoryID,
                   policy.accepts(categoryID: categoryID),
-                  let lineAmount = decimalAmount(from: line.amountText) else {
+                  let lineAmount = moneyAmount(from: line.amountText, currency: selectedAccountCurrency) else {
                 continue
             }
             eligibleAmount = (try? CheckedDecimal.adding(

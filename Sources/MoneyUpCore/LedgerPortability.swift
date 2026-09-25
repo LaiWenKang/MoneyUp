@@ -594,11 +594,14 @@ public enum HistoricalExchangeRateLookup {
         uuid: (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
     )
 
+    /// - Parameter permitsRoundingToZero: An estimate may truthfully round a
+    ///   tiny balance (CN¥0.02 in yen) to zero; a posted amount never may.
     public static func conversion(
         of source: Money,
         to destinationCurrency: CurrencyCode,
         on origin: TransactionOriginContext,
-        rates: [DatedExchangeRate]
+        rates: [DatedExchangeRate],
+        permitsRoundingToZero: Bool = false
     ) throws -> HistoricalCurrencyConversion? {
         if source.currency == destinationCurrency {
             return HistoricalCurrencyConversion(
@@ -652,7 +655,7 @@ public enum HistoricalExchangeRateLookup {
         } catch is DecimalCalculationError {
             throw ExchangeRateError.conversionOutOfRange
         }
-        guard source.amount == .zero || roundedAmount != .zero else {
+        guard source.amount == .zero || roundedAmount != .zero || permitsRoundingToZero else {
             throw ExchangeRateError.conversionUnderflow
         }
         do {

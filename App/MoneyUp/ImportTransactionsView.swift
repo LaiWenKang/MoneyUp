@@ -565,6 +565,7 @@ struct ImportTransactionsView: View {
             AppLocalization.string("import.issue.invalid_destination_amount")
         case "unsupported_type": AppLocalization.string("import.issue.unsupported_type")
         case "unsupported_adjustment": AppLocalization.string("import.issue.unsupported_adjustment")
+        case "column_count_mismatch": AppLocalization.string("import.issue.column_count_mismatch")
         default: AppLocalization.string("import.issue.invalid_row")
         }
     }

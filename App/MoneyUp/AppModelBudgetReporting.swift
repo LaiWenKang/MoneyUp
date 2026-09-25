@@ -178,7 +178,8 @@ extension AppModel {
                 }
                 attributedDate = date
             } else {
-                attributedDate = entry.occurredAt
+                // The origin day, as the SQL replay and reports read it.
+                attributedDate = entry.originContext.attributedDate(in: calendar) ?? entry.occurredAt
             }
             try accumulateClosedMonthBudgetPostings(
                 attribution?.postings ?? entry.postings,

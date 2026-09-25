@@ -8,7 +8,7 @@ on-device charts, accounts and holdings, and spreadsheet-friendly export.
 
 ## Project status
 
-MoneyUp's source app identity is **Founders Beta 0.7.1 (source build 11)**.
+MoneyUp's source app identity is **Founders Beta 0.7.2 (source build 11)**.
 This candidate extends the feedback baseline merged through pull request #40
 with exact split assistance, stronger keyboard avoidance, direct hierarchical
 category management, default-on eligible on-device assistance, useful

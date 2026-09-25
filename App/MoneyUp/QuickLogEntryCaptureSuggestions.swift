@@ -345,29 +345,48 @@ extension QuickLogEntryView {
 }
 
 
+/// A recent entry's amount as every other surface writes money: the display
+/// formatter's minor units ("SGD 18.60", never the editable "18.6") and an
+/// explicit code, because the chip's currency may differ from the draft's.
+@MainActor
+func historyPreloadAmountLabel(_ amount: Money?) -> String {
+    guard let amount else {
+        return AppLocalization.string("quick_log.preload_amount_uncertain")
+    }
+    return formattedMoneyWithCurrencyCode(amount)
+}
+
 /// A recent entry as a capsule: payee, amount and category at a glance.
 struct HistoryPreloadChip: View {
+    @Environment(AppModel.self) private var model
     let suggestion: HistoryPreloadSuggestion
     let categoryName: String
     let available: Set<QuickLogSmartField>
     let canApplyAll: Bool
     let apply: (Set<QuickLogSmartField>) -> Void
 
-    private var amountLabel: String {
-        guard let money = suggestion.amount else {
-            return AppLocalization.string("quick_log.preload_amount_uncertain")
+    private var amountLabel: String { historyPreloadAmountLabel(suggestion.amount) }
+
+    /// The category's own glyph and tint, as History and Today draw it; the
+    /// entry kind's sign when no category was learned.
+    private var glyph: (symbol: String, tint: Color) {
+        if let categoryID = suggestion.fields.categorySuggestion?.ledgerAccountID {
+            return (MoneyUpCategorySymbol.symbol(for: categoryID, accountsByID: model.accountsByID),
+                    MoneyUpCategorySymbol.tint(for: categoryID))
         }
-        return money.currency.value + " " + MoneyAmountPrivacy.protected(editableAmount(money.amount))
+        switch suggestion.kind {
+        case .income: return (MoneyUpEntryGlyph.income, Color.moneyUpPositive)
+        case .refund: return (MoneyUpEntryGlyph.refund, Color.moneyUpPositive)
+        case .transfer, .foreignCurrencyTransfer: return (MoneyUpEntryGlyph.transfer, Color.accentColor)
+        case .expense: return (MoneyUpEntryGlyph.expense, Color.accentColor)
+        }
     }
 
     var body: some View {
         Button { apply(QuickLogHistoryPreloadFill.fields) } label: {
             HStack(spacing: 8) {
-                Image(systemName: "arrow.up.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.tint)
-                    .frame(width: 22, height: 22)
-                    .background(Color.accentColor.opacity(0.14), in: Circle())
+                MoneyUpCategoryBadge(systemImage: glyph.symbol, tint: glyph.tint, size: 26)
+                    .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(suggestion.payee)
                         .font(.subheadline.weight(.medium))
@@ -397,8 +416,21 @@ struct HistoryPreloadChip: View {
             Button("transaction.account") { apply([.account]) }.disabled(!available.contains(.account))
             Button("transaction.category") { apply([.category]) }.disabled(!available.contains(.category))
         }
-        .accessibilityLabel(Text(suggestion.payee) + Text(", ") + Text(amountLabel))
+        .accessibilityLabel(Text(accessibilityText))
         .accessibilityHint("quick_log.preload_preserve_detail")
+    }
+
+    /// VoiceOver hears "amounts hidden" rather than the visual mask, and the
+    /// category the chip shows.
+    private var accessibilityText: String {
+        var parts = [suggestion.payee]
+        if let money = suggestion.amount {
+            parts.append(accessibleFormattedMoney(money))
+        } else {
+            parts.append(AppLocalization.string("quick_log.preload_amount_uncertain"))
+        }
+        if !categoryName.isEmpty { parts.append(categoryName) }
+        return parts.joined(separator: ", ")
     }
 }
 
@@ -411,12 +443,7 @@ struct HistoryPreloadCard: View {
     let apply: (Set<QuickLogSmartField>) -> Void
     @State var expanded = false
 
-    private var amountLabel: String {
-        guard let money = suggestion.amount else {
-            return AppLocalization.string("quick_log.preload_amount_uncertain")
-        }
-        return money.currency.value + " " + MoneyAmountPrivacy.protected(editableAmount(money.amount))
-    }
+    private var amountLabel: String { historyPreloadAmountLabel(suggestion.amount) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {

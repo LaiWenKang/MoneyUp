@@ -18,6 +18,22 @@ public enum FinancialPeriodBoundary {
         return calendar
     }
 
+    /// Whole calendar days between the civil days holding `start` and `end`,
+    /// counted on their dates rather than elapsed time: a day that daylight
+    /// saving starts at 01:00 (Santiago, Beirut, Cairo…) is still one day.
+    public static func civilDayDistance(
+        from start: Date,
+        to end: Date,
+        calendar: Calendar
+    ) -> Int? {
+        var dates = Calendar(identifier: .gregorian)
+        dates.timeZone = .gmt
+        let fields: Set<Calendar.Component> = [.era, .year, .month, .day]
+        guard let from = dates.date(from: calendar.dateComponents(fields, from: start)),
+              let to = dates.date(from: calendar.dateComponents(fields, from: end)) else { return nil }
+        return dates.dateComponents([.day], from: from, to: to).day
+    }
+
     public static func dayKey(
         for date: Date,
         calendar: Calendar

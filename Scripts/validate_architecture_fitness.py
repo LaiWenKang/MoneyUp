@@ -664,7 +664,8 @@ W3_PATH_TYPE_DIGESTS: tuple[tuple[str, str, str, str], ...] = (
     ('App/MoneyUp/QuickLogBatch.swift', 'enum', 'QuickLogBatchPreparation', 'b4a392813f96d592dce88fdc532816501d7ea991f59b791595e02fb7538e0273'),
     ('Sources/MoneyUpCore/SmartEntryBatchText.swift', 'enum', 'SmartEntryBatchText', '1efd0ca7104e651a464478fd2e28c491af109ce94d48b2c7d9d035f0416047f9'),
     ('App/MoneyUp/QuickLogSmartFill.swift', 'struct', 'QuickLogSmartFill', '3c98e0dc2f72aae58ef9626c1953a3239b930ad5fb465a45c8ba2e8f08ddd998'),
-    ('Sources/MoneyUpCore/SmartEntryTextReading.swift', 'struct', 'SmartEntryAmountReading', '088699b5ce5d5f969b345f2d81ab3a8cca9609baa0cafd17afabaf21e802403c'),
+    # Re-pinned 2026-09-25: the number pattern's lookahead lets trailing punctuation end an amount (audit P3).
+    ('Sources/MoneyUpCore/SmartEntryTextReading.swift', 'struct', 'SmartEntryAmountReading', 'd3018ca184d852f2fac326c512d4fd542a2ca0b17937decbf2ba095bbd06fa62'),
     ('Sources/MoneyUpCore/SmartEntryTextReading.swift', 'struct', 'SmartEntryTextParts', 'a84bf4da2c0b336f570103ee82b2f176ba7d30019cad745611022bae5e7b5ea4'),
     ("App/MoneyUp/QuickLogEntryChrome.swift", "extension", "QuickLogEntryView", "6c56aeb35466fdc5c33ad5156445d764592123cc853863a2eca2009417ad8691"),
     (
@@ -1297,6 +1298,19 @@ def validate_view_posting_boundary(root: Path) -> list[Violation]:
                         "view-posting",
                         f"SwiftUI view {declaration.name} constructs a posting; "
                         "route through AppModel",
+                    )
+                )
+            # A user's explicit lock must stay locked for the visit; plain
+            # lock() re-authenticated on the next activation (audit C6).
+            for match in re.finditer(r"\.lock\s*\(\s*\)", body):
+                offset = declaration.opening + 1 + match.start()
+                violations.append(
+                    Violation(
+                        relative,
+                        line_number(scan.source, offset),
+                        "view-manual-lock",
+                        f"SwiftUI view {declaration.name} calls lock(); "
+                        "use lockManually()",
                     )
                 )
     return violations
