@@ -42,7 +42,7 @@ extension QuickLogEntryView {
         guard let amount,
               let currency = selectedAccountCurrency else { return }
         let current: [Money?] = splitLines.map { line in
-            guard let value = decimalAmount(from: line.amountText) else { return nil }
+            guard let value = moneyAmount(from: line.amountText, currency: currency) else { return nil }
             return try? Money(value, currency: currency)
         }
         guard let allocations = try? TransactionSplitCalculator.rebalancedAmounts(

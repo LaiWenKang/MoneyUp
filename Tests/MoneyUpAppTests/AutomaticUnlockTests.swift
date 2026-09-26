@@ -82,20 +82,38 @@ final class AutomaticUnlockTests: XCTestCase {
     }
 
     @MainActor
-    func testExpiredReturnArmsUnlockButInactiveAndLockedCaptureCannotPrompt() async throws {
+    func testExpiredReturnArmsUnlockButInactiveCannotPromptAndAWidgetTapGetsTheNormalUnlock() async throws {
         let fixture = try AppModelFixture()
         defer { fixture.removeFiles() }
-        let model = fixture.model(profile: UserProfile(baseCurrency: fixture.sgd, autoLockDelay: 0))
+        let gate = AuthenticationAttemptGate()
+        await gate.release()
+        let model = fixture.model(
+            profile: UserProfile(baseCurrency: fixture.sgd, autoLockDelay: 0),
+            openDatabaseStore: { _ in
+                await gate.enter()
+                throw DatabaseKeyStoreError.authenticationCancelled
+            }
+        )
         model.sceneDidBecomeActive()
         model.sceneDidBecomeInactive()
         let inactive = await model.unlockAutomaticallyIfNeeded()
         XCTAssertFalse(inactive)
         XCTAssertEqual(model.state, .locked)
+        let noPromptWhileInactive = await gate.attempts
+        XCTAssertEqual(noPromptWhileInactive, 0)
+        // One Log: a widget tap waiting while locked gets the same single
+        // automatic prompt as any expired return, not a separate locked form.
         model.requestedQuickLogMode = .expense
         model.sceneDidBecomeActive()
-        let capture = await model.unlockAutomaticallyIfNeeded()
-        XCTAssertFalse(capture)
-        XCTAssertTrue(model.automaticUnlockIsPending)
+        _ = await model.unlockAutomaticallyIfNeeded()
+        let attempts = await gate.attempts
+        XCTAssertEqual(attempts, 1)
+        XCTAssertFalse(model.automaticUnlockIsPending)
+        XCTAssertEqual(model.state, .locked)
+        let retriedAutomatically = await model.unlockAutomaticallyIfNeeded()
+        XCTAssertFalse(retriedAutomatically)
+        let finalAttempts = await gate.attempts
+        XCTAssertEqual(finalAttempts, 1)
         await model.waitForPendingStoreClose()
     }
 }

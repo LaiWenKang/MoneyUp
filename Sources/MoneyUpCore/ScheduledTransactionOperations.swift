@@ -126,15 +126,22 @@ extension ScheduledTransaction {
             throw ScheduledTransactionError.invalidResolutionState
         }
 
+        // Advance in the series' own zone. The caller's calendar (today's
+        // reporting zone) only seeds a legacy series that has none: replacing
+        // the zone mid-series left earlier occurrences misanchored, so the
+        // next decode quarantined the schedule and every later backup with it.
+        let seriesCalendar = recurrenceCalendar(nil) ?? calendar
         let nextIndex = currentOccurrenceIndex.addingReportingOverflow(1)
         guard !nextIndex.overflow,
               let followingOccurrence = anchoredOccurrence(
                 index: nextIndex.partialValue,
-                calendar: calendar
+                calendar: seriesCalendar
               ) else {
             throw ScheduledTransactionError.cannotAdvance
         }
-        recurrenceTimeZoneIdentifier = calendar.timeZone.identifier
+        if recurrenceTimeZoneIdentifier == nil {
+            recurrenceTimeZoneIdentifier = calendar.timeZone.identifier
+        }
         resolutions.append(
             try ScheduledOccurrenceResolution(
                 occurrenceID: occurrenceID,
@@ -268,11 +275,11 @@ extension ScheduledTransaction {
         let absoluteOffset: Int
         switch frequency {
         case .weekly:
-            let days = calendar.dateComponents(
-                [.day],
-                from: calendar.startOfDay(for: recurrenceAnchor),
-                to: calendar.startOfDay(for: date)
-            ).day ?? -1
+            let days = FinancialPeriodBoundary.civilDayDistance(
+                from: recurrenceAnchor,
+                to: date,
+                calendar: calendar
+            ) ?? -1
             guard days >= 0, days.isMultiple(of: 7) else { return false }
             absoluteOffset = days / 7
         case .monthly, .yearly:

@@ -155,6 +155,7 @@ private struct LoanDetailView: View {
     @State private var isRecordingPayment = false
     @State private var isRecordingDrawdown = false
     @State private var isEditing = false
+    @State private var isConfirmingFinish = false
     @State private var errorMessage: String?
 
     private var plan: LoanPlan? { model.loanPlans.first { $0.id == planID } }
@@ -249,10 +250,8 @@ private struct LoanDetailView: View {
                             Label("loan.drawdown", systemImage: "plus.circle")
                         }
                         if case let .available(summary) = model.loanSummary(plan),
-                           summary.remainingPrincipal.isZero {
-                            Button("loan.finish") {
-                                Task { await finish(plan) }
-                            }
+                           summary.remainingPrincipal.amount <= .zero {
+                            Button("loan.finish") { isConfirmingFinish = true }
                         }
                     }
                 }
@@ -278,6 +277,12 @@ private struct LoanDetailView: View {
         }
         .sheet(isPresented: $isEditing) {
             if let plan { LoanEditSheet(plan: plan) }
+        }
+        // Finishing cannot be undone, so it asks first, like Delete.
+        .confirmationDialog("loan.finish_confirm_title", isPresented: $isConfirmingFinish, titleVisibility: .visible) {
+            Button("loan.finish") { if let plan { Task { await finish(plan) } } }
+        } message: {
+            Text("loan.finish_confirm_detail")
         }
         .moneyUpOperationErrorAlert(message: $errorMessage)
     }
@@ -361,8 +366,6 @@ private struct AddLoanPlanSheet: View {
                 openedAt = model.currentDateForUserAction()
                 accountID = accountID ?? accounts.first?.id
                 if name.isEmpty { name = selectedAccount?.name ?? "" }
-                interestCategoryID = interestCategoryID ?? model.expenseCategories.first?.id
-                feeCategoryID = feeCategoryID ?? model.expenseCategories.first?.id
                 initialDraftSignature = draftSignature
             }
             .onChange(of: accountID) { _, _ in
@@ -380,7 +383,7 @@ private struct AddLoanPlanSheet: View {
     private var canSave: Bool {
         accountID != nil
             && !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && decimalAmount(from: principalText).map { $0 > .zero } == true
+            && moneyAmount(from: principalText, currency: selectedAccount?.currency).map { $0 > .zero } == true
             && (aprText.isEmpty || decimalAmount(from: aprText) != nil)
             && (termText.isEmpty || Int(termText) != nil)
     }
@@ -402,7 +405,8 @@ private struct AddLoanPlanSheet: View {
     }
 
     private func save() async {
-        guard let accountID, let principal = decimalAmount(from: principalText) else { return }
+        guard let accountID,
+              let principal = moneyAmount(from: principalText, currency: selectedAccount?.currency) else { return }
         isSaving = true
         defer { isSaving = false }
         do {
@@ -456,7 +460,14 @@ private struct LoanPaymentSheet: View {
                 }
                 amountField("loan.principal", text: $principal)
                 amountField("loan.interest", text: $interest)
+                    .disabled(plan.interestExpenseAccountID == nil)
                 amountField("loan.fees", text: $fees)
+                    .disabled(plan.feeExpenseAccountID == nil)
+                if plan.interestExpenseAccountID == nil || plan.feeExpenseAccountID == nil {
+                    Text("loan.categories_needed")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
                 DatePicker(
                     "quick_log.date_and_time",
                     selection: $occurredAt,
@@ -515,7 +526,7 @@ private struct LoanPaymentSheet: View {
     private func zeroableAmount(_ text: String) -> Decimal? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return .zero }
-        guard let value = decimalAmount(from: trimmed), value >= .zero else { return nil }
+        guard let value = moneyAmount(from: trimmed, currency: currency), value >= .zero else { return nil }
         return value
     }
 
@@ -585,7 +596,8 @@ private struct LoanDrawdownSheet: View {
                         .disabled(
                             isSaving
                                 || accountID == nil
-                                || decimalAmount(from: amount).map { $0 > .zero } != true
+                                || moneyAmount(from: amount, currency: plan.originalPrincipal.currency)
+                                    .map { $0 > .zero } != true
                         )
                 }
                 MoneyUpKeyboardDoneToolbar()
@@ -610,7 +622,8 @@ private struct LoanDrawdownSheet: View {
     }
 
     private func save() async {
-        guard let accountID, let amount = decimalAmount(from: amount) else { return }
+        guard let accountID,
+              let amount = moneyAmount(from: amount, currency: plan.originalPrincipal.currency) else { return }
         isSaving = true
         defer { isSaving = false }
         do {

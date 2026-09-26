@@ -92,6 +92,30 @@ func formattedPercent(_ value: Decimal, fractionDigits: Int = 0) -> String {
 }
 
 func decimalAmount(from text: String, locale: Locale = .current) -> Decimal? {
+    writtenAmount(from: text, locale: locale)?.value
+}
+
+/// An amount for a field that posts in `currency`. Text written past the
+/// currency's minor units is refused rather than read at a smaller scale:
+/// "25.000" in an IDR, JPY or VND account means twenty-five thousand, and
+/// reading it as 25 silently saved a thousandth of the amount.
+func moneyAmount(
+    from text: String,
+    currency: CurrencyCode?,
+    locale: Locale = .current
+) -> Decimal? {
+    guard let written = writtenAmount(from: text, locale: locale) else { return nil }
+    guard let currency else { return written.value }
+    return written.fractionDigits <= currency.minorUnits ? written.value : nil
+}
+
+/// A typed amount and the number of fraction digits it was written with.
+struct WrittenAmount: Equatable {
+    let value: Decimal
+    let fractionDigits: Int
+}
+
+func writtenAmount(from text: String, locale: Locale = .current) -> WrittenAmount? {
     // Decimal has 38 significant digits. The larger byte allowance leaves
     // room for a sign, separator, and pasted whitespace while keeping regex
     // and Foundation parsing work bounded on every amount field.
@@ -108,10 +132,31 @@ func decimalAmount(from text: String, locale: Locale = .current) -> Decimal? {
     guard trimmed.range(of: pattern, options: .regularExpression) != nil else {
         return nil
     }
+    let unsigned = trimmed.drop { $0 == "+" || $0 == "-" }
+    let trailingDigits = unsigned.reversed().prefix { $0.isASCII && $0.isNumber }.count
+    let fractionDigits = trailingDigits == unsigned.count ? 0 : trailingDigits
+    // Where "." groups thousands, "1.000" may be one or a thousand; never guess.
+    if fractionDigits == 3, trimmed.contains("."),
+       localSeparator != ".", locale.groupingSeparator == "." {
+        return nil
+    }
     let normalized = localSeparator == "."
         ? trimmed
         : trimmed.replacingOccurrences(of: localSeparator, with: ".")
     return Decimal(string: normalized, locale: Locale(identifier: "en_US_POSIX"))
+        .map { WrittenAmount(value: $0, fractionDigits: fractionDigits) }
+}
+
+/// True while `text` is a prefix of an amount rather than an amount:
+/// "12." before its cents, or "0.0" on the way to "0.05". A field being
+/// typed into shows no error for these; leaving it or saving still does.
+func isIncompleteAmount(_ text: String, locale: Locale = .current) -> Bool {
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard let last = trimmed.last else { return false }
+    if Set((locale.decimalSeparator ?? ".") + ".").contains(last) {
+        return writtenAmount(from: String(trimmed.dropLast()), locale: locale) != nil
+    }
+    return writtenAmount(from: trimmed, locale: locale)?.value == .zero
 }
 
 func editableAmount(_ value: Decimal, locale: Locale = .current) -> String {

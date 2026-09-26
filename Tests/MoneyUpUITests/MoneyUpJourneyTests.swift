@@ -83,10 +83,16 @@ final class MoneyUpJourneyTests: XCTestCase {
             if XCTWaiter().wait(for: [wait], timeout: 3) == .completed { break }
         }
         field.typeText(text)
-        let value = field.value as? String ?? ""
-        expectTrue(value.contains(text) || value.contains("•"),
-                      "Typed \(text.debugDescription) but the field shows \(value.debugDescription)",
-                      file: file, line: line)
+        // SwiftUI can publish the last keystrokes to the field's value just
+        // after XCUITest reports the app idle, so wait for them before judging.
+        func shown() -> String { field.value as? String ?? "" }
+        func landed() -> Bool { shown().contains(text) || shown().contains("•") }
+        if !landed() {
+            let typed = NSPredicate(format: "value CONTAINS %@ OR value CONTAINS %@", text, "•")
+            _ = XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: typed, object: field)], timeout: timeout)
+        }
+        expectTrue(landed(), "Typed \(text.debugDescription) but the field shows \(shown().debugDescription)",
+                   file: file, line: line)
     }
 
     func dismissKeyboard(_ app: XCUIApplication) {
@@ -95,10 +101,12 @@ final class MoneyUpJourneyTests: XCTestCase {
     }
 
     func openSettings(_ app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
-        dismissKeyboard(app)
         let settings = app.navigationBars.buttons["Settings"]
-        // Just after launch the tab bar can exist before it takes taps.
+        // Just after launch the tab bar can exist before it takes taps, and a
+        // widget route still pending from an earlier launch can open Log and
+        // raise its keypad over the tab bar after any single check.
         for _ in 0..<3 where !settings.exists {
+            dismissKeyboard(app)
             app.tabBars.buttons.element(boundBy: 0).tap()
             if settings.waitForExistence(timeout: 5) { break }
         }
@@ -210,47 +218,25 @@ final class MoneyUpJourneyTests: XCTestCase {
         expectTrue(chip.waitForExistence(timeout: timeout))
     }
 
-    // MARK: Locked capture, widget route, and unlock
+    // MARK: Widget route while locked
 
-    func testWidgetRouteWhileLockedCapturesPrivatelyWithAFavourite() {
+    /// One Log: a widget tap while locked shows no reduced form. It waits for
+    /// the normal unlock (the harness opens the book without Face ID) and lands
+    /// in the full Log, favourites included, ready to save.
+    func testWidgetTapWhileLockedOpensTheFullLogAfterUnlock() {
         let app = launch(favourites: true, locked: true)
         openWidgetLink("expense", in: app)
-        let amount = app.textFields["locked-capture-amount"]
-        expectTrue(amount.waitForExistence(timeout: timeout), "Locked capture did not open")
-        let lunch = app.buttons["locked-favourite-Lunch"]
-        expectTrue(lunch.waitForExistence(timeout: timeout), "Opted-in favourites are missing")
+        let amount = app.textFields["quick-log-amount"]
+        expectTrue(amount.waitForExistence(timeout: timeout), "The widget did not open Log")
+        expectFalse(app.textFields["locked-capture-amount"].exists, "There is no separate locked form")
+        let lunch = app.buttons["quick-log-favourite-Lunch"]
+        expectTrue(lunch.waitForExistence(timeout: timeout), "Favourites belong to the one Log")
         lunch.tap()
-        amount.tap()
-        amount.typeText("8")
-        let save = app.buttons["locked-capture-save"]
-        expectTrue(save.isHittable, "Save must stay above the keyboard")
-        save.tap()
-        expectTrue(app.buttons["locked-capture-done"].waitForExistence(timeout: timeout))
-        attachScreenshot(app, "journey-locked-captured")
-        app.buttons["locked-capture-done"].tap()
-    }
-
-    func testLockedCaptureArrivesInLogWithItsFavouriteAfterUnlock() {
-        let app = launch(favourites: true, locked: true)
-        openWidgetLink("expense", in: app)
-        let amount = app.textFields["locked-capture-amount"]
-        expectTrue(amount.waitForExistence(timeout: timeout))
-        app.buttons["locked-favourite-Lunch"].tap()
-        amount.tap()
-        amount.typeText("9")
-        app.buttons["locked-capture-unlock"].tap()
-        let payee = app.textFields["quick-log-payee"]
-        expectTrue(payee.waitForExistence(timeout: timeout), "Unlock did not open Log")
-        expectEqual(payee.value as? String, "Lunch", "The capture did not arrive in Log")
-    }
-
-    func testUnlockFromLockedCaptureShowsFavourites() {
-        let app = launch(favourites: true, locked: true)
-        openWidgetLink("expense", in: app)
-        let unlock = app.buttons["locked-capture-unlock"]
-        expectTrue(unlock.waitForExistence(timeout: timeout))
-        unlock.tap()
-        expectTrue(app.buttons["quick-log-favourite-Lunch"].waitForExistence(timeout: timeout))
+        type("8", into: amount)
+        eventually("isEnabled == true", app.buttons["log-save"], "The widget entry must be savable")
+        app.buttons["log-save"].tap()
+        expectTrue(app.buttons["log-undo"].waitForExistence(timeout: timeout), "Saved confirmation did not appear")
+        attachScreenshot(app, "journey-widget-while-locked")
     }
 
     // MARK: Negative paths and conflicts
@@ -299,14 +285,18 @@ final class MoneyUpJourneyTests: XCTestCase {
 
     // MARK: Accessibility audits
 
-    func testAccessibilityAuditOfLogAndLockedCapture() throws {
+    func testAccessibilityAuditOfLogAndTheLockScreen() throws {
+        let audits: XCUIAccessibilityAuditType = [.sufficientElementDescription, .hitRegion, .trait]
         let app = launch(favourites: true)
         _ = openLog(app)
-        try app.performAccessibilityAudit(for: [.sufficientElementDescription, .hitRegion, .trait])
+        var issues = try auditIssues(app, audits, screen: "Log")
         app.terminate()
+        // The lock screen now fronts every widget tap made while locked.
         let locked = launch(favourites: true, locked: true)
-        openWidgetLink("expense", in: locked)
-        expectTrue(locked.textFields["locked-capture-amount"].waitForExistence(timeout: timeout))
-        try locked.performAccessibilityAudit(for: [.sufficientElementDescription, .hitRegion, .trait])
+        issues += try auditIssues(locked, audits, screen: "Lock screen")
+        add(XCTAttachment(string: issues.joined(separator: "\n")))
+        // The element tree names the parent of anything the audit flags.
+        if !issues.isEmpty { add(XCTAttachment(string: locked.debugDescription)) }
+        expectTrue(issues.isEmpty, "Accessibility issues:\n" + issues.joined(separator: "\n"))
     }
 }

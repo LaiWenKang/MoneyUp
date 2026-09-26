@@ -14,11 +14,6 @@ extension AppModel {
         try await mutateProfile { $0.autoLockDelay = seconds }
     }
 
-    func updateLockedQuickCapture(_ enabled: Bool) async throws {
-        try await mutateProfile { $0.allowLockedQuickCapture = enabled }
-        UserDefaults.standard.set(enabled, forKey: Self.lockedQuickCapturePreferenceKey)
-    }
-
     func updateBudgetStatusWidget(_ enabled: Bool) async throws {
         try await mutateProfile { $0.showsBudgetStatusWidget = enabled }
         // `profile`'s observer publishes the redacted snapshot. Reloading is
@@ -125,7 +120,6 @@ extension AppModel {
             budgetNodes = budgetChange.nodes
         }
         profile = updatedProfile
-        scheduleLockedFavouriteSync()
     }
 
     func eraseAllDataAndRestart() async {
@@ -139,7 +133,6 @@ extension AppModel {
               scheduleEntryMatchesInProgress.isEmpty,
               investmentMutationsInProgress.isEmpty,
               !lockedCapturePromotionInProgress,
-              !lockedCaptureWriteInProgress,
               !manualJournalMutationIsActive || pendingCommit != nil else {
             return
         }

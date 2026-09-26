@@ -19,7 +19,14 @@ final class QuickLogDraftClearingTests: XCTestCase {
         let fixture = try AppModelFixture()
         defer { fixture.removeFiles() }
         let original = try fixture.expense(amount: 12.34)
-        let current = draft()
+        // Routed through the book's own accounts: the model never persists a
+        // draft reference the book lacks, which made backups unrestorable.
+        var current = draft()
+        current.kind = .expense
+        current.accountID = fixture.wallet.id
+        current.destinationAccountID = fixture.usAccount.id
+        current.categoryID = fixture.food.id
+        current.splitLines[0].categoryID = fixture.food.id
         let now = Date(timeIntervalSince1970: 2_000)
         try await fixture.seed(profile: UserProfile(baseCurrency: fixture.sgd),
             accounts: [fixture.wallet, fixture.food], entries: [original], quickLogDraft: current)

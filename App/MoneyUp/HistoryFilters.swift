@@ -27,8 +27,18 @@ struct HistorySummaryView: View {
     }
 
     private var summaryLabel: some View {
-        LabeledContent("history.transactions") {
+        LabeledContent {
             Text(summary.transactionCount, format: .number).monospacedDigit()
+        } label: {
+            Text("history.transactions")
+            if let spent = HistorySummaryHeadline.spending(summary) {
+                Text(String(format: AppLocalization.string("history.spent_headline_format"), formattedMoney(spent)))
+                    .monospacedDigit()
+                    .accessibilityLabel(String(
+                        format: AppLocalization.string("history.spent_headline_format"),
+                        accessibleFormattedMoney(spent)
+                    ))
+            }
         }
     }
 
@@ -102,6 +112,21 @@ struct HistorySummaryView: View {
         } label: {
             Text(key)
         }
+    }
+}
+
+/// What the scope spent, when a single currency is involved. People filter
+/// History to learn how much went somewhere; the count alone never said so,
+/// and the totals sat behind a disclosure. Mixed currencies are never summed.
+enum HistorySummaryHeadline {
+    static func spending(_ summary: HistorySummary) -> Money? {
+        let currencies = Set(summary.amountsByCurrency.keys)
+            .union(summary.spendingByCurrency.keys)
+            .union(summary.incomeByCurrency.keys)
+            .union(summary.refundsByCurrency.keys)
+        guard currencies.count == 1, let currency = currencies.first,
+              let spent = summary.spendingByCurrency[currency], spent > .zero else { return nil }
+        return try? Money(spent, currency: currency)
     }
 }
 

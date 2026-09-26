@@ -300,6 +300,12 @@ public enum TransactionCSVImporter {
             let line = record.sourceLine
             if columns.allSatisfy({ normalizedValue($0).isEmpty }) { continue }
             do {
+                // An unquoted "1,250.00" or "Acme, Inc." adds a field and shifts
+                // every later column: the amount column then reads "1" silently.
+                if columns.count > headers.count,
+                   columns[headers.count...].contains(where: { !normalizedValue($0).isEmpty }) {
+                    throw RowError.columnCountMismatch
+                }
                 for index in adjustmentColumns where columns.indices.contains(index) {
                     let text = normalizedValue(columns[index])
                     if !text.isEmpty, parsedAmount(text, locale: locale) != .zero {
@@ -388,5 +394,6 @@ public enum TransactionCSVImporter {
         case invalidDestinationAmount = "invalid_destination_amount"
         case unsupportedType = "unsupported_type"
         case unsupportedAdjustment = "unsupported_adjustment"
+        case columnCountMismatch = "column_count_mismatch"
     }
 }

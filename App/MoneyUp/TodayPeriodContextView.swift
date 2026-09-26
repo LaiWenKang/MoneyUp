@@ -39,13 +39,14 @@ enum TodayPeriodContextFormatter {
             .dateTime
                 .weekday(.abbreviated)
                 .month(.abbreviated)
-                .day()
-                .locale(locale),
-            calendar: reportingCalendar
+                .day(),
+            calendar: reportingCalendar,
+            locale: locale
         )
         let monthEnd = displayedMonthEnd.formattedForReporting(
-            .dateTime.month(.abbreviated).day().locale(locale),
-            calendar: reportingCalendar
+            .dateTime.month(.abbreviated).day(),
+            calendar: reportingCalendar,
+            locale: locale
         )
         let periodDescription: String
         if period.remainingDayCount == 1 {

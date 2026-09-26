@@ -1114,6 +1114,6 @@ extension AppModel {
         }
         investmentHoldings = plan.holdings.values
         profile = plan.profile
-        quickLogDraft = plan.draft
+        publishModelQuickLogDraft(plan.draft)
     }
 }

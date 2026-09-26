@@ -249,12 +249,10 @@ numbers. Widget configuration preservation remains a physical migration gate.
    On iOS 26 or later, also confirm extracted App Intents `supportedModes`
    reports immediate foreground mode; iOS 18-25 must retain the reviewed legacy
    foreground-open metadata.
-4. With MoneyUp locked, verify basic actions follow the existing preference:
-   when locked Quick Capture is enabled, only the redacted locked-capture form
-   appears with amount plus optional title and notes, and protected account or
-   category selection is deferred until intentional unlock and review. When
-   locked capture is disabled, normal authentication is required. Smart Entry
-   and Receipt must always require the protected app flow.
+4. With MoneyUp locked, verify every action shows only the normal unlock
+   screen, and after Face ID (or the passcode) opens the one Log in the
+   requested mode, favourites included. There is no separate locked form.
+   Close the app before unlocking and confirm the next visit still opens Log.
 5. Confirm failed or cancelled authentication leaves no new capture, draft,
    notification, Live Activity, Spotlight item, or App Group payload.
 

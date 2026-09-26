@@ -132,7 +132,8 @@ extension AppModel {
         let interestMoney = try Money(interest, currency: currency)
         let feeMoney = try Money(fees, currency: currency)
         let currentPrincipal = try currentLoanPrincipal(plan)
-        guard principal <= currentPrincipal.amount else {
+        // An overpaid loan (negative remainder) still takes interest or fees.
+        guard principal <= max(currentPrincipal.amount, .zero) else {
             throw AppModelError.loanOverpayment
         }
         try validateLoanExpenseCategory(
@@ -219,7 +220,7 @@ extension AppModel {
         }
         let plan = loanPlans[index]
         let currentPrincipal = try currentLoanPrincipal(plan)
-        guard currentPrincipal.isZero else {
+        guard currentPrincipal.amount <= .zero else {
             throw AppModelError.loanNotPaidOff
         }
         var updated = plan

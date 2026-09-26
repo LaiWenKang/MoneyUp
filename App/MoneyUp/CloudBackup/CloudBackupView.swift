@@ -31,7 +31,10 @@ struct CloudBackupView: View {
                     LabeledContent("cloud.account_label", value: controller.accountLabel)
                 }
                 if let last = controller.lastSuccessfulBackup {
-                    LabeledContent("cloud.last_backup", value: last.formatted(date: .abbreviated, time: .shortened))
+                    // Text(_:format:) takes the in-app language; .formatted() took the device's.
+                    LabeledContent("cloud.last_backup") {
+                        Text(last, format: Date.FormatStyle(date: .abbreviated, time: .shortened))
+                    }
                 }
             }
             if !controller.isConnected || controller.phase == .reconnect {
@@ -122,7 +125,7 @@ struct CloudBackupView: View {
                         }
                     } label: {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(backup.createdAt.formatted(date: .abbreviated, time: .shortened))
+                            Text(backup.createdAt, format: Date.FormatStyle(date: .abbreviated, time: .shortened))
                             Text(ByteCountFormatter.string(fromByteCount: Int64(backup.byteCount), countStyle: .file))
                                 .font(.caption).foregroundStyle(.secondary)
                         }

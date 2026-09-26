@@ -10,23 +10,35 @@ struct TransactionRow: View {
     let searchMatchLabel: String?
     let budgetCategoryIDs: Set<UUID>?
     let budgetCurrency: CurrencyCode?
+    /// The reporting day the enclosing list already names in a header. A row
+    /// on that day shows only its time instead of repeating the date.
+    let listedDay: Date?
 
     init(entry: JournalEntry, searchMatchLabel: String? = nil,
-         budgetCategoryIDs: Set<UUID>? = nil, budgetCurrency: CurrencyCode? = nil) {
+         budgetCategoryIDs: Set<UUID>? = nil, budgetCurrency: CurrencyCode? = nil,
+         listedDay: Date? = nil) {
         self.entry = entry
         self.searchMatchLabel = searchMatchLabel
         self.budgetCategoryIDs = budgetCategoryIDs
         self.budgetCurrency = budgetCurrency
+        self.listedDay = listedDay
+    }
+
+    private var categoryIDs: [UUID] {
+        TransactionRowCategories.ids(of: entry, accountsByID: model.accountsByID, within: budgetCategoryIDs)
+    }
+
+    /// A split names how many categories share its total instead of passing
+    /// the whole amount off as its first category's.
+    private var isSplit: Bool {
+        (entry.kind == .expense || entry.kind == .income) && categoryIDs.count > 1
     }
 
     private var categoryName: String? {
-        entry.postings.lazy.compactMap { posting in
-            if let budgetCategoryIDs, !budgetCategoryIDs.contains(posting.accountID) { return nil }
-            let account = model.accountsByID[posting.accountID]
-            return account?.kind == .expense || account?.kind == .income
-                ? model.categoryPathName(for: posting.accountID)
-                : nil
-        }.first
+        guard let first = categoryIDs.first else { return nil }
+        let path = model.categoryPathName(for: first)
+        guard isSplit else { return path }
+        return String(format: AppLocalization.string("history.split_more_format"), path, categoryIDs.count - 1)
     }
 
     /// Without a merchant the row leads with the category's own name; the
@@ -34,6 +46,7 @@ struct TransactionRow: View {
     private var title: String {
         entry.payee
             ?? transferRouteTitle
+            ?? (isSplit ? String(format: AppLocalization.string("history.split_title_format"), categoryIDs.count) : nil)
             ?? categoryID.flatMap { model.accountsByID[$0]?.name }
             ?? categoryName
             ?? localizedKind
@@ -117,10 +130,32 @@ struct TransactionRow: View {
         )
     }
 
+    private var visibleDateDescription: String {
+        let calendar = model.reportingCalendar
+        return entry.occurredAt.formattedForReporting(
+            TransactionRowDate.format(occurredAt: entry.occurredAt, listedDay: listedDay, calendar: calendar),
+            calendar: calendar
+        )
+    }
+
+    /// One string wraps as a unit; separate texts in a row squeezed the date
+    /// onto two lines ("Sep 18 at / 8:00 AM") beside a long category.
+    private var metadataLine: String {
+        var parts = [visibleDateDescription]
+        if let categoryName, entry.payee != nil || transferRouteTitle != nil || isSplit {
+            parts.append(categoryName)
+        }
+        return parts.joined(separator: " · ")
+    }
+
     private var accessibilityValue: String {
         var components: [String] = []
         if localizedKind != title { components.append(localizedKind) }
-        if let categoryName, categoryName != title { components.append(categoryName) }
+        if isSplit {
+            components.append(contentsOf: categoryIDs.map { model.categoryPathName(for: $0) })
+        } else if let categoryName, categoryName != title {
+            components.append(categoryName)
+        }
         if let note = entry.note { components.append(note) }
         if let searchMatchLabel { components.append(searchMatchLabel) }
         if budgetCategoryIDs != nil { components.append(AppLocalization.string("history.category_amount")) }
@@ -177,36 +212,27 @@ struct TransactionRow: View {
         MoneyUpCategoryBadge(
             systemImage: categoryID.map {
                 MoneyUpCategorySymbol.symbol(for: $0, accountsByID: model.accountsByID)
-            } ?? icon,
+            } ?? (isSplit ? "square.split.2x1" : icon),
             tint: categoryID.map(MoneyUpCategorySymbol.tint(for:)) ?? iconColor,
             cornerSymbol: cornerSymbol
         )
     }
 
+    /// The one category that explains the row; a split has none.
     private var categoryID: UUID? {
-        guard entry.kind == .expense || entry.kind == .income else { return nil }
-        return entry.postings.lazy.compactMap { posting -> UUID? in
-            if let budgetCategoryIDs, !budgetCategoryIDs.contains(posting.accountID) { return nil }
-            let account = model.accountsByID[posting.accountID]
-            return account?.kind == .expense || account?.kind == .income ? posting.accountID : nil
-        }.first
+        guard entry.kind == .expense || entry.kind == .income, !isSplit else { return nil }
+        return categoryIDs.first
     }
 
     private var cornerSymbol: String? {
-        guard categoryID != nil else { return nil }
+        guard categoryID != nil || isSplit else { return nil }
         if isRefund { return "arrow.uturn.backward" }
         return entry.kind == .income ? "arrow.down" : nil
     }
 
     private var transactionMetadata: some View {
         VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 5) {
-                Text(reportingDateDescription)
-                if let categoryName, entry.payee != nil || transferRouteTitle != nil {
-                    Text("•")
-                    Text(categoryName)
-                }
-            }
+            Text(metadataLine)
             if let note = entry.note {
                 Text(note)
                     .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
@@ -265,6 +291,32 @@ struct TransactionRow: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
+    }
+}
+
+/// The distinct expense or income categories a row explains, in posting
+/// order, optionally within a budget scope.
+enum TransactionRowCategories {
+    static func ids(of entry: JournalEntry, accountsByID: [UUID: LedgerAccount], within scope: Set<UUID>?) -> [UUID] {
+        var seen = Set<UUID>()
+        return entry.postings.compactMap { posting in
+            if let scope, !scope.contains(posting.accountID) { return nil }
+            let kind = accountsByID[posting.accountID]?.kind
+            guard kind == .expense || kind == .income, seen.insert(posting.accountID).inserted else { return nil }
+            return posting.accountID
+        }
+    }
+}
+
+/// The date parts a transaction row shows. Under a header that already names
+/// the reporting day, a row on that day needs only its time; a row from any
+/// other reporting day (a travel-attributed entry) keeps its date.
+enum TransactionRowDate {
+    static func format(occurredAt: Date, listedDay: Date?, calendar: Calendar) -> Date.FormatStyle {
+        if let listedDay, calendar.isDate(occurredAt, inSameDayAs: listedDay) {
+            return .dateTime.hour().minute()
+        }
+        return .dateTime.month().day().hour().minute()
     }
 }
 

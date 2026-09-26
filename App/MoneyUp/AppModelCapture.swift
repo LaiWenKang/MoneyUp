@@ -31,9 +31,49 @@ extension AppModel {
             guard draft.batch?.id == active.id, draft.batch?.selectedID == active.selectedID,
                   draft.batch?.revision == active.revision else { return }
         } else if draft.batch != nil { return }
+        // A promoted capture's draft is its only durable copy. A form that has
+        // not adopted it yet (a launch racing the promotion) must not replace
+        // it; the form re-syncs instead.
+        if let pinned = quickLogDraft?.sourceCaptureID, draft.sourceCaptureID != pinned {
+            quickLogPreparationRevision &+= 1
+            return
+        }
+        let sanitized = sanitizedQuickLogDraft(draft)
+        if sanitized != draft { quickLogPreparationRevision &+= 1 }
+        guard quickLogDraft != sanitized else { return }
+        quickLogDraft = sanitized
+        scheduleQuickLogDraftWrite(sanitized)
+    }
+
+    /// Publishes a draft the model itself rewrote (lifecycle repair, capture
+    /// promotion) and has a visible Log form adopt it, so the form's next
+    /// edit cannot write its stale copy back.
+    func publishModelQuickLogDraft(_ draft: QuickLogDraft?) {
         guard quickLogDraft != draft else { return }
         quickLogDraft = draft
-        scheduleQuickLogDraftWrite(draft)
+        quickLogPreparationRevision &+= 1
+    }
+
+    /// Clears references that lifecycle work merged or deleted, and split
+    /// categories of the wrong kind. Restore rejects a whole book over such a
+    /// draft, so a stale form must never persist one into a backup.
+    func sanitizedQuickLogDraft(_ draft: QuickLogDraft) -> QuickLogDraft {
+        var draft = draft
+        func known(_ id: UUID?) -> UUID? { id.flatMap { accountsByID[$0] == nil ? nil : $0 } }
+        draft.accountID = known(draft.accountID)
+        draft.destinationAccountID = known(draft.destinationAccountID)
+        draft.categoryID = known(draft.categoryID)
+        let splitKind: LedgerAccountKind? = switch draft.kind {
+        case .expense, .refund: .expense
+        case .income: .income
+        case .transfer: nil
+        }
+        if splitKind == nil { draft.splitLines = [] }
+        for index in draft.splitLines.indices
+        where draft.splitLines[index].categoryID.flatMap({ accountsByID[$0]?.kind }) != splitKind {
+            draft.splitLines[index].categoryID = nil
+        }
+        return draft
     }
 
     func completeOnboarding(

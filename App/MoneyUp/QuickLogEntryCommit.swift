@@ -169,7 +169,7 @@ extension QuickLogEntryView {
     ) throws -> [TransactionSplitLine] {
         try splitLines.map { line -> TransactionSplitLine in
             guard let categoryID = line.categoryID,
-                  let splitAmount = decimalAmount(from: line.amountText) else {
+                  let splitAmount = moneyAmount(from: line.amountText, currency: currency) else {
                 throw AppModelError.missingRecord
             }
             return TransactionSplitLine(
@@ -185,12 +185,11 @@ extension QuickLogEntryView {
     /// category, transaction kind, and transfer destination remain selected so
     /// the next routine entry takes only an amount and a tap on Save.
     func completeSuccessfulSave(entryID: UUID?) {
-        // Remember what was just posted so the confirmation names the money,
-        // not just the fact. Masked when exact amounts are hidden.
-        let trimmedAmount = amountText.trimmingCharacters(in: .whitespacesAndNewlines)
-        lastSavedAmountLabel = (selectedAccountCurrency.map(\.value)).flatMap { code in
-            trimmedAmount.isEmpty ? nil : code + " " + MoneyAmountPrivacy.protected(trimmedAmount)
-        }
+        // Name the money as posted, not as typed, so a misread can't hide
+        // behind the user's own text. Masked when exact amounts are hidden.
+        lastSavedAmountLabel = amount.flatMap { value in
+            selectedAccountCurrency.flatMap { try? Money(value, currency: $0) }
+        }.map(formattedMoneyWithCurrencyCode)
         // One category is shown beside the amount; a transfer or a split has
         // no single category, so the banner keeps to the amount.
         lastSavedCategoryID = kind != .transfer && splitLines.isEmpty ? categoryID : nil

@@ -184,7 +184,7 @@ private struct GoalEditorSheet: View {
 
     private var canSave: Bool {
         !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && (decimalAmount(from: targetText) ?? .zero) > .zero
+            && (moneyAmount(from: targetText, currency: currency) ?? .zero) > .zero
             && currency != nil
     }
 
@@ -258,7 +258,7 @@ private struct GoalEditorSheet: View {
     }
 
     private func save() async {
-        guard let amount = decimalAmount(from: targetText), let currency else { return }
+        guard let currency, let amount = moneyAmount(from: targetText, currency: currency) else { return }
         isSaving = true
         defer { isSaving = false }
         do {
@@ -407,7 +407,7 @@ struct GoalManagementSheet: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("action.save") { Task { await saveMetadata() } }
-                        .disabled(isSaving || name.isEmpty || decimalAmount(from: targetText) == nil)
+                        .disabled(isSaving || name.isEmpty || moneyAmount(from: targetText, currency: goal?.target.currency) == nil)
                 }
                 MoneyUpKeyboardDoneToolbar()
             }
@@ -471,7 +471,7 @@ struct GoalManagementSheet: View {
     }
 
     private func saveMetadata() async {
-        guard let amount = decimalAmount(from: targetText) else { return }
+        guard let amount = moneyAmount(from: targetText, currency: goal?.target.currency) else { return }
         isSaving = true
         defer { isSaving = false }
         do {
@@ -530,6 +530,10 @@ struct GoalMovementSheet: View {
     @State private var isSaving = false
     @State private var errorMessage: String?
 
+    private var currency: CurrencyCode? {
+        model.savingsGoals.first { $0.id == goalID }?.target.currency
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -552,7 +556,7 @@ struct GoalMovementSheet: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("action.save") { Task { await save() } }
-                        .disabled((decimalAmount(from: amountText) ?? .zero) <= .zero || isSaving)
+                        .disabled((moneyAmount(from: amountText, currency: currency) ?? .zero) <= .zero || isSaving)
                 }
                 MoneyUpKeyboardDoneToolbar()
             }
@@ -571,7 +575,7 @@ struct GoalMovementSheet: View {
     }
 
     private func save() async {
-        guard let amount = decimalAmount(from: amountText) else { return }
+        guard let amount = moneyAmount(from: amountText, currency: currency) else { return }
         isSaving = true
         defer { isSaving = false }
         do {

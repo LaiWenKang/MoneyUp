@@ -8,7 +8,7 @@ on-device charts, accounts and holdings, and spreadsheet-friendly export.
 
 ## Project status
 
-MoneyUp's source app identity is **Founders Beta 0.7.1 (source build 11)**.
+MoneyUp's source app identity is **Founders Beta 0.7.2 (source build 11)**.
 This candidate extends the feedback baseline merged through pull request #40
 with exact split assistance, stronger keyboard avoidance, direct hierarchical
 category management, default-on eligible on-device assistance, useful
@@ -156,9 +156,8 @@ The beta includes:
   transaction editing, including exact N-way category splits with live
   remainder; prior versions are retained in the encrypted revision collection;
 - configurable privacy-redacted Home and Lock Screen widgets for expense,
-  income, transfer, refund, smart entry, and receipt scanning; a separate
-  encrypted Quick Capture inbox that does not reveal balances while locked;
-  and configurable Budget Status or Smart Overview surfaces whose opt-in App
+  income, transfer, refund, smart entry, and receipt scanning, each opening
+  the one Log after the normal unlock; and configurable Budget Status or Smart Overview surfaces whose opt-in App
   Group snapshot contains only state, a bounded reporting-period token,
   budget/allowance percentages, a bounded review count, a bounded active
   expense-commitment count, expiry, and a relative due-day count,

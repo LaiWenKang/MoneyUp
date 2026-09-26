@@ -207,9 +207,8 @@ public struct LoanPlan: Codable, Equatable, Identifiable, Sendable {
         guard currentPrincipal.currency == originalPrincipal.currency else {
             throw LoanPlanError.currencyMismatch
         }
-        guard currentPrincipal.amount >= .zero else {
-            throw LoanPlanError.invalidActivity
-        }
+        // An ordinary transfer or refund can pay a loan past zero. The credit
+        // stays visible as a negative remainder; everything advanced is paid.
         var advanced = originalPrincipal.amount
         var interest = Decimal.zero
         var fees = Decimal.zero
@@ -228,7 +227,7 @@ public struct LoanPlan: Codable, Equatable, Identifiable, Sendable {
         }
         let paid = max(
             .zero,
-            try CheckedDecimal.subtracting(advanced, currentPrincipal.amount)
+            try CheckedDecimal.subtracting(advanced, max(currentPrincipal.amount, .zero))
         )
         let currency = originalPrincipal.currency
         return LoanSummary(

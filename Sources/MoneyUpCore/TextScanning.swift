@@ -21,8 +21,9 @@ public enum TextScanner {
     /// Candidate number grammar. Locale-specific interpretation happens only
     /// after the complete token is isolated, so `12,50` is never silently
     /// reinterpreted as `1,250` or truncated to `12`.
+    /// Trailing punctuation ("12.50." or "25，") does not hide an amount.
     private static let amountPattern =
-        "(?<![0-9.,:])[0-9]+(?:[.,][0-9]+)*(?![0-9.,:])"
+        "(?<![0-9.,:])[0-9]+(?:[.,][0-9]+)*(?![0-9:])(?![.,][0-9])"
 
     /// Dates in the formats that actually turn up on receipts and in typed
     /// notes, including the Chinese form the app already ships a UI for.

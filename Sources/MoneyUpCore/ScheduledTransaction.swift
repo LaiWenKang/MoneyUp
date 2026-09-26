@@ -474,7 +474,7 @@ public struct ScheduledTransaction: Codable, Equatable, Identifiable, Sendable {
         return currentSeriesResolutions
     }
 
-    private func recurrenceCalendar(_ supplied: Calendar?) -> Calendar? {
+    func recurrenceCalendar(_ supplied: Calendar?) -> Calendar? {
         var recurrenceCalendar = supplied
         if recurrenceCalendar == nil,
            let identifier = recurrenceTimeZoneIdentifier,
@@ -486,22 +486,34 @@ public struct ScheduledTransaction: Codable, Equatable, Identifiable, Sendable {
         return recurrenceCalendar
     }
 
+    /// How far a stored occurrence may sit from its recomputed anchor. Zone
+    /// rules move after an instant is stored: an OS time-zone data update
+    /// shifts it by hours, and a month-end clamp computed in an earlier zone
+    /// by up to a day. Occurrences are at least a week apart, so this keeps
+    /// every index unambiguous while still rejecting a misanchored record.
+    static let anchoredOccurrenceTolerance: TimeInterval = 36 * 60 * 60
+
+    private func isAnchored(_ stored: Date, index: Int, calendar: Calendar) -> Bool {
+        guard let anchored = anchoredOccurrence(index: index, calendar: calendar) else {
+            return false
+        }
+        return abs(stored.timeIntervalSince(anchored)) <= Self.anchoredOccurrenceTolerance
+    }
+
     private func validateAnchoredOccurrences(
         _ currentSeriesResolutions: [ScheduledOccurrenceResolution],
         calendar: Calendar
     ) throws {
-        guard anchoredOccurrence(
-            index: currentOccurrenceIndex,
-            calendar: calendar
-        ) == nextOccurrence else {
+        guard isAnchored(nextOccurrence, index: currentOccurrenceIndex, calendar: calendar) else {
             throw ScheduledTransactionError.invalidLifecycle
         }
         for (index, resolution) in currentSeriesResolutions.enumerated() {
             if index.isMultiple(of: 128) { try Task.checkCancellation() }
-            guard anchoredOccurrence(
+            guard isAnchored(
+                resolution.scheduledFor,
                 index: resolution.occurrenceID.index,
                 calendar: calendar
-            ) == resolution.scheduledFor else {
+            ) else {
                 throw ScheduledTransactionError.invalidLifecycle
             }
         }

@@ -26,7 +26,24 @@ struct PinnedRemainingHero: Equatable {
                 hasToday = true
             }
         }
-        return PinnedRemainingHero(remaining: total, today: hasToday ? todayTotal : nil, categoryCount: summaries.count)
+        // Today's share is honest only when every pinned category is flexible
+        // spending with money left: an overspent one has no share to net, and
+        // bills or goals are commitments, not a daily allowance.
+        let paceable = summaries.allSatisfy { $0.spread != nil && $0.purpose == .flexible }
+        return PinnedRemainingHero(
+            remaining: total, today: paceable && hasToday ? todayTotal : nil, categoryCount: summaries.count
+        )
+    }
+
+    /// Names the figure's scope: Plan's total spans every budget category,
+    /// so an unqualified "Left this month" here read as a second answer.
+    static func scopeText(categoryCount: Int, language: AppLanguagePreference = .current) -> String {
+        categoryCount == 1
+            ? AppLocalization.string("today.hero.pinned_scope_one", language: language)
+            : String(
+                format: AppLocalization.string("today.hero.pinned_scope_other", language: language),
+                categoryCount
+            )
     }
 }
 
@@ -43,6 +60,9 @@ extension DashboardView {
                     Text(formattedMoney(hero.remaining))
                         .moneyUpFinancialValue(.hero)
                         .foregroundStyle(hero.remaining.amount < .zero ? Color.moneyUpWarning : .primary)
+                    Text(PinnedRemainingHero.scopeText(categoryCount: hero.categoryCount))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                     if let today = hero.today {
                         HStack(spacing: 6) {
                             Image(systemName: "sun.max.fill")

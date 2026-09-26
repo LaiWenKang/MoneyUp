@@ -2,30 +2,17 @@ import Foundation
 import MoneyUpCore
 
 extension AppModel {
-    func updateFavouritesWhileLocked(_ enabled: Bool) async throws {
-        try await mutateProfile { $0.showsFavouritesWhileLocked = enabled }
-    }
-
-    /// Mirrors favourites to the locked store only while the owner has opted
-    /// in and Locked Quick Capture is allowed; otherwise the store is erased.
-    /// It runs only with an open book, so a locked app never rewrites it.
-    func syncLockedFavourites() async {
+    /// Widgets open the normal Log after unlock, so no favourite is shown
+    /// while locked any more. An earlier build may have left favourite labels
+    /// in the separate locked store; opening a book deletes them.
+    func scheduleRetiredLockedFavouritesErase() {
         let store = lockedFavouriteStore
-        guard let profile,
-              profile.showsFavouritesWhileLocked,
-              profile.allowLockedQuickCapture else {
-            try? await store.eraseAll()
-            return
-        }
-        try? await store.replace(with: profile.quickLogFavourites.map { LockedFavouriteShortcut($0) })
+        Task { try? await store.eraseAll() }
     }
 
-    func scheduleLockedFavouriteSync() {
-        Task { @MainActor in await syncLockedFavourites() }
-    }
-
-    /// The favourite a locked capture came from: the same kind and the exact
-    /// title the locked screen recorded. Only still-usable references apply.
+    /// The favourite a capture saved by an earlier build came from: the same
+    /// kind and the exact title its locked screen recorded (the favourite's
+    /// title, or its name without one). Only still-usable references apply.
     func lockedFavouriteRouting(
         for capture: LockedCapture
     ) -> (accountID: UUID?, categoryID: UUID?)? {
@@ -33,7 +20,7 @@ extension AppModel {
               capture.kind == .expense || capture.kind == .income else { return nil }
         let kind: QuickLogFavourite.Kind = capture.kind == .income ? .income : .expense
         guard let favourite = profile.quickLogFavourites.first(where: {
-            $0.kind == kind && LockedFavouriteShortcut($0).capturePayee == capture.payee
+            $0.kind == kind && ($0.payee.isEmpty ? $0.name : $0.payee) == capture.payee
         }) else { return nil }
         let categories = kind == .income ? incomeCategories : expenseCategories
         let accountID = favourite.accountID.flatMap { id in userAccounts.contains { $0.id == id } ? id : nil }

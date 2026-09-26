@@ -97,7 +97,7 @@ struct GoalContributionSimulator: View {
     private var projection: Result<GoalContributionProjection, Error>? {
         guard !contributionText.isEmpty else { return nil }
         return Result {
-            guard let amount = decimalAmount(from: contributionText), amount > .zero,
+            guard let amount = moneyAmount(from: contributionText, currency: summary.target.currency), amount > .zero,
                   summary.target.currency.supports(amount) else { throw GoalContributionProjectionError.invalidInput }
             return try GoalContributionProjection.make(
                 balance: summary.balance, target: summary.target,

@@ -20,6 +20,15 @@ from validate_architecture_fitness import OPTIONAL_CLOUD_TRANSPORT, scan_swift, 
 
 ROOT = Path(__file__).resolve().parents[1]
 REQUIRED_LANGUAGES = {"en", "zh-Hans"}
+# One Simplified Chinese term per concept, and tabs named by their own labels
+# (今日 · 明细 · 记账 · 规划 · 资产); "计划" already means a scheduled item.
+ZH_GLOSSARY_VIOLATIONS = {
+    "类别": "分类 (category)",
+    "“今天”": "“今日” (the Today tab)",
+    "“计划”": "“规划” (the Plan tab)",
+    "在计划中": "在规划中 (the Plan tab)",
+    "前往历史": "前往明细 (the History tab)",
+}
 SQLCIPHER_REVISION = "f879fffaaa3ad3541a77830daad4a28726dfa927"
 CHECKOUT_ACTION_REVISION = "3d3c42e5aac5ba805825da76410c181273ba90b1"
 UPLOAD_ARTIFACT_REVISION = "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
@@ -392,7 +401,7 @@ def security_recovery_invariant_violations(
     deep_link = source_section(
         lifecycle,
         "func handleDeepLink",
-        "func routeLockSafeRequestIfPossible",
+        "var hasDeferredAuthenticationLock",
     )
     if not ordered_fragments_are_present(
         deep_link,
@@ -400,7 +409,7 @@ def security_recovery_invariant_violations(
             "guard !isBookReplacementInProgress",
             "startupFailureKind != .missingDeviceBoundKey",
             "hasPendingKeyCliffRecoveryTransaction()",
-            "requestedQuickLogMode = mode",
+            "requestedQuickLogMode = QuickLogLaunchMode(action)",
         ),
     ):
         violations.append(
@@ -2054,6 +2063,12 @@ def validate_localizations() -> None:
             for unit_path in expected_paths:
                 english = language_units["en"][unit_path]["value"]
                 mandarin = language_units["zh-Hans"][unit_path]["value"]
+                for fragment, preferred in ZH_GLOSSARY_VIOLATIONS.items():
+                    if fragment in mandarin:
+                        fail(
+                            f"{catalog.relative_to(ROOT)}:{key} uses {fragment}; "
+                            f"use {preferred}"
+                        )
                 if placeholder_signature(english) != placeholder_signature(mandarin):
                     path_text = "/".join(unit_path) or "default"
                     fail(
@@ -2305,7 +2320,7 @@ def validate_key_cliff_recovery_boundary() -> None:
         fail("ordinary startup must retain recovering-mode load semantics")
 
     for declaration, source in (
-        ("UserDefaults.standard.set(", startup_publication),
+        ("scheduleRetiredLockedFavouritesErase()", startup_publication),
         ("locked_captures/promotion-unavailable", startup_publication),
         ("if !isBookReplacementInProgress", startup_publication),
         ("func finishBookReplacementMutation", ledger_validation),
@@ -4013,7 +4028,6 @@ def validate_design_primitive_usage() -> None:
             "QuickLogEntryBody.swift",
             "QuickLogEntryChrome.swift",
             "QuickLogEntryCommit.swift",
-            "LockedQuickCaptureView.swift",
         )
     )
     for declaration in [

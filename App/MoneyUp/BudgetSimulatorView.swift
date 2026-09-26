@@ -172,7 +172,7 @@ struct BudgetSimulatorView: View {
                 additionalSpending: additionalSpending,
                 additionalIncome: additionalIncome
             ) {
-                forecastCards(forecast, monthElapsed: monthElapsed)
+                forecastCards(forecast, netSoFar: report.baseFlow.net, monthElapsed: monthElapsed)
             } else {
                 MoneyUpCard {
                     Text("simulator.unavailable")
@@ -220,8 +220,12 @@ struct BudgetSimulatorView: View {
     @ViewBuilder
     private func forecastCards(
         _ forecast: BudgetScenarioForecast,
+        netSoFar: Money,
         monthElapsed: Double
     ) -> some View {
+        // The month's real net so far includes unbudgeted spending, which the
+        // forecast's budget-only `projectedNet` leaves out.
+        let netAfter = try? netSoFar.adding(forecast.additionalIncome).subtracting(forecast.additionalSpending)
         let points = [
             ChartPoint(
                 id: "current",
@@ -246,7 +250,7 @@ struct BudgetSimulatorView: View {
             budgetUsage: budgetUsage,
             monthElapsed: monthElapsed
         )
-        forecastSummaryCard(forecast, isOver: isOver)
+        forecastSummaryCard(forecast, netAfter: netAfter, isOver: isOver)
     }
 
     private func forecastSpendingCard(
@@ -331,6 +335,7 @@ struct BudgetSimulatorView: View {
 
     private func forecastSummaryCard(
         _ forecast: BudgetScenarioForecast,
+        netAfter: Money?,
         isOver: Bool
     ) -> some View {
         MoneyUpCard {
@@ -372,7 +377,7 @@ struct BudgetSimulatorView: View {
                         .monospacedDigit()
                 }
                 LabeledContent("simulator.projected_net") {
-                    Text(formattedMoney(forecast.projectedNet))
+                    Text(netAfter.map(formattedMoney) ?? "—")
                         .monospacedDigit()
                 }
 

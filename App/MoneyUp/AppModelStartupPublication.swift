@@ -50,13 +50,7 @@ extension AppModel {
             finishUnlockToFirstUsefulContentMeasurement(outcome: .cancelled)
             return
         }
-        if let profile {
-            UserDefaults.standard.set(
-                profile.allowLockedQuickCapture,
-                forKey: Self.lockedQuickCapturePreferenceKey
-            )
-        }
-        scheduleLockedFavouriteSync()
+        scheduleRetiredLockedFavouritesErase()
         do {
             try await promoteLockedCaptureIfPossible(
                 to: openedStore,

@@ -101,11 +101,11 @@ extension MoneyUpJourneyTests {
         type("Taxi", into: name)
         app.navigationBars.buttons["Save"].tap()
         expectTrue(app.staticTexts["Taxi"].waitForExistence(timeout: timeout), "New favourite not listed")
-        let optIn = app.switches["quick-access-favourites-while-locked"]
+        let optIn = app.switches["quick-access-budget-status"]
         scrollTo(optIn, in: app)
-        expectEqual(optIn.value as? String, "0", "Showing favourites while locked must default off")
-        // Tap the switch itself, not its two-line label, then allow the
-        // encrypted profile write to publish the new value.
+        expectEqual(optIn.value as? String, "0", "Widget summaries must default off")
+        // Tap the switch itself, not its label, then allow the encrypted
+        // profile write to publish the new value.
         optIn.switches.firstMatch.exists ? optIn.switches.firstMatch.tap()
             : optIn.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
         let turnedOn = NSPredicate(format: "value == '1'")

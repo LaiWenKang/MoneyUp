@@ -284,6 +284,8 @@ extension SQLCipherConnection {
         at index: Int32,
         to statement: OpaquePointer
     ) throws {
+        // A C string ends at the first NUL: binding would silently truncate.
+        guard !value.utf8.contains(0) else { throw PersistenceError.invalidQuery }
         let result = value.withCString { pointer in
             sqlite3_bind_text(statement, index, pointer, -1, sqliteTransient)
         }

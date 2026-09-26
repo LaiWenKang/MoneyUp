@@ -216,22 +216,6 @@ final class PlatformQuickLogActionTests: XCTestCase {
         ])
     }
 
-    @MainActor
-    func testLockSafeTombstoneBecomingPendingDiscardsWholeQueue() {
-        assertPostDequeueTombstoneDenial(
-            [.pending(false), .pending(false), .pending(true)],
-            lockedCaptureEnabled: true
-        )
-    }
-
-    @MainActor
-    func testLockSafeTombstoneBecomingUnreadableDiscardsWholeQueue() {
-        assertPostDequeueTombstoneDenial(
-            [.pending(false), .pending(false), .unreadable],
-            lockedCaptureEnabled: true
-        )
-    }
-
     func testDefaultIntentCarriesOnlyTheClosedExpenseAction() {
         let intent = OpenQuickLogIntent()
 
@@ -249,18 +233,6 @@ final class PlatformQuickLogActionTests: XCTestCase {
             dataEraseIntent: .none,
             quickActionRouteBroker: broker
         )
-        let defaults = UserDefaults.standard
-        let key = AppModel.lockedQuickCapturePreferenceKey
-        let previous = defaults.object(forKey: key)
-        defaults.set(true, forKey: key)
-        defer {
-            if let previous {
-                defaults.set(previous, forKey: key)
-            } else {
-                defaults.removeObject(forKey: key)
-            }
-        }
-
         XCTAssertEqual(model.state, .launching)
         model.isWorking = true
         let action = try XCTUnwrap(
@@ -284,7 +256,7 @@ final class PlatformQuickLogActionTests: XCTestCase {
         )
         XCTAssertEqual(broker.pendingCount, 0)
         XCTAssertEqual(model.requestedQuickLogMode, .expense)
-        XCTAssertTrue(model.canPresentLockedQuickCapture)
+        XCTAssertEqual(model.state, .launching, "The route waits for the normal startup")
     }
 
     @MainActor
@@ -809,184 +781,38 @@ final class PlatformQuickLogActionTests: XCTestCase {
         XCTAssertEqual(remaining.takePendingRecord()?.token, secondToken)
     }
 
+    /// A widget tap while locked is not lost if the app is closed before the
+    /// unlock: it stays queued and opens Log on the next visit.
     @MainActor
-    func testLockedCaptureSaveThenDoneUsesExactIdempotentAcknowledgement()
-    async throws {
+    func testLockedWidgetTapStaysDurableUntilLogConsumesIt() async throws {
         let ingress = try makeDurableIngressFixture()
         defer { try? FileManager.default.removeItem(at: ingress.directoryURL) }
         let fixture = try AppModelFixture()
         defer { fixture.removeFiles() }
-        let inbox = DurableActionLockedCaptureStore()
-        let broker = durableBroker(at: ingress.fileURL)
-        let token = UUID()
-        XCTAssertTrue(broker.submit(.expense, token: token))
-        let model = fixture.model(
-            lockedCaptureStore: inbox,
-            quickActionRouteBroker: broker
-        )
-        model.state = .locked
-        UserDefaults.standard.set(
-            true,
-            forKey: AppModel.lockedQuickCapturePreferenceKey
-        )
-        XCTAssertEqual(
-            MoneyUpQuickActionRouting.routeNext(from: broker, into: model),
-            .routed
-        )
-        let request = try XCTUnwrap(model.requestedQuickLogRequest)
-
-        try await model.saveLockedCapture(
-            request: request,
-            amountText: "12.50",
-            payee: "Cafe",
-            note: "Lunch"
-        )
-        model.consumeQuickLogRequest(request)
-
-        XCTAssertNil(model.requestedQuickLogRequest)
-        XCTAssertEqual(durableBroker(at: ingress.fileURL).pendingCount, 0)
-        let captures = try await inbox.all()
-        XCTAssertEqual(captures.count, 1)
-        XCTAssertEqual(captures.first?.id, token)
-        await fixture.store.close()
-    }
-
-    @MainActor
-    func testCrashAfterLockedInboxCommitReplaysAsSavedWithoutDuplicate()
-    async throws {
-        let ingress = try makeDurableIngressFixture()
-        defer { try? FileManager.default.removeItem(at: ingress.directoryURL) }
-        let fixture = try AppModelFixture()
-        defer { fixture.removeFiles() }
-        let inbox = DurableActionLockedCaptureStore()
         let token = UUID()
         let firstBroker = durableBroker(at: ingress.fileURL)
         XCTAssertTrue(firstBroker.submit(.income, token: token))
-        let firstModel = fixture.model(
-            lockedCaptureStore: inbox,
-            quickActionRouteBroker: firstBroker
-        )
+        let firstModel = fixture.model(quickActionRouteBroker: firstBroker)
         firstModel.state = .locked
-        UserDefaults.standard.set(
-            true,
-            forKey: AppModel.lockedQuickCapturePreferenceKey
-        )
         XCTAssertEqual(
-            MoneyUpQuickActionRouting.routeNext(
-                from: firstBroker,
-                into: firstModel
-            ),
+            MoneyUpQuickActionRouting.routeNext(from: firstBroker, into: firstModel),
+            .requiresStart
+        )
+
+        let relaunchedBroker = durableBroker(at: ingress.fileURL)
+        XCTAssertEqual(relaunchedBroker.pendingCount, 1)
+        let relaunched = fixture.model(quickActionRouteBroker: relaunchedBroker)
+        relaunched.state = .ready
+        XCTAssertEqual(
+            MoneyUpQuickActionRouting.routeNext(from: relaunchedBroker, into: relaunched),
             .routed
         )
-        let firstRequest = try XCTUnwrap(firstModel.requestedQuickLogRequest)
-
-        // This is the kill point: the encrypted inbox append committed, but
-        // the durable action head has not yet received its UI acknowledgement.
-        try await firstModel.saveLockedCapture(
-            mode: firstRequest.mode,
-            captureID: firstRequest.ingressToken,
-            amountText: "91.25",
-            payee: "Payroll",
-            note: "Original payload"
-        )
-
-        let recreatedBroker = durableBroker(at: ingress.fileURL)
-        let recreatedModel = fixture.model(
-            lockedCaptureStore: inbox,
-            quickActionRouteBroker: recreatedBroker
-        )
-        recreatedModel.state = .locked
-        XCTAssertEqual(
-            MoneyUpQuickActionRouting.routeNext(
-                from: recreatedBroker,
-                into: recreatedModel
-            ),
-            .routed
-        )
-        let replay = try XCTUnwrap(recreatedModel.requestedQuickLogRequest)
-        XCTAssertEqual(replay.ingressToken, token)
-        let resumed = try await recreatedModel.resumeCommittedLockedCaptureIfPresent(
-            request: replay
-        )
-        XCTAssertTrue(resumed)
-        recreatedModel.consumeQuickLogRequest(replay)
-
-        XCTAssertNil(recreatedModel.requestedQuickLogRequest)
+        let request = try XCTUnwrap(relaunched.requestedQuickLogRequest)
+        XCTAssertEqual(request.ingressToken, token)
+        XCTAssertEqual(request.mode, .income)
+        XCTAssertTrue(relaunched.presentQuickLogRequest(request))
+        relaunched.consumeQuickLogRequest(request)
         XCTAssertEqual(durableBroker(at: ingress.fileURL).pendingCount, 0)
-        let captures = try await inbox.all()
-        XCTAssertEqual(captures.count, 1)
-        XCTAssertEqual(captures.first?.id, token)
-        XCTAssertEqual(captures.first?.amountText, "91.25")
-        XCTAssertEqual(captures.first?.note, "Original payload")
-        await fixture.store.close()
-    }
-
-    @MainActor
-    func testAckFailureAfterLockedCommitDismissesAndSafelyReplays() async throws {
-        let ingress = try makeDurableIngressFixture()
-        defer { try? FileManager.default.removeItem(at: ingress.directoryURL) }
-        let fixture = try AppModelFixture()
-        defer { fixture.removeFiles() }
-        let inbox = DurableActionLockedCaptureStore()
-        let backing = MoneyUpQuickActionIngressFileStore(fileURL: ingress.fileURL)
-        let failingStore = ControllableQuickActionIngressStore(backing: backing)
-        let broker = MoneyUpQuickActionRouteBroker(ingressStore: failingStore)
-        let token = UUID()
-        XCTAssertTrue(broker.submit(.refund, token: token))
-        let model = fixture.model(
-            lockedCaptureStore: inbox,
-            quickActionRouteBroker: broker
-        )
-        model.state = .locked
-        UserDefaults.standard.set(
-            true,
-            forKey: AppModel.lockedQuickCapturePreferenceKey
-        )
-        XCTAssertEqual(
-            MoneyUpQuickActionRouting.routeNext(from: broker, into: model),
-            .routed
-        )
-        let request = try XCTUnwrap(model.requestedQuickLogRequest)
-        failingStore.failNextAcknowledgement()
-
-        try await model.saveLockedCapture(
-            request: request,
-            amountText: "7",
-            payee: "Return",
-            note: "Committed before failed ack"
-        )
-        XCTAssertTrue(broker.isAuthoritativeBoundaryActive)
-        XCTAssertFalse(broker.isAuthoritativeLifecycleBoundaryActive)
-        model.consumeQuickLogRequest(request)
-        XCTAssertNil(model.requestedQuickLogRequest)
-
-        // The failed durable removal leaves the exact token eligible for an
-        // at-least-once navigation replay, but its stable capture ID makes the
-        // financial inbox append idempotent.
-        let replayBroker = durableBroker(at: ingress.fileURL)
-        XCTAssertEqual(replayBroker.pendingCount, 1)
-        let replayModel = fixture.model(
-            lockedCaptureStore: inbox,
-            quickActionRouteBroker: replayBroker
-        )
-        replayModel.state = .locked
-        XCTAssertEqual(
-            MoneyUpQuickActionRouting.routeNext(
-                from: replayBroker,
-                into: replayModel
-            ),
-            .routed
-        )
-        let replay = try XCTUnwrap(replayModel.requestedQuickLogRequest)
-        let resumed = try await replayModel.resumeCommittedLockedCaptureIfPresent(
-            request: replay
-        )
-        XCTAssertTrue(resumed)
-        replayModel.consumeQuickLogRequest(replay)
-        let captures = try await inbox.all()
-        XCTAssertEqual(captures.count, 1)
-        XCTAssertEqual(captures.first?.id, token)
-        XCTAssertEqual(captures.first?.amountText, "7")
         await fixture.store.close()
     }
 
@@ -1444,7 +1270,6 @@ final class PlatformQuickLogActionTests: XCTestCase {
         XCTAssertFalse(broker.isAuthoritativeLifecycleBoundaryActive)
         model.finishCancelledAuthentication()
         XCTAssertEqual(model.state, .locked)
-        XCTAssertFalse(model.canPresentLockedQuickCapture)
 
         model.finishFailedStartup(message: "Recoverable startup failure")
         XCTAssertEqual(model.state, .failed("Recoverable startup failure"))
@@ -1541,22 +1366,9 @@ final class PlatformQuickLogActionTests: XCTestCase {
     @MainActor
     private func assertPostDequeueTombstoneDenial(
         _ outcomes: [PlatformEraseIntentOutcome],
-        lockedCaptureEnabled: Bool = false,
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
-        let defaults = UserDefaults.standard
-        let key = AppModel.lockedQuickCapturePreferenceKey
-        let previous = defaults.object(forKey: key)
-        defaults.set(lockedCaptureEnabled, forKey: key)
-        defer {
-            if let previous {
-                defaults.set(previous, forKey: key)
-            } else {
-                defaults.removeObject(forKey: key)
-            }
-        }
-
         let probe = PlatformEraseIntentProbe(outcomes)
         let broker = MoneyUpQuickActionRouteBroker()
         let model = AppModel(
@@ -1645,33 +1457,6 @@ private func placeholderRestoreTicket() -> RestorePreviewTicket {
             sha256: Data()
         )
     )
-}
-
-private actor DurableActionLockedCaptureStore: LockedCaptureStoring {
-    private var captures: [LockedCapture] = []
-
-    func all() async throws -> [LockedCapture] {
-        captures
-    }
-
-    @discardableResult
-    func append(_ capture: LockedCapture) async throws -> Int {
-        captures = try LockedCaptureStore.queueByAppending(
-            capture,
-            to: captures
-        )
-        return captures.count
-    }
-
-    @discardableResult
-    func remove(id: UUID) async throws -> Int {
-        captures.removeAll { $0.id == id }
-        return captures.count
-    }
-
-    func eraseAll() async throws {
-        captures.removeAll(keepingCapacity: false)
-    }
 }
 
 private final class ControllableQuickActionIngressStore:

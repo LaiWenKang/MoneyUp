@@ -26,7 +26,7 @@ end-to-end encryption and authorization design is approved.
 
 | Capability | Current source behavior |
 |---|---|
-| Privacy and security | No account or backend; encrypted local database; timed local authentication; redacted locked capture |
+| Privacy and security | No account or backend; encrypted local database; timed local authentication; widgets and controls open Log after unlock |
 | First-run guidance | Four explicit steps: purpose/privacy, base currency, first financial account, and review; Today then offers visible Log and Plan actions |
 | Visual system | Adaptive soft green, horned-money identity, original decorative 3D illustrations, exact 2D data graphics, guided empty states, and off-white/deep-charcoal canvases |
 | Navigation | Five permanent tabs: Today, History, center Log, Plan, and Assets; the fixed tab bar is the only global tab-navigation control, preserving child gestures; Plan and History use compact adaptive selectors and contextual screens show Back only for a real origin |

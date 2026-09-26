@@ -90,7 +90,8 @@ extension AppModel {
                     of: amount,
                     to: baseCurrency,
                     on: origin,
-                    rates: exchangeRates
+                    rates: exchangeRates,
+                    permitsRoundingToZero: true
                 ) else {
                     return .available(nil)
                 }

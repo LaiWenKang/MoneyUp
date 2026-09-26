@@ -377,7 +377,6 @@ final class AppwideExperienceTests: XCTestCase {
         ("GoalDetailView", GoalDetailView.Body.self),
         ("DataSafetyView", DataSafetyView.Body.self),
         ("StarterBudgetSetupSheet", StarterBudgetSetupSheet.Body.self),
-        ("LockedQuickCaptureView", LockedQuickCaptureView.Body.self),
         ("RootView", RootView.Body.self),
         ("ImportTransactionsView", ImportTransactionsView.Body.self),
         ("IntelligenceView", IntelligenceView.Body.self),

@@ -497,9 +497,13 @@ public struct BudgetConfigurationTimeline: Codable, Equatable, Sendable {
             mergedMappings.append(newMapping)
         }
         mergedMappings.removeAll { $0.sourceID == $0.targetID }
-        let preservedOpeningCarry = revisions.first {
+        // A category deleted in this change forfeits its opening carry, as its
+        // deletion confirmation says; keeping it failed validation, so no
+        // unused category holding a rollover balance could ever be deleted.
+        let carriedIDs = Set(nodes.map(\.id)).union(mergedMappings.map(\.sourceID))
+        let preservedOpeningCarry = (revisions.first {
             $0.effectiveMonth == effectiveMonth
-        }?.openingCarryByID ?? openingCarry
+        }?.openingCarryByID ?? openingCarry)?.filter { carriedIDs.contains($0.key) }
         var candidate = revisions.filter { $0.effectiveMonth != effectiveMonth }
         candidate.append(BudgetConfigurationRevision(
             effectiveMonth: effectiveMonth,
@@ -678,7 +682,10 @@ public enum BudgetRolloverEngine {
             ) else {
                 throw BudgetRolloverError.invalidMonth
             }
-            start.month = next
+            // Re-anchor on the month's own start: stepping from a month that
+            // daylight saving began at 01:00 stays at 01:00 and never meets
+            // the midnight keys of later months (Asunción, October 2023).
+            start.month = calendar.dateInterval(of: .month, for: next)?.start ?? next
         }
         throw BudgetRolloverError.invalidMonth
     }

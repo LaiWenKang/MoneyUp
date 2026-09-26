@@ -223,7 +223,7 @@ struct TransactionEditView: View {
     }
 
     var splitRemainder: Decimal? {
-        guard let amount = decimalAmount(from: amountText),
+        guard let amount = editedAmount(amountText, currency: sourceCurrency),
               amount > .zero,
               let currency = sourceCurrency,
               let total = try? Money(amount, currency: currency),
@@ -237,7 +237,7 @@ struct TransactionEditView: View {
 
     var splitLinesAreValid: Bool {
         guard isSplitTransaction,
-              let amount = decimalAmount(from: amountText),
+              let amount = editedAmount(amountText, currency: sourceCurrency),
               let currency = sourceCurrency,
               let total = try? Money(amount, currency: currency),
               let lines = try? transactionSplitLines(currency: currency),
@@ -256,7 +256,7 @@ struct TransactionEditView: View {
 
     var canSave: Bool {
         guard isEditable,
-              decimalAmount(from: amountText).map({ $0 > .zero }) == true,
+              editedAmount(amountText, currency: sourceCurrency).map({ $0 > .zero }) == true,
               let accountID,
               editableSourceAccounts.contains(where: { $0.id == accountID }) else {
             return false
@@ -268,7 +268,7 @@ struct TransactionEditView: View {
                       $0.id == destinationAccountID
                   }) else { return false }
             return !needsDestinationAmount
-                || decimalAmount(from: destinationAmountText).map { $0 > .zero } == true
+                || editedAmount(destinationAmountText, currency: destinationCurrency).map { $0 > .zero } == true
         }
         if isSplitTransaction { return splitLinesAreValid }
         return categories.contains { $0.id == categoryID }
@@ -309,7 +309,7 @@ struct TransactionEditView: View {
         } label: {
             Label("quick_log.split_assistant", systemImage: "wand.and.stars")
         }
-        .disabled(decimalAmount(from: amountText) == nil || sourceCurrency == nil)
+        .disabled(editedAmount(amountText, currency: sourceCurrency) == nil || sourceCurrency == nil)
 
         ForEach(Array(splitLines.enumerated()), id: \.element.id) { index, line in
             let lineID = line.id
@@ -468,7 +468,7 @@ struct TransactionEditView: View {
     }
 
     func applyEqualSplit() {
-        guard let value = decimalAmount(from: amountText),
+        guard let value = editedAmount(amountText, currency: sourceCurrency),
               let currency = sourceCurrency,
               let amounts = try? TransactionSplitCalculator.equalAmounts(
                 total: Money(value, currency: currency),
@@ -481,10 +481,10 @@ struct TransactionEditView: View {
     }
 
     func rebalanceUnlockedSplits() {
-        guard let value = decimalAmount(from: amountText),
+        guard let value = editedAmount(amountText, currency: sourceCurrency),
               let currency = sourceCurrency else { return }
         let current: [Money?] = splitLines.map { line in
-            guard let value = decimalAmount(from: line.amountText) else { return nil }
+            guard let value = editedAmount(line.amountText, currency: currency) else { return nil }
             return try? Money(value, currency: currency)
         }
         guard let amounts = try? TransactionSplitCalculator.rebalancedAmounts(
@@ -499,7 +499,7 @@ struct TransactionEditView: View {
     }
 
     func applyPercentageSplit(_ percentages: [Decimal]) {
-        guard let value = decimalAmount(from: amountText),
+        guard let value = editedAmount(amountText, currency: sourceCurrency),
               let currency = sourceCurrency,
               let amounts = try? TransactionSplitCalculator.percentageAmounts(
                 total: Money(value, currency: currency),
@@ -528,5 +528,15 @@ extension TransactionEditView {
          String(occurredAt.timeIntervalSinceReferenceDate), payee, note]
         + splitLines.flatMap { [$0.id.uuidString, $0.categoryID?.uuidString ?? "", $0.amountText, $0.memo] }
         + pendingEvidence.map { $0.id.uuidString }
+    }
+
+    /// An edited amount. Text written past the currency's minor units is a
+    /// misread ("25.000" in IDR is twenty-five thousand) unless it is one of
+    /// this entry's untouched legacy amounts, which the model preserves.
+    func editedAmount(_ text: String, currency: CurrencyCode?) -> Decimal? {
+        if let value = moneyAmount(from: text, currency: currency) { return value }
+        return decimalAmount(from: text).flatMap { value in
+            entry.postings.contains { abs($0.money.amount) == value } ? value : nil
+        }
     }
 }

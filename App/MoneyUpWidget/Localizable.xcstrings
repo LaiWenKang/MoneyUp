@@ -6,7 +6,7 @@
     "widget.focus.zero_short" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Zero"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"零预算"}}}},
     "widget.focus.check_short" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Check"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"检查"}}}},
     "widget.focus.scheduled_count" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"%d scheduled expenses"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"%d 项计划支出"}}}},
-    "widget.focus.set_limit" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Set a limit in Plan"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"在计划中设置限额"}}}},
+    "widget.focus.set_limit" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Set a limit in Plan"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"在规划中设置限额"}}}},
     "widget.focus.zero_limit" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"No percentage for a zero limit"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"限额为零，无法计算百分比"}}}},
     "widget.focus.negative_limit" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Check this month’s allocations"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"检查本月的预算分配"}}}},
     "widget.focus.scheduled" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Scheduled expenses"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"计划支出"}}}},
@@ -109,7 +109,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "选择小票"
+            "value" : "选择收据"
           }
         }
       }
@@ -271,13 +271,13 @@
     "platform_action.transfer" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Transfer"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"转账"}}}},
     "platform_action.refund" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Refund"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"退款"}}}},
     "platform_action.smart_entry" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Smart Entry"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"智能记账"}}}},
-    "platform_action.scan_receipt" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Receipt"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"选择小票"}}}},
+    "platform_action.scan_receipt" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Receipt"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"选择收据"}}}},
     "platform_action.unlock_required" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Unlock required"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"需要解锁"}}}},
     "platform_action.capture_without_unlock" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Open MoneyUp to continue logging"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"打开 MoneyUp 以继续记账"}}}},
-    "platform_intent.open_quick_log.title" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Open Quick Log"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"打开快捷记账"}}}},
+    "platform_intent.open_quick_log.title" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Open Quick Log"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"打开快速记账"}}}},
     "platform_intent.open_quick_log.description" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Open one MoneyUp logging screen without passing transaction details."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"打开一个 MoneyUp 记账界面，不传递交易详情。"}}}},
     "platform_intent.open_quick_log.action" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Quick action"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"快捷操作"}}}},
-    "control.quick_log.display_name" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"MoneyUp Quick Log"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"MoneyUp 快捷记账"}}}},
+    "control.quick_log.display_name" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"MoneyUp Quick Log"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"MoneyUp 快速记账"}}}},
     "widget.content.smart_overview" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Today"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"今日"}}}},
     "widget.smart_overview" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Today at a glance"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"今日一览"}}}},
     "widget.smart_open_app" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Open MoneyUp to refresh private summaries."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"打开 MoneyUp 刷新私密摘要。"}}}},
@@ -317,7 +317,7 @@
     "widget.hero.transfer" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Log transfer"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"记转账"}}}},
     "widget.hero.refund" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Log refund"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"记退款"}}}},
     "widget.hero.smart_entry" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Smart Entry"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"智能记账"}}}},
-    "widget.hero.scan_receipt" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Add receipt"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"添加小票"}}}},
+    "widget.hero.scan_receipt" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Add receipt"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"添加收据"}}}},
     "widget.budget_pace_within_format" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Within pace · %d%% of the month gone"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"未超进度 · 本月已过 %d%%"}}}},
     "widget.budget_pace_ahead_format" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Ahead of pace · %d%% of the month gone"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"超出进度 · 本月已过 %d%%"}}}},
     "widget.summaries_off" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Summaries are off · turn on in MoneyUp"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"摘要已关闭 · 可在 MoneyUp 中开启"}}}}

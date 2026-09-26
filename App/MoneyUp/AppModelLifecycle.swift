@@ -248,19 +248,26 @@ extension AppModel {
             return
         }
         guard allowProtectedStart(), !Task.isCancelled else { return }
-        guard !routeLockSafeRequestIfPossible() else { return }
         await start()
     }
 
-    func lock() {
-        if pendingDisplayPreferences != nil, let write = displayPreferenceWriteTask {
-            requiresAuthenticationPrivacyCover = true
-            Task { @MainActor in
-                await write.value
-                lock()
-            }
-            return
+    /// A display-preference write in flight finishes before the lock. One
+    /// waiter; its flag keeps the cover up (and counts as a deferred lock).
+    private func deferLockForDisplayPreferenceWrite() -> Bool {
+        guard pendingDisplayPreferences != nil, let write = displayPreferenceWriteTask else { return false }
+        requiresAuthenticationPrivacyCover = true
+        guard !lockAfterDisplayPreferenceWrite else { return true }
+        lockAfterDisplayPreferenceWrite = true
+        Task { @MainActor in
+            await write.value
+            lockAfterDisplayPreferenceWrite = false
+            lock()
         }
+        return true
+    }
+
+    func lock() {
+        if deferLockForDisplayPreferenceWrite() { return }
         // Stop day-boundary work as soon as authentication is required, even
         // when an atomic mutation must drain before decoded state is cleared.
         cancelWidgetReportingDayRefresh()
@@ -418,8 +425,9 @@ extension AppModel {
             cancelWidgetReportingDayRefresh()
             return
         }
+        // A requested lock still draining keeps the book covered.
         guard let leftActiveAt else {
-            requiresAuthenticationPrivacyCover = false
+            requiresAuthenticationPrivacyCover = hasDeferredAuthenticationLock
             if wasAlreadyActive {
                 rearmWidgetReportingDayRefreshIfEligible()
             } else {
@@ -433,7 +441,7 @@ extension AppModel {
         if !elapsed.isFinite || elapsed < 0 || elapsed >= delay {
             lock()
         } else {
-            requiresAuthenticationPrivacyCover = false
+            requiresAuthenticationPrivacyCover = hasDeferredAuthenticationLock
             refreshWidgetForSceneActivationIfEligible()
         }
     }
@@ -459,134 +467,16 @@ extension AppModel {
         guard let action = MoneyUpQuickAction(exactDeepLink: url) else {
             return false
         }
-        let mode = QuickLogLaunchMode(action)
-        requestedQuickLogMode = mode
-        _ = routeLockSafeRequestIfPossible()
+        // Every route opens the one Log; a locked app authenticates first.
+        requestedQuickLogMode = QuickLogLaunchMode(action)
         return true
-    }
-
-    /// Moves only basic, privacy-redacted requests onto the locked capture
-    /// screen. Smart text and receipts still require the protected book.
-    @discardableResult
-    func routeLockSafeRequestIfPossible() -> Bool {
-        guard state == .launching || state == .locked,
-              isLockSafeQuickCaptureRequested else { return false }
-        guard lockedCaptureIsAllowedByLifecycleAndEraseIntent else {
-            // Do not retain a request that was denied by an authoritative erase
-            // boundary: otherwise it could surface later against the new blank
-            // book after startup finishes converging the tombstone.
-            requestedQuickLogMode = nil
-            return false
-        }
-        state = .locked
-        return true
-    }
-
-    var isLockSafeQuickCaptureRequested: Bool {
-        guard let requestedQuickLogMode,
-              UserDefaults.standard.bool(
-                  forKey: Self.lockedQuickCapturePreferenceKey
-              ) else { return false }
-        switch requestedQuickLogMode {
-        case .expense, .income, .transfer, .refund:
-            return true
-        case .smartEntry, .scanReceipt:
-            return false
-        }
-    }
-
-    var canPresentLockedQuickCapture: Bool {
-        state == .locked
-            && isLockSafeQuickCaptureRequested
-            && lockedCaptureIsAllowedByLifecycleAndEraseIntent
-    }
-
-    /// Durable erase and key-cliff replacement markers are authoritative even
-    /// before normal startup. Lock-safe capture cannot cross either book
-    /// replacement boundary.
-    var lockedCaptureIsAllowedByLifecycleAndEraseIntent: Bool {
-        guard !isWorking,
-              !isLifecycleMutationInProgress,
-              !goalMutationBarrierClosed,
-              !quickActionRouteBroker.isAuthoritativeBoundaryActive,
-              !lockedCaptureWriteInProgress else { return false }
-        do {
-            guard try dataEraseIntent.isPending() == false else { return false }
-            return !(try hasPendingKeyCliffRecoveryTransaction())
-        } catch {
-            return false
-        }
     }
 
     /// Testable/UI-safe evidence that authentication must precede any future
     /// decoded-content presentation, even though an atomic operation is still
     /// draining in `.ready` or `.launching`.
     var hasDeferredAuthenticationLock: Bool {
-        lockAfterStart || lockAfterLifecycleMutation
-    }
-
-    func saveLockedCapture(
-        request: QuickLogRouteRequest,
-        amountText: String,
-        payee: String,
-        note: String
-    ) async throws {
-        guard requestedQuickLogRequest == request else {
-            throw AppModelError.locked
-        }
-        try await saveLockedCapture(
-            mode: request.mode,
-            captureID: request.ingressToken,
-            amountText: amountText,
-            payee: payee,
-            note: note
-        )
-        if request.requiresIngressAcknowledgement {
-            _ = quickActionRouteBroker.acknowledge(
-                token: request.ingressToken,
-                allowingCommittedCaptureReplay: true
-            )
-        }
-    }
-
-    func saveLockedCapture(
-        mode: QuickLogLaunchMode,
-        captureID: UUID = UUID(),
-        amountText: String,
-        payee: String,
-        note: String
-    ) async throws {
-        guard state == .locked,
-              requestedQuickLogMode == mode,
-              canPresentLockedQuickCapture,
-              !lockedCaptureWriteInProgress else {
-            throw AppModelError.locked
-        }
-        lockedCaptureWriteInProgress = true
-        defer { lockedCaptureWriteInProgress = false }
-        let kind: LockedCaptureKind
-        switch mode {
-        case .income:
-            kind = .income
-        case .transfer:
-            kind = .transfer
-        case .refund:
-            kind = .refund
-        case .expense:
-            kind = .expense
-        case .smartEntry, .scanReceipt:
-            throw AppModelError.locked
-        }
-        pendingLockedCaptureCount = try await lockedCaptureStore.append(
-            LockedCapture(
-                id: captureID,
-                kind: kind,
-                amountText: amountText,
-                payee: payee,
-                note: note
-            )
-        )
-        recoveryIssues.removeAll { $0.hasPrefix("locked_captures/") }
+        lockAfterStart || lockAfterLifecycleMutation || lockAfterDisplayPreferenceWrite
     }
 
     func consumeQuickLogRequest(_ request: QuickLogRouteRequest) {

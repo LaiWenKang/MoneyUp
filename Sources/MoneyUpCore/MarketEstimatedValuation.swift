@@ -379,15 +379,18 @@ public enum MarketEstimatedNetWorthEngine {
                 of: amount,
                 to: context.baseCurrency,
                 on: context.origin,
-                rates: context.rates
+                rates: context.rates,
+                permitsRoundingToZero: true
             ) else { return nil }
+            // The quoted rate keeps inverse conversions exact, as snapshots do.
             return try NetWorthConversionEvidence(
                 source: amount,
                 appliedRate: converted.appliedRate,
                 rateID: converted.rateID,
                 effectiveDayKey: converted.effectiveDayKey,
                 usedInverseRate: converted.usedInverseRate,
-                converted: converted.converted
+                converted: converted.converted,
+                quotedRate: converted.quotedRate
             )
         } catch is CancellationError {
             throw CancellationError()

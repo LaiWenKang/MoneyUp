@@ -121,6 +121,7 @@ public extension FinanceCalculator {
             return nil
         }
         let today = period.startOfToday
+        let monthStart = calendar.dateInterval(of: .month, for: date)?.start ?? today
         var baseCommitments = Decimal.zero
         var foreignCommitments: [CurrencyCode: Decimal] = [:]
         var schedulesNeedingReview = 0
@@ -130,15 +131,12 @@ public extension FinanceCalculator {
             && flexibleCategoryIDs.contains(schedule.categoryAccountID) {
             if schedule.nextOccurrence < today {
                 schedulesNeedingReview += 1
-                try addFlexibleCommitment(
-                    schedule.amount,
-                    baseCurrency: flexibleBudgetRemaining.currency,
-                    baseCommitments: &baseCommitments,
-                    foreignCommitments: &foreignCommitments
-                )
             }
 
-            var reference = today
+            // Every unposted occurrence dated this month is still owed from it,
+            // overdue ones included. One dated in an earlier month posts to
+            // that month, so it never reduces this month's flexible money.
+            var reference = max(schedule.nextOccurrence, monthStart)
             var count = 0
             while count < 120,
                   let occurrence = schedule.occurrence(

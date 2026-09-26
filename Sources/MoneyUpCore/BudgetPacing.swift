@@ -72,13 +72,14 @@ public enum BudgetPaceCalculator {
             throw BudgetPaceError.dateOutsideMonth
         }
         let today = calendar.startOfDay(for: asOf)
-        let remainingDays = calendar.dateComponents(
-            [.day],
-            from: today,
-            to: month.end
-        ).day ?? 0
+        // Civil days, not elapsed time: where daylight saving starts at
+        // midnight (Santiago, Beirut, Cairo…) that day begins at 01:00, and a
+        // difference of instants undercounts the rest of the month by one,
+        // or to zero on its last day.
+        let remainingDays = (calendar.range(of: .day, in: .month, for: asOf)?.count ?? 0)
+            - calendar.component(.day, from: asOf) + 1
         guard remainingDays > 0,
-              let dayAfterToday = calendar.date(byAdding: .day, value: 1, to: today),
+              let dayAfterToday = startOfDay(after: today, days: 1, calendar: calendar),
               dayAfterToday <= month.end else {
             throw BudgetPaceError.invalidCalendarRange
         }
@@ -98,7 +99,7 @@ public enum BudgetPaceCalculator {
         let period = try reportingPeriod(asOf: asOf, calendar: calendar)
         let today = period.startOfToday
         let remainingDays = period.remainingDayCount
-        guard let dayAfterToday = calendar.date(byAdding: .day, value: 1, to: today)
+        guard let dayAfterToday = startOfDay(after: today, days: 1, calendar: calendar)
         else { throw BudgetPaceError.invalidCalendarRange }
 
         let bucketEnd: Date
@@ -111,13 +112,9 @@ public enum BudgetPaceCalculator {
             bucketEnd = dayAfterToday
             bucketDays = 1
         case .weekly:
-            let sevenDays = calendar.date(byAdding: .day, value: 7, to: today)
+            let sevenDays = startOfDay(after: today, days: 7, calendar: calendar)
             bucketEnd = min(sevenDays ?? period.endOfMonth, period.endOfMonth)
-            bucketDays = calendar.dateComponents(
-                [.day],
-                from: today,
-                to: bucketEnd
-            ).day ?? 0
+            bucketDays = min(7, remainingDays)
         }
         guard bucketDays > 0 else { throw BudgetPaceError.invalidCalendarRange }
 
@@ -156,6 +153,12 @@ public enum BudgetPaceCalculator {
             interval: DateInterval(start: today, end: bucketEnd),
             remainingDayCount: remainingDays
         )
+    }
+
+    /// The start of the civil day `days` after `day`. Adding days to a start
+    /// that daylight saving moved to 01:00 keeps 01:00, an hour into the day.
+    static func startOfDay(after day: Date, days: Int, calendar: Calendar) -> Date? {
+        calendar.date(byAdding: .day, value: days, to: day).map { calendar.startOfDay(for: $0) }
     }
 }
 

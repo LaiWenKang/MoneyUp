@@ -494,7 +494,8 @@ struct QuickLogEntryView: View {
     @State var evidencePreparationTask: Task<Void, Never>?
 
     var amount: Decimal? {
-        guard let value = decimalAmount(from: amountText), value > .zero else { return nil }
+        guard let value = moneyAmount(from: amountText, currency: selectedAccountCurrency),
+              value > .zero else { return nil }
         if let currency = selectedAccountCurrency,
            !MonetaryInputPolicy.accepts(value, currency: currency) {
             return nil
@@ -576,7 +577,8 @@ struct QuickLogEntryView: View {
     }
 
     var destinationAmount: Decimal? {
-        guard let value = decimalAmount(from: destinationAmountText), value > .zero else {
+        guard let value = moneyAmount(from: destinationAmountText, currency: selectedDestinationCurrency),
+              value > .zero else {
             return nil
         }
         if let currency = selectedDestinationCurrency,
@@ -588,16 +590,22 @@ struct QuickLogEntryView: View {
 
     func monetaryInputError(
         text: String,
-        currency: CurrencyCode?
+        currency: CurrencyCode?,
+        isEditing: Bool = false
     ) -> String? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
-        guard let value = decimalAmount(from: trimmed), value > .zero else {
+        // "12." or "0.0" mid-typing is not an error yet; it would flash a row.
+        if isEditing, isIncompleteAmount(trimmed) { return nil }
+        guard let written = writtenAmount(from: trimmed), written.value > .zero else {
             return AppLocalization.string("error.invalid_amount")
         }
         guard let currency else { return nil }
         do {
-            try MonetaryInputPolicy.validate(value, currency: currency)
+            guard written.fractionDigits <= currency.minorUnits else {
+                throw MoneyError.unsupportedPrecision(currency: currency)
+            }
+            try MonetaryInputPolicy.validate(written.value, currency: currency)
             return nil
         } catch {
             return safeUserMessage(for: error, context: .save)

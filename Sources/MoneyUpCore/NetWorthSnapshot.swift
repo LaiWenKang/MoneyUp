@@ -67,7 +67,9 @@ public struct NetWorthConversionEvidence: Codable, Equatable, Identifiable, Send
         } catch {
             throw NetWorthSnapshotError.invalidConversion
         }
-        guard expected == converted.amount, converted.amount != .zero else {
+        // A tiny balance can truthfully round to zero; the recomputed
+        // expected amount still binds the stored value exactly.
+        guard expected == converted.amount else {
             throw NetWorthSnapshotError.invalidConversion
         }
         self.quotedRate = quotedRate

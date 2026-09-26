@@ -120,33 +120,7 @@ struct WidgetsQuickAccessView: View {
                 )
             )
             .accessibilityHint("settings.widget.budget_status_hint")
-            Toggle(
-                isOn: Binding(
-                    get: { model.profile?.allowLockedQuickCapture ?? true },
-                    set: { enabled in
-                        Task { await run { try await model.updateLockedQuickCapture(enabled) } }
-                    }
-                )
-            ) {
-                Label("settings.locked_capture", systemImage: "bolt.badge.clock")
-            }
-            Toggle(
-                isOn: Binding(
-                    get: { model.profile?.showsFavouritesWhileLocked ?? false },
-                    set: { enabled in
-                        Task { await run { try await model.updateFavouritesWhileLocked(enabled) } }
-                    }
-                )
-            ) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Label("quick_access.favourites_while_locked", systemImage: "star.square.on.square")
-                    Text("quick_access.favourites_while_locked_detail")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .disabled(!(model.profile?.allowLockedQuickCapture ?? true))
-            .accessibilityIdentifier("quick-access-favourites-while-locked")
+            .accessibilityIdentifier("quick-access-budget-status")
         } header: {
             MoneyUpSectionHeader("quick_access.privacy_title", explanation: "quick_access.privacy_detail")
         } footer: {

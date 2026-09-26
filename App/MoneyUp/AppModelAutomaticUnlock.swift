@@ -22,8 +22,7 @@ extension AppModel {
               automaticUnlockIsPending,
               !isWorking,
               !isLifecycleMutationInProgress,
-              !quickActionRouteBroker.isAuthoritativeBoundaryActive,
-              !canPresentLockedQuickCapture else { return false }
+              !quickActionRouteBroker.isAuthoritativeBoundaryActive else { return false }
         // Claim before suspending. Explicit retry and cold startup consume the
         // same opportunity in beginStartupWork, so callback ordering is harmless.
         automaticUnlockIsPending = false

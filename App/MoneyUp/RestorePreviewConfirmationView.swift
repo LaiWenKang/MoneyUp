@@ -255,7 +255,7 @@ struct RestorePreviewConfirmationView: View {
 enum RestorePreviewPresentation {
     static func dateSpanSummary(
         for book: RestorePreview.BookSummary,
-        locale: Locale = .autoupdatingCurrent
+        locale: Locale = AppLanguagePreference.current.locale
     ) -> String {
         guard let span = book.entryDateSpan else {
             return AppLocalization.string("restore.preview.none")
@@ -264,10 +264,9 @@ enum RestorePreviewPresentation {
             timeZoneIdentifier: book.reportingTimeZoneIdentifier
         )
         let style = Date.FormatStyle(date: .abbreviated, time: .omitted)
-            .locale(locale)
-        return span.oldest.formattedForReporting(style, calendar: calendar)
+        return span.oldest.formattedForReporting(style, calendar: calendar, locale: locale)
             + " – "
-            + span.newest.formattedForReporting(style, calendar: calendar)
+            + span.newest.formattedForReporting(style, calendar: calendar, locale: locale)
     }
 }
 
