@@ -64,7 +64,7 @@ private struct TransactionPreparationContent<Content: View>: View {
             .environment(\.prepareTransaction, { entry, action in
                 guard !isPreparing else { return }
                 let request = Request(entry: entry, action: action, expectedDraft: model.quickLogDraft)
-                if model.quickLogDraft?.hasUserEdits == true {
+                if model.quickLogDraft?.isUnfinishedEntry == true {
                     pending = request
                 } else {
                     prepare(request)

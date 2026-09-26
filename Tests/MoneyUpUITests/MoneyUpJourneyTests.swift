@@ -260,6 +260,42 @@ final class MoneyUpJourneyTests: XCTestCase {
         expectEqual(app.textFields["quick-log-payee"].value as? String, "Taxi")
     }
 
+    func testDiscardAndStartNewAsksOnlyOnce() {
+        let app = launch()
+        _ = openLog(app)
+        type("Taxi", into: app.textFields["quick-log-payee"])
+        openWidgetLink("expense", in: app)
+        let discard = app.buttons["Discard and start new"]
+        expectTrue(discard.waitForExistence(timeout: timeout), "Conflict prompt did not appear")
+        discard.tap()
+        expectFalse((app.textFields["quick-log-payee"].value as? String ?? "").contains("Taxi"),
+                    "Discard must clear the entry")
+        openWidgetLink("expense", in: app)
+        expectFalse(app.buttons["Resume unfinished entry"].waitForExistence(timeout: 3),
+                    "A discarded entry must not ask again")
+    }
+
+    /// 1075.1 feedback: a form holding only choices (a category tapped, an
+    /// amount typed then deleted) asked "Unfinished transaction" on every
+    /// widget tap, and "Discard and start new" did not stop it.
+    func testWidgetTapOverChoicesOnlyOpensLogWithoutAsking() {
+        let app = launch()
+        let amount = openLog(app)
+        type("7", into: amount)
+        amount.typeText(XCUIKeyboardKey.delete.rawValue)
+        let dismiss = app.buttons["log-dismiss-keyboard"]
+        if dismiss.exists { dismiss.tap() }
+        let chip = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "transport")).firstMatch
+        if chip.waitForExistence(timeout: 2), chip.isHittable { chip.tap() }
+        for route in ["income", "expense"] {
+            openWidgetLink(route, in: app)
+            expectTrue(amount.waitForExistence(timeout: timeout), "The widget did not open Log")
+            expectFalse(app.buttons["Resume unfinished entry"].waitForExistence(timeout: 3),
+                        "Choices alone are not an unfinished entry (\(route))")
+        }
+        expectFalse(app.buttons["log-undo"].exists, "Routing must never save")
+    }
+
     // MARK: Interruptions and relaunch
 
     func testUnfinishedEntrySurvivesBackgroundingAndRelaunch() {

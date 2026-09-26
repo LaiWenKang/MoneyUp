@@ -200,7 +200,7 @@ extension QuickLogEntryView {
             focusedField = .amount
             return
         }
-        if draftSnapshot.hasUserEdits {
+        if draftSnapshot.isUnfinishedEntry {
             // Every external action means “start or focus an entry.” Protect
             // even same-kind drafts: Smart Entry and receipt parsing can
             // otherwise overwrite an unfinished expense in place.
@@ -220,6 +220,7 @@ extension QuickLogEntryView {
         cancelReceiptProcessing()
         cancelCaptureSuggestionLookup()
         cancelOnDeviceAssistance()
+        smartState = .init()
         accountWasEdited = false
         categoryWasEdited = false
         amountText = ""
