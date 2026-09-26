@@ -153,6 +153,44 @@ final class TransactionPreparationTests: XCTestCase {
         ))
     }
 
+    /// 1075.1 feedback: every widget tap asked about an "unfinished
+    /// transaction" over a form holding only an account and a category.
+    /// Choices and touched-then-emptied fields are not an entry; only
+    /// something a new entry would throw away is.
+    func testOnlyRealContentIsAnUnfinishedEntry() throws {
+        var entry = draft(amount: "")
+        entry.accountID = UUID()
+        entry.categoryID = UUID()
+        entry.accountWasEdited = true
+        entry.categoryWasEdited = true
+        for field in [QuickLogSmartField.account, .category, .amount, .payee, .note, .date, .kind] {
+            entry.smartState.edited(field)
+        }
+        XCTAssertTrue(entry.hasUserEdits, "The choices themselves are still kept")
+        XCTAssertFalse(entry.isUnfinishedEntry, "No amount, payee, note or date: nothing to lose")
+
+        for content in [\QuickLogDraft.amountText, \.destinationAmountText, \.payee, \.note, \.smartText] {
+            var typed = entry
+            typed[keyPath: content] = "4"
+            XCTAssertTrue(typed.isUnfinishedEntry)
+            typed[keyPath: content] = "  "
+            XCTAssertFalse(typed.isUnfinishedEntry, "Whitespace is not content")
+        }
+        var dated = entry
+        dated.dateWasEdited = true
+        XCTAssertTrue(dated.isUnfinishedEntry)
+        var allowance = entry
+        allowance.selectedAllowanceID = UUID()
+        XCTAssertTrue(allowance.isUnfinishedEntry)
+        var split = entry
+        split.splitLines = [QuickLogSplitDraftLine(categoryID: UUID(), amountText: "", memo: "")]
+        XCTAssertTrue(split.isUnfinishedEntry)
+        var capture = entry
+        capture.sourceCaptureID = UUID()
+        XCTAssertTrue(capture.isUnfinishedEntry, "A waiting capture is never discarded silently")
+        XCTAssertFalse(draft(amount: "").isUnfinishedEntry)
+    }
+
     private func draft(amount: String) -> QuickLogDraft {
         QuickLogDraft(kind: .expense, amountText: amount, destinationAmountText: "",
             accountID: nil, destinationAccountID: nil, categoryID: nil,

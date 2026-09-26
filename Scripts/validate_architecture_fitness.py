@@ -659,7 +659,8 @@ W3_SOURCE_FUNCTION_DIGESTS: tuple[
 
 W3_PATH_TYPE_DIGESTS: tuple[tuple[str, str, str, str], ...] = (
     # Contextual preload protects the restored draft and active-entry lifecycle.
-    ("App/MoneyUp/QuickLogEntryDraft.swift", "extension", "QuickLogEntryView", "b76ee3c86e1fe002fa25de768217d90d44e7226af9d99950672cd92d6fdba448"),
+    # Re-pinned 2026-09-26: launches ask only over real content, and discard resets smart-entry marks (1075.1 feedback).
+    ("App/MoneyUp/QuickLogEntryDraft.swift", "extension", "QuickLogEntryView", "2905e80fa3b71fb8a4708d4492c15740576cb84621d0617d8a2b679ee0f3d42a"),
     ('App/MoneyUp/QuickLogBatch.swift', 'enum', 'QuickLogBatchPreparation', 'b4a392813f96d592dce88fdc532816501d7ea991f59b791595e02fb7538e0273'),
     ('Sources/MoneyUpCore/SmartEntryBatchText.swift', 'enum', 'SmartEntryBatchText', '1efd0ca7104e651a464478fd2e28c491af109ce94d48b2c7d9d035f0416047f9'),
     ('App/MoneyUp/QuickLogSmartFill.swift', 'struct', 'QuickLogSmartFill', '3c98e0dc2f72aae58ef9626c1953a3239b930ad5fb465a45c8ba2e8f08ddd998'),

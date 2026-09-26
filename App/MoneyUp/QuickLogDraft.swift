@@ -130,6 +130,15 @@ struct QuickLogDraft: Codable, Equatable, Sendable {
 
     static let routingOnlySmartFields: Set<QuickLogSmartField> = [.kind]
 
+    /// What the "Unfinished transaction" prompt protects: something typed,
+    /// scanned or queued that starting another entry would throw away.
+    /// Account and category choices are not an entry, and launching Log keeps
+    /// them. A field touched and then emptied leaves no content either. Asking
+    /// on those made every widget tap on 1075.1 prompt over an empty form.
+    var isUnfinishedEntry: Bool {
+        hasTransactionContent || batch != nil || sourceCaptureID != nil
+    }
+
     private enum CodingKeys: String, CodingKey {
         case batch, smartState, clearRecovery
         case accountWasEdited, categoryWasEdited
