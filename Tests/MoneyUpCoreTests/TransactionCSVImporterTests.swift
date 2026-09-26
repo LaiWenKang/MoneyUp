@@ -72,20 +72,53 @@ struct TransactionCSVImporterTests {
 
     @Test
     func v2FingerprintCaseFoldsOnlyHumanFields() throws {
-        let csv = """
-        Date,Type,Amount,Currency,Account,Destination Account,Category,Payee,Note
-        2026-08-20,Expense,12,sgd,Cash,Savings,Food,Cafe,Lunch
-        2026-08-20,EXPENSE,12,SGD,CASH,SAVINGS,FOOD,CAFE,LUNCH
-        """
+        // One row per file: within one file the second would be a repeat.
+        func identity(_ row: String) throws -> String {
+            let preview = try TransactionCSVImporter.parse(
+                "Date,Type,Amount,Currency,Account,Destination Account,Category,Payee,Note\n"
+                    + row,
+                locale: Locale(identifier: "en_US_POSIX"),
+                timeZone: TimeZone(secondsFromGMT: 0)!
+            )
+            #expect(preview.issues.isEmpty)
+            return try #require(preview.rows.first).id
+        }
 
-        let preview = try TransactionCSVImporter.parse(
-            csv,
-            locale: Locale(identifier: "en_US_POSIX"),
-            timeZone: TimeZone(secondsFromGMT: 0)!
-        )
+        #expect(try identity("2026-08-20,Expense,12,sgd,Cash,Savings,Food,Cafe,Lunch")
+            == identity("2026-08-20,EXPENSE,12,SGD,CASH,SAVINGS,FOOD,CAFE,LUNCH"))
+    }
 
-        #expect(preview.issues.isEmpty)
-        #expect(preview.rows[0].id == preview.rows[1].id)
+    @Test
+    func identicalRowsWithoutAnIDAreSeparateTransactions() throws {
+        let tap = "2026-08-20 08:15:00,Expense,2.10,Wallet,Transport,Transit"
+        let bus = "2026-08-20 09:00:00,Expense,1.80,Wallet,Transport,Bus"
+        func rows(_ lines: [String]) throws -> [ImportedTransaction] {
+            try TransactionCSVImporter.parse(
+                (["Date,Type,Amount,Account,Category,Payee"] + lines)
+                    .joined(separator: "\n"),
+                locale: Locale(identifier: "en_US_POSIX"),
+                timeZone: TimeZone(secondsFromGMT: 0)!
+            ).rows
+        }
+
+        let statement = try rows([tap, tap, bus, tap])
+        let ids = statement.map(\.id)
+        #expect(Set(ids).count == 4, "Every tap is its own transaction")
+        // The first of each keeps the identity earlier builds stored.
+        #expect(ids[0] == (try rows([tap]))[0].id)
+        #expect(ids[2] == (try rows([bus]))[0].id)
+        // Re-reading the statement reproduces every identity, repeats included.
+        #expect(try rows([tap, tap, bus, tap]).map(\.id) == ids)
+        // Earlier builds kept only the first row, so a repeat has no legacy
+        // identity; everything else about it is unchanged.
+        #expect(!statement[0].legacyFingerprintCandidates.isEmpty)
+        #expect(statement[1].legacyFingerprintCandidates.isEmpty)
+        #expect(statement[3].legacyFingerprintCandidates.isEmpty)
+        #expect(statement[1].sourceLine == statement[0].sourceLine + 1)
+        #expect(statement[1].amount == statement[0].amount)
+        #expect(statement[1].payee == statement[0].payee)
+        #expect(statement[1].occurredAt == statement[0].occurredAt)
+        #expect(statement.allSatisfy { !$0.hasExternalID })
     }
 
     @Test

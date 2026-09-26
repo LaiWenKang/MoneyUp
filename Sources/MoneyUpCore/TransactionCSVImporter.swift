@@ -64,6 +64,28 @@ public struct ImportedTransaction: Equatable, Sendable, Identifiable {
     }
 }
 
+extension ImportedTransaction {
+    /// The same row as a repeat: its own identity and no legacy candidates.
+    func asRepeat(identity: String) -> ImportedTransaction {
+        ImportedTransaction(
+            id: identity,
+            hasExternalID: hasExternalID,
+            sourceLine: sourceLine,
+            kind: kind,
+            occurredAt: occurredAt,
+            originContext: originContext,
+            amount: amount,
+            destinationAmount: destinationAmount,
+            currencyCode: currencyCode,
+            accountName: accountName,
+            destinationAccountName: destinationAccountName,
+            categoryName: categoryName,
+            payee: payee,
+            note: note
+        )
+    }
+}
+
 public struct CSVImportIssue: Equatable, Sendable, Identifiable {
     public let line: Int
     public let reason: String
@@ -327,7 +349,31 @@ public enum TransactionCSVImporter {
                 issues.append(CSVImportIssue(line: line, reason: "invalid_row"))
             }
         }
-        return CSVImportPreview(rows: rows, issues: issues)
+        return CSVImportPreview(rows: distinguishingRepeatedRows(rows), issues: issues)
+    }
+
+    /// Rows without a source ID that match in every field are separate
+    /// transactions, such as two identical coffees or transit taps on one
+    /// statement. The first keeps the identity earlier builds stored; each
+    /// repeat gets its own, so every one imports once and re-importing the
+    /// statement still skips them all. Rows sharing a source ID stay one.
+    static func distinguishingRepeatedRows(
+        _ rows: [ImportedTransaction]
+    ) -> [ImportedTransaction] {
+        var seen: [String: Int] = [:]
+        return rows.map { row in
+            guard !row.hasExternalID else { return row }
+            let repeatIndex = seen[row.id, default: 0]
+            seen[row.id] = repeatIndex + 1
+            guard repeatIndex > 0 else { return row }
+            // Earlier builds kept only the first row, so a repeat has no
+            // legacy identity to match.
+            return row.asRepeat(identity: sha256Fingerprint(
+                domain: "moneyup.csv.repeat.v1",
+                values: [row.id, String(repeatIndex)],
+                prefix: "sha256:v2:repeat:"
+            ))
+        }
     }
 
     static func publicMapping(_ indexes: [Field: Int]) -> CSVColumnMapping {
