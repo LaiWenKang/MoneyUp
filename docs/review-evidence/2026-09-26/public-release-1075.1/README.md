@@ -40,3 +40,22 @@ Between the sources of 1074.1 (`50e4d92`) and 1075.1 (`3e89bb0`), `Package.swift
 The only cryptography change removes the retired locked-favourites store's
 CryptoKit AES-GCM use (one Log for widgets, #92). No algorithm or dependency was
 added, so 1074.1's declaration still applies (`encryption_unchanged=true`).
+
+## Replacement by 0.7.2 (1076.3), the same day
+
+On 1075.1 the owner found that every Quick Log tap asked "Unfinished
+transaction" over a Log form holding only an account and a category (#97 has
+the cause and fix). Owner decision: replace 1075.1 in review once the fix
+passed CI.
+
+| Step | Run | Result | Receipt |
+|---|---|---|---|
+| Merge #97 | `92b1680` | all five PR checks passed | none |
+| Signed upload | `testflight.yml` run 76 (36231883549) | attempts 1 and 2 failed the StoreKit gate ("Could not find a UI anchor", a stalled local purchase); attempt 3 passed, so the build is **1076.3**. Root-cause fix proposed in #98. | none |
+| Processed | `testflight-testers.yml` 36235759878 | `VALID` | `apple-inspect-1076.3.json` |
+| Inherit compliance from 1075.1 | 36235833546 | `uses_non_exempt_encryption: false`; `a705ba9`→`92b1680` changes only Log logic | `apple-compliance-1076.3.json` |
+| Distribute | 36235860934 | both groups assigned; internal `IN_BETA_TESTING`. The external Beta App Review submission got HTTP 422 because 1075.1 is still `WAITING_FOR_BETA_REVIEW` (one build at a time); resubmit once it clears. | `apple-testers-1076.3.json` |
+| Withdraw 1075.1 | `appstore.yml` 36235892317 | `CANCELING` → `DEVELOPER_REJECTED` | `appstore-withdraw-1075.1.json` |
+| Prepare with 1076.3 | 36236051377 | build linked; media already processed (config digest unchanged) | `appstore-prepare-1076.3.json` |
+| Submit | 36236085823 | `WAITING_FOR_REVIEW`, `AFTER_APPROVAL` | `appstore-submit-1076.3.json` |
+| Read-back | 36236126402 | 0.7.2 `WAITING_FOR_REVIEW` on 1076.3; tips in review; France excluded; 175 territories | `appstore-inspect-after-1076.3.json` |
