@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import StoreKit
+import UIKit
 
 struct DeveloperSupportProduct: Identifiable, Equatable, Sendable {
     let id: String
@@ -41,12 +42,27 @@ final class StoreKitDeveloperSupport: DeveloperSupportPurchasing {
         }
     }
 
+    private static func purchaseScene() -> UIWindowScene? {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            .filter { $0.activationState == .foregroundActive }
+        return scenes.first { $0.windows.contains(where: \.isKeyWindow) } ?? scenes.first
+    }
+
     func purchase(id: String) async throws -> DeveloperSupportOutcome {
         guard AppStore.canMakePayments, Self.productIDs.contains(id),
               let product = availableProducts.first(where: { $0.id == id }) else {
             throw DeveloperSupportError.unavailable
         }
-        switch try await product.purchase() {
+        // Anchor the purchase sheet to the active scene. Without it StoreKit
+        // logs "Could not find a UI anchor" and a purchase can stall for
+        // minutes (seen in the release StoreKit gate).
+        let outcome: Product.PurchaseResult
+        if let scene = Self.purchaseScene() {
+            outcome = try await product.purchase(confirmIn: scene)
+        } else {
+            outcome = try await product.purchase()
+        }
+        switch outcome {
         case let .success(result):
             guard case let .verified(transaction) = result,
                   transaction.productID == id, transaction.productType == .consumable,
