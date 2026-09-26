@@ -82,5 +82,129 @@ class RestoreRawRecordGateTests(unittest.TestCase):
         )))
 
 
+class RestoreDamagePolicyRuleTests(unittest.TestCase):
+    """A restore keeps damaged rows set aside only as its preview showed."""
+
+    SOURCES = {
+        "preview": "App/MoneyUp/RestorePreview.swift",
+        "preview_model": "App/MoneyUp/AppModelRestorePreview.swift",
+        "restore": "App/MoneyUp/AppModelBackupRestore.swift",
+        "recovery": "App/MoneyUp/AppModelRecovery.swift",
+        "key_cliff": "App/MoneyUp/AppModelKeyCliffRecovery.swift",
+        "validator": "App/MoneyUp/RestoreCandidateIdentityValidator.swift",
+    }
+
+    def setUp(self) -> None:
+        self.sources = {
+            name: (ROOT / path).read_text(encoding="utf-8")
+            for name, path in self.SOURCES.items()
+        }
+
+    def errors(self, **mutated: str) -> list[str]:
+        sources = {**self.sources, **mutated}
+        return release_assets.restore_damage_policy_errors(
+            sources["preview"],
+            sources["preview_model"],
+            sources["restore"],
+            sources["recovery"],
+            sources["key_cliff"],
+            sources["validator"],
+        )
+
+    def mutate(self, name: str, old: str, new: str) -> str:
+        source = self.sources[name]
+        self.assertIn(old, source)
+        mutated = source.replace(old, new, 1)
+        self.assertNotEqual(mutated, source)
+        return mutated
+
+    def assertRejected(self, fragment: str, **mutated: str) -> None:
+        errors = self.errors(**mutated)
+        self.assertTrue(
+            any(fragment in error for error in errors),
+            f"expected {fragment!r} in {errors}",
+        )
+
+    def test_current_production_policy_passes(self) -> None:
+        self.assertEqual(self.errors(), [])
+
+    def test_rejects_a_preview_that_cannot_report_damage(self) -> None:
+        self.assertRejected(
+            "only the restore preview may report",
+            preview_model=self.mutate("preview_model", "damage: .report", "damage: .reject"),
+        )
+
+    def test_rejects_a_commit_that_reports_instead_of_confirming(self) -> None:
+        self.assertRejected(
+            "only the restore preview may report",
+            preview_model=self.mutate(
+                "preview_model", "damage: ticket.damagePolicy", "damage: .report"
+            ),
+        )
+
+    def test_rejects_a_key_cliff_manifest_without_the_confirmed_count(self) -> None:
+        self.assertRejected(
+            "setAsideRecordCount: damage.confirmedCount",
+            key_cliff=self.mutate(
+                "key_cliff",
+                "setAsideRecordCount: damage.confirmedCount",
+                "setAsideRecordCount: 0",
+            ),
+        )
+
+    def test_rejects_a_resume_that_ignores_the_manifest_count(self) -> None:
+        self.assertRejected(
+            "resumed key-cliff install",
+            key_cliff=self.mutate(
+                "key_cliff",
+                "let damage = try KeyCliffRecoveryTransaction.damagePolicy(for: databaseURL)",
+                "let damage = RestoreDamagePolicy.report",
+            ),
+        )
+
+    def test_rejects_a_load_that_stops_enforcing_the_count(self) -> None:
+        self.assertRejected(
+            "enforce the damage policy on load",
+            recovery=self.mutate(
+                "recovery", "damage.verifiedSetAsideCount(", "damage.hashValue.distance("
+            ),
+        )
+
+    def test_rejects_skipping_the_relationship_gate_for_complete_books(self) -> None:
+        self.assertRejected(
+            "strict relationship gate",
+            restore=self.mutate(
+                "restore",
+                "guard setAsideCount == 0 else { return nil }",
+                "guard setAsideCount >= 0 else { return nil }",
+            ),
+        )
+
+    def test_rejects_setting_aside_limit_violations(self) -> None:
+        self.assertRejected(
+            "!(error is AppModelError)",
+            validator=self.mutate("validator", "&& !(error is AppModelError)", ""),
+        )
+
+    def test_rejects_relaxing_work_limits(self) -> None:
+        self.assertRejected(
+            "work limits must never relax",
+            validator=self.mutate(
+                "validator",
+                "                    decoder: workDecoder,\n",
+                "                    decoder: workDecoder,\n"
+                "                    damage: damage,\n",
+            ),
+        )
+
+    def test_rejects_setting_aside_a_damaged_profile(self) -> None:
+        self.assertRejected(
+            "restore damage policy is missing",
+            preview=self.mutate(
+                "preview", "case .profile, .journalEntryRevisions,", "case .journalEntryRevisions,"
+            ),
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -42,7 +42,8 @@ extension AppModel {
         defer { try? FileManager.default.removeItem(at: validationCopy.url) }
         let candidate = try await validateRestoreCandidateInIsolation(
             from: validationCopy.url,
-            password: password
+            password: password,
+            damage: .report
         )
         let after = try await RestoreArchiveStaging.fingerprint(
             at: stagedArchiveURL
@@ -100,7 +101,8 @@ extension AppModel {
         defer { try? FileManager.default.removeItem(at: commitURL) }
         try await restoreEncryptedBackupAfterVerifiedTicket(
             from: commitURL,
-            password: password
+            password: password,
+            damage: ticket.damagePolicy
         )
         quickActionRecoveryWasValidated = true
     }

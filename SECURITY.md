@@ -148,8 +148,9 @@ The guarantee does not cover:
   referenced evidence, converges account/plan/journal quarantine to a monotonic
   fixed point, and retains all raw encrypted rows. Invalid prepaid evidence is
   excluded with its plan; an ordinary benefit-limit or reimbursement expense is
-  retained when only its allowance metadata is invalid. Strict restore rejects
-  the equivalent candidate instead of installing a partial graph.
+  retained when only its allowance metadata is invalid. An unconfirmed
+  restore rejects the equivalent candidate; a confirmed one keeps exactly the
+  rows normal recovery sets aside and never installs a graph it would not.
 - Reimbursement status is evidence-only and forward-only: pending may become
   approved or rejected, approved may become reimbursed, and terminal states do
   not reopen. Those updates never create a receivable, deposit, cash movement,
@@ -190,7 +191,15 @@ and cadence-period work is each capped at 100,000. A plan may require at most
 `10,000 + 2 × maxPolicyRevisions` period work (11,024 at the 512-revision cap),
 and weekday work is counted exactly in constant time from weekdays rather than
 calendar-day iteration. Relationship validation then rejects unauthorized, multiply claimed,
-or semantically mismatched restricted debits before replacement. Exact-candidate
+or semantically mismatched restricted debits before replacement.
+A book whose only damage is rows normal unlock sets aside (a failed domain
+decode or non-canonical key in a collection read with recovery, or a
+relationship it quarantines) previews with that count. Only after the person
+confirms do those rows return byte for byte, still set aside. The commit
+reloads the book and requires exactly the confirmed count. Envelope, size and
+nested-work limits never relax, a book with no damage still passes strict
+relationship validation, and a restore without a reviewed ticket stays all or
+nothing. Exact-candidate
 near-limit runtime and peak-memory evidence remains a production release gate.
 Staging, validation, verified-commit, and rollback ciphertext ownership is
 deterministic, permission-bound, and scavenged exactly on startup so
@@ -207,7 +216,8 @@ When the live key is already missing, restore uses a separate filesystem
 transaction because the old logical store cannot open. The candidate remains
 SQLCipher-encrypted throughout, no password or replacement key enters the
 manifest, and old ciphertext is retained until the installed candidate opens
-and passes the normal strict domain load. The reviewed ticket is privately
+and passes the same domain load as its preview. The manifest also records the
+confirmed count of set-aside rows, so a resumed install requires that count. The reviewed ticket is privately
 reverified before key creation; preview copy states that current counts are
 inaccessible. Marker removal is the authority boundary for restored capture
 preference/promotion, ready state, widget, and intelligence. Physical

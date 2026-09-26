@@ -26,6 +26,13 @@ struct CloudBackupView: View {
             Section {
                 Text("cloud.detail")
                 Label(LocalizedStringKey(controller.phase.rawValue), systemImage: "icloud")
+                if controller.phase == .backedUp, model.recoveryIssueCount > 0 {
+                    // Backups keep damaged rows byte for byte; the restore preview counts them.
+                    Text(String(format: AppLocalization.string("cloud.status.backed_up_attention"),
+                                model.recoveryIssueCount))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
                 if let detail = controller.failureDetail { Text(detail).foregroundStyle(.secondary) }
                 if !controller.accountLabel.isEmpty {
                     LabeledContent("cloud.account_label", value: controller.accountLabel)

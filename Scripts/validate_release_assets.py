@@ -247,7 +247,7 @@ def security_recovery_invariant_violations(
         "keyCliffRecoveryKeyAccess.store",
         "KeyCliffRecoveryTransaction.installCandidate",
         "openDatabaseStoreWithKey(",
-        "load(from: openedStore, mode: .restoreValidation)",
+        "load(from: openedStore, mode: .restoreValidation(damage))",
         "validateLoadedStartupBook",
         "requireEmptyLockedCaptureInbox()",
         ".afterKeyCliffValidationBeforeCompletion",
@@ -267,7 +267,7 @@ def security_recovery_invariant_violations(
     resume_order = (
         "KeyCliffRecoveryTransaction.installCandidate",
         "openDatabaseStore(databaseURL)",
-        "load(from: openedStore, mode: .restoreValidation)",
+        "load(from: openedStore, mode: .restoreValidation(damage))",
         "validateLoadedStartupBook",
         "requireEmptyLockedCaptureInbox()",
         ".afterKeyCliffValidationBeforeCompletion",
@@ -2272,7 +2272,7 @@ def validate_key_cliff_recovery_boundary() -> None:
     commit_positions = [
         commit_body.find("keyCliffRecoveryKeyAccess.store"),
         commit_body.find("KeyCliffRecoveryTransaction.installCandidate"),
-        commit_body.find("load(from: openedStore, mode: .restoreValidation)"),
+        commit_body.find("load(from: openedStore, mode: .restoreValidation(damage))"),
         commit_body.find("validateLoadedStartupBook"),
         commit_body.find("requireEmptyLockedCaptureInbox()"),
         commit_body.find(".afterKeyCliffValidationBeforeCompletion"),
@@ -2302,7 +2302,7 @@ def validate_key_cliff_recovery_boundary() -> None:
         ) : key_cliff_restore.find("func recoverMissingDeviceBoundKey")
     ]
     resume_order = (
-        "load(from: openedStore, mode: .restoreValidation)",
+        "load(from: openedStore, mode: .restoreValidation(damage))",
         "validateLoadedStartupBook",
         "requireEmptyLockedCaptureInbox()",
         ".afterKeyCliffValidationBeforeCompletion",
@@ -2410,8 +2410,12 @@ def validate_key_cliff_recovery_boundary() -> None:
         "originalArtifactMask",
         "candidateArtifactMask",
         "phase",
+        "setAsideRecordCount",
     }:
-        fail("key-cliff manifest must contain only non-secret artifact masks")
+        fail(
+            "key-cliff manifest must contain only non-secret artifact masks, "
+            "its phase and the confirmed set-aside count"
+        )
 
     print("Validated key-cliff recovery and rollback boundary")
 
@@ -2437,7 +2441,9 @@ def restore_raw_record_gate_errors(
     ordered = (
         candidate.find("RestoreCandidateValidator.validateStoredRecords("),
         candidate.find("let validationModel = AppModel("),
-        candidate.find("validationModel.load(from: store, mode: .restoreValidation)"),
+        candidate.find(
+            "validationModel.load(from: store, mode: .restoreValidation(damage))"
+        ),
     )
     if min(ordered) < 0 or list(ordered) != sorted(ordered):
         errors.append(
@@ -2493,6 +2499,125 @@ def restore_raw_record_gate_errors(
     ):
         if marker not in reducer:
             errors.append(f"SQL raw-record reducer is missing {marker}")
+    return errors
+
+
+def restore_damage_policy_errors(
+    preview_source: str,
+    preview_model_source: str,
+    restore_source: str,
+    recovery_source: str,
+    key_cliff_source: str,
+    validator_source: str,
+) -> list[str]:
+    """A restore keeps damaged rows set aside only as its preview showed."""
+    errors: list[str] = []
+    preview = " ".join(swift_without_comments(preview_source).split())
+    preview_model = swift_without_comments(preview_model_source)
+    restore = swift_without_comments(restore_source)
+    recovery = swift_without_comments(recovery_source)
+    key_cliff = swift_without_comments(key_cliff_source)
+    validator = swift_without_comments(validator_source)
+
+    preview_prepare = source_section(
+        preview_model,
+        "func prepareEncryptedRestorePreview",
+        "func restoreEncryptedBackup(",
+    )
+    report_uses = sum(
+        source.count("damage: .report")
+        for source in (preview_model, restore, key_cliff)
+    )
+    if report_uses != 1 or "damage: .report" not in preview_prepare:
+        errors.append(
+            "only the restore preview may report damaged rows; commits use "
+            "the ticket's confirmed count"
+        )
+    ticket_restore = source_section(
+        preview_model,
+        "func restoreEncryptedBackup(",
+        "private func restorePreviewCurrentBook",
+    )
+    if "damage: ticket.damagePolicy" not in ticket_restore:
+        errors.append(
+            "a ticket restore must keep exactly the damaged rows its preview showed"
+        )
+    key_cliff_recovery = source_section(
+        key_cliff,
+        "func recoverMissingDeviceBoundKey",
+        "private func beginKeyCliffRecoveryMutation",
+    )
+    for marker in (
+        "let damage = ticket.damagePolicy",
+        "setAsideRecordCount: damage.confirmedCount",
+    ):
+        if marker not in key_cliff_recovery:
+            errors.append(f"key-cliff recovery is missing {marker}")
+    key_cliff_resume = source_section(
+        key_cliff,
+        "func openAndFinishStartupIncludingKeyCliffRecovery",
+        "func recoverMissingDeviceBoundKey",
+    )
+    if "KeyCliffRecoveryTransaction.damagePolicy(for: databaseURL)" not in (
+        key_cliff_resume
+    ):
+        errors.append(
+            "a resumed key-cliff install must keep its manifest's confirmed count"
+        )
+
+    load_body = source_section(recovery, "func load(", "func prepareBookLoadState")
+    if (
+        "if case let .restoreValidation(damage) = mode" not in load_body
+        or "damage.verifiedSetAsideCount(" not in load_body
+    ):
+        errors.append("restore validation must enforce the damage policy on load")
+    relationships = source_section(
+        restore,
+        "func validateRestoredRelationships(",
+        "private func recoverRestoreRollback",
+    )
+    if (
+        "guard setAsideCount == 0 else { return nil }" not in relationships
+        or "RestoreCandidateValidator.validateRelationships(" not in relationships
+    ):
+        errors.append("a complete restored book must pass the strict relationship gate")
+
+    identity = source_section(
+        validator,
+        "static func validateSnapshotIdentityRecord(",
+        "static func validateIdentityRecordEnvelope(",
+    )
+    for marker in (
+        "damage.setsAside(collection, recordID: record.recordID)",
+        "catch where setsAside",
+        "!(error is AppModelError)",
+        "!(error is CancellationError)",
+        "guard setsAside else { throw AppModelError.invalidBook }",
+    ):
+        if marker not in identity:
+            errors.append(f"restore raw identity gate is missing {marker}")
+    stored = source_section(
+        validator,
+        "static func validateStoredRecords(",
+        "static func validateSnapshotIdentityRecord(",
+    )
+    work_call = source_section(
+        stored,
+        "validateSnapshotWorkLimitRecord(",
+        "let identityState",
+    )
+    if not work_call or "damage" in work_call:
+        errors.append("restore work limits must never relax for damaged rows")
+
+    sets_aside = source_section(preview, "func setsAside(", "func verifiedSetAsideCount(")
+    for marker in (
+        "guard self != .reject else { return false }",
+        "case .profile, .journalEntryRevisions, .cloudBackupIdentity, "
+        ".pendingLockedCaptures, .accountLifecycleAudit: return false",
+        "return recordID == BudgetConfigurationTimeline.primaryRecordID",
+    ):
+        if marker not in sets_aside:
+            errors.append(f"restore damage policy is missing {marker}")
     return errors
 
 
@@ -2586,6 +2711,17 @@ def validate_restore_preview_boundary() -> None:
     )
     if raw_gate_errors:
         fail("; ".join(raw_gate_errors))
+    app_root = ROOT / "App" / "MoneyUp"
+    damage_policy_errors = restore_damage_policy_errors(
+        preview,
+        model,
+        restore,
+        (app_root / "AppModelRecovery.swift").read_text(encoding="utf-8"),
+        (app_root / "AppModelKeyCliffRecovery.swift").read_text(encoding="utf-8"),
+        raw_validator,
+    )
+    if damage_policy_errors:
+        fail("; ".join(damage_policy_errors))
     for marker in (
         "testRestorePreviewRejectsOversizedAllowanceArchiveTimelineBeforeLoad",
         "AllowancePlan.maximumArchiveTransitionCount + 1",

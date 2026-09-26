@@ -44,6 +44,18 @@ struct RestorePreviewConfirmationView: View {
                         systemImage: "checkmark.shield.fill"
                     )
                     .foregroundStyle(Color.moneyUpPositive)
+                    if preview.candidate.quarantinedRecordCount > 0 {
+                        Label(
+                            String(
+                                format: AppLocalization.string(
+                                    "restore.preview.set_aside"
+                                ),
+                                preview.candidate.quarantinedRecordCount
+                            ),
+                            systemImage: "exclamationmark.shield"
+                        )
+                        .foregroundStyle(Color.moneyUpWarning)
+                    }
                     LabeledContent(
                         "restore.preview.archive_format",
                         value: String(preview.archiveFormatVersion)

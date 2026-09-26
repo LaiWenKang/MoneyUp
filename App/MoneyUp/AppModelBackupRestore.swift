@@ -118,7 +118,8 @@ extension AppModel {
 
         try await restoreEncryptedBackupAfterVerifiedTicket(
             from: archiveURL,
-            password: password
+            password: password,
+            damage: .reject
         )
         quickActionRecoveryWasValidated = true
     }
@@ -126,11 +127,13 @@ extension AppModel {
 
     func restoreEncryptedBackupAfterVerifiedTicket(
         from archiveURL: URL,
-        password: String
+        password: String,
+        damage: RestoreDamagePolicy
     ) async throws {
         let preparation = try await prepareRestore(
             from: archiveURL,
-            password: password
+            password: password,
+            damage: damage
         )
         let restoreStore = preparation.store
         let generation = preparation.generation
@@ -169,7 +172,8 @@ extension AppModel {
             )
             try await validateAndPublishRestoredBook(
                 from: restoreStore,
-                generation: generation
+                generation: generation,
+                damage: damage
             )
         } catch {
             if case PersistenceError.restoreTransactionStateIndeterminate = error {
@@ -267,7 +271,8 @@ extension AppModel {
 
     private func prepareRestore(
         from archiveURL: URL,
-        password: String
+        password: String,
+        damage: RestoreDamagePolicy
     ) async throws -> RestorePreparation {
         let restoreStore = try requireStore()
         // The redacted inbox cannot safely cross book replacement.
@@ -289,7 +294,8 @@ extension AppModel {
         )
         try await validateRestoreCandidateInIsolation(
             from: archiveURL,
-            password: password
+            password: password,
+            damage: damage
         )
         try Task.checkCancellation()
 
@@ -305,20 +311,38 @@ extension AppModel {
 
     private func validateAndPublishRestoredBook(
         from store: EncryptedRecordStore,
-        generation: Int
+        generation: Int,
+        damage: RestoreDamagePolicy
     ) async throws {
         try Task.checkCancellation()
         guard ownsStoreGeneration(generation) else {
             throw AppModelError.locked
         }
-        try await load(from: store, mode: .restoreValidation)
+        try await load(from: store, mode: .restoreValidation(damage))
         try Task.checkCancellation()
         guard ownsStoreGeneration(generation) else {
             throw AppModelError.locked
         }
         guard profile != nil else { throw AppModelError.invalidBook }
         try validateLoadedBook()
-        try await RestoreCandidateValidator.validateRelationships(
+        try await validateRestoredRelationships(
+            in: store,
+            setAsideCount: recoveryIssueCount
+        )
+        scheduleRetiredLockedFavouritesErase()
+        state = .ready
+    }
+
+    /// A complete book must pass the strict relationship gate. A confirmed
+    /// recovering restore skips it: its damaged rows stay set aside exactly as
+    /// the normal open keeps them, and that open validates what it shows.
+    @discardableResult
+    func validateRestoredRelationships(
+        in store: EncryptedRecordStore,
+        setAsideCount: Int
+    ) async throws -> RestoreEntryPreviewMetadata? {
+        guard setAsideCount == 0 else { return nil }
+        return try await RestoreCandidateValidator.validateRelationships(
             profile: profile,
             accounts: accounts,
             budgetNodes: budgetNodes,
@@ -329,8 +353,6 @@ extension AppModel {
             allowancePlans: allowancePlans,
             in: store
         )
-        scheduleRetiredLockedFavouritesErase()
-        state = .ready
     }
 
     private func recoverRestoreRollback(
@@ -376,7 +398,8 @@ extension AppModel {
     @discardableResult
     func validateRestoreCandidateInIsolation(
         from archiveURL: URL,
-        password: String
+        password: String,
+        damage: RestoreDamagePolicy
     ) async throws -> RestoreCandidatePreviewValidation {
         try Task.checkCancellation()
         let directoryURL = restoreValidationDirectoryURL
@@ -400,7 +423,8 @@ extension AppModel {
             validationResult = try await validateRestoreCandidate(
                 in: validationStore,
                 archiveURL: archiveURL,
-                password: password
+                password: password,
+                damage: damage
             )
         } catch {
             validationFailure = error
@@ -455,7 +479,8 @@ extension AppModel {
     func validateRestoreCandidate(
         in store: EncryptedRecordStore,
         archiveURL: URL,
-        password: String
+        password: String,
+        damage: RestoreDamagePolicy
     ) async throws -> RestoreCandidatePreviewValidation {
         let archiveMetadata = try await store.restorePortableArchive(
             from: archiveURL,
@@ -474,11 +499,12 @@ extension AppModel {
             throw AppModelError.invalidBook
         }
         try Task.checkCancellation()
-        try await RestoreCandidateValidator.validateStoredRecords(
+        let exemptedRowCount = try await RestoreCandidateValidator.validateStoredRecords(
             in: store,
             expectedRecordCount: metrics.recordCount,
             maximumAggregatePayloadByteCount:
-                RestoreCandidateValidator.maximumBackupStoredPayloadByteCount
+                RestoreCandidateValidator.maximumBackupStoredPayloadByteCount,
+            damage: damage
         )
         try Task.checkCancellation()
 
@@ -487,22 +513,28 @@ extension AppModel {
             lockedCaptureStore: lockedCaptureStore,
             receiptRecognizer: receiptRecognizer
         )
-        try await validationModel.load(from: store, mode: .restoreValidation)
+        try await validationModel.load(from: store, mode: .restoreValidation(damage))
         guard validationModel.profile != nil else {
             throw AppModelError.invalidBook
         }
         try validationModel.validateLoadedBook()
-        let entryMetadata = try await RestoreCandidateValidator.validateRelationships(
-            profile: validationModel.profile,
-            accounts: validationModel.accounts,
-            budgetNodes: validationModel.budgetNodes,
-            scheduledTransactions: validationModel.scheduledTransactions,
-            investmentHoldings: validationModel.investmentHoldings,
-            netWorthSnapshots: validationModel.netWorthSnapshots,
-            quickLogDraft: validationModel.quickLogDraft,
-            allowancePlans: validationModel.allowancePlans,
-            in: store
+        let setAsideCount = try damage.verifiedSetAsideCount(
+            exemptedRowCount: exemptedRowCount,
+            recoveryIssueCount: validationModel.recoveryIssueCount
         )
+        let entryMetadata: RestoreEntryPreviewMetadata
+        if let validated = try await validationModel.validateRestoredRelationships(
+            in: store,
+            setAsideCount: setAsideCount
+        ) {
+            entryMetadata = validated
+        } else {
+            // Summarize only the entries the recovering open will show.
+            let shownEntries = try await validationModel.journalSnapshot(
+                includeInvalidRelationships: false
+            )
+            entryMetadata = try RestoreEntryPreviewMetadata.make(from: shownEntries)
+        }
         try Task.checkCancellation()
         let countSnapshot = try await store.recordCountSnapshot()
         let currencies = validationModel.restorePreviewCurrencyCodes(
@@ -513,7 +545,7 @@ extension AppModel {
             countSnapshot: countSnapshot,
             entryMetadata: entryMetadata,
             currencies: currencies,
-            quarantinedRecordCount: validationModel.recoveryIssueCount,
+            quarantinedRecordCount: setAsideCount,
             reportingTimeZoneIdentifier:
                 validationModel.profile?.reportingTimeZoneIdentifier ?? "GMT"
         )

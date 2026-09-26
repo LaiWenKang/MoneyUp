@@ -75,7 +75,8 @@ extension AppModel {
                 // The durable marker still owns authority here. Decode and
                 // validate without publishing the candidate's preferences or
                 // applying normal-startup recovery conveniences before complete.
-                try await load(from: openedStore, mode: .restoreValidation)
+                let damage = try KeyCliffRecoveryTransaction.damagePolicy(for: databaseURL)
+                try await load(from: openedStore, mode: .restoreValidation(damage))
                 let hasProfile = try await validateLoadedStartupBook(in: openedStore)
                 // Recheck the separately encrypted inbox at the final durable
                 // boundary. A capture that appeared after initial consent can
@@ -182,14 +183,18 @@ extension AppModel {
             )
             throw error
         }
+        let damage = ticket.damagePolicy
         try await buildKeyCliffCandidate(
             archiveURL: archiveURL,
             password: password,
             databaseURL: databaseURL,
-            recoveryKey: recoveryKey
+            recoveryKey: recoveryKey,
+            damage: damage
         )
         do {
-            try KeyCliffRecoveryTransaction.publishManifest(for: databaseURL)
+            try KeyCliffRecoveryTransaction.publishManifest(
+                for: databaseURL, setAsideRecordCount: damage.confirmedCount
+            )
             try Task.checkCancellation()
         } catch {
             try? KeyCliffRecoveryTransaction.removeAll(for: databaseURL)
@@ -201,7 +206,8 @@ extension AppModel {
         let commitTask = Task { @MainActor [self, recoveryKey] in
             try await commitKeyCliffCandidate(
                 databaseURL: databaseURL,
-                recoveryKey: recoveryKey
+                recoveryKey: recoveryKey,
+                damage: damage
             )
         }
         try await commitTask.value
@@ -225,7 +231,8 @@ extension AppModel {
         archiveURL: URL,
         password: String,
         databaseURL: URL,
-        recoveryKey: EphemeralKeyCliffRecoveryKey
+        recoveryKey: EphemeralKeyCliffRecoveryKey,
+        damage: RestoreDamagePolicy
     ) async throws {
         let candidateURL = KeyCliffRecoveryTransaction
             .candidateDatabaseURL(for: databaseURL)
@@ -245,7 +252,8 @@ extension AppModel {
             _ = try await validateRestoreCandidate(
                 in: candidateStore,
                 archiveURL: archiveURL,
-                password: password
+                password: password,
+                damage: damage
             )
         } catch {
             candidateFailure = error
@@ -258,7 +266,8 @@ extension AppModel {
 
     private func commitKeyCliffCandidate(
         databaseURL: URL,
-        recoveryKey: EphemeralKeyCliffRecoveryKey
+        recoveryKey: EphemeralKeyCliffRecoveryKey,
+        damage: RestoreDamagePolicy
     ) async throws {
         var keyWasStored = false
         do {
@@ -274,7 +283,7 @@ extension AppModel {
             storeGeneration &+= 1
             store = openedStore
             do {
-                try await load(from: openedStore, mode: .restoreValidation)
+                try await load(from: openedStore, mode: .restoreValidation(damage))
                 let hasProfile = try await validateLoadedStartupBook(
                     in: openedStore
                 )

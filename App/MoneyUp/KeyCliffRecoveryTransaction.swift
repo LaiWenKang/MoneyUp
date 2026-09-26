@@ -18,24 +18,35 @@ struct KeyCliffRecoveryManifest: Codable, Equatable, Sendable {
     let originalArtifactMask: Int
     let candidateArtifactMask: Int
     let phase: KeyCliffRecoveryPhase
+    /// Damaged rows the confirmed preview keeps set aside. Absent means none,
+    /// so a manifest written before this field resumes all-or-nothing.
+    let setAsideRecordCount: Int?
 
-    init(originalArtifactMask: Int, candidateArtifactMask: Int) {
+    init(
+        originalArtifactMask: Int,
+        candidateArtifactMask: Int,
+        setAsideRecordCount: Int
+    ) {
         version = Self.currentVersion
         self.originalArtifactMask = originalArtifactMask
         self.candidateArtifactMask = candidateArtifactMask
         phase = .installing
+        self.setAsideRecordCount = setAsideRecordCount > 0
+            ? setAsideRecordCount : nil
     }
 
     init(
         version: Int,
         originalArtifactMask: Int,
         candidateArtifactMask: Int,
-        phase: KeyCliffRecoveryPhase
+        phase: KeyCliffRecoveryPhase,
+        setAsideRecordCount: Int?
     ) {
         self.version = version
         self.originalArtifactMask = originalArtifactMask
         self.candidateArtifactMask = candidateArtifactMask
         self.phase = phase
+        self.setAsideRecordCount = setAsideRecordCount
     }
 }
 
@@ -83,6 +94,14 @@ enum KeyCliffRecoveryTransaction {
         try loadManifest(for: databaseURL).phase
     }
 
+    /// A resumed install keeps exactly the damaged rows its preview showed.
+    static func damagePolicy(for databaseURL: URL) throws -> RestoreDamagePolicy {
+        RestoreDamagePolicy(
+            confirmedCount: try loadManifest(for: databaseURL)
+                .setAsideRecordCount ?? 0
+        )
+    }
+
     /// Removes only a directory that has no committed manifest. It can be an
     /// abandoned pre-commit candidate whose random key never entered the
     /// Keychain, or bounded post-commit residue left after the marker was
@@ -128,9 +147,13 @@ enum KeyCliffRecoveryTransaction {
     }
 
     /// Publishes the only durable recovery marker after the isolated candidate
-    /// has closed successfully. The marker contains artifact-presence bits,
-    /// not identifiers, financial data, a password, or key material.
-    static func publishManifest(for databaseURL: URL) throws {
+    /// has closed successfully. The marker contains artifact-presence bits and
+    /// the confirmed count of set-aside rows, not identifiers, financial data,
+    /// a password, or key material.
+    static func publishManifest(
+        for databaseURL: URL,
+        setAsideRecordCount: Int = 0
+    ) throws {
         let candidateURL = candidateDatabaseURL(for: databaseURL)
         let candidateMask = artifactMask(at: candidateURL)
         guard candidateMask & Artifact.database.rawValue != 0 else {
@@ -138,7 +161,8 @@ enum KeyCliffRecoveryTransaction {
         }
         let manifest = KeyCliffRecoveryManifest(
             originalArtifactMask: artifactMask(at: databaseURL),
-            candidateArtifactMask: candidateMask
+            candidateArtifactMask: candidateMask,
+            setAsideRecordCount: setAsideRecordCount
         )
         let encoded = try JSONEncoder().encode(manifest)
         try encoded.write(
@@ -231,7 +255,8 @@ enum KeyCliffRecoveryTransaction {
             version: current.version,
             originalArtifactMask: current.originalArtifactMask,
             candidateArtifactMask: current.candidateArtifactMask,
-            phase: .rollingBack
+            phase: .rollingBack,
+            setAsideRecordCount: current.setAsideRecordCount
         )
         let encoded = try JSONEncoder().encode(rollback)
         try encoded.write(
@@ -292,7 +317,8 @@ enum KeyCliffRecoveryTransaction {
         guard manifest.version == KeyCliffRecoveryManifest.currentVersion,
               manifest.originalArtifactMask & ~7 == 0,
               manifest.candidateArtifactMask & ~7 == 0,
-              manifest.candidateArtifactMask & Artifact.database.rawValue != 0
+              manifest.candidateArtifactMask & Artifact.database.rawValue != 0,
+              manifest.setAsideRecordCount.map({ $0 > 0 }) ?? true
         else { throw AppModelError.restoreRecoveryFailed }
         return manifest
     }
