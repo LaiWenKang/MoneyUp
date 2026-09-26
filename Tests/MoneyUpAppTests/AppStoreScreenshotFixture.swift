@@ -57,9 +57,11 @@ enum AppStoreScreenshotFixture {
                 accountID: account.id, equityAccountID: equity.id, accountIsLiability: false, occurredAt: opening)
         }
         let payees = [("Corner café", "街角咖啡"), ("Fresh market", "生鲜市集"), ("City transit", "城市交通"),
-                      ("Everyday essentials", "生活好物"), ("Home & utilities", "住房水电"), ("Weekend cinema", "周末影院")]
+                      ("Everyday essentials", "生活好物"), ("Home & utilities", "住房水电"), ("Cinema tickets", "电影票")]
         let amounts: [Decimal] = [Decimal(string: "18.60")!, Decimal(string: "68.40")!, Decimal(string: "9.80")!,
                                   Decimal(string: "78.90")!, 1450, Decimal(string: "32.50")!]
+        // Plausible local times per category; an entry on the preview day stays before `now`.
+        let minutesAfterMidnight = [8 * 60 + 15, 18 * 60 + 30, 7 * 60 + 40, 13 * 60 + 10, 9 * 60, 19 * 60 + 45]
         for monthOffset in -2...0 {
             let month = try XCTUnwrap(calendar.date(byAdding: .month, value: monthOffset, to: now))
             let start = try XCTUnwrap(calendar.dateInterval(of: .month, for: month)?.start)
@@ -68,8 +70,10 @@ enum AppStoreScreenshotFixture {
                 payee: chinese ? "月度工资" : "Monthly salary"))
             let lastDay = monthOffset == 0 ? 18 : 28
             for day in 1...lastDay {
-                let date = try XCTUnwrap(calendar.date(byAdding: .day, value: day - 1, to: start)).addingTimeInterval(3 * 3600)
                 let index = (day - 1) % categories.count
+                let dayStart = try XCTUnwrap(calendar.date(byAdding: .day, value: day - 1, to: start))
+                let planned = dayStart.addingTimeInterval(TimeInterval(minutesAfterMidnight[index] * 60))
+                let date = planned < now ? planned : dayStart.addingTimeInterval(11.5 * 3600)
                 // Housing occurs once per month; other categories build a natural history.
                 if index == 4 && day > 6 { continue }
                 entries.append(try TransactionFactory.expense(amount: Money(amounts[index], currency: fixture.sgd),
