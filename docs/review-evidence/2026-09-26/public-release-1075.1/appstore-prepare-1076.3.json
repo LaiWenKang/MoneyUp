@@ -1,0 +1,29 @@
+{
+  "version_id": "a300e9f2-407a-4fa5-b52a-160c7cda848e",
+  "version": "0.7.2",
+  "build": "1076.3",
+  "screenshots": {
+    "en-US": {
+      "count": 8,
+      "processed": true
+    },
+    "zh-Hans": {
+      "count": 8,
+      "processed": true
+    }
+  },
+  "previews": {
+    "en-US": {
+      "processed": true,
+      "count": 1
+    },
+    "zh-Hans": {
+      "processed": true,
+      "count": 1
+    }
+  },
+  "release_type": "AFTER_APPROVAL",
+  "prepared": true,
+  "source_sha": "92b16801d0616670acbf4c3c325186974b247234",
+  "config_sha256": "af63b512a158c651b1ebe23f61b64b4f8bbfae166df982ad9804e1cd06c5d599"
+}
