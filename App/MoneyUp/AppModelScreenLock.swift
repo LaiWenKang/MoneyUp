@@ -24,13 +24,15 @@ final class DeviceOwnerScreenAuthenticator: ScreenAuthenticating {
         let context = LAContext()
         self.context = context
         defer { if self.context === context { self.context = nil } }
-        do {
-            return try await context.evaluatePolicy(
-                .deviceOwnerAuthentication,
-                localizedReason: AppLocalization.string("lock.authentication_reason")
-            )
-        } catch {
-            return false
+        let reason = AppLocalization.string("lock.authentication_reason")
+        // The completion form keeps the non-Sendable context on the main
+        // actor; the async overload would send it (Swift 6 strict checking).
+        // LocalAuthentication replies on a private queue, so the reply must
+        // not inherit main-actor isolation.
+        return await withCheckedContinuation { continuation in
+            context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason) { @Sendable success, _ in
+                continuation.resume(returning: success)
+            }
         }
     }
 
