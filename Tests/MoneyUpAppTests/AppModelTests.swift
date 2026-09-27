@@ -1740,12 +1740,16 @@ final class AppModelTests: XCTestCase {
         )
         XCTAssertEqual(model.state, .ready)
 
+        XCTAssertFalse(model.isScreenLocked)
+
         let laterBackground = backgroundedAt.addingTimeInterval(120)
         model.sceneDidEnterBackground(at: laterBackground)
         model.sceneDidBecomeActive(at: laterBackground.addingTimeInterval(60))
 
-        XCTAssertEqual(model.state, .locked)
-        await model.waitForPendingStoreClose()
+        // 0.7.3: the exact boundary covers the open book; see
+        // AutomaticUnlockTests for the cover itself.
+        XCTAssertEqual(model.state, .ready)
+        XCTAssertTrue(model.isScreenLocked)
 
         let rollbackFixture = try AppModelFixture()
         defer { rollbackFixture.removeFiles() }
@@ -1776,8 +1780,8 @@ final class AppModelTests: XCTestCase {
         model.sceneDidEnterBackground(at: inactiveAt.addingTimeInterval(59))
         model.sceneDidBecomeActive(at: inactiveAt.addingTimeInterval(60))
 
-        XCTAssertEqual(model.state, .locked)
-        await model.waitForPendingStoreClose()
+        XCTAssertTrue(model.isScreenLocked, "The original deadline covers the book")
+        XCTAssertEqual(model.state, .ready)
     }
 
     @MainActor
@@ -1970,8 +1974,8 @@ final class AppModelTests: XCTestCase {
 
         immediateModel.sceneDidEnterBackground()
 
-        XCTAssertEqual(immediateModel.state, .locked)
-        await immediateModel.waitForPendingStoreClose()
+        XCTAssertTrue(immediateModel.isScreenLocked, "Immediately covers on leaving")
+        XCTAssertEqual(immediateModel.state, .ready)
 
         let invalidClockFixture = try AppModelFixture()
         defer { invalidClockFixture.removeFiles() }

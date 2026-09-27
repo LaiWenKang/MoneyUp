@@ -20,6 +20,10 @@ struct RootView: View {
                 LockedView()
             case .onboarding:
                 OnboardingView()
+            case .ready where model.isScreenLocked && !model.isLogOnlyAccess:
+                // The auto-lock cover: the book stays open behind it, and a
+                // widget, control or Shortcut request goes straight to Log.
+                LockedView()
             case .ready:
                 MainTabView(
                     initialReportingSnapshot: AppReportingSnapshot(
@@ -49,6 +53,22 @@ private struct LaunchingView: View {
     }
 }
 
+/// While a widget has opened Log without Face ID, every other tab shows the
+/// lock screen, so nothing beyond Log is visible before the device owner
+/// unlocks, even for the frame the system tab bar takes to switch.
+private struct LogOnlyTabCover: ViewModifier {
+    @Environment(AppModel.self) private var model
+
+    func body(content: Content) -> some View {
+        content
+            .accessibilityHidden(model.isLogOnlyAccess)
+            .allowsHitTesting(!model.isLogOnlyAccess)
+            .overlay {
+                if model.isLogOnlyAccess { LockedView() }
+            }
+    }
+}
+
 private struct LockedView: View {
     @Environment(AppModel.self) private var model
     @State private var method: UnlockMethod?
@@ -68,11 +88,11 @@ private struct LockedView: View {
                         .accessibilityAddTraits(.isHeader)
 
                     if let method, method.isAvailable {
-                        Text("lock.detail")
+                        Text(model.isScreenLocked ? LocalizedStringKey("lock.cover_detail") : "lock.detail")
                             .multilineTextAlignment(.center)
                             .foregroundStyle(.secondary)
                         Button {
-                            Task { await model.start() }
+                            Task { await model.unlockFromLockScreen() }
                         } label: {
                             Label(method.unlockTitle, systemImage: method.systemImage)
                                 .frame(maxWidth: .infinity)
@@ -314,6 +334,7 @@ struct MainTabView: View {
                     selectedSection = .plan
                 }
             )
+                .modifier(LogOnlyTabCover())
                 .tabItem { Label("tab.today", systemImage: "house.fill") }
                 .tag(MoneyUpSection.today)
 
@@ -326,6 +347,7 @@ struct MainTabView: View {
                 )
             }
                 .id(historyReviewSequence)
+                .modifier(LogOnlyTabCover())
                 .tabItem { Label("tab.history", systemImage: "clock.arrow.circlepath") }
                 .tag(MoneyUpSection.history)
 
@@ -337,34 +359,26 @@ struct MainTabView: View {
                     model.consumeQuickLogRequest(request)
                 },
                 onNavigate: { destination in
-                    switch destination {
-                    case .today:
-                        selectedSection = .today
-                    case let .history(reviewDate):
-                        historyCrossTabNavigation.record(origin: .log)
-                        if let reviewDate {
-                            historyReviewDate = reviewDate
-                            historyReviewSequence &+= 1
-                        } else if historyReviewDate != nil {
-                            historyReviewDate = nil
-                            historyReviewSequence &+= 1
+                    guard !model.isLogOnlyAccess else {
+                        Task { @MainActor in
+                            guard await model.unlockScreen() else { return }
+                            handleLogNavigation(destination)
                         }
-                        selectedSection = .history
-                    case .plan:
-                        selectedSection = .plan
-                    case .assets:
-                        selectedSection = .assets
+                        return
                     }
+                    handleLogNavigation(destination)
                 }
             )
                 .tabItem { Label("tab.log", systemImage: "plus.circle.fill") }
                 .tag(MoneyUpSection.log)
 
             PlanView(workspace: planWorkspace)
+                .modifier(LogOnlyTabCover())
                 .tabItem { Label("tab.plan", systemImage: "chart.pie.fill") }
                 .tag(MoneyUpSection.plan)
 
             AssetsView()
+                .modifier(LogOnlyTabCover())
                 .tabItem { Label("tab.assets", systemImage: "wallet.bifold.fill") }
                 .tag(MoneyUpSection.assets)
         }
@@ -386,6 +400,9 @@ struct MainTabView: View {
             openRequestedOverview()
         }
         .onChange(of: model.requiresAuthenticationPrivacyCover) { _, _ in
+            openRequestedOverview()
+        }
+        .onChange(of: model.isLogOnlyAccess) { _, _ in
             openRequestedOverview()
         }
         .onChange(of: model.requestedQuickLogRequest) { _, _ in
@@ -438,9 +455,46 @@ struct MainTabView: View {
             set: { destination in
                 MoneyUpKeyboard.dismiss()
                 historyCrossTabNavigation.clearForDirectTabSelection()
+                // The system tab bar moves on its own, so follow it; the tab
+                // stays covered until the device owner unlocks.
                 selectedSection = destination
+                if model.isLogOnlyAccess, destination != .log {
+                    leaveLogOnlyAccess()
+                }
             }
         )
+    }
+
+    private func handleLogNavigation(_ destination: QuickLogNavigationDestination) {
+        switch destination {
+        case .today:
+            selectedSection = .today
+        case let .history(reviewDate):
+            historyCrossTabNavigation.record(origin: .log)
+            if let reviewDate {
+                historyReviewDate = reviewDate
+                historyReviewSequence &+= 1
+            } else if historyReviewDate != nil {
+                historyReviewDate = nil
+                historyReviewSequence &+= 1
+            }
+            selectedSection = .history
+        case .plan:
+            selectedSection = .plan
+        case .assets:
+            selectedSection = .assets
+        }
+    }
+
+    /// A widget opened Log without Face ID. Another tab asks for the device
+    /// owner; a cancelled prompt returns to Log.
+    private func leaveLogOnlyAccess() {
+        Task { @MainActor in
+            guard await model.unlockScreen() else {
+                if model.isLogOnlyAccess { selectedSection = .log }
+                return
+            }
+        }
     }
 
     @discardableResult
@@ -448,7 +502,7 @@ struct MainTabView: View {
         guard let destination = overviewNavigation.consume(
             isReady: model.state == .ready,
             isActive: scenePhase == .active,
-            isCovered: model.requiresAuthenticationPrivacyCover
+            isCovered: model.requiresAuthenticationPrivacyCover || model.isLogOnlyAccess
         ) else { return false }
         MoneyUpKeyboard.dismiss()
         isShowingWhatsNew = false

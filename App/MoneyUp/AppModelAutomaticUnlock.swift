@@ -4,7 +4,7 @@ extension AppModel {
     /// An activation can spend one authentication attempt. Native authentication
     /// itself makes the scene inactive; that interval must not arm another one.
     func prepareAutomaticUnlockAfterInactivity() {
-        guard !isStarting else { return }
+        guard !isStarting, !isScreenAuthenticationInProgress else { return }
         automaticUnlockIsPending = true
     }
 
@@ -17,6 +17,7 @@ extension AppModel {
 
     @discardableResult
     func unlockAutomaticallyIfNeeded() async -> Bool {
+        if isScreenLocked { return await unlockScreenAutomaticallyIfNeeded() }
         guard widgetLifecycleRefresh.isSceneActive,
               state == .locked,
               automaticUnlockIsPending,

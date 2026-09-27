@@ -161,7 +161,10 @@ final class AppModel {
     let services: AppModelServices
     var cloudBackupController: CloudBackupController? = CloudBackupController.configured()
 
-    var state: State = .launching
+    var state: State = .launching {
+        // A closed, failed or relaunching book is never merely covered.
+        didSet { if state != .ready { endScreenLock() } }
+    }
     /// Semantic startup failure used to expose only the recovery operations
     /// that are safe without a live SQLCipher key.
     var startupFailureKind: StartupFailureKind?
@@ -173,6 +176,13 @@ final class AppModel {
     /// an atomic mutation to reach its durable boundary. Once the mutation
     /// drains, `lock()` clears decoded state before removing this cover.
     var requiresAuthenticationPrivacyCover = false
+    /// The auto-lock delay covers the open book instead of closing it
+    /// (AppModelScreenLock.swift). Manual Lock still closes the book.
+    var isScreenLocked = false
+    /// While covered, a widget, control or Shortcut request opens Log alone.
+    var isLogOnlyAccess = false
+    @ObservationIgnored var isScreenAuthenticationInProgress = false
+    @ObservationIgnored var screenAuthenticator: any ScreenAuthenticating = DeviceOwnerScreenAuthenticator()
     var profile: UserProfile? {
         didSet {
             if !Self.preservesFinancialProjection(previous: oldValue, updated: profile) {
@@ -294,7 +304,10 @@ final class AppModel {
     /// setters can decode candidate state behind this boundary without
     /// publishing mixed widget or deep-link state to another process/view.
     var isBookReplacementInProgress = false
-    private(set) var requestedQuickLogRequest: QuickLogRouteRequest? = nil
+    private(set) var requestedQuickLogRequest: QuickLogRouteRequest? = nil {
+        // While covered, a widget, control or Shortcut request opens Log alone.
+        didSet { if requestedQuickLogRequest != nil { beginLogOnlyAccess() } }
+    }
     var presentedQuickLogRequest: QuickLogRouteRequest? = nil
     private var nextQuickLogRequestID: UInt64 = 0
     var requestedQuickLogMode: QuickLogLaunchMode? {

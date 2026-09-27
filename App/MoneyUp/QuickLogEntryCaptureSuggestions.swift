@@ -96,7 +96,9 @@ extension QuickLogEntryView {
 
     func refreshCaptureSuggestions(for draft: TransactionDraft) {
         cancelCaptureSuggestionLookup()
-        guard model.profile?.intelligenceEnabled == true,
+        // Log opened from a widget without Face ID shows no past entries.
+        guard !model.isLogOnlyAccess,
+              model.profile?.intelligenceEnabled == true,
               model.profile?.merchantSuggestionsEnabled != false,
               let currency = selectedAccountCurrency else {
             historyPreloads = []
@@ -151,7 +153,7 @@ extension QuickLogEntryView {
 
     @ViewBuilder
     var historyPreloadRows: some View {
-        if !historyPreloads.isEmpty, splitLines.isEmpty, selectedAllowanceID == nil,
+        if !historyPreloads.isEmpty, !model.isLogOnlyAccess, splitLines.isEmpty, selectedAllowanceID == nil,
            model.profile?.intelligenceEnabled == true,
            model.profile?.merchantSuggestionsEnabled != false {
             // One tap fills every untouched field; a long press picks fields.
