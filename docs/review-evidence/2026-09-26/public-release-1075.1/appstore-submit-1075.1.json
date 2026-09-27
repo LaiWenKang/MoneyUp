@@ -1,0 +1,9 @@
+{
+  "submission_id": "5b3605ee-83bc-463c-b042-c877113e5792",
+  "state": "WAITING_FOR_REVIEW",
+  "version": "0.7.2",
+  "submitted_now": true,
+  "release_type": "AFTER_APPROVAL",
+  "source_sha": "a705ba931580905be5614cd99bc849282fa2eb42",
+  "config_sha256": "af63b512a158c651b1ebe23f61b64b4f8bbfae166df982ad9804e1cd06c5d599"
+}
