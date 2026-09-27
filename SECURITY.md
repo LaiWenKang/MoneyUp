@@ -16,7 +16,7 @@ and App Review remain separate release gates.
 | SQLCipher 4.18 full-database encryption | Implemented and pinned |
 | Random 256-bit app-generated, device-bound database key | Implemented |
 | Non-synchronizing Keychain item with `WhenPasscodeSetThisDeviceOnly` and user presence | Implemented |
-| Configurable timed auto-lock and decoded-state clearing | Implemented |
+| Configurable timed auto-lock cover; Lock now closes the store and clears decoded state | Implemented (0.7.3 changes auto-lock from close to cover; see Key lifecycle step 5) |
 | App-switcher privacy cover while inactive | Implemented |
 | iOS file protection for the database | Implemented |
 | Privacy-redacted quick-action widget with no financial values | Implemented |
@@ -28,7 +28,7 @@ and App Review remain separate release gates.
 | System-backup exclusion for ciphertext whose key cannot migrate | Implemented |
 | Confirmed deletion for transactions, schedules, and holdings | Implemented |
 | Wrong-key, plaintext-leak, decimal round-trip, and atomic-rollback tests | Test coverage present; exact-candidate execution open |
-| Widget, control and Shortcut actions open Log only after the normal unlock; captures an earlier build kept in its separate encrypted inbox are promoted only after authentication | Implemented |
+| Widget, control and Shortcut actions open Log without authentication only while the auto-lock cover is up (Log alone, no past entries); a closed book opens only after the normal unlock; captures an earlier build kept in its separate encrypted inbox are promoted only after authentication | Implemented |
 | File-backed chunk-authenticated portable backup and transactional restore | Implemented with v1 compatibility and test coverage; exact-candidate/physical execution open |
 | Missing-device-key detection and keyless `.moneyup` recovery transaction | Implemented with isolated validation, crash-resume, and rollback tests; physical passcode-removal drill open |
 | Previewable local CSV/Qianji import with atomic commit | Implemented with test coverage; exact-candidate execution open |
@@ -96,9 +96,18 @@ The guarantee does not cover:
 4. The key opens SQLCipher only after authentication. The temporary Swift
    buffer is overwritten immediately after the store opens.
 5. When the configured auto-lock delay expires (one minute by default), the app
-   flushes the latest Log form/defaults to SQLCipher, closes the store, drops
-   decoded models, and returns to the locked screen. The app-switcher cover is
-   immediate. Receipt images are never part of the draft. When retention is
+   flushes the latest Log form/defaults to SQLCipher and covers the open book
+   with the lock screen. From 0.7.3 the store stays open behind that cover, so
+   decoded data remains in the app's memory while MoneyUp is in the background
+   (owner decision, 27 September 2026: logging from a widget must not wait for
+   Face ID). While covered, a widget, control or Shortcut request opens Log
+   alone, without authentication and without past entries (the Recent row and
+   history suggestions are withheld). Every other tab or link first asks for
+   the device owner (Face ID, Touch ID or passcode) through LocalAuthentication.
+   The key is not read again, because the store never closed. **Lock now**
+   in Settings closes the store and drops decoded models as before, and a
+   process that iOS ends, or a restart, reopens only through the key. The
+   app-switcher cover is immediate. Receipt images are never part of the draft. When retention is
    explicitly selected, the encrypted attachment, transaction, and removal of
    its pre-save draft are committed in one database transaction.
 6. Removing the device passcode can permanently destroy the this-device-only

@@ -16,6 +16,10 @@ enum MoneyUpUITestHarness {
     static let resetArgument = "-MoneyUpUITestReset"
     static let favouritesArgument = "-MoneyUpUITestFavourites"
     static let startLockedArgument = "-MoneyUpUITestStartLocked"
+    /// Starts with the auto-lock cover over an open book, as after the delay.
+    static let startCoveredArgument = "-MoneyUpUITestStartCovered"
+    /// Makes the simulated device-owner prompt fail, as if cancelled.
+    static let denyScreenUnlockArgument = "-MoneyUpUITestDenyScreenUnlock"
 
     private static var arguments: [String] { ProcessInfo.processInfo.arguments }
 
@@ -57,11 +61,22 @@ enum MoneyUpUITestHarness {
             openDatabaseStore: opener
         )
         let startsLocked = arguments.contains(startLockedArgument)
+        let startsCovered = arguments.contains(startCoveredArgument)
+        // The simulator has no Face ID; the device-owner prompt is simulated.
+        model.screenAuthenticator = HarnessScreenAuthenticator(
+            succeeds: !arguments.contains(denyScreenUnlockArgument)
+        )
         Task { @MainActor in
             // Open the seeded book through the normal startup path.
             _ = await model.start()
-            guard startsLocked, model.state == .ready else { return }
-            model.lock()
+            guard model.state == .ready else { return }
+            if startsLocked {
+                model.lock()
+            } else if startsCovered {
+                // As after an expired return whose automatic prompt was cancelled.
+                model.lockScreen()
+                model.automaticUnlockIsPending = false
+            }
         }
         return model
     }
@@ -94,6 +109,15 @@ enum MoneyUpUITestHarness {
         writes += try book.budgetNodes.map { try RecordWrite($0, id: $0.id.uuidString, in: .budgetNodes) }
         return writes
     }
+}
+
+/// Stands in for Face ID, which the simulator cannot perform.
+@MainActor
+final class HarnessScreenAuthenticator: ScreenAuthenticating {
+    private let succeeds: Bool
+    init(succeeds: Bool) { self.succeeds = succeeds }
+    func authenticate() async -> Bool { succeeds }
+    func cancel() {}
 }
 
 /// The harness keeps locked captures in memory: a UI-test build is unsigned

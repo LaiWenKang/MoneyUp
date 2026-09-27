@@ -362,6 +362,9 @@ extension AppModel {
         }
         widgetLifecycleRefresh.isSceneActive = false
         cancelWidgetReportingDayRefresh()
+        // The device-owner prompt itself makes the scene inactive. That
+        // interval is neither a visit away nor a reason to cover again.
+        guard !isScreenAuthenticationInProgress else { return }
         // Startup can already hold a decrypted key/store while domain loading
         // is suspended. Track that interval too; `lock()` records a deferred
         // request until startup reaches an atomic publication boundary.
@@ -396,7 +399,7 @@ extension AppModel {
         autoLockTask?.cancel()
         let delay = profile?.autoLockDelay ?? 60
         guard delay > 0 else {
-            lock()
+            autoLock()
             return
         }
         autoLockTask = Task { [weak self] in
@@ -406,7 +409,7 @@ extension AppModel {
                 return
             }
             guard !Task.isCancelled else { return }
-            self?.lock()
+            self?.autoLock()
         }
     }
 
@@ -438,8 +441,10 @@ extension AppModel {
         self.leftActiveAt = nil
         let delay = profile?.autoLockDelay ?? 60
         let elapsed = date.timeIntervalSince(leftActiveAt)
-        if !elapsed.isFinite || elapsed < 0 || elapsed >= delay {
+        if !elapsed.isFinite || elapsed < 0 {
             lock()
+        } else if elapsed >= delay {
+            autoLock()
         } else {
             requiresAuthenticationPrivacyCover = hasDeferredAuthenticationLock
             refreshWidgetForSceneActivationIfEligible()

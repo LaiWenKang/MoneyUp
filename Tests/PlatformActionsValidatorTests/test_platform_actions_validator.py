@@ -1636,6 +1636,64 @@ class PlatformActionsValidatorTests(unittest.TestCase):
         self.assertTrue(any("normal unlock" in error for error in errors), errors)
         self.assertTrue(any("separate locked Log" in error for error in errors), errors)
 
+    def test_rejects_log_only_access_that_skips_the_device_owner(self) -> None:
+        """0.7.3: a widget opens Log alone over a covered book; nothing else."""
+        root = self.source("App/MoneyUp/RootView.swift")
+        self.assertEqual(VALIDATOR.validate_log_only_access_source(root), [])
+        mutations = {
+            "tab selection must leave": root.replace(
+                "if model.isLogOnlyAccess, destination != .log {",
+                "if false {", 1),
+            "return to Log": root.replace(
+                "if model.isLogOnlyAccess { selectedSection = .log }", "", 1),
+            "Log navigation": root.replace(
+                "guard await model.unlockScreen() else { return }", "", 1),
+            "all four": root.replace(
+                "                .modifier(LogOnlyTabCover())\n", "", 1),
+            "stay covered during": root.replace(
+                "if model.isLogOnlyAccess { LockedView() }", "", 1),
+            "overview routes": root.replace(
+                "isCovered: model.requiresAuthenticationPrivacyCover || model.isLogOnlyAccess",
+                "isCovered: model.requiresAuthenticationPrivacyCover", 1),
+            "only the lock screen": root.replace(
+                "            case .ready where model.isScreenLocked && !model.isLogOnlyAccess:\n",
+                "            case .ready where model.isScreenLocked && !model.isLogOnlyAccess:\n"
+                "                Text(\"\")\n", 1),
+        }
+        for expected, mutated in mutations.items():
+            self.assertNotEqual(mutated, root, expected)
+            errors = VALIDATOR.validate_root_handoff_source(mutated)
+            self.assertTrue(any(expected in error for error in errors), (expected, errors))
+
+        lock = self.source("App/MoneyUp/AppModelScreenLock.swift")
+        self.assertEqual(VALIDATOR.validate_screen_lock_source(lock), [])
+        lock_mutations = {
+            "settled book": lock.replace("!isBookReplacementInProgress else {", "true else {", 1),
+            "device-owner authentication": lock.replace(
+                "let authenticated = await screenAuthenticator.authenticate()",
+                "let authenticated = true", 1),
+            "waiting widget request": lock.replace(
+                "              requestedQuickLogMode == nil,\n", "", 1),
+        }
+        for expected, mutated in lock_mutations.items():
+            self.assertNotEqual(mutated, lock, expected)
+            errors = VALIDATOR.validate_screen_lock_source(mutated)
+            self.assertTrue(any(expected in error for error in errors), (expected, errors))
+
+        suggestions = self.source("App/MoneyUp/QuickLogEntryCaptureSuggestions.swift")
+        self.assertEqual(VALIDATOR.validate_log_only_suggestions_source(suggestions), [])
+        for fragment, expected in (
+            ("        guard !model.isLogOnlyAccess,\n              model.profile",
+             "past entries"),
+            ("!historyPreloads.isEmpty, !model.isLogOnlyAccess,", "Recent row"),
+        ):
+            replacement = ("        guard model.profile" if expected == "past entries"
+                           else "!historyPreloads.isEmpty,")
+            mutated = suggestions.replace(fragment, replacement, 1)
+            self.assertNotEqual(mutated, suggestions, expected)
+            errors = VALIDATOR.validate_log_only_suggestions_source(mutated)
+            self.assertTrue(any(expected in error for error in errors), (expected, errors))
+
     def test_rejects_quick_action_ingress_that_replays_the_locked_inbox(self) -> None:
         source = self.source("App/MoneyUp/AppModelQuickActionIngress.swift")
         mutated = source.replace(

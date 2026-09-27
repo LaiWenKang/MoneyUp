@@ -108,9 +108,13 @@ Spotlight, and once with Siri. Repeat after selecting English and Simplified
 Chinese as the device or per-app language in system Settings.
 
 - Confirm Expense, Income, Transfer, and Refund open the matching Log mode.
-- Confirm Smart Entry focuses Smart Entry only after the normal app unlock.
-- Confirm Receipt presents the existing receipt picker only after the normal
-  app unlock.
+- After the auto-lock delay (MoneyUp covered, not closed), confirm each action
+  opens Log at once with no Face ID prompt, the Recent row is absent, and
+  tapping any other tab asks for Face ID first; cancelling stays on Log.
+- After Settings › Lock now, or after a restart, confirm each action opens Log
+  only after the normal app unlock.
+- Confirm Smart Entry focuses Smart Entry, and Receipt presents the existing
+  receipt picker, in both cases above.
 - Leave an unfinished encrypted draft before one run. Confirm the existing
   resume-or-discard decision appears and the shortcut does not overwrite it.
 - Confirm Siri presents no transaction details, identifier, completion dialog,

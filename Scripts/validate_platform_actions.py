@@ -174,6 +174,8 @@ PLATFORM_REFERENCE_ALLOWLIST = APP_INTENTS_SOURCE_ALLOWLIST | {
     "App/MoneyUp/AppModelBackupRestore.swift",
     "App/MoneyUp/AppModelKeyCliffRecovery.swift",
     "App/MoneyUp/AppModelAutomaticUnlock.swift",
+    # Reviewed 2026-09-27: the auto-lock cover lets a widget request open Log alone.
+    "App/MoneyUp/AppModelScreenLock.swift",
     "App/MoneyUp/AppModelLifecycle.swift",
     "App/MoneyUp/AppModelQuickActionIngress.swift",
     "App/MoneyUp/AppModelRestorePreview.swift",
@@ -243,6 +245,7 @@ COMPILED_REFERENCE_INVENTORY = {
         "App/MoneyUp/AppModelAutomaticUnlock.swift": 1,
         "App/MoneyUp/AppModelKeyCliffRecovery.swift": 1,
         "App/MoneyUp/AppModelLifecycle.swift": 8,
+        "App/MoneyUp/AppModelScreenLock.swift": 1,
         "App/MoneyUp/AppModelQuickActionIngress.swift": 1,
         "App/MoneyUp/MoneyUpApp.swift": 6,
         "App/MoneyUp/MoneyUpUITestHarness.swift": 1,
@@ -266,7 +269,7 @@ COMPILED_REFERENCE_INVENTORY = {
         "App/MoneyUp/QuickLogSheet.swift": 5,
     },
     r"\brequestedQuickLogRequest\b": {
-        "App/MoneyUp/AppModel.swift": 3,
+        "App/MoneyUp/AppModel.swift": 4,
         "App/MoneyUp/AppModelLifecycle.swift": 3,
         "App/MoneyUp/AppModelQuickActionIngress.swift": 1,
         "App/MoneyUp/MoneyUpApp.swift": 1,
@@ -286,6 +289,7 @@ COMPILED_REFERENCE_INVENTORY = {
         "App/MoneyUp/AppModelKeyCliffRecovery.swift": 2,
         "App/MoneyUp/AppModelLifecycle.swift": 6,
         "App/MoneyUp/AppModelLockedCaptureRecovery.swift": 2,
+        "App/MoneyUp/AppModelScreenLock.swift": 2,
         "App/MoneyUp/AppModelServices.swift": 5,
         "App/MoneyUp/MoneyUpQuickActionRouting.swift": 2,
     },
@@ -876,7 +880,90 @@ def validate_root_handoff_source(source: str) -> list[str]:
         )
     if "LockedQuickCaptureView" in source:
         errors.append("RootView must not present a separate locked Log")
+    errors.extend(validate_log_only_access_source(source))
     return errors
+
+
+# Owner decision 2026-09-27 (0.7.3): after the auto-lock delay the open book is
+# covered, and a widget, control or Shortcut request opens Log alone without
+# authentication. Everything beyond Log must ask for the device owner first.
+LOG_ONLY_ROOT_REQUIREMENTS = (
+    (
+        "case .ready where model.isScreenLocked && !model.isLogOnlyAccess:",
+        "RootView must show the lock screen over a covered book",
+    ),
+    (
+        "if model.isLogOnlyAccess, destination != .log {",
+        "tab selection must leave Log-only access only through the device owner",
+    ),
+    (
+        "if model.isLogOnlyAccess { selectedSection = .log }",
+        "tab selection must return to Log when the device owner declines",
+    ),
+    (
+        "guard await model.unlockScreen() else { return }",
+        "Log navigation must leave Log-only access only through the device owner",
+    ),
+    (
+        "if model.isLogOnlyAccess { LockedView() }",
+        "tabs beyond Log must stay covered during Log-only access",
+    ),
+    (
+        "isCovered: model.requiresAuthenticationPrivacyCover || model.isLogOnlyAccess",
+        "overview routes must wait while Log-only access is open",
+    ),
+)
+
+
+def validate_log_only_access_source(source: str) -> list[str]:
+    errors = [
+        message for fragment, message in LOG_ONLY_ROOT_REQUIREMENTS
+        if fragment not in source
+    ]
+    # The system tab bar can switch before any code runs, so every tab other
+    # than Log carries the cover (Today, History, Plan, Assets).
+    if source.count(".modifier(LogOnlyTabCover())") != 4:
+        errors.append("tabs beyond Log must stay covered during Log-only access (all four)")
+    covered = source.find("case .ready where model.isScreenLocked")
+    ready = source.find("case .ready:", covered)
+    if covered < 0 or ready < 0 or " ".join(
+        re.sub(r"//[^\n]*", "", source[covered:ready]).split()
+    ) != "case .ready where model.isScreenLocked && !model.isLogOnlyAccess: LockedView()":
+        errors.append("a covered book must show only the lock screen")
+    return errors
+
+
+def validate_screen_lock_source(source: str) -> list[str]:
+    errors: list[str] = []
+    body = normalized_swift_body(declaration_body(source, "func autoLock()"))
+    if not body.startswith(
+        "guard state == .ready, !hasDeferredAuthenticationLock, "
+        "!isLifecycleMutationInProgress, !isBookReplacementInProgress else { lock() return }"
+    ):
+        errors.append("auto-lock may only cover an open, settled book; otherwise it locks fully")
+    unlock = normalized_swift_body(declaration_body(source, "func unlockScreen() async -> Bool"))
+    if "await screenAuthenticator.authenticate()" not in unlock or "isScreenLocked = false" not in unlock:
+        errors.append("uncovering the book must follow device-owner authentication")
+    automatic = normalized_swift_body(
+        declaration_body(source, "func unlockScreenAutomaticallyIfNeeded() async -> Bool")
+    )
+    for fragment in ("!isLogOnlyAccess", "requestedQuickLogMode == nil",
+                     "quickActionRouteBroker.pendingAction == nil"):
+        if fragment not in automatic:
+            errors.append(f"the automatic prompt must yield to a waiting widget request ({fragment})")
+    if ".deviceOwnerAuthentication" not in source:
+        errors.append("the cover must use device-owner authentication")
+    return errors
+
+
+def validate_log_only_suggestions_source(source: str) -> list[str]:
+    refresh = source.find("func refreshCaptureSuggestions(")
+    rows = source.find("var historyPreloadRows")
+    if refresh < 0 or "guard !model.isLogOnlyAccess," not in source[refresh:refresh + 400]:
+        return ["Log-only access must not look up past entries"]
+    if rows < 0 or "!model.isLogOnlyAccess" not in source[rows:rows + 300]:
+        return ["Log-only access must not show the Recent row"]
+    return []
 
 
 def validate_request_identity_source(source: str) -> list[str]:
@@ -2877,6 +2964,14 @@ def validate_repository(root: Path = ROOT) -> list[str]:
         (
             "App/MoneyUpWidget/MoneyUpQuickLogControl.swift",
             validate_control_source,
+        ),
+        (
+            "App/MoneyUp/AppModelScreenLock.swift",
+            validate_screen_lock_source,
+        ),
+        (
+            "App/MoneyUp/QuickLogEntryCaptureSuggestions.swift",
+            validate_log_only_suggestions_source,
         ),
     ]
     for relative, validator in source_contract:

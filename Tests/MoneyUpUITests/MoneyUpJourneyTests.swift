@@ -30,7 +30,8 @@ final class MoneyUpJourneyTests: XCTestCase {
 
     @discardableResult
     func launch(
-        favourites: Bool = false, locked: Bool = false, reset: Bool = true,
+        favourites: Bool = false, locked: Bool = false, covered: Bool = false,
+        ownerApproves: Bool = true, reset: Bool = true,
         language: String = "en", extra: [String] = []
     ) -> XCUIApplication {
         continueAfterFailure = false
@@ -39,8 +40,10 @@ final class MoneyUpJourneyTests: XCTestCase {
             + (reset ? ["-MoneyUpUITestReset"] : [])
             + (favourites ? ["-MoneyUpUITestFavourites"] : [])
             + (locked ? ["-MoneyUpUITestStartLocked"] : [])
+            + (covered ? ["-MoneyUpUITestStartCovered"] : [])
+            + (ownerApproves ? [] : ["-MoneyUpUITestDenyScreenUnlock"])
         app.launch()
-        if locked {
+        if locked || covered {
             // Widget taps arrive after the phone is locked, never mid-startup.
             expectTrue(app.staticTexts["MoneyUp is locked"].waitForExistence(timeout: timeout)
                           || app.buttons["Unlock with passcode"].waitForExistence(timeout: timeout)
@@ -239,6 +242,52 @@ final class MoneyUpJourneyTests: XCTestCase {
         attachScreenshot(app, "journey-widget-while-locked")
     }
 
+    // MARK: Auto-lock cover (0.7.3)
+
+    /// Owner decision: logging from a widget must not wait for Face ID. After
+    /// the auto-lock delay the book is covered, not closed, so a widget tap
+    /// lands in Log at once and the entry saves without any prompt.
+    func testWidgetTapWhileCoveredLogsWithoutAuthentication() {
+        let app = launch(covered: true, ownerApproves: false)
+        openWidgetLink("expense", in: app)
+        let amount = app.textFields["quick-log-amount"]
+        expectTrue(amount.waitForExistence(timeout: timeout), "The widget did not open Log")
+        expectFalse(app.staticTexts["MoneyUp is locked"].exists, "No lock screen before Log")
+        type("6.4", into: amount)
+        app.buttons["log-save"].tap()
+        expectTrue(app.buttons["log-undo"].waitForExistence(timeout: timeout),
+                   "Saving from a widget needs no Face ID")
+        attachScreenshot(app, "journey-widget-while-covered")
+    }
+
+    /// Everything beyond Log still asks for the device owner, and a cancelled
+    /// prompt leaves the person on Log with the entry intact.
+    func testLeavingLogOnlyAccessAsksFirst() {
+        let denied = launch(covered: true, ownerApproves: false)
+        openWidgetLink("expense", in: denied)
+        let amount = denied.textFields["quick-log-amount"]
+        expectTrue(amount.waitForExistence(timeout: timeout))
+        type("3", into: amount)
+        let dismiss = denied.buttons["log-dismiss-keyboard"]
+        if dismiss.exists { dismiss.tap() }
+        denied.tabBars.buttons["Today"].tap()
+        expectTrue(denied.tabBars.buttons["Log"].waitForSelected(timeout: timeout),
+                   "A declined prompt returns to Log")
+        expectFalse(denied.staticTexts["Left this month"].exists,
+                    "Today's figures must never show without the device owner")
+        expectTrue((amount.value as? String ?? "").contains("3"), "The entry is kept")
+        denied.terminate()
+
+        let allowed = launch(covered: true)
+        openWidgetLink("expense", in: allowed)
+        expectTrue(allowed.textFields["quick-log-amount"].waitForExistence(timeout: timeout))
+        let dismissAllowed = allowed.buttons["log-dismiss-keyboard"]
+        if dismissAllowed.exists { dismissAllowed.tap() }
+        allowed.tabBars.buttons["History"].tap()
+        expectTrue(allowed.tabBars.buttons["History"].waitForSelected(timeout: timeout),
+                   "After the device owner, every tab opens")
+    }
+
     // MARK: Negative paths and conflicts
 
     func testSaveIsUnavailableWithoutAnAmount() {
@@ -334,5 +383,13 @@ final class MoneyUpJourneyTests: XCTestCase {
         // The element tree names the parent of anything the audit flags.
         if !issues.isEmpty { add(XCTAttachment(string: locked.debugDescription)) }
         expectTrue(issues.isEmpty, "Accessibility issues:\n" + issues.joined(separator: "\n"))
+    }
+}
+
+private extension XCUIElement {
+    /// True once this element is selected, false if the timeout passes first.
+    func waitForSelected(timeout: TimeInterval) -> Bool {
+        let expectation = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isSelected == true"), object: self)
+        return XCTWaiter().wait(for: [expectation], timeout: timeout) == .completed
     }
 }
