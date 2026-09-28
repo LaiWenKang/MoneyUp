@@ -667,12 +667,14 @@ W3_PATH_TYPE_DIGESTS: tuple[tuple[str, str, str, str], ...] = (
     # Re-pinned 2026-09-25: the number pattern's lookahead lets trailing punctuation end an amount (audit P3).
     ('Sources/MoneyUpCore/SmartEntryTextReading.swift', 'struct', 'SmartEntryAmountReading', 'd3018ca184d852f2fac326c512d4fd542a2ca0b17937decbf2ba095bbd06fa62'),
     ('Sources/MoneyUpCore/SmartEntryTextReading.swift', 'struct', 'SmartEntryTextParts', 'a84bf4da2c0b336f570103ee82b2f176ba7d30019cad745611022bae5e7b5ea4'),
-    ("App/MoneyUp/QuickLogEntryChrome.swift", "extension", "QuickLogEntryView", "6c56aeb35466fdc5c33ad5156445d764592123cc853863a2eca2009417ad8691"),
+    # Re-pinned 2026-09-28: the Saved banner confirms Undo and bounces its glyph per save; amounts never animate.
+    ("App/MoneyUp/QuickLogEntryChrome.swift", "extension", "QuickLogEntryView", "74cbd3610b837a3062dc1f2941b837858f8e734548ec812acfe6ea30580ef1d4"),
     (
         "App/MoneyUp/QuickLogEntryBody.swift",
         "extension",
         "QuickLogEntryView",
-        "57650a1dd1dd28f4d3910364cf6fa69b7a773bf4ce3f9dde00d216794e176a16",
+        # Re-pinned 2026-09-28: entry-kind changes animate; Undo uses the destructive-commit haptic.
+        "e0c5df74b40a5fbee25ec7f31f6e1501074645fa9b607021cd019fc40087b18b",
     ),
     (
         "App/MoneyUp/QuickLogEntryReceipt.swift",

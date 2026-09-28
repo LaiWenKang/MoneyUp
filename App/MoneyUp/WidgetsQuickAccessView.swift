@@ -141,6 +141,7 @@ struct WidgetsQuickAccessView: View {
 /// The in-app preview renders the same shared card the widget extension uses,
 /// on the same canvas colours, without any navigation.
 struct QuickLogWidgetPreviewPanel: View {
+    @Environment(\.moneyUpReduceMotion) private var reduceMotion
     let family: QuickLogWidgetLayoutFamily
     let action: MoneyUpQuickAction
 
@@ -168,7 +169,7 @@ struct QuickLogWidgetPreviewPanel: View {
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .shadow(color: .black.opacity(0.10), radius: 10, y: 4)
         .frame(maxWidth: .infinity)
-        .animation(.snappy(duration: 0.25), value: family)
+        .animation(MoneyUpMotion.animation(for: .selection, reduceMotion: reduceMotion), value: family)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("quick_access.preview_accessibility")
     }

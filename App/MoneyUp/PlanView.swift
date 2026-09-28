@@ -64,6 +64,8 @@ struct PlanView: View {
                 sectionSwitcher
                 sectionRoot
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    // Only the switcher animates; two whole lists never crossfade.
+                    .animation(nil, value: workspace.section)
             }
                 .background { MoneyUpBackdrop() }
                 .moneyUpNavigationSurface()

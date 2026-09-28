@@ -89,7 +89,7 @@ struct AssetsOverviewSection: View {
 /// brief label that replaces the glyph, then returns.
 struct AssetsSnapshotToolbarButton: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.moneyUpReduceMotion) private var reduceMotion
     @State private var isCapturing = false
     @State private var didCapture = false
     @State private var errorMessage: String?
@@ -111,6 +111,7 @@ struct AssetsSnapshotToolbarButton: View {
         .disabled(isCapturing)
         .accessibilityIdentifier("assets-capture-snapshot")
         .animation(MoneyUpMotion.animation(for: .confirmation, reduceMotion: reduceMotion), value: didCapture)
+        .moneyUpFeedback(for: .financialCommit, trigger: didCapture, visibleStatus: didCapture)
         .moneyUpOperationErrorAlert(message: $errorMessage)
     }
 

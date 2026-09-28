@@ -216,7 +216,7 @@ struct QuickLogFavouritesStrip: View {
                 isJustApplied: justApplied == favourite.id
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(MoneyUpPressableButtonStyle())
         .disabled(isDisabled)
         .contextMenu {
             Button("favourites.edit", systemImage: "pencil") { editing = favourite }
@@ -249,7 +249,7 @@ struct QuickLogFavouritesStrip: View {
             )
             .contentShape(Capsule())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(MoneyUpPressableButtonStyle())
         .disabled(isDisabled)
         .accessibilityIdentifier("quick-log-add-favourite")
     }

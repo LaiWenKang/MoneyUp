@@ -32,6 +32,7 @@ struct RootView: View {
                     )
                 )
                     .id(model.quickActionRouteBroker.handoffGeneration)
+                    .modifier(MoneyUpRevealOnAppear())
             case let .failed(message):
                 RecoveryView(message: message)
             }
@@ -71,6 +72,7 @@ private struct LogOnlyTabCover: ViewModifier {
 
 private struct LockedView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.moneyUpReduceMotion) private var reduceMotion
     @State private var method: UnlockMethod?
 
     var body: some View {
@@ -78,6 +80,7 @@ private struct LockedView: View {
             ScrollView {
                 VStack(spacing: 20) {
                     Image(systemName: method?.systemImage ?? "lock.fill")
+                        .contentTransition(.symbolEffect(.replace))
                         .font(.system(size: 52))
                         .foregroundStyle(
                             method == .unavailable ? Color.moneyUpWarning : Color.accentColor
@@ -118,9 +121,12 @@ private struct LockedView: View {
         }
         .background { MoneyUpBackdrop() }
         .task {
-            method = await Task.detached(priority: .userInitiated) {
+            let resolved = await Task.detached(priority: .userInitiated) {
                 UnlockMethod.current
             }.value
+            withAnimation(MoneyUpMotion.animation(for: .stateChange, reduceMotion: reduceMotion)) {
+                method = resolved
+            }
         }
     }
 }

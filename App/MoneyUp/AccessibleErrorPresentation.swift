@@ -79,6 +79,12 @@ private struct MoneyUpOperationErrorAlertModifier: ViewModifier {
             .onChange(of: message, initial: true) { _, newValue in
                 presentation.receive(newValue)
             }
+            // The alert is the visible status this failure haptic accompanies.
+            .moneyUpFeedback(
+                for: .validationFailure,
+                trigger: presentation.active?.id,
+                visibleStatus: presentation.active != nil
+            )
             .task(id: dismissalGeneration) {
                 guard dismissalGeneration > 0 else { return }
                 await Task.yield()

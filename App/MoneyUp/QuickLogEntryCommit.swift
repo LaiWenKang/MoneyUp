@@ -270,13 +270,25 @@ extension QuickLogEntryView {
 
         do {
             try await model.deleteEntry(id: entryID)
-            updateSavedEntry(nil)
+            // Confirm the removal where the entry was confirmed, then leave.
+            showsUndoneConfirmation = true
+            successFeedback += 1
+            if isVoiceOverEnabled {
+                UIAccessibility.post(notification: .announcement, argument: AppLocalization.string("quick_log.removed"))
+            }
+            // Log stays usable meanwhile: Undo has already finished.
+            Task {
+                try? await Task.sleep(for: .milliseconds(1_400))
+                guard showsUndoneConfirmation, lastSavedEntryID == entryID else { return }
+                updateSavedEntry(nil)
+            }
         } catch {
             errorMessage = safeUserMessage(for: error, context: .save)
         }
     }
 
     func updateSavedEntry(_ entryID: UUID?) {
+        showsUndoneConfirmation = false
         if let animation = MoneyUpMotion.animation(
             for: .confirmation,
             reduceMotion: accessibilityReduceMotion

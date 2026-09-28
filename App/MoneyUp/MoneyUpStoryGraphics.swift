@@ -16,7 +16,8 @@ struct MoneyUpProgressDial: View {
             Circle().trim(from: 0, to: progress)
                 .stroke(Color.moneyUpChartSeries1, style: StrokeStyle(lineWidth: 7, lineCap: .round))
                 .rotationEffect(.degrees(-90))
-                .animation(MoneyUpMotion.animation(for: .financialValue, reduceMotion: reduceMotion), value: progress)
+                // Geometry only; the label beside the dial owns the value.
+                .animation(MoneyUpMotion.animation(for: .stateChange, reduceMotion: reduceMotion), value: progress)
             Image(systemName: systemImage).font(.title3.weight(.semibold)).foregroundStyle(.tint)
         }
         .padding(5)

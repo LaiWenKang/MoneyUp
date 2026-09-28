@@ -21,7 +21,9 @@ extension QuickLogEntryView {
         let historicalFXConversionResult = historicalFXConversion
         Form {
                 if dynamicTypeSize.isAccessibilitySize {
-                    QuickLogKindMenuPicker(selection: trackedBinding($kind, \.kind))
+                    QuickLogKindMenuPicker(selection: trackedBinding($kind, \.kind).animation(
+                        MoneyUpMotion.animation(for: .selection, reduceMotion: accessibilityReduceMotion)
+                    ))
                 } else {
                     kindPicker(style: .segmented)
                 }
@@ -460,7 +462,7 @@ extension QuickLogEntryView {
             }
         }
         .moneyUpFeedback(
-            for: .financialCommit,
+            for: showsUndoneConfirmation ? .destructiveCommit : .financialCommit,
             trigger: successFeedback,
             visibleStatus: lastSavedEntryID != nil
         )

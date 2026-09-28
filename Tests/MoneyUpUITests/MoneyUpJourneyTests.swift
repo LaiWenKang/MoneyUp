@@ -185,6 +185,8 @@ final class MoneyUpJourneyTests: XCTestCase {
         expectTrue(undo.waitForExistence(timeout: timeout), "Saved confirmation did not appear")
         attachScreenshot(app, "journey-saved")
         undo.tap()
+        // The banner confirms the removal where the save was confirmed, then leaves.
+        expectTrue(app.staticTexts["Removed"].waitForExistence(timeout: timeout), "Undo was not confirmed")
         expectTrue(undo.waitForNonExistence(timeout: timeout), "Undo did not remove the entry")
     }
 

@@ -100,7 +100,7 @@ struct IntelligenceSummaryLink: View {
 
 struct IntelligenceView: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.moneyUpReduceMotion) private var reduceMotion
     @State private var historySelection: IntelligenceHistorySelection?
     @State private var scheduleSelection: IntelligenceScheduleSelection?
     @State private var isShowingReviewed = false

@@ -955,6 +955,7 @@ private struct CalendarMonthGrid: View {
     @Environment(\.locale) private var locale
     @Binding var selection: Date
     @State private var displayedMonth: Date?
+    @State private var monthDirection = 1
     @State private var marks: [Date: CalendarDayMarks] = [:]
 
     private var calendar: Calendar { model.reportingCalendar }
@@ -981,6 +982,7 @@ private struct CalendarMonthGrid: View {
                     if let day { dayCell(day) } else { Color.clear.frame(height: 46) }
                 }
             }
+            .modifier(MoneyUpPageTransition(page: month, direction: monthDirection))
             .gesture(DragGesture(minimumDistance: 24).onEnded { value in
                 guard abs(value.translation.width) > abs(value.translation.height) else { return }
                 shiftMonth(value.translation.width < 0 ? 1 : -1)
@@ -1062,7 +1064,7 @@ private struct CalendarMonthGrid: View {
             .frame(maxWidth: .infinity, minHeight: 46)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(MoneyUpPressableButtonStyle())
         .accessibilityLabel(Text(day.formattedForReporting(
             .dateTime.weekday(.wide).month(.wide).day(),
             calendar: calendar
@@ -1100,6 +1102,7 @@ private struct CalendarMonthGrid: View {
 
     private func shiftMonth(_ delta: Int) {
         guard let next = calendar.date(byAdding: .month, value: delta, to: month) else { return }
+        monthDirection = delta
         withAnimation(MoneyUpMotion.animation(for: .selection, reduceMotion: reduceMotion)) {
             displayedMonth = next
         }
