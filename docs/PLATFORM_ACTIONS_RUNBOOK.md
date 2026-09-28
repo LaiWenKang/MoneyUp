@@ -259,6 +259,11 @@ numbers. Widget configuration preservation remains a physical migration gate.
    Close the app before unlocking and confirm the next visit still opens Log.
 5. Confirm failed or cancelled authentication leaves no new capture, draft,
    notification, Live Activity, Spotlight item, or App Group payload.
+6. Reminders (0.7.3): turn on the daily logging reminder and tap its
+   notification once with the book covered and once with it locked. Covered
+   opens Log alone without Face ID; locked shows the normal unlock first. A
+   due-item reminder opens Today after unlock. With "Show names and amounts"
+   off, the Lock Screen shows only generic text.
 
 ## 5. Privacy and persistence inspection
 
