@@ -44,6 +44,30 @@ final class LedgerCSVExporterTests: XCTestCase {
         XCTAssertTrue(csv.hasSuffix("\r\n"))
     }
 
+    /// "\r\n" is a single Swift Character, so a Character-based check for "\n"
+    /// or "\r" missed text whose only line breaks were CRLF (for example from
+    /// an imported statement) and wrote it unquoted, splitting the CSV row.
+    func testCRLFOnlyTextIsQuoted() throws {
+        let sgd = try CurrencyCode("SGD")
+        let entry = try JournalEntry(
+            kind: .expense,
+            payee: "Line one\r\nLine two",
+            note: "Windows\r\nnote",
+            postings: [
+                Posting(accountID: UUID(), money: try Money(1, currency: sgd), memo: "memo\r\nsplit"),
+                Posting(accountID: UUID(), money: try Money(-1, currency: sgd))
+            ]
+        )
+        let csv = LedgerCSVExporter.export([entry])
+        XCTAssertTrue(csv.contains("\"Line one\r\nLine two\""))
+        XCTAssertTrue(csv.contains("\"Windows\r\nnote\""))
+        XCTAssertTrue(csv.contains("\"memo\r\nsplit\""))
+        // Header plus two posting rows, each ending in CRLF, plus the quoted breaks.
+        let unquoted = csv.components(separatedBy: "\"").enumerated()
+            .filter { $0.offset.isMultiple(of: 2) }.map(\.element).joined()
+        XCTAssertEqual(unquoted.components(separatedBy: "\r\n").count, 4)
+    }
+
     func testExportNeutralizesFormulaInjectionInUserText() throws {
         let sgd = try CurrencyCode("SGD")
         let entry = try JournalEntry(
