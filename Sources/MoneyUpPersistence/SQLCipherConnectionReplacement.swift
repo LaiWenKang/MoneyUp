@@ -14,6 +14,8 @@ extension SQLCipherConnection {
         var restoredRecordCount = 0
 
         if observesCancellation { try Task.checkCancellation() }
+        let pageCacheSize = try enlargePageCacheForReplacement()
+        defer { try? execute("PRAGMA cache_size = \(pageCacheSize);") }
         try execute("BEGIN IMMEDIATE;")
         do {
             try clearRecordsForReplacement()
@@ -55,7 +57,7 @@ extension SQLCipherConnection {
                 for: affectedBalances,
                 observesCancellation: observesCancellation
             )
-            try rebuildAllIntelligenceIndexesFromRecords()
+            try finishIntelligenceIndexesAfterReplacement()
             if observesCancellation { try Task.checkCancellation() }
             try execute("COMMIT;")
             return PortableArchiveRestoreMetadata(
@@ -86,6 +88,8 @@ extension SQLCipherConnection {
         }
 
         if observesCancellation { try Task.checkCancellation() }
+        let pageCacheSize = try enlargePageCacheForReplacement()
+        defer { try? execute("PRAGMA cache_size = \(pageCacheSize);") }
         try execute("BEGIN IMMEDIATE;")
         do {
             try clearRecordsForReplacement()
@@ -105,12 +109,24 @@ extension SQLCipherConnection {
                 for: affectedBalances,
                 observesCancellation: observesCancellation
             )
-            try rebuildAllIntelligenceIndexesFromRecords()
+            try finishIntelligenceIndexesAfterReplacement()
             if observesCancellation { try Task.checkCancellation() }
             try execute("COMMIT;")
         } catch let operationError {
             try rollbackReplacement(orThrowing: operationError)
         }
+    }
+
+    /// A whole-book replacement touches every page several times. Holding
+    /// 16 MB of them decrypted for its duration spares re-reading and
+    /// re-decrypting them; the caller restores the returned size afterwards.
+    private func enlargePageCacheForReplacement() throws -> Int32 {
+        let previous = try withStatement("PRAGMA cache_size;") { statement in
+            guard sqlite3_step(statement) == SQLITE_ROW else { throw makeError() }
+            return sqlite3_column_int(statement, 0)
+        }
+        try execute("PRAGMA cache_size = -16384;")
+        return previous
     }
 
     func clearRecordsForReplacement() throws {
@@ -181,6 +197,11 @@ extension SQLCipherConnection {
                 with: journalIndex,
                 observesCancellation: observesCancellation
             )
+            if let journalIndex {
+                // Written while the entry is decoded; kept or cleared by
+                // `finishIntelligenceIndexesAfterReplacement()`.
+                try replaceJournalIntelligenceSource(entryID: record.recordID, with: journalIndex)
+            }
             affectedBalances.formUnion(
                 journalIndex?.postings.map {
                     BalanceKey(
