@@ -188,7 +188,8 @@ final class ReminderCenter: NSObject {
         guard authorization == .notDetermined else { return }
         let center = center
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            center.requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in
+            // No badge: MoneyUp never sets one, so iOS shouldn't ask for it.
+            center.requestAuthorization(options: [.alert, .sound]) { _, _ in
                 continuation.resume()
             }
         }
@@ -271,6 +272,8 @@ final class ReminderCenter: NSObject {
         }
         content.sound = .default
         content.interruptionLevel = .active
+        // In a scheduled summary, what is due ranks above the daily nudge.
+        content.relevanceScore = reminder.route == .today ? 0.8 : 0.2
         content.userInfo = ["route": reminder.route.rawValue]
         return content
     }
