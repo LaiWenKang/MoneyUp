@@ -54,33 +54,30 @@ final class SQLCipherConnection: @unchecked Sendable {
     init(
         databaseURL: URL,
         key: Data,
-        supportedSchemaVersion: Int32
+        supportedSchemaVersion: Int32,
+        legacyKeyMove: LegacyKeyMove = .perform
     ) throws {
         self.supportedSchemaVersion = supportedSchemaVersion
-
-        let flags = SQLITE_OPEN_CREATE | SQLITE_OPEN_READWRITE | SQLITE_OPEN_FULLMUTEX
-        let openResult = sqlite3_open_v2(databaseURL.path, &database, flags, nil)
-        guard openResult == SQLITE_OK else {
-            let error = makeError(code: openResult)
-            close()
-            throw error
-        }
-
-        sqlite3_extended_result_codes(database, 1)
-
-        let keyResult = key.withUnsafeBytes { buffer in
-            sqlite3_key(database, buffer.baseAddress, Int32(buffer.count))
-        }
-        guard keyResult == SQLITE_OK else {
-            let error = makeError(code: keyResult)
-            close()
-            throw error
-        }
-
         do {
-            try verifyCipher()
+            // Raw-keyed from 0.7.3; see SQLCipherConnectionKeying.swift.
+            try openKeyedDatabase(at: databaseURL, key: key, legacyKeyMove: legacyKeyMove)
             try configure()
             try migrateIfNeeded()
+        } catch {
+            close()
+            throw error
+        }
+    }
+
+    /// A keyed handle that neither configures nor migrates its file: used to
+    /// check a copy's key form and contents before it may replace the book.
+    init(openingUnconfigured databaseURL: URL, key: Data, as form: KeyForm) throws {
+        supportedSchemaVersion = 0
+        do {
+            try openDatabase(at: databaseURL)
+            try applyKey(key, as: form)
+            try verifyCipher()
+            try configureForKeyWork()
         } catch {
             close()
             throw error
