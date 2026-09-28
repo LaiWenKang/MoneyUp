@@ -235,18 +235,14 @@ extension AppModel {
         lock()
     }
 
-    /// Gives SwiftUI's initial URL delivery one deterministic routing window
-    /// before any protected key access can request authentication. A basic
-    /// widget action can therefore enter the separate capture inbox without
-    /// racing the normal encrypted-book startup path.
+    /// Lets SwiftUI deliver a launch URL queued with this activation before
+    /// protected startup asks for Face ID. It is one turn of the main actor,
+    /// not a timed wait: every widget action needs the unlocked book on a cold
+    /// launch, and one arriving mid-start is routed when startup finishes.
     func startAfterInitialRoutingWindow(
         allowProtectedStart: @MainActor () -> Bool = { true }
     ) async {
-        do {
-            try await Task.sleep(for: .milliseconds(350))
-        } catch {
-            return
-        }
+        await Task.yield()
         guard allowProtectedStart(), !Task.isCancelled else { return }
         await start()
     }

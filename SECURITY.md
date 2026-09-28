@@ -94,7 +94,25 @@ The guarantee does not cover:
 3. Subsequent reads require Face ID, Touch ID, or the device passcode through a
    local-authentication context.
 4. The key opens SQLCipher only after authentication. The temporary Swift
-   buffer is overwritten immediately after the store opens.
+   buffer is overwritten immediately after the store opens. From 0.7.3
+   SQLCipher receives the key in its raw-key form (`x'…'`: the 32 bytes are
+   the AES-256 key) rather than as a passphrase. The key is already uniformly
+   random, so the PBKDF2-HMAC-SHA512 stretch (256,000 rounds on every open,
+   most of an unlock's time) added no protection; page encryption and the
+   per-page HMAC are unchanged, and the hex form is zeroed after use. A book
+   created by an earlier build opens once as a passphrase-keyed book and is
+   then moved to the raw key by a checked copy, never changed in place: the
+   write-ahead log is folded in (which needs the only open handle), one
+   exclusive transaction exports everything into a new file keyed with the raw
+   key in the same backup-excluded, `completeUnlessOpen` directory, that file
+   is read back through the raw key and must match every schema object, row
+   count and the schema version with a clean quick check, and only then is it
+   flushed to storage and atomically renamed over the book. Any failure leaves
+   the original untouched and usable, and the move is retried a day later. A
+   build earlier than 0.7.3 cannot read a moved book: it reports that the book
+   could not be opened and changes nothing, and 0.7.3 or later opens it again.
+   Only a TestFlight tester installing an older build can meet this; App
+   Store updates never go backwards.
 5. When the configured auto-lock delay expires (one minute by default), the app
    flushes the latest Log form/defaults to SQLCipher and covers the open book
    with the lock screen. From 0.7.3 the store stays open behind that cover, so
