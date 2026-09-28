@@ -443,6 +443,8 @@ struct QuickLogEntryView: View {
     @State var successFeedback = 0
     /// Undo succeeded; the banner says so briefly before it leaves.
     @State var showsUndoneConfirmation = false
+    /// The last saved form, while its Undo is offered (see `undo(entryID:)`).
+    @State var savedForm: QuickLogSavedForm?
     @State var hasRestoredDraft = false
     @State var handledRequestID: UInt64 = 0
     @State var isPresentingReceiptPicker = false

@@ -5,6 +5,27 @@ import PhotosUI
 import SwiftUI
 import UIKit
 
+/// The form as it was when the entry now offered for Undo was saved, with its
+/// evidence. Undo hands it back for correction; it is dropped as soon as that
+/// Undo is no longer offered.
+struct QuickLogSavedForm {
+    let entryID: UUID
+    let draft: QuickLogDraft
+    let evidence: [ReceiptAttachmentDraft]
+}
+
+extension QuickLogDraft {
+    /// The same transaction as a plain manual entry: the saved entry already
+    /// used up its batch, capture and recovery ties.
+    var forCorrection: QuickLogDraft {
+        var draft = self
+        draft.batch = nil
+        draft.sourceCaptureID = nil
+        draft.clearRecovery = nil
+        return draft
+    }
+}
+
 private enum QuickLogSaveOutcome {
     case skipped
     case saved(UUID?)
@@ -33,13 +54,8 @@ extension QuickLogEntryView {
         defer { isSaving = false }
         do {
             var evidence = attachmentDrafts
-            if retainReceiptAttachment, let receiptAttachmentData {
-                evidence.append(try ReceiptAttachmentDraft(
-                    mediaType: .detected(from: receiptAttachmentData),
-                    data: receiptAttachmentData,
-                    displayName: AppLocalization.string("evidence.scanned_receipt"),
-                    searchText: receiptResult?.recognizedText
-                ))
+            if let scannedReceipt = try retainedReceiptEvidence() {
+                evidence.append(scannedReceipt)
             }
             try ReceiptAttachment.validateEntryLimits(adding: evidence)
             let outcome = try await saveEntry(
@@ -66,6 +82,17 @@ extension QuickLogEntryView {
             // The failure endpoint is publication of the safe error state.
             finishPerformanceMeasurement(outcome: .failure)
         }
+    }
+
+    /// The scanned receipt as evidence, when the user chose to keep it.
+    func retainedReceiptEvidence() throws -> ReceiptAttachmentDraft? {
+        guard retainReceiptAttachment, let receiptAttachmentData else { return nil }
+        return try ReceiptAttachmentDraft(
+            mediaType: .detected(from: receiptAttachmentData),
+            data: receiptAttachmentData,
+            displayName: AppLocalization.string("evidence.scanned_receipt"),
+            searchText: receiptResult?.recognizedText
+        )
     }
 
     private func saveEntry(
@@ -185,6 +212,9 @@ extension QuickLogEntryView {
     /// category, transaction kind, and transfer destination remain selected so
     /// the next routine entry takes only an amount and a tap on Save.
     func completeSuccessfulSave(entryID: UUID?) {
+        // Kept while this entry's Undo is offered, so Undo can hand it back.
+        let formForUndo = draftSnapshot.forCorrection
+        let evidenceForUndo = attachmentDrafts + [try? retainedReceiptEvidence()].compactMap { $0 }
         // Name the money as posted, not as typed, so a misread can't hide
         // behind the user's own text. Masked when exact amounts are hidden.
         lastSavedAmountLabel = amount.flatMap { value in
@@ -210,39 +240,13 @@ extension QuickLogEntryView {
             applyDraft(nextCapture)
             selectDefaults()
         } else {
-            accountWasEdited = false
-            categoryWasEdited = false
-            amountText = ""
-            destinationAmountText = ""
-            occurredAt = model.currentDateForUserAction()
-            dateWasEdited = false
-            payee = ""
-            note = ""
-            smartText = ""
-            smartMessage = nil
-            receiptResult = nil
-            captureSuggestionResult = nil
-            autoAppliedAccountSuggestionID = nil
-            autoAppliedCategorySuggestionID = nil
-            pendingDuplicateReview = nil
-            splitLines = []
-            selectedAllowanceID = nil
-            sourceCaptureID = nil
-            receiptAttachmentData = nil
-            retainReceiptAttachment = false
-            receiptRetentionMessage = nil
-            attachmentDrafts = []
-            evidencePhotoItems = []
-            evidenceMessage = nil
-            photoItem = nil
-            errorMessage = nil
-            isShowingOptionalDetails = false
-            if !dismissAfterSave { model.updateQuickLogDraft(draftSnapshot) }
+            clearSavedEntryFields()
         }
         successFeedback += 1
         focusedField = isActive && batch == nil ? .amount : nil
 
         guard !dismissAfterSave, let entryID else { return }
+        savedForm = QuickLogSavedForm(entryID: entryID, draft: formForUndo, evidence: evidenceForUndo)
         updateSavedEntry(entryID)
         if isVoiceOverEnabled {
             UIAccessibility.post(
@@ -262,6 +266,38 @@ extension QuickLogEntryView {
         }
     }
 
+    /// Clears the fields that belonged to the transaction just saved.
+    private func clearSavedEntryFields() {
+        accountWasEdited = false
+        categoryWasEdited = false
+        amountText = ""
+        destinationAmountText = ""
+        occurredAt = model.currentDateForUserAction()
+        dateWasEdited = false
+        payee = ""
+        note = ""
+        smartText = ""
+        smartMessage = nil
+        receiptResult = nil
+        captureSuggestionResult = nil
+        autoAppliedAccountSuggestionID = nil
+        autoAppliedCategorySuggestionID = nil
+        pendingDuplicateReview = nil
+        splitLines = []
+        selectedAllowanceID = nil
+        sourceCaptureID = nil
+        receiptAttachmentData = nil
+        retainReceiptAttachment = false
+        receiptRetentionMessage = nil
+        attachmentDrafts = []
+        evidencePhotoItems = []
+        evidenceMessage = nil
+        photoItem = nil
+        errorMessage = nil
+        isShowingOptionalDetails = false
+        if !dismissAfterSave { model.updateQuickLogDraft(draftSnapshot) }
+    }
+
     func undo(entryID: UUID) async {
         guard !isUndoing, !isSaving, lastSavedEntryID == entryID else { return }
         isUndoing = true
@@ -270,11 +306,23 @@ extension QuickLogEntryView {
 
         do {
             try await model.deleteEntry(id: entryID)
+            // Hand the entry back as it was typed, so fixing a mistake is one
+            // edit away; unless the next entry has already begun.
+            let form = savedForm?.entryID == entryID && !draftSnapshot.isUnfinishedEntry ? savedForm : nil
+            savedForm = nil
+            if let form {
+                applyDraft(form.draft)
+                attachmentDrafts = form.evidence
+                focusedField = .amount
+            }
             // Confirm the removal where the entry was confirmed, then leave.
             showsUndoneConfirmation = true
             successFeedback += 1
             if isVoiceOverEnabled {
-                UIAccessibility.post(notification: .announcement, argument: AppLocalization.string("quick_log.removed"))
+                UIAccessibility.post(
+                    notification: .announcement,
+                    argument: AppLocalization.string(form == nil ? "quick_log.removed" : "quick_log.removed_to_edit")
+                )
             }
             // Log stays usable meanwhile: Undo has already finished.
             Task {
@@ -289,6 +337,7 @@ extension QuickLogEntryView {
 
     func updateSavedEntry(_ entryID: UUID?) {
         showsUndoneConfirmation = false
+        if entryID == nil { savedForm = nil }
         if let animation = MoneyUpMotion.animation(
             for: .confirmation,
             reduceMotion: accessibilityReduceMotion
