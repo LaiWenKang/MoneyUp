@@ -85,10 +85,9 @@ extension AppModel {
         let validAccountIDs = Set(accountSnapshot.map(\.id))
         let quarantinedEntryIDs = invalidJournalEntryIDs
         let boundedLimit = min(max(limit, 1), 200)
-        let scanLimit = min(max(boundedLimit * 2, 160), 500)
+        var scanLimit = boundedLimit // one page first; widened only while filters reject rows
         var scanCursor = cursor
         var matches: [JournalEntry] = []
-
         while matches.count < boundedLimit {
             try Task.checkCancellation()
             let rawPage = try await historyStore.fetchJournalEntryPage(
@@ -142,6 +141,7 @@ extension AppModel {
                 )
             }
             scanCursor = nextCursor
+            scanLimit = min(scanLimit * 2, 500)
         }
 
         return try await finishLogicalBookRead(
@@ -213,7 +213,18 @@ extension AppModel {
     /// Calculates the complete running total from bounded indexed pages. No
     /// full-journal filter runs on the main thread and no decoded result set is
     /// retained after the summary is returned.
-    func historySummary(query: HistoryQuery) async throws -> HistorySummary {
+    func historySummary(
+        query: HistoryQuery,
+        completeEntries: [JournalEntry]? = nil
+    ) async throws -> HistorySummary {
+        if let completeEntries {
+            // The first page already holds every match (it has no next page):
+            // total those rows instead of scanning the date range again.
+            let accountSnapshot = accounts
+            return try await Task.detached(priority: .userInitiated) {
+                try HistoryQuery().summary(for: completeEntries, accounts: accountSnapshot)
+            }.value
+        }
         let read = try beginLogicalBookRead()
         let historyStore = read.store
         let attachmentSearch = try await historyAttachmentSearchContext(

@@ -430,10 +430,11 @@ extension DashboardView {
     /// empty copy of History.
     @ViewBuilder
     var firstRunCard: some View {
-        if !model.journalRecentEntriesAreCurrent {
+        // A refresh after a save is not a failure; only a real one asks for Retry.
+        if !model.journalRecentEntriesAreCurrent, let issue = model.journalDerivedRefreshIssue {
             MoneyUpCard {
                 VStack(alignment: .leading, spacing: 12) {
-                    DerivedValueUnavailableView(issue: .appNotReady)
+                    DerivedValueUnavailableView(issue: issue)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     Button("action.retry") {
                         model.retryUnavailableJournalProjection()

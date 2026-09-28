@@ -33,11 +33,14 @@ enum AppLanguagePreference: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    static var defaults: UserDefaults? {
-        UserDefaults(
-            suiteName: BudgetWidgetSnapshotStore.appGroupIdentifier
-        )
-    }
+    static var defaults: UserDefaults? { sharedDefaults }
+
+    /// One suite per process. Creating it for every lookup showed up in list
+    /// rows, where each row resolves several strings. UserDefaults is
+    /// thread-safe, and a changed language is still read on every lookup.
+    nonisolated(unsafe) private static let sharedDefaults = UserDefaults(
+        suiteName: BudgetWidgetSnapshotStore.appGroupIdentifier
+    )
 
     static var current: AppLanguagePreference {
         resolved(from: defaults)
@@ -70,12 +73,11 @@ enum AppLocalization {
         _ key: String,
         language: AppLanguagePreference
     ) -> String {
-        let owner = Bundle(for: AppLocalizationBundleToken.self)
+        let owner = bundleCache.owner
         guard language != .system,
-              let localizedBundle = localizedBundle(
-                  for: language,
-                  owner: owner
-              ) else {
+              let localizedBundle = bundleCache.bundle(for: language, resolve: {
+                  localizedBundle(for: language, owner: owner)
+              }) else {
             return owner.localizedString(forKey: key, value: key, table: nil)
         }
         return localizedBundle.localizedString(
@@ -84,6 +86,8 @@ enum AppLocalization {
             table: nil
         )
     }
+
+    private static let bundleCache = LocalizedBundleCache()
 
     private static func localizedBundle(
         for language: AppLanguagePreference,
@@ -100,5 +104,22 @@ enum AppLocalization {
             return bundle
         }
         return nil
+    }
+}
+
+/// Each language's bundle is found once: the search walks every loaded bundle
+/// and framework, which is too slow to repeat for every string.
+private final class LocalizedBundleCache: @unchecked Sendable {
+    let owner = Bundle(for: AppLocalizationBundleToken.self)
+    private let lock = NSLock()
+    private var bundles: [AppLanguagePreference: Bundle] = [:]
+
+    func bundle(for language: AppLanguagePreference, resolve: () -> Bundle?) -> Bundle? {
+        lock.lock()
+        defer { lock.unlock() }
+        if let cached = bundles[language] { return cached }
+        let resolved = resolve()
+        if let resolved { bundles[language] = resolved }
+        return resolved
     }
 }

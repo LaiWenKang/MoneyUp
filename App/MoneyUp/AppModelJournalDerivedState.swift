@@ -478,6 +478,13 @@ extension AppModel {
         scheduleJournalDerivedRefresh()
     }
 
+    /// Why a journal-derived figure is not available right now. A ready book
+    /// that is only rebuilding its projection (for example after a save) is
+    /// updating, which views show quietly instead of as a failure.
+    var journalRefreshFallbackIssue: DerivedValueIssue {
+        journalDerivedRefreshIssue ?? (state == .ready ? .refreshPending : .appNotReady)
+    }
+
     /// Lets an unavailable-state surface request a fresh compact projection.
     /// A retry is deliberately user driven after a standalone read failure so
     /// persistent store errors cannot create a tight background retry loop.

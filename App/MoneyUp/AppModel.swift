@@ -182,6 +182,7 @@ final class AppModel {
     /// While covered, a widget, control or Shortcut request opens Log alone.
     var isLogOnlyAccess = false
     @ObservationIgnored var isScreenAuthenticationInProgress = false
+    @ObservationIgnored let reportingCalendarCache = ReportingCalendarCache()
     @ObservationIgnored var screenAuthenticator: any ScreenAuthenticating = DeviceOwnerScreenAuthenticator()
     var profile: UserProfile? {
         didSet {
@@ -675,7 +676,7 @@ extension AppModel {
     }
 
     var reportingCalendar: Calendar {
-        FinancialPeriodBoundary.gregorianCalendar(
+        reportingCalendarCache.calendar(
             timeZoneIdentifier: profile?.reportingTimeZoneIdentifier
                 ?? TimeZone.current.identifier
         )
@@ -688,5 +689,21 @@ extension AppModel {
         FinancialPeriodBoundary.gregorianCalendar(
             timeZoneIdentifier: TimeZone.autoupdatingCurrent.identifier
         )
+    }
+}
+
+/// Month grids and list rows read the reporting calendar per cell; building a
+/// time-zone calendar each time was measurable. One calendar per zone.
+@MainActor
+final class ReportingCalendarCache {
+    private var identifier: String?
+    private var calendar = Calendar(identifier: .gregorian)
+
+    func calendar(timeZoneIdentifier: String) -> Calendar {
+        if identifier != timeZoneIdentifier {
+            calendar = FinancialPeriodBoundary.gregorianCalendar(timeZoneIdentifier: timeZoneIdentifier)
+            identifier = timeZoneIdentifier
+        }
+        return calendar
     }
 }

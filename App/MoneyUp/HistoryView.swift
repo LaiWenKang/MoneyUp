@@ -315,6 +315,9 @@ struct HistoryView: View {
     @State private var summaryErrorMessage: String?
     @State private var paginationErrorMessage: String?
     @State private var refreshGeneration = 0
+    /// The query and book revision the rows on screen came from.
+    @State private var shownIdentifier: HistoryLoadIdentifier?
+    @State private var shownRevision: UInt64?
     @State private var didInitializeReportingDates = false
     @State private var isInitialHistoryLoadInProgress = false
     @State private var pendingPaginationAfterInitialLoad = false
@@ -401,6 +404,10 @@ struct HistoryView: View {
         reportingSnapshot.reportingDayIdentity
     }
 
+    private var isShowingStaleRows: Bool {
+        !model.journalRecentEntriesAreCurrent || shownIdentifier != loadIdentifier
+    }
+
     private var dayGroups: [HistoryDayGroup] {
         HistoryDayGroup.grouped(loadedEntries, calendar: model.reportingCalendar)
     }
@@ -437,9 +444,9 @@ struct HistoryView: View {
             .listRowSeparator(.hidden)
 
             }
-                if !model.journalRecentEntriesAreCurrent {
+                if !model.journalRecentEntriesAreCurrent, let issue = model.journalDerivedRefreshIssue {
                     Section {
-                        DerivedValueUnavailableView(issue: .appNotReady)
+                        DerivedValueUnavailableView(issue: issue)
                             .padding(.vertical, 8)
                         Button("action.retry") {
                             model.retryUnavailableJournalProjection()
@@ -567,6 +574,7 @@ struct HistoryView: View {
                                 ))
                             }
                         }
+                        .modifier(MoneyUpStaleContent(isStale: isShowingStaleRows))
 
                         if isLoadingPage {
                             Section {
@@ -641,10 +649,8 @@ struct HistoryView: View {
                 await reloadHistory()
             }
             .onChange(of: model.journalRecentEntriesAreCurrent) { _, isCurrent in
-                loadedEntries = []
-                attachmentMatchesByEntryID = [:]
+                // Rows stay on screen (not tappable) until the reload replaces them.
                 nextCursor = nil
-                summary = nil
                 isLoadingPage = false
                 initialPageErrorMessage = nil
                 summaryErrorMessage = nil
@@ -660,6 +666,7 @@ struct HistoryView: View {
                 finishPaginationMeasurement(outcome: .cancelled)
             }
             .onChange(of: model.logicalBookRevision) { _, _ in
+                shownIdentifier = nil
                 loadedEntries = []
                 attachmentMatchesByEntryID = [:]
                 nextCursor = nil
@@ -712,7 +719,7 @@ struct HistoryView: View {
                 }
             }
             .sheet(item: $selectedEntry, onDismiss: {
-                refreshGeneration &+= 1
+                if model.journalProjectionRevision != shownRevision { refreshGeneration &+= 1 }
             }) { entry in
                 TransactionEditView(entry: entry)
             }
@@ -871,10 +878,7 @@ extension HistoryView {
     @MainActor
     private func reloadHistory() async {
         guard model.journalRecentEntriesAreCurrent else {
-            loadedEntries = []
-            attachmentMatchesByEntryID = [:]
             nextCursor = nil
-            summary = nil
             isLoadingPage = false
             isInitialHistoryLoadInProgress = false
             initialPageErrorMessage = nil
@@ -883,6 +887,10 @@ extension HistoryView {
             return
         }
         let expectedIdentifier = loadIdentifier
+        let revision = model.journalProjectionRevision
+        // Returning to the tab with nothing changed keeps rows, totals and scroll.
+        if shownIdentifier == expectedIdentifier, shownRevision == revision, summary != nil,
+           initialPageErrorMessage == nil, summaryErrorMessage == nil { return }
         let performanceMeasurementID = beginInitialHistoryMeasurement(
             loadIdentifier: expectedIdentifier
         )
@@ -899,17 +907,17 @@ extension HistoryView {
             )
         }
         let querySnapshot = query
-        loadedEntries = []
-        attachmentMatchesByEntryID = [:]
+        // Rows stay until the new page replaces them; totals stay for a refresh
+        // of the same query and give way when the query itself changed.
+        if shownIdentifier?.searchText != expectedIdentifier.searchText
+            || shownIdentifier?.filters != expectedIdentifier.filters { summary = nil }
         nextCursor = nil
-        summary = nil
         initialPageErrorMessage = nil
         summaryErrorMessage = nil
         paginationErrorMessage = nil
 
-        async let pageOutcome = initialPageOutcome(query: querySnapshot)
-        async let totalsOutcome = summaryOutcome(query: querySnapshot)
-        let resolvedPage = await pageOutcome
+        // The page goes first: the totals scan shares the store and must not delay it.
+        let resolvedPage = await initialPageOutcome(query: querySnapshot)
 
         guard model.journalRecentEntriesAreCurrent,
               !Task.isCancelled,
@@ -921,14 +929,18 @@ extension HistoryView {
             loadedEntries = page.entries
             nextCursor = page.nextCursor
             attachmentMatchesByEntryID = page.attachmentMatchesByEntryID
+            shownIdentifier = expectedIdentifier
+            shownRevision = revision
         case let .unavailable(message):
             initialPageErrorMessage = message
+            loadedEntries = []
+            shownIdentifier = nil
             didFail = true
         case .cancelled:
             return
         }
 
-        let resolvedSummary = await totalsOutcome
+        let resolvedSummary = await summaryOutcome(query: querySnapshot, complete: !didFail && nextCursor == nil ? loadedEntries : nil)
         guard model.journalRecentEntriesAreCurrent,
               !Task.isCancelled,
               loadIdentifier == expectedIdentifier else { return }
@@ -1006,9 +1018,9 @@ extension HistoryView {
     }
 
     @MainActor
-    private func summaryOutcome(query: HistoryQuery) async -> SummaryOutcome {
+    private func summaryOutcome(query: HistoryQuery, complete: [JournalEntry]?) async -> SummaryOutcome {
         do {
-            return .available(try await model.historySummary(query: query))
+            return .available(try await model.historySummary(query: query, completeEntries: complete))
         } catch is CancellationError {
             return .cancelled
         } catch {

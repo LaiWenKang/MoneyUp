@@ -713,8 +713,11 @@ def validate_journey_boundaries(sources: dict[str, str]) -> list[str]:
         ],
         "App/MoneyUp/HistoryView.swift": [
             "try await Task.sleep(for: .milliseconds(250))",
-            "async let pageOutcome = initialPageOutcome(query: querySnapshot)",
-            "async let totalsOutcome = summaryOutcome(query: querySnapshot)",
+            # Page first, then totals (2026-09-28): the totals scan shares the
+            # store and must not delay the first rows. The journey still ends
+            # only when both have been published.
+            "let resolvedPage = await initialPageOutcome(query: querySnapshot)",
+            "let resolvedSummary = await summaryOutcome(query: querySnapshot,",
             "loadedEntries = page.entries",
             "summary = resolvedSummary",
             "loadedEntries.append(contentsOf:",
