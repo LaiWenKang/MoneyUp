@@ -673,8 +673,9 @@ W3_PATH_TYPE_DIGESTS: tuple[tuple[str, str, str, str], ...] = (
         "App/MoneyUp/QuickLogEntryBody.swift",
         "extension",
         "QuickLogEntryView",
-        # Re-pinned 2026-09-28: entry-kind changes animate; Undo uses the destructive-commit haptic.
-        "e0c5df74b40a5fbee25ec7f31f6e1501074645fa9b607021cd019fc40087b18b",
+        # Re-pinned 2026-09-28: entry-kind changes animate; Undo uses the destructive-commit haptic;
+        # the FX estimate names its rate date, not the stored day key.
+        "0839adf05267cb378d110989cfddedc018bbfa4ca8d340d264b1f6f5d6d61d0b",
     ),
     (
         "App/MoneyUp/QuickLogEntryReceipt.swift",

@@ -318,8 +318,8 @@
     "widget.hero.refund" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Log refund"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"记退款"}}}},
     "widget.hero.smart_entry" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Smart Entry"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"智能记账"}}}},
     "widget.hero.scan_receipt" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Add receipt"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"添加收据"}}}},
-    "widget.budget_pace_within_format" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Within pace · %d%% of the month gone"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"未超进度 · 本月已过 %d%%"}}}},
-    "widget.budget_pace_ahead_format" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Ahead of pace · %d%% of the month gone"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"超出进度 · 本月已过 %d%%"}}}},
+    "widget.budget_pace_within_format" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"On pace · %d%% of the month gone"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"进度正常 · 本月已过 %d%%"}}}},
+    "widget.budget_pace_ahead_format" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Ahead of pace · %d%% of the month gone"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"花得偏快 · 本月已过 %d%%"}}}},
     "widget.summaries_off" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Summaries are off · turn on in MoneyUp"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"摘要已关闭 · 可在 MoneyUp 中开启"}}}}
   },
   "version" : "1.0"

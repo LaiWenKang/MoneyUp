@@ -120,30 +120,31 @@ extension DashboardView {
     func flexibleTodayCopy(
         _ breakdown: FlexibleTodayBreakdown
     ) -> some View {
-        VStack(alignment: .leading, spacing: 7) {
+        // Overspent, a "per day" allowance would be negative; the honest figure
+        // is how far over the flexible plan the month already is (T9).
+        let isOver = breakdown.availableForRemainingPeriod.amount < .zero
+        return VStack(alignment: .leading, spacing: 7) {
             Label("dashboard.safe_to_spend", systemImage: "sun.max.fill")
                 .font(.headline)
                 .foregroundStyle(.tint)
-            Text(formattedMoney(breakdown.amountPerDay))
+            Text(formattedMoney(isOver ? breakdown.availableForRemainingPeriod.negated : breakdown.amountPerDay))
                 .moneyUpFinancialValue(.hero)
-                .foregroundStyle(
-                    breakdown.availableForRemainingPeriod.amount < .zero
-                        ? Color.moneyUpDanger
-                        : Color.primary
-                )
-            Text("dashboard.safe_to_spend.per_day")
+                .foregroundStyle(isOver ? Color.moneyUpDanger : Color.primary)
+            Text(isOver ? LocalizedStringKey("dashboard.safe_to_spend.over_caption") : "dashboard.safe_to_spend.per_day")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
-            Label(
-                String(
-                    format: AppLocalization.string("dashboard.safe_to_spend.weekly_format"),
-                    formattedMoney(breakdown.amountForNextSevenDays),
-                    min(7, breakdown.remainingDayCount)
-                ),
-                systemImage: "calendar.day.timeline.left"
-            )
-            .font(.footnote.weight(.semibold))
-            if breakdown.availableForRemainingPeriod.amount < .zero {
+            if !isOver {
+                Label(
+                    String(
+                        format: AppLocalization.string("dashboard.safe_to_spend.weekly_format"),
+                        formattedMoney(breakdown.amountForNextSevenDays),
+                        min(7, breakdown.remainingDayCount)
+                    ),
+                    systemImage: "calendar.day.timeline.left"
+                )
+                .font(.footnote.weight(.semibold))
+            }
+            if isOver {
                 Label(
                     "dashboard.safe_to_spend.attention",
                     systemImage: "exclamationmark.triangle.fill"
@@ -169,15 +170,12 @@ extension DashboardView {
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(.tint)
                         Spacer(minLength: 8)
+                        let isOver = breakdown.availableForRemainingPeriod.amount < .zero
                         VStack(alignment: .trailing, spacing: 1) {
-                            Text(formattedMoney(breakdown.amountPerDay))
+                            Text(formattedMoney(isOver ? breakdown.availableForRemainingPeriod.negated : breakdown.amountPerDay))
                                 .font(.title3.monospacedDigit().weight(.semibold))
-                                .foregroundStyle(
-                                    breakdown.availableForRemainingPeriod.amount < .zero
-                                        ? Color.moneyUpDanger
-                                        : Color.primary
-                                )
-                            Text("dashboard.safe_to_spend.per_day")
+                                .foregroundStyle(isOver ? Color.moneyUpDanger : Color.primary)
+                            Text(isOver ? LocalizedStringKey("dashboard.safe_to_spend.over_caption") : "dashboard.safe_to_spend.per_day")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                         }

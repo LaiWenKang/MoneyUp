@@ -136,6 +136,7 @@ extension DashboardView {
                 Text(formattedMoney(position.netCash))
                     .font(.title3.monospacedDigit().weight(.semibold))
                     .lineLimit(1)
+                    .minimumScaleFactor(0.5)
                 MoneyUpPositionOrbit(
                     cashAmount: position.cash.amount,
                     debtAmount: position.debt.amount
@@ -243,6 +244,7 @@ extension DashboardView {
                                 : Color.primary
                         )
                         .lineLimit(1)
+                        .minimumScaleFactor(0.5)
                     if case let .available(ratio) = budgetRatio(summary) {
                         MoneyUpBudgetOrbit(
                             ratio: ratio,
