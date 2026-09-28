@@ -612,15 +612,11 @@ class PlatformActionsValidatorTests(unittest.TestCase):
 
     def test_rejects_shared_localization_standard_defaults_fallback(self) -> None:
         source = self.source("App/Shared/AppLocalization.swift")
+        # The suite is created once (2026-09-28); a fallback on its accessor is
+        # the same boundary crossing as a fallback on its construction.
         mutated = source.replace(
-            "            suiteName: BudgetWidgetSnapshotStore.appGroupIdentifier\n"
-            "        )\n"
-            "    }\n\n"
-            "    static var current",
-            "            suiteName: BudgetWidgetSnapshotStore.appGroupIdentifier\n"
-            "        ) ?? .standard\n"
-            "    }\n\n"
-            "    static var current",
+            "static var defaults: UserDefaults? { sharedDefaults }",
+            "static var defaults: UserDefaults? { sharedDefaults ?? .standard }",
             1,
         )
 
