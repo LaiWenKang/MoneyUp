@@ -303,6 +303,7 @@ struct HistoryView: View {
     @State private var filters: HistoryFilterDraft
     @State private var showingFilters = false
     @State private var selectedEntry: JournalEntry?
+    @Namespace private var entryZoom
     @State private var entryPendingDeletion: JournalEntry?
     @State private var errorMessage: String?
     @State private var loadedEntries: [JournalEntry] = []
@@ -571,6 +572,7 @@ struct HistoryView: View {
                                             .contentShape(Rectangle())
                                     }
                                     .buttonStyle(.plain)
+                                    .matchedTransitionSource(id: entry.id, in: entryZoom)
                                     .contextMenu {
                                         TransactionPreparationActions(entry: entry)
                                     } preview: {
@@ -762,6 +764,9 @@ struct HistoryView: View {
                 if model.journalProjectionRevision != shownRevision { refreshGeneration &+= 1 }
             }) { entry in
                 TransactionEditView(entry: entry)
+                    .modifier(TransactionOpenTransition(
+                        id: entry.id, namespace: entryZoom, reducesMotion: reduceMotion
+                    ))
             }
             .confirmationDialog(
                 "transaction.delete_title",

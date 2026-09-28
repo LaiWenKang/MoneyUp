@@ -340,6 +340,22 @@ struct TransactionContextPreview: View {
     }
 }
 
+/// A transaction opens by zooming out of its row and closes back into it,
+/// unless motion is reduced; then it is an ordinary sheet.
+struct TransactionOpenTransition: ViewModifier {
+    let id: JournalEntry.ID
+    let namespace: Namespace.ID
+    let reducesMotion: Bool
+
+    func body(content: Content) -> some View {
+        if reducesMotion {
+            content
+        } else {
+            content.navigationTransition(.zoom(sourceID: id, in: namespace))
+        }
+    }
+}
+
 /// Money coming back (income, refund) reads with an explicit plus in a row,
 /// so its direction never depends on the green alone.
 @MainActor
