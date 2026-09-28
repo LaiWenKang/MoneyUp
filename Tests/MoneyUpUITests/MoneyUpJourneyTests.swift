@@ -323,8 +323,10 @@ final class MoneyUpJourneyTests: XCTestCase {
         let discard = app.buttons["Discard and start new"]
         expectTrue(discard.waitForExistence(timeout: timeout), "Conflict prompt did not appear")
         discard.tap()
-        expectFalse((app.textFields["quick-log-payee"].value as? String ?? "").contains("Taxi"),
-                    "Discard must clear the entry")
+        // Discarding clears the form asynchronously; a loaded runner can read
+        // the field before that lands.
+        eventually("NOT (value CONTAINS 'Taxi')", app.textFields["quick-log-payee"],
+                   "Discard must clear the entry")
         openWidgetLink("expense", in: app)
         expectFalse(app.buttons["Resume unfinished entry"].waitForExistence(timeout: 3),
                     "A discarded entry must not ask again")
