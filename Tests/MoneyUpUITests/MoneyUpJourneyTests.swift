@@ -179,7 +179,8 @@ final class MoneyUpJourneyTests: XCTestCase {
 
     func testLogAnExpenseThenUndo() {
         let app = launch()
-        type("12.5", into: openLog(app))
+        let amount = openLog(app)
+        type("12.5", into: amount)
         app.buttons["log-save"].tap()
         let undo = app.buttons["log-undo"]
         expectTrue(undo.waitForExistence(timeout: timeout), "Saved confirmation did not appear")
@@ -187,6 +188,9 @@ final class MoneyUpJourneyTests: XCTestCase {
         undo.tap()
         // The banner confirms the removal where the save was confirmed, then leaves.
         expectTrue(app.staticTexts["Removed"].waitForExistence(timeout: timeout), "Undo was not confirmed")
+        // The entry is handed back to the form, ready to correct and save again.
+        eventually("value CONTAINS '12.5'", amount, "Undo did not return the entry to the form")
+        attachScreenshot(app, "journey-undone-back-to-edit")
         expectTrue(undo.waitForNonExistence(timeout: timeout), "Undo did not remove the entry")
     }
 

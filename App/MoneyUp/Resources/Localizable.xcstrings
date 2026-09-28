@@ -1151,6 +1151,7 @@
     "plan.budget" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Budget"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"预算"}}}},
     "quick_log.saved" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Saved"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"已保存"}}}},
     "quick_log.removed" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Removed"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"已撤销"}}}},
+    "quick_log.removed_to_edit" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Removed. It is back in the form to edit."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"已撤销，内容已放回表单，可修改后再保存。"}}}},
     "quick_log.scan_alternative_amounts" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Amounts found"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"找到的金额"}}}},
     "quick_log.scan_amount_account_currency" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Uses the selected account's currency"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"使用所选账户的币种"}}}},
     "quick_log.scan_ready" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Suggestions ready"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"建议已就绪"}}}},
