@@ -13,6 +13,9 @@ struct BudgetPlanView: View {
     }
     @State private var presentation: DerivedValue<MonthlyBudgetPresentation>?
     @State private var loadRequestID = UUID()
+    /// What the budget on screen was loaded for, so a recalculation keeps it.
+    @State private var presentedIdentity: String?
+    @State private var presentedScope: String?
     @State private var editingNode: BudgetNode?
     @State private var isAddingCategory = false
     @State private var isManagingCategories = false
@@ -37,9 +40,14 @@ struct BudgetPlanView: View {
     private var isClosed: Bool {
         (model.reportingCalendar.dateInterval(of: .month, for: date)?.end ?? date) <= now
     }
-    private var loadIdentity: String {
+    /// The month and currency on screen; changing either starts from empty.
+    private var scopeIdentity: String {
         let parts = model.reportingCalendar.dateComponents([.year, .month], from: date)
-        return "\(parts.year ?? 0)-\(parts.month ?? 0)-\(currency?.value ?? "")-"
+        return "\(parts.year ?? 0)-\(parts.month ?? 0)-\(currency?.value ?? "")"
+    }
+
+    private var loadIdentity: String {
+        "\(scopeIdentity)-"
             + "\(model.budgetNodesRevision)-\(model.journalProjectionRevision)-"
             + "\(model.logicalBookRevision)-\(model.isJournalMutationInProgress)-\(model.isLifecycleMutationInProgress)"
     }
@@ -61,6 +69,7 @@ struct BudgetPlanView: View {
                 switch presentation {
                 case let .available(snapshot):
                     budgetContent(snapshot)
+                        .modifier(MoneyUpStaleContent(isStale: presentedIdentity != loadIdentity))
                 case let .unavailable(issue):
                     Section {
                         DerivedValueUnavailableView(issue: issue, prominent: true)
@@ -77,7 +86,7 @@ struct BudgetPlanView: View {
                     }
                 }
             } else {
-                Section { ProgressView("budget.loading") }
+                Section { MoneyUpLoadingPlaceholder(title: "budget.loading") }
             }
             if isCurrentMonth, model.profile?.intelligenceEnabled == true { exploreSection }
         }
@@ -348,12 +357,18 @@ struct BudgetPlanView: View {
         let request = UUID()
         loadRequestID = request
         let identity = loadIdentity
-        presentation = nil
+        let scope = scopeIdentity
+        // The budget stays on screen while it recalculates after a save; a new
+        // month or currency starts from empty.
+        if presentedScope != scope { presentation = nil }
         guard let currency, !model.isJournalMutationInProgress,
               !model.isLifecycleMutationInProgress else { return }
         let result = await model.monthlyBudgetPresentation(asOf: date, currency: currency)
         guard !Task.isCancelled, loadRequestID == request, loadIdentity == identity else { return }
+        if case let .unavailable(issue) = result, issue.isPending, presentation?.value != nil { return }
         presentation = result
+        presentedIdentity = identity
+        presentedScope = scope
     }
 }
 
@@ -407,7 +422,7 @@ struct BudgetSpendingHistoryView: View {
                 case let .unavailable(issue): DerivedValueUnavailableView(issue: issue, prominent: true)
                 }
             } else {
-                ProgressView("budget.loading")
+                MoneyUpLoadingPlaceholder(title: "budget.loading")
             }
         }
         .task(id: identity) {

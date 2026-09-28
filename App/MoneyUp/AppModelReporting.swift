@@ -153,18 +153,18 @@ extension AppModel {
             reportCacheDay = today
             if !retainsCompleteJournal {
                 scheduleJournalDerivedRefresh()
-                return .unavailable(journalDerivedRefreshIssue ?? .appNotReady)
+                return .unavailable(journalRefreshFallbackIssue)
             }
         }
         if let cached = reportCache[period] { return cached }
 
         guard retainsCompleteJournal else {
             scheduleJournalDerivedRefresh()
-            return .unavailable(journalDerivedRefreshIssue ?? .appNotReady)
+            return .unavailable(journalRefreshFallbackIssue)
         }
 
         guard let currency = profile?.baseCurrency else {
-            return .unavailable(journalDerivedRefreshIssue ?? .appNotReady)
+            return .unavailable(journalRefreshFallbackIssue)
         }
         guard let interval = period.interval(containing: now, calendar: calendar) else {
             DerivedValueDiagnostics.record(

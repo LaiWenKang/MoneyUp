@@ -100,9 +100,11 @@ struct MoneyUpStateBadge: View {
 }
 
 /// Inline progress with a label, sized like a placeholder so a screen does not
-/// jump when loading resolves into content or an empty state.
+/// jump when loading resolves into content or an empty state. The spinner and
+/// label wait a quarter second, so a fast load never flashes them.
 struct MoneyUpLoadingPlaceholder: View {
     let title: LocalizedStringKey
+    @State private var isVisible = false
 
     var body: some View {
         VStack(spacing: 12) {
@@ -114,7 +116,44 @@ struct MoneyUpLoadingPlaceholder: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 16)
+        .opacity(isVisible ? 1 : 0)
         .accessibilityElement(children: .combine)
+        .task {
+            do {
+                try await Task.sleep(for: .milliseconds(250))
+                isVisible = true
+            } catch {
+                // Content arrived first.
+            }
+        }
+    }
+}
+
+/// Content kept on screen while newer content loads, instead of blanking to a
+/// spinner. It stops taking taps at once and dims only if the load is slow
+/// enough to notice, so a quick refresh changes nothing visually.
+struct MoneyUpStaleContent: ViewModifier {
+    let isStale: Bool
+    @Environment(\.moneyUpReduceMotion) private var reduceMotion
+    @State private var isDimmed = false
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(isDimmed ? 0.5 : 1)
+            .allowsHitTesting(!isStale)
+            .task(id: isStale) {
+                let animation = MoneyUpMotion.animation(for: .stateChange, reduceMotion: reduceMotion)
+                guard isStale else {
+                    withAnimation(animation) { isDimmed = false }
+                    return
+                }
+                do {
+                    try await Task.sleep(for: .milliseconds(180))
+                    withAnimation(animation) { isDimmed = true }
+                } catch {
+                    // Fresh content arrived first.
+                }
+            }
     }
 }
 

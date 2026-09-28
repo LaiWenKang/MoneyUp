@@ -34,8 +34,14 @@ enum DerivedValueIssue: String, Equatable, Error, Identifiable, Sendable {
     case budgetArithmeticFailed = "DV-017"
     case budgetReadFailed = "DV-018"
     case budgetRefreshPending = "DV-019"
+    /// A ready book whose figures are being recalculated, typically for the
+    /// moment after a save. It is a state, not a failure.
+    case refreshPending = "DV-020"
 
     var id: String { rawValue }
+
+    /// Recalculation in progress: shown quietly, never as a warning.
+    var isPending: Bool { self == .refreshPending || self == .budgetRefreshPending }
 
     var needsBudgetHistoryReview: Bool {
         switch self {
@@ -68,6 +74,8 @@ enum DerivedValueIssue: String, Equatable, Error, Identifiable, Sendable {
             AppLocalization.string("error.read_failed_safe")
         case .budgetRefreshPending:
             AppLocalization.string("budget.loading")
+        case .refreshPending:
+            AppLocalization.string("derived.updating")
         case .amountCalculationFailed:
             AppLocalization.string("derived.reason.amount")
         case .holdingValuationFailed:
@@ -171,8 +179,8 @@ struct DerivedValueUnavailableView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            if issue == .budgetRefreshPending {
-                ProgressView("budget.loading")
+            if issue.isPending {
+                DerivedValuePendingView(issue: issue, prominent: prominent)
             } else {
                 Text("—")
                     .font(prominent ? .largeTitle.bold() : .headline)
@@ -203,6 +211,37 @@ struct DerivedValueUnavailableView: View {
                     issue.rawValue
                 )
             )
+        }
+    }
+}
+
+/// A figure being recalculated, for example right after a save. It keeps the
+/// value's footprint with a quiet dash, never a warning, and adds a small
+/// spinner only when the refresh takes noticeably long.
+struct DerivedValuePendingView: View {
+    let issue: DerivedValueIssue
+    var prominent = false
+    @State private var isSlow = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(verbatim: "—")
+                .font(prominent ? .largeTitle.bold() : .headline)
+                .monospacedDigit()
+                .foregroundStyle(.tertiary)
+            if isSlow {
+                ProgressView().controlSize(.small)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(issue.localizedDescription))
+        .task {
+            do {
+                try await Task.sleep(for: .milliseconds(700))
+                isSlow = true
+            } catch {
+                // The value arrived first.
+            }
         }
     }
 }
