@@ -264,6 +264,10 @@ numbers. Widget configuration preservation remains a physical migration gate.
    opens Log alone without Face ID; locked shows the normal unlock first. A
    due-item reminder opens Today after unlock. With "Show names and amounts"
    off, the Lock Screen shows only generic text.
+7. Home Screen quick actions (0.7.3): long-press the MoneyUp icon and try
+   Quick Expense, Quick Income, Smart Entry and Choose Receipt from a cold
+   start, with the book covered, and with it locked. Each opens the matching
+   Log mode exactly as the widget does, and none records anything by itself.
 
 ## 5. Privacy and persistence inspection
 

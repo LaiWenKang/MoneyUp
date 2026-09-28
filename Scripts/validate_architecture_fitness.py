@@ -570,6 +570,8 @@ W3_TYPE_REFERENCE_INVENTORIES = {
 W3_STATE_REFERENCE_INVENTORIES = {
     "scanReceipt": (
         ("App/MoneyUp/MoneyUpAppShortcuts.swift", 1),
+        # Home Screen quick actions offer the same reviewed data-free action.
+        ("App/MoneyUp/MoneyUpHomeScreenActions.swift", 3),
         ("App/MoneyUp/QuickLogEntryBody.swift", 1),
         (W3_REVIEWED_ENTRY_PATH, 1),
         ("App/MoneyUp/QuickLogEntryReceipt.swift", 1),

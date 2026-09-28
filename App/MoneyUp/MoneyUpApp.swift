@@ -5,6 +5,8 @@ import WidgetKit
 @main
 @MainActor
 struct MoneyUpApp: App {
+    /// Home Screen quick actions reach the app only through UIKit delegates.
+    @UIApplicationDelegateAdaptor(MoneyUpAppDelegate.self) private var appDelegate
     @State private var model = MoneyUpApp.initialModel()
     @State private var overviewNavigation = MoneyUpOverviewNavigation()
     @State private var launchState = MoneyUpSceneLaunchState()
@@ -154,6 +156,7 @@ struct MoneyUpApp: App {
                             await startInitialModelIfNeeded()
                             await model.unlockAutomaticallyIfNeeded()
                         }
+                        MoneyUpHomeScreenActions.install()
                     case .inactive:
                         model.sceneDidBecomeInactive()
                     @unknown default:
@@ -162,6 +165,7 @@ struct MoneyUpApp: App {
                 }
                 .onChange(of: appLanguageRawValue) { _, _ in
                     WidgetCenter.shared.reloadAllTimelines()
+                    MoneyUpHomeScreenActions.install()
                 }
         }
     }

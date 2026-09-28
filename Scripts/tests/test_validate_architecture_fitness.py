@@ -100,6 +100,7 @@ class ArchitectureFitnessTests(unittest.TestCase):
             "App/MoneyUp/QuickLogEntryReceiptCandidates.swift",
             "App/MoneyUp/QuickLogEntryCaptureSuggestions.swift",
             "App/MoneyUp/QuickLogLaunchMode.swift",
+            "App/MoneyUp/MoneyUpHomeScreenActions.swift",
             "App/Shared/MoneyUpQuickAction.swift",
             "App/Shared/QuickLogWidgetCard.swift",
         )
