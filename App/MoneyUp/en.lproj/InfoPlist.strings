@@ -1,2 +1,3 @@
+"NSCameraUsageDescription" = "Scan a paper receipt. The photo is read on this iPhone and never uploaded.";
 "NSFaceIDUsageDescription" = "Unlock your private MoneyUp financial data.";
 "UTTypeDescription" = "MoneyUp Encrypted Backup";

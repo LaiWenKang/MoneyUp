@@ -280,15 +280,11 @@ extension QuickLogEntryView {
                     .accessibilityLabel("quick_log.smart_fill")
                     .accessibilityIdentifier("quick-log-smart-fill")
                 } else {
-                    Button { isPresentingReceiptPicker = true } label: {
-                        Image(systemName: MoneyUpEntryGlyph.receipt)
-                            .font(.title3)
-                            .frame(minWidth: 44, minHeight: 44)
-                    }
-                    .buttonStyle(.borderless)
-                    .disabled(isScanning)
-                    .accessibilityLabel("quick_log.scan_receipt")
-                    .accessibilityIdentifier("quick-log-scan-receipt")
+                    QuickLogReceiptButton(
+                        isScanning: isScanning,
+                        choosePhoto: { isPresentingReceiptPicker = true },
+                        scanned: { data in beginReceiptScan(.scanned(data)) }
+                    )
                 }
                 Menu { merchantLearningControl } label: {
                     Image(systemName: "ellipsis")
@@ -830,5 +826,51 @@ struct QuickLogKindMenuPicker: View {
         }
         .labelsHidden()
         .pickerStyle(.menu)
+    }
+}
+
+/// Where a camera exists, a tap scans a paper receipt with the document
+/// camera and holding offers photos; elsewhere it chooses a photo, as before.
+/// A concrete view, so the Log form's type stays within its device budget.
+struct QuickLogReceiptButton: View {
+    let isScanning: Bool
+    let choosePhoto: () -> Void
+    let scanned: (Data) -> Void
+    @State private var isPresentingCamera = false
+
+    var body: some View {
+        Group {
+            if ReceiptDocumentCamera.isAvailable {
+                Menu {
+                    Button { isPresentingCamera = true } label: {
+                        Label("quick_log.receipt.scan_paper", systemImage: "doc.viewfinder")
+                    }
+                    Button(action: choosePhoto) {
+                        Label("quick_log.receipt.choose_photo", systemImage: "photo.on.rectangle")
+                    }
+                } label: {
+                    glyph
+                } primaryAction: {
+                    isPresentingCamera = true
+                }
+                .accessibilityHint("quick_log.receipt.hint")
+            } else {
+                Button(action: choosePhoto) { glyph }
+                    .buttonStyle(.borderless)
+            }
+        }
+        .disabled(isScanning)
+        .accessibilityLabel("quick_log.scan_receipt")
+        .accessibilityIdentifier("quick-log-scan-receipt")
+        .fullScreenCover(isPresented: $isPresentingCamera) {
+            ReceiptDocumentCamera(onScan: scanned, onFinish: { isPresentingCamera = false })
+                .ignoresSafeArea()
+        }
+    }
+
+    private var glyph: some View {
+        Image(systemName: MoneyUpEntryGlyph.receipt)
+            .font(.title3)
+            .frame(minWidth: 44, minHeight: 44)
     }
 }
