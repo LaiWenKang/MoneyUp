@@ -26,3 +26,25 @@ extension Date {
         return reportingFormat.format(self)
     }
 }
+
+/// A stored civil-day key (YYYYMMDD) as a readable date in the app language,
+/// such as "Sep 28, 2026" or "2026年9月28日". A day key names a calendar day,
+/// not an instant, so it is shown in a fixed zone and can never shift.
+enum ReportingDayKeyFormatting {
+    static func string(
+        forDayKey dayKey: Int,
+        locale: Locale = AppLanguagePreference.current.locale
+    ) -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .gmt
+        let components = DateComponents(year: dayKey / 10_000, month: dayKey / 100 % 100, day: dayKey % 100)
+        guard components.isValidDate(in: calendar), let date = calendar.date(from: components) else {
+            return String(dayKey)
+        }
+        return date.formattedForReporting(
+            .dateTime.year().month(.abbreviated).day(),
+            calendar: calendar,
+            locale: locale
+        )
+    }
+}

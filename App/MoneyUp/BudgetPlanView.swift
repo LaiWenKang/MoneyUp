@@ -244,15 +244,33 @@ struct BudgetPlanView: View {
         }
     }
 
+    /// A row without a limit reads "Tap to set a monthly limit", so a tap opens
+    /// the limit editor; a row with a limit opens its detail.
+    @ViewBuilder
+    private func categoryRowTarget(
+        _ item: BudgetOutlineItem,
+        progress: BudgetProgress?,
+        snapshot: MonthlyBudgetPresentation
+    ) -> some View {
+        if item.node.limit == nil, !isClosed {
+            Button { editingNode = item.node } label: {
+                categoryRowContent(item, progress: progress, snapshot: snapshot)
+            }
+            .buttonStyle(.plain)
+        } else {
+            NavigationLink(value: item.id) {
+                categoryRowContent(item, progress: progress, snapshot: snapshot)
+            }
+        }
+    }
+
     @ViewBuilder
     private func categoryRow(
         _ item: BudgetOutlineItem,
         progress: BudgetProgress?,
         snapshot: MonthlyBudgetPresentation
     ) -> some View {
-        NavigationLink(value: item.id) {
-            categoryRowContent(item, progress: progress, snapshot: snapshot)
-        }
+        categoryRowTarget(item, progress: progress, snapshot: snapshot)
         .contextMenu {
             if !isClosed {
                 Button("budget.edit") { editingNode = item.node }

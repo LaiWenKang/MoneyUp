@@ -128,7 +128,7 @@ extension QuickLogEntryView {
                                                     decimal: conversion.converted.amount
                                                 ).stringValue
                                             ),
-                                            conversion.effectiveDayKey
+                                            ReportingDayKeyFormatting.string(forDayKey: conversion.effectiveDayKey)
                                         ),
                                         systemImage: "function"
                                     )

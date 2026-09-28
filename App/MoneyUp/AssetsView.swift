@@ -352,7 +352,7 @@ struct AssetsView: View {
                                                 Text(
                                                     String(
                                                         format: AppLocalization.string("fx.snapshot_rate_day_format"),
-                                                        evidence.effectiveDayKey,
+                                                        ReportingDayKeyFormatting.string(forDayKey: evidence.effectiveDayKey),
                                                         evidence.usedInverseRate
                                                             ? AppLocalization.string("fx.snapshot_inverse")
                                                             : AppLocalization.string("fx.snapshot_direct")
