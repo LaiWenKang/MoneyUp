@@ -133,7 +133,7 @@ extension DashboardView {
         switch cashDebtPosition {
         case let .available(position):
             HStack(spacing: 12) {
-                Text(formattedMoney(position.netCash))
+                Text(maskingAmounts: formattedMoney(position.netCash))
                     .font(.title3.monospacedDigit().weight(.semibold))
                     .lineLimit(1)
                     .minimumScaleFactor(0.5)
@@ -236,7 +236,7 @@ extension DashboardView {
                 title: "dashboard.monthly_budget"
             ) {
                 HStack(spacing: 12) {
-                    Text(formattedMoney(summary.remaining))
+                    Text(maskingAmounts: formattedMoney(summary.remaining))
                         .font(.title3.monospacedDigit().weight(.semibold))
                         .foregroundStyle(
                             summary.remaining.amount < .zero
@@ -290,7 +290,7 @@ extension DashboardView {
         } else if case let .unavailable(issue) = ratioResult {
             DerivedValueUnavailableView(issue: issue)
         }
-        Text("\(formattedMoney(summary.spent)) / \(formattedMoney(summary.limit))")
+        Text(maskingAmounts: "\(formattedMoney(summary.spent)) / \(formattedMoney(summary.limit))")
             .font(.subheadline.monospacedDigit())
             .foregroundStyle(.secondary)
         if case let .available(ratio) = ratioResult {
@@ -305,7 +305,7 @@ extension DashboardView {
             HStack {
                 Text("dashboard.unbudgeted_spending")
                 Spacer()
-                Text(formattedMoney(summary.unbudgetedSpent))
+                Text(maskingAmounts: formattedMoney(summary.unbudgetedSpent))
                     .monospacedDigit()
             }
             .font(.footnote)
@@ -324,7 +324,7 @@ extension DashboardView {
                 HStack {
                     Text("plan.foreign_not_counted")
                     Spacer()
-                    Text(formattedMoneyWithCurrencyCode(money))
+                    Text(maskingAmounts: formattedMoneyWithCurrencyCode(money))
                         .monospacedDigit()
                 }
                 .font(.footnote)

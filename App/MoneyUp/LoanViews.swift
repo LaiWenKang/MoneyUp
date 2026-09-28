@@ -47,7 +47,7 @@ struct LoanCenterView: View {
                             Text("loan.no_included_debt").foregroundStyle(.secondary)
                         } else {
                             ForEach(totals, id: \.currency) { total in
-                                Text(formattedMoney(total))
+                                Text(maskingAmounts: formattedMoney(total))
                                     .font(.title3.monospacedDigit().weight(.bold))
                             }
                         }
@@ -139,7 +139,7 @@ private struct LoanRow: View {
             Spacer()
             switch model.loanSummary(plan) {
             case let .available(summary):
-                Text(formattedMoney(summary.remainingPrincipal))
+                Text(maskingAmounts: formattedMoney(summary.remainingPrincipal))
                     .font(.subheadline.monospacedDigit().weight(.semibold))
             case let .unavailable(issue):
                 DerivedValueUnavailableView(issue: issue)
@@ -167,25 +167,25 @@ private struct LoanDetailView: View {
                     switch model.loanSummary(plan) {
                     case let .available(summary):
                         LabeledContent("loan.remaining") {
-                            Text(formattedMoney(summary.remainingPrincipal))
+                            Text(maskingAmounts: formattedMoney(summary.remainingPrincipal))
                                 .font(.title3.monospacedDigit().weight(.bold))
                         }
                         LabeledContent(
                             "loan.total_principal",
-                            value: formattedMoney(summary.totalPrincipalAdvanced)
+                            maskingAmounts: formattedMoney(summary.totalPrincipalAdvanced)
                         )
                         LabeledContent(
                             "loan.principal_paid",
-                            value: formattedMoney(summary.principalPaid)
+                            maskingAmounts: formattedMoney(summary.principalPaid)
                         )
                         LabeledContent(
                             "loan.interest_paid",
-                            value: formattedMoney(summary.totalInterestPaid)
+                            maskingAmounts: formattedMoney(summary.totalInterestPaid)
                         )
                         if !summary.totalFeesPaid.isZero {
                             LabeledContent(
                                 "loan.fees_paid",
-                                value: formattedMoney(summary.totalFeesPaid)
+                                maskingAmounts: formattedMoney(summary.totalFeesPaid)
                             )
                         }
                     case let .unavailable(issue):
@@ -221,7 +221,7 @@ private struct LoanDetailView: View {
                                 HStack {
                                     Text(activity.kind.titleKey)
                                     Spacer()
-                                    Text(formattedMoney(activityTotal(activity)))
+                                    Text(maskingAmounts: formattedMoney(activityTotal(activity)))
                                         .monospacedDigit()
                                 }
                                 Text(activity.occurredAt, format: .dateTime.year().month().day())

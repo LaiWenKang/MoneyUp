@@ -39,7 +39,7 @@ extension QuickLogEntryView {
                         if let lastSavedAmountLabel {
                             Text(verbatim: "·").foregroundStyle(.secondary)
                             // Amounts never animate: this is the exact figure posted.
-                            Text(lastSavedAmountLabel)
+                            Text(maskingAmounts: lastSavedAmountLabel)
                                 .fontWeight(.semibold)
                                 .monospacedDigit()
                         }

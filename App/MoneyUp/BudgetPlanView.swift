@@ -170,7 +170,7 @@ struct BudgetPlanView: View {
                     elapsed: isCurrentMonth ? sharedSnapshot?.monthElapsed ?? 0 : isClosed ? 1 : 0
                 )
                 if !summary.unbudgetedSpent.isZero {
-                    LabeledContent("budget.unbudgeted_spending", value: formattedMoney(summary.unbudgetedSpent))
+                    LabeledContent("budget.unbudgeted_spending", maskingAmounts: formattedMoney(summary.unbudgetedSpent))
                 }
                 DisclosureGroup("budget.composition") {
                     BudgetCompositionView(progress: snapshot.progress, allowsEditing: !isClosed, showsTitle: false) { node in
@@ -444,9 +444,9 @@ struct BudgetSpendingHistoryView: View {
             VStack(spacing: 0) {
                 VStack(spacing: 8) {
                     Text(date, format: .dateTime.year().month()).font(.caption).foregroundStyle(.secondary)
-                    LabeledContent("history.spent", value: formattedMoney(progress.spent))
+                    LabeledContent("history.spent", maskingAmounts: formattedMoney(progress.spent))
                     if let remaining = progress.remaining {
-                        LabeledContent("plan.total_left", value: formattedMoney(remaining))
+                        LabeledContent("plan.total_left", maskingAmounts: formattedMoney(remaining))
                     } else {
                         Text("intelligence.budget.no_limit").foregroundStyle(.secondary)
                     }

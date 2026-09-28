@@ -214,7 +214,7 @@ struct HoldingManagementSheet: View {
                             Text(holding.quantity, format: .number.precision(.fractionLength(0...6)))
                         }
                         if let price = holding.price {
-                            LabeledContent("holding.price", value: formattedMoney(price))
+                            LabeledContent("holding.price", maskingAmounts: formattedMoney(price))
                         }
                         if let date = holding.priceAsOf {
                             LabeledContent("holding.price_as_of") {
@@ -290,7 +290,7 @@ struct HoldingManagementSheet: View {
                             ForEach(holding.lots.filter { $0.remainingQuantity > .zero }) { lot in
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(lot.acquiredAt, format: .dateTime.year().month().day())
-                                    Text("\(NSDecimalNumber(decimal: lot.remainingQuantity).stringValue) × \(formattedMoney(lot.unitCost))")
+                                    Text(maskingAmounts: "\(NSDecimalNumber(decimal: lot.remainingQuantity).stringValue) × \(formattedMoney(lot.unitCost))")
                                         .font(.caption.monospacedDigit())
                                         .foregroundStyle(.secondary)
                                 }
@@ -303,7 +303,7 @@ struct HoldingManagementSheet: View {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(disposal.occurredAt, format: .dateTime.year().month().day())
                                     Text(
-                                        String(
+                                        maskingAmounts: String(
                                             format: AppLocalization.string("holding.realized_format"),
                                             formattedMoney(disposal.realizedGainLoss)
                                         )

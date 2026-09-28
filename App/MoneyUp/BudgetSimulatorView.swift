@@ -284,7 +284,7 @@ struct BudgetSimulatorView: View {
                                 : (isOver ? Color.moneyUpDanger : Color.accentColor)
                         )
                         .annotation(position: .top) {
-                            Text(formattedMoney(point.money))
+                            Text(maskingAmounts: formattedMoney(point.money))
                                 .font(.caption2.monospacedDigit())
                         }
                         .accessibilityLabel(point.label)
@@ -357,7 +357,7 @@ struct BudgetSimulatorView: View {
                 .foregroundStyle(isOver ? Color.moneyUpDanger : Color.primary)
 
                 Text(
-                    formattedMoney(
+                    maskingAmounts: formattedMoney(
                         isOver
                             ? forecast.projectedRemaining.negated
                             : forecast.projectedRemaining
@@ -369,11 +369,11 @@ struct BudgetSimulatorView: View {
                 Divider()
 
                 LabeledContent("simulator.projected_income") {
-                    Text(formattedMoney(forecast.projectedIncome))
+                    Text(maskingAmounts: formattedMoney(forecast.projectedIncome))
                         .monospacedDigit()
                 }
                 LabeledContent("simulator.projected_spending") {
-                    Text(formattedMoney(forecast.projectedSpent))
+                    Text(maskingAmounts: formattedMoney(forecast.projectedSpent))
                         .monospacedDigit()
                 }
                 LabeledContent("simulator.projected_net") {

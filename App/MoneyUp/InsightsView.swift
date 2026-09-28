@@ -232,7 +232,7 @@ struct InsightsView: View {
                         Text(flow.currency.value)
                             .font(.subheadline.weight(.semibold))
                         Spacer(minLength: 12)
-                        Text(formattedMoney(flow.net))
+                        Text(maskingAmounts: formattedMoney(flow.net))
                             .font(.subheadline.monospacedDigit())
                             .foregroundStyle(flow.net.amount >= .zero ? Color.primary : Color.moneyUpDanger)
                     }
@@ -314,7 +314,7 @@ struct InsightsView: View {
                 )
                 .foregroundStyle(categoryChartColor(point, in: points))
                 .annotation(position: .trailing) {
-                    Text(formattedMoney(point.money))
+                    Text(maskingAmounts: formattedMoney(point.money))
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }

@@ -71,7 +71,7 @@ struct PinnedBudgetEditorSheet: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(outlined.node.name)
                     if let limit = outlined.node.limit {
-                        Text(formattedMoney(limit))
+                        Text(maskingAmounts: formattedMoney(limit))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .monospacedDigit()

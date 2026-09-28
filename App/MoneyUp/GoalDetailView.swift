@@ -53,11 +53,11 @@ struct GoalDetailView: View {
                     MoneyUpProgressDial(fraction: NSDecimalNumber(decimal: summary.progress).doubleValue, systemImage: goal.kind.systemImage)
                     VStack(alignment: .leading, spacing: 4) {
                         Text(summary.isComplete ? "goal.complete" : "goal.remaining").font(.subheadline).foregroundStyle(.secondary)
-                        Text(formattedMoney(summary.remaining)).moneyUpFinancialValue(.prominent)
+                        Text(maskingAmounts: formattedMoney(summary.remaining)).moneyUpFinancialValue(.prominent)
                     }
                 }
-                LabeledContent("goal.balance", value: formattedMoney(summary.balance))
-                LabeledContent("goal.target", value: formattedMoney(summary.target))
+                LabeledContent("goal.balance", maskingAmounts: formattedMoney(summary.balance))
+                LabeledContent("goal.target", maskingAmounts: formattedMoney(summary.target))
                 LabeledContent("goal.reset_rule") { Text(goal.resetRule.titleKey) }
                 LabeledContent("goal.target_date") {
                     Text(goal.targetDate.formattedForReporting(.dateTime.year().month().day(), calendar: FinancialPeriodBoundary.gregorianCalendar(timeZoneIdentifier: goal.reportingTimeZoneIdentifier)))

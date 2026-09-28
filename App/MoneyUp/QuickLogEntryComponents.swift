@@ -105,7 +105,7 @@ extension QuickLogEntryView {
                 LabeledContent(LocalizedStringKey(
                     remainingTitleKey
                 )) {
-                    Text(formattedMoney(remaining))
+                    Text(maskingAmounts: formattedMoney(remaining))
                         .monospacedDigit()
                 }
                 .font(.caption)

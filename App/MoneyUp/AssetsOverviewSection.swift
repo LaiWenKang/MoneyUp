@@ -25,7 +25,7 @@ struct AssetsOverviewSection: View {
                 case let .available(amounts):
                     ForEach(amounts, id: \.currency) { value in
                         if hidesAmounts { Text(value.currency.value).font(.caption.weight(.semibold)).foregroundStyle(.secondary) }
-                        Text(formattedMoneyWithCurrencyCode(value)).moneyUpFinancialValue(.hero)
+                        Text(maskingAmounts: formattedMoneyWithCurrencyCode(value)).moneyUpFinancialValue(.hero)
                             .fixedSize(horizontal: false, vertical: true)
                             // VoiceOver hears what the figure is, not a bare number.
                             .accessibilityLabel(Text("assets.account_net_worth"))
@@ -55,7 +55,7 @@ struct AssetsOverviewSection: View {
         switch model.estimatedNetWorthResult() {
         case let .available(.some(value)):
             VStack(alignment: .leading, spacing: 3) {
-                Text("≈ \(formattedMoney(value.total))").moneyUpFinancialValue(.standard)
+                Text(maskingAmounts: "≈ \(formattedMoney(value.total))").moneyUpFinancialValue(.standard)
                 HStack(spacing: 4) {
                     Text("fx.rates_as_of")
                     Text(value.conversionAsOf.formattedForReporting(.dateTime.year().month().day(), calendar: model.reportingCalendar))

@@ -83,14 +83,14 @@ struct CategoryLifecycleReviewSheet: View {
                     Section {
                         ForEach(preview) { item in
                             LabeledContent(item.currency.value) {
-                                Text("\(formattedMoney(item.before)) → \(formattedMoney(item.after))")
+                                Text(maskingAmounts: "\(formattedMoney(item.before)) → \(formattedMoney(item.after))")
                                     .monospacedDigit()
                             }
                             if !item.changes.isEmpty {
                                 DisclosureGroup("lifecycle.affected_budgets") {
                                     ForEach(item.changes) { change in
                                         LabeledContent(change.name) {
-                                            Text("\(change.before.map { formattedMoney($0) } ?? "—") → \(change.after.map { formattedMoney($0) } ?? "—")")
+                                            Text(maskingAmounts: "\(change.before.map { formattedMoney($0) } ?? "—") → \(change.after.map { formattedMoney($0) } ?? "—")")
                                                 .monospacedDigit()
                                         }
                                     }

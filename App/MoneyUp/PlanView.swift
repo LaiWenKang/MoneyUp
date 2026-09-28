@@ -238,14 +238,14 @@ struct BudgetRow: View {
                 Spacer(minLength: 8)
 
                 if let remaining {
-                    Text(formattedMoney(isOverspent ? remaining.negated : remaining))
+                    Text(maskingAmounts: formattedMoney(isOverspent ? remaining.negated : remaining))
                         .font(.subheadline.monospacedDigit().weight(.semibold))
                         .foregroundStyle(isOverspent ? Color.moneyUpDanger : Color.primary)
                     Text(isOverspent ? "plan.over" : "plan.left")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else if let spent, !spent.isZero {
-                    Text(formattedMoney(spent))
+                    Text(maskingAmounts: formattedMoney(spent))
                         .font(.subheadline.monospacedDigit())
                 }
             }
@@ -278,7 +278,7 @@ struct BudgetRow: View {
                 MoneyUpPaceBar(ratio: ratio, elapsed: elapsed)
                 if showsDetail {
                     Text(
-                        String(
+                        maskingAmounts: String(
                             format: AppLocalization.string("plan.spent_of_limit"),
                             formattedMoney(spent),
                             formattedMoney(limit)
@@ -296,7 +296,7 @@ struct BudgetRow: View {
                     ) {
                     case let .available(.some(pace)):
                         Text(
-                            String(
+                            maskingAmounts: String(
                                 format: AppLocalization.string("plan.pace_available"),
                                 formattedMoney(pace.available),
                                 AppLocalization.string(pace.cadence.titleKeyString)
@@ -350,7 +350,7 @@ struct BudgetSummaryCard: View {
                     Text(isOverspent ? "plan.total_over" : "plan.total_left")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-                    Text(formattedMoney(isOverspent ? remaining.negated : remaining))
+                    Text(maskingAmounts: formattedMoney(isOverspent ? remaining.negated : remaining))
                         .moneyUpFinancialValue(.hero)
                         .foregroundStyle(isOverspent ? Color.moneyUpDanger : Color.primary)
                 }
@@ -368,7 +368,7 @@ struct BudgetSummaryCard: View {
             }
 
             Text(
-                String(
+                maskingAmounts: String(
                     format: AppLocalization.string("plan.spent_of_limit"),
                     formattedMoney(spent),
                     formattedMoney(limit)

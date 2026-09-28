@@ -57,7 +57,7 @@ extension DashboardView {
                     Label("today.hero.left_month", systemImage: "leaf.fill")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.secondary)
-                    Text(formattedMoney(hero.remaining))
+                    Text(maskingAmounts: formattedMoney(hero.remaining))
                         .moneyUpFinancialValue(.hero)
                         .foregroundStyle(hero.remaining.amount < .zero ? Color.moneyUpWarning : .primary)
                     Text(PinnedRemainingHero.scopeText(categoryCount: hero.categoryCount))
@@ -68,7 +68,7 @@ extension DashboardView {
                             Image(systemName: "sun.max.fill")
                                 .foregroundStyle(.tint)
                             Text("today.hero.today_share")
-                            Text(formattedMoney(today))
+                            Text(maskingAmounts: formattedMoney(today))
                                 .fontWeight(.semibold)
                                 .monospacedDigit()
                         }

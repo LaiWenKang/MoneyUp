@@ -335,7 +335,7 @@ struct IntelligenceView: View {
                 ForEach(Array(finding.figures.enumerated()), id: \.offset) {
                     _, figure in
                     LabeledContent {
-                        Text(formattedFigure(figure.value))
+                        Text(maskingAmounts: formattedFigure(figure.value))
                             .monospacedDigit()
                     } label: {
                         Text(LocalizedStringKey(figure.labelKey))

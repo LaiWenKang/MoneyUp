@@ -667,8 +667,9 @@ W3_PATH_TYPE_DIGESTS: tuple[tuple[str, str, str, str], ...] = (
     # Re-pinned 2026-09-25: the number pattern's lookahead lets trailing punctuation end an amount (audit P3).
     ('Sources/MoneyUpCore/SmartEntryTextReading.swift', 'struct', 'SmartEntryAmountReading', 'd3018ca184d852f2fac326c512d4fd542a2ca0b17937decbf2ba095bbd06fa62'),
     ('Sources/MoneyUpCore/SmartEntryTextReading.swift', 'struct', 'SmartEntryTextParts', 'a84bf4da2c0b336f570103ee82b2f176ba7d30019cad745611022bae5e7b5ea4'),
-    # Re-pinned 2026-09-28: the Saved banner confirms Undo and bounces its glyph per save; amounts never animate.
-    ("App/MoneyUp/QuickLogEntryChrome.swift", "extension", "QuickLogEntryView", "74cbd3610b837a3062dc1f2941b837858f8e734548ec812acfe6ea30580ef1d4"),
+    # Re-pinned 2026-09-29: the Saved banner confirms Undo, bounces its glyph per save, and speaks a
+    # masked amount as "hidden amount"; amounts never animate.
+    ("App/MoneyUp/QuickLogEntryChrome.swift", "extension", "QuickLogEntryView", "ac7a4f0248a14e5b397ceb7ea78539ed17801ffe6ac87dfe89b16fab1c408e93"),
     (
         "App/MoneyUp/QuickLogEntryBody.swift",
         "extension",

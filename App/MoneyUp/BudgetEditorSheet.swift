@@ -57,7 +57,7 @@ struct BudgetEditorSheet: View {
                             Text("budget.mode.fixed_total").tag(BudgetAllocationMode.fixedTotal)
                         }
                         if let childAllocation {
-                            LabeledContent("budget.child_total", value: formattedMoney(childAllocation))
+                            LabeledContent("budget.child_total", maskingAmounts: formattedMoney(childAllocation))
                         }
                         allocationPreview
                     } footer: {
@@ -141,7 +141,7 @@ struct BudgetEditorSheet: View {
             if let own = try? Money(amount, currency: currency),
                let total = mode == .automatic
                     ? try? own.adding(childAllocation ?? .zero(currency: currency)) : own {
-                LabeledContent("budget.preview_total", value: formattedMoney(total))
+                LabeledContent("budget.preview_total", maskingAmounts: formattedMoney(total))
                 if mode == .fixedTotal, let childAllocation, childAllocation.amount > amount {
                     Label("budget.children_overallocated", systemImage: "exclamationmark.triangle")
                         .foregroundStyle(Color.moneyUpWarning)
@@ -318,7 +318,7 @@ struct StarterBudgetSetupSheet: View {
                 HStack(alignment: .firstTextBaseline) {
                     Text(value.name).font(.subheadline.weight(.semibold))
                     Spacer(minLength: 8)
-                    Text(amountText(for: value.percent))
+                    Text(maskingAmounts: amountText(for: value.percent))
                         .font(.subheadline.monospacedDigit().weight(.semibold))
                 }
                 HStack(spacing: 8) {

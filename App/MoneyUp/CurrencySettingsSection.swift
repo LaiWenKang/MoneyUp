@@ -74,7 +74,7 @@ struct CurrencySettingsSection: View {
             ForEach(previewedCurrencies, id: \.self) { currency in
                 if let sample = sample(for: currency) {
                     LabeledContent(currencyLabel(currency)) {
-                        Text(formattedMoney(sample))
+                        Text(maskingAmounts: formattedMoney(sample))
                             .monospacedDigit()
                     }
                     .accessibilityElement(children: .combine)

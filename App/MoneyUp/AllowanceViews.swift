@@ -116,7 +116,7 @@ struct AllowanceRow: View {
                 } else {
                     switch presentation.remaining {
                     case let .available(remaining):
-                        Text(formattedMoney(remaining))
+                        Text(maskingAmounts: formattedMoney(remaining))
                             .font(.subheadline.monospacedDigit().weight(.semibold))
                     case let .unavailable(issue):
                         DerivedValueUnavailableView(issue: issue)
@@ -167,7 +167,7 @@ struct AllowanceDetailView: View {
                             LabeledContent(LocalizedStringKey(
                                 presentation.remainingMeaning.titleKeyString
                             )) {
-                                Text(formattedMoney(remaining))
+                                Text(maskingAmounts: formattedMoney(remaining))
                                     .font(.title3.monospacedDigit().weight(.bold))
                             }
                         case let .unavailable(issue):
@@ -179,17 +179,17 @@ struct AllowanceDetailView: View {
                             if plan.fundingMode == .prepaidAsset {
                                 LabeledContent(
                                     "allowance.policy_remaining",
-                                    value: formattedMoney(summary.remaining)
+                                    maskingAmounts: formattedMoney(summary.remaining)
                                 )
                             }
                         }
                         LabeledContent(
                             "allowance.policy_entitlement",
-                            value: formattedMoney(summary.entitlement)
+                            maskingAmounts: formattedMoney(summary.entitlement)
                         )
                         LabeledContent(
                             "allowance.policy_used",
-                            value: formattedMoney(summary.used)
+                            maskingAmounts: formattedMoney(summary.used)
                         )
                         if !summary.isAvailableToday {
                             Text("allowance.not_available_detail")
@@ -235,7 +235,7 @@ struct AllowanceDetailView: View {
                     Section("allowance.pending_policy_title") {
                         LabeledContent(
                             "allowance.pending_amount",
-                            value: formattedMoney(pendingPolicy.amount)
+                            maskingAmounts: formattedMoney(pendingPolicy.amount)
                         )
                         LabeledContent(
                             "allowance.cadence",
@@ -321,7 +321,7 @@ struct AllowanceDetailView: View {
                     Section("allowance.reconciliation_title") {
                         LabeledContent(
                             "allowance.policy_expiry_maximum",
-                            value: formattedMoney(requirement.amount)
+                            maskingAmounts: formattedMoney(requirement.amount)
                         )
                         Text("allowance.reconciliation_detail")
                             .font(.caption)
@@ -447,7 +447,7 @@ private struct AllowanceReconciliationSheet: View {
                 Section {
                     LabeledContent(
                         "allowance.policy_expiry_maximum",
-                        value: formattedMoney(requirement.amount)
+                        maskingAmounts: formattedMoney(requirement.amount)
                     )
                     LabeledContent("allowance.period_ended") {
                         Text(

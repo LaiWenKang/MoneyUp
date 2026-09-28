@@ -11,7 +11,7 @@ struct TodayCashFlowStory: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(formattedMoneyWithCurrencyCode(report.baseFlow.net))
+            Text(maskingAmounts: formattedMoneyWithCurrencyCode(report.baseFlow.net))
                 .moneyUpFinancialValue(.prominent)
             Text("dashboard.flow.net_to_date")
                 .font(.caption).foregroundStyle(.secondary)
@@ -53,12 +53,12 @@ struct TodayCashFlowStory: View {
             HStack {
                 Text("history.income")
                 Spacer()
-                Text(formattedMoneyWithCurrencyCode(report.baseFlow.income)).monospacedDigit()
+                Text(maskingAmounts: formattedMoneyWithCurrencyCode(report.baseFlow.income)).monospacedDigit()
             }.font(.caption)
             HStack {
                 Text("history.spent")
                 Spacer()
-                Text(formattedMoneyWithCurrencyCode(report.baseFlow.expense)).monospacedDigit()
+                Text(maskingAmounts: formattedMoneyWithCurrencyCode(report.baseFlow.expense)).monospacedDigit()
             }.font(.caption)
             if !report.foreignFlows.isEmpty {
                 Text("dashboard.flow.other_currencies").font(.caption).foregroundStyle(.secondary)
