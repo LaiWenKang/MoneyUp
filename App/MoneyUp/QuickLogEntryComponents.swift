@@ -303,6 +303,10 @@ extension QuickLogEntryView {
                 matching: .images
             )
 
+            if !hasSmartText {
+                QuickLogScanReceiptTip()
+            }
+
             if batch == nil, smartText.contains(where: \.isNewline), !dismissAfterSave {
                 Button("quick_log.batch.start") { startBatchReview() }
                     .disabled(isParsingSmartEntry)
@@ -837,23 +841,25 @@ struct QuickLogReceiptButton: View {
     let choosePhoto: () -> Void
     let scanned: (Data) -> Void
     @State private var isPresentingCamera = false
+    private let scanTip = ScanReceiptTip()
 
     var body: some View {
         Group {
             if ReceiptDocumentCamera.isAvailable {
                 Menu {
-                    Button { isPresentingCamera = true } label: {
+                    Button(action: scanPaper) {
                         Label("quick_log.receipt.scan_paper", systemImage: "doc.viewfinder")
                     }
-                    Button(action: choosePhoto) {
+                    Button(action: choosePhotoInstead) {
                         Label("quick_log.receipt.choose_photo", systemImage: "photo.on.rectangle")
                     }
                 } label: {
                     glyph
                 } primaryAction: {
-                    isPresentingCamera = true
+                    scanPaper()
                 }
                 .accessibilityHint("quick_log.receipt.hint")
+                .onAppear(perform: scanTip.noteLogVisit)
             } else {
                 Button(action: choosePhoto) { glyph }
                     .buttonStyle(.borderless)
@@ -872,5 +878,15 @@ struct QuickLogReceiptButton: View {
         Image(systemName: MoneyUpEntryGlyph.receipt)
             .font(.title3)
             .frame(minWidth: 44, minHeight: 44)
+    }
+
+    private func scanPaper() {
+        scanTip.noteUse()
+        isPresentingCamera = true
+    }
+
+    private func choosePhotoInstead() {
+        scanTip.noteUse()
+        choosePhoto()
     }
 }

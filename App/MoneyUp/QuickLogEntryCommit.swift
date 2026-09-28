@@ -215,6 +215,8 @@ extension QuickLogEntryView {
         // Kept while this entry's Undo is offered, so Undo can hand it back.
         let formForUndo = draftSnapshot.forCorrection
         let evidenceForUndo = attachmentDrafts + [try? retainedReceiptEvidence()].compactMap { $0 }
+        // Before a queued capture can change the kind.
+        QuickLogSiriSuggestions.donate(kind)
         // Name the money as posted, not as typed, so a misread can't hide
         // behind the user's own text. Masked when exact amounts are hidden.
         lastSavedAmountLabel = amount.flatMap { value in
