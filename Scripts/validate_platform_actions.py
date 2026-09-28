@@ -165,6 +165,12 @@ REVIEWED_OFFLINE_SWIFT_TOOLS = {
 }
 APP_INTENTS_SOURCE_ALLOWLIST = {
     "App/MoneyUp/MoneyUpAppShortcuts.swift",
+    # Reviewed 2026-09-29: a Focus filter whose only input is an optional
+    # "hide amounts" choice; it changes that display preference and nothing else.
+    "App/MoneyUp/MoneyUpFocusFilter.swift",
+    # Reviewed 2026-09-29: the system Siri tip and Shortcuts link, which only
+    # show the reviewed Smart Entry phrase and open the Shortcuts app.
+    "App/MoneyUp/WidgetsQuickAccessView.swift",
     "App/Shared/MoneyUpQuickAction.swift",
     "App/MoneyUpWidget/MoneyUpQuickLogControl.swift",
     "App/MoneyUpWidget/MoneyUpWidget.swift",
@@ -266,6 +272,7 @@ COMPILED_REFERENCE_INVENTORY = {
     },
     r"\bOpenQuickLogIntent\b": {
         "App/MoneyUp/MoneyUpAppShortcuts.swift": 6,
+        "App/MoneyUp/WidgetsQuickAccessView.swift": 1,
         "App/Shared/MoneyUpQuickAction.swift": 2,
         "App/MoneyUpWidget/MoneyUpQuickLogControl.swift": 1,
     },
@@ -2612,7 +2619,9 @@ def validate_compiled_surface_inventory(root: Path) -> list[str]:
         r"\bAppShortcutsProvider\b": 1,
         r"\bControlWidget\b": 1,
         r"\bAppIntentControlConfiguration\s*\(": 1,
-        r"@Parameter\b": 4,
+        # Four reviewed quick-action inputs, plus the Focus filter's optional
+        # hide-amounts choice (2026-09-29).
+        r"@Parameter\b": 5,
     }
     for pattern, expected_count in declaration_patterns.items():
         count = len(re.findall(pattern, combined))

@@ -31,6 +31,31 @@ enum MoneyAmountPrivacy {
     static func protected(_ value: String) -> String {
         protected(value, hidesAmounts: hidesAmounts)
     }
+
+    static let focusRestoreKey = "moneyup.privacy.hide-amounts.before-focus"
+    static let focusAppliedKey = "moneyup.privacy.hide-amounts.set-by-focus"
+
+    /// Applies a Focus filter's choice. The user's own setting is remembered
+    /// once, and when the Focus ends (`nil`) it comes back, unless the user
+    /// changed amounts by hand meanwhile, in which case that change stays.
+    static func applyFocus(hidesAmounts focusChoice: Bool?, in defaults: UserDefaults = .standard) {
+        if let focusChoice {
+            if defaults.object(forKey: focusRestoreKey) == nil {
+                defaults.set(hidesAmounts(in: defaults), forKey: focusRestoreKey)
+            }
+            defaults.set(focusChoice, forKey: focusAppliedKey)
+            defaults.set(focusChoice, forKey: storageKey)
+            return
+        }
+        defer {
+            defaults.removeObject(forKey: focusRestoreKey)
+            defaults.removeObject(forKey: focusAppliedKey)
+        }
+        guard let before = defaults.object(forKey: focusRestoreKey) as? Bool,
+              let applied = defaults.object(forKey: focusAppliedKey) as? Bool,
+              hidesAmounts(in: defaults) == applied else { return }
+        defaults.set(before, forKey: storageKey)
+    }
 }
 
 extension Text {
