@@ -9,13 +9,27 @@ private final class ReceiptSuggestionSignpostState {
     var ended = false
 }
 
+/// Where a receipt image comes from: a chosen photo, or a page the document
+/// camera scanned on this iPhone.
+enum ReceiptSource {
+    case photo(PhotosPickerItem)
+    case scanned(Data)
+
+    func loadData() async throws -> Data? {
+        switch self {
+        case let .photo(item): try await item.loadTransferable(type: Data.self)
+        case let .scanned(data): data
+        }
+    }
+}
+
 extension QuickLogEntryView {
     func scanReceipt(
-        _ item: PhotosPickerItem?,
+        _ source: ReceiptSource?,
         generation: Int,
         logicalBookRevision: UInt64
     ) async {
-        guard let item else { return }
+        guard let source else { return }
         let suggestionsSignpostID = Self.receiptSignposter.makeSignpostID()
         let suggestionsInterval = Self.receiptSignposter.beginInterval(
             "Receipt selection to suggestions",
@@ -54,7 +68,7 @@ extension QuickLogEntryView {
 
         do {
             try Task.checkCancellation()
-            guard let data = try await item.loadTransferable(type: Data.self) else {
+            guard let data = try await source.loadData() else {
                 throw ReceiptScannerError.unreadableImage
             }
             try Task.checkCancellation()

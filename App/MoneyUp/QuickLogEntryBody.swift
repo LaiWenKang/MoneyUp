@@ -302,60 +302,67 @@ extension QuickLogEntryView {
                 if !newValue { handleRequestedLaunch() }
             }
             .onChange(of: photoItem) { _, item in
-                receiptScanGeneration &+= 1
-                let generation = receiptScanGeneration
-                receiptScanTask?.cancel()
-                guard let item = QuickLogInputAuthority.receiptItemThatMayBegin(
-                    item,
-                    isActive: isActive,
-                    cancelAssistance: { cancelSmartParsing(); cancelOnDeviceAssistance() }
-                ) else {
-                    receiptScanTask = nil
-                    receiptScanBaseline = nil
-                    if !isActive {
-                        photoItem = nil
-                        receiptAttachmentData = nil
-                        retainReceiptAttachment = false
-                        receiptRetentionMessage = nil
-                        isScanning = false
-                    }
-                    return
-                }
-                refreshUntouchedOccurrenceDate()
-                smartState.hasPreview = false
-                smartState.issues = []
-                smartState.automaticFields = []
-                receiptScanBaseline = ReceiptScanBaseline(
-                    kind: kind,
-                    amountText: amountText,
-                    occurredAt: occurredAt,
-                    dateWasEdited: dateWasEdited,
-                    payee: payee,
-                    note: note,
-                    accountID: accountID,
-                    categoryID: categoryID
-                )
-                receiptProtectedFields = QuickLogReceiptPrefillPolicy.protectedFields(
-                    draft: draftSnapshot,
-                    accountWasEdited: accountWasEdited,
-                    categoryWasEdited: categoryWasEdited
-                )
-                isScanning = true
-                smartMessage = nil
-                receiptResult = nil
-                invalidateCaptureSuggestions()
-                pendingDuplicateReview = nil
+                beginReceiptScan(item.map(ReceiptSource.photo))
+            }
+    }
+
+    /// Starts reading a receipt from the photo picker or the document camera.
+    /// Both pass the same input gate and reset the same state, so a scanned
+    /// page behaves exactly like a chosen photo.
+    func beginReceiptScan(_ item: ReceiptSource?) {
+        receiptScanGeneration &+= 1
+        let generation = receiptScanGeneration
+        receiptScanTask?.cancel()
+        guard let item = QuickLogInputAuthority.receiptItemThatMayBegin(
+            item,
+            isActive: isActive,
+            cancelAssistance: { cancelSmartParsing(); cancelOnDeviceAssistance() }
+        ) else {
+            receiptScanTask = nil
+            receiptScanBaseline = nil
+            if !isActive {
+                photoItem = nil
                 receiptAttachmentData = nil
                 retainReceiptAttachment = false
                 receiptRetentionMessage = nil
-                receiptScanTask = Task { @MainActor in
-                    await scanReceipt(
-                        item,
-                        generation: generation,
-                        logicalBookRevision: model.logicalBookRevision
-                    )
-                }
+                isScanning = false
             }
+            return
+        }
+        refreshUntouchedOccurrenceDate()
+        smartState.hasPreview = false
+        smartState.issues = []
+        smartState.automaticFields = []
+        receiptScanBaseline = ReceiptScanBaseline(
+            kind: kind,
+            amountText: amountText,
+            occurredAt: occurredAt,
+            dateWasEdited: dateWasEdited,
+            payee: payee,
+            note: note,
+            accountID: accountID,
+            categoryID: categoryID
+        )
+        receiptProtectedFields = QuickLogReceiptPrefillPolicy.protectedFields(
+            draft: draftSnapshot,
+            accountWasEdited: accountWasEdited,
+            categoryWasEdited: categoryWasEdited
+        )
+        isScanning = true
+        smartMessage = nil
+        receiptResult = nil
+        invalidateCaptureSuggestions()
+        pendingDuplicateReview = nil
+        receiptAttachmentData = nil
+        retainReceiptAttachment = false
+        receiptRetentionMessage = nil
+        receiptScanTask = Task { @MainActor in
+            await scanReceipt(
+                item,
+                generation: generation,
+                logicalBookRevision: model.logicalBookRevision
+            )
+        }
     }
 
     private func quickLogFocusLifecycle(scrollProxy: ScrollViewProxy) -> some View {

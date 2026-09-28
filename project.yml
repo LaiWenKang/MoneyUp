@@ -45,6 +45,7 @@ targets:
             CFBundleURLSchemes:
               - moneyup
         LSApplicationCategoryType: public.app-category.finance
+        NSCameraUsageDescription: Scan a paper receipt. The photo is read on this iPhone and never uploaded.
         NSFaceIDUsageDescription: Unlock your private MoneyUp financial data.
         UTImportedTypeDeclarations:
           - UTTypeIdentifier: org.openxmlformats.spreadsheetml.sheet

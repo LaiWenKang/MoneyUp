@@ -3004,10 +3004,12 @@ def validate_privacy_manifest() -> None:
 def validate_info_plist_localizations() -> None:
     expected = {
         "en": {
+            "NSCameraUsageDescription": "Scan a paper receipt. The photo is read on this iPhone and never uploaded.",
             "NSFaceIDUsageDescription": "Unlock your private MoneyUp financial data.",
             "UTTypeDescription": "MoneyUp Encrypted Backup",
         },
         "zh-Hans": {
+            "NSCameraUsageDescription": "扫描纸质收据。照片只在这台 iPhone 上读取，绝不会上传。",
             "NSFaceIDUsageDescription": "解锁你在 MoneyUp 中的私密财务数据。",
             "UTTypeDescription": "MoneyUp 加密备份",
         },
