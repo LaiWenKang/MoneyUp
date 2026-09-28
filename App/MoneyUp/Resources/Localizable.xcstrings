@@ -1417,6 +1417,7 @@
     "plan.total_over" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Over budget"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"已超出预算"}}}},
     "privacy.cover" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Financial data hidden"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"财务数据已隐藏"}}}},
     "privacy.amounts_hidden" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Amounts hidden"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"金额已隐藏"}}}},
+    "privacy.hidden_amount" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"hidden amount"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"隐藏的金额"}}}},
     "privacy.amounts_visible" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Amounts visible"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"金额可见"}}}},
     "privacy.hide_amounts" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Hide amounts"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"隐藏金额"}}}},
     "privacy.show_amounts" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Show amounts"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"显示金额"}}}},

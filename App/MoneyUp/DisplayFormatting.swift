@@ -49,7 +49,7 @@ func formattedMoney(_ money: Money) -> String {
 @MainActor
 func accessibleFormattedMoney(_ money: Money) -> String {
     guard !MoneyAmountPrivacy.hidesAmounts else {
-        return AppLocalization.string("privacy.amounts_hidden")
+        return AppLocalization.string("privacy.hidden_amount")
     }
     return unprotectedFormattedMoney(
         money,
@@ -347,7 +347,7 @@ func accessibleFormattedTransactionAmount(
     _ amount: TransactionDisplayAmount
 ) -> String {
     guard !MoneyAmountPrivacy.hidesAmounts else {
-        return AppLocalization.string("privacy.amounts_hidden")
+        return AppLocalization.string("privacy.hidden_amount")
     }
     return formattedTransactionAmount(amount)
 }

@@ -394,7 +394,7 @@ struct HistoryPreloadChip: View {
                         .font(.subheadline.weight(.medium))
                         .lineLimit(1)
                     HStack(spacing: 4) {
-                        Text(amountLabel).monospacedDigit()
+                        Text(maskingAmounts: amountLabel).monospacedDigit()
                         if !categoryName.isEmpty {
                             Text(verbatim: "·")
                             Text(categoryName).lineLimit(1)
@@ -452,7 +452,7 @@ struct HistoryPreloadCard: View {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(suggestion.payee).font(.body.weight(.medium))
-                    Text(amountLabel).font(.subheadline.monospacedDigit())
+                    Text(maskingAmounts: amountLabel).font(.subheadline.monospacedDigit())
                     Text(accountName + " · " + categoryName).font(.caption)
                 }
                 .foregroundStyle(.secondary)

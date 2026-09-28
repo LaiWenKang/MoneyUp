@@ -171,7 +171,7 @@ struct PinnedBudgetRow: View {
             if let remaining = summary.remaining {
                 VStack(alignment: .trailing, spacing: 1) {
                     Text(
-                        formattedMoney(
+                        maskingAmounts: formattedMoney(
                             summary.isOverspent ? remaining.negated : remaining
                         )
                     )
@@ -182,7 +182,7 @@ struct PinnedBudgetRow: View {
                         .foregroundStyle(.secondary)
                 }
             } else {
-                Text(formattedMoney(summary.spent))
+                Text(maskingAmounts: formattedMoney(summary.spent))
                     .font(.title3.monospacedDigit().weight(.semibold))
             }
         }
@@ -219,7 +219,7 @@ struct PinnedBudgetRow: View {
             : AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
         return layout {
             Text(titleKey).font(.caption2).foregroundStyle(.secondary)
-            Text(formattedMoney(money))
+            Text(maskingAmounts: formattedMoney(money))
                 .font(.caption.monospacedDigit().weight(.semibold))
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -239,7 +239,7 @@ struct PinnedBudgetRow: View {
                 )
             if let limit = summary.effectiveLimit {
                 Text(
-                    String(
+                    maskingAmounts: String(
                         format: AppLocalization.string("plan.spent_of_limit"),
                         formattedMoney(summary.spent),
                         formattedMoney(limit)

@@ -37,7 +37,7 @@ struct RestrictedStoredValueSummary: View {
                     Text("assets.restricted_stored_value")
                         .font(.subheadline.weight(.semibold))
                     ForEach(amounts, id: \.currency) { amount in
-                        Text(formattedMoney(amount))
+                        Text(maskingAmounts: formattedMoney(amount))
                             .font(.headline.monospacedDigit())
                     }
                     Text("assets.restricted_stored_value_note")

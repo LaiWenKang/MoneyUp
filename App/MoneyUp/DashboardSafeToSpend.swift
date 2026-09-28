@@ -127,7 +127,7 @@ extension DashboardView {
             Label("dashboard.safe_to_spend", systemImage: "sun.max.fill")
                 .font(.headline)
                 .foregroundStyle(.tint)
-            Text(formattedMoney(isOver ? breakdown.availableForRemainingPeriod.negated : breakdown.amountPerDay))
+            Text(maskingAmounts: formattedMoney(isOver ? breakdown.availableForRemainingPeriod.negated : breakdown.amountPerDay))
                 .moneyUpFinancialValue(.hero)
                 .foregroundStyle(isOver ? Color.moneyUpDanger : Color.primary)
             Text(isOver ? LocalizedStringKey("dashboard.safe_to_spend.over_caption") : "dashboard.safe_to_spend.per_day")
@@ -172,7 +172,7 @@ extension DashboardView {
                         Spacer(minLength: 8)
                         let isOver = breakdown.availableForRemainingPeriod.amount < .zero
                         VStack(alignment: .trailing, spacing: 1) {
-                            Text(formattedMoney(isOver ? breakdown.availableForRemainingPeriod.negated : breakdown.amountPerDay))
+                            Text(maskingAmounts: formattedMoney(isOver ? breakdown.availableForRemainingPeriod.negated : breakdown.amountPerDay))
                                 .font(.title3.monospacedDigit().weight(.semibold))
                                 .foregroundStyle(isOver ? Color.moneyUpDanger : Color.primary)
                             Text(isOver ? LocalizedStringKey("dashboard.safe_to_spend.over_caption") : "dashboard.safe_to_spend.per_day")

@@ -42,7 +42,7 @@ struct AllowanceUsageRow: View {
                 Text(usage.categoryID.map { model.categoryPathName(for: $0) }
                     ?? AppLocalization.string("allowance.general"))
                 Spacer()
-                Text(formattedMoney(usage.amount)).monospacedDigit()
+                Text(maskingAmounts: formattedMoney(usage.amount)).monospacedDigit()
             }
             Text(usage.occurredAt.formattedForReporting(
                 .dateTime.year().month().day().hour().minute(),

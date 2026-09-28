@@ -411,7 +411,7 @@ struct AccountManagementSheet: View {
                                     }
                                 }
                                 Spacer()
-                                Text(formattedMoney(record.amount))
+                                Text(maskingAmounts: formattedMoney(record.amount))
                                     .monospacedDigit()
                             }
                         }

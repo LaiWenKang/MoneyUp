@@ -323,8 +323,10 @@ final class MoneyUpJourneyTests: XCTestCase {
         let discard = app.buttons["Discard and start new"]
         expectTrue(discard.waitForExistence(timeout: timeout), "Conflict prompt did not appear")
         discard.tap()
-        expectFalse((app.textFields["quick-log-payee"].value as? String ?? "").contains("Taxi"),
-                    "Discard must clear the entry")
+        // Discarding clears the form asynchronously; a loaded runner can read
+        // the field before that lands.
+        eventually("NOT (value CONTAINS 'Taxi')", app.textFields["quick-log-payee"],
+                   "Discard must clear the entry")
         openWidgetLink("expense", in: app)
         expectFalse(app.buttons["Resume unfinished entry"].waitForExistence(timeout: 3),
                     "A discarded entry must not ask again")
@@ -375,6 +377,28 @@ final class MoneyUpJourneyTests: XCTestCase {
     }
 
     // MARK: Accessibility audits
+
+    /// Amounts are hidden by default. VoiceOver must then say so on every tab,
+    /// never read the five-star mask aloud.
+    func testHiddenAmountsAreAnnouncedNotReadAsStars() {
+        let app = launch(extra: ["-moneyup.privacy.hide-amounts", "YES"])
+        type("12.5", into: openLog(app))
+        app.buttons["log-save"].tap()
+        expectTrue(app.buttons["log-undo"].waitForExistence(timeout: timeout), "Saved confirmation did not appear")
+        dismissKeyboard(app)
+        var readAloud: [String] = []
+        for index in 0..<app.tabBars.buttons.count {
+            let tab = app.tabBars.buttons.element(boundBy: index)
+            tab.tap()
+            expectTrue(tab.waitForSelected(timeout: timeout), "Tab \(index) did not open")
+            _ = app.activityIndicators.firstMatch.waitForNonExistence(timeout: timeout)
+            readAloud += app.debugDescription.split(separator: "\n")
+                .filter { $0.contains("*****") }
+                .map { "\(tab.label): \($0.trimmingCharacters(in: .whitespaces))" }
+        }
+        add(XCTAttachment(string: readAloud.joined(separator: "\n")))
+        expectTrue(readAloud.isEmpty, "VoiceOver would read the mask:\n" + readAloud.joined(separator: "\n"))
+    }
 
     func testAccessibilityAuditOfLogAndTheLockScreen() throws {
         let audits: XCUIAccessibilityAuditType = [.sufficientElementDescription, .hitRegion, .trait]

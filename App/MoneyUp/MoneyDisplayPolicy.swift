@@ -33,6 +33,44 @@ enum MoneyAmountPrivacy {
     }
 }
 
+extension Text {
+    /// Text that may show masked amounts. It looks exactly as written, while
+    /// VoiceOver says "hidden amount" for each mask instead of reading five
+    /// stars aloud. Amounts are hidden by default, so this is what most
+    /// VoiceOver users hear first.
+    init(maskingAmounts content: String) {
+        let mask = MoneyAmountPrivacy.placeholder
+        guard content.contains(mask) else {
+            self.init(verbatim: content)
+            return
+        }
+        let spoken = content.replacingOccurrences(
+            of: mask,
+            with: AppLocalization.string("privacy.hidden_amount")
+        )
+        self = Text(verbatim: content).accessibilityLabel(Text(verbatim: spoken))
+    }
+}
+
+extension LabeledContent where Label == Text, Content == Text {
+    /// A labelled amount whose masked value speaks as "hidden amount".
+    init(_ titleKey: LocalizedStringKey, maskingAmounts value: String) {
+        self.init {
+            Text(maskingAmounts: value)
+        } label: {
+            Text(titleKey)
+        }
+    }
+
+    init<Title: StringProtocol>(_ title: Title, maskingAmounts value: String) {
+        self.init {
+            Text(maskingAmounts: value)
+        } label: {
+            Text(title)
+        }
+    }
+}
+
 /// The same one-tap privacy control on every amount-heavy top-level screen.
 /// Its label describes the action while its value announces the current state.
 struct MoneyUpAmountPrivacyButton: View {

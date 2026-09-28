@@ -261,7 +261,7 @@ struct TransactionRow: View {
                 }
                 ForEach(Array(amounts.prefix(2).enumerated()), id: \.offset) {
                     _, amount in
-                    Text(rowFormattedAmount(amount))
+                    Text(maskingAmounts: rowFormattedAmount(amount))
                         .moneyUpFinancialValue(.compact)
                         .foregroundStyle(
                             amount.role == .income

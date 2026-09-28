@@ -152,6 +152,13 @@ extension MoneyUpJourneyTests {
         var found: [String] = []
         try app.performAccessibilityAudit(for: types) { issue in
             guard issue.element?.elementType != .key else { return true }
+            // A hidden amount shows the fixed five-character mask but speaks
+            // "hidden amount"; the clipping audit measures the spoken label,
+            // not the text on screen.
+            if issue.auditType == .textClipped,
+               ["hidden amount", "隐藏的金额"].contains(where: { issue.element?.label.contains($0) == true }) {
+                return true
+            }
             let element = issue.element
             found.append("\(screen): \(issue.compactDescription) — \(element?.elementType.rawValue ?? 0) "
                 + "'\(element?.label ?? "")' id '\(element?.identifier ?? "")' \(element?.frame ?? .zero)")

@@ -275,12 +275,12 @@ struct CalendarView: View {
                 ForEach(flows) { flow in
                     MoneyUpCashFlowGraphic(income: flow.income, expense: flow.expense)
                     LabeledContent {
-                        Text(formattedMoney(flow.income))
+                        Text(maskingAmounts: formattedMoney(flow.income))
                     } label: {
                         Text("\(AppLocalization.string("transaction.income")) (\(flow.currency.value))")
                     }
                     LabeledContent {
-                        Text(formattedMoney(flow.expense))
+                        Text(maskingAmounts: formattedMoney(flow.expense))
                     } label: {
                         Text("\(AppLocalization.string("transaction.expense")) (\(flow.currency.value))")
                     }
@@ -351,7 +351,7 @@ struct CalendarView: View {
             HStack {
                 Label(item.name, systemImage: scheduleStatusIcon(for: item))
                 Spacer()
-                Text(formattedMoney(item.amount))
+                Text(maskingAmounts: formattedMoney(item.amount))
                     .font(.subheadline.monospacedDigit())
             }
             .contentShape(Rectangle())

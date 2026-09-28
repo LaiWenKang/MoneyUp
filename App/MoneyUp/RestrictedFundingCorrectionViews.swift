@@ -37,7 +37,7 @@ struct RestrictedFundingCorrectionSheet: View {
                 Section {
                     LabeledContent(
                         "account.restricted_funding_original",
-                        value: formattedMoney(record.amount)
+                        maskingAmounts: formattedMoney(record.amount)
                     )
                     LabeledContent("transaction.date") {
                         Text(record.occurredAt.formattedForReporting(

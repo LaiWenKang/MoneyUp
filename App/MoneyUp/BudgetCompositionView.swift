@@ -106,7 +106,7 @@ struct BudgetCompositionView: View {
     private func selectionLabel(_ segment: Segment) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(segment.name).font(.subheadline.weight(.semibold))
-            Text(formattedMoney(segment.amount)).font(.subheadline.monospacedDigit())
+            Text(maskingAmounts: formattedMoney(segment.amount)).font(.subheadline.monospacedDigit())
         }
         .accessibilityElement(children: .combine)
     }

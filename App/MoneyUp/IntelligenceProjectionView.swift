@@ -62,19 +62,19 @@ struct IntelligenceProjectionCard: View {
                 .font(.subheadline.bold())
             LabeledContent(
                 "intelligence.projection.actuals",
-                value: formattedMoney(projection.committedActuals)
+                maskingAmounts: formattedMoney(projection.committedActuals)
             )
             LabeledContent(
                 "intelligence.projection.schedules",
-                value: formattedMoney(projection.remainingSchedules)
+                maskingAmounts: formattedMoney(projection.remainingSchedules)
             )
             LabeledContent(
                 "intelligence.projection.flexible_burn",
-                value: formattedMoney(projection.flexibleBurnRateProjection)
+                maskingAmounts: formattedMoney(projection.flexibleBurnRateProjection)
             )
             Divider()
             LabeledContent {
-                Text(formattedMoney(projection.projectedTotal))
+                Text(maskingAmounts: formattedMoney(projection.projectedTotal))
                     .fontWeight(.semibold)
                     .monospacedDigit()
             } label: {

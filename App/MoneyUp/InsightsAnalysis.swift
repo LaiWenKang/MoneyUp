@@ -170,7 +170,7 @@ extension InsightsView {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(point.name)
                         .font(.subheadline.weight(.semibold))
-                    Text(formattedMoney(point.money))
+                    Text(maskingAmounts: formattedMoney(point.money))
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
@@ -247,7 +247,7 @@ extension InsightsView {
             Text(title)
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            Text(formattedMoney(money))
+            Text(maskingAmounts: formattedMoney(money))
                 .font(.caption.monospacedDigit().weight(.semibold))
         }
         .frame(maxWidth: .infinity, alignment: .leading)

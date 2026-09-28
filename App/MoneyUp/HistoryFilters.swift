@@ -32,7 +32,7 @@ struct HistorySummaryView: View {
         } label: {
             Text("history.transactions")
             if let spent = HistorySummaryHeadline.spending(summary) {
-                Text(String(format: AppLocalization.string("history.spent_headline_format"), formattedMoney(spent)))
+                Text(maskingAmounts: String(format: AppLocalization.string("history.spent_headline_format"), formattedMoney(spent)))
                     .monospacedDigit()
                     .accessibilityLabel(String(
                         format: AppLocalization.string("history.spent_headline_format"),
@@ -103,7 +103,7 @@ struct HistorySummaryView: View {
                 operation: "history-summary"
             ) {
             case let .available(money):
-                Text(formattedMoney(money))
+                Text(maskingAmounts: formattedMoney(money))
                     .monospacedDigit()
                     .accessibilityValue(accessibleFormattedMoney(money))
             case let .unavailable(issue):

@@ -54,7 +54,7 @@ struct AssetsSnapshotTrend: View {
             if let selected {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(formattedMoneyWithCurrencyCode(selected.money)).moneyUpFinancialValue(.prominent)
+                        Text(maskingAmounts: formattedMoneyWithCurrencyCode(selected.money)).moneyUpFinancialValue(.prominent)
                         Text(selected.date.formattedForReporting(.dateTime.year().month().day().hour().minute(), calendar: model.reportingCalendar))
                             .font(.caption).foregroundStyle(.secondary)
                     }
@@ -68,8 +68,12 @@ struct AssetsSnapshotTrend: View {
                 if let index = points.firstIndex(where: { $0.id == selected.id }), index > 0,
                    let change = try? NetWorthHistoryPresentation.change(to: selected, in: points) {
                     VStack(alignment: .leading, spacing: 3) {
-                        Label(formattedMoneyWithCurrencyCode(change), systemImage: change.amount > .zero
-                            ? "arrow.up.right" : change.amount < .zero ? "arrow.down.right" : "equal")
+                        Label {
+                            Text(maskingAmounts: formattedMoneyWithCurrencyCode(change))
+                        } icon: {
+                            Image(systemName: change.amount > .zero
+                                ? "arrow.up.right" : change.amount < .zero ? "arrow.down.right" : "equal")
+                        }
                             .font(.subheadline.weight(.semibold).monospacedDigit())
                         Text(String(format: AppLocalization.string("assets.snapshot_change_since"),
                             points[index - 1].date.formattedForReporting(.dateTime.year().month().day(), calendar: model.reportingCalendar)))

@@ -111,14 +111,14 @@ struct GoalProgressRow: View {
                     MoneyUpProgressDial(fraction: progress, systemImage: goal.kind.systemImage)
                     VStack(alignment: .leading, spacing: 4) {
                         Text("goal.remaining").font(.caption).foregroundStyle(.secondary)
-                        Text(formattedMoney(summary.remaining)).moneyUpFinancialValue(.prominent)
+                        Text(maskingAmounts: formattedMoney(summary.remaining)).moneyUpFinancialValue(.prominent)
                     }
                     Spacer(minLength: 0)
                     Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary).accessibilityHidden(true)
                 }
                 HStack {
                     Text(
-                        String(
+                        maskingAmounts: String(
                             format: AppLocalization.string("goal.progress_amount"),
                             formattedMoney(summary.balance),
                             formattedMoney(summary.target)
@@ -316,10 +316,10 @@ struct GoalManagementSheet: View {
                     switch model.savingsGoalSummary(goal) {
                     case let .available(summary):
                         Section("goal.progress") {
-                            LabeledContent("goal.balance", value: formattedMoney(summary.balance))
-                            LabeledContent("goal.contributed", value: formattedMoney(summary.contributed))
-                            LabeledContent("goal.withdrawn", value: formattedMoney(summary.withdrawn))
-                            LabeledContent("goal.remaining", value: formattedMoney(summary.remaining))
+                            LabeledContent("goal.balance", maskingAmounts: formattedMoney(summary.balance))
+                            LabeledContent("goal.contributed", maskingAmounts: formattedMoney(summary.contributed))
+                            LabeledContent("goal.withdrawn", maskingAmounts: formattedMoney(summary.withdrawn))
+                            LabeledContent("goal.remaining", maskingAmounts: formattedMoney(summary.remaining))
                         }
                     case let .unavailable(issue):
                         Section("goal.progress") {

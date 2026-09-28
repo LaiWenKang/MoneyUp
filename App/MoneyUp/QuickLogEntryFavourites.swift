@@ -319,7 +319,7 @@ struct QuickLogFavouriteChip: View {
                     Text("favourites.needs_attention")
                         .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 } else if let amountLabel {
-                    Text(verbatim: amountLabel)
+                    Text(maskingAmounts: amountLabel)
                         .font(.caption).monospacedDigit().foregroundStyle(.secondary).lineLimit(1)
                 }
             }

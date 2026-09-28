@@ -208,7 +208,7 @@ struct FlexibleTodayBreakdownSheet: View {
                         VStack(alignment: .leading, spacing: 3) {
                             Text("dashboard.safe_to_spend")
                                 .font(.headline)
-                            Text(formattedMoney(breakdown.amountPerDay))
+                            Text(maskingAmounts: formattedMoney(breakdown.amountPerDay))
                                 .font(.largeTitle.bold().monospacedDigit())
                         }
                     }
@@ -274,7 +274,7 @@ struct FlexibleTodayBreakdownSheet: View {
                                         systemImage: "globe"
                                     )
                                     Spacer(minLength: 12)
-                                    Text(formattedMoney(money))
+                                    Text(maskingAmounts: formattedMoney(money))
                                         .monospacedDigit()
                                 }
                                 .font(.subheadline)
@@ -291,7 +291,7 @@ struct FlexibleTodayBreakdownSheet: View {
                                         systemImage: "globe"
                                     )
                                     Spacer(minLength: 12)
-                                    Text(formattedMoney(money))
+                                    Text(maskingAmounts: formattedMoney(money))
                                         .monospacedDigit()
                                 }
                                 .font(.subheadline)

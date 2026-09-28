@@ -109,7 +109,7 @@ struct AssetsView: View {
                                     asOf: now
                                 ) {
                                 case let .available(balance):
-                                    Text(formattedMoney(balance))
+                                    Text(maskingAmounts: formattedMoney(balance))
                                         .font(.subheadline.monospacedDigit())
                                         .accessibilityLabel(account.kind == .liability
                                             ? Text("account.amount_owed")
@@ -190,7 +190,7 @@ struct AssetsView: View {
                         ForEach(values.filter { !$0.isZero }, id: \.currency) { value in
                             LabeledContent(
                                 "assets.recorded_holdings",
-                                value: formattedMoney(value)
+                                maskingAmounts: formattedMoney(value)
                             )
                         }
                     } else if case let .unavailable(issue) = recordedHoldingsValues {
@@ -244,7 +244,7 @@ struct AssetsView: View {
                                 VStack(alignment: .trailing, spacing: 2) {
                                     switch value(for: holding) {
                                     case let .available(value):
-                                        Text(formattedMoney(value))
+                                        Text(maskingAmounts: formattedMoney(value))
                                             .font(.subheadline.monospacedDigit())
                                     case let .unavailable(issue):
                                         Text("—")
@@ -322,13 +322,13 @@ struct AssetsView: View {
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                                 ForEach(snapshot.amounts) { amount in
-                                    Text(formattedMoney(amount.money))
+                                    Text(maskingAmounts: formattedMoney(amount.money))
                                         .font(.subheadline.monospacedDigit())
                                 }
                                 if let estimate = snapshot.estimatedBaseTotal,
                                    let asOf = snapshot.conversionAsOf {
                                     HStack(spacing: 4) {
-                                        Text("≈ \(formattedMoney(estimate))")
+                                        Text(maskingAmounts: "≈ \(formattedMoney(estimate))")
                                             .font(.subheadline.monospacedDigit())
                                         Text("·")
                                         Text("fx.rates_as_of")
@@ -341,7 +341,7 @@ struct AssetsView: View {
                                         ForEach(snapshot.conversionEvidence) { evidence in
                                             VStack(alignment: .leading, spacing: 2) {
                                                 Text(
-                                                    String(
+                                                    maskingAmounts: String(
                                                         format: AppLocalization.string("fx.snapshot_evidence_format"),
                                                         formattedMoney(evidence.source),
                                                         NSDecimalNumber(decimal: evidence.appliedRate).stringValue,
@@ -604,7 +604,7 @@ struct AccountSpendingHistoryView: View {
                     for: account, asOf: snapshot?.instant ?? model.currentDateForUserAction()
                 ) {
                 case let .available(balance):
-                    LabeledContent("account.current_balance", value: formattedMoney(balance)).padding()
+                    LabeledContent("account.current_balance", maskingAmounts: formattedMoney(balance)).padding()
                 case let .unavailable(issue):
                     DerivedValueUnavailableView(issue: issue).padding()
                 }
@@ -699,7 +699,7 @@ extension AssetsView {
             }
             Spacer(minLength: 8)
             if let subtotal = group.subtotal {
-                Text(group.netsDebt
+                Text(maskingAmounts: group.netsDebt
                     ? String(format: AppLocalization.string("assets.group_net_format"), formattedMoney(subtotal))
                     : formattedMoney(subtotal))
                     .monospacedDigit()
