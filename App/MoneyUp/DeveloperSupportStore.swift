@@ -136,10 +136,14 @@ final class DeveloperSupportStore {
                 await self?.completeSupportTransaction(result)
             }
         }
-        Task { [weak self] in
-            for await result in Transaction.unfinished {
-                await self?.completeSupportTransaction(result)
-            }
+        Task { [weak self] in await self?.finishUnfinishedSupportTransactions() }
+    }
+
+    /// Finishes every tip StoreKit still reports as unfinished. It runs at each
+    /// launch, so a finish lost right after a purchase is completed here.
+    func finishUnfinishedSupportTransactions() async {
+        for await result in Transaction.unfinished {
+            await completeSupportTransaction(result)
         }
     }
 
