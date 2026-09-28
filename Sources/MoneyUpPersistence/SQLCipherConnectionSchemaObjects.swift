@@ -265,19 +265,90 @@ extension SQLCipherConnection {
         }
     }
 
+    /// Runs `operation` with a prepared statement for `sql`. Statements are
+    /// prepared once and reused: parsing SQL, and compiling the triggers it
+    /// fires, cost more than running it (over a third of a restore). After
+    /// every use the statement is reset and its bindings cleared, so no bound
+    /// value (a payload, a key) outlives the call. A nested use of SQL that is
+    /// already running gets a short-lived statement of its own.
     func withStatement<Result>(
         _ sql: String,
         operation: (OpaquePointer) throws -> Result
     ) throws -> Result {
         try requireOpen()
+        if let cached = statementCache[sql], !statementsInUse.contains(cached) {
+            return try use(cached, operation)
+        }
         var statement: OpaquePointer?
-        let result = sqlite3_prepare_v2(database, sql, -1, &statement, nil)
+        let result = sqlite3_prepare_v3(
+            database, sql, -1, UInt32(SQLITE_PREPARE_PERSISTENT), &statement, nil
+        )
         guard result == SQLITE_OK, let statement else {
             throw makeError(code: result)
         }
-        defer { sqlite3_finalize(statement) }
+        guard statementCache[sql] == nil else {
+            defer { sqlite3_finalize(statement) }
+            return try operation(statement)
+        }
+        if statementCache.count >= Self.statementCacheLimit { finalizeIdleStatements() }
+        statementCache[sql] = statement
+        return try use(statement, operation)
+    }
+
+    /// Distinct statements kept at once; SQL built for a batch size varies.
+    static let statementCacheLimit = 96
+
+    private func use<Result>(
+        _ statement: OpaquePointer,
+        _ operation: (OpaquePointer) throws -> Result
+    ) throws -> Result {
+        statementsInUse.insert(statement)
+        defer {
+            statementsInUse.remove(statement)
+            if database != nil, sqlite3_db_handle(statement) == database {
+                sqlite3_reset(statement)
+                sqlite3_clear_bindings(statement)
+            } else {
+                // The connection closed during this use: finish closing it.
+                sqlite3_finalize(statement)
+                statementCache = statementCache.filter { $0.value != statement }
+            }
+        }
         return try operation(statement)
     }
+
+    func finalizeIdleStatements() {
+        for (sql, statement) in statementCache where !statementsInUse.contains(statement) {
+            sqlite3_finalize(statement)
+            statementCache[sql] = nil
+        }
+    }
+
+    #if DEBUG
+    /// Every row of `sql`, each column as text ("NULL" for null).
+    func rowsForTesting(_ sql: String) throws -> [[String]] {
+        try withStatement(sql) { statement in
+            var rows: [[String]] = []
+            while true {
+                let step = sqlite3_step(statement)
+                if step == SQLITE_DONE { return rows }
+                guard step == SQLITE_ROW else { throw makeError(code: step) }
+                rows.append((0..<sqlite3_column_count(statement)).map { column in
+                    sqlite3_column_text(statement, column).map { String(cString: $0) } ?? "NULL"
+                })
+            }
+        }
+    }
+
+    /// Each cached statement's SQL with its current bindings expanded.
+    func cachedStatementTextsForTesting() -> [String] {
+        statementCache.values.compactMap { statement in
+            guard let text = sqlite3_expanded_sql(statement) else { return nil }
+            defer { sqlite3_free(text) }
+            return String(cString: text)
+        }
+    }
+    #endif
 
     func bindText(
         _ value: String,

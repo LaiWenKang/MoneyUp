@@ -23,6 +23,9 @@ final class SQLCipherConnection: @unchecked Sendable {
     }
 
     var database: OpaquePointer?
+    /// Prepared statements reused by `withStatement`, keyed by their SQL.
+    var statementCache: [String: OpaquePointer] = [:]
+    var statementsInUse = Set<OpaquePointer>()
     /// Connection-local monotonic change counter; useful for detecting any
     /// durable-row change without loading financial payloads or trusting clocks.
     var changeRevision: Int64 { sqlite3_total_changes64(database) }
@@ -90,6 +93,16 @@ final class SQLCipherConnection: @unchecked Sendable {
 
     func close() {
         guard let database else { return }
+        // An unfinalized statement would keep the handle, its file and its
+        // decrypted page cache alive after "closing" (sqlite3_close_v2 waits
+        // for every statement). One still running is finalized as soon as
+        // that use ends; see `withStatement`.
+        finalizeIdleStatements()
+        #if DEBUG
+        if statementsInUse.isEmpty {
+            assert(sqlite3_next_stmt(database, nil) == nil, "A statement outlived its connection")
+        }
+        #endif
         sqlite3_close_v2(database)
         self.database = nil
     }

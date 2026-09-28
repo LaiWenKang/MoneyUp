@@ -103,6 +103,24 @@ extension SQLCipherConnection {
         }
     }
 
+    /// Completes the derived intelligence tables after a whole-book
+    /// replacement, with the same result as
+    /// `rebuildAllIntelligenceIndexesFromRecords()`: the replacement cleared
+    /// them first and wrote each journal source row while that entry was
+    /// decoded, so no entry is decoded a second time.
+    func finishIntelligenceIndexesAfterReplacement() throws {
+        let enabled = try storedIntelligencePreference()
+        try setIntelligenceControl(enabled)
+        guard enabled else {
+            try clearIntelligenceDerivedTables()
+            return
+        }
+        try rebuildAccountIntelligenceIndex()
+        for key in try indexedPayeeKeys() {
+            try rebuildPayeeAffinity(for: key)
+        }
+    }
+
     private func storedIntelligencePreference() throws -> Bool {
         guard let payload = try fetch(
             collection: RecordCollection.profile.rawValue,
