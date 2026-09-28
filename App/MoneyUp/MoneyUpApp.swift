@@ -21,6 +21,23 @@ struct MoneyUpApp: App {
         AppLanguagePreference(rawValue: appLanguageRawValue) ?? .system
     }
 
+    init() {
+        // Before the first scene: a tap that launches the app must not be lost.
+        ReminderCenter.shared.install()
+    }
+
+    /// Everything a reminder plan depends on; any change re-plans.
+    private var reminderSyncKey: ReminderSyncKey {
+        ReminderSyncKey(
+            state: model.state,
+            bookRevision: model.logicalBookRevision,
+            recentEntriesAreCurrent: model.journalRecentEntriesAreCurrent,
+            isActive: scenePhase == .active,
+            preferences: ReminderCenter.shared.revision,
+            language: appLanguageRawValue
+        )
+    }
+
     private static func initialModel() -> AppModel {
         #if DEBUG
         if let model = MoneyUpUITestHarness.makeModelIfRequested() { return model }
@@ -79,12 +96,23 @@ struct MoneyUpApp: App {
                         // ready publication can arm the reporting-day refresh.
                         model.sceneDidBecomeActive()
                     }
+                    // A reminder tapped to launch the app arrived before the
+                    // change handler existed.
+                    takeReminderRoute()
                     routePendingQuickAction()
                     await startInitialModelIfNeeded()
                     await model.unlockAutomaticallyIfNeeded()
                 }
                 .onOpenURL { url in
                     routeDeepLink(url)
+                }
+                .task(id: reminderSyncKey) {
+                    await model.refreshReminders()
+                }
+                .onChange(of: ReminderCenter.shared.pendingRoute) { _, route in
+                    guard route != nil else { return }
+                    takeReminderRoute()
+                    routePendingQuickAction()
                 }
                 .task(id: scenePhase == .active && model.state == .ready) {
                     guard scenePhase == .active, model.state == .ready else { return }
@@ -144,6 +172,16 @@ struct MoneyUpApp: App {
             let wasDeferred = model.state == .launching && !model.isWorking
             launchState.finish(wasDeferred: wasDeferred)
             if !wasDeferred { WidgetCenter.shared.reloadAllTimelines() }
+        }
+    }
+
+    /// A tapped reminder: a due item opens Today; the logging nudge asks for
+    /// Log through the broker, exactly like a widget tap.
+    private func takeReminderRoute() {
+        switch ReminderCenter.shared.takePendingRoute() {
+        case .today: overviewNavigation.request(.today)
+        case .log: _ = quickActionRouteBroker.submit(.expense)
+        case nil: break
         }
     }
 
@@ -279,4 +317,13 @@ private struct PrivacyCoverView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .tint(.accentColor)
     }
+}
+
+private struct ReminderSyncKey: Equatable {
+    let state: AppModel.State
+    let bookRevision: UInt64
+    let recentEntriesAreCurrent: Bool
+    let isActive: Bool
+    let preferences: UInt64
+    let language: String
 }

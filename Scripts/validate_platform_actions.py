@@ -247,7 +247,10 @@ COMPILED_REFERENCE_INVENTORY = {
         "App/MoneyUp/AppModelLifecycle.swift": 8,
         "App/MoneyUp/AppModelScreenLock.swift": 1,
         "App/MoneyUp/AppModelQuickActionIngress.swift": 1,
-        "App/MoneyUp/MoneyUpApp.swift": 6,
+        # 0.7.3: a tapped daily-logging reminder asks for Log through the same
+        # broker as a widget tap (takeReminderRoute), so it inherits the same
+        # covered-book rules and never opens past entries without Face ID.
+        "App/MoneyUp/MoneyUpApp.swift": 7,
         "App/MoneyUp/MoneyUpUITestHarness.swift": 1,
         "App/MoneyUp/MoneyUpQuickActionRouting.swift": 2,
         "App/MoneyUp/RootView.swift": 3,

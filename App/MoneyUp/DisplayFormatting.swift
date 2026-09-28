@@ -76,6 +76,14 @@ private func unprotectedFormattedMoney(
 /// Used where an amount is read outside the surface that establishes its
 /// currency — a foreign-currency line, an exchange-rate row, or an input field
 /// whose value is about to be committed to a specific account.
+/// The exact amount for a notification the user chose to show details in.
+/// Reminders are generic by default, so this bypasses the in-app mask only
+/// after that explicit choice, and names the currency by code on the Lock Screen.
+@MainActor
+func formattedMoneyForNotification(_ money: Money) -> String {
+    unprotectedFormattedMoney(money, notation: .code)
+}
+
 @MainActor
 func formattedMoneyWithCurrencyCode(_ money: Money) -> String {
     MoneyAmountPrivacy.protected(
