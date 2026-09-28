@@ -571,7 +571,11 @@ struct HistoryView: View {
                                             .contentShape(Rectangle())
                                     }
                                     .buttonStyle(.plain)
-                                    .contextMenu { TransactionPreparationActions(entry: entry) }
+                                    .contextMenu {
+                                        TransactionPreparationActions(entry: entry)
+                                    } preview: {
+                                        TransactionContextPreview(entry: entry)
+                                    }
                                     .swipeActions(edge: .leading, allowsFullSwipe: false) {
                                         TransactionPreparationActions(entry: entry)
                                     }

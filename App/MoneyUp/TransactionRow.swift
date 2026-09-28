@@ -320,6 +320,26 @@ enum TransactionRowDate {
     }
 }
 
+/// Touch and hold a transaction to see it whole above its actions: the row as
+/// listed, plus the note the row itself cuts short.
+struct TransactionContextPreview: View {
+    let entry: JournalEntry
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            TransactionRow(entry: entry)
+            if let note = entry.note?.trimmingCharacters(in: .whitespacesAndNewlines), !note.isEmpty {
+                Text(verbatim: note)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(6)
+            }
+        }
+        .padding(16)
+        .frame(idealWidth: 340, maxWidth: 400, alignment: .leading)
+    }
+}
+
 /// Money coming back (income, refund) reads with an explicit plus in a row,
 /// so its direction never depends on the green alone.
 @MainActor
