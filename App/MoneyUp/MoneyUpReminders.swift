@@ -171,16 +171,39 @@ final class ReminderCenter: NSObject {
         revision &+= 1
     }
 
+    // UserNotifications values are not Sendable on every supported SDK, so
+    // the completion-handler forms hand only Sendable values to the main actor.
     func refreshAuthorization() async {
-        authorization = await center.notificationSettings().authorizationStatus
+        let center = center
+        authorization = await withCheckedContinuation { continuation in
+            center.getNotificationSettings { settings in
+                continuation.resume(returning: settings.authorizationStatus)
+            }
+        }
     }
 
     /// Asks once, when the user first turns a reminder on.
     func requestAuthorizationIfNeeded() async {
         await refreshAuthorization()
         guard authorization == .notDetermined else { return }
-        _ = try? await center.requestAuthorization(options: [.alert, .sound, .badge])
+        let center = center
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            center.requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in
+                continuation.resume()
+            }
+        }
         await refreshAuthorization()
+    }
+
+    private func pendingReminderIdentifiers() async -> [String] {
+        let center = center
+        return await withCheckedContinuation { continuation in
+            center.getPendingNotificationRequests { requests in
+                continuation.resume(returning: requests.map(\.identifier).filter {
+                    $0.hasPrefix(ReminderPlanner.identifierPrefix)
+                })
+            }
+        }
     }
 
     func takePendingRoute() -> PlannedReminder.Route? {
@@ -192,9 +215,7 @@ final class ReminderCenter: NSObject {
     func sync(_ plan: [PlannedReminder]) async {
         if scheduled == nil {
             // First sync of this launch: learn what an earlier launch left.
-            let pending = await center.pendingNotificationRequests()
-                .map(\.identifier)
-                .filter { $0.hasPrefix(ReminderPlanner.identifierPrefix) }
+            let pending = await pendingReminderIdentifiers()
             scheduled = [:]
             center.removePendingNotificationRequests(withIdentifiers: pending)
         }
@@ -213,13 +234,16 @@ final class ReminderCenter: NSObject {
                     repeats: false
                 )
             )
-            do {
-                try await center.add(request)
-            } catch {
-                continue
-            }
+            schedule(request)
         }
         scheduled = wanted
+    }
+
+    /// Synchronous on purpose: the async form would move a request that is not
+    /// Sendable on every SDK. Added in order; a failure leaves only that one
+    /// reminder unscheduled.
+    private func schedule(_ request: UNNotificationRequest) {
+        center.add(request, withCompletionHandler: nil)
     }
 
     func removeAll() async {
