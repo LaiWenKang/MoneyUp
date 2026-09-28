@@ -35,6 +35,35 @@ enum HistoryQuickRange: String, CaseIterable, Hashable {
     }
 }
 
+/// A search looks through every date. Starting one on a rolling range (Today,
+/// 7 days, Month) widens History to All and remembers the range; clearing the
+/// search brings it back, unless another range was chosen meanwhile. A custom
+/// date range is the user's own choice and is never widened.
+enum HistorySearchScopePolicy {
+    struct State: Equatable {
+        var range: HistoryQuickRange?
+        var rangeBeforeSearch: HistoryQuickRange?
+    }
+
+    static func applying(
+        search newSearch: String,
+        after oldSearch: String,
+        to state: State
+    ) -> State {
+        let wasSearching = !oldSearch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let isSearching = !newSearch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        var next = state
+        if isSearching, !wasSearching, let range = state.range, range.isRolling {
+            next.rangeBeforeSearch = range
+            next.range = .all
+        } else if !isSearching, wasSearching, let previous = state.rangeBeforeSearch {
+            next.rangeBeforeSearch = nil
+            if state.range == .all { next.range = previous }
+        }
+        return next
+    }
+}
+
 enum HistoryScopeSelectorPolicy {
     static let minimumTapDimension: CGFloat = 44
 
