@@ -173,10 +173,12 @@ final class ReminderCenter: NSObject {
 
     // UserNotifications values are not Sendable on every supported SDK, so
     // the completion-handler forms hand only Sendable values to the main actor.
+    // UserNotifications replies on its own queue, so each reply is @Sendable:
+    // one that inherited main-actor isolation would trap there.
     func refreshAuthorization() async {
         let center = center
         authorization = await withCheckedContinuation { continuation in
-            center.getNotificationSettings { settings in
+            center.getNotificationSettings { @Sendable settings in
                 continuation.resume(returning: settings.authorizationStatus)
             }
         }
@@ -189,7 +191,7 @@ final class ReminderCenter: NSObject {
         let center = center
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             // No badge: MoneyUp never sets one, so iOS shouldn't ask for it.
-            center.requestAuthorization(options: [.alert, .sound]) { _, _ in
+            center.requestAuthorization(options: [.alert, .sound]) { @Sendable _, _ in
                 continuation.resume()
             }
         }
@@ -199,8 +201,8 @@ final class ReminderCenter: NSObject {
     private func pendingReminderIdentifiers() async -> [String] {
         let center = center
         return await withCheckedContinuation { continuation in
-            center.getPendingNotificationRequests { requests in
-                continuation.resume(returning: requests.map(\.identifier).filter {
+            center.getPendingNotificationRequests { @Sendable requests in
+                continuation.resume(returning: requests.map { $0.identifier }.filter {
                     $0.hasPrefix(ReminderPlanner.identifierPrefix)
                 })
             }
