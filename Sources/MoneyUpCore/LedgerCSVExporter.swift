@@ -75,10 +75,12 @@ public enum LedgerCSVExporter {
     }
 
     private static func escape(_ value: String) -> String {
-        let requiresQuotes = value.contains(",")
-            || value.contains("\"")
-            || value.contains("\n")
-            || value.contains("\r")
+        // Bytes, not Characters: "\r\n" is one Character, so a Character check
+        // for "\n" or "\r" missed text whose only line breaks were CRLF and left
+        // it unquoted, splitting the row.
+        let requiresQuotes = value.utf8.contains {
+            $0 == 0x2c || $0 == 0x22 || $0 == 0x0a || $0 == 0x0d
+        }
 
         guard requiresQuotes else { return value }
         return "\"\(value.replacingOccurrences(of: "\"", with: "\"\""))\""
@@ -86,9 +88,10 @@ public enum LedgerCSVExporter {
 
     /// Prevents user-controlled text from being interpreted as a spreadsheet
     /// formula. Quoting a CSV cell alone does not reliably prevent execution.
+    private static let formulaPrefixes: Set<Character> = ["=", "+", "-", "@"]
+
     private static func spreadsheetSafeText(_ value: String) -> String {
         let firstMeaningfulCharacter = value.first { !$0.isWhitespace }
-        let formulaPrefixes: Set<Character> = ["=", "+", "-", "@"]
 
         guard let firstMeaningfulCharacter,
               formulaPrefixes.contains(firstMeaningfulCharacter) else {

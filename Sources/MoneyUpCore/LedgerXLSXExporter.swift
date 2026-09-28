@@ -36,15 +36,20 @@ public enum LedgerXLSXExporter {
         let accountByID = Dictionary(
             uniqueKeysWithValues: uniqueAccounts.map { ($0.id, $0) }
         )
+        // One formatter per export: creating one per timestamp dominated
+        // large exports (two per posting row).
+        let timestamps = ISO8601DateFormatter()
+        timestamps.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         let transactionRows = transactionRows(
             entries: entries,
             accountsByID: accountByID,
-            attachmentMetadata: attachmentMetadata
+            attachmentMetadata: attachmentMetadata,
+            timestamps: timestamps
         )
         let files = workbookFiles(
             transactionRows: transactionRows,
             accountRows: accountRows(uniqueAccounts),
-            rateRows: rateRows(rates)
+            rateRows: rateRows(rates, timestamps: timestamps)
         )
         return StoredZIPArchive(files: files).data()
     }
@@ -52,7 +57,8 @@ public enum LedgerXLSXExporter {
     private static func transactionRows(
         entries: [JournalEntry],
         accountsByID: [UUID: LedgerAccount],
-        attachmentMetadata: [ReceiptAttachmentMetadata]
+        attachmentMetadata: [ReceiptAttachmentMetadata],
+        timestamps: ISO8601DateFormatter
     ) -> [[XLSXCell]] {
         let attachmentCounts = Dictionary(grouping: attachmentMetadata, by: \.entryID)
             .mapValues { $0.count }
@@ -76,13 +82,13 @@ public enum LedgerXLSXExporter {
                 rows.append([
                     .text(entry.id.uuidString.lowercased()),
                     .text(entry.kind.rawValue),
-                    .text(iso8601(entry.occurredAt)),
+                    .text(timestamps.string(from: entry.occurredAt)),
                     .text(dayString(entry.originContext.dayKey)),
                     .text(entry.originContext.calendarIdentifier),
                     .text(entry.originContext.timeZoneIdentifier),
                     .number(String(entry.originContext.utcOffsetSeconds)),
                     .text(entry.originContext.wasInferred ? "true" : "false"),
-                    .text(iso8601(entry.createdAt)),
+                    .text(timestamps.string(from: entry.createdAt)),
                     .text(entry.payee ?? ""),
                     .text(entry.note ?? ""),
                     .text(posting.id.uuidString.lowercased()),
@@ -128,7 +134,8 @@ public enum LedgerXLSXExporter {
     }
 
     private static func rateRows(
-        _ rates: [DatedExchangeRate]
+        _ rates: [DatedExchangeRate],
+        timestamps: ISO8601DateFormatter
     ) -> [[XLSXCell]] {
         var rateRows: [[XLSXCell]] = [[
             .text("rate_id"), .text("base_currency"), .text("quote_currency"),
@@ -149,7 +156,7 @@ public enum LedgerXLSXExporter {
                 .text(rate.effectiveContext.calendarIdentifier),
                 .text(rate.effectiveContext.timeZoneIdentifier),
                 .number(String(rate.effectiveContext.utcOffsetSeconds)),
-                .text(iso8601(rate.createdAt))
+                .text(timestamps.string(from: rate.createdAt))
             ]
         }
         return rateRows
@@ -180,7 +187,9 @@ public enum LedgerXLSXExporter {
     }
 
     private static func worksheetXML(_ rows: [[XLSXCell]]) -> String {
+        let columnNames = (0..<(rows.map(\.count).max() ?? 0)).map { columnName($0 + 1) }
         var xml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+        xml.reserveCapacity(rows.count * 1_024)
         xml += "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">"
         xml += "<sheetViews><sheetView workbookViewId=\"0\"><pane ySplit=\"1\" topLeftCell=\"A2\" activePane=\"bottomLeft\" state=\"frozen\"/></sheetView></sheetViews>"
         xml += "<sheetFormatPr defaultRowHeight=\"15\"/><sheetData>"
@@ -188,7 +197,7 @@ public enum LedgerXLSXExporter {
             let excelRow = rowIndex + 1
             xml += "<row r=\"\(excelRow)\">"
             for (columnIndex, cell) in row.enumerated() {
-                let reference = columnName(columnIndex + 1) + String(excelRow)
+                let reference = columnNames[columnIndex] + String(excelRow)
                 switch cell {
                 case let .text(value):
                     xml += "<c r=\"\(reference)\" t=\"inlineStr\"\(rowIndex == 0 ? " s=\"1\"" : "")><is><t xml:space=\"preserve\">\(xmlEscape(value))</t></is></c>"
@@ -217,31 +226,32 @@ public enum LedgerXLSXExporter {
         return result
     }
 
+    /// Drops code points XML 1.0 forbids and escapes markup characters, in
+    /// one pass. Most cells are printable ASCII without markup and return as-is.
     private static func xmlEscape(_ value: String) -> String {
-        var xmlSafe = ""
-        for scalar in value.unicodeScalars {
-            let codePoint = scalar.value
-            let isAllowed = codePoint == 0x09 || codePoint == 0x0a || codePoint == 0x0d
-                || (0x20...0xd7ff).contains(codePoint)
-                || (0xe000...0xfffd).contains(codePoint)
-                || (0x10000...0x10ffff).contains(codePoint)
-            if isAllowed { xmlSafe.unicodeScalars.append(scalar) }
+        let needsWork = value.utf8.contains {
+            $0 < 0x20 || $0 >= 0x7f || $0 == 0x26 || $0 == 0x3c || $0 == 0x3e || $0 == 0x22 || $0 == 0x27
         }
-        return xmlSafe
-            .replacingOccurrences(of: "&", with: "&amp;")
-            .replacingOccurrences(of: "<", with: "&lt;")
-            .replacingOccurrences(of: ">", with: "&gt;")
-            .replacingOccurrences(of: "\"", with: "&quot;")
-            .replacingOccurrences(of: "'", with: "&apos;")
+        guard needsWork else { return value }
+        var escaped = ""
+        escaped.unicodeScalars.reserveCapacity(value.unicodeScalars.count + 16)
+        for scalar in value.unicodeScalars {
+            switch scalar.value {
+            case 0x26: escaped += "&amp;"
+            case 0x3c: escaped += "&lt;"
+            case 0x3e: escaped += "&gt;"
+            case 0x22: escaped += "&quot;"
+            case 0x27: escaped += "&apos;"
+            case 0x09, 0x0a, 0x0d, 0x20...0xd7ff, 0xe000...0xfffd, 0x10000...0x10ffff:
+                escaped.unicodeScalars.append(scalar)
+            default:
+                continue
+            }
+        }
+        return escaped
     }
 
     private static func xmlData(_ value: String) -> Data { Data(value.utf8) }
-
-    private static func iso8601(_ date: Date) -> String {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter.string(from: date)
-    }
 
     private static func dayString(_ key: Int) -> String {
         String(format: "%04d-%02d-%02d", key / 10_000, key / 100 % 100, key % 100)
@@ -357,13 +367,22 @@ private struct StoredZIPArchive {
     }
 }
 
+/// Table-driven CRC-32 (IEEE, reflected 0xEDB88320): one lookup per byte
+/// instead of eight shifts, with the identical result.
 private enum CRC32 {
+    private static let table: [UInt32] = (0..<256).map { index in
+        var crc = UInt32(index)
+        for _ in 0..<8 {
+            crc = (crc >> 1) ^ ((crc & 1) == 1 ? 0xedb88320 : 0)
+        }
+        return crc
+    }
+
     static func checksum(_ data: Data) -> UInt32 {
         var crc = UInt32.max
-        for byte in data {
-            crc ^= UInt32(byte)
-            for _ in 0..<8 {
-                crc = (crc >> 1) ^ ((crc & 1) == 1 ? 0xedb88320 : 0)
+        data.withUnsafeBytes { bytes in
+            for byte in bytes {
+                crc = (crc >> 8) ^ table[Int((crc ^ UInt32(byte)) & 0xff)]
             }
         }
         return crc ^ UInt32.max
