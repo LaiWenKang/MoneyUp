@@ -368,7 +368,10 @@ extension QuickLogEntryView {
     func kindPicker<Style: PickerStyle>(style: Style) -> some View {
         Picker(
             "transaction.kind",
-            selection: trackedBinding($kind, \.kind)
+            // Rows that differ by kind slide in and out instead of popping.
+            selection: trackedBinding($kind, \.kind).animation(
+                MoneyUpMotion.animation(for: .selection, reduceMotion: accessibilityReduceMotion)
+            )
         ) {
             ForEach(QuickLogKind.allCases) { item in
                 Text(item.title).tag(item)

@@ -35,13 +35,13 @@ extension QuickLogEntryView {
             HStack(spacing: 12) {
                 Label {
                     HStack(spacing: 6) {
-                        Text("quick_log.saved")
+                        Text(showsUndoneConfirmation ? LocalizedStringKey("quick_log.removed") : "quick_log.saved")
                         if let lastSavedAmountLabel {
                             Text(verbatim: "·").foregroundStyle(.secondary)
+                            // Amounts never animate: this is the exact figure posted.
                             Text(lastSavedAmountLabel)
                                 .fontWeight(.semibold)
                                 .monospacedDigit()
-                                .contentTransition(.numericText())
                         }
                         // The glyph alone says where it went; a name here
                         // would truncate the amount on a phone-width banner.
@@ -57,13 +57,12 @@ extension QuickLogEntryView {
                         }
                     }
                 } icon: {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(Color.moneyUpPositive)
+                    QuickLogSavedGlyph(entryID: lastSavedEntryID, isUndone: showsUndoneConfirmation)
                 }
                 .foregroundStyle(.primary)
                 .lineLimit(1)
                 Spacer(minLength: 8)
-                if let lastSavedFavouriteCandidate {
+                if !showsUndoneConfirmation, let lastSavedFavouriteCandidate {
                     SaveAsFavouriteButton(
                         candidate: lastSavedFavouriteCandidate,
                         isPresenting: $isNamingFavourite
@@ -75,14 +74,14 @@ extension QuickLogEntryView {
                 }
                 .accessibilityIdentifier("log-undo")
                 .fontWeight(.semibold)
-                .disabled(isUndoing)
+                .disabled(isUndoing || showsUndoneConfirmation)
                 Button {
                     updateSavedEntry(nil)
                 } label: {
                     Image(systemName: "xmark")
                         .frame(minWidth: 44, minHeight: 44)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(MoneyUpPressableButtonStyle())
                 .accessibilityLabel("action.close")
                 .disabled(isUndoing)
             }
@@ -208,5 +207,22 @@ struct LogSaveBar: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
         .background { Color.moneyUpBackground }
+    }
+}
+
+/// The Saved banner's glyph. It bounces once for each new save, so a second
+/// save in a row is visibly new, and turns into the undo arrow once the entry
+/// is removed. The in-app Reduce Motion setting stops the bounce; the system
+/// setting already tones symbol effects down.
+struct QuickLogSavedGlyph: View {
+    let entryID: UUID
+    let isUndone: Bool
+    @Environment(\.moneyUpReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Image(systemName: isUndone ? "arrow.uturn.backward.circle.fill" : "checkmark.circle.fill")
+            .foregroundStyle(isUndone ? Color.secondary : Color.moneyUpPositive)
+            .contentTransition(.symbolEffect(.replace))
+            .symbolEffect(.bounce, options: .nonRepeating, value: reduceMotion ? nil : entryID)
     }
 }

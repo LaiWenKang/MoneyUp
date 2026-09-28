@@ -274,6 +274,7 @@ struct MoneyUpPositionOrbit: View {
 /// pace bar: the arc is spending/limit and the small marker is elapsed month.
 /// Overspend retains a warning glyph, so status is never color-only.
 struct MoneyUpBudgetOrbit: View {
+    @Environment(\.moneyUpReduceMotion) private var reduceMotion
     let ratio: Double
     let elapsed: Double
     /// False when the limit is zero or negative: a percentage of it would be
@@ -299,6 +300,9 @@ struct MoneyUpBudgetOrbit: View {
                         style: StrokeStyle(lineWidth: 6, lineCap: .round)
                     )
                     .rotationEffect(.degrees(-90))
+                    // The arc glides like the pace bar beside it; the percent
+                    // text stays immediate.
+                    .animation(MoneyUpMotion.animation(for: .stateChange, reduceMotion: reduceMotion), value: clampedRatio)
 
                 Circle()
                     .fill(Color.primary)

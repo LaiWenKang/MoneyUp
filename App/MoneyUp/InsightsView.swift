@@ -144,19 +144,21 @@ struct InsightsView: View {
                 MoneyUpAmountPrivacyButton()
             }
         }
+        // Only a selection appearing or disappearing animates. Scrubbing across
+        // the chart must track the finger, and amounts never animate.
         .animation(
             MoneyUpMotion.animation(
                 for: .selection,
                 reduceMotion: reduceMotion
             ),
-            value: selectedCategoryKey
+            value: selectedCategoryKey != nil
         )
         .animation(
             MoneyUpMotion.animation(
                 for: .selection,
                 reduceMotion: reduceMotion
             ),
-            value: selectedFlowMonth
+            value: selectedFlowMonth != nil
         )
         .onChange(of: period) { _, _ in
             selectedCategoryKey = nil

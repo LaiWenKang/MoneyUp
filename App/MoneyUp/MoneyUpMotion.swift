@@ -124,3 +124,44 @@ struct MoneyUpPressableButtonStyle: ButtonStyle {
             )
     }
 }
+
+/// A screen arriving from the lock screen settles in instead of cutting in.
+/// Leaving is always instant, because locking must never linger on financial
+/// data, and Reduce Motion shows the screen at once.
+struct MoneyUpRevealOnAppear: ViewModifier {
+    @Environment(\.moneyUpReduceMotion) private var reduceMotion
+    @State private var isRevealed = false
+
+    func body(content: Content) -> some View {
+        let settled = isRevealed || reduceMotion
+        content
+            .opacity(settled ? 1 : 0.4)
+            .scaleEffect(settled ? 1 : 0.985)
+            .onAppear {
+                withAnimation(MoneyUpMotion.animation(for: .disclosure, reduceMotion: reduceMotion)) {
+                    isRevealed = true
+                }
+            }
+    }
+}
+
+/// Paged content (a month grid) that slides toward where it came from, so
+/// "next" and "previous" read as directions. Old and new pages overlap in one
+/// frame, so the height never jumps; without an animation it simply swaps.
+struct MoneyUpPageTransition<Page: Hashable>: ViewModifier {
+    let page: Page
+    let direction: Int
+
+    func body(content: Content) -> some View {
+        let forward = direction >= 0
+        ZStack {
+            content
+                .id(page)
+                .transition(.asymmetric(
+                    insertion: .move(edge: forward ? .trailing : .leading).combined(with: .opacity),
+                    removal: .move(edge: forward ? .leading : .trailing).combined(with: .opacity)
+                ))
+        }
+        .clipped()
+    }
+}

@@ -441,6 +441,8 @@ struct QuickLogEntryView: View {
     @State var lastSavedEntryID: UUID?
     @State var isUndoing = false
     @State var successFeedback = 0
+    /// Undo succeeded; the banner says so briefly before it leaves.
+    @State var showsUndoneConfirmation = false
     @State var hasRestoredDraft = false
     @State var handledRequestID: UInt64 = 0
     @State var isPresentingReceiptPicker = false
