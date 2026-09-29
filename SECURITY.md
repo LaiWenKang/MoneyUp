@@ -31,6 +31,7 @@ and App Review remain separate release gates.
 | Confirmed deletion for transactions, schedules, and holdings | Implemented |
 | Wrong-key, plaintext-leak, decimal round-trip, and atomic-rollback tests | Test coverage present; exact-candidate execution open |
 | Widget, control and Shortcut actions open Log without authentication only while the auto-lock cover is up (Log alone, no past entries); a closed book opens only after the normal unlock; captures an earlier build kept in its separate encrypted inbox are promoted only after authentication | Implemented |
+| After a save, Siri Suggestions learn only which Log was used (the closed Expense, Income, Transfer or Refund action); TipKit hint state stays in the app container with no CloudKit sync | Implemented (0.7.3) |
 | File-backed chunk-authenticated portable backup and transactional restore | Implemented with v1 compatibility and test coverage; exact-candidate/physical execution open |
 | Missing-device-key detection and keyless `.moneyup` recovery transaction | Implemented with isolated validation, crash-resume, and rollback tests; physical passcode-removal drill open |
 | Previewable local CSV/Qianji import with atomic commit | Implemented with test coverage; exact-candidate execution open |

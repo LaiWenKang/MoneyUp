@@ -40,6 +40,8 @@
     "settings.reminders_detail" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Scheduled on this iPhone only. Reminders never include names or amounts unless you turn that on."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"只在这台 iPhone 上安排。除非你开启，提醒不会包含名称或金额。"}}}},
     "state.not_done" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Not done yet"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"尚未完成"}}}},
     "state.done" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Done"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"已完成"}}}},
+    "tip.scan_receipt.message" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Tap the receipt button to scan with the camera. Touch and hold it to choose a photo."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"轻点收据按钮即可用相机扫描；按住它可从照片中选择。"}}}},
+    "tip.scan_receipt.title" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Scan paper receipts"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"扫描纸质收据"}}}},
     "today.start.progress" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"%1$d of %2$d done"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"已完成 %1$d/%2$d"}}}},
     "today.start.title" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Two steps to a clear month"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"两步看清本月"}}}},
     "plan.pace.over" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Over budget"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"已超支"}}}},

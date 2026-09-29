@@ -168,6 +168,9 @@ APP_INTENTS_SOURCE_ALLOWLIST = {
     # Reviewed 2026-09-29: a Focus filter whose only input is an optional
     # "hide amounts" choice; it changes that display preference and nothing else.
     "App/MoneyUp/MoneyUpFocusFilter.swift",
+    # Reviewed 2026-09-29: donates only the closed Log action after a save, so
+    # Siri Suggestions can offer that Log; nothing about the entry.
+    "App/MoneyUp/QuickLogSiriSuggestions.swift",
     # Reviewed 2026-09-29: the system Siri tip and Shortcuts link, which only
     # show the reviewed Smart Entry phrase and open the Shortcuts app.
     "App/MoneyUp/WidgetsQuickAccessView.swift",
@@ -239,6 +242,7 @@ COMPILED_REFERENCE_INVENTORY = {
         "App/MoneyUp/MoneyUpApp.swift": 1,
         "App/MoneyUp/MoneyUpHomeScreenActions.swift": 5,
         "App/MoneyUp/QuickLogLaunchMode.swift": 1,
+        "App/MoneyUp/QuickLogSiriSuggestions.swift": 1,
         "App/MoneyUp/WidgetsQuickAccessView.swift": 3,
         "App/Shared/MoneyUpQuickAction.swift": 10,
         "App/Shared/QuickLogWidgetCard.swift": 11,
@@ -272,6 +276,7 @@ COMPILED_REFERENCE_INVENTORY = {
     },
     r"\bOpenQuickLogIntent\b": {
         "App/MoneyUp/MoneyUpAppShortcuts.swift": 6,
+        "App/MoneyUp/QuickLogSiriSuggestions.swift": 1,
         "App/MoneyUp/WidgetsQuickAccessView.swift": 1,
         "App/Shared/MoneyUpQuickAction.swift": 2,
         "App/MoneyUpWidget/MoneyUpQuickLogControl.swift": 1,

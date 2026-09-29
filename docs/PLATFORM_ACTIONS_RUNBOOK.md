@@ -294,6 +294,12 @@ and the Shortcuts result. No transaction detail or record identifier may
 appear. Finally, reconcile the locked-capture inbox before and after routing:
 opening an action alone must not append, remove, or reorder any capture.
 
+After a save, MoneyUp donates only the matching Log action so Siri
+Suggestions can offer it at a similar time. Save an expense and a refund, then
+confirm any suggestion on the Lock Screen, in Spotlight, or in Siri history
+names only the Log ("Log Expense"), never the amount, payee, or note. Turning
+off Learn from this App in the system Siri settings stops the donations.
+
 Attach the evidence to the exact candidate record. Keep this gate open until
 all physical surfaces, both languages, locked/unlocked states, and the widget
 upgrade path pass on the signed binary.
