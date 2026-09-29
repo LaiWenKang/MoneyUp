@@ -303,6 +303,7 @@ struct HistoryView: View {
     @State private var filters: HistoryFilterDraft
     @State private var showingFilters = false
     @State private var selectedEntry: JournalEntry?
+    @Namespace private var entryZoom
     @State private var entryPendingDeletion: JournalEntry?
     @State private var errorMessage: String?
     @State private var loadedEntries: [JournalEntry] = []
@@ -326,6 +327,8 @@ struct HistoryView: View {
     @State private var paginationPerformanceMeasurement:
         HistoryPerformanceMeasurement?
     @State private var quickRange: HistoryQuickRange?
+    /// The rolling range a search widened to All; restored when it clears.
+    @State private var rangeBeforeSearch: HistoryQuickRange?
     @State private var lastAppliedRollingDay: ReportingDayIdentity?
     let allowsFiltering: Bool
     let title: String?
@@ -410,6 +413,14 @@ struct HistoryView: View {
 
     private var dayGroups: [HistoryDayGroup] {
         HistoryDayGroup.grouped(loadedEntries, calendar: model.reportingCalendar)
+    }
+
+    /// Nothing in the chosen dates, with no search or other filter narrowing them.
+    private var isQuietPeriod: Bool {
+        appliedSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !filters.hasNonDateAdvancedFilters
+            && filters.categoryIDs == nil
+            && quickRange != .all
     }
 
     private var unavailableTitle: LocalizedStringKey {
@@ -514,6 +525,17 @@ struct HistoryView: View {
                                 }
                             }
                             .listRowBackground(Color.clear)
+                        } else if isQuietPeriod {
+                            MoneyUpStatePlaceholder(
+                                systemImage: "calendar",
+                                tint: .secondary,
+                                title: Text("history.quiet_period"),
+                                detail: Text("history.quiet_period_detail")
+                            ) {
+                                Button("history.show_all") { quickRange = .all }
+                                    .buttonStyle(.bordered)
+                            }
+                            .listRowBackground(Color.clear)
                         } else {
                             MoneyUpStatePlaceholder(
                                 systemImage: "line.3.horizontal.decrease.circle",
@@ -521,6 +543,11 @@ struct HistoryView: View {
                                 title: Text(unavailableTitle),
                                 detail: Text(unavailableDetail)
                             ) {
+                                if !appliedSearchText.isEmpty, quickRange != .all {
+                                    Button("history.search_all_dates") { quickRange = .all }
+                                        .buttonStyle(.borderedProminent)
+                                        .tint(.moneyUpAction)
+                                }
                                 Button("history.clear_filters") { clearHistoryFilters() }
                                     .buttonStyle(.bordered)
                             }
@@ -545,7 +572,12 @@ struct HistoryView: View {
                                             .contentShape(Rectangle())
                                     }
                                     .buttonStyle(.plain)
-                                    .contextMenu { TransactionPreparationActions(entry: entry) }
+                                    .matchedTransitionSource(id: entry.id, in: entryZoom)
+                                    .contextMenu {
+                                        TransactionPreparationActions(entry: entry)
+                                    } preview: {
+                                        TransactionContextPreview(entry: entry)
+                                    }
                                     .swipeActions(edge: .leading, allowsFullSwipe: false) {
                                         TransactionPreparationActions(entry: entry)
                                     }
@@ -640,6 +672,16 @@ struct HistoryView: View {
                 do {
                     try await Task.sleep(for: .milliseconds(250))
                     guard appliedSearchText != searchText else { return }
+                    let scope = HistorySearchScopePolicy.applying(
+                        search: searchText,
+                        after: appliedSearchText,
+                        to: .init(range: quickRange, rangeBeforeSearch: rangeBeforeSearch)
+                    )
+                    rangeBeforeSearch = scope.rangeBeforeSearch
+                    if let range = scope.range, range != quickRange {
+                        quickRange = range
+                        applyQuickRange(range, snapshot: reportingSnapshot)
+                    }
                     appliedSearchText = searchText
                 } catch {
                     // A newer keystroke superseded this search.
@@ -722,6 +764,9 @@ struct HistoryView: View {
                 if model.journalProjectionRevision != shownRevision { refreshGeneration &+= 1 }
             }) { entry in
                 TransactionEditView(entry: entry)
+                    .modifier(TransactionOpenTransition(
+                        id: entry.id, namespace: entryZoom, reducesMotion: reduceMotion
+                    ))
             }
             .confirmationDialog(
                 "transaction.delete_title",
@@ -811,6 +856,7 @@ extension HistoryView {
         let snapshot = reportingSnapshot
         filters = HistoryFilterDraft(now: snapshot.instant, calendar: snapshot.calendar)
         quickRange = .all
+        rangeBeforeSearch = nil
         searchText = ""
         appliedSearchText = ""
     }
@@ -1121,80 +1167,5 @@ extension HistoryView {
             return
         }
         Task { await loadNextPage() }
-    }
-}
-
-struct PendingCaptureHistorySection: View {
-    @Environment(AppModel.self) private var model
-    @State private var isReviewing = false
-    @State private var isConfirmingDiscard = false
-    @State private var errorMessage: String?
-
-    /// Retained for the Log banner's policy tests. History itself no longer
-    /// hosts this section: a waiting capture is Log's business.
-    nonisolated static func isVisible(pendingLockedCaptureCount: Int, draft: QuickLogDraft?) -> Bool {
-        pendingLockedCaptureCount > 0
-    }
-
-    var body: some View {
-        if Self.isVisible(
-            pendingLockedCaptureCount: model.pendingLockedCaptureCount,
-            draft: model.quickLogDraft
-        ) {
-            Section {
-                HStack(spacing: 12) {
-                    MoneyUpSymbolBadge(systemImage: "tray.and.arrow.down.fill", color: Color.moneyUpWarning)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("capture.review_title").font(.subheadline.weight(.semibold))
-                        Text("capture.review_detail").font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-                Button {
-                    Task { await review() }
-                } label: {
-                    Label("backup.review_pending_captures", systemImage: "arrow.right.circle.fill")
-                }
-                .disabled(isReviewing || model.isWorking || model.isJournalMutationInProgress)
-                .accessibilityIdentifier("history-open-pending-capture")
-                if model.pendingLockedCaptureCount > 0 {
-                    Button(role: .destructive) {
-                        isConfirmingDiscard = true
-                    } label: {
-                        Label("capture.discard_pending", systemImage: "trash")
-                    }
-                    .disabled(isReviewing || model.isWorking || model.isJournalMutationInProgress)
-                    .accessibilityIdentifier("history-discard-pending-captures")
-                }
-            }
-            .confirmationDialog(
-                "capture.discard_pending",
-                isPresented: $isConfirmingDiscard,
-                titleVisibility: .visible
-            ) {
-                Button("capture.discard_pending", role: .destructive) {
-                    Task { await discard() }
-                }
-                Button("action.cancel", role: .cancel) {}
-            } message: {
-                Text("capture.discard_pending_detail")
-            }
-            .moneyUpOperationErrorAlert(message: $errorMessage)
-        }
-    }
-
-    private func review() async {
-        guard !isReviewing else { return }
-        isReviewing = true
-        defer { isReviewing = false }
-        do { try await model.reviewPendingLockedCapturesForBackup() }
-        catch { errorMessage = safeUserMessage(for: error, context: .save) }
-    }
-
-    private func discard() async {
-        guard !isReviewing else { return }
-        isReviewing = true
-        defer { isReviewing = false }
-        do { try await model.discardPendingLockedCaptures() }
-        catch { errorMessage = safeUserMessage(for: error, context: .save) }
     }
 }
