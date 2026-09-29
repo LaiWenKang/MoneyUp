@@ -18,6 +18,7 @@ and App Review remain separate release gates.
 | Non-synchronizing Keychain item with `WhenPasscodeSetThisDeviceOnly` and user presence | Implemented |
 | Configurable timed auto-lock cover; Lock now closes the store and clears decoded state | Implemented (0.7.3 changes auto-lock from close to cover; see Key lifecycle step 5) |
 | App-switcher privacy cover while inactive | Implemented |
+| Focus filter that can hide amounts while a chosen Focus is on and restores the user's choice when it ends; it changes only that display preference | Implemented (0.7.3) |
 | iOS file protection for the database | Implemented |
 | Privacy-redacted quick-action widget with no financial values | Implemented |
 | Exact App Group allowlist: non-financial language preference, atomic schema-4 redacted summary, and bounded data-free quick-action ingress file | Implemented; signing/device gate open |

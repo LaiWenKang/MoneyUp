@@ -1,3 +1,4 @@
+import AppIntents
 import MoneyUpCore
 import SwiftUI
 
@@ -5,6 +6,7 @@ import SwiftUI
 /// Control Center / Lock Screen / Action button control, Siri, favourites,
 /// and the privacy switches that govern them.
 struct WidgetsQuickAccessView: View {
+    @AppStorage("moneyup.quick-access.siri-tip") private var showsSiriTip = true
     @Environment(AppModel.self) private var model
     @State private var previewFamily: QuickLogWidgetLayoutFamily = .medium
     @State private var previewAction: MoneyUpQuickAction = .expense
@@ -46,6 +48,16 @@ struct WidgetsQuickAccessView: View {
                     systemImage: "waveform",
                     title: "quick_access.siri_title",
                     detail: "quick_access.siri_detail"
+                )
+                // The system's own tip shows the exact phrase to say; dismissed once, it stays away.
+                SiriTipView(intent: OpenQuickLogIntent(action: .smartEntry), isVisible: $showsSiriTip)
+                ShortcutsLink()
+                    .shortcutsLinkStyle(.automaticOutline)
+                    .frame(maxWidth: .infinity)
+                QuickAccessSurfaceRow(
+                    systemImage: "moon",
+                    title: "quick_access.focus_title",
+                    detail: "quick_access.focus_detail"
                 )
             } header: {
                 MoneyUpSectionHeader("quick_access.more_ways", explanation: "quick_access.more_ways_detail")

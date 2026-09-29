@@ -268,6 +268,10 @@ numbers. Widget configuration preservation remains a physical migration gate.
    Quick Expense, Quick Income, Smart Entry and Choose Receipt from a cold
    start, with the book covered, and with it locked. Each opens the matching
    Log mode exactly as the widget does, and none records anything by itself.
+8. Focus filter (0.7.3): add MoneyUp's "Amounts" filter to a Focus with
+   Hide amounts on. Turning the Focus on masks every amount; turning it off
+   restores the previous choice, unless amounts were changed by hand during
+   the Focus, which is kept. The filter never opens the app or shows book data.
 
 ## 5. Privacy and persistence inspection
 
