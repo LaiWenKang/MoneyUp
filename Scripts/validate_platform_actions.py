@@ -182,6 +182,9 @@ PLATFORM_REFERENCE_ALLOWLIST = APP_INTENTS_SOURCE_ALLOWLIST | {
     "App/MoneyUp/AppModelSettings.swift",
     "App/MoneyUp/AppModelValidation.swift",
     "App/MoneyUp/MoneyUpApp.swift",
+    # Reviewed 2026-09-29: Home Screen quick actions submit one data-free action
+    # through the same broker as Siri, widgets and controls.
+    "App/MoneyUp/MoneyUpHomeScreenActions.swift",
     "App/MoneyUp/MoneyUpQuickActionRouting.swift",
     "App/MoneyUp/QuickLogEntryDraft.swift",
     "App/MoneyUp/QuickLogLaunchMode.swift",
@@ -228,6 +231,7 @@ COMPILED_REFERENCE_INVENTORY = {
     r"\bMoneyUpQuickAction\b": {
         "App/MoneyUp/AppModelLifecycle.swift": 1,
         "App/MoneyUp/MoneyUpApp.swift": 1,
+        "App/MoneyUp/MoneyUpHomeScreenActions.swift": 5,
         "App/MoneyUp/QuickLogLaunchMode.swift": 1,
         "App/MoneyUp/WidgetsQuickAccessView.swift": 3,
         "App/Shared/MoneyUpQuickAction.swift": 10,
@@ -237,6 +241,7 @@ COMPILED_REFERENCE_INVENTORY = {
     r"\bMoneyUpQuickActionRouteBroker\b": {
         "App/MoneyUp/AppModel.swift": 5,
         "App/MoneyUp/MoneyUpApp.swift": 1,
+        "App/MoneyUp/MoneyUpHomeScreenActions.swift": 1,
         "App/MoneyUp/MoneyUpQuickActionRouting.swift": 1,
         "App/Shared/MoneyUpQuickAction.swift": 3,
     },
