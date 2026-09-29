@@ -87,10 +87,13 @@ extension QuickLogEntryView {
     /// The scanned receipt as evidence, when the user chose to keep it.
     func retainedReceiptEvidence() throws -> ReceiptAttachmentDraft? {
         guard retainReceiptAttachment, let receiptAttachmentData else { return nil }
+        let mediaType = ReceiptAttachmentMediaType.detected(from: receiptAttachmentData)
         return try ReceiptAttachmentDraft(
-            mediaType: .detected(from: receiptAttachmentData),
+            mediaType: mediaType,
             data: receiptAttachmentData,
-            displayName: AppLocalization.string("evidence.scanned_receipt"),
+            displayName: AppLocalization.string(
+                mediaType == .pdf ? "evidence.receipt_pdf" : "evidence.scanned_receipt"
+            ),
             searchText: receiptResult?.recognizedText
         )
     }

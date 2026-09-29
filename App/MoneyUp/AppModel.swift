@@ -471,7 +471,7 @@ final class AppModel {
         lockedCaptureStore = LockedCaptureStore()
         lockedFavouriteStore = LockedFavouriteShortcutStore()
         receiptRecognizer = { data in
-            try await ReceiptScanner.recognize(inImageData: data)
+            try await ReceiptDocumentReader.recognize(data)
         }
         lifecycleHooks = .none
         databaseURLForErase = nil
@@ -510,7 +510,7 @@ final class AppModel {
         lockedCaptureStore: any LockedCaptureStoring = LockedCaptureStore(),
         lockedFavouriteStore: any LockedFavouriteShortcutStoring = InMemoryLockedFavouriteShortcutStore(),
         receiptRecognizer: @escaping ReceiptLineRecognizer = { data in
-            try await ReceiptScanner.recognize(inImageData: data)
+            try await ReceiptDocumentReader.recognize(data)
         },
         lifecycleHooks: AppModelLifecycleHooks = .none,
         databaseURLForErase: URL? = nil,

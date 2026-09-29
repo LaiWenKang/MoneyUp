@@ -88,6 +88,7 @@ extension QuickLogEntryView {
             retainReceiptAttachment = false
             receiptRetentionMessage = nil
             isPresentingReceiptPicker = false
+            isPresentingReceiptFilePicker = false
             dismissKeyboard()
             isHandlingFocusedLaunch = false
             return

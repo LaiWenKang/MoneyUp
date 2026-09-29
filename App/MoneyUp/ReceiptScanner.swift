@@ -5,13 +5,16 @@ import MoneyUpCore
 import Vision
 
 enum ReceiptScannerError: Error, LocalizedError {
-    case unreadableImage
+    case unreadable
+    case lockedDocument
     case noTextFound
 
     var errorDescription: String? {
         switch self {
-        case .unreadableImage:
+        case .unreadable:
             return AppLocalization.string("scan.error_unreadable")
+        case .lockedDocument:
+            return AppLocalization.string("scan.error_locked")
         case .noTextFound:
             return AppLocalization.string("scan.error_no_text")
         }
@@ -236,7 +239,7 @@ private final class ReceiptRecognitionOperation: @unchecked Sendable {
         try checkCancellation()
         trace(.decode)
         guard let image = Self.preparedImage(from: imageData, trace: trace) else {
-            throw ReceiptScannerError.unreadableImage
+            throw ReceiptScannerError.unreadable
         }
         try checkCancellation()
 

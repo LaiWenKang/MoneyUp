@@ -85,8 +85,9 @@ struct AssetsOverviewSection: View {
 }
 
 
-/// Snapshot lives in the toolbar as a camera glyph; the confirmation is a
-/// brief label that replaces the glyph, then returns.
+/// Snapshot lives in the toolbar as a chart glyph, never a camera (the receipt
+/// scanner is the only camera in the app); the confirmation is a brief label
+/// that replaces the glyph, then returns.
 struct AssetsSnapshotToolbarButton: View {
     @Environment(AppModel.self) private var model
     @Environment(\.moneyUpReduceMotion) private var reduceMotion
@@ -105,7 +106,7 @@ struct AssetsSnapshotToolbarButton: View {
                     .labelStyle(.titleAndIcon)
                     .font(.caption.weight(.semibold))
             } else {
-                Label("assets.capture_snapshot", systemImage: "camera.aperture")
+                Label("assets.capture_snapshot", systemImage: "chart.xyaxis.line")
             }
         }
         .disabled(isCapturing)
