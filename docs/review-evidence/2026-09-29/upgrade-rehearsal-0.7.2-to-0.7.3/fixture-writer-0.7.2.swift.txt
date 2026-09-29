@@ -1,0 +1,297 @@
+import CryptoKit
+import Foundation
+@testable import MoneyUpCore
+@testable import MoneyUpPersistence
+import XCTest
+
+/// Throwaway rehearsal: writes a realistic, used book with the real 0.7.2
+/// store, so the 0.7.3 store can be run against genuine 0.7.2 bytes.
+final class ZZUpgradeFixtureWriterTests: XCTestCase {
+    private struct Rng {
+        var state: UInt64
+        mutating func next() -> UInt64 {
+            state = state &* 6364136223846793005 &+ 1442695040888963407
+            return state >> 16
+        }
+        mutating func below(_ bound: Int) -> Int { Int(next() % UInt64(bound)) }
+    }
+
+    private struct QuickLogDraft: Codable, Equatable, Sendable {
+        let amountText: String
+        let note: String
+    }
+
+    private struct Manifest: Codable {
+        var keyHex: String
+        var schemaVersion: Int32
+        var digest: String
+        var recordCounts: [String: Int]
+        var entryCount: Int
+        var balances: [String: String]
+        var referenceTotal: Int
+        var issueCount: Int
+        var journalRecordCount: Int
+        var indexedEntryCount: Int
+        var indexedPostingCount: Int
+        var fileSizes: [String: Int]
+    }
+
+    private static func fixtureUUID(_ tag: UInt32, _ index: Int) -> UUID {
+        UUID(uuidString: String(format: "%08X-0000-4000-8000-%012llX", tag, UInt64(index)))!
+    }
+
+    private static func digest(of snapshot: DatabaseSnapshot) -> String {
+        var hasher = SHA256()
+        let records = snapshot.records.sorted {
+            ($0.collection, $0.recordID) < ($1.collection, $1.recordID)
+        }
+        for record in records {
+            hasher.update(data: Data(record.collection.utf8))
+            hasher.update(data: Data([0]))
+            hasher.update(data: Data(record.recordID.utf8))
+            hasher.update(data: Data([0]))
+            var count = UInt64(record.payload.count)
+            withUnsafeBytes(of: &count) { hasher.update(bufferPointer: $0) }
+            hasher.update(data: record.payload)
+            var stamp = record.updatedAt.bitPattern
+            withUnsafeBytes(of: &stamp) { hasher.update(bufferPointer: $0) }
+        }
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+    }
+
+    private static func manifest(
+        of store: EncryptedRecordStore,
+        accountIDs: Set<UUID>,
+        key: Data
+    ) async throws -> Manifest {
+        let snapshot = try await store.snapshot()
+        let counts = try await store.recordCountSnapshot()
+        let ledger = try await store.journalLedgerIndex(validAccountIDs: accountIDs)
+        let diagnostics = try await store.journalIndexDiagnostics()
+        var balances: [String: String] = [:]
+        for (accountID, byCurrency) in ledger.balances {
+            for (currency, money) in byCurrency {
+                balances["\(accountID.uuidString)/\(currency.value)"] = "\(money.amount)"
+            }
+        }
+        return Manifest(
+            keyHex: key.map { String(format: "%02x", $0) }.joined(),
+            schemaVersion: counts.schemaVersion,
+            digest: digest(of: snapshot),
+            recordCounts: counts.storedRecordCounts,
+            entryCount: ledger.entryCount,
+            balances: balances,
+            referenceTotal: ledger.referenceCounts.values.reduce(0, +),
+            issueCount: ledger.issues.count,
+            journalRecordCount: diagnostics.journalRecordCount,
+            indexedEntryCount: diagnostics.indexedEntryCount,
+            indexedPostingCount: diagnostics.indexedPostingCount,
+            fileSizes: [:]
+        )
+    }
+
+    func testWriteUpgradeFixture() async throws {
+        guard let path = ProcessInfo.processInfo.environment["UPGRADE_FIXTURE_DIR"] else {
+            throw XCTSkip("UPGRADE_FIXTURE_DIR is not set")
+        }
+        let fm = FileManager.default
+        let root = URL(fileURLWithPath: path, isDirectory: true)
+        try? fm.removeItem(at: root)
+        let work = root.appendingPathComponent("work", isDirectory: true)
+        let walpending = root.appendingPathComponent("walpending", isDirectory: true)
+        let clean = root.appendingPathComponent("clean", isDirectory: true)
+        let walcheck = root.appendingPathComponent("walcheck", isDirectory: true)
+        let selfcheck = root.appendingPathComponent("selfcheck", isDirectory: true)
+        for directory in [work, walpending, clean, walcheck, selfcheck] {
+            try fm.createDirectory(at: directory, withIntermediateDirectories: true)
+        }
+
+        // A key with NUL, quote and 0xFF bytes: what a random Keychain key can look like.
+        var keyBytes = Array(SHA256.hash(data: Data("moneyup-0.7.2-upgrade-fixture".utf8)))
+        keyBytes[0] = 0x00
+        keyBytes[3] = 0x27
+        keyBytes[9] = 0x00
+        keyBytes[31] = 0xFF
+        let key = Data(keyBytes)
+
+        let databaseURL = work.appendingPathComponent("moneyup.sqlite")
+        let store = try EncryptedRecordStore(databaseURL: databaseURL, key: key)
+        let sgd = try CurrencyCode("SGD")
+
+        let assets = ["Wallet", "DBS Checking", "OCBC Savings", "CPF"].enumerated().map { index, name in
+            LedgerAccount(id: Self.fixtureUUID(1, index), name: name, kind: .asset, currency: sgd)
+        }
+        let cards = [LedgerAccount(id: Self.fixtureUUID(1, 10), name: "Visa", kind: .liability, currency: sgd)]
+        let incomes = ["Salary", "Freelance"].enumerated().map { index, name in
+            LedgerAccount(id: Self.fixtureUUID(1, 20 + index), name: name, kind: .income, currency: sgd)
+        }
+        let expenses = ["Food", "Transport", "Groceries", "Rent", "Health", "Fun", "Travel"]
+            .enumerated().map { index, name in
+                LedgerAccount(id: Self.fixtureUUID(1, 30 + index), name: name, kind: .expense, currency: sgd)
+            }
+        let accounts = assets + cards + incomes + expenses
+        try await store.write(
+            try accounts.map { try RecordWrite($0, id: $0.id.uuidString, in: .accounts) }
+        )
+
+        let payees = [
+            "Kopi Corner", "MRT", "FairPrice", "Landlord", "Clinic", "Cinema", "Grab",
+            "Shopee", "Hawker Centre", "Employer Pte Ltd", "Client", "Pharmacy"
+        ]
+        let filler = String(repeating: "receipt note with some longer free text about the purchase; ", count: 12)
+        let base = Date(timeIntervalSinceReferenceDate: 780_000_000)
+        let entryCount = 2_400
+
+        func makeEntry(_ index: Int, revision: Int) throws -> JournalEntry {
+            var rng = Rng(state: UInt64(index) &* 0x9E37_79B9_7F4A_7C15 &+ UInt64(revision) &+ 1)
+            let cents = 50 + rng.below(400_000)
+            let amount = Decimal(sign: .plus, exponent: -2, significand: Decimal(cents))
+            let occurredAt = base.addingTimeInterval(-Double(rng.below(3 * 365 * 24 * 3600)))
+            let isIncome = rng.below(12) == 0
+            let source = (assets + cards)[rng.below(assets.count + cards.count)]
+            let category = isIncome ? incomes[rng.below(incomes.count)] : expenses[rng.below(expenses.count)]
+            let noteLength = rng.below(5) == 0 ? 200 + rng.below(400) : rng.below(60)
+            let note: String? = noteLength == 0 ? nil : String(filler.prefix(noteLength))
+            let payee = payees[rng.below(payees.count)]
+            let postings = isIncome
+                ? [
+                    Posting(accountID: source.id, money: try Money(amount, currency: sgd)),
+                    Posting(accountID: category.id, money: try Money(-amount, currency: sgd))
+                ]
+                : [
+                    Posting(accountID: category.id, money: try Money(amount, currency: sgd)),
+                    Posting(accountID: source.id, money: try Money(-amount, currency: sgd))
+                ]
+            return try JournalEntry(
+                id: Self.fixtureUUID(2, index),
+                kind: isIncome ? .income : .expense,
+                occurredAt: occurredAt,
+                createdAt: occurredAt,
+                payee: payee,
+                note: note,
+                postings: postings
+            )
+        }
+
+        for start in stride(from: 0, to: entryCount, by: 200) {
+            let batch = try (start..<min(start + 200, entryCount)).map { index -> RecordWrite in
+                let entry = try makeEntry(index, revision: 0)
+                return try RecordWrite(entry, id: entry.id.uuidString, in: .journalEntries)
+            }
+            try await store.write(batch)
+        }
+
+        // Edit some entries in place, then delete others: a used, fragmented book.
+        let edited = try stride(from: 7, to: entryCount, by: 16).prefix(150).map { index -> RecordWrite in
+            let entry = try makeEntry(index, revision: 1)
+            return try RecordWrite(entry, id: entry.id.uuidString, in: .journalEntries)
+        }
+        try await store.write(edited)
+        let deleted = stride(from: 3, to: entryCount, by: 24).prefix(100).map {
+            RecordDeletion(id: Self.fixtureUUID(2, $0).uuidString, from: .journalEntries)
+        }
+        try await store.write([], removing: deleted)
+
+        // Receipts: sizeable encrypted blobs with a searchable index.
+        for job in 1...6 {
+            var rng = Rng(state: UInt64(job) &* 0xD1B5_4A32_D192_ED03)
+            var bytes = Data("%PDF-1.7\n".utf8)
+            let size = 24_000 + 30_000 * job
+            while bytes.count < size {
+                var word = rng.next()
+                withUnsafeBytes(of: &word) { bytes.append(contentsOf: $0) }
+            }
+            let attachment = try ReceiptAttachment(
+                id: Self.fixtureUUID(3, job),
+                entryID: Self.fixtureUUID(2, 100 * job + 1),
+                mediaType: .pdf,
+                data: bytes,
+                createdAt: base,
+                displayName: "receipt-\(job).pdf",
+                searchText: "FairPrice Jurong Point SGD \(job * 17).50",
+                classificationLabels: ["groceries", "document"]
+            )
+            try await store.upsert(attachment, id: attachment.id.uuidString, in: .receiptAttachments)
+        }
+
+        // Savings goals and an unfinished quick-log draft.
+        for job in 1...3 {
+            var goal = try SavingsGoal(
+                name: "Goal \(job)",
+                kind: .savingsGoal,
+                target: try Money(Decimal(string: "\(job * 1000).00")!, currency: sgd),
+                targetDate: Date(timeIntervalSinceReferenceDate: 790_000_000),
+                createdAt: base
+            )
+            goal = try goal.adding(try SavingsGoalMovement(
+                kind: .contribution,
+                money: try Money(Decimal(string: "\(job * 12).34")!, currency: sgd),
+                occurredAt: base,
+                originTimeZoneIdentifier: "Asia/Singapore"
+            ))
+            try await store.upsert(goal, id: goal.id.uuidString, in: .savingsGoals)
+        }
+        try await store.upsert(
+            QuickLogDraft(amountText: "4.50", note: "kopi, unfinished"),
+            id: "current",
+            in: .quickLogDrafts
+        )
+
+        // Final small saves: these are the frames still in the write-ahead log when it is killed.
+        for tail in 0..<5 {
+            var account = accounts[30 % accounts.count]
+            account.name = "Renamed \(tail)"
+            try await store.upsert(account, id: account.id.uuidString, in: .accounts)
+        }
+
+        let accountIDs = Set((try await store.fetchAll(LedgerAccount.self, from: .accounts)).map(\.id))
+        var live = try await Self.manifest(of: store, accountIDs: accountIDs, key: key)
+
+        // 1. Copy the files exactly as they are while the book is open (an app killed mid-flight).
+        for suffix in ["", "-wal", "-shm"] {
+            let source = URL(fileURLWithPath: databaseURL.path + suffix)
+            guard fm.fileExists(atPath: source.path) else { continue }
+            try fm.copyItem(at: source, to: walpending.appendingPathComponent("moneyup.sqlite" + suffix))
+        }
+        let walSize = (try? fm.attributesOfItem(atPath: databaseURL.path + "-wal")[.size] as? Int) ?? 0
+        XCTAssertGreaterThan(walSize, 0, "the fixture must carry a write-ahead log")
+
+        // 2. Prove the log matters: the book file alone must not hold the last saves.
+        try fm.copyItem(at: databaseURL, to: walcheck.appendingPathComponent("moneyup.sqlite"))
+        let walOnly = try EncryptedRecordStore(
+            databaseURL: walcheck.appendingPathComponent("moneyup.sqlite"),
+            key: key
+        )
+        let walOnlyManifest = try await Self.manifest(of: walOnly, accountIDs: accountIDs, key: key)
+        await walOnly.close()
+        XCTAssertNotEqual(
+            walOnlyManifest.digest, live.digest,
+            "the last saves must live only in the write-ahead log"
+        )
+
+        // 3. Close cleanly and keep the closed book.
+        await store.close()
+        try fm.copyItem(at: databaseURL, to: clean.appendingPathComponent("moneyup.sqlite"))
+        XCTAssertFalse(fm.fileExists(atPath: databaseURL.path + "-wal"), "a clean close removes the log")
+
+        // 4. The closed copy must read back identically through the 0.7.2 store.
+        let selfURL = selfcheck.appendingPathComponent("moneyup.sqlite")
+        try fm.copyItem(at: clean.appendingPathComponent("moneyup.sqlite"), to: selfURL)
+        let reread = try EncryptedRecordStore(databaseURL: selfURL, key: key)
+        let rereadManifest = try await Self.manifest(of: reread, accountIDs: accountIDs, key: key)
+        await reread.close()
+        XCTAssertEqual(rereadManifest.digest, live.digest)
+
+        for (name, directory) in [("clean", clean), ("walpending", walpending)] {
+            let files = try fm.contentsOfDirectory(atPath: directory.path)
+            for file in files {
+                let size = (try fm.attributesOfItem(atPath: directory.appendingPathComponent(file).path)[.size] as? Int) ?? 0
+                live.fileSizes["\(name)/\(file)"] = size
+            }
+        }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try encoder.encode(live).write(to: root.appendingPathComponent("manifest.json"))
+        print("FIXTURE WRITTEN: \(live.recordCounts.filter { $0.value > 0 }) digest=\(live.digest) sizes=\(live.fileSizes)")
+    }
+}

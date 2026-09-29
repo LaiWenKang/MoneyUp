@@ -1,0 +1,18 @@
+Test Case '-[MoneyUpPersistenceTests.ZZUpgradeFixtureReaderTests testBackupOfAMovedBookRestoresIntoAFreshBook]' started.
+Test Case '-[MoneyUpPersistenceTests.ZZUpgradeFixtureReaderTests testBackupOfAMovedBookRestoresIntoAFreshBook]' passed (2.254 seconds).
+Test Case '-[MoneyUpPersistenceTests.ZZUpgradeFixtureReaderTests testBookKilledWithWritesStillInTheLogMovesToTheRawKey]' started.
+Test Case '-[MoneyUpPersistenceTests.ZZUpgradeFixtureReaderTests testBookKilledWithWritesStillInTheLogMovesToTheRawKey]' passed (0.594 seconds).
+Test Case '-[MoneyUpPersistenceTests.ZZUpgradeFixtureReaderTests testCleanBookMovesToTheRawKey]' started.
+Test Case '-[MoneyUpPersistenceTests.ZZUpgradeFixtureReaderTests testCleanBookMovesToTheRawKey]' passed (0.542 seconds).
+Test Case '-[MoneyUpPersistenceTests.ZZUpgradeFixtureReaderTests testFailedMoveOnACleanBookKeepsItAndRetriesADayLater]' started.
+Test Case '-[MoneyUpPersistenceTests.ZZUpgradeFixtureReaderTests testFailedMoveOnACleanBookKeepsItAndRetriesADayLater]' passed (0.811 seconds).
+Test Case '-[MoneyUpPersistenceTests.ZZUpgradeFixtureReaderTests testFailedMoveOnALogCarryingBookKeepsEveryWrite]' started.
+Test Case '-[MoneyUpPersistenceTests.ZZUpgradeFixtureReaderTests testFailedMoveOnALogCarryingBookKeepsEveryWrite]' passed (0.899 seconds).
+Test Case '-[MoneyUpPersistenceTests.ZZUpgradeFixtureReaderTests testStaleCopyBesideALogCarryingBookIsReplaced]' started.
+Test Case '-[MoneyUpPersistenceTests.ZZUpgradeFixtureReaderTests testStaleCopyBesideALogCarryingBookIsReplaced]' passed (0.330 seconds).
+Test Case '-[MoneyUpPersistenceTests.ZZUpgradeFixtureReaderTests testWrongKeyCannotOpenEitherRealBookAndLosesNothing]' started.
+Test Case '-[MoneyUpPersistenceTests.ZZUpgradeFixtureReaderTests testWrongKeyCannotOpenEitherRealBookAndLosesNothing]' passed (0.981 seconds).
+	 Executed 7 tests, with 0 failures (0 unexpected) in 6.410 (6.413) seconds
+REHEARSAL walpending: first unlock incl. key move 0.319841333 seconds; next unlock 0.001100375 seconds; file 6340608 -> 6799360 bytes; records ["journal_entries": 2300, "quick_log_drafts": 1, "savings_goals": 3, "accounts": 14, "receipt_attachments": 6]
+REHEARSAL clean: first unlock incl. key move 0.291391917 seconds; next unlock 0.001029334 seconds; file 7380992 -> 6799360 bytes; records ["receipt_attachments": 6, "savings_goals": 3, "journal_entries": 2300, "quick_log_drafts": 1, "accounts": 14]
+exit=0

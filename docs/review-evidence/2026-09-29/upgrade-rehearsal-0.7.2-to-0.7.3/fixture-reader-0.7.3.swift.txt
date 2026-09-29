@@ -1,0 +1,324 @@
+import CryptoKit
+import Foundation
+@testable import MoneyUpCore
+@testable import MoneyUpPersistence
+import XCTest
+
+/// Throwaway rehearsal: opens books written by the real 0.7.2 store with the
+/// 0.7.3 store, so the key move runs on genuine 0.7.2 bytes.
+final class ZZUpgradeFixtureReaderTests: XCTestCase {
+    private struct Manifest: Codable {
+        var keyHex: String
+        var schemaVersion: Int32
+        var digest: String
+        var recordCounts: [String: Int]
+        var entryCount: Int
+        var balances: [String: String]
+        var referenceTotal: Int
+        var issueCount: Int
+        var journalRecordCount: Int
+        var indexedEntryCount: Int
+        var indexedPostingCount: Int
+        var fileSizes: [String: Int]
+    }
+
+    private var fixtureRoot: URL!
+    private var scratch: URL!
+    private var expected: Manifest!
+    private var key: Data!
+
+    override func setUpWithError() throws {
+        guard let path = ProcessInfo.processInfo.environment["UPGRADE_FIXTURE_DIR"] else {
+            throw XCTSkip("UPGRADE_FIXTURE_DIR is not set")
+        }
+        fixtureRoot = URL(fileURLWithPath: path, isDirectory: true)
+        expected = try JSONDecoder().decode(
+            Manifest.self,
+            from: Data(contentsOf: fixtureRoot.appendingPathComponent("manifest.json"))
+        )
+        key = Self.data(fromHex: expected.keyHex)
+        XCTAssertEqual(key.count, 32)
+        scratch = FileManager.default.temporaryDirectory
+            .appendingPathComponent("zz-upgrade-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
+    }
+
+    override func tearDownWithError() throws {
+        if let scratch { try? FileManager.default.removeItem(at: scratch) }
+    }
+
+    // MARK: - Scenarios
+
+    func testCleanBookMovesToTheRawKey() async throws {
+        try await runMove(fixture: "clean")
+    }
+
+    func testBookKilledWithWritesStillInTheLogMovesToTheRawKey() async throws {
+        try await runMove(fixture: "walpending")
+    }
+
+    func testFailedMoveOnACleanBookKeepsItAndRetriesADayLater() async throws {
+        try await runFailedMove(fixture: "clean")
+    }
+
+    func testFailedMoveOnALogCarryingBookKeepsEveryWrite() async throws {
+        try await runFailedMove(fixture: "walpending")
+    }
+
+    func testStaleCopyBesideALogCarryingBookIsReplaced() async throws {
+        let url = try stage("walpending", as: "stale")
+        let copyURL = SQLCipherConnection.legacyKeyMoveURL(for: url)
+        try Data(repeating: 0xA5, count: 1_048_576).write(to: copyURL)
+        try Data(repeating: 0x5A, count: 4_096).write(to: URL(fileURLWithPath: copyURL.path + "-journal"))
+
+        let store = try EncryptedRecordStore(databaseURL: url, key: key)
+        try await assertBook(store)
+        await store.close()
+        XCTAssertEqual(keyForm(of: url), .raw)
+        XCTAssertEqual(try directoryEntries(of: url), ["moneyup.sqlite"])
+    }
+
+    func testWrongKeyCannotOpenEitherRealBookAndLosesNothing() async throws {
+        for fixture in ["clean", "walpending"] {
+            let url = try stage(fixture, as: "wrongkey-\(fixture)")
+            XCTAssertThrowsError(
+                try EncryptedRecordStore(databaseURL: url, key: Data(repeating: 0x22, count: 32))
+            ) { error in
+                XCTAssertEqual((error as? PersistenceError)?.isNotADatabase, true, "\(error)")
+            }
+            XCTAssertEqual(try directoryEntries(of: url).filter { $0.contains("rawkey") }, [])
+            let store = try EncryptedRecordStore(databaseURL: url, key: key)
+            try await assertBook(store)
+            await store.close()
+            XCTAssertEqual(keyForm(of: url), .raw, fixture)
+        }
+    }
+
+    func testBackupOfAMovedBookRestoresIntoAFreshBook() async throws {
+        let url = try stage("walpending", as: "backup")
+        let store = try EncryptedRecordStore(databaseURL: url, key: key)
+        let archive = scratch.appendingPathComponent("backup.moneyup")
+        try await store.exportPortableArchive(to: archive, password: "rehearsal passphrase")
+        await store.close()
+
+        let freshURL = scratch.appendingPathComponent("fresh", isDirectory: true)
+            .appendingPathComponent("moneyup.sqlite")
+        let fresh = try EncryptedRecordStore(databaseURL: freshURL, key: Data(repeating: 0x33, count: 32))
+        try await fresh.restorePortableArchive(from: archive, password: "rehearsal passphrase")
+        let snapshot = try await fresh.snapshot()
+        let sourceDigest = try await digestWithoutTimestamps(url)
+        XCTAssertEqual(Self.digest(of: snapshot, includingTimestamps: false), sourceDigest)
+        await fresh.close()
+    }
+
+    // MARK: - Scenario bodies
+
+    private func runMove(fixture: String) async throws {
+        let probe = try stage(fixture, as: "\(fixture)-probe")
+        XCTAssertEqual(keyForm(of: probe), .passphrase, "the fixture must be a genuine passphrase-keyed 0.7.2 book")
+
+        let url = try stage(fixture, as: fixture)
+        let sizeBefore = try fileSize(url)
+        let clock = ContinuousClock()
+
+        let started = clock.now
+        let store = try EncryptedRecordStore(databaseURL: url, key: key)
+        let firstOpen = clock.now - started
+        try await assertBook(store)
+        await store.close()
+
+        XCTAssertEqual(keyForm(of: url), .raw, "the book must be raw-keyed after the first unlock")
+        XCTAssertEqual(try directoryEntries(of: url), ["moneyup.sqlite"], "no copy, marker or log may stay behind")
+        let sizeAfter = try fileSize(url)
+
+        let secondStart = clock.now
+        let again = try EncryptedRecordStore(databaseURL: url, key: key)
+        let secondOpen = clock.now - secondStart
+        try await assertBook(again)
+
+        let sgd = try CurrencyCode("SGD")
+        let extra = LedgerAccount(name: "Added after the move", kind: .asset, currency: sgd)
+        let entries = try await again.fetchAll(JournalEntry.self, from: .journalEntries)
+        let victim = try XCTUnwrap(entries.first)
+        try await again.write(
+            [try RecordWrite(extra, id: extra.id.uuidString, in: .accounts)],
+            removing: [RecordDeletion(id: victim.id.uuidString, from: .journalEntries)]
+        )
+        await again.close()
+
+        let third = try EncryptedRecordStore(databaseURL: url, key: key)
+        let counts = try await third.recordCountSnapshot().storedRecordCounts
+        XCTAssertEqual(counts["accounts"], (expected.recordCounts["accounts"] ?? 0) + 1)
+        XCTAssertEqual(counts["journal_entries"], (expected.recordCounts["journal_entries"] ?? 0) - 1)
+        let stored = try await third.fetch(LedgerAccount.self, id: extra.id.uuidString, from: .accounts)
+        XCTAssertEqual(stored, extra)
+        let gone = try await third.fetch(JournalEntry.self, id: victim.id.uuidString, from: .journalEntries)
+        XCTAssertNil(gone)
+        await third.close()
+        XCTAssertEqual(keyForm(of: url), .raw)
+
+        print("""
+        REHEARSAL \(fixture): first unlock incl. key move \(firstOpen); next unlock \(secondOpen); \
+        file \(sizeBefore) -> \(sizeAfter) bytes; records \(expected.recordCounts.filter { $0.value > 0 })
+        """)
+    }
+
+    private func runFailedMove(fixture: String) async throws {
+        let url = try stage(fixture, as: "failed-\(fixture)")
+
+        let failing = try SQLCipherConnection(
+            databaseURL: url,
+            key: key,
+            supportedSchemaVersion: EncryptedRecordStore.currentSchemaVersion,
+            legacyKeyMove: .failAfterCopyForTesting
+        )
+        let accountRows = try failing.fetchAll(collection: RecordCollection.accounts.rawValue)
+        XCTAssertEqual(accountRows.count, expected.recordCounts["accounts"])
+        failing.close()
+
+        XCTAssertEqual(keyForm(of: url), .passphrase, "a failed move must leave the book as it was")
+        let marker = SQLCipherConnection.legacyKeyMoveDeferralURL(for: url)
+        XCTAssertEqual(
+            try directoryEntries(of: url).filter { $0 != "moneyup.sqlite" },
+            [marker.lastPathComponent]
+        )
+
+        // Within a day the book opens as it is, with every write, and is not copied again.
+        let deferred = try EncryptedRecordStore(databaseURL: url, key: key)
+        try await assertBook(deferred)
+        await deferred.close()
+        XCTAssertEqual(keyForm(of: url), .passphrase)
+
+        // A day later the move runs and clears its marker.
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date(timeIntervalSinceNow: -2 * 24 * 60 * 60)],
+            ofItemAtPath: marker.path
+        )
+        let retried = try EncryptedRecordStore(databaseURL: url, key: key)
+        try await assertBook(retried)
+        await retried.close()
+        XCTAssertEqual(keyForm(of: url), .raw)
+        XCTAssertEqual(try directoryEntries(of: url), ["moneyup.sqlite"])
+    }
+
+    // MARK: - Helpers
+
+    private func stage(_ fixture: String, as label: String) throws -> URL {
+        let fm = FileManager.default
+        let source = fixtureRoot.appendingPathComponent(fixture, isDirectory: true)
+        let destination = scratch.appendingPathComponent(label, isDirectory: true)
+        try fm.createDirectory(at: destination, withIntermediateDirectories: true)
+        for file in try fm.contentsOfDirectory(atPath: source.path) {
+            try fm.copyItem(
+                at: source.appendingPathComponent(file),
+                to: destination.appendingPathComponent(file)
+            )
+        }
+        return destination.appendingPathComponent("moneyup.sqlite")
+    }
+
+    private func stage(_ fixture: String) throws -> URL {
+        try stage(fixture, as: fixture)
+    }
+
+    private func keyForm(of url: URL) -> SQLCipherConnection.KeyForm? {
+        SQLCipherConnection.keyFormForTesting(at: url, key: key)
+    }
+
+    private func directoryEntries(of url: URL) throws -> [String] {
+        try FileManager.default.contentsOfDirectory(atPath: url.deletingLastPathComponent().path).sorted()
+    }
+
+    private func fileSize(_ url: URL) throws -> Int {
+        (try FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
+    }
+
+    private func digestWithoutTimestamps(_ url: URL) async throws -> String {
+        let store = try EncryptedRecordStore(databaseURL: url, key: key)
+        let snapshot = try await store.snapshot()
+        await store.close()
+        return Self.digest(of: snapshot, includingTimestamps: false)
+    }
+
+    private func assertBook(
+        _ store: EncryptedRecordStore,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async throws {
+        let ids = Set(try await store.fetchAll(LedgerAccount.self, from: .accounts).map(\.id))
+        let actual = try await Self.describe(store, accountIDs: ids, key: key)
+        XCTAssertEqual(actual.digest, expected.digest, "every record, byte for byte", file: file, line: line)
+        XCTAssertEqual(actual.recordCounts, expected.recordCounts, file: file, line: line)
+        XCTAssertEqual(actual.schemaVersion, expected.schemaVersion, file: file, line: line)
+        XCTAssertEqual(actual.entryCount, expected.entryCount, file: file, line: line)
+        XCTAssertEqual(actual.balances, expected.balances, file: file, line: line)
+        XCTAssertEqual(actual.referenceTotal, expected.referenceTotal, file: file, line: line)
+        XCTAssertEqual(actual.issueCount, expected.issueCount, file: file, line: line)
+        XCTAssertEqual(actual.journalRecordCount, expected.journalRecordCount, file: file, line: line)
+        XCTAssertEqual(actual.indexedEntryCount, expected.indexedEntryCount, file: file, line: line)
+        XCTAssertEqual(actual.indexedPostingCount, expected.indexedPostingCount, file: file, line: line)
+    }
+
+    private static func data(fromHex hex: String) -> Data {
+        var bytes: [UInt8] = []
+        var index = hex.startIndex
+        while index < hex.endIndex {
+            let next = hex.index(index, offsetBy: 2)
+            bytes.append(UInt8(hex[index..<next], radix: 16)!)
+            index = next
+        }
+        return Data(bytes)
+    }
+
+    private static func digest(of snapshot: DatabaseSnapshot, includingTimestamps: Bool = true) -> String {
+        var hasher = SHA256()
+        let records = snapshot.records.sorted {
+            ($0.collection, $0.recordID) < ($1.collection, $1.recordID)
+        }
+        for record in records {
+            hasher.update(data: Data(record.collection.utf8))
+            hasher.update(data: Data([0]))
+            hasher.update(data: Data(record.recordID.utf8))
+            hasher.update(data: Data([0]))
+            var count = UInt64(record.payload.count)
+            withUnsafeBytes(of: &count) { hasher.update(bufferPointer: $0) }
+            hasher.update(data: record.payload)
+            if includingTimestamps {
+                var stamp = record.updatedAt.bitPattern
+                withUnsafeBytes(of: &stamp) { hasher.update(bufferPointer: $0) }
+            }
+        }
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+    }
+
+    private static func describe(
+        _ store: EncryptedRecordStore,
+        accountIDs: Set<UUID>,
+        key: Data
+    ) async throws -> Manifest {
+        let snapshot = try await store.snapshot()
+        let counts = try await store.recordCountSnapshot()
+        let ledger = try await store.journalLedgerIndex(validAccountIDs: accountIDs)
+        let diagnostics = try await store.journalIndexDiagnostics()
+        var balances: [String: String] = [:]
+        for (accountID, byCurrency) in ledger.balances {
+            for (currency, money) in byCurrency {
+                balances["\(accountID.uuidString)/\(currency.value)"] = "\(money.amount)"
+            }
+        }
+        return Manifest(
+            keyHex: key.map { String(format: "%02x", $0) }.joined(),
+            schemaVersion: counts.schemaVersion,
+            digest: digest(of: snapshot),
+            recordCounts: counts.storedRecordCounts,
+            entryCount: ledger.entryCount,
+            balances: balances,
+            referenceTotal: ledger.referenceCounts.values.reduce(0, +),
+            issueCount: ledger.issues.count,
+            journalRecordCount: diagnostics.journalRecordCount,
+            indexedEntryCount: diagnostics.indexedEntryCount,
+            indexedPostingCount: diagnostics.indexedPostingCount,
+            fileSizes: [:]
+        )
+    }
+}
