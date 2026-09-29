@@ -1,0 +1,11 @@
+{
+  "uses_non_exempt_encryption": false,
+  "declaration": null,
+  "reference_build": "1076.3",
+  "availability": {
+    "france_available": false,
+    "future_countries_enabled": false
+  },
+  "version": "0.7.3",
+  "build": "1077.1"
+}
