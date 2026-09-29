@@ -448,6 +448,7 @@ struct QuickLogEntryView: View {
     @State var hasRestoredDraft = false
     @State var handledRequestID: UInt64 = 0
     @State var isPresentingReceiptPicker = false
+    @State var isPresentingReceiptFilePicker = false
     @State var isPresentingEvidencePhotoPicker = false
     @State var isPresentingEvidencePDFPicker = false
     @State var isHandlingFocusedLaunch = false

@@ -108,6 +108,7 @@ extension QuickLogEntryView {
             }
             clearedEvidence = evidence
             isPresentingReceiptPicker = false
+            isPresentingReceiptFilePicker = false
             isPresentingEvidencePhotoPicker = false
             isPresentingEvidencePDFPicker = false
             isPreparingEvidence = false

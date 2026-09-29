@@ -4,6 +4,7 @@ import OSLog
 import PhotosUI
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 extension QuickLogEntryView {
     @ViewBuilder
@@ -280,9 +281,11 @@ extension QuickLogEntryView {
                     .accessibilityLabel("quick_log.smart_fill")
                     .accessibilityIdentifier("quick-log-smart-fill")
                 } else {
-                    QuickLogReceiptButton(
+                    QuickLogReceiptActions(
                         isScanning: isScanning,
                         choosePhoto: { isPresentingReceiptPicker = true },
+                        isPresentingFilePicker: $isPresentingReceiptFilePicker,
+                        onFile: { beginReceiptFile($0) },
                         scanned: { data in beginReceiptScan(.scanned(data)) }
                     )
                 }
@@ -350,10 +353,13 @@ extension QuickLogEntryView {
                 captureSuggestions(captureSuggestionResult)
             }
 
-            if receiptAttachmentData != nil {
+            if let receiptAttachmentData {
+                let isPDF = ReceiptAttachmentMediaType.detected(from: receiptAttachmentData) == .pdf
                 Toggle("quick_log.keep_receipt", isOn: $retainReceiptAttachment)
                     .accessibilityHint("quick_log.keep_receipt_hint")
-                Text("quick_log.keep_receipt_detail")
+                Text(AppLocalization.string(
+                    isPDF ? "quick_log.keep_receipt_detail_pdf" : "quick_log.keep_receipt_detail"
+                ))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -833,49 +839,65 @@ struct QuickLogKindMenuPicker: View {
     }
 }
 
-/// Where a camera exists, a tap scans a paper receipt with the document
-/// camera and holding offers photos; elsewhere it chooses a photo, as before.
-/// A concrete view, so the Log form's type stays within its device budget.
-struct QuickLogReceiptButton: View {
+/// The two ways to read a receipt, both in plain sight beside the Smart Entry
+/// field: the camera scans a paper receipt, and Attach reads a photo,
+/// screenshot or PDF. A concrete view, so the Log form's type stays within its
+/// device budget.
+struct QuickLogReceiptActions: View {
     let isScanning: Bool
     let choosePhoto: () -> Void
+    @Binding var isPresentingFilePicker: Bool
+    let onFile: (Result<[URL], Error>) -> Void
     let scanned: (Data) -> Void
     @State private var isPresentingCamera = false
     private let scanTip = ScanReceiptTip()
 
     var body: some View {
-        Group {
+        HStack(spacing: 0) {
             if ReceiptDocumentCamera.isAvailable {
-                Menu {
-                    Button(action: scanPaper) {
-                        Label("quick_log.receipt.scan_paper", systemImage: "doc.viewfinder")
-                    }
-                    Button(action: choosePhotoInstead) {
-                        Label("quick_log.receipt.choose_photo", systemImage: "photo.on.rectangle")
-                    }
-                } label: {
-                    glyph
-                } primaryAction: {
-                    scanPaper()
-                }
-                .accessibilityHint("quick_log.receipt.hint")
-                .onAppear(perform: scanTip.noteLogVisit)
-            } else {
-                Button(action: choosePhoto) { glyph }
+                Button(action: scanPaper) { glyph("camera") }
                     .buttonStyle(.borderless)
+                    .accessibilityLabel("quick_log.receipt.scan_paper")
+                    .accessibilityHint("quick_log.receipt.scan_hint")
+                    .accessibilityIdentifier("quick-log-scan-receipt")
+                    .fullScreenCover(isPresented: $isPresentingCamera) {
+                        ReceiptDocumentCamera(
+                            onScan: scanned,
+                            onFinish: { isPresentingCamera = false }
+                        )
+                        .ignoresSafeArea()
+                    }
             }
+            Menu {
+                Button(action: choosePhotoInstead) {
+                    Label("quick_log.receipt.choose_photo", systemImage: "photo.on.rectangle")
+                }
+                .accessibilityIdentifier("quick-log-attach-photo")
+                Button(action: chooseFileInstead) {
+                    Label("quick_log.receipt.choose_file", systemImage: "folder")
+                }
+                .accessibilityIdentifier("quick-log-attach-file")
+            } label: {
+                glyph("paperclip")
+            }
+            .accessibilityLabel("quick_log.receipt.attach")
+            .accessibilityHint("quick_log.receipt.attach_hint")
+            .accessibilityIdentifier("quick-log-attach-receipt")
+            // On the menu itself, not inside its items: the items are torn down
+            // as the menu closes, which would take the picker with them.
+            .fileImporter(
+                isPresented: $isPresentingFilePicker,
+                allowedContentTypes: [.pdf, .image],
+                allowsMultipleSelection: false,
+                onCompletion: onFile
+            )
         }
         .disabled(isScanning)
-        .accessibilityLabel("quick_log.scan_receipt")
-        .accessibilityIdentifier("quick-log-scan-receipt")
-        .fullScreenCover(isPresented: $isPresentingCamera) {
-            ReceiptDocumentCamera(onScan: scanned, onFinish: { isPresentingCamera = false })
-                .ignoresSafeArea()
-        }
+        .onAppear(perform: scanTip.noteLogVisit)
     }
 
-    private var glyph: some View {
-        Image(systemName: MoneyUpEntryGlyph.receipt)
+    private func glyph(_ name: String) -> some View {
+        Image(systemName: name)
             .font(.title3)
             .frame(minWidth: 44, minHeight: 44)
     }
@@ -888,5 +910,10 @@ struct QuickLogReceiptButton: View {
     private func choosePhotoInstead() {
         scanTip.noteUse()
         choosePhoto()
+    }
+
+    private func chooseFileInstead() {
+        scanTip.noteUse()
+        isPresentingFilePicker = true
     }
 }

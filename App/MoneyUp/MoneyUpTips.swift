@@ -25,9 +25,8 @@ enum MoneyUpTips {
     }
 }
 
-/// A tap on the receipt button opens the document camera; the photo library is
-/// a touch and hold away. Shown from the second visit to Log until it is
-/// closed or the button is used.
+/// Points at the camera and Attach buttons beside Smart Entry. Shown from the
+/// second visit to Log until it is closed or either button is used.
 struct ScanReceiptTip: Tip {
     static let logOpened = Event(id: "log-opened")
 
@@ -44,15 +43,15 @@ struct ScanReceiptTip: Tip {
 
     var title: Text { Text("tip.scan_receipt.title") }
     var message: Text? { Text("tip.scan_receipt.message") }
-    var image: Image? { Image(systemName: "doc.viewfinder") }
+    var image: Image? { Image(systemName: "camera") }
 
     var rules: [Rule] {
         #Rule(Self.logOpened) { $0.donations.count >= 2 }
     }
 }
 
-/// The scan tip, inline under Smart Entry where the receipt button sits, so it
-/// never floats over the keypad or another field.
+/// The scan tip, inline under Smart Entry where the camera and Attach buttons
+/// sit, so it never floats over the keypad or another field.
 struct QuickLogScanReceiptTip: View {
     var body: some View {
         if ReceiptDocumentCamera.isAvailable {
