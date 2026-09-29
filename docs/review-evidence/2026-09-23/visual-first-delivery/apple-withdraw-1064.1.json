@@ -1,0 +1,9 @@
+{
+  "version": "0.7.2",
+  "submission_id": "1b880729-54b7-4cca-8382-de359aef1cdd",
+  "submission_state": "CANCELING",
+  "state": "WAITING_FOR_REVIEW",
+  "withdrawn_now": true,
+  "source_sha": "ab1b333c8ddea7d8d985fe4f42d1596eb8b6a79f",
+  "config_sha256": "556acb59cf56a3bc671b51891aed35ae6b499e03ef8ce63234759002f8a5c569"
+}
