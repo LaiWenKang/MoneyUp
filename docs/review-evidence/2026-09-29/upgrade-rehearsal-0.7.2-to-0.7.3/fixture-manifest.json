@@ -1,0 +1,53 @@
+{
+  "balances": {
+    "00000001-0000-4000-8000-000000000000/SGD": "-764558.32",
+    "00000001-0000-4000-8000-000000000001/SGD": "-766589.94",
+    "00000001-0000-4000-8000-000000000002/SGD": "-755821.64",
+    "00000001-0000-4000-8000-000000000003/SGD": "-768572.33",
+    "00000001-0000-4000-8000-00000000000A/SGD": "-764325.82",
+    "00000001-0000-4000-8000-000000000014/SGD": "-217551.42",
+    "00000001-0000-4000-8000-000000000015/SGD": "-174637.13",
+    "00000001-0000-4000-8000-00000000001E/SGD": "646403.78",
+    "00000001-0000-4000-8000-00000000001F/SGD": "630698.9",
+    "00000001-0000-4000-8000-000000000020/SGD": "576320.95",
+    "00000001-0000-4000-8000-000000000021/SGD": "552055.65",
+    "00000001-0000-4000-8000-000000000022/SGD": "553047.17",
+    "00000001-0000-4000-8000-000000000023/SGD": "598073.86",
+    "00000001-0000-4000-8000-000000000024/SGD": "655456.29"
+  },
+  "digest": "09b7875e942e30ce0c9a05d80ff9793143147ad78c3a4431309a072fb1115375",
+  "entryCount": 2300,
+  "fileSizes": {
+    "clean/moneyup.sqlite": 7380992,
+    "walpending/moneyup.sqlite": 6340608,
+    "walpending/moneyup.sqlite-shm": 32768,
+    "walpending/moneyup.sqlite-wal": 1573872
+  },
+  "indexedEntryCount": 2300,
+  "indexedPostingCount": 4600,
+  "issueCount": 0,
+  "journalRecordCount": 2300,
+  "recordCounts": {
+    "account_lifecycle_audit": 0,
+    "accounts": 14,
+    "allowance_plans": 0,
+    "budget_configuration_timelines": 0,
+    "budget_entry_attributions": 0,
+    "budget_nodes": 0,
+    "cloud_backup_identity": 0,
+    "exchange_rates": 0,
+    "investment_holdings": 0,
+    "journal_entries": 2300,
+    "journal_entry_revisions": 0,
+    "loan_plans": 0,
+    "net_worth_snapshots": 0,
+    "pending_locked_captures": 0,
+    "profile": 0,
+    "quick_log_drafts": 1,
+    "receipt_attachments": 6,
+    "savings_goals": 3,
+    "scheduled_transactions": 0
+  },
+  "referenceTotal": 4600,
+  "schemaVersion": 10
+}

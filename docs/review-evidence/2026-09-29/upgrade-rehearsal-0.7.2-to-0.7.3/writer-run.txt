@@ -1,0 +1,5 @@
+Test Case '-[MoneyUpPersistenceTests.ZZUpgradeFixtureWriterTests testWriteUpgradeFixture]' started.
+Test Case '-[MoneyUpPersistenceTests.ZZUpgradeFixtureWriterTests testWriteUpgradeFixture]' passed (1.578 seconds).
+	 Executed 1 test, with 0 failures (0 unexpected) in 1.578 (1.582) seconds
+FIXTURE WRITTEN: ["savings_goals": 3, "quick_log_drafts": 1, "accounts": 14, "receipt_attachments": 6, "journal_entries": 2300] digest=09b7875e942e30ce0c9a05d80ff9793143147ad78c3a4431309a072fb1115375 sizes=["walpending/moneyup.sqlite": 6340608, "clean/moneyup.sqlite": 7380992, "walpending/moneyup.sqlite-wal": 1573872, "walpending/moneyup.sqlite-shm": 32768]
+exit=0
