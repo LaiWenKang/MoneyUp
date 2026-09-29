@@ -62,7 +62,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 Scripts/appstore_release.py --operation "$OPERATION" --build "$BUILD" \
-            --config docs/app-store/0.7.2/release.json --receipt public-release-receipt.json
+            --config docs/app-store/0.7.3/release.json --receipt public-release-receipt.json
       - name: Preserve sanitized release receipt
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

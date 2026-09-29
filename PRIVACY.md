@@ -1,6 +1,7 @@
 # MoneyUp Privacy Policy
 
-Updated for optional developer support: 18 September 2026
+Updated for camera receipt scanning, optional reminders, and Siri and Focus
+integration: 29 September 2026
 
 MoneyUp is a local-first personal-finance app. Its core privacy rule is simple:
 financial records are processed on the user's iPhone and are not sent to a
@@ -15,13 +16,19 @@ device. MoneyUp does not require a MoneyUp account and does not operate an
 application backend that receives these records.
 
 The optional receipt and screenshot reader uses Apple's on-device text
-recognition. The selected image is transient by default. If the user explicitly
-chooses to keep the receipt for that transaction, MoneyUp applies its displayed
-orientation, limits its dimensions, and re-encodes the pixels without the
-source GPS, EXIF, camera/device, caption, or edit-history metadata before storing
-it in the encrypted database and password-protected portable backups. It is
+recognition on an image chosen from the photo library or scanned with the
+system document camera. The selected or scanned image is transient by default.
+If the user explicitly chooses to keep the receipt for that transaction,
+MoneyUp applies its displayed orientation, limits its dimensions, and
+re-encodes the pixels without the source GPS, EXIF, camera/device, caption, or
+edit-history metadata before storing it in the encrypted database and password-protected portable backups. It is
 never added to drafts, widgets, or readable CSV/XLSX exports, and is never uploaded for recognition. Retained receipt images are included inside encrypted cloud archives only if the user enables cloud backup. Typed
 smart entry and category suggestions also run on the device.
+
+The camera is used only when the user taps the receipt button to scan a paper
+receipt, and iOS asks for camera permission at the first scan. MoneyUp reads the
+scan on the device; it does not save scans to the photo library and does not
+upload them.
 
 Optional Smart Entry matching is enabled by default for new and existing
 profiles, with an explicit Settings opt-out. On eligible devices, it uses only
@@ -34,6 +41,17 @@ user reviews it.
 If the model is unavailable, cancelled, fails, or returns an invalid ordinal,
 MoneyUp silently keeps the deterministic rule-based result. No custom model
 provider, server, tool, image, or receipt data is used.
+
+Optional reminders are off by default. When the user turns one on, iOS asks for
+notification permission and MoneyUp schedules local notifications on the device
+for scheduled items that fall due and, if chosen, a daily prompt to log. No
+push service, server, or account is involved. Notifications use generic
+wording. A scheduled item's name and amount appear in a notification only if the
+user turns on "Show names and amounts"; iOS may then show them on the Lock
+Screen and holds that text on the device under its own notification settings
+until it is delivered or cleared. The reminder choices (which reminders, at what
+time, and that switch) are stored on the device and contain no amount, name, or
+identifier from the book.
 
 MoneyUp's local App Group has an exact three-artifact allowlist: the chosen
 non-financial app-language preference; one atomic, versioned schema-4 Budget
@@ -49,6 +67,18 @@ transaction/book/ledger identifier, note, attachment, or extracted evidence;
 no other App Group key or file is approved. Disabling summaries or erasing the
 book removes the snapshot, and erase/restore boundaries invalidate old action
 requests. Quick-action widget timelines remain free of financial values.
+
+Home Screen quick actions, the optional Focus filter, and Siri Suggestions carry
+no book data. A quick action carries only the name of a fixed action (such as
+Quick Expense) and reaches the app through the same data-free handoff as
+widgets. The Focus filter only hides or shows amounts while a chosen Focus is
+on. After a save, MoneyUp tells Siri only which fixed Log type was used
+(expense, income, transfer, or refund) so Siri Suggestions can offer it at
+similar times; no amount, payee, note, account, category, or record identifier
+is shared, and iOS controls Siri Suggestions through the user's Siri settings.
+On-screen tips use Apple's TipKit; their small state (which tips were shown or
+closed, and at most two timestamps of visits to Log) stays in MoneyUp's own app
+container on the device and does not sync to iCloud.
 
 ## Collection, tracking, and advertising
 
@@ -176,7 +206,7 @@ when available.
 
 # MoneyUp 隐私政策（简体中文）
 
-云端备份候选版本生效日期：2026 年 9 月 8 日
+更新日期：2026 年 9 月 29 日（相机扫描收据、可选提醒，以及 Siri 与专注模式集成）
 
 MoneyUp 是一款本地优先的个人财务应用。核心隐私原则很简单：财务记录在
 用户的 iPhone 上处理，不会发送到 MoneyUp 服务器。
@@ -187,11 +217,15 @@ MoneyUp 是一款本地优先的个人财务应用。核心隐私原则很简单
 备注、商户、分类及相关财务信息。这些信息存储在设备上的加密数据库中。
 MoneyUp 无需注册，也没有接收这些记录的应用后端。
 
-可选的收据与截图识别使用 Apple 的本机文字识别。所选图片默认只在识别期间
-短暂保留；只有用户明确选择为该笔交易保留收据时，MoneyUp 才会按显示方向处理、
+可选的收据与截图识别使用 Apple 的本机文字识别，图片可来自照片图库，也可来自
+系统文档相机的扫描。所选或扫描的图片默认只在识别期间短暂保留；只有用户明确选择
+为该笔交易保留收据时，MoneyUp 才会按显示方向处理、
 限制图片尺寸，并仅重新编码像素，不保留源文件中的 GPS、EXIF、相机／设备、说明或
 编辑历史元数据，然后写入加密数据库及受密码保护的便携备份。图片不会进入草稿、
 组件或可读的 CSV／XLSX 导出，也不会为识别而上传。仅当用户启用云端备份时，已保留的收据图片才会包含在加密云端备份中。文字智能录入和分类建议仍完全在设备上运行。
+
+仅当用户轻点收据按钮扫描纸质收据时才会使用相机，首次扫描时 iOS 会请求相机权限。
+MoneyUp 在设备上读取扫描结果，不会将其保存到照片图库，也不会上传。
 
 可选的智能记账匹配对新用户和既有用户默认开启，并可在“设置”中明确关闭。在符合条件的
 设备上，它只使用 Apple 默认的本机系统语言模型。MoneyUp 会先移除已解析的金额、日期、
@@ -200,6 +234,13 @@ MoneyUp 无需注册，也没有接收这些记录的应用后端。
 不能返回自由文字或任何财务字段；每项匹配都只作为可见建议，需由用户检查。若模型不可用、被取消、失败或
 返回无效序号，MoneyUp 会静默保留确定性规则结果。此功能不使用任何供应商服务、服务器、
 工具、图片、收据数据、自定义模型或自定义模型供应商。
+
+提醒默认关闭。用户开启任一提醒时，iOS 会请求通知权限，MoneyUp 随后在设备上
+安排本地通知：计划项到期提醒，以及可选的每日记账提醒。整个过程不涉及推送服务、
+服务器或账户。通知默认使用通用措辞；只有用户开启“显示名称和金额”后，计划项的
+名称和金额才会出现在通知中，此时 iOS 可能在锁定屏幕上显示这些内容，并按其通知
+设置将文字保存在设备上，直到送达或被清除。提醒设置（开启了哪些提醒、提醒时间
+以及该开关）保存在设备上，不含账本中的任何金额、名称或标识符。
 
 MoneyUp 的本机 App Group 只允许三类资料：非财务性的应用语言偏好；用户明确
 启用小组件摘要后，为“预算状态”和“智能概览”写入的一个原子化、带版本的
@@ -211,6 +252,15 @@ schema 4 快照；以及一个有界的快捷操作接入文件。快照可包�
 账本标识符、备注、附件或提取的证据；不允许其他 App Group 键或文件。关闭摘要或抹掉
 账本会删除快照，抹掉／恢复边界会使旧快捷操作请求失效。快捷操作小组件的时间线
 仍不包含任何财务数值。
+
+主屏幕快捷操作、可选的专注模式过滤器和 Siri 建议均不携带账本数据。快捷操作只
+包含固定操作的名称（例如“快速支出”），并经过与小组件相同的无数据交接。专注模式
+过滤器只在所选专注模式开启期间隐藏或显示金额。保存记录后，MoneyUp 只会告知
+Siri 使用了哪一种固定的记账类型（支出、收入、转账或退款），以便 Siri 建议在
+相近时间推荐它；不会提供金额、商户、备注、账户、分类或记录标识符，Siri 建议由
+iOS 根据用户的 Siri 设置控制。屏幕提示使用 Apple 的 TipKit；其少量状态（已显示或
+已关闭的提示，以及最多两次进入记账页的时间）保存在 MoneyUp 自己的应用容器中，
+位于设备上，不同步到 iCloud。
 
 ## 收集、追踪与广告
 
