@@ -2937,17 +2937,68 @@ def validate_test_declaration_accounting() -> None:
     )
 
 
+USER_DEFAULTS_API = "NSPrivacyAccessedAPICategoryUserDefaults"
+FILE_TIMESTAMP_API = "NSPrivacyAccessedAPICategoryFileTimestamp"
+
+# Source patterns for Apple's required-reason API categories other than
+# UserDefaults, which the manifest check below pins directly.
+REQUIRED_REASON_API_PATTERNS = {
+    FILE_TIMESTAMP_API: re.compile(
+        r"NSFile(?:Creation|Modification)Date"
+        r"|\[\.(?:creationDate|modificationDate)\]"
+        r"|\.(?:contentModification|creation|contentAccess|attributeModification)DateKey\b"
+        r"|\b(?:f|l)?stat\("
+        r"|\bfstatat\("
+        r"|\b(?:f)?getattrlist(?:at|bulk)?\("
+    ),
+    "NSPrivacyAccessedAPICategoryDiskSpace": re.compile(
+        r"volume(?:Available|Total)Capacity\w*Key"
+        r"|NSFileSystem(?:Free)?Size|\.systemFreeSize\b|\.systemSize\b"
+        r"|\b(?:f)?stat(?:v)?fs\("
+    ),
+    "NSPrivacyAccessedAPICategorySystemBootTime": re.compile(
+        r"\bsystemUptime\b|\bmach_absolute_time\("
+    ),
+    "NSPrivacyAccessedAPICategoryActiveKeyboards": re.compile(
+        r"\bactiveInputModes\b"
+    ),
+}
+
+
+def required_reason_api_uses(directories: list[Path]) -> dict[str, list[str]]:
+    uses: dict[str, list[str]] = {}
+    for directory in directories:
+        for path in sorted(directory.rglob("*.swift")):
+            text = path.read_text(encoding="utf-8")
+            for category, pattern in REQUIRED_REASON_API_PATTERNS.items():
+                if pattern.search(text):
+                    uses.setdefault(category, []).append(
+                        str(path.relative_to(ROOT))
+                    )
+    return uses
+
+
 def validate_privacy_manifest() -> None:
+    app_sources = [
+        ROOT / "Sources",
+        ROOT / "App" / "MoneyUp",
+        ROOT / "App" / "Shared",
+    ]
+    widget_sources = [ROOT / "App" / "MoneyUpWidget", ROOT / "App" / "Shared"]
     manifests = {
-        ROOT / "App" / "MoneyUp" / "PrivacyInfo.xcprivacy": {
-            "CA92.1",
-            "1C8F.1",
-        },
-        ROOT / "App" / "MoneyUpWidget" / "PrivacyInfo.xcprivacy": {
-            "1C8F.1",
-        },
+        ROOT / "App" / "MoneyUp" / "PrivacyInfo.xcprivacy": (
+            {
+                USER_DEFAULTS_API: {"CA92.1", "1C8F.1"},
+                FILE_TIMESTAMP_API: {"C617.1"},
+            },
+            app_sources,
+        ),
+        ROOT / "App" / "MoneyUpWidget" / "PrivacyInfo.xcprivacy": (
+            {USER_DEFAULTS_API: {"1C8F.1"}},
+            widget_sources,
+        ),
     }
-    for manifest_path, expected_reasons in manifests.items():
+    for manifest_path, (expected, sources) in manifests.items():
         try:
             with manifest_path.open("rb") as file:
                 manifest = plistlib.load(file)
@@ -2969,38 +3020,37 @@ def validate_privacy_manifest() -> None:
             fail(f"{owner} privacy manifest must not declare tracking domains")
 
         accessed = manifest.get("NSPrivacyAccessedAPITypes")
-        if not isinstance(accessed, list) or len(accessed) != 1:
+        declared: dict[str, set[str]] = {}
+        for entry in accessed if isinstance(accessed, list) else []:
+            category = entry.get("NSPrivacyAccessedAPIType") if isinstance(entry, dict) else None
+            reasons = entry.get("NSPrivacyAccessedAPITypeReasons") if isinstance(entry, dict) else None
+            if (
+                not isinstance(category, str)
+                or category in declared
+                or not isinstance(reasons, list)
+                or not all(isinstance(reason, str) for reason in reasons)
+                or len(set(reasons)) != len(reasons)
+            ):
+                fail(f"{owner} privacy manifest has a malformed API declaration")
+            declared[category] = set(reasons)
+        if declared != expected:
+            listing = "; ".join(
+                f"{category} {', '.join(sorted(reasons))}"
+                for category, reasons in sorted(expected.items())
+            )
             fail(
                 f"{owner} privacy manifest must declare exactly the reviewed "
-                "UserDefaults API"
+                f"required-reason APIs: {listing}"
             )
 
-        user_defaults = accessed[0]
-        if (
-            not isinstance(user_defaults, dict)
-            or user_defaults.get("NSPrivacyAccessedAPIType")
-            != "NSPrivacyAccessedAPICategoryUserDefaults"
-        ):
-            fail(
-                f"{owner} privacy manifest must declare exactly the reviewed "
-                "UserDefaults API"
-            )
-
-        reasons = user_defaults.get("NSPrivacyAccessedAPITypeReasons")
-        if (
-            not isinstance(reasons, list)
-            or not all(isinstance(reason, str) for reason in reasons)
-            or len(reasons) != len(expected_reasons)
-            or set(reasons) != expected_reasons
-        ):
-            fail(
-                f"{owner} privacy manifest must declare exactly UserDefaults "
-                f"reasons {', '.join(sorted(expected_reasons))}"
-            )
+        for category, files in sorted(required_reason_api_uses(sources).items()):
+            if category not in declared:
+                fail(
+                    f"{owner} uses an API in {category} that its privacy "
+                    f"manifest does not declare: {', '.join(files[:3])}"
+                )
 
     print("Validated app and widget PrivacyInfo.xcprivacy files")
-
-
 def validate_info_plist_localizations() -> None:
     expected = {
         "en": {
