@@ -15,7 +15,7 @@ from appstore_support import prepare_support, verify_price
 from appstore_previews import movie
 from appstore_media_inspection import inspect_media
 
-ROOT = Path(__file__).resolve().parents[2] / "docs/app-store/0.7.2"
+ROOT = Path(__file__).resolve().parents[2] / "docs/app-store/0.7.3"
 
 
 class AppStoreReleaseTests(unittest.TestCase):

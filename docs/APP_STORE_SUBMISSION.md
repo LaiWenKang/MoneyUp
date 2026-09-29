@@ -1,11 +1,20 @@
 # App Store Submission Working Copy
 
-The current 0.7.2 public-update metadata and reviewed screenshot manifest are
-in `docs/app-store/0.7.2/release.json`. The 0.7.1 material below is historical.
-0.7.2 adds optional consumable developer-support tips through Apple StoreKit;
-all core functionality stays free. Public review must include the initial
-consumable products and requires the Account Holder's active Paid Apps Agreement,
-tax and banking setup. No agreement is accepted by the release tooling.
+The current 0.7.3 public-update metadata and reviewed screenshot manifest are
+in `docs/app-store/0.7.3/release.json`; its screenshots, previews and support
+review capture are the reviewed 0.7.2 set. The 0.7.1 material below is
+historical. Since 0.7.2 the app offers optional consumable developer-support tips
+through Apple StoreKit; all core functionality stays free. Public review must
+include the initial consumable products and requires the Account Holder's active
+Paid Apps Agreement, tax and banking setup. No agreement is accepted by the
+release tooling.
+
+0.7.3 adds paper-receipt scanning with the system document camera (camera
+permission is requested on first use; images are read on the device), local
+reminders (notification permission is requested only when a reminder is turned
+on), a Focus filter, Home Screen quick actions, and Log opening from widgets,
+controls and Siri while the auto-lock cover is up. The privacy answers do not
+change: nothing is collected, uploaded or shared.
 
 Last reviewed: 4 September 2026 for the 0.7.1 source candidate
 

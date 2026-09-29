@@ -138,6 +138,33 @@ final class AppLocalizationTests: XCTestCase {
         }
     }
 
+    func testVersion073DeclaresBilingualReleaseHighlights() {
+        XCTAssertEqual(ReleaseNotes.highlights(for: "0.7.3").count, 8)
+
+        for key in [
+            "whats_new.0_7_3.lock",
+            "whats_new.0_7_3.reminders",
+            "whats_new.0_7_3.receipt",
+            "whats_new.0_7_3.quick_actions",
+            "whats_new.0_7_3.focus",
+            "whats_new.0_7_3.history",
+            "whats_new.0_7_3.speed",
+            "whats_new.0_7_3.polish"
+        ] {
+            languageDefaults.set(
+                AppLanguagePreference.english.rawValue,
+                forKey: AppLanguagePreference.storageKey
+            )
+            XCTAssertNotEqual(AppLocalization.string(key), key)
+
+            languageDefaults.set(
+                AppLanguagePreference.simplifiedChinese.rawValue,
+                forKey: AppLanguagePreference.storageKey
+            )
+            XCTAssertNotEqual(AppLocalization.string(key), key)
+        }
+    }
+
     func testNavigationAndCategoryFilterCopyIsBilingual() {
         for key in [
             "plan.section_picker",

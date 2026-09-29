@@ -3,7 +3,7 @@
 MoneyUp handles sensitive financial data. Security claims here distinguish
 implemented controls from planned work and known limits.
 
-## Founders Beta 0.7.2 source controls
+## Founders Beta 0.7.3 source controls
 
 "Implemented" below describes the source-integrated candidate. Exact-candidate
 Mac CI, signed-entitlement inspection, physical-device checks, beta evidence,
