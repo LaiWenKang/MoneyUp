@@ -83,6 +83,7 @@ final class DeveloperSupportTests: XCTestCase {
             window.rootViewController = nil
             previousKeyWindow?.makeKey()
         }
+        try await warmUpLocalSigning(session)
         // The app host already owns its transaction observer. Do not create
         // another observer while the test storefront is being reset.
         let product = try XCTUnwrap(store.products.first)
@@ -99,6 +100,33 @@ final class DeveloperSupportTests: XCTestCase {
             XCTAssertNil(store.purchasingID)
             guard await verifyFinishedPurchases(session, store: store, count: expectedCount) else { return }
         }
+    }
+
+    /// A fresh CI simulator can start with a StoreKit test certificate that
+    /// fails verification ("certificate is expired", "not temporally valid")
+    /// until StoreKit recovers it; the same transaction verifies a minute
+    /// later. That is signing on the runner, not the app, which rightly never
+    /// thanks for an unverified purchase. Buy once directly and wait until a
+    /// purchase verifies, then start the checked flow from a clean history.
+    @MainActor
+    private func warmUpLocalSigning(_ session: SKTestSession) async throws {
+        let products = try await Product.products(for: StoreKitDeveloperSupport.productIDs)
+        let product = try XCTUnwrap(products.first)
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            .first(where: { $0.activationState == .foregroundActive }))
+        _ = try? await product.purchase(confirmIn: scene)
+        let deadline = Date().addingTimeInterval(90)
+        while Date() < deadline {
+            for await result in StoreKit.Transaction.unfinished {
+                guard case let .verified(transaction) = result,
+                      StoreKitDeveloperSupport.productIDs.contains(transaction.productID) else { continue }
+                await transaction.finish()
+                session.clearTransactions()
+                return
+            }
+            try await Task.sleep(for: .seconds(1))
+        }
+        throw XCTSkip("StoreKit's local test signing never verified a purchase on this runner.")
     }
 
     @MainActor
