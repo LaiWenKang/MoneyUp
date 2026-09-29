@@ -125,6 +125,16 @@ final class ReminderPlannerTests: XCTestCase {
         XCTAssertEqual(dueDates, dueDates.sorted(), "The soonest are kept")
     }
 
+    /// UserNotifications answers on its own queue. A fresh center's first
+    /// sync reads the pending requests there, which trapped at launch when
+    /// the reply inherited main-actor isolation (Xcode 16 SDK builds).
+    @MainActor
+    func testTheFirstSyncReadsPendingRequestsOffTheMainActor() async {
+        let center = ReminderCenter()
+        await center.sync([])
+        await center.refreshAuthorization()
+    }
+
     func testPreferencesPersistOnThisDeviceOnly() throws {
         let suite = "moneyup.reminder-tests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
