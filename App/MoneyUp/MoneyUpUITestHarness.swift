@@ -32,6 +32,7 @@ enum MoneyUpUITestHarness {
             // Journeys run with the shipped default (amounts hidden), never
             // with whatever an earlier session left on this simulator.
             UserDefaults.standard.removeObject(forKey: MoneyAmountPrivacy.storageKey)
+            UserDefaults.standard.removeObject(forKey: ReminderPreferences.storageKey)
             removeQueuedWidgetRoutes()
         }
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

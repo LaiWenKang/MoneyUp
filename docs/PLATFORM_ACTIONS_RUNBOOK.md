@@ -259,11 +259,16 @@ numbers. Widget configuration preservation remains a physical migration gate.
    Close the app before unlocking and confirm the next visit still opens Log.
 5. Confirm failed or cancelled authentication leaves no new capture, draft,
    notification, Live Activity, Spotlight item, or App Group payload.
-6. Reminders (0.7.3): turn on the daily logging reminder and tap its
-   notification once with the book covered and once with it locked. Covered
-   opens Log alone without Face ID; locked shows the normal unlock first. A
-   due-item reminder opens Today after unlock. With "Show names and amounts"
-   off, the Lock Screen shows only generic text.
+6. Reminders (0.7.3): open Settings, Reminders. Turn on scheduled payments
+   and income (pick "3 days before" as well as "On the day"), the daily
+   logging reminder with a second time, and the weekly review. Send a test
+   reminder, leave the app, and confirm it arrives in about five seconds with
+   its sound and the "Remind in 1 hour" and "Remind tomorrow" buttons. Tap the
+   daily logging reminder once with the book covered and once with it locked.
+   Covered opens Log alone without Face ID; locked shows the normal unlock
+   first. A due-item reminder opens Today after unlock. With "Show names and
+   amounts" off, the Lock Screen shows only generic text; snooze one with it
+   on, turn it off again, and confirm the snoozed copy does not arrive.
 7. Home Screen quick actions (0.7.3): long-press the MoneyUp icon and try
    Quick Expense, Quick Income, Smart Entry and Choose Receipt from a cold
    start, with the book covered, and with it locked. Each opens the matching

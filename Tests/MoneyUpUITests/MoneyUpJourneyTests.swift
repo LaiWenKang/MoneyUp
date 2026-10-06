@@ -103,8 +103,9 @@ final class MoneyUpJourneyTests: XCTestCase {
         if dismiss.exists { dismiss.tap() }
     }
 
-    func openSettings(_ app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
-        let settings = app.navigationBars.buttons["Settings"]
+    func openSettings(_ app: XCUIApplication, label: String = "Settings",
+                      file: StaticString = #filePath, line: UInt = #line) {
+        let settings = app.navigationBars.buttons[label]
         // Just after launch the tab bar can exist before it takes taps, and a
         // widget route still pending from an earlier launch can open Log and
         // raise its keypad over the tab bar after any single check.

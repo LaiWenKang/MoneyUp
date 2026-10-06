@@ -4,147 +4,6 @@ import Observation
 import UIKit
 import UserNotifications
 
-/// Reminder choices for this iPhone. They are device preferences, not book
-/// content: no amount, name or identifier from the book is ever stored here.
-struct ReminderPreferences: Codable, Equatable, Sendable {
-    static let storageKey = "moneyup.reminders"
-
-    var billsEnabled = false
-    /// Minutes after midnight, in the book's reporting time zone.
-    var billMinute = 9 * 60
-    var dailyEnabled = false
-    var dailyMinute = 20 * 60
-    /// Names and amounts appear in notifications only when this is on.
-    var showsDetails = false
-
-    var isAnyEnabled: Bool { billsEnabled || dailyEnabled }
-
-    static func load(from defaults: UserDefaults = .standard) -> ReminderPreferences {
-        guard let data = defaults.data(forKey: storageKey),
-              let preferences = try? JSONDecoder().decode(Self.self, from: data) else { return .init() }
-        return preferences
-    }
-
-    func save(to defaults: UserDefaults = .standard) {
-        guard let data = try? JSONEncoder().encode(self) else { return }
-        defaults.set(data, forKey: Self.storageKey)
-    }
-}
-
-/// What a planned notification says, resolved into text only when it is
-/// scheduled, so planning stays pure and testable.
-enum ReminderMessage: Equatable, Sendable {
-    /// A scheduled payment or income is due; no name or amount.
-    case due(JournalEntryKind)
-    /// The same, with the schedule's name and amount (opted in).
-    case dueDetail(JournalEntryKind, name: String, amount: Money)
-    case dailyLog
-}
-
-struct PlannedReminder: Equatable, Sendable {
-    enum Route: String, Sendable {
-        /// Opens Today, where the due item waits for review.
-        case today
-        /// Opens Log, exactly like a widget tap.
-        case log
-    }
-
-    let identifier: String
-    let fireDate: Date
-    let message: ReminderMessage
-    let route: Route
-}
-
-/// Turns the book's schedules and the reminder choices into the exact set of
-/// local notifications that should be pending. Pure: no clock, no I/O.
-enum ReminderPlanner {
-    static let identifierPrefix = "moneyup.reminder."
-    /// How far ahead due dates are scheduled; opening the app extends it.
-    static let billHorizonDays = 35
-    /// iOS keeps at most 64 pending notifications per app.
-    static let maximumBillReminders = 48
-    static let dailyReminderDays = 7
-
-    static func plan(
-        preferences: ReminderPreferences,
-        schedules: [ScheduledTransaction],
-        loggedToday: Bool,
-        now: Date,
-        calendar: Calendar
-    ) -> [PlannedReminder] {
-        var plan: [PlannedReminder] = []
-        if preferences.billsEnabled {
-            plan += billReminders(preferences: preferences, schedules: schedules, now: now, calendar: calendar)
-        }
-        if preferences.dailyEnabled {
-            plan += dailyReminders(preferences: preferences, loggedToday: loggedToday, now: now, calendar: calendar)
-        }
-        return plan
-    }
-
-    private static func billReminders(
-        preferences: ReminderPreferences,
-        schedules: [ScheduledTransaction],
-        now: Date,
-        calendar: Calendar
-    ) -> [PlannedReminder] {
-        guard let horizon = calendar.date(byAdding: .day, value: billHorizonDays, to: now) else { return [] }
-        var reminders: [PlannedReminder] = []
-        for schedule in schedules where schedule.isActive {
-            for occurrence in schedule.occurrences(through: horizon, calendar: calendar, maximumCount: 40) {
-                guard let fireDate = time(preferences.billMinute, onDayOf: occurrence, calendar: calendar),
-                      fireDate > now else { continue }
-                let message: ReminderMessage = preferences.showsDetails
-                    ? .dueDetail(schedule.kind, name: schedule.name, amount: schedule.amount)
-                    : .due(schedule.kind)
-                reminders.append(PlannedReminder(
-                    identifier: identifierPrefix + "bill.\(schedule.id.uuidString).\(dayKey(occurrence, calendar: calendar))",
-                    fireDate: fireDate,
-                    message: message,
-                    route: .today
-                ))
-            }
-        }
-        return Array(reminders.sorted {
-            $0.fireDate != $1.fireDate ? $0.fireDate < $1.fireDate : $0.identifier < $1.identifier
-        }.prefix(maximumBillReminders))
-    }
-
-    private static func dailyReminders(
-        preferences: ReminderPreferences,
-        loggedToday: Bool,
-        now: Date,
-        calendar: Calendar
-    ) -> [PlannedReminder] {
-        (0..<dailyReminderDays).compactMap { offset in
-            guard !(offset == 0 && loggedToday),
-                  let day = calendar.date(byAdding: .day, value: offset, to: now),
-                  let fireDate = time(preferences.dailyMinute, onDayOf: day, calendar: calendar),
-                  fireDate > now else { return nil }
-            return PlannedReminder(
-                identifier: identifierPrefix + "daily.\(dayKey(day, calendar: calendar))",
-                fireDate: fireDate,
-                message: .dailyLog,
-                route: .log
-            )
-        }
-    }
-
-    /// `minute` after the start of the calendar day containing `date`.
-    static func time(_ minute: Int, onDayOf date: Date, calendar: Calendar) -> Date? {
-        guard (0..<(24 * 60)).contains(minute) else { return nil }
-        var components = calendar.dateComponents([.year, .month, .day], from: date)
-        components.hour = minute / 60
-        components.minute = minute % 60
-        return calendar.date(from: components)
-    }
-
-    static func dayKey(_ date: Date, calendar: Calendar) -> String {
-        let parts = calendar.dateComponents([.year, .month, .day], from: date)
-        return String(format: "%04d%02d%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
-    }
-}
-
 /// The app's single owner of local notifications. It schedules only what the
 /// plan asks for, changes only what differs, and never sends anything off the
 /// device.
@@ -152,11 +11,14 @@ enum ReminderPlanner {
 @Observable
 final class ReminderCenter: NSObject {
     static let shared = ReminderCenter()
+    nonisolated static let testIdentifier = ReminderPlanner.identifierPrefix + "test"
 
     /// Bumped whenever the preferences change, so the app re-plans.
     private(set) var revision: UInt64 = 0
     private(set) var authorization: UNAuthorizationStatus = .notDetermined
     @ObservationIgnored private var scheduled: [String: PlannedReminder]?
+    @ObservationIgnored private var syncedPreferences: ReminderPreferences?
+    @ObservationIgnored private var categoryLanguage: String?
     /// A tapped notification's destination, waiting for the app to take it.
     private(set) var pendingRoute: PlannedReminder.Route?
 
@@ -165,10 +27,20 @@ final class ReminderCenter: NSObject {
     /// Installed at launch so a tap that launches the app is not lost.
     func install() {
         center.delegate = self
+        registerSnoozeCategory()
     }
 
     func preferencesDidChange() {
         revision &+= 1
+    }
+
+    /// Whether iOS will deliver a reminder right now.
+    var canNotify: Bool {
+        switch authorization {
+        case .authorized, .provisional, .ephemeral: true
+        case .notDetermined, .denied: false
+        @unknown default: false
+        }
     }
 
     // UserNotifications values are not Sendable on every supported SDK, so
@@ -215,7 +87,8 @@ final class ReminderCenter: NSObject {
     }
 
     /// Makes the pending notifications match `plan` exactly.
-    func sync(_ plan: [PlannedReminder]) async {
+    func sync(_ plan: [PlannedReminder], preferences: ReminderPreferences) async {
+        registerSnoozeCategory()
         if scheduled == nil {
             // First sync of this launch: learn what an earlier launch left.
             let pending = await pendingReminderIdentifiers()
@@ -240,6 +113,10 @@ final class ReminderCenter: NSObject {
             schedule(request)
         }
         scheduled = wanted
+        if syncedPreferences != preferences {
+            syncedPreferences = preferences
+            await discardStaleSnoozes(preferences)
+        }
     }
 
     /// Synchronous on purpose: the async form would move a request that is not
@@ -249,34 +126,77 @@ final class ReminderCenter: NSObject {
         center.add(request, withCompletionHandler: nil)
     }
 
+    /// Takes everything back, including reminders the person snoozed.
     func removeAll() async {
-        await sync([])
+        await sync([], preferences: ReminderPreferences())
+    }
+
+    /// Shows one reminder in a few seconds so the wording, sound and buttons
+    /// can be seen before relying on them.
+    func sendTest(style: ReminderStyle) {
+        let reminder = PlannedReminder(
+            identifier: Self.testIdentifier,
+            fireDate: Date(),
+            message: .test,
+            route: .today,
+            style: style
+        )
+        schedule(UNNotificationRequest(
+            identifier: reminder.identifier,
+            content: content(for: reminder),
+            trigger: UNTimeIntervalNotificationTrigger(timeInterval: 5, repeats: false)
+        ))
+    }
+
+    /// The snooze buttons, titled in the language the app is showing.
+    private func registerSnoozeCategory() {
+        let language = AppLanguagePreference.current.rawValue
+        guard categoryLanguage != language else { return }
+        categoryLanguage = language
+        let actions = ReminderSnooze.allCases.map {
+            UNNotificationAction(identifier: $0.rawValue, title: AppLocalization.string($0.titleKey), options: [])
+        }
+        center.setNotificationCategories([UNNotificationCategory(
+            identifier: ReminderSnooze.categoryIdentifier,
+            actions: actions,
+            intentIdentifiers: [],
+            options: []
+        )])
+    }
+
+    /// A snoozed copy keeps the words it was made with, so it goes as soon as
+    /// the choice that allowed those words is turned off.
+    private func discardStaleSnoozes(_ preferences: ReminderPreferences) async {
+        let center = center
+        let pending: [ReminderSnooze.Pending] = await withCheckedContinuation { continuation in
+            center.getPendingNotificationRequests { @Sendable requests in
+                continuation.resume(returning: requests.filter {
+                    $0.identifier.hasPrefix(ReminderSnooze.requestPrefix)
+                }.map {
+                    ReminderSnooze.Pending(
+                        identifier: $0.identifier,
+                        carriesDetails: ($0.content.userInfo["details"] as? Bool) ?? true
+                    )
+                })
+            }
+        }
+        let discarded = ReminderSnooze.discarded(pending, preferences: preferences)
+        if !discarded.isEmpty { center.removePendingNotificationRequests(withIdentifiers: discarded) }
     }
 
     private func content(for reminder: PlannedReminder) -> UNMutableNotificationContent {
         let content = UNMutableNotificationContent()
-        switch reminder.message {
-        case let .due(kind):
-            content.title = AppLocalization.string(kind == .income ? "reminder.income_due" : "reminder.payment_due")
-            content.body = AppLocalization.string("reminder.due_body")
-            content.threadIdentifier = "moneyup.reminder.due"
-        case let .dueDetail(kind, name, amount):
-            content.title = String(format: AppLocalization.string("reminder.due_detail_title_format"), name)
-            content.body = String(
-                format: AppLocalization.string(kind == .income ? "reminder.income_detail_format" : "reminder.payment_detail_format"),
-                formattedMoneyForNotification(amount)
-            )
-            content.threadIdentifier = "moneyup.reminder.due"
-        case .dailyLog:
-            content.title = AppLocalization.string("reminder.daily_title")
-            content.body = AppLocalization.string("reminder.daily_body")
-            content.threadIdentifier = "moneyup.reminder.daily"
-        }
-        content.sound = .default
+        content.title = ReminderText.title(for: reminder.message)
+        content.body = ReminderText.body(for: reminder.message)
+        content.threadIdentifier = ReminderText.thread(for: reminder.message)
+        content.sound = reminder.style.playsSound ? .default : nil
         content.interruptionLevel = .active
-        // In a scheduled summary, what is due ranks above the daily nudge.
-        content.relevanceScore = reminder.route == .today ? 0.8 : 0.2
-        content.userInfo = ["route": reminder.route.rawValue]
+        // In a scheduled summary, what is due ranks above the nudges.
+        content.relevanceScore = reminder.message.relevance
+        content.userInfo = ["route": reminder.route.rawValue, "details": reminder.message.carriesDetails]
+        if reminder.style.allowsSnooze {
+            content.categoryIdentifier = ReminderSnooze.categoryIdentifier
+        }
         return content
     }
 }
@@ -287,13 +207,26 @@ extension ReminderCenter: UNUserNotificationCenterDelegate {
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
-        let identifier = response.notification.request.identifier
-        let rawRoute = response.notification.request.content.userInfo["route"] as? String
-        completionHandler()
-        guard identifier.hasPrefix(ReminderPlanner.identifierPrefix),
-              let rawRoute, let route = PlannedReminder.Route(rawValue: rawRoute) else { return }
-        Task { @MainActor in
-            ReminderCenter.shared.open(route)
+        let request = response.notification.request
+        let outcome = ReminderResponse.decide(
+            actionIdentifier: response.actionIdentifier,
+            isDefaultAction: response.actionIdentifier == UNNotificationDefaultActionIdentifier,
+            requestIdentifier: request.identifier,
+            rawRoute: request.content.userInfo["route"] as? String
+        )
+        switch outcome {
+        case let .snooze(snooze):
+            // Added before replying, in this same call: the app may be
+            // suspended the moment the reply is made.
+            Self.repeatLater(request, snooze: snooze, center: center)
+            completionHandler()
+        case let .open(route):
+            completionHandler()
+            Task { @MainActor in
+                ReminderCenter.shared.open(route)
+            }
+        case .ignore:
+            completionHandler()
         }
     }
 
@@ -302,9 +235,32 @@ extension ReminderCenter: UNUserNotificationCenterDelegate {
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
-        // In the app, a logging nudge is noise; a due payment is still news.
-        let isDaily = notification.request.identifier.hasPrefix(ReminderPlanner.identifierPrefix + "daily.")
-        completionHandler(isDaily ? [] : [.banner, .list, .sound])
+        completionHandler(
+            ReminderResponse.showsInForeground(notification.request.identifier) ? [.banner, .list, .sound] : []
+        )
+    }
+
+    /// The same words and route again, later. It replaces an earlier snooze of
+    /// the same reminder rather than piling up.
+    private nonisolated static func repeatLater(
+        _ original: UNNotificationRequest,
+        snooze: ReminderSnooze,
+        center: UNUserNotificationCenter
+    ) {
+        let now = Date()
+        guard let fireDate = snooze.fireDate(from: now, calendar: .current),
+              let content = original.content.mutableCopy() as? UNMutableNotificationContent else { return }
+        center.add(
+            UNNotificationRequest(
+                identifier: ReminderSnooze.requestIdentifier(snoozing: original.identifier),
+                content: content,
+                trigger: UNTimeIntervalNotificationTrigger(
+                    timeInterval: max(1, fireDate.timeIntervalSince(now)),
+                    repeats: false
+                )
+            ),
+            withCompletionHandler: nil
+        )
     }
 
     /// The main scene takes it: Log goes through the same reviewed broker as
@@ -332,13 +288,16 @@ extension AppModel {
             let calendar = reportingCalendar
             let loggedToday = journalRecentEntriesAreCurrent
                 && entries.contains { calendar.isDate($0.occurredAt, inSameDayAs: now) }
-            await reminders.sync(ReminderPlanner.plan(
-                preferences: preferences,
-                schedules: scheduledTransactions,
-                loggedToday: loggedToday,
-                now: now,
-                calendar: calendar
-            ))
+            await reminders.sync(
+                ReminderPlanner.plan(
+                    preferences: preferences,
+                    schedules: scheduledTransactions,
+                    loggedToday: loggedToday,
+                    now: now,
+                    calendar: calendar
+                ),
+                preferences: preferences
+            )
         case .launching, .locked, .failed:
             return
         }

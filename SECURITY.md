@@ -22,7 +22,7 @@ and App Review remain separate release gates.
 | iOS file protection for the database | Implemented |
 | Privacy-redacted quick-action widget with no financial values | Implemented |
 | Exact App Group allowlist: non-financial language preference, atomic schema-4 redacted summary, and bounded data-free quick-action ingress file | Implemented; signing/device gate open |
-| Local-only reminders for due scheduled items and an optional daily logging nudge: planned on device from the open book, generic text by default, names and amounts only after an explicit opt-in, all removed when the book is gone | Implemented (0.7.3) |
+| Local-only reminders you choose yourself: scheduled payments and income (on the day, or up to a week ahead), up to three daily logging nudges on the days you pick, and a weekly review; planned on device from the open book, generic text by default, names and amounts only after an explicit opt-in (a snoozed copy keeps only the words it was made with and is removed as soon as that opt-in is turned off), all removed when the book is gone | Implemented (0.7.3) |
 | On-device receipt reading; optional metadata-stripped SQLCipher-encrypted retention; no upload | Implemented; exact-candidate and physical fixture evidence open |
 | Plaintext CSV/XLSX warning and user-selected destination | Implemented |
 | Destructive recovery reset with explicit confirmation | Implemented |

@@ -319,7 +319,7 @@ struct AppSettingsView: View {
                 MoneyUpSectionHeader("settings.widgets_and_reports", explanation: "settings.widget.budget_status_detail")
             }
 
-            ReminderSettingsSection()
+            ReminderSettingsEntry()
 
             Section {
                 if bindableModel.pendingLockedCaptureCount > 0 {

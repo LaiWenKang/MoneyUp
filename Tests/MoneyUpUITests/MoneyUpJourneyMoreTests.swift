@@ -164,12 +164,20 @@ extension MoneyUpJourneyTests {
     }
 
     /// Runs an audit and returns every issue instead of stopping at the first,
-    /// so one run lists everything to fix.
+    /// so one run lists everything to fix. `skippingUnlocated` drops findings
+    /// that name no element. The clipping audit re-lays the screen out at other
+    /// text sizes while it runs, and what it reports mid-change has no element.
+    /// `within` drops findings for an element that is not wholly inside that
+    /// area, and attaches them instead: a row half under a bar is cut off by the
+    /// edge of the scroll view, not by its own layout.
     func auditIssues(_ app: XCUIApplication, _ types: XCUIAccessibilityAuditType,
-                     screen: String) throws -> [String] {
+                     screen: String, skippingUnlocated: Bool = false,
+                     within area: CGRect? = nil) throws -> [String] {
         var found: [String] = []
+        var outside: [String] = []
         try app.performAccessibilityAudit(for: types) { issue in
             guard issue.element?.elementType != .key else { return true }
+            if skippingUnlocated, issue.element == nil { return true }
             // A hidden amount shows the fixed five-character mask but speaks
             // "hidden amount"; the clipping audit measures the spoken label,
             // not the text on screen.
@@ -178,9 +186,22 @@ extension MoneyUpJourneyTests {
                 return true
             }
             let element = issue.element
-            found.append("\(screen): \(issue.compactDescription) — \(element?.elementType.rawValue ?? 0) "
-                + "'\(element?.label ?? "")' id '\(element?.identifier ?? "")' \(element?.frame ?? .zero)")
+            // Some issues arrive with no element; the detail is then the only clue.
+            let detail = element == nil ? " [\(issue.detailedDescription)]" : ""
+            let finding = "\(screen): \(issue.compactDescription) — \(element?.elementType.rawValue ?? 0) "
+                + "'\(element?.label ?? "")' id '\(element?.identifier ?? "")' \(element?.frame ?? .zero)\(detail)"
+            if let area, let frame = element?.frame, !area.contains(frame) {
+                outside.append(finding)
+            } else {
+                found.append(finding)
+            }
             return true
+        }
+        if !outside.isEmpty {
+            let note = XCTAttachment(string: outside.joined(separator: "\n"))
+            note.name = "audit-outside-\(screen)"
+            note.lifetime = .keepAlways
+            add(note)
         }
         return found
     }
