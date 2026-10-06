@@ -7,11 +7,13 @@ products are unchanged.
 
 ## Baseline
 
-- Last uploaded build: 0.7.2 (1076.3, source 92b1680), processing VALID, in internal
-  and external TestFlight testing.
-- 0.7.2 was submitted for public review with an automatic release. All 72 half-hourly
-  App Store Connect checks from 27 September 21:51 to 29 September 09:59 read
-  Waiting for Review. 0.7.1 (1051.1) remains the live version.
+- 0.7.2 (1076.3, source 92b1680) was submitted for public review with an automatic
+  release on 27 September 21:51. It read Waiting for Review at every half-hourly
+  check up to 30 September 07:14, and a check on 6 October 2026 read Ready for
+  Distribution, with the three support purchases approved.
+- The first 0.7.3 candidate, 1077.1 (source d286cbb), reached TestFlight on
+  29 September. The owner's check of it on a physical iPhone produced the fixes
+  below, so the candidate for App Review is a rebuilt 0.7.3 (build 1078.x).
 - 0.7.3 contains everything in 0.7.2 plus the changes below. Source: `main` after
   pull requests #98 to #116.
 
@@ -42,6 +44,21 @@ products are unchanged.
   launch cannot trap (#113); the StoreKit purchase gate now checks that a tip ends
   finished (#106) and warms up test signing before it judges the flow (#114).
 
+## Changes since 1077.1 (owner feedback from a physical iPhone)
+
+- Camera and Attach sit beside Smart Entry, so a receipt photo, file or PDF is one
+  tap away (#121). A PDF is read on the device from its own text, or drawn and
+  recognised like a photo when it has none; locked, damaged, empty and oversized
+  files say so. The Assets icon for saving a net-worth snapshot is now a chart,
+  not a camera aperture.
+- Reminders are set up on one Settings screen (#122): scheduled payments and
+  income on the day or 1, 2, 3 or 7 days ahead, up to three daily logging times on
+  chosen weekdays, a weekly review, sound, "Remind in 1 hour" and "Remind
+  tomorrow" buttons, and a test reminder. Names and amounts stay off the Lock
+  Screen unless the person opts in, and a snoozed copy is removed when that opt-in
+  is turned off. The choices are one device-local record that the first 0.7.3
+  builds' single daily time still loads into.
+
 ## Data migration
 
 #104 moves the SQLCipher key from passphrase form to raw-key form. It works on a
@@ -55,9 +72,11 @@ accounts.
 
 ## Store metadata
 
-- Screenshots, previews and the support review capture are the reviewed 0.7.2 files,
-  byte for byte (checked with `cmp`). 0.7.3 adds controls they do not show, such as
-  the receipt button and search across dates; it removes nothing they show.
+- The eight screenshots per language are rendered again from this source, because
+  the Log and Assets screens now differ from the 0.7.2 pictures (Camera and Attach
+  beside Smart Entry, the chart icon) and the category glyphs are drawn slightly
+  differently. The previews and the support review capture are still the reviewed
+  0.7.2 files, byte for byte (checked with `cmp`); they show nothing that changed.
 - Description, What's New, keywords and review notes are rewritten for 0.7.3 in
   English and Simplified Chinese. The review notes explain the camera and
   notification permissions, the Focus filter and the lock-cover behaviour.
@@ -76,5 +95,7 @@ accounts.
   Review, App Review, and physical-iPhone acceptance (upgrade from 0.7.2, receipt
   scan, reminders, Focus filter, and Log from a widget after auto-lock). Each is
   recorded separately when it happens.
-- Not built: Siri with an amount ("Log $5 coffee"). It would put amounts in Siri
-  requests and awaits an owner decision.
+- Not in 0.7.3: Siri with spoken text. The owner approved a prefill-only version
+  (Siri hears the words, Log opens with them filled in, and nothing is saved until
+  the owner reviews and taps Save); it is a separate change because it moves the
+  Siri data boundary, and it is not in this build.
