@@ -97,6 +97,7 @@ extension MoneyUpJourneyTests {
                       file: StaticString = #filePath, line: UInt = #line) {
         let toggle = app.switches[identifier]
         reveal(toggle, in: app, file: file, line: line)
+        _ = waitUntil(5) { toggle.value as? String == expected }
         expectEqual(toggle.value as? String, expected, "\(identifier) did not keep its choice", file: file, line: line)
     }
 
@@ -104,6 +105,7 @@ extension MoneyUpJourneyTests {
                       file: StaticString = #filePath, line: UInt = #line) {
         let row = app.buttons[identifier]
         reveal(row, in: app, file: file, line: line)
+        _ = waitUntil(5) { row.isSelected == selected }
         expectEqual(row.isSelected, selected, "\(identifier) did not keep its choice", file: file, line: line)
     }
 

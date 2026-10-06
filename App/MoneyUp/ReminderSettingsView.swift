@@ -37,6 +37,7 @@ struct ReminderSummaryText: View {
 /// Choices are device preferences; nothing here reads or stores the book.
 struct ReminderSettingsView: View {
     @State private var preferences = ReminderPreferences.load()
+    @State private var resynced: ReminderPreferences?
     @Environment(\.scenePhase) private var scenePhase
     private let center = ReminderCenter.shared
 
@@ -58,6 +59,10 @@ struct ReminderSettingsView: View {
         .navigationTitle("settings.reminders")
         .navigationBarTitleDisplayMode(.inline)
         .onChange(of: preferences) { old, new in
+            if resynced == new {
+                resynced = nil
+                return
+            }
             new.save()
             center.preferencesDidChange()
             if new.turnsOnReminders(since: old) {
@@ -69,6 +74,15 @@ struct ReminderSettingsView: View {
             if phase == .active { Task { await center.refreshAuthorization() } }
         }
         .task { await center.refreshAuthorization() }
+        .onAppear {
+            // A screen built before the last change would show the old choices,
+            // and the first edit would then save them over the new ones.
+            let stored = ReminderPreferences.load()
+            if stored != preferences {
+                resynced = stored
+                preferences = stored
+            }
+        }
         .onDisappear {
             let tidy = preferences.tidied()
             guard tidy != preferences else { return }
