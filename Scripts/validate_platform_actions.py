@@ -49,6 +49,10 @@ EXPECTED_PHRASES = [
     r"Log a refund in \(.applicationName)",
     r"Open Smart Entry in \(.applicationName)",
     r"Choose a receipt in \(.applicationName)",
+    # Reviewed 2026-10-06: the one Siri entry that carries words (see
+    # LogWithWordsIntent); the words are never named in the phrase itself.
+    r"Tell \(.applicationName) what I spent",
+    r"Log by voice in \(.applicationName)",
 ]
 PLATFORM_LOCALIZATION_KEYS = {
     "platform_action.type",
@@ -165,6 +169,9 @@ REVIEWED_OFFLINE_SWIFT_TOOLS = {
 }
 APP_INTENTS_SOURCE_ALLOWLIST = {
     "App/MoneyUp/MoneyUpAppShortcuts.swift",
+    # Reviewed 2026-10-06: the only intent that carries words. They are held in
+    # memory for one request and only fill Smart Entry; nothing is saved.
+    "App/MoneyUp/LogWithWordsIntent.swift",
     # Reviewed 2026-09-29: a Focus filter whose only input is an optional
     # "hide amounts" choice; it changes that display preference and nothing else.
     "App/MoneyUp/MoneyUpFocusFilter.swift",
@@ -233,7 +240,13 @@ PLATFORM_SURFACE_INVENTORY = {
     },
     r"\bButton\s*\(\s*intent\s*:": {},
     r"\bAppShortcut\s*\(": {
-        "App/MoneyUp/MoneyUpAppShortcuts.swift": 6,
+        "App/MoneyUp/MoneyUpAppShortcuts.swift": 7,
+    },
+    r"\bstruct\s+LogWithWordsIntent\s*:\s*AppIntent\b": {
+        "App/MoneyUp/LogWithWordsIntent.swift": 1,
+    },
+    r"\bIntentDialog\b": {
+        "App/MoneyUp/LogWithWordsIntent.swift": 1,
     },
 }
 COMPILED_REFERENCE_INVENTORY = {
@@ -250,6 +263,7 @@ COMPILED_REFERENCE_INVENTORY = {
     },
     r"\bMoneyUpQuickActionRouteBroker\b": {
         "App/MoneyUp/AppModel.swift": 5,
+        "App/MoneyUp/LogWithWordsIntent.swift": 1,
         "App/MoneyUp/MoneyUpApp.swift": 1,
         "App/MoneyUp/MoneyUpHomeScreenActions.swift": 1,
         "App/MoneyUp/MoneyUpQuickActionRouting.swift": 1,
@@ -280,6 +294,14 @@ COMPILED_REFERENCE_INVENTORY = {
         "App/MoneyUp/WidgetsQuickAccessView.swift": 1,
         "App/Shared/MoneyUpQuickAction.swift": 2,
         "App/MoneyUpWidget/MoneyUpQuickLogControl.swift": 1,
+    },
+    # Reviewed 2026-10-06: spoken words live only in this in-memory holder and
+    # are read back by the Log screen for the request that brought them.
+    r"\bQuickLogTextPrefill\b": {
+        "App/MoneyUp/LogWithWordsIntent.swift": 2,
+        "App/MoneyUp/QuickLogEntryBody.swift": 3,
+        "App/MoneyUp/QuickLogEntryDraft.swift": 3,
+        "App/MoneyUp/QuickLogTextPrefill.swift": 2,
     },
     r"\bQuickLogRouteRequest\b": {
         "App/MoneyUp/AppModel.swift": 3,
@@ -1042,13 +1064,24 @@ def validate_log_request_draft_source(source: str) -> list[str]:
         "launchRequest.id != handledRequestID",
         "pendingLaunchRequest = launchRequest",
         "onRequestHandled(launchRequest)",
-        "performLaunch(launchRequest.mode)",
     ]
-    return [
+    errors = [
         f"Log request draft handoff is missing {declaration}"
         for declaration in required
         if declaration not in source
     ]
+    words = (
+        "performLaunch(launchRequest.mode, words: "
+        "QuickLogTextPrefill.shared.take(for: launchRequest.ingressToken))"
+    )
+    if source.count(words) != 2:
+        errors.append(
+            "both Log launch paths must collect words only for their own "
+            "request token"
+        )
+    if source.count("QuickLogTextPrefill.shared.discard(for: launchRequest.ingressToken)") != 1:
+        errors.append("a resumed unlock draft must discard the words for its request")
+    return errors
 
 
 def validate_log_request_body_source(source: str) -> list[str]:
@@ -1063,6 +1096,11 @@ def validate_log_request_body_source(source: str) -> list[str]:
         for declaration in required
         if declaration not in source
     ]
+    if source.count("QuickLogTextPrefill.shared.discard(for: request.ingressToken)") != 3:
+        errors.append(
+            "keeping the draft, cancelling, or dismissing the replace dialog "
+            "must discard the words held for that request"
+        )
     if "pendingLaunchMode" in source or ".onChange(of: requestSequence)" in source:
         errors.append("Log request body retains an unversioned pending launch")
     return errors
@@ -1680,8 +1718,13 @@ def validate_shortcuts_source(source: str) -> list[str]:
         errors.append("App Shortcuts must not open a custom scheme directly")
     if "struct MoneyUpAppShortcuts: AppShortcutsProvider" not in source:
         errors.append("MoneyUpAppShortcuts provider is missing")
-    if source.count("AppShortcut(") != len(EXPECTED_ACTIONS):
-        errors.append("App Shortcuts must expose exactly the six reviewed actions")
+    if source.count("AppShortcut(") != len(EXPECTED_ACTIONS) + 1:
+        errors.append(
+            "App Shortcuts must expose exactly the six reviewed actions and "
+            "the one reviewed words shortcut"
+        )
+    if source.count("LogWithWordsIntent()") != 1:
+        errors.append("the words shortcut must use LogWithWordsIntent() exactly once")
     actions = re.findall(r"OpenQuickLogIntent\(action:\s*\.([A-Za-z0-9]+)\)", source)
     expected_names = [name for name, _, _ in EXPECTED_ACTIONS]
     if actions != expected_names:
@@ -1696,6 +1739,117 @@ def validate_shortcuts_source(source: str) -> list[str]:
     for symbol, boundary in FORBIDDEN_ACTION_SYMBOLS.items():
         if symbol in source:
             errors.append(f"App Shortcuts provider crosses {boundary}: {symbol}")
+    return errors
+
+
+LOG_WITH_WORDS_FORBIDDEN = {
+    r"\bUserDefaults\b": "defaults",
+    r"\bFileManager\b": "the file system",
+    r"\bData\s*\(": "raw data",
+    r"\.write\s*\(": "a write",
+    r"\bURL\b": "a URL",
+    r"\bKeychain\b": "the keychain",
+    r"\bLogger\b": "logging",
+    r"\bprint\s*\(": "printing",
+    r"\bos_log\b": "logging",
+    r"\bNotificationCenter\b": "notifications",
+    r"\bUIPasteboard\b": "the pasteboard",
+    r"\bUbiquitous\b": "iCloud key-value storage",
+    r"\bsqlite\b": "a database",
+    r"\bBudgetWidgetSnapshotStore\b": "the App Group",
+    r"\bapplicationSupport\b": "an Application Support path",
+    r"\bOpenURLIntent\b": "a direct URL intent",
+    r"\bIntentFile\b": "a file payload",
+    r"\.result\s*\(\s*(?:value|dialog|opensIntent)": "a result that carries a value",
+}
+
+
+def validate_log_with_words_intent_source(source: str) -> list[str]:
+    """The words intent may hold spoken words in memory and nothing else."""
+    errors: list[str] = []
+    body = declaration_body(source, "struct LogWithWordsIntent: AppIntent")
+    if body is None:
+        return ["LogWithWordsIntent is missing or malformed"]
+    parameters = re.findall(
+        r"@Parameter\(\s*title:\s*\"([a-z_.]+)\",\s*requestValueDialog:\s*"
+        r"IntentDialog\(\"([a-z_.]+)\"\)\s*\)\s*var\s+([A-Za-z]+)\s*:\s*([A-Za-z]+)",
+        body,
+    )
+    if parameters != [
+        (
+            "platform_intent.log_with_words.words",
+            "platform_intent.log_with_words.prompt",
+            "words",
+            "String",
+        )
+    ] or body.count("@Parameter") != 1:
+        errors.append(
+            "LogWithWordsIntent must expose only words: String with the static "
+            f"reviewed prompt; found {parameters}"
+        )
+    if source.count("IntentDialog") != 1:
+        errors.append("IntentDialog may appear once, as the static words prompt")
+    required = [
+        '@available(iOS, obsoleted: 26.0, message: "Replaced by supportedModes")',
+        "static var openAppWhenRun: Bool { true }",
+        "#if compiler(>=6.2)",
+        "@available(iOS 26.0, *)",
+        "static let supportedModes: IntentModes = [.foreground(.immediate)]",
+        "@MainActor\n    func perform() async throws -> some IntentResult",
+        "return .result()",
+    ]
+    for declaration in required:
+        if declaration not in body:
+            errors.append(f"LogWithWordsIntent is missing {declaration}")
+    perform = declaration_body(body, "func perform() async throws -> some IntentResult")
+    if perform is None or " ".join(perform.split()) != (
+        "let token = UUID() "
+        "guard QuickLogTextPrefill.shared.hold(words, for: token) else { "
+        "throw LogWithWordsError.noWords } "
+        "guard MoneyUpQuickActionRouteBroker.shared.submit(.smartEntry, token: token) else { "
+        "QuickLogTextPrefill.shared.discard(for: token) "
+        "throw MoneyUpQuickActionIngressError.unavailable } "
+        "return .result()"
+    ):
+        errors.append(
+            "LogWithWordsIntent.perform must hold the words for one token, ask "
+            "only for Smart Entry with that token, and return no value"
+        )
+    properties = re.findall(
+        r"(?m)^    (?:static\s+)?(?:let|var)\s+([A-Za-z][A-Za-z0-9]*)", body
+    )
+    if properties != ["title", "description", "openAppWhenRun", "supportedModes", "words"]:
+        errors.append(
+            "LogWithWordsIntent may declare only reviewed metadata and words; "
+            f"found {properties}"
+        )
+    for pattern, boundary in LOG_WITH_WORDS_FORBIDDEN.items():
+        if re.search(pattern, source):
+            errors.append(f"LogWithWordsIntent crosses {boundary}")
+    return errors
+
+
+def validate_log_text_prefill_source(source: str) -> list[str]:
+    """The holder keeps words in one in-memory slot, keyed by request token."""
+    errors: list[str] = []
+    if "@MainActor\nfinal class QuickLogTextPrefill" not in source:
+        errors.append("QuickLogTextPrefill must be a main-actor final class")
+    if source.count("static let shared = QuickLogTextPrefill()") != 1:
+        errors.append("QuickLogTextPrefill must have exactly one shared holder")
+    stored = re.findall(r"(?m)^    private var\s+([A-Za-z]+)", source)
+    if stored != ["held"] or "var held" not in source or source.count("held:") != 1:
+        errors.append("QuickLogTextPrefill may keep only the single held slot")
+    for declaration in (
+        "static let maximumCharacterCount = 500",
+        "static let lifetime: TimeInterval = 300",
+        "guard current.token == token else { return nil }",
+        "if current.expires <= now {",
+    ):
+        if declaration not in source:
+            errors.append(f"QuickLogTextPrefill is missing {declaration}")
+    for pattern, boundary in LOG_WITH_WORDS_FORBIDDEN.items():
+        if re.search(pattern, source):
+            errors.append(f"QuickLogTextPrefill crosses {boundary}")
     return errors
 
 
@@ -2610,7 +2764,6 @@ def validate_compiled_surface_inventory(root: Path) -> list[str]:
         r"\bOpenIntent\b": "an alternate OpenIntent",
         r"\bOpenURLIntent\b": "a direct URL intent",
         r"\.result\s*\(\s*opensIntent\s*:": "an intent-opening result",
-        r"\bIntentDialog\b": "an intent dialog payload",
         r"\bIntentFile\b": "an intent file payload",
     }
     for pattern, description in forbidden_global_patterns.items():
@@ -2618,15 +2771,17 @@ def validate_compiled_surface_inventory(root: Path) -> list[str]:
             errors.append(f"compiled platform-action inventory contains {description}")
 
     declaration_patterns = {
-        r"\bAppIntent\b": 1,
+        # OpenQuickLogIntent and, since 2026-10-06, LogWithWordsIntent.
+        r"\bAppIntent\b": 2,
         r"\bControlConfigurationIntent\b": 1,
         r"\bWidgetConfigurationIntent\b": 1,
         r"\bAppShortcutsProvider\b": 1,
         r"\bControlWidget\b": 1,
         r"\bAppIntentControlConfiguration\s*\(": 1,
         # Four reviewed quick-action inputs, plus the Focus filter's optional
-        # hide-amounts choice (2026-09-29).
-        r"@Parameter\b": 5,
+        # hide-amounts choice (2026-09-29), plus the words of LogWithWordsIntent
+        # (2026-10-06).
+        r"@Parameter\b": 6,
     }
     for pattern, expected_count in declaration_patterns.items():
         count = len(re.findall(pattern, combined))
@@ -2995,6 +3150,14 @@ def validate_repository(root: Path = ROOT) -> list[str]:
             "App/MoneyUp/QuickLogEntryCaptureSuggestions.swift",
             validate_log_only_suggestions_source,
         ),
+        (
+            "App/MoneyUp/LogWithWordsIntent.swift",
+            validate_log_with_words_intent_source,
+        ),
+        (
+            "App/MoneyUp/QuickLogTextPrefill.swift",
+            validate_log_text_prefill_source,
+        ),
     ]
     for relative, validator in source_contract:
         path = root / relative
@@ -3056,8 +3219,9 @@ def main() -> int:
         return 1
     print(
         "Validated six exact quick-log routes, bounded durable data-free ingress "
-        "with exact-token acknowledgement, passive budget status, bilingual "
-        "metadata, and preserved release identity"
+        "with exact-token acknowledgement, the one in-memory words intent that "
+        "only fills Smart Entry, passive budget status, bilingual metadata, "
+        "and preserved release identity"
     )
     return 0
 

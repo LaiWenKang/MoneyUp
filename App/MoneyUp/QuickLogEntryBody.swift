@@ -517,6 +517,7 @@ extension QuickLogEntryView {
         ) {
             Button("quick_log.resume_draft") {
                 if let request = pendingLaunchRequest {
+                    QuickLogTextPrefill.shared.discard(for: request.ingressToken)
                     onRequestHandled(request)
                 }
                 pendingLaunchRequest = nil
@@ -531,6 +532,7 @@ extension QuickLogEntryView {
             }
             Button("action.cancel", role: .cancel) {
                 if let request = pendingLaunchRequest {
+                    QuickLogTextPrefill.shared.discard(for: request.ingressToken)
                     onRequestHandled(request)
                 }
                 pendingLaunchRequest = nil
@@ -544,6 +546,7 @@ extension QuickLogEntryView {
             // Tapping outside the system dialog is also a cancellation. Ack it
             // so the same external request cannot remain stuck indefinitely.
             pendingLaunchRequest = nil
+            QuickLogTextPrefill.shared.discard(for: request.ingressToken)
             onRequestHandled(request)
         }
         .confirmationDialog(

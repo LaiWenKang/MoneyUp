@@ -1825,5 +1825,119 @@ class PlatformActionsValidatorTests(unittest.TestCase):
             )
 
 
+    def test_words_intent_exposes_only_the_reviewed_words_parameter(self) -> None:
+        source = self.source("App/MoneyUp/LogWithWordsIntent.swift")
+        self.assertEqual(VALIDATOR.validate_log_with_words_intent_source(source), [])
+
+        second_parameter = source.replace(
+            "    init() {}\n",
+            '    @Parameter(title: "Unsafe")\n    var note: String\n\n    init() {}\n',
+            1,
+        )
+        dynamic_prompt = source.replace(
+            'IntentDialog("platform_intent.log_with_words.prompt")',
+            'IntentDialog("Saved \\(words)")',
+            1,
+        )
+        returned_value = source.replace(
+            "return .result()",
+            "return .result(value: words)",
+            1,
+        )
+        for mutated in (second_parameter, dynamic_prompt, returned_value):
+            self.assertNotEqual(mutated, source)
+            self.assertNotEqual(VALIDATOR.validate_log_with_words_intent_source(mutated), [])
+
+    def test_words_intent_must_ask_only_for_smart_entry_with_its_own_token(self) -> None:
+        source = self.source("App/MoneyUp/LogWithWordsIntent.swift")
+        for old, new in (
+            ("submit(.smartEntry, token: token)", "submit(.expense, token: token)"),
+            ("hold(words, for: token)", "hold(words, for: UUID())"),
+            ("QuickLogTextPrefill.shared.discard(for: token)\n", "\n"),
+        ):
+            mutated = source.replace(old, new, 1)
+            self.assertNotEqual(mutated, source)
+            errors = VALIDATOR.validate_log_with_words_intent_source(mutated)
+            self.assertTrue(any("perform must hold the words" in error for error in errors), errors)
+
+    def test_spoken_words_never_reach_disk_or_the_pasteboard(self) -> None:
+        holder = self.source("App/MoneyUp/QuickLogTextPrefill.swift")
+        self.assertEqual(VALIDATOR.validate_log_text_prefill_source(holder), [])
+        for addition in (
+            "UserDefaults.standard.set(text, forKey: \"words\")",
+            "try? text.write(to: destination)",
+            "FileManager.default.createFile(atPath: path, contents: nil)",
+            "UIPasteboard.general.string = text",
+            "print(text)",
+        ):
+            mutated = holder.replace(
+                "        held = (token, text, now.addingTimeInterval(Self.lifetime))\n",
+                "        held = (token, text, now.addingTimeInterval(Self.lifetime))\n"
+                f"        {addition}\n",
+                1,
+            )
+            self.assertNotEqual(mutated, holder)
+            self.assertNotEqual(VALIDATOR.validate_log_text_prefill_source(mutated), [], addition)
+
+    def test_words_holder_keeps_one_slot_with_a_request_token_and_a_lifetime(self) -> None:
+        holder = self.source("App/MoneyUp/QuickLogTextPrefill.swift")
+        for old, new in (
+            ("guard current.token == token else { return nil }", ""),
+            ("if current.expires <= now {", "if false {"),
+            ("    private var held:", "    private var also: [String] = []\n    private var held:"),
+        ):
+            mutated = holder.replace(old, new, 1)
+            self.assertNotEqual(mutated, holder)
+            self.assertNotEqual(VALIDATOR.validate_log_text_prefill_source(mutated), [], old)
+
+    def test_log_collects_words_only_for_the_request_that_brought_them(self) -> None:
+        draft = self.source("App/MoneyUp/QuickLogEntryDraft.swift")
+        self.assertEqual(VALIDATOR.validate_log_request_draft_source(draft), [])
+        any_request = draft.replace(
+            "QuickLogTextPrefill.shared.take(for: launchRequest.ingressToken)",
+            "QuickLogTextPrefill.shared.take(for: UUID())",
+            1,
+        )
+        errors = VALIDATOR.validate_log_request_draft_source(any_request)
+        self.assertTrue(any("only for their own request token" in error for error in errors), errors)
+
+        body = self.source("App/MoneyUp/QuickLogEntryBody.swift")
+        self.assertEqual(VALIDATOR.validate_log_request_body_source(body), [])
+        kept = body.replace(
+            "QuickLogTextPrefill.shared.discard(for: request.ingressToken)\n",
+            "",
+            1,
+        )
+        errors = VALIDATOR.validate_log_request_body_source(kept)
+        self.assertTrue(any("must discard the words" in error for error in errors), errors)
+
+    def test_words_shortcut_is_the_only_shortcut_beyond_the_six(self) -> None:
+        source = self.source("App/MoneyUp/MoneyUpAppShortcuts.swift")
+        self.assertEqual(VALIDATOR.validate_shortcuts_source(source), [])
+        extra_shortcut = source.replace(
+            "    static var shortcutTileColor",
+            "    @AppShortcutsBuilder\n    static var more: [AppShortcut] {\n"
+            "        AppShortcut(\n            intent: LogWithWordsIntent(),\n"
+            '            phrases: ["Say \\(.applicationName)"],\n'
+            '            shortTitle: "shortcut.log_with_words",\n'
+            '            systemImageName: "text.bubble"\n        )\n    }\n\n'
+            "    static var shortcutTileColor",
+            1,
+        )
+        self.assertNotEqual(extra_shortcut, source)
+        self.assertNotEqual(VALIDATOR.validate_shortcuts_source(extra_shortcut), [])
+
+    def test_a_second_dialog_or_words_file_is_outside_the_reviewed_surface(self) -> None:
+        errors = self.inventory_with_extra(
+            "App/MoneyUp/ExtraWords.swift",
+            "import AppIntents\n"
+            "struct ExtraWords {\n"
+            '    let prompt = IntentDialog("What next?")\n'
+            "}\n",
+        )
+        self.assertTrue(any("outside the allowlist" in error for error in errors), errors)
+        self.assertTrue(any("IntentDialog" in error for error in errors), errors)
+
+
 if __name__ == "__main__":
     unittest.main()

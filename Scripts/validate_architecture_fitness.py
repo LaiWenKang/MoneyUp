@@ -663,7 +663,9 @@ W3_PATH_TYPE_DIGESTS: tuple[tuple[str, str, str, str], ...] = (
     # Contextual preload protects the restored draft and active-entry lifecycle.
     # Re-pinned 2026-09-26: launches ask only over real content, and discard resets smart-entry marks (1075.1 feedback).
     # Re-pinned 2026-09-30: a chosen file joins the photo and the scan as a receipt source (owner feedback on 1077.1).
-    ("App/MoneyUp/QuickLogEntryDraft.swift", "extension", "QuickLogEntryView", "25db0a6f066f6386371b01ffb37efafe408dc12ae0092403a019f4be2f3cc2b9"),
+    # Re-pinned 2026-10-06: Smart Entry opened by Siri collects the words held for its own request
+    # (in memory only), fills the field, and reads them; saving stays the person's tap.
+    ("App/MoneyUp/QuickLogEntryDraft.swift", "extension", "QuickLogEntryView", "d4ed2a6b2fb3ba00c1425956269d31161a8c3531698c864fd0db59b4cea8a068"),
     ('App/MoneyUp/QuickLogBatch.swift', 'enum', 'QuickLogBatchPreparation', 'b4a392813f96d592dce88fdc532816501d7ea991f59b791595e02fb7538e0273'),
     ('Sources/MoneyUpCore/SmartEntryBatchText.swift', 'enum', 'SmartEntryBatchText', '1efd0ca7104e651a464478fd2e28c491af109ce94d48b2c7d9d035f0416047f9'),
     ('App/MoneyUp/QuickLogSmartFill.swift', 'struct', 'QuickLogSmartFill', '3c98e0dc2f72aae58ef9626c1953a3239b930ad5fb465a45c8ba2e8f08ddd998'),
@@ -681,7 +683,8 @@ W3_PATH_TYPE_DIGESTS: tuple[tuple[str, str, str, str], ...] = (
         # the FX estimate names its rate date, not the stored day key.
         # Re-pinned 2026-09-30: a chosen receipt file starts the same review as a photo or a scan, and
         # leaving the sheet clears the file-picker flag with the photo-picker flag.
-        "b095f6b36f5feeda4973230eca244c5a0906ce1adeb46f63323fc0117827e50f",
+        # Re-pinned 2026-10-06: keeping the draft or cancelling discards the words held for that request.
+        "17d76de52e84b9f49d0bb33e6858c9535b86286ac8e01b09a73bc60082d67e15",
     ),
     (
         "App/MoneyUp/QuickLogEntryReceipt.swift",

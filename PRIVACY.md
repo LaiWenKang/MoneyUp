@@ -76,6 +76,12 @@ on. After a save, MoneyUp tells Siri only which fixed Log type was used
 (expense, income, transfer, or refund) so Siri Suggestions can offer it at
 similar times; no amount, payee, note, account, category, or record identifier
 is shared, and iOS controls Siri Suggestions through the user's Siri settings.
+The one Siri action that takes words (“Tell MoneyUp what I spent”, also the
+Shortcuts action Log with words) hands what you say or type to MoneyUp on your
+iPhone. This action keeps those words only in memory, for that one request and
+for at most five minutes, and never writes them to storage; they fill Smart
+Entry, where nothing is recorded until you review the result and tap Save.
+Siri and Shortcuts handle your speech under Apple's own terms.
 On-screen tips use Apple's TipKit; their small state (which tips were shown or
 closed, and at most two timestamps of visits to Log) stays in MoneyUp's own app
 container on the device and does not sync to iCloud.
@@ -258,7 +264,11 @@ schema 4 快照；以及一个有界的快捷操作接入文件。快照可包�
 过滤器只在所选专注模式开启期间隐藏或显示金额。保存记录后，MoneyUp 只会告知
 Siri 使用了哪一种固定的记账类型（支出、收入、转账或退款），以便 Siri 建议在
 相近时间推荐它；不会提供金额、商户、备注、账户、分类或记录标识符，Siri 建议由
-iOS 根据用户的 Siri 设置控制。屏幕提示使用 Apple 的 TipKit；其少量状态（已显示或
+iOS 根据用户的 Siri 设置控制。唯一接收文字的 Siri 操作（“告诉 MoneyUp 我花了什么”，
+也是“快捷指令”中的“用文字记账”）会把你说出或输入的文字交给 iPhone 上的 MoneyUp。
+该操作只在内存中保留这些文字，仅限这一次请求且最长五分钟，绝不写入存储；文字只会
+填入智能记账，在你检查结果并轻点“保存”之前，不会记录任何内容。Siri 和“快捷指令”
+按 Apple 自己的条款处理你的语音。屏幕提示使用 Apple 的 TipKit；其少量状态（已显示或
 已关闭的提示，以及最多两次进入记账页的时间）保存在 MoneyUp 自己的应用容器中，
 位于设备上，不同步到 iCloud。
 

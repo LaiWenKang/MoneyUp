@@ -20,6 +20,9 @@ enum MoneyUpUITestHarness {
     static let startCoveredArgument = "-MoneyUpUITestStartCovered"
     /// Makes the simulated device-owner prompt fail, as if cancelled.
     static let denyScreenUnlockArgument = "-MoneyUpUITestDenyScreenUnlock"
+    /// Runs the words intent once the book is open, with the words that follow
+    /// this argument: what Siri would pass after the person said them.
+    static let wordsArgument = "-MoneyUpUITestWords"
 
     private static var arguments: [String] { ProcessInfo.processInfo.arguments }
 
@@ -77,6 +80,9 @@ enum MoneyUpUITestHarness {
                 // As after an expired return whose automatic prompt was cancelled.
                 model.lockScreen()
                 model.automaticUnlockIsPending = false
+            }
+            if let index = arguments.firstIndex(of: wordsArgument), arguments.indices.contains(index + 1) {
+                _ = try? await LogWithWordsIntent(words: arguments[index + 1]).perform()
             }
         }
         return model

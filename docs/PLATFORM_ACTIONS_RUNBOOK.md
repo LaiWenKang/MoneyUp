@@ -101,6 +101,30 @@ Stop if metadata extraction reports a second parameter, a free-form field, an
 unlocalized title, or a missing action. Do not work around extraction errors by
 adding a string parameter or writing a route into shared defaults.
 
+## 2a. Words with Siri (0.7.4)
+
+"Tell MoneyUp what I spent" and "Log by voice in MoneyUp" are the only Siri
+phrases that take words, and Log with words is the same action in Shortcuts. On
+a physical iPhone, in English and Simplified Chinese:
+
+- Say the phrase. Siri asks "What did you spend or earn?". Answer "coffee 4.50".
+  MoneyUp opens Log at Smart Entry with the words filled in and the amount read;
+  nothing is saved until you tap Save, and History shows no new entry before that.
+- Run it with the app closed, with the book covered (after the auto-lock delay)
+  and after Settings › Lock now. While covered, it opens Log alone at once with
+  no Face ID and no past entries, like any other Log request; after Lock now it
+  waits for the normal unlock and the words are in Smart Entry afterwards.
+  Cancel that unlock and confirm no words show anywhere.
+- Say nothing, or only spaces, and confirm Siri says what to say and nothing
+  opens. Dictate a long sentence and confirm it is cut, not rejected.
+- Leave an unfinished draft before one run. The resume-or-discard decision
+  appears; Resume or Cancel drops the words, Start new fills them in.
+- Run a widget, the Home Screen Smart Entry action and the Smart Entry shortcut
+  after a words run that was never finished: none of them may show those words.
+- Inspect Siri history and the Shortcuts run history. They hold what you said,
+  because Apple keeps it; MoneyUp stores nothing of it, and the book, the
+  App Group and Spotlight must show no words.
+
 ## 2. Shortcut routing
 
 On a physical iPhone, run every App Shortcut once from Shortcuts, once from
