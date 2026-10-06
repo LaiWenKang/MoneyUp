@@ -664,8 +664,9 @@ W3_PATH_TYPE_DIGESTS: tuple[tuple[str, str, str, str], ...] = (
     # Re-pinned 2026-09-26: launches ask only over real content, and discard resets smart-entry marks (1075.1 feedback).
     # Re-pinned 2026-09-30: a chosen file joins the photo and the scan as a receipt source (owner feedback on 1077.1).
     # Re-pinned 2026-10-06: Smart Entry opened by Siri collects the words held for its own request
-    # (in memory only), fills the field, and reads them; saving stays the person's tap.
-    ("App/MoneyUp/QuickLogEntryDraft.swift", "extension", "QuickLogEntryView", "d4ed2a6b2fb3ba00c1425956269d31161a8c3531698c864fd0db59b4cea8a068"),
+    # (in memory only), fills the field, and reads them, again if opening the book replaced the draft
+    # mid-read; saving stays the person's tap.
+    ("App/MoneyUp/QuickLogEntryDraft.swift", "extension", "QuickLogEntryView", "c7a31d9dd4ad6be6889faff0bc675f37bc095049ca667760691c64902b738243"),
     ('App/MoneyUp/QuickLogBatch.swift', 'enum', 'QuickLogBatchPreparation', 'b4a392813f96d592dce88fdc532816501d7ea991f59b791595e02fb7538e0273'),
     ('Sources/MoneyUpCore/SmartEntryBatchText.swift', 'enum', 'SmartEntryBatchText', '1efd0ca7104e651a464478fd2e28c491af109ce94d48b2c7d9d035f0416047f9'),
     ('App/MoneyUp/QuickLogSmartFill.swift', 'struct', 'QuickLogSmartFill', '3c98e0dc2f72aae58ef9626c1953a3239b930ad5fb465a45c8ba2e8f08ddd998'),

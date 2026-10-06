@@ -262,7 +262,7 @@ extension QuickLogEntryView {
             focusedField = .smartEntry
             if let words {
                 trackedBinding($smartText, \.smartText, refreshesOccurrenceDate: true).wrappedValue = words
-                applyTypedPhrase()
+                readPrefilledWords(words)
             }
         case .scanReceipt:
             isHandlingFocusedLaunch = true
@@ -290,6 +290,23 @@ extension QuickLogEntryView {
         guard let day = format.firstIndex(of: "d"),
               let month = format.firstIndex(of: "M") else { return true }
         return day < month
+    }
+
+    /// Reads words from Siri as a tap on Fill would. The book finishing opening
+    /// can replace the draft while the first reading runs, which drops that
+    /// reading, so it is tried a few more times while the words are unchanged.
+    func readPrefilledWords(_ words: String) {
+        Task { @MainActor in
+            for _ in 0..<4 {
+                guard isActive, smartText == words else { return }
+                applyTypedPhrase()
+                for _ in 0..<100 where isParsingSmartEntry {
+                    try? await Task.sleep(for: .milliseconds(50))
+                }
+                if smartState.hasPreview { return }
+                try? await Task.sleep(for: .milliseconds(400))
+            }
+        }
     }
 
     func applyTypedPhrase() {
