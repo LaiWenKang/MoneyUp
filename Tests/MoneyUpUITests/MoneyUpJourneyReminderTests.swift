@@ -39,20 +39,39 @@ extension MoneyUpJourneyTests {
     }
 
     /// Scrolls the reminders form, in whichever direction the element lies,
-    /// until it can be tapped.
+    /// until it can be tapped. A fling carries the form a fixed distance, so a
+    /// row that lies between two of its resting places is never loaded and a
+    /// search by flings can miss it for ever. A row that is not loaded is
+    /// therefore looked for a controlled page at a time: a little way down,
+    /// then far up, then far down.
     func reveal(_ element: XCUIElement, in app: XCUIApplication,
                 file: StaticString = #filePath, line: UInt = #line) {
         func inView() -> Bool { element.exists && element.isHittable }
-        var swipes = 0
-        while !inView() && swipes < 24 {
+        var sweeps: [(towardsTop: Bool, pages: Int)] = [(false, 6), (true, 12), (false, 12)]
+        var sweep = 0
+        var pagesInSweep = 0
+        var steps = 0
+        var flungDown: Bool?
+        while !inView() && steps < 40 {
+            steps += 1
             if element.exists {
-                if element.frame.midY < app.frame.midY { app.swipeDown() } else { app.swipeUp() }
-            } else if swipes < 8 {
-                app.swipeUp()
+                let towardsTop = element.frame.midY < app.frame.midY
+                if towardsTop { app.swipeDown() } else { app.swipeUp() }
+                flungDown = !towardsTop
             } else {
-                app.swipeDown()
+                if let passed = flungDown {
+                    sweeps = [(passed, 12), (!passed, 24)]
+                    sweep = 0
+                    pagesInSweep = 0
+                    flungDown = nil
+                }
+                if pagesInSweep >= sweeps[sweep].pages {
+                    sweep = min(sweep + 1, sweeps.count - 1)
+                    pagesInSweep = 0
+                }
+                searchFormPage(app, towardsTop: sweeps[sweep].towardsTop)
+                pagesInSweep += 1
             }
-            swipes += 1
         }
         if !inView() { printScreen(app) }
         expectTrue(inView(), "Could not bring \(element) into view", file: file, line: line)
@@ -123,10 +142,20 @@ extension MoneyUpJourneyTests {
 
     /// Moves the form about two fifths of a screen and stops dead. A swipe
     /// flings past whole rows; this keeps every row on two consecutive pages.
-    private func scrollFormPage(_ app: XCUIApplication) {
+    private func scrollFormPage(_ app: XCUIApplication, towardsTop: Bool = false) {
         let high = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.72))
         let low = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.32))
-        high.press(forDuration: 0.1, thenDragTo: low, withVelocity: .slow, thenHoldForDuration: 0.4)
+        let (from, to) = towardsTop ? (low, high) : (high, low)
+        from.press(forDuration: 0.1, thenDragTo: to, withVelocity: .slow, thenHoldForDuration: 0.4)
+    }
+
+    /// Moves the form about seven tenths of a screen and stops dead, faster
+    /// than `scrollFormPage`, for looking for a row rather than auditing it.
+    private func searchFormPage(_ app: XCUIApplication, towardsTop: Bool) {
+        let high = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.85))
+        let low = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.15))
+        let (from, to) = towardsTop ? (low, high) : (high, low)
+        from.press(forDuration: 0.05, thenDragTo: to, withVelocity: .default, thenHoldForDuration: 0.3)
     }
 
     /// Audits the reminders form from its top to its bottom, one overlapping
