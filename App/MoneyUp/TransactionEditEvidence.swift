@@ -100,7 +100,7 @@ extension TransactionEditView {
                    size > ReceiptAttachment.maximumByteCount {
                     throw ReceiptAttachmentError.tooLarge
                 }
-                let data = try await EvidenceAttachmentPreparer.localPDFData(
+                let data = try await EvidenceAttachmentPreparer.localFileData(
                     from: url
                 )
                 let draft = try await EvidenceAttachmentPreparer.pdf(

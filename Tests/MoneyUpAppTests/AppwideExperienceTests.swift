@@ -212,7 +212,7 @@ final class AppwideExperienceTests: XCTestCase {
 
     @MainActor
     func testNavigationAndBackupSymbolsExistOnTheSupportedOS() {
-        for symbol in ["externaldrive.badge.checkmark", "wallet.bifold", "flag.checkered", "camera.aperture", "circle.dotted"] {
+        for symbol in ["externaldrive.badge.checkmark", "wallet.bifold", "flag.checkered", "chart.xyaxis.line", "circle.dotted"] {
             XCTAssertNotNil(UIImage(systemName: symbol), symbol)
         }
     }

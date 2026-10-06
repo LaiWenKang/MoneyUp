@@ -306,9 +306,22 @@ extension QuickLogEntryView {
             }
     }
 
-    /// Starts reading a receipt from the photo picker or the document camera.
-    /// Both pass the same input gate and reset the same state, so a scanned
-    /// page behaves exactly like a chosen photo.
+    /// A photo, screenshot or PDF chosen from Files. Backing out of the picker
+    /// is not an error and says nothing.
+    func beginReceiptFile(_ result: Result<[URL], Error>) {
+        switch result {
+        case let .success(urls):
+            guard let url = urls.first else { return }
+            beginReceiptScan(.file(url))
+        case let .failure(error):
+            guard (error as? CocoaError)?.code != .userCancelled else { return }
+            errorMessage = safeUserMessage(for: error, context: .scan)
+        }
+    }
+
+    /// Starts reading a receipt from the photo picker, Files or the document
+    /// camera. All three pass the same input gate and reset the same state, so
+    /// a scanned page behaves exactly like a chosen photo.
     func beginReceiptScan(_ item: ReceiptSource?) {
         receiptScanGeneration &+= 1
         let generation = receiptScanGeneration
@@ -427,6 +440,7 @@ extension QuickLogEntryView {
                 retainReceiptAttachment = false
                 receiptRetentionMessage = nil
                 isPresentingReceiptPicker = false
+                isPresentingReceiptFilePicker = false
                 isPresentingEvidencePhotoPicker = false
                 isPresentingEvidencePDFPicker = false
             }

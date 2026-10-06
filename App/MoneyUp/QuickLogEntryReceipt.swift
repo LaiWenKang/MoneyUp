@@ -9,17 +9,33 @@ private final class ReceiptSuggestionSignpostState {
     var ended = false
 }
 
-/// Where a receipt image comes from: a chosen photo, or a page the document
-/// camera scanned on this iPhone.
+/// Where a receipt comes from: a chosen photo, a page the document camera
+/// scanned on this iPhone, or a photo, screenshot or PDF picked from Files.
 enum ReceiptSource {
     case photo(PhotosPickerItem)
     case scanned(Data)
+    case file(URL)
 
     func loadData() async throws -> Data? {
         switch self {
         case let .photo(item): try await item.loadTransferable(type: Data.self)
         case let .scanned(data): data
+        case let .file(url): try await Self.fileData(at: url)
         }
+    }
+
+    /// The bounded read is awaited to the end even if the sheet closes, so the
+    /// security-scoped access below outlives it.
+    private static func fileData(at url: URL) async throws -> Data {
+        let hasAccess = url.startAccessingSecurityScopedResource()
+        defer {
+            if hasAccess { url.stopAccessingSecurityScopedResource() }
+        }
+        let values = try url.resourceValues(forKeys: [.fileSizeKey])
+        if let size = values.fileSize, size > ReceiptAttachment.maximumByteCount {
+            throw ReceiptAttachmentError.tooLarge
+        }
+        return try await EvidenceAttachmentPreparer.localFileData(from: url)
     }
 }
 
@@ -69,7 +85,7 @@ extension QuickLogEntryView {
         do {
             try Task.checkCancellation()
             guard let data = try await source.loadData() else {
-                throw ReceiptScannerError.unreadableImage
+                throw ReceiptScannerError.unreadable
             }
             try Task.checkCancellation()
             guard receiptScanIsCurrent(
@@ -193,14 +209,23 @@ extension QuickLogEntryView {
         }
 
         do {
-            let sanitized = try await ReceiptImageSanitizer
-                .prepareForEncryptedStorage(data)
+            let retained: Data
+            if ReceiptAttachmentMediaType.detected(from: data) == .pdf {
+                // A PDF is kept exactly as chosen, since redrawing it would lose
+                // its text. One that cannot be opened was already reported by
+                // the reader and is not offered for keeping.
+                guard await ReceiptDocumentReader.isReadablePDF(data) else { return }
+                retained = data
+            } else {
+                retained = try await ReceiptImageSanitizer
+                    .prepareForEncryptedStorage(data)
+            }
             try Task.checkCancellation()
             guard receiptScanIsCurrent(
                 generation: generation,
                 logicalBookRevision: logicalBookRevision
             ) else { return }
-            receiptAttachmentData = sanitized
+            receiptAttachmentData = retained
             receiptRetentionMessage = nil
         } catch is CancellationError {
             throw CancellationError()

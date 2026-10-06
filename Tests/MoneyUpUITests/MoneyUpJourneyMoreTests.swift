@@ -45,6 +45,24 @@ extension MoneyUpJourneyTests {
         expectTrue(app.buttons["log-undo"].waitForExistence(timeout: timeout))
     }
 
+    func testAttachingAReceiptIsOfferedBesideSmartEntry() {
+        let app = launch()
+        _ = openLog(app)
+        // On a short screen the amount keypad hides the rows below the amount.
+        dismissKeyboard(app)
+        // Attach is always there; the camera joins it on a device that can
+        // scan paper.
+        let attach = app.buttons["quick-log-attach-receipt"]
+        expectTrue(attach.waitForExistence(timeout: timeout), "Attach is not offered beside Smart Entry")
+        attachScreenshot(app, "journey-receipt-actions")
+        expectTrue(attach.isHittable, "Attach is covered")
+        attach.tap()
+        expectTrue(app.buttons["quick-log-attach-photo"].waitForExistence(timeout: timeout),
+                   "Attach does not offer Photos")
+        expectTrue(app.buttons["quick-log-attach-file"].exists, "Attach does not offer Files")
+        attachScreenshot(app, "journey-receipt-attach-menu")
+    }
+
     // MARK: History
 
     func testSavedEntryAppearsInHistoryAndSearchFindsIt() {

@@ -5,7 +5,7 @@ import UIKit
 import Vision
 
 enum EvidenceAttachmentPreparer {
-    static func localPDFData(from url: URL) async throws -> Data {
+    static func localFileData(from url: URL) async throws -> Data {
         try await Task.detached(priority: .userInitiated) {
             try Task.checkCancellation()
             let handle = try FileHandle(forReadingFrom: url)
