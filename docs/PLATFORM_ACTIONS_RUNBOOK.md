@@ -101,7 +101,7 @@ Stop if metadata extraction reports a second parameter, a free-form field, an
 unlocalized title, or a missing action. Do not work around extraction errors by
 adding a string parameter or writing a route into shared defaults.
 
-## 2a. Words with Siri (0.7.4)
+## 2a. Words with Siri (0.7.3)
 
 "Tell MoneyUp what I spent" and "Log by voice in MoneyUp" are the only Siri
 phrases that take words, and Log with words is the same action in Shortcuts. On

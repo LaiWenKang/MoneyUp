@@ -58,6 +58,11 @@ products are unchanged.
   Screen unless the person opts in, and a snoozed copy is removed when that opt-in
   is turned off. The choices are one device-local record that the first 0.7.3
   builds' single daily time still loads into.
+- Siri takes words (#123): "Tell MoneyUp what I spent" and "Log by voice in
+  MoneyUp" (and the Shortcuts action Log with words) open Smart Entry with the
+  words filled in and read. The words are held in memory for that one request,
+  for at most five minutes, and only that request can collect them; nothing is
+  saved until the person taps Save. The six existing actions stay data-free.
 
 ## Data migration
 
@@ -95,7 +100,7 @@ accounts.
   Review, App Review, and physical-iPhone acceptance (upgrade from 0.7.2, receipt
   scan, reminders, Focus filter, and Log from a widget after auto-lock). Each is
   recorded separately when it happens.
-- Not in 0.7.3: Siri with spoken text. The owner approved a prefill-only version
-  (Siri hears the words, Log opens with them filled in, and nothing is saved until
-  the owner reviews and taps Save); it is a separate change because it moves the
-  Siri data boundary, and it is not in this build.
+- Siri with spoken words is in this build, in the prefill-only form the owner
+  approved on 6 October 2026: Siri hears the words, Log opens with them filled in,
+  and nothing is saved until the owner reviews and taps Save. Real Siri is a
+  physical-iPhone check (`PA-SIRI-01-DEVICE-VOICE` in the runbook).
