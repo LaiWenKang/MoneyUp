@@ -15,7 +15,11 @@ final class AppwideRenderEvidenceTests: XCTestCase {
             if let previousPrivacy { UserDefaults.standard.set(previousPrivacy, forKey: MoneyAmountPrivacy.storageKey) }
             else { UserDefaults.standard.removeObject(forKey: MoneyAmountPrivacy.storageKey) }
         }
-        for language in [AppLanguagePreference.english, .simplifiedChinese] {
+        // The scan tip appears from the second visit to Log, so each language is
+        // captured in a run of its own to keep it out of the pictures.
+        let onlyLanguage = ProcessInfo.processInfo.environment["MONEYUP_CAPTURE_LANGUAGE"]
+        for language in [AppLanguagePreference.english, .simplifiedChinese]
+        where onlyLanguage == nil || onlyLanguage == language.rawValue {
             let (fixture, model, snapshot) = try await AppStoreScreenshotFixture.make(chinese: language == .simplifiedChinese)
             defer { fixture.removeFiles() }
             let prefix = language == .english ? "store-en-" : "store-zh-"

@@ -197,6 +197,7 @@ extension QuickLogEntryView {
         if sourceCaptureID != nil {
             // Unlock promotion itself routes to Log. It is the same durable
             // draft, not a request to discard it and start another entry.
+            QuickLogTextPrefill.shared.discard(for: launchRequest.ingressToken)
             onRequestHandled(launchRequest)
             focusedField = .amount
             return
@@ -209,7 +210,7 @@ extension QuickLogEntryView {
             isConfirmingDraftSwitch = true
             return
         }
-        performLaunch(launchRequest.mode)
+        performLaunch(launchRequest.mode, words: QuickLogTextPrefill.shared.take(for: launchRequest.ingressToken))
         onRequestHandled(launchRequest)
     }
 
@@ -244,12 +245,14 @@ extension QuickLogEntryView {
         retainReceiptAttachment = false
         receiptRetentionMessage = nil
         errorMessage = nil
-        performLaunch(launchRequest.mode)
+        performLaunch(launchRequest.mode, words: QuickLogTextPrefill.shared.take(for: launchRequest.ingressToken))
         selectDefaults()
         model.updateQuickLogDraft(draftSnapshot)
     }
 
-    func performLaunch(_ launchMode: QuickLogLaunchMode) {
+    /// `words` are what a person said to Siri or typed into a shortcut for this
+    /// request. They are only filled in and read; saving is still the person's tap.
+    func performLaunch(_ launchMode: QuickLogLaunchMode, words: String? = nil) {
         refreshUntouchedOccurrenceDate()
         kind = launchMode.kind
 
@@ -257,6 +260,10 @@ extension QuickLogEntryView {
         case .smartEntry:
             isHandlingFocusedLaunch = true
             focusedField = .smartEntry
+            if let words {
+                trackedBinding($smartText, \.smartText, refreshesOccurrenceDate: true).wrappedValue = words
+                readPrefilledWords(words)
+            }
         case .scanReceipt:
             isHandlingFocusedLaunch = true
             dismissKeyboard()
@@ -283,6 +290,23 @@ extension QuickLogEntryView {
         guard let day = format.firstIndex(of: "d"),
               let month = format.firstIndex(of: "M") else { return true }
         return day < month
+    }
+
+    /// Reads words from Siri as a tap on Fill would. The book finishing opening
+    /// can replace the draft while the first reading runs, which drops that
+    /// reading, so it is tried a few more times while the words are unchanged.
+    func readPrefilledWords(_ words: String) {
+        Task { @MainActor in
+            for _ in 0..<4 {
+                guard isActive, smartText == words else { return }
+                applyTypedPhrase()
+                for _ in 0..<100 where isParsingSmartEntry {
+                    try? await Task.sleep(for: .milliseconds(50))
+                }
+                if smartState.hasPreview { return }
+                try? await Task.sleep(for: .milliseconds(400))
+            }
+        }
     }
 
     func applyTypedPhrase() {

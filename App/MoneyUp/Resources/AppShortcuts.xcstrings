@@ -36,6 +36,18 @@
         "en" : {"stringUnit" : {"state" : "translated", "value" : "Choose a receipt in \\(.applicationName)"}},
         "zh-Hans" : {"stringUnit" : {"state" : "translated", "value" : "在 \\(.applicationName) 中选择小票"}}
       }
+    },
+    "Tell \\(.applicationName) what I spent" : {
+      "localizations" : {
+        "en" : {"stringUnit" : {"state" : "translated", "value" : "Tell \\(.applicationName) what I spent"}},
+        "zh-Hans" : {"stringUnit" : {"state" : "translated", "value" : "告诉 \\(.applicationName) 我花了什么"}}
+      }
+    },
+    "Log by voice in \\(.applicationName)" : {
+      "localizations" : {
+        "en" : {"stringUnit" : {"state" : "translated", "value" : "Log by voice in \\(.applicationName)"}},
+        "zh-Hans" : {"stringUnit" : {"state" : "translated", "value" : "在 \\(.applicationName) 中语音记账"}}
+      }
     }
   },
   "version" : "1.0"

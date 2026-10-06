@@ -4,41 +4,41 @@
   "copyright": "2026 Lai Wen Kang",
   "localizations": {
     "en-US": {
-      "description": "A calmer way to keep track of your money.\n\nMoneyUp brings your spending, budgets, accounts and savings goals together in a private, local-first iPhone app. No MoneyUp account required.\n\nMAKE EVERYDAY SPENDING CLEAR\nRecord expenses, income, transfers and refunds. Review your history by date or category, and search every date at once. Scan a paper receipt with the camera or read a screenshot on your device, then check the details before saving.\n\nLOG IN A MOMENT\nStart a log from a widget, Control Center, Siri or by touching and holding the MoneyUp icon. Optional reminders arrive on the day a scheduled payment or income is due, or as a gentle daily nudge to log. Names and amounts stay off the Lock Screen unless you turn them on.\n\nPLAN WITH CONFIDENCE\nCreate multi-level budgets, pin the categories you care about, track what remains, and explore budget scenarios without changing your records. Follow savings goals and see cash flow on your calendar.\n\nKEEP YOUR ACCOUNTS IN VIEW\nTrack account balances in their own currencies. Add your own exchange rates when you need a converted estimate. Accounts are manually maintained; MoneyUp does not connect to your bank.\n\nPRIVATE BY DESIGN\nYour book is encrypted on your iPhone. No ads or tracking. Hide amounts automatically during a Focus. Export your records to CSV or Excel, or create an encrypted backup when you choose.\n\nMoneyUp is a recording and planning tool, not financial, investment, tax or legal advice.\n\nOPTIONAL DEVELOPER SUPPORT\nAll core features are free. If you would like to support development, optional one-time tips are available through Apple. Tips do not unlock features and are not subscriptions.\n\nBRING YOUR HISTORY\nImport CSV/TSV text, XLSX worksheets and JSON transaction tables locally. Choose the intended table, review fields and transaction types, and confirm before records are added. Encrypted workbooks and spreadsheet formulas are not evaluated.",
+      "description": "A calmer way to keep track of your money.\n\nMoneyUp brings your spending, budgets, accounts and savings goals together in a private, local-first iPhone app. No MoneyUp account required.\n\nMAKE EVERYDAY SPENDING CLEAR\nRecord expenses, income, transfers and refunds. Review your history by date or category, and search every date at once. Scan a paper receipt with the camera, or attach a photo, a file or a PDF, and your iPhone reads it on the device. Check the details before saving.\n\nLOG IN A MOMENT\nStart a log from a widget, Control Center, Siri or by touching and holding the MoneyUp icon, or tell Siri what you spent and check it in Log before saving. Optional reminders you set up yourself: ahead of a scheduled payment or income, up to three gentle nudges a day to log, and a weekly review. Names and amounts stay off the Lock Screen unless you turn them on.\n\nPLAN WITH CONFIDENCE\nCreate multi-level budgets, pin the categories you care about, track what remains, and explore budget scenarios without changing your records. Follow savings goals and see cash flow on your calendar.\n\nKEEP YOUR ACCOUNTS IN VIEW\nTrack account balances in their own currencies. Add your own exchange rates when you need a converted estimate. Accounts are manually maintained; MoneyUp does not connect to your bank.\n\nPRIVATE BY DESIGN\nYour book is encrypted on your iPhone. No ads or tracking. Hide amounts automatically during a Focus. Export your records to CSV or Excel, or create an encrypted backup when you choose.\n\nMoneyUp is a recording and planning tool, not financial, investment, tax or legal advice.\n\nOPTIONAL DEVELOPER SUPPORT\nAll core features are free. If you would like to support development, optional one-time tips are available through Apple. Tips do not unlock features and are not subscriptions.\n\nBRING YOUR HISTORY\nImport CSV/TSV text, XLSX worksheets and JSON transaction tables locally. Choose the intended table, review fields and transaction types, and confirm before records are added. Encrypted workbooks and spreadsheet formulas are not evaluated.",
       "keywords": "budget,expense,spending,money,finance,tracker,calendar,savings,accounts,private,receipt,bills",
       "promotionalText": "Your money, a little clearer. Track spending, plan budgets and grow savings goals with a private, encrypted ledger on your iPhone.",
       "supportUrl": "https://github.com/LaiWenKang/MoneyUp/blob/main/SUPPORT.md",
-      "whatsNew": "Faster, calmer and more at home on iPhone.\n• Log from a widget without unlocking: after auto-lock, a widget, Control Center or Siri opens Log straight away. The rest of MoneyUp still asks you to unlock.\n• Reminders: a notification on the day a scheduled payment or income is due, plus an optional daily logging reminder. Names and amounts stay off the Lock Screen unless you turn them on.\n• Scan paper receipts with the camera: tap the receipt button to scan, or touch and hold it to choose a photo.\n• Touch and hold the MoneyUp icon for Quick Expense, Quick Income, Smart Entry and Choose Receipt.\n• Hide amounts automatically during a Focus: Settings › Focus › choose one › Add Filter › MoneyUp.\n• History search now looks through every date. Touch and hold a transaction to preview it; tap to open it with a smooth zoom.\n• Undo after saving hands the entry back to you to correct.\n• Siri Suggestions can offer the Log you use, at the times you usually log.\n• Quicker everywhere: your book opens almost instantly after unlock, restore and export are much faster, and screens keep their content while they refresh.\n• VoiceOver reads hidden amounts as “hidden amount”.\n• Clearer wording for exchange-rate dates and budget pace, and calmer, consistent motion."
+      "whatsNew": "Faster, calmer and more at home on iPhone.\n• Log from a widget without unlocking: after auto-lock, a widget, Control Center or Siri opens Log straight away. The rest of MoneyUp still asks you to unlock.\n• Reminders you set up yourself (Settings › Reminders): scheduled payments and income on the day or up to a week ahead, up to three daily logging reminders on the days you pick, and a weekly review. Choose the sound and snooze buttons, and send yourself a test. Names and amounts stay off the Lock Screen unless you turn them on.\n• Tell Siri what you spent: say “Tell MoneyUp what I spent”, answer “coffee 4.50”, and Log opens with it filled in and read. Nothing is saved until you check it and tap Save.\n• Receipts: Camera and Attach now sit beside Smart Entry. Scan a paper receipt, or attach a photo, a file or a PDF; it is read on your iPhone and you check it before saving.\n• A clearer icon for saving today’s net-worth snapshot in Assets.\n• Touch and hold the MoneyUp icon for Quick Expense, Quick Income, Smart Entry and Choose Receipt.\n• Hide amounts automatically during a Focus: Settings › Focus › choose one › Add Filter › MoneyUp.\n• History search now looks through every date. Touch and hold a transaction to preview it; tap to open it with a smooth zoom.\n• Undo after saving hands the entry back to you to correct.\n• Siri Suggestions can offer the Log you use, at the times you usually log.\n• Quicker everywhere: your book opens almost instantly after unlock, restore and export are much faster, and screens keep their content while they refresh.\n• VoiceOver reads hidden amounts as “hidden amount”.\n• Clearer wording for exchange-rate dates and budget pace, and calmer, consistent motion."
     },
     "zh-Hans": {
-      "description": "把收支看清楚，把生活安排得更从容。\n\nMoneyUp 将记账、预算、账户与储蓄目标放在一起，财务记录加密保存在你的 iPhone。无需注册 MoneyUp 账户。\n\n日常记账，清清楚楚\n记录支出、收入、转账与退款，按日期或分类回顾明细，并可一次搜索所有日期。用相机扫描纸质收据，或在本机识别收据截图，检查结果后再保存。\n\n随手记一笔\n从小组件、控制中心、Siri，或按住 MoneyUp 图标即可开始记账。可选的提醒会在计划收支到期当天通知你，也可开启每日记账提醒。除非你开启，锁定屏幕不会显示名称和金额。\n\n预算有计划，心里更有底\n建立多层预算，置顶关心的分类，查看已用与剩余金额。通过预算情景模拟探索计划，不会修改实际账本。追踪储蓄目标，在日历中查看资金流。\n\n账户与币种，分别看清\n手动管理账户余额，按各自币种查看。需要换算估值时，可使用自己记录的汇率。MoneyUp 不连接银行，也不提供交易服务。\n\n隐私，从设计开始\n本地账本加密存储，不含广告或追踪。专注模式下可自动隐藏金额。你可自主导出 CSV 或 Excel 文件，或创建加密备份。\n\nMoneyUp 是记录与规划工具，不构成财务、投资、税务或法律建议。\n\n自愿支持独立开发\n所有核心功能继续免费。如你愿意，可通过 Apple 进行一次性自愿支持。支持不会解锁功能，也不是订阅。\n\n带上你的记账历史\n本机读取 CSV／TSV、XLSX 工作表和 JSON 账单表。选择数据表，检查字段与账单类型后再确认导入；不会读取加密工作簿或执行表格公式。",
+      "description": "把收支看清楚，把生活安排得更从容。\n\nMoneyUp 将记账、预算、账户与储蓄目标放在一起，财务记录加密保存在你的 iPhone。无需注册 MoneyUp 账户。\n\n日常记账，清清楚楚\n记录支出、收入、转账与退款，按日期或分类回顾明细，并可一次搜索所有日期。用相机扫描纸质收据，或附加照片、文件和 PDF，在本机识别，检查结果后再保存。\n\n随手记一笔\n从小组件、控制中心、Siri，或按住 MoneyUp 图标即可开始记账；也可以告诉 Siri 你花了什么，在记账页检查后再保存。可选的提醒由你自己设置：在计划收支到期前提醒、每天最多三次记账提醒，以及每周回顾。除非你开启，锁定屏幕不会显示名称和金额。\n\n预算有计划，心里更有底\n建立多层预算，置顶关心的分类，查看已用与剩余金额。通过预算情景模拟探索计划，不会修改实际账本。追踪储蓄目标，在日历中查看资金流。\n\n账户与币种，分别看清\n手动管理账户余额，按各自币种查看。需要换算估值时，可使用自己记录的汇率。MoneyUp 不连接银行，也不提供交易服务。\n\n隐私，从设计开始\n本地账本加密存储，不含广告或追踪。专注模式下可自动隐藏金额。你可自主导出 CSV 或 Excel 文件，或创建加密备份。\n\nMoneyUp 是记录与规划工具，不构成财务、投资、税务或法律建议。\n\n自愿支持独立开发\n所有核心功能继续免费。如你愿意，可通过 Apple 进行一次性自愿支持。支持不会解锁功能，也不是订阅。\n\n带上你的记账历史\n本机读取 CSV／TSV、XLSX 工作表和 JSON 账单表。选择数据表，检查字段与账单类型后再确认导入；不会读取加密工作簿或执行表格公式。",
       "keywords": "预算,记账,支出,收支,消费,账本,存钱,储蓄,目标,资金流,资产,隐私,收据,账单",
       "promotionalText": "让每一笔钱更清楚。私密记账、规划预算、追踪储蓄目标，财务记录加密保存在你的 iPhone。",
       "supportUrl": "https://github.com/LaiWenKang/MoneyUp/blob/main/SUPPORT.md",
-      "whatsNew": "更快、更安心，也更像 iPhone 原生应用。\n• 小组件记账无需解锁：自动锁定后，小组件、控制中心和 Siri 可直接打开记账页；MoneyUp 的其他部分仍需解锁。\n• 提醒：计划收支到期当天提醒，还可开启每日记账提醒。除非你开启“显示名称和金额”，锁定屏幕不会显示名称和金额。\n• 用相机扫描纸质收据：轻点收据按钮即可扫描，按住可从照片中选择。\n• 按住 MoneyUp 图标，即可使用快速支出、快速收入、智能记账和选择收据。\n• 在专注模式中自动隐藏金额：设置 › 专注模式 › 选择一个 › 添加过滤器 › MoneyUp。\n• 明细搜索现在会查找所有日期。按住交易可预览，轻点即可平滑放大打开。\n• 保存后撤销，会把这笔记录交还给你修改。\n• Siri 建议会在你常记账的时间推荐对应的记账方式。\n• 全面提速：解锁后账本几乎即时打开，恢复和导出大幅加快，页面刷新时内容不再消失。\n• 旁白会把隐藏的金额读作“隐藏的金额”。\n• 汇率日期和预算进度的用语更清楚，动画更柔和统一。"
+      "whatsNew": "更快、更安心，也更像 iPhone 原生应用。\n• 小组件记账无需解锁：自动锁定后，小组件、控制中心和 Siri 可直接打开记账页；MoneyUp 的其他部分仍需解锁。\n• 提醒由你自己设置（设置 › 提醒）：计划收支可在当天或最多提前一周提醒，每天最多三次记账提醒并可选择星期，还有每周回顾；可选提示音和“稍后提醒”按钮，也可发送测试提醒。除非你开启“显示名称和金额”，锁定屏幕不会显示名称和金额。\n• 告诉 Siri 你花了什么：说“告诉 MoneyUp 我花了什么”，再回答“咖啡 4.50”，记账页就会打开并填好、识别内容。你检查并轻点“保存”之前，不会记录任何内容。\n• 收据：相机和附件按钮现在位于智能记账旁边。可扫描纸质收据，或附加照片、文件和 PDF；在本机识别，保存前由你确认。\n• 资产页保存今日净资产快照的图标更清晰。\n• 按住 MoneyUp 图标，即可使用快速支出、快速收入、智能记账和选择收据。\n• 在专注模式中自动隐藏金额：设置 › 专注模式 › 选择一个 › 添加过滤器 › MoneyUp。\n• 明细搜索现在会查找所有日期。按住交易可预览，轻点即可平滑放大打开。\n• 保存后撤销，会把这笔记录交还给你修改。\n• Siri 建议会在你常记账的时间推荐对应的记账方式。\n• 全面提速：解锁后账本几乎即时打开，恢复和导出大幅加快，页面刷新时内容不再消失。\n• 旁白会把隐藏的金额读作“隐藏的金额”。\n• 汇率日期和预算进度的用语更清楚，动画更柔和统一。"
     }
   },
   "screenshots": {
     "en-US": [
       {
         "file": "screenshots/en-brand.png",
-        "sha256": "20ac7a8174a2bb74717735fc8a8a1e87165af02723ed0cede4a4df60b97c53a9"
+        "sha256": "4be31a5c7fbf8a3ad797288530c040ac42704b0afcaad31317c91f012d79e126"
       },
       {
         "file": "screenshots/en-today.png",
-        "sha256": "8157f336b53d671db3ed343992059a334b3a1d78d720250c36a20e2793fee1a1"
+        "sha256": "4ffba871683fae5086250ae52a94b270a7e06997d0bd7a4ca070448a8755c628"
       },
       {
         "file": "screenshots/en-plan.png",
-        "sha256": "7a5d0724c925b9994c92ee7699ccbd2bd9691a8710977b78f0156291e49167d7"
+        "sha256": "d6d09dc8aaf2f238f9fbe29d042b4e4d8326bd7e75ea994a4e13ba97930f253b"
       },
       {
         "file": "screenshots/en-history.png",
-        "sha256": "4d766a4b71c9f72a376be280acc2b4bc8917c327bab2b232a4b0a724f251e919"
+        "sha256": "6be1f7654ee43a54405bada869e22a3179c09d9c4fc56c2723d452e3e9a391fb"
       },
       {
         "file": "screenshots/en-assets.png",
-        "sha256": "fc9b6c7eed41ff59e82d5d5547f6d5300df5e7eb23d7f6e5392ab191e1e2fc41"
+        "sha256": "2b2d6786465a95c16a7b6ff6da2427e35a322d653624d224e6cae78c2ec6126c"
       },
       {
         "file": "screenshots/en-goals.png",
@@ -46,33 +46,33 @@
       },
       {
         "file": "screenshots/en-log.png",
-        "sha256": "568ac6dd050a54d3424694119dbeebe241bf85539a7da2b70033164ba10b4446"
+        "sha256": "a5fef869aa49e3466d53993ffd2c96b2e7008e4e3ff12368e3bd39b039fe9b3e"
       },
       {
         "file": "screenshots/en-calendar.png",
-        "sha256": "c9250904121195882acc1ea693728546ff94556df10582602f64b18fee94b5c6"
+        "sha256": "9a3d21cbeb6c4fcb13c1b847d71e2894287d95b9f4109b4453030b127cc6a417"
       }
     ],
     "zh-Hans": [
       {
         "file": "screenshots/zh-brand.png",
-        "sha256": "c01238363ba8dacd32823094ab04a6798f7b0de04cc82354590bb114175af743"
+        "sha256": "ecf8f142328351b1e70988da970c14d10dbd653d5736f7acddf5760fa8f7c53e"
       },
       {
         "file": "screenshots/zh-today.png",
-        "sha256": "37cb3e5939aac92e1a1c3e8a93095a13f92c229d2ad6472a82ebeb4ccc588c3b"
+        "sha256": "f937531fa5be57e89037a7ee6d6ead55b0f7a7f6729ca4da6c19d8d5b261d45d"
       },
       {
         "file": "screenshots/zh-plan.png",
-        "sha256": "299a14c8efe3afe0452fb0dcba3f1606bfd1b05a8f1fafcd0d19eec36c81f364"
+        "sha256": "1fa01e8fd088c48922e87c88e3c9672181d248005338f2c9dfb2868ced2d6a91"
       },
       {
         "file": "screenshots/zh-history.png",
-        "sha256": "83ffbf31c8f3f856bb27b7aa56726bd0e9a2eceb053f68a63c910c097c216989"
+        "sha256": "65a96e0c642ccf5a9f84b5af0c52951d3756d45791bce54135ed02f77cd910dd"
       },
       {
         "file": "screenshots/zh-assets.png",
-        "sha256": "8b2f81a3ba8592c73f0b80563476e4bee0b91f6cb5b50b4085eac84995e779e6"
+        "sha256": "e0ec5c38b7cc8446c5687426625ce183985a7317bc4dc9b8affe21fe43529cdd"
       },
       {
         "file": "screenshots/zh-goals.png",
@@ -80,15 +80,15 @@
       },
       {
         "file": "screenshots/zh-log.png",
-        "sha256": "9c22e977c5863f704d570379751914d5ec507ddaf8932887dc1e30d2108199d7"
+        "sha256": "0e0be7545ce99b4c946e7e9eb94d3136919fb12d2183c8b239c748be70c150d4"
       },
       {
         "file": "screenshots/zh-calendar.png",
-        "sha256": "3713312a93bad6216fdcca9fd014c3b1237d7c9cf90d4c681e62b48072b3109e"
+        "sha256": "1c8a9e151c39d4b35233b0360f4371748d3f4d69428271e1adde3717d540f2a0"
       }
     ]
   },
-  "reviewNotes": "MoneyUp is a local-first personal bookkeeping app. No MoneyUp account, bank connection, investment trading, ads or tracking. Cloud backup is disabled in this public build. Start a local book to explore the app. This update adds paper-receipt scanning with Apple's document camera (the camera permission is requested only when Scan is tapped; the image is read on the device and never uploaded), local reminders (notification permission is requested only when a reminder is turned on in Settings; nothing is sent from a server), a Focus filter that hides amounts, Home Screen quick actions, and faster launch, restore and export. Widgets, Control Center controls and Siri shortcuts carry no financial data. After the timed auto-lock, opening Log from one of them shows the Log form without asking to unlock, and never shows past entries; every other screen still asks to unlock. Screenshots use fictional data rendered by the production views. The optional Support MoneyUp page in Settings uses consumable StoreKit purchases, with no subscription, entitlement or feature unlock. Each purchase is an optional one-time tip to the developer.",
+  "reviewNotes": "MoneyUp is a local-first personal bookkeeping app. No MoneyUp account, bank connection, investment trading, ads or tracking. Cloud backup is disabled in this public build. Start a local book to explore the app. This update adds paper-receipt scanning with Apple's document camera and Camera and Attach buttons beside Smart Entry for a photo, file or PDF (the camera permission is requested only when Camera is tapped; receipts are read on the device and never uploaded), local reminders set up in Settings › Reminders (notification permission is requested only when a reminder is turned on; nothing is sent from a server), a Focus filter that hides amounts, Home Screen quick actions, and faster launch, restore and export. Widgets and Control Center controls carry no financial data. One Siri phrase, “Tell MoneyUp what I spent”, passes the words the user says to Smart Entry on the device so they appear filled in for review; nothing is saved until the user taps Save, and the words are not stored. The other Siri shortcuts only open Log. After the timed auto-lock, opening Log from one of them shows the Log form without asking to unlock, and never shows past entries; every other screen still asks to unlock. Screenshots use fictional data rendered by the production views. The optional Support MoneyUp page in Settings uses consumable StoreKit purchases, with no subscription, entitlement or feature unlock. Each purchase is an optional one-time tip to the developer.",
   "supportProducts": [
     {
       "productId": "com.laiwenkang.MoneyUp.support.small",

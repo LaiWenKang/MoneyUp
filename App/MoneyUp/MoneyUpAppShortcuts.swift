@@ -39,6 +39,15 @@ struct MoneyUpAppShortcuts: AppShortcutsProvider {
             shortTitle: "shortcut.quick_log.scan_receipt",
             systemImageName: "receipt"
         )
+        AppShortcut(
+            intent: LogWithWordsIntent(),
+            phrases: [
+                "Tell \(.applicationName) what I spent",
+                "Log by voice in \(.applicationName)"
+            ],
+            shortTitle: "shortcut.log_with_words",
+            systemImageName: "text.bubble"
+        )
     }
 
     static var shortcutTileColor: ShortcutTileColor { .grayGreen }
