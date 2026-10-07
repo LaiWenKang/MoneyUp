@@ -14,7 +14,7 @@ struct TodayCashFlowStory: View {
             Text(maskingAmounts: formattedMoneyWithCurrencyCode(report.baseFlow.net))
                 .moneyUpFinancialValue(.prominent)
             Text("dashboard.flow.net_to_date")
-                .font(.caption).foregroundStyle(.secondary)
+                .font(.caption).foregroundStyle(.moneyUpSecondary)
             Chart(Array(report.monthlyFlows.suffix(6)), id: \.month) { flow in
                 BarMark(
                     x: .value(AppLocalization.string("chart.dimension.month"), flow.month, unit: .month, calendar: calendar),
@@ -61,7 +61,7 @@ struct TodayCashFlowStory: View {
                 Text(maskingAmounts: formattedMoneyWithCurrencyCode(report.baseFlow.expense)).monospacedDigit()
             }.font(.caption)
             if !report.foreignFlows.isEmpty {
-                Text("dashboard.flow.other_currencies").font(.caption).foregroundStyle(.secondary)
+                Text("dashboard.flow.other_currencies").font(.caption).foregroundStyle(.moneyUpSecondary)
             }
         }
     }

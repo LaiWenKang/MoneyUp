@@ -156,7 +156,7 @@ struct BudgetPlanView: View {
                     String(format: AppLocalization.string("plan.purpose_review_title"), snapshot.unclassifiedNodeIDs.count),
                     systemImage: "exclamationmark.shield"
                 )
-                Text("plan.purpose_review_detail").font(.caption).foregroundStyle(.secondary)
+                Text("plan.purpose_review_detail").font(.caption).foregroundStyle(.moneyUpSecondary)
             }
         }
         if isCurrentMonth, currency == model.profile?.baseCurrency,
@@ -231,7 +231,7 @@ struct BudgetPlanView: View {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("budget.setup.title").font(.headline)
                         Text("budget.setup.cta_detail")
-                            .font(.subheadline).foregroundStyle(.secondary)
+                            .font(.subheadline).foregroundStyle(.moneyUpSecondary)
                     }
                     Spacer(minLength: 8)
                     Image(systemName: "chevron.right")
@@ -313,7 +313,7 @@ struct BudgetPlanView: View {
                let child = progress?.childAllocation {
                 Text(child.amount > (item.node.limit?.amount ?? .zero)
                     ? "budget.children_overallocated" : "budget.fixed_total_detail")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.caption).foregroundStyle(.moneyUpSecondary)
             }
             if snapshot.unclassifiedNodeIDs.contains(item.id), item.node.limit == nil {
                 Label("plan.purpose.unclassified", systemImage: "questionmark.circle")
@@ -443,12 +443,12 @@ struct BudgetSpendingHistoryView: View {
             let categoryIDs = BudgetSpendingScope.categoryIDs(rootID: nodeID, nodes: snapshot.progress.map(\.node))
             VStack(spacing: 0) {
                 VStack(spacing: 8) {
-                    Text(date, format: .dateTime.year().month()).font(.caption).foregroundStyle(.secondary)
+                    Text(date, format: .dateTime.year().month()).font(.caption).foregroundStyle(.moneyUpSecondary)
                     LabeledContent("history.spent", maskingAmounts: formattedMoney(progress.spent))
                     if let remaining = progress.remaining {
                         LabeledContent("plan.total_left", maskingAmounts: formattedMoney(remaining))
                     } else {
-                        Text("intelligence.budget.no_limit").foregroundStyle(.secondary)
+                        Text("intelligence.budget.no_limit").foregroundStyle(.moneyUpSecondary)
                     }
                 }.padding()
                 HistoryView(preset: HistoryPreset(

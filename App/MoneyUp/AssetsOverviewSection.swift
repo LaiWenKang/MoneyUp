@@ -17,15 +17,20 @@ struct AssetsOverviewSection: View {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Label("assets.account_net_worth", systemImage: "chart.line.uptrend.xyaxis")
-                        .font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+                        .font(.subheadline.weight(.semibold)).foregroundStyle(.moneyUpSecondary)
                     Spacer(minLength: 8)
                     MoneyUpExplainer("assets.account_net_worth_note").font(.footnote)
                 }
                 switch model.netWorthByCurrencyResult() {
                 case let .available(amounts):
-                    ForEach(amounts, id: \.currency) { value in
-                        if hidesAmounts { Text(value.currency.value).font(.caption.weight(.semibold)).foregroundStyle(.secondary) }
-                        Text(maskingAmounts: formattedMoneyWithCurrencyCode(value)).moneyUpFinancialValue(.hero)
+                    // One hero figure: the base currency leads and any other
+                    // currency follows a size down, so the eye lands once.
+                    let lead = amounts.first { $0.currency == model.profile?.baseCurrency } ?? amounts.first
+                    let ordered = lead.map { lead in [lead] + amounts.filter { $0.currency != lead.currency } } ?? amounts
+                    ForEach(ordered, id: \.currency) { value in
+                        if hidesAmounts { Text(value.currency.value).font(.caption.weight(.semibold)).foregroundStyle(.moneyUpSecondary) }
+                        Text(maskingAmounts: formattedMoneyWithCurrencyCode(value))
+                            .moneyUpFinancialValue(value.currency == lead?.currency ? .hero : .prominent)
                             .fixedSize(horizontal: false, vertical: true)
                             // VoiceOver hears what the figure is, not a bare number.
                             .accessibilityLabel(Text("assets.account_net_worth"))
@@ -43,7 +48,7 @@ struct AssetsOverviewSection: View {
                         if model.investmentHoldings.contains(where: {
                             $0.positionAccountID != nil && $0.quantity > .zero && $0.isPriceStale(relativeTo: now, calendar: model.reportingCalendar)
                         }) { Text("holding.stale").font(.caption).foregroundStyle(Color.moneyUpWarning) }
-                    }.foregroundStyle(.secondary)
+                    }.foregroundStyle(.moneyUpSecondary)
                 }
             }.padding(.vertical, 8)
         }
@@ -60,12 +65,12 @@ struct AssetsOverviewSection: View {
                     Text("fx.rates_as_of")
                     Text(value.conversionAsOf.formattedForReporting(.dateTime.year().month().day(), calendar: model.reportingCalendar))
                 }.font(.caption)
-            }.foregroundStyle(.secondary)
+            }.foregroundStyle(.moneyUpSecondary)
         case .available(nil):
             if amounts.filter({ !$0.isZero }).count > 1 {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Label("fx.total_needs_rates", systemImage: "arrow.left.arrow.right.circle")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.caption).foregroundStyle(.moneyUpSecondary)
                     MoneyUpExplainer("fx.net_worth_complete_rate_needed").font(.caption)
                 }
             }

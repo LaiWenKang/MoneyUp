@@ -138,7 +138,7 @@ struct MoneyUpDisclosureCard<Summary: View, Detail: View>: View {
                 VStack(alignment: .leading, spacing: 5) {
                     Text(title)
                         .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.moneyUpSecondary)
                     summary
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)

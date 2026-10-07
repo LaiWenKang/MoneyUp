@@ -63,7 +63,7 @@ struct MoneyUpCashFlowGraphic: View {
             Circle().fill(color).frame(width: 8, height: 8)
             Text(title)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.moneyUpSecondary)
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
                 .layoutPriority(1)

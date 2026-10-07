@@ -49,14 +49,14 @@ struct AllowanceUsageRow: View {
                 calendar: usageCalendar
             ))
             .font(.caption)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.moneyUpSecondary)
             if let note = usage.note {
-                Text(note).font(.caption).foregroundStyle(.secondary)
+                Text(note).font(.caption).foregroundStyle(.moneyUpSecondary)
             }
             if let status = usage.claimStatus {
                 Text(status.allowanceTitleKey)
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.moneyUpSecondary)
             }
             if !claimActions.isEmpty || allowsUsageMutation {
                 ViewThatFits(in: .horizontal) {
@@ -274,7 +274,7 @@ struct AllowanceUsageSheet: View {
                 if !editorState.isAvailable {
                     Text("allowance.date_unavailable")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.moneyUpSecondary)
                 }
                 TextField(
                     "transaction.description_or_notes",

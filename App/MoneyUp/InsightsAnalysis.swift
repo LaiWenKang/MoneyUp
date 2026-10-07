@@ -17,7 +17,7 @@ extension InsightsView {
                     systemImage: "selection.pin.in.out"
                 )
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.moneyUpSecondary)
 
                 if hasActivity {
                     cashFlowChart(report, points: points)
@@ -35,7 +35,7 @@ extension InsightsView {
 
                     Text("insights.tap_chart")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.moneyUpSecondary)
 
                     if let selectedFlow = report.monthlyFlows.first(where: {
                         guard let selectedFlowMonth else { return false }
@@ -49,7 +49,7 @@ extension InsightsView {
                     }
                 } else {
                     Text("insights.no_flow_data")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.moneyUpSecondary)
                 }
             }
         }
@@ -172,7 +172,7 @@ extension InsightsView {
                         .font(.subheadline.weight(.semibold))
                     Text(maskingAmounts: formattedMoney(point.money))
                         .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.moneyUpSecondary)
                 }
                 Spacer(minLength: 12)
                 // This drill-through stays in Today's navigation stack. The
@@ -246,7 +246,7 @@ extension InsightsView {
         VStack(alignment: .leading, spacing: 2) {
             Text(title)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.moneyUpSecondary)
             Text(maskingAmounts: formattedMoney(money))
                 .font(.caption.monospacedDigit().weight(.semibold))
         }
@@ -265,7 +265,7 @@ extension InsightsView {
                 ForEach(reading.lines, id: \.self) { line in
                     Text(line)
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.moneyUpSecondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
 

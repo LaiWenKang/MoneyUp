@@ -73,12 +73,12 @@ struct PinnedBudgetEditorSheet: View {
                     if let limit = outlined.node.limit {
                         Text(maskingAmounts: formattedMoney(limit))
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.moneyUpSecondary)
                             .monospacedDigit()
                     } else {
                         Text("today.pinned.no_limit")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.moneyUpSecondary)
                     }
                 }
                 Spacer(minLength: 8)

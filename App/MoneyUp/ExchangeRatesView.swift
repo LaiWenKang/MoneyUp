@@ -40,7 +40,7 @@ struct ExchangeRatesView: View {
                                 )
                             )
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.moneyUpSecondary)
                         }
                         .accessibilityElement(children: .combine)
                         .swipeActions {

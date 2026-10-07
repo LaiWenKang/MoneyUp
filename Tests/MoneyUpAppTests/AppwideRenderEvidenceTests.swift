@@ -4,6 +4,7 @@ import MoneyUpCore
 import Observation
 import SwiftUI
 import UIKit
+import Vision
 import XCTest
 
 final class AppwideRenderEvidenceTests: XCTestCase {
@@ -153,6 +154,56 @@ final class AppwideRenderEvidenceTests: XCTestCase {
         await fixture.store.close()
     }
 
+    /// The detector must see what SwiftUI draws, or every other capture's
+    /// "no raw keys" check would pass for the wrong reason.
+    @MainActor
+    func testRawKeyDetectorSeesSwiftUIText() async {
+        await capture(Form {
+            Text(verbatim: "goal.balance")
+            LabeledContent { Text(verbatim: "SGD 1.00") } label: { Text(verbatim: "budget.child_total") }
+            Text(verbatim: "Visit moneyup.app or e.g. 3.20")
+        }, name: "raw-key-detector", height: 400, recordsAttachment: false, expectingRawKeyCount: 2)
+    }
+
+    /// Every amount row with a label: goal, budget, account and holding
+    /// screens show the label's words, never its catalog key (1077.1 and
+    /// 1078.1 showed "goal.balance" on Goal detail).
+    @MainActor
+    func testAmountRowsShowWordsNotKeys() async throws {
+        let (fixture, model, snapshot) = try await makeFixture()
+        defer { fixture.removeFiles() }
+        let previousPrivacy = UserDefaults.standard.object(forKey: MoneyAmountPrivacy.storageKey)
+        UserDefaults.standard.set(false, forKey: MoneyAmountPrivacy.storageKey)
+        defer {
+            if let previousPrivacy { UserDefaults.standard.set(previousPrivacy, forKey: MoneyAmountPrivacy.storageKey) }
+            else { UserDefaults.standard.removeObject(forKey: MoneyAmountPrivacy.storageKey) }
+        }
+        let goal = try XCTUnwrap(model.savingsGoals.first)
+        let node = try XCTUnwrap(model.budgetNodes.first)
+        for language in [AppLanguagePreference.english, .simplifiedChinese] {
+            let suffix = language == .english ? "" : "-zh"
+            await capture(GoalDetailView(goalID: goal.id).environment(model).environment(\.appReportingSnapshot, snapshot),
+                          name: "keys-goal-detail" + suffix, language: language)
+            await capture(GoalManagementSheet(goalID: goal.id).environment(model).environment(\.appReportingSnapshot, snapshot),
+                          name: "keys-goal-editor" + suffix, language: language)
+            await capture(NavigationStack { BudgetSpendingHistoryView(nodeID: node.id, date: snapshot.instant, currency: fixture.sgd) }
+                .environment(model).environment(\.appReportingSnapshot, snapshot), name: "keys-budget-history" + suffix, language: language)
+            await capture(BudgetEditorSheet(node: node, asOf: snapshot.instant, currency: fixture.sgd,
+                                            childAllocation: try Money(120, currency: fixture.sgd))
+                .environment(model), name: "keys-budget-editor" + suffix, language: language)
+            await capture(NavigationStack { AccountSpendingHistoryView(accountID: fixture.wallet.id) }
+                .environment(model).environment(\.appReportingSnapshot, snapshot), name: "keys-account-history" + suffix, language: language)
+        }
+        var holding = try InvestmentHolding(accountID: fixture.wallet.id, symbol: "VWRA", name: "World equity", quantity: 0)
+        try holding.recordPurchase(quantity: 10, unitCost: try Money(100, currency: fixture.sgd),
+                                   occurredAt: snapshot.instant.addingTimeInterval(-172_800), entryID: UUID())
+        try holding.recordPrice(try Money(110, currency: fixture.sgd), asOf: snapshot.instant.addingTimeInterval(-86_400))
+        XCTAssertNotNil(holding.price)
+        let holdingModel = fixture.model(accounts: model.accounts, investmentHoldings: [holding], currentDate: { snapshot.instant })
+        await capture(HoldingManagementSheet(holdingID: holding.id).environment(holdingModel), name: "keys-holding")
+        await fixture.store.close()
+    }
+
     /// Empty, launching, locked, and recovery states for the visual-first
     /// audit: a fresh book with one account and no budgets, plus the root
     /// lifecycle screens a person sees before the tabs.
@@ -238,7 +289,8 @@ final class AppwideRenderEvidenceTests: XCTestCase {
                     await capture(MainTabView(initialReportingSnapshot: snapshot, initialSection: .log)
                         .environment(model).environment(MoneyUpOverviewNavigation())
                         .environment(\.dynamicTypeSize, size).preferredColorScheme(scheme),
-                        name: "log-shape-\(name)-\(kind.rawValue)-\(scheme == .light ? "light" : "dark")", recordsAttachment: false)
+                        name: "log-shape-\(name)-\(kind.rawValue)-\(scheme == .light ? "light" : "dark")", recordsAttachment: false,
+                        checksForRawKeys: false)
                 }
                 model.quickLogDraft = QuickLogDraft(kind: kind, amountText: "", destinationAmountText: "",
                     accountID: accounts.first?.id, destinationAccountID: nil, categoryID: accounts.first?.id,
@@ -286,7 +338,8 @@ final class AppwideRenderEvidenceTests: XCTestCase {
     @discardableResult
     private func capture<Content: View>(
         _ content: Content, name: String, width: CGFloat = 390, height: CGFloat = 844,
-        language: AppLanguagePreference = .english, recordsAttachment: Bool = true
+        language: AppLanguagePreference = .english, recordsAttachment: Bool = true,
+        checksForRawKeys: Bool = true, expectingRawKeyCount: Int = 0
     ) async -> UIImage {
         let defaults = AppLanguagePreference.defaults
         let previous = defaults?.object(forKey: AppLanguagePreference.storageKey)
@@ -295,7 +348,9 @@ final class AppwideRenderEvidenceTests: XCTestCase {
             if let previous { defaults?.set(previous, forKey: AppLanguagePreference.storageKey) }
             else { defaults?.removeObject(forKey: AppLanguagePreference.storageKey) }
         }
-        let controller = UIHostingController(rootView: content.environment(\.locale, language.locale))
+        // The same root tint the app applies above every screen.
+        let controller = UIHostingController(rootView: content.environment(\.locale, language.locale)
+            .tint(.accentColor))
         let window = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first.map(UIWindow.init(windowScene:))
             ?? UIWindow(frame: CGRect(x: 0, y: 0, width: width, height: height))
         window.frame = CGRect(x: 0, y: 0, width: width, height: height)
@@ -310,6 +365,10 @@ final class AppwideRenderEvidenceTests: XCTestCase {
         format.opaque = true
         format.scale = 3
         let image = UIGraphicsImageRenderer(bounds: window.bounds, format: format).image { _ in window.drawHierarchy(in: window.bounds, afterScreenUpdates: true) }
+        if checksForRawKeys {
+            let rawKeys = Self.rawLocalizationKeys(in: Self.recognizedLines(in: image))
+            XCTAssertEqual(rawKeys.count, expectingRawKeyCount, "\(name) shows text keys instead of words: \(rawKeys.sorted())")
+        }
         if recordsAttachment {
             let attachment = XCTAttachment(image: image)
             attachment.name = name
@@ -317,6 +376,39 @@ final class AppwideRenderEvidenceTests: XCTestCase {
             add(attachment)
         }
         return image
+    }
+
+    /// The text a person sees in a capture, read back from its pixels. A
+    /// hosted SwiftUI view builds no accessibility tree in a unit test, so the
+    /// picture itself is the honest source.
+    private static func recognizedLines(in image: UIImage) -> [String] {
+        guard let cgImage = image.cgImage else { return [] }
+        let request = VNRecognizeTextRequest()
+        request.recognitionLevel = .accurate
+        request.usesLanguageCorrection = false
+        request.recognitionLanguages = ["en-US"]
+        try? VNImageRequestHandler(cgImage: cgImage).perform([request])
+        return (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }
+    }
+
+    private static let catalogKeys: Set<String> = {
+        guard let url = Bundle.main.url(forResource: "Localizable", withExtension: "strings",
+                                        subdirectory: nil, localization: "en"),
+              let table = NSDictionary(contentsOf: url) as? [String: Any] else { return [] }
+        return Set(table.keys)
+    }()
+
+    /// Catalog keys shown in place of their words, such as "goal.balance".
+    /// A dotted lowercase word counts when it is a catalog key, the start of
+    /// one up to an underscore (which recognition can drop), or has an
+    /// underscore no real word or web address would.
+    private static func rawLocalizationKeys(in lines: [String]) -> Set<String> {
+        let words = lines.flatMap { $0.split(whereSeparator: { $0.isWhitespace || $0 == "," || $0 == ":" }) }
+        return Set(words.map(String.init).filter { word in
+            word.wholeMatch(of: /[a-z][a-z0-9_]*(\.[a-z0-9_]+)+/) != nil
+                && (word.contains("_") || catalogKeys.contains(word)
+                    || catalogKeys.contains { $0.hasPrefix(word + "_") })
+        })
     }
 }
 

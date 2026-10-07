@@ -8,83 +8,83 @@
       "keywords": "budget,expense,spending,money,finance,tracker,calendar,savings,accounts,private,receipt,bills",
       "promotionalText": "Your money, a little clearer. Track spending, plan budgets and grow savings goals with a private, encrypted ledger on your iPhone.",
       "supportUrl": "https://github.com/LaiWenKang/MoneyUp/blob/main/SUPPORT.md",
-      "whatsNew": "Faster, calmer and more at home on iPhone.\n• Log from a widget without unlocking: after auto-lock, a widget, Control Center or Siri opens Log straight away. The rest of MoneyUp still asks you to unlock.\n• Reminders you set up yourself (Settings › Reminders): scheduled payments and income on the day or up to a week ahead, up to three daily logging reminders on the days you pick, and a weekly review. Choose the sound and snooze buttons, and send yourself a test. Names and amounts stay off the Lock Screen unless you turn them on.\n• Tell Siri what you spent: say “Tell MoneyUp what I spent”, answer “coffee 4.50”, and Log opens with it filled in and read. Nothing is saved until you check it and tap Save.\n• Receipts: Camera and Attach now sit beside Smart Entry. Scan a paper receipt, or attach a photo, a file or a PDF; it is read on your iPhone and you check it before saving.\n• A clearer icon for saving today’s net-worth snapshot in Assets.\n• Touch and hold the MoneyUp icon for Quick Expense, Quick Income, Smart Entry and Choose Receipt.\n• Hide amounts automatically during a Focus: Settings › Focus › choose one › Add Filter › MoneyUp.\n• History search now looks through every date. Touch and hold a transaction to preview it; tap to open it with a smooth zoom.\n• Undo after saving hands the entry back to you to correct.\n• Siri Suggestions can offer the Log you use, at the times you usually log.\n• Quicker everywhere: your book opens almost instantly after unlock, restore and export are much faster, and screens keep their content while they refresh.\n• VoiceOver reads hidden amounts as “hidden amount”.\n• Clearer wording for exchange-rate dates and budget pace, and calmer, consistent motion."
+      "whatsNew": "Faster, calmer and more at home on iPhone.\n• Log from a widget without unlocking: after auto-lock, a widget, Control Center or Siri opens Log straight away. The rest of MoneyUp still asks you to unlock.\n• Reminders you set up yourself (Settings › Reminders): scheduled payments and income on the day or up to a week ahead, up to three daily logging reminders on the days you pick, and a weekly review. Choose the sound and snooze buttons, and send yourself a test. Names and amounts stay off the Lock Screen unless you turn them on.\n• Tell Siri what you spent: say “Tell MoneyUp what I spent”, answer “coffee 4.50”, and Log opens with it filled in and read. Nothing is saved until you check it and tap Save.\n• Receipts: Camera and Attach now sit beside Smart Entry. Scan a paper receipt, or attach a photo, a file or a PDF; it is read on your iPhone and you check it before saving.\n• A clearer icon for saving today’s net-worth snapshot in Assets.\n• Touch and hold the MoneyUp icon for Quick Expense, Quick Income, Smart Entry and Choose Receipt.\n• Hide amounts automatically during a Focus: Settings › Focus › choose one › Add Filter › MoneyUp.\n• History search now looks through every date. Touch and hold a transaction to preview it; tap to open it with a smooth zoom.\n• Undo after saving hands the entry back to you to correct.\n• Siri Suggestions can offer the Log you use, at the times you usually log.\n• Quicker everywhere: your book opens almost instantly after unlock, restore and export are much faster, and screens keep their content while they refresh.\n• VoiceOver reads hidden amounts as “hidden amount”.\n• Easier to read: higher-contrast secondary text, one headline figure on Assets and Plan, an exchange-rate editor that reads “1 SGD = … USD”, plainer words for allowances, clearer exchange-rate dates and budget pace, and calmer, consistent motion."
     },
     "zh-Hans": {
       "description": "把收支看清楚，把生活安排得更从容。\n\nMoneyUp 将记账、预算、账户与储蓄目标放在一起，财务记录加密保存在你的 iPhone。无需注册 MoneyUp 账户。\n\n日常记账，清清楚楚\n记录支出、收入、转账与退款，按日期或分类回顾明细，并可一次搜索所有日期。用相机扫描纸质收据，或附加照片、文件和 PDF，在本机识别，检查结果后再保存。\n\n随手记一笔\n从小组件、控制中心、Siri，或按住 MoneyUp 图标即可开始记账；也可以告诉 Siri 你花了什么，在记账页检查后再保存。可选的提醒由你自己设置：在计划收支到期前提醒、每天最多三次记账提醒，以及每周回顾。除非你开启，锁定屏幕不会显示名称和金额。\n\n预算有计划，心里更有底\n建立多层预算，置顶关心的分类，查看已用与剩余金额。通过预算情景模拟探索计划，不会修改实际账本。追踪储蓄目标，在日历中查看资金流。\n\n账户与币种，分别看清\n手动管理账户余额，按各自币种查看。需要换算估值时，可使用自己记录的汇率。MoneyUp 不连接银行，也不提供交易服务。\n\n隐私，从设计开始\n本地账本加密存储，不含广告或追踪。专注模式下可自动隐藏金额。你可自主导出 CSV 或 Excel 文件，或创建加密备份。\n\nMoneyUp 是记录与规划工具，不构成财务、投资、税务或法律建议。\n\n自愿支持独立开发\n所有核心功能继续免费。如你愿意，可通过 Apple 进行一次性自愿支持。支持不会解锁功能，也不是订阅。\n\n带上你的记账历史\n本机读取 CSV／TSV、XLSX 工作表和 JSON 账单表。选择数据表，检查字段与账单类型后再确认导入；不会读取加密工作簿或执行表格公式。",
       "keywords": "预算,记账,支出,收支,消费,账本,存钱,储蓄,目标,资金流,资产,隐私,收据,账单",
       "promotionalText": "让每一笔钱更清楚。私密记账、规划预算、追踪储蓄目标，财务记录加密保存在你的 iPhone。",
       "supportUrl": "https://github.com/LaiWenKang/MoneyUp/blob/main/SUPPORT.md",
-      "whatsNew": "更快、更安心，也更像 iPhone 原生应用。\n• 小组件记账无需解锁：自动锁定后，小组件、控制中心和 Siri 可直接打开记账页；MoneyUp 的其他部分仍需解锁。\n• 提醒由你自己设置（设置 › 提醒）：计划收支可在当天或最多提前一周提醒，每天最多三次记账提醒并可选择星期，还有每周回顾；可选提示音和“稍后提醒”按钮，也可发送测试提醒。除非你开启“显示名称和金额”，锁定屏幕不会显示名称和金额。\n• 告诉 Siri 你花了什么：说“告诉 MoneyUp 我花了什么”，再回答“咖啡 4.50”，记账页就会打开并填好、识别内容。你检查并轻点“保存”之前，不会记录任何内容。\n• 收据：相机和附件按钮现在位于智能记账旁边。可扫描纸质收据，或附加照片、文件和 PDF；在本机识别，保存前由你确认。\n• 资产页保存今日净资产快照的图标更清晰。\n• 按住 MoneyUp 图标，即可使用快速支出、快速收入、智能记账和选择收据。\n• 在专注模式中自动隐藏金额：设置 › 专注模式 › 选择一个 › 添加过滤器 › MoneyUp。\n• 明细搜索现在会查找所有日期。按住交易可预览，轻点即可平滑放大打开。\n• 保存后撤销，会把这笔记录交还给你修改。\n• Siri 建议会在你常记账的时间推荐对应的记账方式。\n• 全面提速：解锁后账本几乎即时打开，恢复和导出大幅加快，页面刷新时内容不再消失。\n• 旁白会把隐藏的金额读作“隐藏的金额”。\n• 汇率日期和预算进度的用语更清楚，动画更柔和统一。"
+      "whatsNew": "更快、更安心，也更像 iPhone 原生应用。\n• 小组件记账无需解锁：自动锁定后，小组件、控制中心和 Siri 可直接打开记账页；MoneyUp 的其他部分仍需解锁。\n• 提醒由你自己设置（设置 › 提醒）：计划收支可在当天或最多提前一周提醒，每天最多三次记账提醒并可选择星期，还有每周回顾；可选提示音和“稍后提醒”按钮，也可发送测试提醒。除非你开启“显示名称和金额”，锁定屏幕不会显示名称和金额。\n• 告诉 Siri 你花了什么：说“告诉 MoneyUp 我花了什么”，再回答“咖啡 4.50”，记账页就会打开并填好、识别内容。你检查并轻点“保存”之前，不会记录任何内容。\n• 收据：相机和附件按钮现在位于智能记账旁边。可扫描纸质收据，或附加照片、文件和 PDF；在本机识别，保存前由你确认。\n• 资产页保存今日净资产快照的图标更清晰。\n• 按住 MoneyUp 图标，即可使用快速支出、快速收入、智能记账和选择收据。\n• 在专注模式中自动隐藏金额：设置 › 专注模式 › 选择一个 › 添加过滤器 › MoneyUp。\n• 明细搜索现在会查找所有日期。按住交易可预览，轻点即可平滑放大打开。\n• 保存后撤销，会把这笔记录交还给你修改。\n• Siri 建议会在你常记账的时间推荐对应的记账方式。\n• 全面提速：解锁后账本几乎即时打开，恢复和导出大幅加快，页面刷新时内容不再消失。\n• 旁白会把隐藏的金额读作“隐藏的金额”。\n• 更易阅读：次要文字对比度更高，资产页和规划页只突出一个主要金额，汇率以“1 SGD = … USD”的形式填写，津贴、汇率日期和预算进度的用语更清楚，动画更柔和统一。"
     }
   },
   "screenshots": {
     "en-US": [
       {
         "file": "screenshots/en-brand.png",
-        "sha256": "4be31a5c7fbf8a3ad797288530c040ac42704b0afcaad31317c91f012d79e126"
+        "sha256": "955994d7b757c597559fd7389ef137e44fbd9e3e72a6119891fbc0568b3bbdd8"
       },
       {
         "file": "screenshots/en-today.png",
-        "sha256": "4ffba871683fae5086250ae52a94b270a7e06997d0bd7a4ca070448a8755c628"
+        "sha256": "479021727ef961962c2075928e063892d4aaf98a3d8260dd26e33580a3f6b8ca"
       },
       {
         "file": "screenshots/en-plan.png",
-        "sha256": "d6d09dc8aaf2f238f9fbe29d042b4e4d8326bd7e75ea994a4e13ba97930f253b"
+        "sha256": "4de97be11aecd80b573df65efe84f3f8fef270e6cde9cb7b3ad56a50282d8bca"
       },
       {
         "file": "screenshots/en-history.png",
-        "sha256": "6be1f7654ee43a54405bada869e22a3179c09d9c4fc56c2723d452e3e9a391fb"
+        "sha256": "fdbf2f201789d38e853aba96d4b1d14e511977bede4f64a3828bcbd436a1ac21"
       },
       {
         "file": "screenshots/en-assets.png",
-        "sha256": "2b2d6786465a95c16a7b6ff6da2427e35a322d653624d224e6cae78c2ec6126c"
+        "sha256": "716ee9cd67b67af67ccaef1fefb15b0f951a7c652803685ff7e3cc0ad74ec474"
       },
       {
         "file": "screenshots/en-goals.png",
-        "sha256": "8d1e40a17155c9a1d6f894efcf718d9ec3faf065dd4e3d330ec6583650a339ef"
+        "sha256": "3f5af1b064a28cd73cdc052b7b44e12d6ca6151032cdb4587dcb2ad00e262c39"
       },
       {
         "file": "screenshots/en-log.png",
-        "sha256": "a5fef869aa49e3466d53993ffd2c96b2e7008e4e3ff12368e3bd39b039fe9b3e"
+        "sha256": "3333bfb149c82834339ddab283df83f8beaadab0b4435ecc8756cb06afa21973"
       },
       {
         "file": "screenshots/en-calendar.png",
-        "sha256": "9a3d21cbeb6c4fcb13c1b847d71e2894287d95b9f4109b4453030b127cc6a417"
+        "sha256": "31a69a588469344991c460725bcabd99c80a8b94b9fc3f58f5901e5303bcd1e1"
       }
     ],
     "zh-Hans": [
       {
         "file": "screenshots/zh-brand.png",
-        "sha256": "ecf8f142328351b1e70988da970c14d10dbd653d5736f7acddf5760fa8f7c53e"
+        "sha256": "b92e6fc5956800ff392f442cd98a66a2806aab0930394c1bc8072eafda8cfcea"
       },
       {
         "file": "screenshots/zh-today.png",
-        "sha256": "f937531fa5be57e89037a7ee6d6ead55b0f7a7f6729ca4da6c19d8d5b261d45d"
+        "sha256": "f4823d5a8c8e0a0d1cc790daa567dd874fa12087062a80f8f86fe9adc79cd4cd"
       },
       {
         "file": "screenshots/zh-plan.png",
-        "sha256": "1fa01e8fd088c48922e87c88e3c9672181d248005338f2c9dfb2868ced2d6a91"
+        "sha256": "6717dd2bbabfb3f374d5fa98e975c70fa69fb5a03b88ce6020c75a94afdac41b"
       },
       {
         "file": "screenshots/zh-history.png",
-        "sha256": "65a96e0c642ccf5a9f84b5af0c52951d3756d45791bce54135ed02f77cd910dd"
+        "sha256": "dc79a2873079560846de5f5a20dc68f044fc77cfee811ea6a64bd768b18f8609"
       },
       {
         "file": "screenshots/zh-assets.png",
-        "sha256": "e0ec5c38b7cc8446c5687426625ce183985a7317bc4dc9b8affe21fe43529cdd"
+        "sha256": "f15c42f99fa440679067988e58a73472a0acdd0a95847dedc54a0d6254e6c8dc"
       },
       {
         "file": "screenshots/zh-goals.png",
-        "sha256": "347fa7ec42f758c98fa70b4734937e79e5beba354a58caa2904191350075b2c9"
+        "sha256": "63554a86dc9f6a722bed2cb84b977e00e655e124e97609e68ab07e51682bcf99"
       },
       {
         "file": "screenshots/zh-log.png",
-        "sha256": "0e0be7545ce99b4c946e7e9eb94d3136919fb12d2183c8b239c748be70c150d4"
+        "sha256": "a85242e82fc0bef78a81b7cc4619ec5e3e03bef006365c5e5399a046fffe89af"
       },
       {
         "file": "screenshots/zh-calendar.png",
-        "sha256": "1c8a9e151c39d4b35233b0360f4371748d3f4d69428271e1adde3717d540f2a0"
+        "sha256": "60d1f6cf87eaa8b3682adb4caeacb382bbfa59f6abf4a256220c5c9de5f5b9ad"
       }
     ]
   },
@@ -143,7 +143,7 @@
   "previews": {
     "en-US": {
       "file": "videos/preview-en.mp4",
-      "sha256": "76d05d8c5fb3955252fbbfb173b92a86f150d2d986b5e1fbd10a8c8bd95571bd",
+      "sha256": "ecd56f7373f5ecf78365e417f95efb6117e49bcaed70556cece96df227812dbc",
       "dimensions": [
         886,
         1920
@@ -158,7 +158,7 @@
     },
     "zh-Hans": {
       "file": "videos/preview-zh.mp4",
-      "sha256": "ff111f4b86579082957535f3d8f28db0bfd620bb77f0296d2ac3392be9de10e4",
+      "sha256": "51dcf11ac3a1099157bc80056dbae1359237b599bbdcf48f3db8d1747df3a065",
       "dimensions": [
         886,
         1920

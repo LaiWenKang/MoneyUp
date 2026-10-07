@@ -64,6 +64,12 @@ REVIEWED_COLORSETS = {
         "#F3F6F2",
         "#17201B",
     ),
+    "App/MoneyUp/Assets.xcassets/BrandTextSecondary.colorset": (
+        "#5F6963",
+        "#A3ADA6",
+        "#454D48",
+        "#C5CEC8",
+    ),
     "App/MoneyUp/Assets.xcassets/ChartSeries1.colorset": (
         "#117733",
         "#59C69B",
@@ -675,7 +681,8 @@ W3_PATH_TYPE_DIGESTS: tuple[tuple[str, str, str, str], ...] = (
     ('Sources/MoneyUpCore/SmartEntryTextReading.swift', 'struct', 'SmartEntryTextParts', 'a84bf4da2c0b336f570103ee82b2f176ba7d30019cad745611022bae5e7b5ea4'),
     # Re-pinned 2026-09-29: the Saved banner confirms Undo, bounces its glyph per save, and speaks a
     # masked amount as "hidden amount"; amounts never animate.
-    ("App/MoneyUp/QuickLogEntryChrome.swift", "extension", "QuickLogEntryView", "ac7a4f0248a14e5b397ceb7ea78539ed17801ffe6ac87dfe89b16fab1c408e93"),
+    # Re-pinned 2026-10-07: secondary text uses the accessible BrandTextSecondary colour (0.7.3 design pass); no behaviour change.
+    ("App/MoneyUp/QuickLogEntryChrome.swift", "extension", "QuickLogEntryView", "2afedf9593e047468b09265bf97507f6444ebe5959daff6cc2ac73461920db1d"),
     (
         "App/MoneyUp/QuickLogEntryBody.swift",
         "extension",
@@ -685,7 +692,8 @@ W3_PATH_TYPE_DIGESTS: tuple[tuple[str, str, str, str], ...] = (
         # Re-pinned 2026-09-30: a chosen receipt file starts the same review as a photo or a scan, and
         # leaving the sheet clears the file-picker flag with the photo-picker flag.
         # Re-pinned 2026-10-06: keeping the draft or cancelling discards the words held for that request.
-        "17d76de52e84b9f49d0bb33e6858c9535b86286ac8e01b09a73bc60082d67e15",
+        # Re-pinned 2026-10-07: secondary text uses the accessible BrandTextSecondary colour (0.7.3 design pass); no behaviour change.
+        "caab26eed6837dc02b88ac52ce8c6bdb6b1e21f446c0377fa912850bbaed4cb7",
     ),
     (
         "App/MoneyUp/QuickLogEntryReceipt.swift",
@@ -699,13 +707,15 @@ W3_PATH_TYPE_DIGESTS: tuple[tuple[str, str, str, str], ...] = (
         W3_REVIEWED_ENTRY_ASSISTANCE_PATH,
         "extension",
         "QuickLogEntryView",
-        "5192891d388e9e355104036132bc0c113e3c86c73163e7c213f5d6ed703baa2d",
+        # Re-pinned 2026-10-07: secondary text uses the accessible BrandTextSecondary colour (0.7.3 design pass); no behaviour change.
+        "d640cb673df87ff1a8b18c7c16715fef4f75d2f38313a56b027a7833dcbcd9f5",
     ),
     (
         "App/MoneyUp/QuickLogEntryReceiptCandidates.swift",
         "extension",
         "QuickLogEntryView",
-        "d140a116afd028babd684c42035ac5d428b6ee4c5b42935b49d5145fe8ff20a6",
+        # Re-pinned 2026-10-07: secondary text uses the accessible BrandTextSecondary colour (0.7.3 design pass); no behaviour change.
+        "69bbcd743fad48a4c1b767a3d2b1858968b9afcf0c738985da8dc41b881e512f",
     ),
 )
 W3_PATH_TYPE_ATTRIBUTES = {
@@ -4514,14 +4524,16 @@ def _w3_accessible_suggestion_actions(
                 r"\s*\)\s*->\s*some\s+View\s*\{",
                 re.DOTALL,
             ),
-            "9f8684fb8fcf76932338b18d483bf6c1471deb70fcee2d939dd9a54485daebff",
+            # Re-pinned 2026-10-07: secondary text uses the accessible BrandTextSecondary colour (0.7.3 design pass); no behaviour change.
+            "ea99b58792ee5e33c1d0c982088847d6d4ebe2649d152a226340d423581314e7",
             "onDeviceAssistanceCard",
             re.compile(
                 r"\bfunc\s+onDeviceAssistanceCard\s*\(\s*_\s+presentation\s*:"
                 r"\s*QuickLogAssistancePresentation\s*\)\s*->"
                 r"\s*some\s+View\s*\{"
             ),
-            "d12f71f8f7d492375824191a599c6e2bb6843f3fe0e70345f3d4ed774ae3d4b6",
+            # Re-pinned 2026-10-07: secondary text uses the accessible BrandTextSecondary colour (0.7.3 design pass); no behaviour change.
+            "08fa8579bc741f669f8c5f62dc15bdce0c79e84de998ccca70ab1512600b6068",
         ),
         (
             "App/MoneyUp/QuickLogEntryCaptureSuggestions.swift",
@@ -4537,7 +4549,8 @@ def _w3_accessible_suggestion_actions(
                 r"\s*\)\s*->\s*some\s+View\s*\{",
                 re.DOTALL,
             ),
-            "869cd45fbb5ba2539b16c620675e8489046a4c59af2fda15a4dd11f62f6ad235",
+            # Re-pinned 2026-10-07: secondary text uses the accessible BrandTextSecondary colour (0.7.3 design pass); no behaviour change.
+            "deff433a5ca8d9e013698e4da473ee3a35760ee8b2d535b1e6edf8b5e75be537",
             "captureSuggestions",
             re.compile(
                 r"\bfunc\s+captureSuggestions\s*\(\s*_\s+result\s*:"

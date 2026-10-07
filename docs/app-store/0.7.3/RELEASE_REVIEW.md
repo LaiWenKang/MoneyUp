@@ -13,7 +13,9 @@ products are unchanged.
   Distribution, with the three support purchases approved.
 - The first 0.7.3 candidate, 1077.1 (source d286cbb), reached TestFlight on
   29 September. The owner's check of it on a physical iPhone produced the fixes
-  below, so the candidate for App Review is a rebuilt 0.7.3 (build 1078.x).
+  below, so the candidate for App Review is a rebuilt 0.7.3. Build 1078.1 was
+  prepared on 7 October; the owner then held it for the design pass below, so the
+  candidate is build 1079.x.
 - 0.7.3 contains everything in 0.7.2 plus the changes below. Source: `main` after
   pull requests #98 to #116.
 
@@ -64,6 +66,35 @@ products are unchanged.
   for at most five minutes, and only that request can collect them; nothing is
   saved until the person taps Save. The six existing actions stay data-free.
 
+## Design pass (owner request, 7 October 2026)
+
+The owner asked for the UI/UX skills (design critique, accessibility review, UX
+copy, and the anti-slop, craft and WCAG checklists) to be applied before release.
+A critique of every rendered screen found:
+
+- A real bug: 13 amount rows on Goal detail, the goal editor, budget history, the
+  budget editor, account history and the holding sheet showed their text key
+  ("goal.balance") instead of words. It came in with #108 (in 1077.1 and 1078.1,
+  not in 0.7.2): a plain-string overload of the labelled-amount initializer won
+  over the localized one for literals. That overload is gone, and every render
+  capture is now read back with on-device text recognition and fails if any
+  catalog key shows. Putting the old overload back makes the new test fail on all
+  thirteen rows in both languages.
+- Secondary text drew the system grey, 4.0:1 on a white card. App screens now use
+  `BrandTextSecondary`, at least 4.7:1 on every canvas and tinted chip in light
+  and dark, which the release validator proves.
+- Text fields in cards were a pure black box in dark mode; they are now a well of
+  the page colour with a 44-pt target.
+- One headline figure per screen: Assets leads with the base currency and shows
+  other currencies a size down; the Plan summary drops the ring that repeated its
+  pace bar.
+- Copy: the exchange-rate editor reads "1 SGD = … USD" with From and To (it no
+  longer reuses "Base currency", which names the book's own currency), VoiceOver
+  hears "USD per 1 SGD"; allowances read "Benefit left" and "Left to claim"; the
+  History search prompt fits on an iPhone; Calendar's two look-alike toolbar
+  icons are now a list and a plus; an allowance amount no longer breaks across
+  lines on a narrow screen.
+
 ## Data migration
 
 #104 moves the SQLCipher key from passphrase form to raw-key form. It works on a
@@ -77,11 +108,10 @@ accounts.
 
 ## Store metadata
 
-- The eight screenshots per language are rendered again from this source, because
-  the Log and Assets screens now differ from the 0.7.2 pictures (Camera and Attach
-  beside Smart Entry, the chart icon) and the category glyphs are drawn slightly
-  differently. The previews and the support review capture are still the reviewed
-  0.7.2 files, byte for byte (checked with `cmp`); they show nothing that changed.
+- The eight screenshots per language and both App Previews are rendered again from
+  this source after the design pass, with the app's own tint, so toolbar glyphs
+  are green as on the device. The support review capture is still the reviewed
+  0.7.2 file, byte for byte.
 - Description, What's New, keywords and review notes are rewritten for 0.7.3 in
   English and Simplified Chinese. The review notes explain the camera and
   notification permissions, the Focus filter and the lock-cover behaviour.

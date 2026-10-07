@@ -33,7 +33,7 @@ extension TransactionEditView {
                                     focusedField = .amount
                                 }
                             if let sourceCurrency {
-                                Text(sourceCurrency.value).foregroundStyle(.secondary)
+                                Text(sourceCurrency.value).foregroundStyle(.moneyUpSecondary)
                             }
                         }
                         Picker(
@@ -78,7 +78,7 @@ extension TransactionEditView {
                                     }
                                     if let destinationCurrency {
                                         Text(destinationCurrency.value)
-                                            .foregroundStyle(.secondary)
+                                            .foregroundStyle(.moneyUpSecondary)
                                     }
                                 }
                             }
@@ -127,7 +127,7 @@ extension TransactionEditView {
                         LabeledContent("quick_log.time_zone") {
                             Text(verbatim: userActionTimeContext.displayName(at: occurredAt))
                                 .font(.subheadline.monospacedDigit())
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(.moneyUpSecondary)
                         }
                         TextField("transaction.title_or_merchant", text: $payee)
                             .focused($focusedField, equals: .payee)
@@ -144,7 +144,7 @@ extension TransactionEditView {
                     Section {
                         TransactionRow(entry: entry)
                         Text("history.edit_not_supported")
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.moneyUpSecondary)
                     }
                 }
 
@@ -182,7 +182,7 @@ extension TransactionEditView {
                     if isPreparingEvidence {
                         HStack(spacing: 8) {
                             ProgressView()
-                            Text("evidence.preparing").foregroundStyle(.secondary)
+                            Text("evidence.preparing").foregroundStyle(.moneyUpSecondary)
                         }
                     }
 
@@ -200,7 +200,7 @@ extension TransactionEditView {
                                     .lineLimit(1)
                                 Text("evidence.pending_save")
                                     .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(.moneyUpSecondary)
                             }
                             Spacer()
                             Button(role: .destructive) {
@@ -218,7 +218,7 @@ extension TransactionEditView {
                     if let evidenceMessage {
                         Text(evidenceMessage)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.moneyUpSecondary)
                     }
 
                     if !attachmentMetadata.isEmpty {

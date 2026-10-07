@@ -243,7 +243,7 @@ struct BudgetRow: View {
                         .foregroundStyle(isOverspent ? Color.moneyUpDanger : Color.primary)
                     Text(isOverspent ? "plan.over" : "plan.left")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.moneyUpSecondary)
                 } else if let spent, !spent.isZero {
                     Text(maskingAmounts: formattedMoney(spent))
                         .font(.subheadline.monospacedDigit())
@@ -285,7 +285,7 @@ struct BudgetRow: View {
                         )
                     )
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.moneyUpSecondary)
                 }
                 if showsPacing, model.displayPreferences.showsGuidance(for: node.id), let progress {
                     switch model.budgetPace(
@@ -326,7 +326,6 @@ struct BudgetRow: View {
 }
 
 struct BudgetSummaryCard: View {
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let limit: Money
     let spent: Money
     let remaining: Money
@@ -345,19 +344,15 @@ struct BudgetSummaryCard: View {
     var body: some View {
         let ratioResult = ratio
         VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .center, spacing: 16) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(isOverspent ? "plan.total_over" : "plan.total_left")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                    Text(maskingAmounts: formattedMoney(isOverspent ? remaining.negated : remaining))
-                        .moneyUpFinancialValue(.hero)
-                        .foregroundStyle(isOverspent ? Color.moneyUpDanger : Color.primary)
-                }
-                Spacer(minLength: 0)
-                if !dynamicTypeSize.isAccessibilitySize, case let .available(ratio) = ratioResult {
-                    MoneyUpBudgetOrbit(ratio: ratio, elapsed: elapsed, showsPercent: limit.amount > .zero)
-                }
+            // One progress graphic: the pace bar matches every category row
+            // below, so a ring beside it would only say the same thing twice.
+            VStack(alignment: .leading, spacing: 6) {
+                Text(isOverspent ? "plan.total_over" : "plan.total_left")
+                    .font(.subheadline)
+                    .foregroundStyle(.moneyUpSecondary)
+                Text(maskingAmounts: formattedMoney(isOverspent ? remaining.negated : remaining))
+                    .moneyUpFinancialValue(.hero)
+                    .foregroundStyle(isOverspent ? Color.moneyUpDanger : Color.primary)
             }
 
             switch ratioResult {
@@ -375,7 +370,7 @@ struct BudgetSummaryCard: View {
                 )
             )
             .font(.caption)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.moneyUpSecondary)
 
             HStack(alignment: .top) {
                 if case let .available(ratio) = ratioResult {
@@ -385,7 +380,7 @@ struct BudgetSummaryCard: View {
                 MoneyUpExplainer("plan.pace_hint")
             }
             .font(.caption)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.moneyUpSecondary)
         }
         .padding(.vertical, 6)
         .accessibilityElement(children: .combine)

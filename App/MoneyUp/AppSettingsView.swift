@@ -190,7 +190,7 @@ struct AppSettingsView: View {
                     systemImage: "externaldrive.badge.checkmark"
                 )
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.moneyUpSecondary)
             } header: {
                 MoneyUpSectionHeader("settings.security", explanation: "settings.auto_lock_detail")
             }

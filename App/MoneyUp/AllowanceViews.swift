@@ -80,11 +80,11 @@ struct AllowanceRow: View {
                 if let activePolicy = presentation.activePolicy {
                     Text(activePolicy.cadence.titleKey)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.moneyUpSecondary)
                 } else {
                     Text("allowance.not_available")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.moneyUpSecondary)
                 }
                 if let pendingPolicy = presentation.pendingPolicy {
                     let pendingCalendar = AllowancePolicyDatePresentation.calendar(
@@ -104,7 +104,7 @@ struct AllowanceRow: View {
                         )
                     )
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.moneyUpSecondary)
                 }
             }
             Spacer()
@@ -112,12 +112,16 @@ struct AllowanceRow: View {
                 if presentation.policySummary?.isAvailableToday != true {
                     Text("allowance.not_available")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.moneyUpSecondary)
                 } else {
                     switch presentation.remaining {
                     case let .available(remaining):
+                        // An amount never breaks across lines ("SGD / 15.00");
+                        // on a narrow screen the name wraps instead.
                         Text(maskingAmounts: formattedMoney(remaining))
                             .font(.subheadline.monospacedDigit().weight(.semibold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
                     case let .unavailable(issue):
                         DerivedValueUnavailableView(issue: issue)
                     }
@@ -125,9 +129,10 @@ struct AllowanceRow: View {
                         presentation.remainingMeaning.titleKeyString
                     ))
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.moneyUpSecondary)
                 }
             }
+            .layoutPriority(1)
         }
         .padding(.vertical, 3)
     }
@@ -194,7 +199,7 @@ struct AllowanceDetailView: View {
                         if !summary.isAvailableToday {
                             Text("allowance.not_available_detail")
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(.moneyUpSecondary)
                         }
                     } else if case let .unavailable(issue) = presentation.remaining {
                         DerivedValueUnavailableView(issue: issue, prominent: true)
@@ -263,13 +268,13 @@ struct AllowanceDetailView: View {
                         }
                         Text("allowance.pending_policy_detail")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.moneyUpSecondary)
                     }
                 }
 
                 Section("allowance.usage_history") {
                     if plan.usages.isEmpty {
-                        Text("allowance.no_usage").foregroundStyle(.secondary)
+                        Text("allowance.no_usage").foregroundStyle(.moneyUpSecondary)
                     } else {
                         ForEach(plan.usages.reversed()) { usage in
                             AllowanceUsageRow(
@@ -284,7 +289,7 @@ struct AllowanceDetailView: View {
                         if plan.fundingMode == .reimbursement {
                             Text("allowance.claim.evidence_only_detail")
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(.moneyUpSecondary)
                                 .accessibilityElement(children: .combine)
                         }
                     }
@@ -307,7 +312,7 @@ struct AllowanceDetailView: View {
                         } icon: {
                             Image(systemName: "lock.fill")
                         }
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.moneyUpSecondary)
                         .accessibilityElement(children: .combine)
                     }
                 }
@@ -325,7 +330,7 @@ struct AllowanceDetailView: View {
                         )
                         Text("allowance.reconciliation_detail")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.moneyUpSecondary)
                         Button {
                             let policy = plan.policyRevisions.first {
                                 $0.id == requirement.policyRevisionID
@@ -615,13 +620,13 @@ struct AllowanceEditorSheet: View {
                             )
                             Text("allowance.editor_pending_detail")
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(.moneyUpSecondary)
                         }
                     } else if preservesPolicyHistory {
                         Section {
                             Text("allowance.editor_future_change_detail")
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(.moneyUpSecondary)
                         }
                     }
                 }
@@ -681,7 +686,7 @@ struct AllowanceEditorSheet: View {
                         if eligibleLinkedAccounts.isEmpty {
                             Text("allowance.restricted_account_required")
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(.moneyUpSecondary)
                             Button("allowance.create_prepaid_account") { isAddingPrepaidAccount = true }
                         }
                     }
@@ -709,7 +714,7 @@ struct AllowanceEditorSheet: View {
                        }) == true {
                         Text("allowance.legacy_partial_day_detail")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.moneyUpSecondary)
                         LabeledContent("allowance.legacy_exact_start") {
                             Text(plan.startsAt.formattedForReporting(
                                 .dateTime.year().month().day().hour().minute(),
@@ -731,7 +736,7 @@ struct AllowanceEditorSheet: View {
                     }
                     Text("allowance.policy_time_zone_detail")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.moneyUpSecondary)
                 }
 
                 Section {

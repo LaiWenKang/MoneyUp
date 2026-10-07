@@ -244,7 +244,7 @@ struct TransactionRow: View {
             }
         }
         .font(.caption)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.moneyUpSecondary)
         .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
     }
 
@@ -257,7 +257,7 @@ struct TransactionRow: View {
                 spacing: 2
             ) {
                 if budgetCategoryIDs != nil {
-                    Text("history.category_amount").font(.caption2).foregroundStyle(.secondary)
+                    Text("history.category_amount").font(.caption2).foregroundStyle(.moneyUpSecondary)
                 }
                 ForEach(Array(amounts.prefix(2).enumerated()), id: \.offset) {
                     _, amount in
@@ -283,13 +283,13 @@ struct TransactionRow: View {
                     .moneyUpFinancialValue(.compact)
                 Text(issue.localizedDescription)
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.moneyUpSecondary)
                     .lineLimit(2)
             }
         } else {
             Text(localizedKind)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.moneyUpSecondary)
         }
     }
 }
@@ -331,7 +331,7 @@ struct TransactionContextPreview: View {
             if let note = entry.note?.trimmingCharacters(in: .whitespacesAndNewlines), !note.isEmpty {
                 Text(verbatim: note)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.moneyUpSecondary)
                     .lineLimit(6)
             }
         }

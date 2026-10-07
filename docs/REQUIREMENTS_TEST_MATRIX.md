@@ -138,7 +138,7 @@ and **Release blocker**.
 | W1-SVC | A 9,731-line state authority made ownership and safe concurrent review impractical. | Ledger, Planning, Assets, Portability, Capture, and Intelligence protocol seams are injected; the coordinator retains lock, generation, cancellation, quarantine, and cross-service sequencing. All Swift files/types/functions remain within 1,200/600/80 body-line limits. | `AppModelServices`, `AppModelDependencies`, bounded `AppModel*` extensions; `Scripts/validate_swift_structure.py`; release-validator and CI workflow checks. | Merged; exact merged-main CI passed; physical performance remains deferred. |
 | W1-TXN | Extracting service and plan helpers could accidentally split an existing durable transaction. | Save, edit, delete, split, import, reconciliation, schedule post, lifecycle, attachment retain, and goal movement retain one store transaction and rollback semantics. | DAT-09 operation-specific tests and persistence rollback tests below. | Merged; automated gate passed; physical interruption remains open. |
 | W1-C12 | Independent async profile writes could finish out of order or restore stale unrelated fields. | FIFO serialization re-reads the latest committed profile; rapid choices converge on the last value and a failed candidate cannot roll back another setting. | `ProfileMutationSerializer`; `AppModelTests.testProfileMutationsSerializeAndPreserveLatestUnrelatedChoices`, `.testFailedProfileMutationDoesNotRollBackUnrelatedSetting`. | Merged; exact merged-main CI passed. |
-| W1-UX | Architecture work could drift navigation, strings, accounting, storage, privacy, or brand behavior. | Five tabs, bilingual catalogs, schema 6, transaction construction, offline boundary, palette, widget/App Group payload, and lock/security behavior are unchanged. | Release validator; `RootView`; `DATA_MODEL.md`; `VISUAL_SYSTEM.md`. | Retained. |
+| W1-UX | Architecture work could drift navigation, strings, accounting, storage, privacy, or brand behavior. | Five tabs, bilingual catalogs, schema 6, transaction construction, offline boundary, palette, widget/App Group payload, and lock/security behavior are unchanged. | Release validator (also proves secondary text at 4.5:1 or more on every canvas); `RootView`; `DATA_MODEL.md`; `VISUAL_SYSTEM.md`; `AppwideRenderEvidenceTests.testAmountRowsShowWordsNotKeys`, `.testRawKeyDetectorSeesSwiftUIText` (every captured screen is read back and must show words, never a catalog key). | Retained. |
 
 ## 0.7.0 W2 acceptance overlay
 
@@ -409,10 +409,10 @@ exact-SHA CI before signed promotion.
 
 - Requirements traced: **97 / 97**.
 - Requirements with at least one named automated or manual case: **97 / 97**.
-- Declared automated tests in source after this review: **1586** (508 core, 80
-  persistence, 11 intelligence, 942 app-target, 11 performance-target, and 34 ui-target
+- Declared automated tests in source after this review: **1588** (508 core, 80
+  persistence, 11 intelligence, 944 app-target, 11 performance-target, and 34 ui-target
   declarations; XCTest methods plus Swift Testing `@Test` declarations). Of
-  those declarations, **1532** are XCTest functions named `test...`; the
+  those declarations, **1534** are XCTest functions named `test...`; the
   remaining 54 are Swift Testing `@Test` declarations in MoneyUpCore.
 - Tests executed on the prior build-10 0.7.1 candidate in GitHub Actions:
   **742 / 742 declared test sites** across the 376 package, 355 app-target, and

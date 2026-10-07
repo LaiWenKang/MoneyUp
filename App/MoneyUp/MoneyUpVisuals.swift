@@ -263,7 +263,7 @@ struct MoneyUpPositionOrbit: View {
 
             Image(systemName: "scale.3d")
                 .font(.caption2.weight(.bold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.moneyUpSecondary)
         }
         .frame(width: 48, height: 48)
         .accessibilityHidden(true)

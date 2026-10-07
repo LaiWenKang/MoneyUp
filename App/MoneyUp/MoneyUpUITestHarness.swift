@@ -28,7 +28,9 @@ enum MoneyUpUITestHarness {
 
     static func makeModelIfRequested() -> AppModel? {
         guard arguments.contains(enableArgument) else { return nil }
-        let directory = FileManager.default.temporaryDirectory
+        // Not the temporary folder: iOS 27 does not keep it across a relaunch,
+        // and journeys relaunch over the same book.
+        let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("MoneyUpUITestBook", isDirectory: true)
         if arguments.contains(resetArgument) {
             try? FileManager.default.removeItem(at: directory)

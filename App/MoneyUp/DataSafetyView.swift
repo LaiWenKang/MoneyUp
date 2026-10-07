@@ -94,7 +94,7 @@ struct DataSafetyView: View {
                         ? LocalizedStringKey("cloud.unavailable.build")
                         : LocalizedStringKey("cloud.error.unavailable"))
                         .font(.callout)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.moneyUpSecondary)
                 } footer: {
                     if model.startupFailureKind != .missingDeviceBoundKey {
                         Text("cloud.unavailable.files_backup")
@@ -131,7 +131,7 @@ struct DataSafetyView: View {
                     ForEach(model.recoveryIssues, id: \.self) { issue in
                         Label(issue, systemImage: "exclamationmark.triangle")
                             .font(.footnote.monospaced())
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.moneyUpSecondary)
                     }
                 } header: {
                     MoneyUpSectionHeader("recovery.issues_title", explanation: "recovery.issues_detail")

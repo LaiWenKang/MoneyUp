@@ -87,6 +87,7 @@ is unchanged. W6 also adds high-contrast variants and ordered chart roles.
 | `BrandMist` | `#D4EAD8` | `#3C6349` | `#B8D9C4` | `#557D64` |
 | `BrandSurface` | `#EEF4F0` | `#18211D` | `#E7EDE8` | `#121A16` |
 | `BrandSurfaceElevated` | `#FAFBF9` | `#202923` | `#F3F6F2` | `#17201B` |
+| `BrandTextSecondary` | `#5F6963` | `#A3ADA6` | `#454D48` | `#C5CEC8` |
 | `ChartSeries1` | `#117733` | `#59C69B` | `#075F29` | `#7EE0B2` |
 | `ChartSeries2` | `#1F6680` | `#68B7D0` | `#00536D` | `#8AD7EE` |
 | `ChartSeries3` | `#8C6500` | `#E0B44C` | `#725000` | `#FFD071` |
@@ -102,6 +103,26 @@ surface, and elevated canvases by at least 3:1, and adjacent chart series
 standard, full-severity protan, and full-severity deutan simulation. An
 in-memory mutation replays the former dark action and must fail the elevated
 canvas threshold.
+
+### 0.7.3 design pass: secondary text and fields
+
+The system secondary grey renders as `#7F7F7F` on a white card, 4.0:1, below
+the 4.5:1 text minimum. App screens use `.moneyUpSecondary` (`BrandTextSecondary`)
+instead of `.secondary`; widgets keep the system style, which their tinted and
+vibrant modes need. It is set per view rather than as the app's second
+foreground level, because an inherited foreground style also takes the tint
+off every plain button. Release validation requires 4.5:1 on every canvas, on a
+white card and on a mist-tinted chip, rejects `.foregroundStyle(.secondary)` in
+app sources, and replays the system grey as a mutation that must fail.
+Decorative chevrons keep `.tertiary`.
+
+Text fields inside cards use `moneyUpInsetField()`: a well of the page colour
+with a hairline edge (stronger under Increase Contrast) and a 44-pt minimum
+height. The system rounded border drew a pure black box on dark cards.
+
+Each screen has one hero figure. Assets leads with the base currency and shows
+other currencies a size down; the Plan summary keeps the pace bar, which
+matches every category row, and leaves the progress orbit to Today.
 Chart data marks, including the aggregate Other bar, use validated palette
 slots and remain fully opaque; selection uses a primary dashed rule rather than
 dimming unselected geometry. The release gate composites every rendered series

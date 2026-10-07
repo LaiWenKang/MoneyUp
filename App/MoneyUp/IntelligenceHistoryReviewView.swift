@@ -32,7 +32,7 @@ struct IntelligenceHistoryReviewView: View {
                             systemImage: "info.circle.fill"
                         )
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.moneyUpSecondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     if isLoading {
@@ -43,7 +43,7 @@ struct IntelligenceHistoryReviewView: View {
                         MoneyUpCard {
                             VStack(alignment: .leading, spacing: 10) {
                                 Text(errorMessage)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(.moneyUpSecondary)
                                 Button("action.try_again") {
                                     Task { await load() }
                                 }
@@ -53,7 +53,7 @@ struct IntelligenceHistoryReviewView: View {
                     } else if entries.isEmpty {
                         MoneyUpCard {
                             Text("intelligence.history.no_results")
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(.moneyUpSecondary)
                         }
                     } else {
                         ForEach(entries) { entry in

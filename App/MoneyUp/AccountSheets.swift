@@ -392,7 +392,7 @@ struct AccountManagementSheet: View {
                     ProgressView()
                 } else if restrictedFundingRecords.isEmpty {
                     Text("account.restricted_funding_empty")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.moneyUpSecondary)
                 } else {
                     ForEach(restrictedFundingRecords) { record in
                         Button {
@@ -407,7 +407,7 @@ struct AccountManagementSheet: View {
                                     if let note = record.note {
                                         Text(note)
                                             .font(.caption)
-                                            .foregroundStyle(.secondary)
+                                            .foregroundStyle(.moneyUpSecondary)
                                     }
                                 }
                                 Spacer()

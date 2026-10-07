@@ -55,7 +55,7 @@ struct CategoryManagementSheet: View {
                         }
                     }
                     if isLoaded, parentID != category?.parentID, category?.kind == .expense {
-                        Text("category.move_budget_detail").font(.caption).foregroundStyle(.secondary)
+                        Text("category.move_budget_detail").font(.caption).foregroundStyle(.moneyUpSecondary)
                     }
                 }
                 if category?.kind == .expense {
@@ -198,7 +198,7 @@ struct CategoryManagementSheet: View {
                 Picker("plan.rollover", selection: $recurringRollover) {
                     ForEach(BudgetRolloverRule.allCases, id: \.self) { Text($0.titleKey).tag($0) }
                 }
-                Text("budget.recurring_detail").font(.caption).foregroundStyle(.secondary)
+                Text("budget.recurring_detail").font(.caption).foregroundStyle(.moneyUpSecondary)
             }
         }
     }

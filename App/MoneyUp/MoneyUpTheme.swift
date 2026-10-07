@@ -12,6 +12,9 @@ extension Color {
     static let moneyUpSurfaceElevated = Color("BrandSurfaceElevated")
     static let moneyUpAction = Color("BrandAction")
     static let moneyUpMist = Color("BrandMist")
+    /// Secondary text: at least 4.5:1 on every MoneyUp canvas. The system grey
+    /// measures 4.0:1 on a white card.
+    static let moneyUpSecondaryText = Color("BrandTextSecondary")
     static let moneyUpChartSeries1 = Color("ChartSeries1")
     static let moneyUpChartSeries2 = Color("ChartSeries2")
     static let moneyUpChartSeries3 = Color("ChartSeries3")
@@ -345,4 +348,41 @@ private struct MoneyUpCardShadowModifier: ViewModifier {
             content
         }
     }
+}
+
+/// A text field set into its card as a shallow well of the page colour. The
+/// system rounded border draws a pure black box on dark cards; this one reads
+/// as part of the card in both appearances and keeps a 44-pt target.
+private struct MoneyUpInsetFieldModifier: ViewModifier {
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
+        content
+            .textFieldStyle(.plain)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .frame(minHeight: 44)
+            .background(Color.moneyUpBackground, in: shape)
+            .overlay {
+                shape.strokeBorder(
+                    Color.primary.opacity(colorSchemeContrast == .increased ? 0.5 : 0.14),
+                    lineWidth: 1
+                )
+                .allowsHitTesting(false)
+            }
+    }
+}
+
+extension View {
+    func moneyUpInsetField() -> some View {
+        modifier(MoneyUpInsetFieldModifier())
+    }
+}
+
+extension ShapeStyle where Self == Color {
+    /// Secondary text and glyphs. Used instead of `.secondary`, whose grey is
+    /// 4.0:1 on a white card. (Setting it as the app's second foreground level
+    /// instead would also take the tint off every plain button.)
+    static var moneyUpSecondary: Color { .moneyUpSecondaryText }
 }

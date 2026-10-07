@@ -13,11 +13,11 @@ extension QuickLogEntryView {
                 Text("quick_log.scan_partial_review").font(.footnote).foregroundStyle(Color.moneyUpWarning)
             }
             if result.dateCandidates.isEmpty {
-                Text("quick_log.scan_date_review").font(.footnote).foregroundStyle(.secondary)
+                Text("quick_log.scan_date_review").font(.footnote).foregroundStyle(.moneyUpSecondary)
             }
             Text("quick_log.scan_review")
                 .font(.footnote)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.moneyUpSecondary)
             if let confidence = result.overallConfidence {
                 Label(
                     captureConfidenceText(confidence),
@@ -25,7 +25,7 @@ extension QuickLogEntryView {
                         ? "questionmark.circle" : "checkmark.seal"
                 )
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.moneyUpSecondary)
             }
             receiptCurrencyNotice(result.currencyEvidence)
             receiptAmountCandidates(result)
@@ -44,7 +44,7 @@ extension QuickLogEntryView {
         if !candidates.isEmpty {
             Text("quick_log.scan_amount_candidates")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.moneyUpSecondary)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     ForEach(Array(candidates.prefix(4).enumerated()), id: \.offset) {
@@ -98,7 +98,7 @@ extension QuickLogEntryView {
                 .font(.footnote).foregroundStyle(Color.moneyUpWarning)
         } else if evidence.hasAmbiguousSymbol, evidence.identifiedCurrency == nil {
             Text("quick_log.receipt_currency_ambiguous")
-                .font(.footnote).foregroundStyle(.secondary)
+                .font(.footnote).foregroundStyle(.moneyUpSecondary)
         }
     }
 
@@ -109,7 +109,7 @@ extension QuickLogEntryView {
         if !candidates.isEmpty {
             Text("quick_log.scan_merchant_candidates")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.moneyUpSecondary)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     ForEach(Array(candidates.prefix(3).enumerated()), id: \.offset) {
@@ -154,7 +154,7 @@ extension QuickLogEntryView {
         if !candidates.isEmpty {
             Text("quick_log.scan_date_candidates")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.moneyUpSecondary)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     ForEach(Array(candidates.prefix(3).enumerated()), id: \.offset) {
@@ -199,7 +199,7 @@ extension QuickLogEntryView {
            let candidate = result.categoryCandidateDetails.first {
             Text("quick_log.scan_category_candidate")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.moneyUpSecondary)
             Button {
                 QuickLogInputAuthority.applyReceiptCategory(
                     invalidateAssistance: {

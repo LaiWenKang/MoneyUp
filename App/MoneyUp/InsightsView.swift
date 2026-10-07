@@ -241,7 +241,7 @@ struct InsightsView: View {
 
                 Text("insights.other_currencies_detail")
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.moneyUpSecondary)
             }
         }
     }
@@ -257,13 +257,13 @@ struct InsightsView: View {
                 if case let .available(points) = pointsResult,
                    points.isEmpty {
                     Text("insights.no_spending")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.moneyUpSecondary)
                 } else if case let .available(points) = pointsResult {
                     categoryChart(points)
 
                     Text("insights.tap_chart")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.moneyUpSecondary)
 
                     if let selected = points.first(where: {
                         $0.selectionKey == selectedCategoryKey
@@ -316,7 +316,7 @@ struct InsightsView: View {
                 .annotation(position: .trailing) {
                     Text(maskingAmounts: formattedMoney(point.money))
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.moneyUpSecondary)
                 }
                 .accessibilityLabel(point.name)
                 .accessibilityValue(accessibleFormattedMoney(point.money))
@@ -372,7 +372,7 @@ private struct MetricCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             Label {
-                Text(title).foregroundStyle(.secondary)
+                Text(title).foregroundStyle(.moneyUpSecondary)
             } icon: {
                 Image(systemName: systemImage)
                     .fontWeight(.bold)

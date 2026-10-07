@@ -47,7 +47,7 @@ private struct LaunchingView: View {
                 .frame(width: 72, height: 72)
             ProgressView()
             Text("lock.opening")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.moneyUpSecondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background { MoneyUpBackdrop() }
@@ -93,7 +93,7 @@ private struct LockedView: View {
                     if let method, method.isAvailable {
                         Text(model.isScreenLocked ? LocalizedStringKey("lock.cover_detail") : "lock.detail")
                             .multilineTextAlignment(.center)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.moneyUpSecondary)
                         Button {
                             Task { await model.unlockFromLockScreen() }
                         } label: {
@@ -109,7 +109,7 @@ private struct LockedView: View {
                         // without a device passcode there is nothing to unlock with.
                         Text("lock.no_passcode")
                             .multilineTextAlignment(.center)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.moneyUpSecondary)
                     } else {
                         ProgressView()
                     }
@@ -156,7 +156,7 @@ private struct RecoveryView: View {
                         .multilineTextAlignment(.center)
                     Text(message)
                         .multilineTextAlignment(.center)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.moneyUpSecondary)
                     if model.startupFailureKind == .missingDeviceBoundKey {
                         Label(
                             "recovery.key_cliff.detail",

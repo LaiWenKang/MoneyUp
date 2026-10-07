@@ -44,7 +44,7 @@ extension DashboardView {
                     .font(.title3.weight(.semibold))
                 Text("dashboard.safe_to_spend.needs_budget_detail")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.moneyUpSecondary)
                 Button {
                     onOpenPlan()
                 } label: {
@@ -107,7 +107,7 @@ extension DashboardView {
             .font(.title3.weight(.semibold))
         Text(detail)
             .font(.subheadline)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.moneyUpSecondary)
         Button {
             onOpenPlan()
         } label: {
@@ -132,7 +132,7 @@ extension DashboardView {
                 .foregroundStyle(isOver ? Color.moneyUpDanger : Color.primary)
             Text(isOver ? LocalizedStringKey("dashboard.safe_to_spend.over_caption") : "dashboard.safe_to_spend.per_day")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.moneyUpSecondary)
             if !isOver {
                 Label(
                     String(
@@ -177,7 +177,7 @@ extension DashboardView {
                                 .foregroundStyle(isOver ? Color.moneyUpDanger : Color.primary)
                             Text(isOver ? LocalizedStringKey("dashboard.safe_to_spend.over_caption") : "dashboard.safe_to_spend.per_day")
                                 .font(.caption2)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(.moneyUpSecondary)
                         }
                     }
                     .accessibilityElement(children: .combine)

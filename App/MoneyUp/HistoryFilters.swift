@@ -47,13 +47,13 @@ struct HistorySummaryView: View {
             if currencies.isEmpty && summary.transactionCount > 0 {
                 Text("history.no_filtered_total")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.moneyUpSecondary)
             } else {
                 ForEach(currencies, id: \.self) { currency in
                     VStack(alignment: .leading, spacing: 6) {
                         Text(currency.value)
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.moneyUpSecondary)
                         if let income = try? Money(summary.incomeByCurrency[currency] ?? .zero, currency: currency),
                            let spent = try? Money(summary.spendingByCurrency[currency] ?? .zero, currency: currency) {
                             MoneyUpCashFlowGraphic(income: income, expense: spent)

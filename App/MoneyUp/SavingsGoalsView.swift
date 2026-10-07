@@ -99,7 +99,7 @@ struct GoalProgressRow: View {
                 if goal.isArchived {
                     Text("goal.archived")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.moneyUpSecondary)
                 }
             }
 
@@ -110,11 +110,11 @@ struct GoalProgressRow: View {
                 HStack(spacing: 14) {
                     MoneyUpProgressDial(fraction: progress, systemImage: goal.kind.systemImage)
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("goal.remaining").font(.caption).foregroundStyle(.secondary)
+                        Text("goal.remaining").font(.caption).foregroundStyle(.moneyUpSecondary)
                         Text(maskingAmounts: formattedMoney(summary.remaining)).moneyUpFinancialValue(.prominent)
                     }
                     Spacer(minLength: 0)
-                    Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary).accessibilityHidden(true)
+                    Image(systemName: "chevron.right").font(.caption).foregroundStyle(.moneyUpSecondary).accessibilityHidden(true)
                 }
                 HStack {
                     Text(
@@ -145,7 +145,7 @@ struct GoalProgressRow: View {
                 }
                 Text(goal.targetDate, format: .dateTime.year().month().day())
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.moneyUpSecondary)
             case let .unavailable(issue):
                 DerivedValueUnavailableView(issue: issue)
             }

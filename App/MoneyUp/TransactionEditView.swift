@@ -370,7 +370,7 @@ struct TransactionEditView: View {
                         focusedField = .splitAmount(lineID)
                     }
                     if let sourceCurrency {
-                        Text(sourceCurrency.value).foregroundStyle(.secondary)
+                        Text(sourceCurrency.value).foregroundStyle(.moneyUpSecondary)
                     }
                     Button {
                         updateSplitLine(lineID) { $0.isLocked.toggle() }

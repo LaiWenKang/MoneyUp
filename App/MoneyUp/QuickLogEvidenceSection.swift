@@ -28,7 +28,7 @@ extension QuickLogEntryView {
             if isPreparingEvidence {
                 HStack(spacing: 8) {
                     ProgressView()
-                    Text("evidence.preparing").foregroundStyle(.secondary)
+                    Text("evidence.preparing").foregroundStyle(.moneyUpSecondary)
                 }
             }
             ForEach(attachmentDrafts) { attachment in
@@ -49,7 +49,7 @@ extension QuickLogEntryView {
                             countStyle: .file
                         ))
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.moneyUpSecondary)
                     }
                     Spacer()
                     Button(role: .destructive) {
@@ -67,7 +67,7 @@ extension QuickLogEntryView {
             if let evidenceMessage {
                 Text(evidenceMessage)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.moneyUpSecondary)
             }
         } header: {
             Text("evidence.title")

@@ -271,7 +271,7 @@ struct StarterBudgetSetupSheet: View {
                             .focused($isTotalFocused)
                         Text(currency?.value ?? "")
                             .font(.headline.monospaced())
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.moneyUpSecondary)
                     }
                 } header: {
                     Text("budget.setup.total")
@@ -324,13 +324,13 @@ struct StarterBudgetSetupSheet: View {
                 HStack(spacing: 8) {
                     Label(value.purpose.titleKey, systemImage: value.purpose.systemImage)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.moneyUpSecondary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
                     Spacer(minLength: 4)
                     Text("\(value.percent)%")
                         .font(.caption.monospacedDigit().weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.moneyUpSecondary)
                     Stepper(value.name, value: share.percent, in: 0...100, step: 5)
                         .labelsHidden()
                 }

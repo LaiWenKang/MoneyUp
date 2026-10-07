@@ -59,8 +59,21 @@ struct ExchangeRateEditorSheet: View {
                 if baseCode == quoteCode {
                     Text("fx.identical_currencies").foregroundStyle(Color.moneyUpWarning)
                 }
-                TextField("fx.quote_per_base", text: $rateText)
-                    .keyboardType(.decimalPad)
+                // Read as an equation, "1 SGD = 0.74 USD", so the direction of
+                // the rate is never a guess.
+                HStack(spacing: 8) {
+                    Text(verbatim: "1 \(baseCode) =")
+                        .foregroundStyle(.moneyUpSecondary)
+                        .accessibilityHidden(true)
+                    TextField("fx.convert.rate", text: $rateText)
+                        .keyboardType(.decimalPad)
+                        .multilineTextAlignment(.trailing)
+                        .monospacedDigit()
+                        .accessibilityLabel(Text(verbatim: rateLabel(quote: quoteCode, base: baseCode)))
+                    Text(verbatim: quoteCode)
+                        .foregroundStyle(.moneyUpSecondary)
+                        .accessibilityHidden(true)
+                }
                 DatePicker("fx.effective_date", selection: $effectiveAt, displayedComponents: .date)
 
                 Button {
@@ -74,7 +87,7 @@ struct ExchangeRateEditorSheet: View {
                 }
                 .disabled(!canSave || isSaving)
             } header: {
-                MoneyUpSectionHeader("fx.add_rate", explanation: "fx.rate_detail")
+                MoneyUpSectionHeader("fx.convert.rate", explanation: "fx.rate_detail")
             }
 
             }
@@ -130,6 +143,11 @@ struct ExchangeRateEditorSheet: View {
 
 }
 
+/// What a rate field holds, read aloud as "USD per 1 SGD".
+private func rateLabel(quote: String, base: String) -> String {
+    String(format: AppLocalization.string("fx.rate_per_format"), quote, base)
+}
+
 struct ManualTransferRateSheet: View {
     @Environment(\.dismiss) private var dismiss
     let source: Money
@@ -150,15 +168,18 @@ struct ManualTransferRateSheet: View {
                     Text("1 \(inverse ? destination.value : source.currency.value) = \(rateText.isEmpty ? "…" : rateText) \(inverse ? source.currency.value : destination.value)")
                         .font(.headline.monospacedDigit())
                     Toggle("fx.inverse_input", isOn: $inverse)
-                    TextField("fx.quote_per_base", text: $rateText)
+                    TextField("fx.convert.rate", text: $rateText)
                         .keyboardType(.decimalPad)
+                        .accessibilityLabel(Text(verbatim: inverse
+                            ? rateLabel(quote: source.currency.value, base: destination.value)
+                            : rateLabel(quote: destination.value, base: source.currency.value)))
                         .accessibilityIdentifier("manual-transfer-rate")
                     if let converted {
                         Text("transaction.received_amount").font(.caption)
                         Text("\(destination.value) \(MoneyAmountPrivacy.protected(editableAmount(converted.amount)))")
                             .font(.title3.monospacedDigit())
                     } else if !rateText.isEmpty {
-                        Text("fx.custom_rate_invalid").foregroundStyle(.secondary)
+                        Text("fx.custom_rate_invalid").foregroundStyle(.moneyUpSecondary)
                     }
                     Button("fx.apply_custom_rate") {
                         guard let converted else { return }

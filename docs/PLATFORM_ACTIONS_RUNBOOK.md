@@ -87,9 +87,10 @@ depend on a SwiftUI observation callback seeing an intermediate lifecycle flag.
    validator tests on the exact candidate SHA.
 2. Build the app and embedded widget with the pinned Xcode toolchain. Treat a
    source-validator pass without this build as incomplete evidence.
-3. In Xcode, open **Product → App Shortcuts Preview**. Confirm all six shortcuts
+3. In Xcode, open **Product → App Shortcuts Preview**. Confirm all seven shortcuts
    are indexed in English and Simplified Chinese, each phrase names only an
-   action and the MoneyUp application name, and each tile uses the matching
+   action and the MoneyUp application name (Log with words asks for the words
+   after the phrase; they are never part of it), and each tile uses the matching
    non-sensitive title and symbol.
 4. Inspect the extracted App Intents metadata in the app and widget build
    products. `OpenQuickLogIntent` must expose one `MoneyUpQuickAction` parameter

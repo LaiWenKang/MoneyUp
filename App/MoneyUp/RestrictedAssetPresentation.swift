@@ -20,7 +20,7 @@ struct RestrictedAccountTypeLabel: View {
         ) {
             Text(LocalizedStringKey(key))
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.moneyUpSecondary)
         }
     }
 }
@@ -42,7 +42,7 @@ struct RestrictedStoredValueSummary: View {
                     }
                     Text("assets.restricted_stored_value_note")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.moneyUpSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .accessibilityElement(children: .combine)

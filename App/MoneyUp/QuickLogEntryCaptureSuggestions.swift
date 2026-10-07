@@ -161,7 +161,7 @@ extension QuickLogEntryView {
             VStack(alignment: .leading, spacing: 8) {
                 Label("quick_log.preload_title", systemImage: "clock.arrow.circlepath")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.moneyUpSecondary)
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
                         ForEach(historyPreloads) { suggestion in
@@ -291,7 +291,7 @@ extension QuickLogEntryView {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.moneyUpSecondary)
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(accountCurrencyLabel(account))
                     .font(.body.weight(.medium))
@@ -299,7 +299,7 @@ extension QuickLogEntryView {
                 if isApplied {
                     Label("quick_log.suggestion_applied", systemImage: "checkmark")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.moneyUpSecondary)
                 } else {
                     Button("quick_log.use_suggestion", action: apply)
                         .buttonStyle(.borderless)
@@ -313,7 +313,7 @@ extension QuickLogEntryView {
                     + captureEvidenceText(suggestion.evidence)
             )
             .font(.caption)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.moneyUpSecondary)
         }
     }
 
@@ -401,7 +401,7 @@ struct HistoryPreloadChip: View {
                         }
                     }
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.moneyUpSecondary)
                 }
             }
             .padding(.horizontal, 12)
@@ -455,7 +455,7 @@ struct HistoryPreloadCard: View {
                     Text(maskingAmounts: amountLabel).font(.subheadline.monospacedDigit())
                     Text(accountName + " · " + categoryName).font(.caption)
                 }
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.moneyUpSecondary)
                 Spacer(minLength: 8)
                 Button { apply(QuickLogHistoryPreloadFill.fields) } label: {
                     Image(systemName: "chevron.right").frame(minWidth: 44, minHeight: 44)
@@ -470,7 +470,7 @@ struct HistoryPreloadCard: View {
                 field("quick_log.amount", value: amountLabel, key: .amount)
                 field("transaction.account", value: accountName, key: .account)
                 field("transaction.category", value: categoryName, key: .category)
-                Text("quick_log.preload_preserve_detail").font(.caption).foregroundStyle(.secondary)
+                Text("quick_log.preload_preserve_detail").font(.caption).foregroundStyle(.moneyUpSecondary)
             }
             .font(.caption)
         }
@@ -483,7 +483,7 @@ struct HistoryPreloadCard: View {
                 Text(title).font(.caption)
                 Text(value).font(.subheadline)
             }
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.moneyUpSecondary)
             Spacer(minLength: 8)
             Button { apply([key]) } label: {
                 Image(systemName: "chevron.right").frame(minWidth: 44, minHeight: 44)

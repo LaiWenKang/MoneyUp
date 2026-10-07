@@ -257,7 +257,7 @@ struct ImportTransactionsView: View {
                                     .lineLimit(1)
                                 Text(row.occurredAt, format: .dateTime.year().month().day())
                                     .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(.moneyUpSecondary)
                             }
                             Spacer()
                             Text(
