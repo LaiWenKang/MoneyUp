@@ -176,7 +176,7 @@ struct BudgetSimulatorView: View {
             } else {
                 MoneyUpCard {
                     Text("simulator.unavailable")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.moneyUpSecondary)
                 }
             }
         }
@@ -196,7 +196,7 @@ struct BudgetSimulatorView: View {
                 Spacer()
                 Text(currency.value)
                     .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.moneyUpSecondary)
             }
             TextField("simulator.amount_placeholder", text: text)
                 .moneyAmountKeyboard(currency: currency)
@@ -383,7 +383,7 @@ struct BudgetSimulatorView: View {
 
                 Text("simulator.no_changes_saved")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.moneyUpSecondary)
             }
         }
     }

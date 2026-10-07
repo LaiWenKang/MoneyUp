@@ -133,7 +133,7 @@ extension QuickLogEntryView {
                     }.disabled(index + 1 == batch.items.count || !canSwitchBatchItem)
                 }
                 if !attachmentDrafts.isEmpty || receiptAttachmentData != nil {
-                    Text("quick_log.batch.finish_attachments").font(.caption).foregroundStyle(.secondary)
+                    Text("quick_log.batch.finish_attachments").font(.caption).foregroundStyle(.moneyUpSecondary)
                 }
             } footer: { Text("quick_log.batch.save_one") }
         }

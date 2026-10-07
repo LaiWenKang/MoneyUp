@@ -59,7 +59,7 @@ struct EntryCatalogView: View {
                         existing: model.accounts.compactMap(\.currency))
                 }
                 HStack(alignment: .top) {
-                    Text("catalog.choose_needed").font(.subheadline).foregroundStyle(.secondary)
+                    Text("catalog.choose_needed").font(.subheadline).foregroundStyle(.moneyUpSecondary)
                     Spacer(minLength: 8)
                     MoneyUpExplainer(scope == .accounts ? "catalog.accounts_intro" : "catalog.expenses_intro")
                 }
@@ -84,7 +84,7 @@ struct EntryCatalogView: View {
                     Button { isAddingRestricted = true }
                     label: { Label("catalog.restricted_setup", systemImage: "giftcard") }
                 }
-                Text("catalog.visibility_detail").font(.footnote).foregroundStyle(.secondary)
+                Text("catalog.visibility_detail").font(.footnote).foregroundStyle(.moneyUpSecondary)
             }
         }
         .searchable(text: $query, prompt: "catalog.search")
@@ -126,7 +126,7 @@ struct EntryCatalogView: View {
         let linked = matches(preset)
         if linked.count > 1 {
             Label("catalog.multiple_matches", systemImage: "info.circle")
-                .font(.subheadline).foregroundStyle(.secondary)
+                .font(.subheadline).foregroundStyle(.moneyUpSecondary)
         } else if let item = linked.first, item.isArchived {
             manageRow(item)
         } else {
@@ -169,7 +169,7 @@ struct EntryCatalogView: View {
                 .frame(width: 32, height: 32).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 4) {
                 Text(title).fixedSize(horizontal: false, vertical: true)
-                Text(detail).font(.caption).foregroundStyle(.secondary)
+                Text(detail).font(.caption).foregroundStyle(.moneyUpSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }.frame(minHeight: 44)

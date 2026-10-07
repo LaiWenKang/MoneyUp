@@ -76,7 +76,7 @@ extension QuickLogEntryView {
                 focusedField = .destinationAmount
             }
             if let currency = selectedDestinationCurrency {
-                Text(currency.value).foregroundStyle(.secondary)
+                Text(currency.value).foregroundStyle(.moneyUpSecondary)
             }
         }
         if let destinationAmountValidationMessage {
@@ -114,7 +114,7 @@ extension QuickLogEntryView {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
                     Text("allowance.checking_prepaid_balance")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.moneyUpSecondary)
                 }
                 .font(.caption)
             } else if let remaining = selectedAllowanceRemaining,
@@ -143,7 +143,7 @@ extension QuickLogEntryView {
                 systemImage: "lock.shield"
             )
             .font(.caption)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.moneyUpSecondary)
             .fixedSize(horizontal: false, vertical: true)
         }
         prepaidFundingLifecycleAnchor
@@ -207,7 +207,7 @@ extension QuickLogEntryView {
                 LabeledContent("quick_log.time_zone") {
                     Text(verbatim: userActionTimeContext.displayName(at: occurredAt))
                         .font(.subheadline.monospacedDigit())
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.moneyUpSecondary)
                 }
                 DatePicker(
                     "quick_log.date",
@@ -230,7 +230,7 @@ extension QuickLogEntryView {
                 )
                 Text("quick_log.time_zone_detail")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.moneyUpSecondary)
             } label: {
                 LabeledContent("quick_log.occurred_at") {
                     Text(
@@ -239,7 +239,7 @@ extension QuickLogEntryView {
                             calendar: captureCalendar
                         )
                     )
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.moneyUpSecondary)
                 }
             }
         }
@@ -291,7 +291,7 @@ extension QuickLogEntryView {
                 }
                 Menu { merchantLearningControl } label: {
                     Image(systemName: "ellipsis")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.moneyUpSecondary)
                         .frame(minWidth: 32, minHeight: 44)
                 }
                 .accessibilityLabel("quick_log.suggestion_options")
@@ -318,21 +318,21 @@ extension QuickLogEntryView {
 
             if isParsingSmartEntry {
                 Label("quick_log.parsing", systemImage: "ellipsis")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.moneyUpSecondary)
             }
             if smartState.hasPreview { smartReviewSummary }
 
             if isScanning {
                 HStack(spacing: 8) {
                     ProgressView()
-                    Text("quick_log.scanning").foregroundStyle(.secondary)
+                    Text("quick_log.scanning").foregroundStyle(.moneyUpSecondary)
                 }
             }
 
             if let smartMessage {
                 Text(smartMessage)
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.moneyUpSecondary)
             }
 
             if let onDeviceAssistance {
@@ -361,12 +361,12 @@ extension QuickLogEntryView {
                     isPDF ? "quick_log.keep_receipt_detail_pdf" : "quick_log.keep_receipt_detail"
                 ))
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.moneyUpSecondary)
             }
             if let receiptRetentionMessage {
                 Text(receiptRetentionMessage)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.moneyUpSecondary)
             }
         }
     }
@@ -479,7 +479,7 @@ extension QuickLogEntryView {
                         focusedField = .splitAmount(lineID)
                     }
                     if let currency = selectedAccountCurrency {
-                        Text(currency.value).foregroundStyle(.secondary)
+                        Text(currency.value).foregroundStyle(.moneyUpSecondary)
                     }
                     Button {
                         updateSplitLine(lineID) { $0.isLocked.toggle() }
@@ -681,13 +681,13 @@ struct QuickLogRouteBar: View {
         if kind == .transfer {
             Image(systemName: "arrow.right")
                 .font(.caption.weight(.bold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.moneyUpSecondary)
                 .accessibilityHidden(true)
             QuickLogAccountChip(selection: destination, choices: destinationAccounts, label: "transaction.to_account")
         } else if isSplit {
             Label("flow.split_categories", systemImage: "square.split.2x1")
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.moneyUpSecondary)
                 .padding(.horizontal, 12)
                 .frame(minHeight: 44)
         } else {

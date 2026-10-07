@@ -197,7 +197,7 @@ struct QuickAccessSurfaceRow: View {
             MoneyUpCategoryBadge(systemImage: systemImage, tint: .moneyUpAction, size: 32)
             VStack(alignment: .leading, spacing: 3) {
                 Text(title).font(.subheadline.weight(.semibold))
-                Text(detail).font(.footnote).foregroundStyle(.secondary)
+                Text(detail).font(.footnote).foregroundStyle(.moneyUpSecondary)
             }
         }
         .padding(.vertical, 2)
@@ -219,7 +219,7 @@ struct QuickAccessFavouriteRow: View {
             )
             VStack(alignment: .leading, spacing: 2) {
                 Text(favourite.name).font(.body.weight(.semibold))
-                Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                Text(detail).font(.caption).foregroundStyle(.moneyUpSecondary).lineLimit(1)
             }
             Spacer(minLength: 0)
             Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)

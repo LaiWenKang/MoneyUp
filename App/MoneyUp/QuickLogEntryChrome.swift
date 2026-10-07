@@ -37,7 +37,7 @@ extension QuickLogEntryView {
                     HStack(spacing: 6) {
                         Text(showsUndoneConfirmation ? LocalizedStringKey("quick_log.removed") : "quick_log.saved")
                         if let lastSavedAmountLabel {
-                            Text(verbatim: "·").foregroundStyle(.secondary)
+                            Text(verbatim: "·").foregroundStyle(.moneyUpSecondary)
                             // Amounts never animate: this is the exact figure posted.
                             Text(maskingAmounts: lastSavedAmountLabel)
                                 .fontWeight(.semibold)

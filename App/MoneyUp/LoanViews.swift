@@ -44,7 +44,7 @@ struct LoanCenterView: View {
                     switch includedDebtTotals {
                     case let .available(totals):
                         if totals.isEmpty {
-                            Text("loan.no_included_debt").foregroundStyle(.secondary)
+                            Text("loan.no_included_debt").foregroundStyle(.moneyUpSecondary)
                         } else {
                             ForEach(totals, id: \.currency) { total in
                                 Text(maskingAmounts: formattedMoney(total))
@@ -134,7 +134,7 @@ private struct LoanRow: View {
                         : LocalizedStringKey("loan.finished")
                 )
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.moneyUpSecondary)
             }
             Spacer()
             switch model.loanSummary(plan) {
@@ -214,7 +214,7 @@ private struct LoanDetailView: View {
 
                 Section("loan.activity") {
                     if plan.activities.isEmpty {
-                        Text("loan.no_activity").foregroundStyle(.secondary)
+                        Text("loan.no_activity").foregroundStyle(.moneyUpSecondary)
                     } else {
                         ForEach(plan.activities.reversed()) { activity in
                             VStack(alignment: .leading, spacing: 3) {
@@ -226,11 +226,11 @@ private struct LoanDetailView: View {
                                 }
                                 Text(activity.occurredAt, format: .dateTime.year().month().day())
                                     .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(.moneyUpSecondary)
                                 if let note = activity.note {
                                     Text(note)
                                         .font(.caption)
-                                        .foregroundStyle(.secondary)
+                                        .foregroundStyle(.moneyUpSecondary)
                                 }
                             }
                         }
@@ -466,7 +466,7 @@ private struct LoanPaymentSheet: View {
                 if plan.interestExpenseAccountID == nil || plan.feeExpenseAccountID == nil {
                     Text("loan.categories_needed")
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.moneyUpSecondary)
                 }
                 DatePicker(
                     "quick_log.date_and_time",

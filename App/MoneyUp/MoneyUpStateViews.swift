@@ -63,7 +63,7 @@ struct MoneyUpStatePlaceholder<Actions: View>: View {
                     if let detail {
                         detail
                             .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.moneyUpSecondary)
                             .multilineTextAlignment(.center)
                     }
                 }
@@ -112,7 +112,7 @@ struct MoneyUpLoadingPlaceholder: View {
                 .controlSize(.large)
             Text(title)
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.moneyUpSecondary)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 16)

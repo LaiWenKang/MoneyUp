@@ -140,7 +140,7 @@ extension QuickLogEntryView {
                             } else {
                                 Label("fx.unconverted_mode", systemImage: "equal.circle")
                                     .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(.moneyUpSecondary)
                             }
                         }
                     } else {

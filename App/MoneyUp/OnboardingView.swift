@@ -137,7 +137,7 @@ struct OnboardingView: View {
                     .multilineTextAlignment(.center)
                 Text("onboarding.welcome_detail")
                     .font(.body)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.moneyUpSecondary)
                     .multilineTextAlignment(.center)
             }
 
@@ -193,7 +193,7 @@ struct OnboardingView: View {
                             .foregroundStyle(.tint)
                     }
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.moneyUpSecondary)
                     .accessibilityElement(children: .combine)
                 }
             }
@@ -260,11 +260,11 @@ struct OnboardingView: View {
                             .moneyUpFieldValidation(openingBalanceValidationMessage)
                             Text(currencyCode)
                                 .font(.subheadline.monospaced().weight(.semibold))
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(.moneyUpSecondary)
                         }
                         Text(accountType.openingBalanceGuidance)
                             .font(.footnote)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.moneyUpSecondary)
 
                         if let openingBalanceValidationMessage {
                             MoneyUpFieldError(message: openingBalanceValidationMessage)
@@ -313,7 +313,7 @@ struct OnboardingView: View {
                             .font(.headline)
                         Text("onboarding.after_setup_detail")
                             .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.moneyUpSecondary)
                     }
                 }
                 .accessibilityElement(children: .combine)
@@ -362,7 +362,7 @@ struct OnboardingView: View {
             )
         )
         .font(.subheadline.weight(.semibold))
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.moneyUpSecondary)
     }
 
     @ViewBuilder
@@ -462,7 +462,7 @@ struct OnboardingView: View {
                     .font(.headline)
                 Text(detail)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.moneyUpSecondary)
             }
         }
         .accessibilityElement(children: .combine)
@@ -488,7 +488,7 @@ struct OnboardingView: View {
             if !compact {
                 Text(detail)
                     .font(.body)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.moneyUpSecondary)
             }
         }
         .animation(MoneyUpMotion.animation(for: .disclosure, reduceMotion: reduceMotion), value: compact)
@@ -498,7 +498,7 @@ struct OnboardingView: View {
         ViewThatFits(in: .horizontal) {
             HStack(alignment: .firstTextBaseline, spacing: 16) {
                 Text(title)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.moneyUpSecondary)
                 Spacer(minLength: 12)
                 Text(value)
                     .fontWeight(.semibold)
@@ -507,7 +507,7 @@ struct OnboardingView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.moneyUpSecondary)
                 Text(value)
                     .fontWeight(.semibold)
             }

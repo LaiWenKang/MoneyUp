@@ -247,7 +247,7 @@ struct FlexibleTodayBreakdownSheet: View {
                                 .font(.headline)
                             Text(displayedPeriodDescription)
                                 .font(.subheadline)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(.moneyUpSecondary)
                         }
                     }
 
@@ -359,6 +359,6 @@ struct FlexibleTodayBreakdownSheet: View {
     private func exclusionRow(_ key: LocalizedStringKey) -> some View {
         Label(key, systemImage: "circle.dashed")
             .font(.subheadline)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.moneyUpSecondary)
     }
 }

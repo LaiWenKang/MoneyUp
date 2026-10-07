@@ -17,7 +17,7 @@ struct DeveloperSupportView: View {
                         .font(.largeTitle).foregroundStyle(.tint)
                         .accessibilityHidden(true)
                     Text("support.headline").font(.title2.bold())
-                    Text("support.explanation").foregroundStyle(.secondary)
+                    Text("support.explanation").foregroundStyle(.moneyUpSecondary)
                 }
                 .padding(.vertical, 12)
             }
@@ -25,7 +25,7 @@ struct DeveloperSupportView: View {
                 if store.isLoading {
                     HStack { ProgressView(); Text("support.loading") }
                 } else if !AppStore.canMakePayments {
-                    Text("support.restricted").foregroundStyle(.secondary)
+                    Text("support.restricted").foregroundStyle(.moneyUpSecondary)
                 } else {
                     ForEach(store.products) { product in
                         Button {

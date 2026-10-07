@@ -126,7 +126,7 @@ struct TodayPeriodContextView: View {
                     Image(systemName: "info.circle")
                 }
                 .font(.footnote.weight(.medium))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.moneyUpSecondary)
                 .frame(minHeight: 44)
                 .contentShape(Rectangle())
             }

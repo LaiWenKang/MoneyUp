@@ -391,7 +391,7 @@ struct ReminderToggleRow: View {
                 Text(title)
                 Text(hint)
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.moneyUpSecondary)
             }
         }
         .accessibilityIdentifier(identifier)

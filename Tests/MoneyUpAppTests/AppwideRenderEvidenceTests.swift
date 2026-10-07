@@ -348,9 +348,9 @@ final class AppwideRenderEvidenceTests: XCTestCase {
             if let previous { defaults?.set(previous, forKey: AppLanguagePreference.storageKey) }
             else { defaults?.removeObject(forKey: AppLanguagePreference.storageKey) }
         }
-        // The same root styling the app applies above every screen.
+        // The same root tint the app applies above every screen.
         let controller = UIHostingController(rootView: content.environment(\.locale, language.locale)
-            .tint(.accentColor).moneyUpTextHierarchy())
+            .tint(.accentColor))
         let window = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first.map(UIWindow.init(windowScene:))
             ?? UIWindow(frame: CGRect(x: 0, y: 0, width: width, height: height))
         window.frame = CGRect(x: 0, y: 0, width: width, height: height)

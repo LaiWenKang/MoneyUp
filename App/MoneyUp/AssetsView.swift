@@ -101,7 +101,7 @@ struct AssetsView: View {
                                     RestrictedAccountTypeLabel(account: account)
                                     Text(account.currency?.value ?? "")
                                         .font(.caption)
-                                        .foregroundStyle(.secondary)
+                                        .foregroundStyle(.moneyUpSecondary)
                                 }
                                 Spacer()
                                 switch model.accountBalanceResultForPresentation(
@@ -121,7 +121,7 @@ struct AssetsView: View {
                                             .font(.subheadline.monospacedDigit())
                                         Text(issue.localizedDescription)
                                             .font(.caption2)
-                                            .foregroundStyle(.secondary)
+                                            .foregroundStyle(.moneyUpSecondary)
                                             .lineLimit(2)
                                     }
                                 }
@@ -174,7 +174,7 @@ struct AssetsView: View {
                                         RestrictedAccountTypeLabel(account: account)
                                         Text(account.currency?.value ?? "")
                                             .font(.caption.monospaced())
-                                            .foregroundStyle(.secondary)
+                                            .foregroundStyle(.moneyUpSecondary)
                                     }
                                     Spacer()
                                 }
@@ -203,7 +203,7 @@ struct AssetsView: View {
                                 .font(.headline)
                             Text("assets.no_holdings_detail")
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(.moneyUpSecondary)
                                 .multilineTextAlignment(.center)
                         }
                         .frame(maxWidth: .infinity)
@@ -219,7 +219,7 @@ struct AssetsView: View {
                                         .fontWeight(.semibold)
                                     Text(holding.name)
                                         .font(.caption)
-                                        .foregroundStyle(.secondary)
+                                        .foregroundStyle(.moneyUpSecondary)
                                     if holding.needsLedgerConnection {
                                         Label("holding.needs_ledger", systemImage: "exclamationmark.triangle.fill")
                                             .font(.caption2)
@@ -237,7 +237,7 @@ struct AssetsView: View {
                                             }
                                         }
                                         .font(.caption2)
-                                        .foregroundStyle(.secondary)
+                                        .foregroundStyle(.moneyUpSecondary)
                                     }
                                 }
                                 Spacer()
@@ -251,7 +251,7 @@ struct AssetsView: View {
                                             .font(.subheadline.monospacedDigit())
                                         Text(issue.localizedDescription)
                                             .font(.caption2)
-                                            .foregroundStyle(.secondary)
+                                            .foregroundStyle(.moneyUpSecondary)
                                             .lineLimit(2)
                                     }
                                     Text(
@@ -259,7 +259,7 @@ struct AssetsView: View {
                                         format: .number.precision(.fractionLength(0...6))
                                     )
                                     .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(.moneyUpSecondary)
                                 }
                             }
                             }
@@ -284,7 +284,7 @@ struct AssetsView: View {
                     if investmentAccounts.isEmpty {
                         Text("holding.add_investment_account_first")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.moneyUpSecondary)
                     }
                 }
 
@@ -304,7 +304,7 @@ struct AssetsView: View {
                                     Spacer()
                                     Text(holding.price?.currency.value ?? "")
                                         .font(.caption.monospaced())
-                                        .foregroundStyle(.secondary)
+                                        .foregroundStyle(.moneyUpSecondary)
                                 }
                             }
                             .buttonStyle(.plain)
@@ -320,7 +320,7 @@ struct AssetsView: View {
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(snapshot.capturedAt, format: .dateTime.year().month().day().hour().minute())
                                     .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(.moneyUpSecondary)
                                 ForEach(snapshot.amounts) { amount in
                                     Text(maskingAmounts: formattedMoney(amount.money))
                                         .font(.subheadline.monospacedDigit())
@@ -334,7 +334,7 @@ struct AssetsView: View {
                                         Text("fx.rates_as_of")
                                         Text(asOf, format: .dateTime.year().month().day())
                                     }
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(.moneyUpSecondary)
                                 }
                                 if !snapshot.conversionEvidence.isEmpty {
                                     DisclosureGroup("fx.snapshot_conversion_evidence") {
@@ -359,7 +359,7 @@ struct AssetsView: View {
                                                     )
                                                 )
                                                 .font(.caption2)
-                                                .foregroundStyle(.secondary)
+                                                .foregroundStyle(.moneyUpSecondary)
                                             }
                                         }
                                     }

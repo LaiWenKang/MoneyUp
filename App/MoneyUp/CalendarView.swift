@@ -303,10 +303,10 @@ struct CalendarView: View {
                     .accessibilityLabel("calendar.loading_actuals")
             } else if actualsUnavailable {
                 Text("calendar.actuals_unavailable_detail")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.moneyUpSecondary)
             } else if selectedEntries.isEmpty {
                 Text("calendar.no_actual")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.moneyUpSecondary)
             } else {
                 ForEach(selectedEntries) { entry in
                     TransactionRow(entry: entry, listedDay: selectedDate)
@@ -332,7 +332,7 @@ struct CalendarView: View {
             if let dateComputation,
                dateComputation.scheduledTransactions.isEmpty {
                 Text("calendar.no_scheduled")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.moneyUpSecondary)
             } else if let dateComputation {
                 ForEach(dateComputation.scheduledTransactions) { item in
                     scheduledRow(for: item)
@@ -1022,7 +1022,7 @@ private struct CalendarMonthGrid: View {
             ForEach(Array(layout.weekdaySymbols.enumerated()), id: \.offset) { _, symbol in
                 Text(symbol)
                     .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.moneyUpSecondary)
                     .frame(maxWidth: .infinity)
             }
         }
@@ -1081,7 +1081,7 @@ private struct CalendarMonthGrid: View {
             Spacer(minLength: 0)
         }
         .font(.caption2)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.moneyUpSecondary)
         .accessibilityHidden(true)
     }
 

@@ -447,7 +447,7 @@ struct HistoryView: View {
                 if filters.categoryIDs != nil {
                     LabeledContent("history.filter.category", value: categoryFilterValue)
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.moneyUpSecondary)
                         .listRowInsets(EdgeInsets(top: 4, leading: 4, bottom: 0, trailing: 4))
                 }
             }
@@ -476,7 +476,7 @@ struct HistoryView: View {
                                 .font(.subheadline.weight(.semibold))
                                 Text(summaryErrorMessage)
                                     .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(.moneyUpSecondary)
                                 Button("action.retry") {
                                     refreshGeneration &+= 1
                                 }
@@ -486,7 +486,7 @@ struct HistoryView: View {
                             HStack(spacing: 10) {
                                 ProgressView()
                                 Text("history.loading_summary")
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(.moneyUpSecondary)
                             }
                             .accessibilityElement(children: .combine)
                         }
@@ -613,7 +613,7 @@ struct HistoryView: View {
                                 HStack(spacing: 10) {
                                     ProgressView()
                                     Text("history.loading")
-                                        .foregroundStyle(.secondary)
+                                        .foregroundStyle(.moneyUpSecondary)
                                 }
                                 .frame(maxWidth: .infinity, alignment: .center)
                                 .accessibilityElement(children: .combine)
@@ -628,7 +628,7 @@ struct HistoryView: View {
                                     .font(.subheadline.weight(.semibold))
                                     Text(paginationErrorMessage)
                                         .font(.caption)
-                                        .foregroundStyle(.secondary)
+                                        .foregroundStyle(.moneyUpSecondary)
                                     Button("action.retry") {
                                         Task { await loadNextPage() }
                                     }

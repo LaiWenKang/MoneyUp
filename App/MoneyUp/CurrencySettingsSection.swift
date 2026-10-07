@@ -47,7 +47,7 @@ struct CurrencySettingsSection: View {
             if let baseCurrency {
                 LabeledContent {
                     Text(currencyLabel(baseCurrency))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.moneyUpSecondary)
                 } label: {
                     Label("settings.base_currency", systemImage: "banknote")
                 }

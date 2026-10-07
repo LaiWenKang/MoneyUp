@@ -188,7 +188,7 @@ struct DerivedValueUnavailableView: View {
 
                 Label {
                     Text(issue.localizedDescription)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.moneyUpSecondary)
                 } icon: {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundStyle(Color.moneyUpWarning)

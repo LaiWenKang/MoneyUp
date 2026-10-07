@@ -52,7 +52,7 @@ struct GoalDetailView: View {
                 HStack(spacing: 16) {
                     MoneyUpProgressDial(fraction: NSDecimalNumber(decimal: summary.progress).doubleValue, systemImage: goal.kind.systemImage)
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(summary.isComplete ? "goal.complete" : "goal.remaining").font(.subheadline).foregroundStyle(.secondary)
+                        Text(summary.isComplete ? "goal.complete" : "goal.remaining").font(.subheadline).foregroundStyle(.moneyUpSecondary)
                         Text(maskingAmounts: formattedMoney(summary.remaining)).moneyUpFinancialValue(.prominent)
                     }
                 }
@@ -117,7 +117,7 @@ struct GoalContributionSimulator: View {
         MoneyUpCard {
             VStack(alignment: .leading, spacing: 14) {
                 Label("goal.simulator.title", systemImage: "slider.horizontal.3").font(.headline)
-                Text("goal.simulator.detail").font(.caption).foregroundStyle(.secondary)
+                Text("goal.simulator.detail").font(.caption).foregroundStyle(.moneyUpSecondary)
                 Picker("goal.simulator.cadence", selection: $cadence) {
                     Text("goal.simulator.weekly").tag(GoalContributionCadence.weekly)
                     Text("goal.simulator.monthly").tag(GoalContributionCadence.monthly)
@@ -150,20 +150,20 @@ struct GoalContributionSimulator: View {
             Label(String(format: AppLocalization.string("goal.simulator.deposits"), preview.periods), systemImage: "calendar")
                 .font(.subheadline.weight(.semibold))
             Text(preview.completionDate.formattedForReporting(.dateTime.year().month().day(), calendar: calendar))
-                .font(.subheadline).foregroundStyle(.secondary)
+                .font(.subheadline).foregroundStyle(.moneyUpSecondary)
             if preview.completionDate > summary.targetDate {
                 Label("goal.simulator.after_target", systemImage: "exclamationmark.triangle")
                     .font(.caption).foregroundStyle(Color.moneyUpWarning)
             }
-            Text("simulator.no_changes_saved").font(.caption).foregroundStyle(.secondary)
+            Text("simulator.no_changes_saved").font(.caption).foregroundStyle(.moneyUpSecondary)
         case .failure(GoalContributionProjectionError.beyondHorizon):
-            Text("goal.simulator.horizon").font(.caption).foregroundStyle(.secondary)
+            Text("goal.simulator.horizon").font(.caption).foregroundStyle(.moneyUpSecondary)
         case .failure:
             if let validationMessage { MoneyUpFieldError(message: validationMessage) }
         case nil:
             HStack {
                 MoneyUpIllustration("MoneyUpScenarioStudio", role: .inline)
-                Text("goal.simulator.prompt").font(.subheadline).foregroundStyle(.secondary)
+                Text("goal.simulator.prompt").font(.subheadline).foregroundStyle(.moneyUpSecondary)
             }
         }
     }

@@ -317,10 +317,10 @@ struct QuickLogFavouriteChip: View {
                 // amount is typed each time. The accessibility label says so.
                 if needsRepair {
                     Text("favourites.needs_attention")
-                        .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        .font(.caption).foregroundStyle(.moneyUpSecondary).lineLimit(1)
                 } else if let amountLabel {
                     Text(maskingAmounts: amountLabel)
-                        .font(.caption).monospacedDigit().foregroundStyle(.secondary).lineLimit(1)
+                        .font(.caption).monospacedDigit().foregroundStyle(.moneyUpSecondary).lineLimit(1)
                 }
             }
         }

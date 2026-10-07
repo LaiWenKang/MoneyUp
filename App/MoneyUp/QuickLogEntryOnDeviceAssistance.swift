@@ -348,7 +348,7 @@ extension QuickLogEntryView {
 
             Text("quick_log.on_device.detail")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.moneyUpSecondary)
             Button("quick_log.on_device.reject") {
                 rejectOnDeviceAssistance()
             }
@@ -367,7 +367,7 @@ extension QuickLogEntryView {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.moneyUpSecondary)
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(value).font(.body.weight(.medium))
                 Spacer(minLength: 8)
@@ -377,7 +377,7 @@ extension QuickLogEntryView {
                         systemImage: "checkmark"
                     )
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.moneyUpSecondary)
                 } else {
                     Button("quick_log.use_suggestion", action: apply)
                         .buttonStyle(.borderless)

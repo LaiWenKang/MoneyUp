@@ -142,7 +142,7 @@ struct WhatsNewSheet: View {
                 VStack(alignment: .leading, spacing: 18) {
                     Text("whats_new.subtitle \(AppVersion.marketing)")
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.moneyUpSecondary)
 
                     ForEach(Array(highlights.enumerated()), id: \.offset) { entry in
                         Label {

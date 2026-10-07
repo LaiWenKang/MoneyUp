@@ -31,7 +31,7 @@ struct IntelligenceSummaryLink: View {
                             .font(.subheadline.weight(.semibold))
                         Text(summaryKey)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.moneyUpSecondary)
                     }
                     Spacer(minLength: 8)
                     if model.isIntelligenceRefreshing {
@@ -64,7 +64,7 @@ struct IntelligenceSummaryLink: View {
                                 .font(.headline)
                             Text(summaryKey)
                                 .font(.subheadline)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(.moneyUpSecondary)
                         }
                         Spacer(minLength: 8)
                         if model.isIntelligenceRefreshing {
@@ -180,7 +180,7 @@ struct IntelligenceView: View {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Label("intelligence.private_title", systemImage: "lock.shield.fill")
                             .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.moneyUpSecondary)
                         Spacer(minLength: 8)
                         MoneyUpExplainer("intelligence.private_detail")
                             .font(.footnote)
@@ -190,7 +190,7 @@ struct IntelligenceView: View {
                         .font(.headline)
                     Text("intelligence.private_detail")
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.moneyUpSecondary)
                 }
                 if model.intelligenceResultsAreLimited {
                     Label(
@@ -232,7 +232,7 @@ struct IntelligenceView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("intelligence.reviewed_detail")
                             .font(.footnote)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.moneyUpSecondary)
                         ForEach(reviewed) { finding in
                             reviewedRow(finding)
                         }
@@ -250,7 +250,7 @@ struct IntelligenceView: View {
                         }
                     } icon: {
                         Image(systemName: "checkmark.circle")
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.moneyUpSecondary)
                     }
                     .font(.subheadline.weight(.medium))
                 }
@@ -262,11 +262,11 @@ struct IntelligenceView: View {
     private func reviewedRow(_ finding: IntelligenceFinding) -> some View {
         HStack(spacing: 10) {
             Image(systemName: finding.kind.systemImage)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.moneyUpSecondary)
                 .frame(width: 22)
             Text(LocalizedStringKey(finding.headlineKey))
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.moneyUpSecondary)
                 .lineLimit(2)
             Spacer(minLength: 8)
             Button {
@@ -331,7 +331,7 @@ struct IntelligenceView: View {
                 }
                 Text(LocalizedStringKey(finding.explanationKey))
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.moneyUpSecondary)
                 ForEach(Array(finding.figures.enumerated()), id: \.offset) {
                     _, figure in
                     LabeledContent {
@@ -357,7 +357,7 @@ struct IntelligenceView: View {
                     Text(finding.ruleID)
                 }
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.moneyUpSecondary)
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: 10) {
                         routeControl(finding)

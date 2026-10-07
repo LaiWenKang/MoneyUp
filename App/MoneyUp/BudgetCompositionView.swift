@@ -51,7 +51,7 @@ struct BudgetCompositionView: View {
         let selected = segments.first { $0.id == selectedID } ?? segments.first
         if progress.contains(where: { $0.node.parentID == nil && ($0.effectiveLimit?.amount ?? .zero) < .zero }) {
             Label("budget.composition_deficit", systemImage: "exclamationmark.circle")
-                .font(.subheadline).foregroundStyle(.secondary)
+                .font(.subheadline).foregroundStyle(.moneyUpSecondary)
         } else if !segments.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
                 if showsTitle { Text("budget.composition").font(.headline) }
@@ -95,11 +95,11 @@ struct BudgetCompositionView: View {
                         }
                     }
                 }
-                Text("budget.composition_hint").font(.caption).foregroundStyle(.secondary)
+                Text("budget.composition_hint").font(.caption).foregroundStyle(.moneyUpSecondary)
             }
             .padding(.vertical, 8)
         } else {
-            Text("budget.composition_empty").font(.subheadline).foregroundStyle(.secondary)
+            Text("budget.composition_empty").font(.subheadline).foregroundStyle(.moneyUpSecondary)
         }
     }
 

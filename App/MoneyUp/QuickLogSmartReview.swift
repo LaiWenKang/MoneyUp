@@ -7,7 +7,7 @@ extension QuickLogEntryView {
             Label("quick_log.editable_preview", systemImage: "pencil.and.list.clipboard")
                 .font(.subheadline.weight(.semibold))
             if smartState.issues.isEmpty {
-                Text("quick_log.preview_ready").font(.caption).foregroundStyle(.secondary)
+                Text("quick_log.preview_ready").font(.caption).foregroundStyle(.moneyUpSecondary)
             } else {
                 ForEach(smartState.issues, id: \.rawValue) { issue in
                     Label(smartIssueTitle(issue), systemImage: "exclamationmark.circle")

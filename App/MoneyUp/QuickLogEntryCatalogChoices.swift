@@ -20,7 +20,7 @@ extension QuickLogEntryView {
                 label: { Label("catalog.accounts_title", systemImage: "switch.2") }
                 Button("account.add") { isAddingAccount = true }
                 Text(model.userAccounts.isEmpty ? "transaction.no_accounts" : "catalog.no_visible_accounts")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.moneyUpSecondary)
             }
         } else if kind == .transfer
                     && (sourceAccounts.isEmpty || recordingAccounts.count < 2) {
@@ -29,7 +29,7 @@ extension QuickLogEntryView {
                 NavigationLink { EntryCatalogView(scope: .accounts) }
                 label: { Label("catalog.accounts_title", systemImage: "switch.2") }
                 Text("transaction.need_two_accounts")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.moneyUpSecondary)
             }
         }
     }

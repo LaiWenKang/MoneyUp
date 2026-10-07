@@ -56,13 +56,13 @@ extension DashboardView {
                 VStack(alignment: .leading, spacing: 6) {
                     Label("today.hero.left_month", systemImage: "leaf.fill")
                         .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.moneyUpSecondary)
                     Text(maskingAmounts: formattedMoney(hero.remaining))
                         .moneyUpFinancialValue(.hero)
                         .foregroundStyle(hero.remaining.amount < .zero ? Color.moneyUpWarning : .primary)
                     Text(PinnedRemainingHero.scopeText(categoryCount: hero.categoryCount))
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.moneyUpSecondary)
                     if let today = hero.today {
                         HStack(spacing: 6) {
                             Image(systemName: "sun.max.fill")
@@ -73,7 +73,7 @@ extension DashboardView {
                                 .monospacedDigit()
                         }
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.moneyUpSecondary)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -105,7 +105,7 @@ struct TodayFirstRunChecklist: View {
                             .font(.title3.weight(.semibold))
                         Text(String(format: AppLocalization.string("today.start.progress"), completed, 2))
                             .font(.footnote.monospacedDigit())
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.moneyUpSecondary)
                         ProgressView(value: Double(completed), total: 2)
                             .tint(.moneyUpPositive)
                             .animation(MoneyUpMotion.animation(for: .stateChange, reduceMotion: reduceMotion), value: completed)

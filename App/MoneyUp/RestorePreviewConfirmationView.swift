@@ -75,7 +75,7 @@ struct RestorePreviewConfirmationView: View {
                         systemImage: "lock.shield"
                     )
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.moneyUpSecondary)
                 }
             }
             .navigationTitle(confirmationTitleKey)

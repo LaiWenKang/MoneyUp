@@ -103,7 +103,7 @@ struct BudgetSuggestionReviewView: View {
                         .font(.subheadline.monospacedDigit())
                     Text(evidence(suggestion))
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.moneyUpSecondary)
                 }
             }
         }

@@ -56,7 +56,7 @@ struct AssetsSnapshotTrend: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(maskingAmounts: formattedMoneyWithCurrencyCode(selected.money)).moneyUpFinancialValue(.prominent)
                         Text(selected.date.formattedForReporting(.dateTime.year().month().day().hour().minute(), calendar: model.reportingCalendar))
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(.caption).foregroundStyle(.moneyUpSecondary)
                     }
                     Spacer(minLength: 8)
                     Button { step(-1) } label: { Image(systemName: "chevron.left").frame(width: 44, height: 44).contentShape(Rectangle()) }
@@ -77,7 +77,7 @@ struct AssetsSnapshotTrend: View {
                             .font(.subheadline.weight(.semibold).monospacedDigit())
                         Text(String(format: AppLocalization.string("assets.snapshot_change_since"),
                             points[index - 1].date.formattedForReporting(.dateTime.year().month().day(), calendar: model.reportingCalendar)))
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(.caption).foregroundStyle(.moneyUpSecondary)
                     }
                     .accessibilityElement(children: .combine)
                 }
@@ -105,7 +105,7 @@ struct AssetsSnapshotTrend: View {
                     guard let date else { return }
                     selectedID = points.min { abs($0.date.timeIntervalSince(date)) < abs($1.date.timeIntervalSince(date)) }?.id
                 }
-                Text("assets.snapshot_chart_detail").font(.caption).foregroundStyle(.secondary)
+                Text("assets.snapshot_chart_detail").font(.caption).foregroundStyle(.moneyUpSecondary)
             }
         }
         .padding(.vertical, 8)

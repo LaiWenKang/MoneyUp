@@ -380,10 +380,9 @@ extension View {
     }
 }
 
-extension View {
-    /// Every `.secondary` text below resolves to the accessible secondary
-    /// colour, while the first level stays the system's own adaptive one.
-    func moneyUpTextHierarchy() -> some View {
-        foregroundStyle(.primary, Color.moneyUpSecondaryText)
-    }
+extension ShapeStyle where Self == Color {
+    /// Secondary text and glyphs. Used instead of `.secondary`, whose grey is
+    /// 4.0:1 on a white card. (Setting it as the app's second foreground level
+    /// instead would also take the tint off every plain button.)
+    static var moneyUpSecondary: Color { .moneyUpSecondaryText }
 }

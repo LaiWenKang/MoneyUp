@@ -1752,7 +1752,7 @@ def chart_render_guard_errors(
 
     expected_period_style = ".foregroundStyle(Color.primary.opacity(0.45))"
     expected_selection_style = ".foregroundStyle(Color.primary)"
-    expected_annotation_style = ".foregroundStyle(.secondary)"
+    expected_annotation_style = ".foregroundStyle(.moneyUpSecondary)"
     if flow_compact.count(expected_period_style) != 2:
         errors.append("cash-flow period rules drifted from their reviewed style")
     if flow_compact.count(expected_selection_style) != 1:
@@ -3549,8 +3549,8 @@ def validate_brand_palette() -> None:
         )
         if contrast(secondary, chip) < 4.5:
             fail(f"secondary text is below 4.5:1 on a mist-tinted chip in {slot}")
-        if 'foregroundStyle(.primary, Color.moneyUpSecondaryText)' not in theme:
-            fail("secondary text must be remapped app-wide by moneyUpTextHierarchy")
+        if "static var moneyUpSecondary: Color { .moneyUpSecondaryText }" not in theme:
+            fail("secondary text must resolve to the reviewed BrandTextSecondary token")
         action = actual_palette["BrandAction"][slot]
         if contrast(action, "#FFFFFF") < 4.5:
             fail(f"BrandAction does not support a white foreground in {slot}: {action}")
@@ -3563,6 +3563,12 @@ def validate_brand_palette() -> None:
                     f"BrandAction is below 3:1 against {canvas_name} "
                     f"{canvas} in {slot}"
                 )
+
+    # App screens never fall back to the system secondary grey; widgets keep
+    # it because their tinted and vibrant modes need the system style.
+    for path in sorted((ROOT / "App" / "MoneyUp").rglob("*.swift")):
+        if ".foregroundStyle(.secondary)" in path.read_text(encoding="utf-8"):
+            fail(f"{path.name} uses the system secondary grey; use .moneyUpSecondary")
 
     # Replay the system secondary grey (#7F7F7F as rendered on a white card)
     # as a mutation: it must fail, or the secondary-text proof proves nothing.

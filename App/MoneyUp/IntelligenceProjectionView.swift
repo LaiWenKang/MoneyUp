@@ -19,7 +19,7 @@ struct IntelligenceProjectionCard: View {
                         Spacer(minLength: 8)
                         MoneyUpExplainer("intelligence.projection.detail")
                             .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.moneyUpSecondary)
                         Button {
                             Task { await load() }
                         } label: {
@@ -43,7 +43,7 @@ struct IntelligenceProjectionCard: View {
         case let .some(.available(projections)):
             if projections.isEmpty {
                 Text("intelligence.projection.no_activity")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.moneyUpSecondary)
             } else {
                 ForEach(projections, id: \.projectedTotal.currency) { projection in
                     projectionRows(projection)
@@ -83,7 +83,7 @@ struct IntelligenceProjectionCard: View {
             }
             Text(projectionAssumption(projection))
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.moneyUpSecondary)
         }
         .padding(.top, 4)
         .accessibilityElement(children: .contain)

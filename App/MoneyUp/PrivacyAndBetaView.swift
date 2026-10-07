@@ -97,7 +97,7 @@ private struct PrivacyRow: View {
                     .font(.headline)
                 Text(detail)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.moneyUpSecondary)
             }
         } icon: {
             Image(systemName: icon)

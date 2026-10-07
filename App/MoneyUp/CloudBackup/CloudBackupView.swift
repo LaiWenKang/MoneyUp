@@ -31,9 +31,9 @@ struct CloudBackupView: View {
                     Text(String(format: AppLocalization.string("cloud.status.backed_up_attention"),
                                 model.recoveryIssueCount))
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.moneyUpSecondary)
                 }
-                if let detail = controller.failureDetail { Text(detail).foregroundStyle(.secondary) }
+                if let detail = controller.failureDetail { Text(detail).foregroundStyle(.moneyUpSecondary) }
                 if !controller.accountLabel.isEmpty {
                     LabeledContent("cloud.account_label", value: controller.accountLabel)
                 }
@@ -134,7 +134,7 @@ struct CloudBackupView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(backup.createdAt, format: Date.FormatStyle(date: .abbreviated, time: .shortened))
                             Text(ByteCountFormatter.string(fromByteCount: Int64(backup.byteCount), countStyle: .file))
-                                .font(.caption).foregroundStyle(.secondary)
+                                .font(.caption).foregroundStyle(.moneyUpSecondary)
                         }
                     }
                     .accessibilityHint("cloud.restore_hint")

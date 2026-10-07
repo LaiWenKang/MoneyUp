@@ -40,7 +40,7 @@ struct PinnedBudgetBoard: View {
                     if summaries.count < model.pinnedBudgetNodes.count {
                         Text("today.pinned.missing_categories")
                             .font(.footnote)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.moneyUpSecondary)
                     }
                 case let .unavailable(issue):
                     DerivedValueUnavailableView(issue: issue, prominent: true)
@@ -91,7 +91,7 @@ struct PinnedBudgetBoard: View {
         if model.budgetNodes.isEmpty {
             Text("today.pinned.needs_budget")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.moneyUpSecondary)
             Button {
                 onOpenPlan()
             } label: {
@@ -103,7 +103,7 @@ struct PinnedBudgetBoard: View {
         } else {
             Text("today.pinned.empty_detail")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.moneyUpSecondary)
             Button {
                 isEditingPins = true
             } label: {
@@ -179,7 +179,7 @@ struct PinnedBudgetRow: View {
                     .foregroundStyle(summary.isOverspent ? Color.moneyUpDanger : Color.primary)
                     Text(summary.isOverspent ? "plan.over" : "plan.left")
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.moneyUpSecondary)
                 }
             } else {
                 Text(maskingAmounts: formattedMoney(summary.spent))
@@ -218,7 +218,7 @@ struct PinnedBudgetRow: View {
             ? AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: 8))
             : AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
         return layout {
-            Text(titleKey).font(.caption2).foregroundStyle(.secondary)
+            Text(titleKey).font(.caption2).foregroundStyle(.moneyUpSecondary)
             Text(maskingAmounts: formattedMoney(money))
                 .font(.caption.monospacedDigit().weight(.semibold))
                 .fixedSize(horizontal: false, vertical: true)
@@ -245,10 +245,10 @@ struct PinnedBudgetRow: View {
                         formattedMoney(limit)
                     )
                 )
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.moneyUpSecondary)
             } else {
                 Text("today.pinned.no_limit")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.moneyUpSecondary)
             }
             Spacer(minLength: 0)
         }

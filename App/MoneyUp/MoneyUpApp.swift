@@ -55,7 +55,6 @@ struct MoneyUpApp: App {
                     .environment(overviewNavigation)
                     .environment(\.locale, appLanguage.locale)
                     .tint(.accentColor)
-                    .moneyUpTextHierarchy()
                     // The opaque cover protects pixels. These modifiers also
                     // remove the underlying financial controls from VoiceOver
                     // and hit testing while the scene is inactive or an

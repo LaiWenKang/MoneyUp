@@ -243,7 +243,7 @@ struct BudgetRow: View {
                         .foregroundStyle(isOverspent ? Color.moneyUpDanger : Color.primary)
                     Text(isOverspent ? "plan.over" : "plan.left")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.moneyUpSecondary)
                 } else if let spent, !spent.isZero {
                     Text(maskingAmounts: formattedMoney(spent))
                         .font(.subheadline.monospacedDigit())
@@ -285,7 +285,7 @@ struct BudgetRow: View {
                         )
                     )
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.moneyUpSecondary)
                 }
                 if showsPacing, model.displayPreferences.showsGuidance(for: node.id), let progress {
                     switch model.budgetPace(
@@ -349,7 +349,7 @@ struct BudgetSummaryCard: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text(isOverspent ? "plan.total_over" : "plan.total_left")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.moneyUpSecondary)
                 Text(maskingAmounts: formattedMoney(isOverspent ? remaining.negated : remaining))
                     .moneyUpFinancialValue(.hero)
                     .foregroundStyle(isOverspent ? Color.moneyUpDanger : Color.primary)
@@ -370,7 +370,7 @@ struct BudgetSummaryCard: View {
                 )
             )
             .font(.caption)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.moneyUpSecondary)
 
             HStack(alignment: .top) {
                 if case let .available(ratio) = ratioResult {
@@ -380,7 +380,7 @@ struct BudgetSummaryCard: View {
                 MoneyUpExplainer("plan.pace_hint")
             }
             .font(.caption)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.moneyUpSecondary)
         }
         .padding(.vertical, 6)
         .accessibilityElement(children: .combine)

@@ -107,13 +107,14 @@ canvas threshold.
 ### 0.7.3 design pass: secondary text and fields
 
 The system secondary grey renders as `#7F7F7F` on a white card, 4.0:1, below
-the 4.5:1 text minimum. `BrandTextSecondary` replaces it everywhere through one
-root modifier, `moneyUpTextHierarchy()` (`foregroundStyle(.primary,
-Color.moneyUpSecondaryText)`), so the app's many `.foregroundStyle(.secondary)`
-texts resolve to it while the first level stays the system's adaptive one.
-Release validation requires it to reach 4.5:1 on every canvas, on a white card
-and on a mist-tinted chip, and replays the system grey as a mutation that must
-fail. Decorative chevrons keep `.tertiary`.
+the 4.5:1 text minimum. App screens use `.moneyUpSecondary` (`BrandTextSecondary`)
+instead of `.secondary`; widgets keep the system style, which their tinted and
+vibrant modes need. It is set per view rather than as the app's second
+foreground level, because an inherited foreground style also takes the tint
+off every plain button. Release validation requires 4.5:1 on every canvas, on a
+white card and on a mist-tinted chip, rejects `.foregroundStyle(.secondary)` in
+app sources, and replays the system grey as a mutation that must fail.
+Decorative chevrons keep `.tertiary`.
 
 Text fields inside cards use `moneyUpInsetField()`: a well of the page colour
 with a hairline edge (stronger under Increase Contrast) and a 44-pt minimum

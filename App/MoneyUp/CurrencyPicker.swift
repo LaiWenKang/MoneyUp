@@ -123,7 +123,7 @@ private struct CurrencySelectionSheet: View {
                             if let name = SupportedCurrencies.localizedName(for: code) {
                                 Text(name)
                                     .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(.moneyUpSecondary)
                             }
                         }
                         Spacer()

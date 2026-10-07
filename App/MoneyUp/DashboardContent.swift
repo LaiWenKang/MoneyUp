@@ -184,7 +184,7 @@ extension DashboardView {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Image(systemName: "globe")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.moneyUpSecondary)
                     .accessibilityHidden(true)
                 Text(
                     balances
@@ -194,7 +194,7 @@ extension DashboardView {
                 .monospacedDigit()
             }
             .font(.footnote)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.moneyUpSecondary)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("dashboard.other_currencies")
             .accessibilityValue(
@@ -292,7 +292,7 @@ extension DashboardView {
         }
         Text(maskingAmounts: "\(formattedMoney(summary.spent)) / \(formattedMoney(summary.limit))")
             .font(.subheadline.monospacedDigit())
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.moneyUpSecondary)
         if case let .available(ratio) = ratioResult {
             Label(
                 budgetPaceKey(ratio: ratio),
@@ -309,7 +309,7 @@ extension DashboardView {
                     .monospacedDigit()
             }
             .font(.footnote)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.moneyUpSecondary)
             .accessibilityElement(children: .combine)
         }
     }
@@ -356,7 +356,7 @@ extension DashboardView {
                                 format: .dateTime.month().day().year()
                             )
                             .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.moneyUpSecondary)
                         }
                         Spacer(minLength: 8)
                         Text(upcoming.signedAmount)

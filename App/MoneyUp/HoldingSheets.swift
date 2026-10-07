@@ -151,7 +151,7 @@ struct AddHoldingSheet: View {
                 .foregroundStyle(selected ? Color.accentColor : .secondary)
             VStack(alignment: .leading, spacing: 3) {
                 Text(title).font(.subheadline.weight(.semibold))
-                Text(detail).font(.caption).foregroundStyle(.secondary)
+                Text(detail).font(.caption).foregroundStyle(.moneyUpSecondary)
             }
         }
         .contentShape(Rectangle())
@@ -234,7 +234,7 @@ struct HoldingManagementSheet: View {
                     if holding.isArchived {
                         Section {
                             Label("holding.archived_detail", systemImage: "archivebox.fill")
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(.moneyUpSecondary)
                         }
                     } else if holding.needsLedgerConnection {
                         Section {
@@ -249,7 +249,7 @@ struct HoldingManagementSheet: View {
                             } else {
                                 Text("holding.add_matching_account")
                                     .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(.moneyUpSecondary)
                             }
                             Button("holding.connect_ledger") {
                                 migrationChoicePresented = true
@@ -292,7 +292,7 @@ struct HoldingManagementSheet: View {
                                     Text(lot.acquiredAt, format: .dateTime.year().month().day())
                                     Text(maskingAmounts: "\(NSDecimalNumber(decimal: lot.remainingQuantity).stringValue) × \(formattedMoney(lot.unitCost))")
                                         .font(.caption.monospacedDigit())
-                                        .foregroundStyle(.secondary)
+                                        .foregroundStyle(.moneyUpSecondary)
                                 }
                             }
                         }

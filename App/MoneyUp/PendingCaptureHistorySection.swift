@@ -23,7 +23,7 @@ struct PendingCaptureHistorySection: View {
                     MoneyUpSymbolBadge(systemImage: "tray.and.arrow.down.fill", color: Color.moneyUpWarning)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("capture.review_title").font(.subheadline.weight(.semibold))
-                        Text("capture.review_detail").font(.caption).foregroundStyle(.secondary)
+                        Text("capture.review_detail").font(.caption).foregroundStyle(.moneyUpSecondary)
                     }
                 }
                 Button {
