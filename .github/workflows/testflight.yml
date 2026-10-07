@@ -55,7 +55,11 @@ jobs:
   storekit-test:
     name: StoreKit purchase integration
     runs-on: macos-15
-    timeout-minutes: 35
+    # The purchase test waits on StoreKit's local test service, which is idle
+    # but slow on shared runners: passing runs took 167-550 s (runs 72-78) and
+    # 600 s timed out four times (runs 76 and 79). The test budget is 20 min and
+    # the job outlasts it with the build.
+    timeout-minutes: 45
     env:
       DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
     steps:
@@ -102,7 +106,7 @@ jobs:
             -disableAutomaticPackageResolution \
             -only-testing:MoneyUpTests/DeveloperSupportTests/testStoreKitConsumableSupportCanBeRepeatedAndFinished \
             -parallel-testing-enabled NO -test-timeouts-enabled YES \
-            -maximum-test-execution-time-allowance 600 \
+            -maximum-test-execution-time-allowance 1200 \
             SWIFT_TREAT_WARNINGS_AS_ERRORS=YES CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- test
       - name: Preserve StoreKit integration evidence
         if: ${{ always() }}
