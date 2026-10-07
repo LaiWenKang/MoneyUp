@@ -64,6 +64,12 @@ REVIEWED_COLORSETS = {
         "#F3F6F2",
         "#17201B",
     ),
+    "App/MoneyUp/Assets.xcassets/BrandTextSecondary.colorset": (
+        "#5F6963",
+        "#A3ADA6",
+        "#454D48",
+        "#C5CEC8",
+    ),
     "App/MoneyUp/Assets.xcassets/ChartSeries1.colorset": (
         "#117733",
         "#59C69B",

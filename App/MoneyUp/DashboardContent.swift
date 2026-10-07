@@ -299,7 +299,7 @@ extension DashboardView {
                 systemImage: budgetPaceSymbol(ratio: ratio)
             )
             .font(.footnote.weight(.semibold))
-            .foregroundStyle(ratio > 1 ? Color.moneyUpDanger : Color.secondary)
+            .foregroundStyle(ratio > 1 ? Color.moneyUpDanger : Color.moneyUpSecondaryText)
         }
         if summary.unbudgetedSpent.amount > .zero {
             HStack {

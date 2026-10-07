@@ -326,7 +326,6 @@ struct BudgetRow: View {
 }
 
 struct BudgetSummaryCard: View {
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let limit: Money
     let spent: Money
     let remaining: Money
@@ -345,19 +344,15 @@ struct BudgetSummaryCard: View {
     var body: some View {
         let ratioResult = ratio
         VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .center, spacing: 16) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(isOverspent ? "plan.total_over" : "plan.total_left")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                    Text(maskingAmounts: formattedMoney(isOverspent ? remaining.negated : remaining))
-                        .moneyUpFinancialValue(.hero)
-                        .foregroundStyle(isOverspent ? Color.moneyUpDanger : Color.primary)
-                }
-                Spacer(minLength: 0)
-                if !dynamicTypeSize.isAccessibilitySize, case let .available(ratio) = ratioResult {
-                    MoneyUpBudgetOrbit(ratio: ratio, elapsed: elapsed, showsPercent: limit.amount > .zero)
-                }
+            // One progress graphic: the pace bar matches every category row
+            // below, so a ring beside it would only say the same thing twice.
+            VStack(alignment: .leading, spacing: 6) {
+                Text(isOverspent ? "plan.total_over" : "plan.total_left")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                Text(maskingAmounts: formattedMoney(isOverspent ? remaining.negated : remaining))
+                    .moneyUpFinancialValue(.hero)
+                    .foregroundStyle(isOverspent ? Color.moneyUpDanger : Color.primary)
             }
 
             switch ratioResult {

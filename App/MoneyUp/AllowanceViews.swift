@@ -116,8 +116,12 @@ struct AllowanceRow: View {
                 } else {
                     switch presentation.remaining {
                     case let .available(remaining):
+                        // An amount never breaks across lines ("SGD / 15.00");
+                        // on a narrow screen the name wraps instead.
                         Text(maskingAmounts: formattedMoney(remaining))
                             .font(.subheadline.monospacedDigit().weight(.semibold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
                     case let .unavailable(issue):
                         DerivedValueUnavailableView(issue: issue)
                     }
@@ -128,6 +132,7 @@ struct AllowanceRow: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            .layoutPriority(1)
         }
         .padding(.vertical, 3)
     }

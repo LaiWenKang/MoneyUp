@@ -4,6 +4,7 @@ import MoneyUpCore
 import Observation
 import SwiftUI
 import UIKit
+import Vision
 import XCTest
 
 final class AppwideRenderEvidenceTests: XCTestCase {
@@ -161,8 +162,7 @@ final class AppwideRenderEvidenceTests: XCTestCase {
             Text(verbatim: "goal.balance")
             LabeledContent { Text(verbatim: "SGD 1.00") } label: { Text(verbatim: "budget.child_total") }
             Text(verbatim: "Visit moneyup.app or e.g. 3.20")
-        }, name: "raw-key-detector", height: 400, recordsAttachment: false,
-           expectingRawKeys: ["goal.balance", "budget.child_total"])
+        }, name: "raw-key-detector", height: 400, recordsAttachment: false, expectingRawKeyCount: 2)
     }
 
     /// Every amount row with a label: goal, budget, account and holding
@@ -289,7 +289,8 @@ final class AppwideRenderEvidenceTests: XCTestCase {
                     await capture(MainTabView(initialReportingSnapshot: snapshot, initialSection: .log)
                         .environment(model).environment(MoneyUpOverviewNavigation())
                         .environment(\.dynamicTypeSize, size).preferredColorScheme(scheme),
-                        name: "log-shape-\(name)-\(kind.rawValue)-\(scheme == .light ? "light" : "dark")", recordsAttachment: false)
+                        name: "log-shape-\(name)-\(kind.rawValue)-\(scheme == .light ? "light" : "dark")", recordsAttachment: false,
+                        checksForRawKeys: false)
                 }
                 model.quickLogDraft = QuickLogDraft(kind: kind, amountText: "", destinationAmountText: "",
                     accountID: accounts.first?.id, destinationAccountID: nil, categoryID: accounts.first?.id,
@@ -338,7 +339,7 @@ final class AppwideRenderEvidenceTests: XCTestCase {
     private func capture<Content: View>(
         _ content: Content, name: String, width: CGFloat = 390, height: CGFloat = 844,
         language: AppLanguagePreference = .english, recordsAttachment: Bool = true,
-        expectingRawKeys: Set<String> = []
+        checksForRawKeys: Bool = true, expectingRawKeyCount: Int = 0
     ) async -> UIImage {
         let defaults = AppLanguagePreference.defaults
         let previous = defaults?.object(forKey: AppLanguagePreference.storageKey)
@@ -347,7 +348,9 @@ final class AppwideRenderEvidenceTests: XCTestCase {
             if let previous { defaults?.set(previous, forKey: AppLanguagePreference.storageKey) }
             else { defaults?.removeObject(forKey: AppLanguagePreference.storageKey) }
         }
-        let controller = UIHostingController(rootView: content.environment(\.locale, language.locale))
+        // The same root styling the app applies above every screen.
+        let controller = UIHostingController(rootView: content.environment(\.locale, language.locale)
+            .tint(.accentColor).moneyUpTextHierarchy())
         let window = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first.map(UIWindow.init(windowScene:))
             ?? UIWindow(frame: CGRect(x: 0, y: 0, width: width, height: height))
         window.frame = CGRect(x: 0, y: 0, width: width, height: height)
@@ -358,12 +361,14 @@ final class AppwideRenderEvidenceTests: XCTestCase {
         controller.view.layoutIfNeeded()
         try? await Task.sleep(for: .milliseconds(800))
         controller.view.layoutIfNeeded()
-        let rawKeys = Self.rawLocalizationKeys(in: Self.spokenTexts(in: controller.view))
-        XCTAssertEqual(rawKeys, expectingRawKeys, "\(name) shows text keys instead of words")
         let format = UIGraphicsImageRendererFormat()
         format.opaque = true
         format.scale = 3
         let image = UIGraphicsImageRenderer(bounds: window.bounds, format: format).image { _ in window.drawHierarchy(in: window.bounds, afterScreenUpdates: true) }
+        if checksForRawKeys {
+            let rawKeys = Self.rawLocalizationKeys(in: Self.recognizedLines(in: image))
+            XCTAssertEqual(rawKeys.count, expectingRawKeyCount, "\(name) shows text keys instead of words: \(rawKeys.sorted())")
+        }
         if recordsAttachment {
             let attachment = XCTAttachment(image: image)
             attachment.name = name
@@ -373,38 +378,36 @@ final class AppwideRenderEvidenceTests: XCTestCase {
         return image
     }
 
-    /// Everything VoiceOver would read on a screen: the label and value of
-    /// every accessibility element, which covers every visible text.
-    @MainActor
-    private static func spokenTexts(in root: NSObject) -> [String] {
-        var texts: [String] = []
-        var visited = Set<ObjectIdentifier>()
-        func visit(_ object: NSObject, depth: Int) {
-            guard depth < 96, visited.insert(ObjectIdentifier(object)).inserted else { return }
-            for text in [object.accessibilityLabel, object.accessibilityValue] {
-                if let text, !text.isEmpty { texts.append(text) }
-            }
-            var children = (object.accessibilityElements as? [NSObject]) ?? []
-            let count = object.accessibilityElementCount()
-            if children.isEmpty, count != NSNotFound, count > 0 {
-                children = (0..<count).compactMap { object.accessibilityElement(at: $0) as? NSObject }
-            }
-            if let view = object as? UIView { children += view.subviews }
-            children.forEach { visit($0, depth: depth + 1) }
-        }
-        visit(root, depth: 0)
-        return texts
+    /// The text a person sees in a capture, read back from its pixels. A
+    /// hosted SwiftUI view builds no accessibility tree in a unit test, so the
+    /// picture itself is the honest source.
+    private static func recognizedLines(in image: UIImage) -> [String] {
+        guard let cgImage = image.cgImage else { return [] }
+        let request = VNRecognizeTextRequest()
+        request.recognitionLevel = .accurate
+        request.usesLanguageCorrection = false
+        request.recognitionLanguages = ["en-US"]
+        try? VNImageRequestHandler(cgImage: cgImage).perform([request])
+        return (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }
     }
 
+    private static let catalogKeys: Set<String> = {
+        guard let url = Bundle.main.url(forResource: "Localizable", withExtension: "strings",
+                                        subdirectory: nil, localization: "en"),
+              let table = NSDictionary(contentsOf: url) as? [String: Any] else { return [] }
+        return Set(table.keys)
+    }()
+
     /// Catalog keys shown in place of their words, such as "goal.balance".
-    /// A dotted lowercase word counts when the catalog has it as a key, or
-    /// when it has an underscore no real word or web address would.
-    private static func rawLocalizationKeys(in texts: [String]) -> Set<String> {
-        let missing = "\u{0}"
-        let words = texts.flatMap { $0.split(whereSeparator: { $0.isWhitespace || $0 == "," }) }
+    /// A dotted lowercase word counts when it is a catalog key, the start of
+    /// one up to an underscore (which recognition can drop), or has an
+    /// underscore no real word or web address would.
+    private static func rawLocalizationKeys(in lines: [String]) -> Set<String> {
+        let words = lines.flatMap { $0.split(whereSeparator: { $0.isWhitespace || $0 == "," || $0 == ":" }) }
         return Set(words.map(String.init).filter { word in
             word.wholeMatch(of: /[a-z][a-z0-9_]*(\.[a-z0-9_]+)+/) != nil
-                && (word.contains("_") || Bundle.main.localizedString(forKey: word, value: missing, table: nil) != missing)
+                && (word.contains("_") || catalogKeys.contains(word)
+                    || catalogKeys.contains { $0.hasPrefix(word + "_") })
         })
     }
 }

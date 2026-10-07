@@ -187,14 +187,14 @@ struct CalendarView: View {
                             }
                         }
                     } label: {
-                        Label("schedule.manage", systemImage: "calendar.badge.clock")
+                        Label("schedule.manage", systemImage: "list.bullet")
                     }
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Button {
                         isAddingSchedule = true
                     } label: {
-                        Label("schedule.add", systemImage: "calendar.badge.plus")
+                        Label("schedule.add", systemImage: "plus")
                     }
                 }
             }

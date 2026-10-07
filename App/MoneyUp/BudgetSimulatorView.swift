@@ -201,7 +201,7 @@ struct BudgetSimulatorView: View {
             TextField("simulator.amount_placeholder", text: text)
                 .moneyAmountKeyboard(currency: currency)
                 .focused($focusedField, equals: field)
-                .textFieldStyle(.roundedBorder)
+                .moneyUpInsetField()
                 .moneyUpFieldValidation(validationMessage)
                 .moneyUpPrivateAmountInput(
                     masked: hidesAmounts

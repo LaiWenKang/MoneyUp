@@ -974,7 +974,7 @@
     "history.show_all" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Show all"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"显示全部"}}}},
     "history.no_results" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"No matching transactions"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"没有匹配的交易"}}}},
     "history.no_results_detail" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Try another keyword or filter."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"请尝试其他关键词或筛选条件。"}}}},
-    "history.search" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Search payee, category, account or amount"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"搜索商家、分类、账户或金额"}}}},
+    "history.search" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Payee, category, account, amount"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"搜索商家、分类、账户或金额"}}}},
     "import.atomic_detail" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Accepted rows are committed together. If saving fails, the current book is unchanged."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"可接受的记录会一次性提交；若保存失败，当前账本不会改变。"}}}},
     "import.choose_csv" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Choose CSV, XLSX, or JSON file"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"选择 CSV、XLSX 或 JSON 文件"}}}},
     "import.commit" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Import reviewed transactions"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"导入已检查的交易"}}}},

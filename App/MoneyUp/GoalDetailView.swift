@@ -125,7 +125,7 @@ struct GoalContributionSimulator: View {
                 TextField("goal.movement_amount", text: $contributionText)
                     .moneyAmountKeyboard(currency: summary.target.currency)
                     .focused($amountFocused)
-                    .textFieldStyle(.roundedBorder)
+                    .moneyUpInsetField()
                     .moneyUpFieldValidation(validationMessage)
                     .moneyUpPrivateAmountInput(
                         masked: hidesAmounts && !amountFocused && !contributionText.isEmpty,

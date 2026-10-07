@@ -421,6 +421,7 @@ struct PostingHelper: MoneyUpService {
                 "BrandMist",
                 "BrandSurface",
                 "BrandSurfaceElevated",
+                "BrandTextSecondary",
                 "ChartSeries1",
                 "ChartSeries2",
                 "ChartSeries3",

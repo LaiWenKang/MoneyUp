@@ -59,8 +59,21 @@ struct ExchangeRateEditorSheet: View {
                 if baseCode == quoteCode {
                     Text("fx.identical_currencies").foregroundStyle(Color.moneyUpWarning)
                 }
-                TextField("fx.quote_per_base", text: $rateText)
-                    .keyboardType(.decimalPad)
+                // Read as an equation, "1 SGD = 0.74 USD", so the direction of
+                // the rate is never a guess.
+                HStack(spacing: 8) {
+                    Text(verbatim: "1 \(baseCode) =")
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                    TextField("fx.convert.rate", text: $rateText)
+                        .keyboardType(.decimalPad)
+                        .multilineTextAlignment(.trailing)
+                        .monospacedDigit()
+                        .accessibilityLabel(Text("fx.quote_per_base"))
+                    Text(verbatim: quoteCode)
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                }
                 DatePicker("fx.effective_date", selection: $effectiveAt, displayedComponents: .date)
 
                 Button {
@@ -74,7 +87,7 @@ struct ExchangeRateEditorSheet: View {
                 }
                 .disabled(!canSave || isSaving)
             } header: {
-                MoneyUpSectionHeader("fx.add_rate", explanation: "fx.rate_detail")
+                MoneyUpSectionHeader("fx.convert.rate", explanation: "fx.rate_detail")
             }
 
             }

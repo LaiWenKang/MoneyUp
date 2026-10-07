@@ -3381,6 +3381,7 @@ def validate_brand_palette() -> None:
             light_normal: "#FAFBF9",
             dark_normal: "#202923",
         },
+        "BrandTextSecondary": {light_normal: "#5F6963", dark_normal: "#A3ADA6"},
     }
     high_contrast = {
         "AccentColor": {light_high: "#1F6047", dark_high: "#A4E7CA"},
@@ -3392,6 +3393,7 @@ def validate_brand_palette() -> None:
             light_high: "#F3F6F2",
             dark_high: "#17201B",
         },
+        "BrandTextSecondary": {light_high: "#454D48", dark_high: "#C5CEC8"},
     }
     chart_rows = [
         ("#117733", "#59C69B", "#075F29", "#7EE0B2"),
@@ -3534,6 +3536,21 @@ def validate_brand_palette() -> None:
             for canvas in canvases:
                 if contrast(actual_palette[asset][slot], canvas) < 4.5:
                     fail(f"status text {token} is below 4.5:1 against {canvas} in {slot}")
+        # Secondary text sits on every canvas, on white cards and on the mist
+        # tint chips use; the system grey it replaces fails this on white.
+        secondary = actual_palette["BrandTextSecondary"][slot]
+        mist = actual_palette["BrandMist"][slot]
+        for canvas in canvases + ["#FFFFFF" if slot[0] == "light" else canvases[0]]:
+            if contrast(secondary, canvas) < 4.5:
+                fail(f"secondary text is below 4.5:1 against {canvas} in {slot}")
+        chip = "#" + "".join(
+            f"{round(int(mist[i:i + 2], 16) * 0.5 + int(canvases[1][i:i + 2], 16) * 0.5):02X}"
+            for i in (1, 3, 5)
+        )
+        if contrast(secondary, chip) < 4.5:
+            fail(f"secondary text is below 4.5:1 on a mist-tinted chip in {slot}")
+        if 'foregroundStyle(.primary, Color.moneyUpSecondaryText)' not in theme:
+            fail("secondary text must be remapped app-wide by moneyUpTextHierarchy")
         action = actual_palette["BrandAction"][slot]
         if contrast(action, "#FFFFFF") < 4.5:
             fail(f"BrandAction does not support a white foreground in {slot}: {action}")
@@ -3546,6 +3563,11 @@ def validate_brand_palette() -> None:
                     f"BrandAction is below 3:1 against {canvas_name} "
                     f"{canvas} in {slot}"
                 )
+
+    # Replay the system secondary grey (#7F7F7F as rendered on a white card)
+    # as a mutation: it must fail, or the secondary-text proof proves nothing.
+    if contrast("#7F7F7F", "#FFFFFF") >= 4.5:
+        fail("secondary-text mutation self-test no longer fails")
 
     # Replay the pre-fix dark action as an in-memory mutation. It must fail on
     # the actual elevated canvas or this guard no longer catches the regression.

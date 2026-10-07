@@ -217,7 +217,7 @@ struct OnboardingView: View {
                         TextField("onboarding.account_name_example", text: $accountName)
                             .textContentType(.organizationName)
                             .focused($focusedField, equals: .accountName)
-                            .textFieldStyle(.roundedBorder)
+                            .moneyUpInsetField()
                             .submitLabel(.next)
                             .onSubmit { focusedField = .openingBalance }
                             .moneyUpFieldValidation(accountNameValidationMessage)
@@ -256,7 +256,7 @@ struct OnboardingView: View {
                                     && accountType != .restrictedAllowance
                             )
                             .focused($focusedField, equals: .openingBalance)
-                            .textFieldStyle(.roundedBorder)
+                            .moneyUpInsetField()
                             .moneyUpFieldValidation(openingBalanceValidationMessage)
                             Text(currencyCode)
                                 .font(.subheadline.monospaced().weight(.semibold))

@@ -23,9 +23,14 @@ struct AssetsOverviewSection: View {
                 }
                 switch model.netWorthByCurrencyResult() {
                 case let .available(amounts):
-                    ForEach(amounts, id: \.currency) { value in
+                    // One hero figure: the base currency leads and any other
+                    // currency follows a size down, so the eye lands once.
+                    let lead = amounts.first { $0.currency == model.profile?.baseCurrency } ?? amounts.first
+                    let ordered = lead.map { lead in [lead] + amounts.filter { $0.currency != lead.currency } } ?? amounts
+                    ForEach(ordered, id: \.currency) { value in
                         if hidesAmounts { Text(value.currency.value).font(.caption.weight(.semibold)).foregroundStyle(.secondary) }
-                        Text(maskingAmounts: formattedMoneyWithCurrencyCode(value)).moneyUpFinancialValue(.hero)
+                        Text(maskingAmounts: formattedMoneyWithCurrencyCode(value))
+                            .moneyUpFinancialValue(value.currency == lead?.currency ? .hero : .prominent)
                             .fixedSize(horizontal: false, vertical: true)
                             // VoiceOver hears what the figure is, not a bare number.
                             .accessibilityLabel(Text("assets.account_net_worth"))
