@@ -69,8 +69,7 @@ final class MoneyUpJourneyTests: XCTestCase {
         expectTrue(field.waitForExistence(timeout: timeout), "Missing field", file: file, line: line)
         if !field.isHittable || (app.keyboards.count > 0 && !(field.value(forKey: "hasKeyboardFocus") as? Bool ?? false)) {
             dismissKeyboard(app)
-            var attempts = 0
-            while !field.isHittable && attempts < 4 { app.swipeUp(); attempts += 1 }
+            bringIntoView(field, in: app)
         }
         // A tap during a scroll or keyboard animation can land before the
         // field can take focus, or on the Save bar riding the keypad. Hide
@@ -79,7 +78,7 @@ final class MoneyUpJourneyTests: XCTestCase {
         for attempt in 0..<3 {
             if attempt > 0 {
                 dismissKeyboard(app)
-                if !field.isHittable { app.swipeUp() }
+                if !field.isHittable { bringIntoView(field, in: app) }
             }
             field.tap()
             let wait = XCTNSPredicateExpectation(predicate: focused, object: field)
@@ -96,6 +95,26 @@ final class MoneyUpJourneyTests: XCTestCase {
         }
         expectTrue(landed(), "Typed \(text.debugDescription) but the field shows \(shown().debugDescription)",
                    file: file, line: line)
+    }
+
+    /// Brings an element into view with short, slow drags. A full-screen
+    /// fling carries a short screen (iPhone SE) past the field, and a lazy form
+    /// then drops it from the tree; an element that has gone is looked for back
+    /// the way it went.
+    func bringIntoView(_ element: XCUIElement, in app: XCUIApplication) {
+        let window = app.windows.firstMatch
+        var lastTowardsTop: Bool?
+        for _ in 0..<10 where !(element.exists && element.isHittable) {
+            let towardsTop = element.exists
+                ? element.frame.midY < window.frame.midY
+                : !(lastTowardsTop ?? true)
+            let (from, to) = towardsTop ? (0.35, 0.65) : (0.65, 0.35)
+            window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: from)).press(
+                forDuration: 0.05,
+                thenDragTo: window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: to)),
+                withVelocity: .slow, thenHoldForDuration: 0.2)
+            lastTowardsTop = towardsTop
+        }
     }
 
     func dismissKeyboard(_ app: XCUIApplication) {
@@ -390,6 +409,8 @@ final class MoneyUpJourneyTests: XCTestCase {
         var readAloud: [String] = []
         for index in 0..<app.tabBars.buttons.count {
             let tab = app.tabBars.buttons.element(boundBy: index)
+            // Log raises its keypad over the tab bar (iOS 27 keeps it up).
+            dismissKeyboard(app)
             tab.tap()
             expectTrue(tab.waitForSelected(timeout: timeout), "Tab \(index) did not open")
             _ = app.activityIndicators.firstMatch.waitForNonExistence(timeout: timeout)
