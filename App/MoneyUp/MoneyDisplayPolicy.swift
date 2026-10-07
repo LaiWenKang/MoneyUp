@@ -79,19 +79,13 @@ extension Text {
 
 extension LabeledContent where Label == Text, Content == Text {
     /// A labelled amount whose masked value speaks as "hidden amount".
+    /// Only a localized title: a plain-string overload would win for literals
+    /// and show the raw key ("goal.balance") instead of its text.
     init(_ titleKey: LocalizedStringKey, maskingAmounts value: String) {
         self.init {
             Text(maskingAmounts: value)
         } label: {
             Text(titleKey)
-        }
-    }
-
-    init<Title: StringProtocol>(_ title: Title, maskingAmounts value: String) {
-        self.init {
-            Text(maskingAmounts: value)
-        } label: {
-            Text(title)
         }
     }
 }
