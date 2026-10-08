@@ -75,11 +75,16 @@ final class MoneyUpDesignPrimitiveTests: XCTestCase {
         }
     }
 
-    /// A press reads through scale; a deep fade would look disabled.
+    /// A press reads through scale; a deep fade would look disabled. The
+    /// style is main-actor isolated, so its values are read before XCTest's
+    /// nonisolated autoclosures see them.
+    @MainActor
     func testPressFeedbackLeadsWithScaleNotFade() {
-        XCTAssertLessThan(MoneyUpPressableButtonStyle.pressedScale, 0.985)
-        XCTAssertGreaterThan(MoneyUpPressableButtonStyle.pressedScale, 0.95)
-        XCTAssertGreaterThan(MoneyUpPressableButtonStyle.pressedOpacity, 0.9)
+        let scale = MoneyUpPressableButtonStyle.pressedScale
+        let opacity = MoneyUpPressableButtonStyle.pressedOpacity
+        XCTAssertLessThan(scale, 0.985)
+        XCTAssertGreaterThan(scale, 0.95)
+        XCTAssertGreaterThan(opacity, 0.9)
     }
 
     func testReduceMotionRemovesMoneyUpOwnedMotion() {
