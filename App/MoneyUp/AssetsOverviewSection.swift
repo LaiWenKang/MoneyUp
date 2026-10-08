@@ -29,9 +29,14 @@ struct AssetsOverviewSection: View {
                     let ordered = lead.map { lead in [lead] + amounts.filter { $0.currency != lead.currency } } ?? amounts
                     ForEach(ordered, id: \.currency) { value in
                         if hidesAmounts { Text(value.currency.value).font(.caption.weight(.semibold)).foregroundStyle(.moneyUpSecondary) }
-                        Text(maskingAmounts: formattedMoneyWithCurrencyCode(value))
-                            .moneyUpFinancialValue(value.currency == lead?.currency ? .hero : .prominent)
-                            .fixedSize(horizontal: false, vertical: true)
+                        Group {
+                            if value.currency == lead?.currency {
+                                Text(maskingHeroAmount: formattedMoneyWithCurrencyCode(value)).moneyUpFinancialValue(.hero)
+                            } else {
+                                Text(maskingAmounts: formattedMoneyWithCurrencyCode(value)).moneyUpFinancialValue(.prominent)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
                             // VoiceOver hears what the figure is, not a bare number.
                             .accessibilityLabel(Text("assets.account_net_worth"))
                             .accessibilityValue(Text(accessibleFormattedMoney(value)))
@@ -51,6 +56,7 @@ struct AssetsOverviewSection: View {
                     }.foregroundStyle(.moneyUpSecondary)
                 }
             }.padding(.vertical, 8)
+            .listRowBackground(MoneyUpHeroSurface())
         }
         .moneyUpOperationErrorAlert(message: $errorMessage)
     }

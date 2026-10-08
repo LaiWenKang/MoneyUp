@@ -6,6 +6,9 @@ struct MoneyUpSectionChip: View {
     let title: LocalizedStringKey
     let systemImage: String
     let isSelected: Bool
+    /// Chips sharing a namespace share one selection highlight, which slides
+    /// to the chosen chip instead of fading out on one and in on another.
+    var selectionNamespace: Namespace.ID? = nil
     let action: () -> Void
 
     var body: some View {
@@ -24,22 +27,33 @@ struct MoneyUpSectionChip: View {
             .padding(.horizontal, isSelected ? 14 : 12)
             .frame(minWidth: 44, minHeight: 44)
             .fixedSize(horizontal: true, vertical: true)
-            .foregroundStyle(isSelected ? Color.accentColor : .secondary)
-            .background(
-                isSelected ? Color.accentColor.opacity(0.16) : Color.moneyUpSurface,
-                in: Capsule()
-            )
-            .overlay {
-                Capsule().strokeBorder(
-                    isSelected ? Color.accentColor.opacity(0.4) : Color.primary.opacity(0.08),
-                    lineWidth: 1
-                ).allowsHitTesting(false)
+            .foregroundStyle(isSelected ? Color.accentColor : .moneyUpSecondary)
+            .background {
+                ZStack {
+                    Capsule().fill(Color.moneyUpSurface)
+                    Capsule().strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+                    if isSelected { selectionHighlight }
+                }
+                .allowsHitTesting(false)
             }
             .contentShape(Capsule())
         }
         .buttonStyle(MoneyUpPressableButtonStyle())
         .accessibilityLabel(Text(title))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    @ViewBuilder
+    private var selectionHighlight: some View {
+        let highlight = ZStack {
+            Capsule().fill(Color.accentColor.opacity(0.16))
+            Capsule().strokeBorder(Color.accentColor.opacity(0.4), lineWidth: 1)
+        }
+        if let selectionNamespace {
+            highlight.matchedGeometryEffect(id: "moneyup.section-chip.selection", in: selectionNamespace)
+        } else {
+            highlight
+        }
     }
 }
 

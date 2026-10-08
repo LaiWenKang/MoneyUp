@@ -55,6 +55,7 @@ struct PlanView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @AppStorage(MoneyAmountPrivacy.storageKey)
     private var hidesAmounts = MoneyAmountPrivacy.defaultHidesAmounts
+    @Namespace private var sectionSelection
 
     var body: some View {
         let _ = hidesAmounts
@@ -167,7 +168,8 @@ struct PlanView: View {
         MoneyUpSectionChip(
             title: section.title,
             systemImage: section.systemImage,
-            isSelected: PlanSectionSelectorPolicy.showsTitle(for: section, selection: selection)
+            isSelected: PlanSectionSelectorPolicy.showsTitle(for: section, selection: selection),
+            selectionNamespace: sectionSelection
         ) { select(section) }
     }
 
@@ -350,7 +352,7 @@ struct BudgetSummaryCard: View {
                 Text(isOverspent ? "plan.total_over" : "plan.total_left")
                     .font(.subheadline)
                     .foregroundStyle(.moneyUpSecondary)
-                Text(maskingAmounts: formattedMoney(isOverspent ? remaining.negated : remaining))
+                Text(maskingHeroAmount: formattedMoney(isOverspent ? remaining.negated : remaining))
                     .moneyUpFinancialValue(.hero)
                     .foregroundStyle(isOverspent ? Color.moneyUpDanger : Color.primary)
             }
