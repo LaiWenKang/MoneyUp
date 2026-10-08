@@ -93,7 +93,8 @@ struct GoalProgressRow: View {
         let _ = hidesAmounts
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
-                Label(goal.name, systemImage: goal.kind.systemImage)
+                // The dial below already carries the goal's symbol.
+                Text(goal.name)
                     .font(.headline)
                 Spacer()
                 if goal.isArchived {
@@ -108,7 +109,8 @@ struct GoalProgressRow: View {
                 let progress = NSDecimalNumber(decimal: summary.progress).doubleValue
                 let isOverdue = summary.isPastDue
                 HStack(spacing: 14) {
-                    MoneyUpProgressDial(fraction: progress, systemImage: goal.kind.systemImage)
+                    MoneyUpProgressDial(fraction: progress, systemImage: goal.kind.systemImage,
+                                        tint: MoneyUpChartPalette.identityColor(for: goal.id))
                     VStack(alignment: .leading, spacing: 4) {
                         Text("goal.remaining").font(.caption).foregroundStyle(.moneyUpSecondary)
                         Text(maskingAmounts: formattedMoney(summary.remaining)).moneyUpFinancialValue(.prominent)

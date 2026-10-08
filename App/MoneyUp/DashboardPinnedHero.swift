@@ -52,12 +52,12 @@ extension DashboardView {
     var pinnedRemainingHero: some View {
         if case let .available(summaries) = model.pinnedBudgetSummariesResult(asOf: reportingDate),
            let hero = PinnedRemainingHero.make(summaries) {
-            MoneyUpCard {
+            MoneyUpCard(isHero: true) {
                 VStack(alignment: .leading, spacing: 6) {
                     Label("today.hero.left_month", systemImage: "leaf.fill")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.moneyUpSecondary)
-                    Text(maskingAmounts: formattedMoney(hero.remaining))
+                    Text(maskingHeroAmount: formattedMoney(hero.remaining))
                         .moneyUpFinancialValue(.hero)
                         .foregroundStyle(hero.remaining.amount < .zero ? Color.moneyUpWarning : .primary)
                     Text(PinnedRemainingHero.scopeText(categoryCount: hero.categoryCount))

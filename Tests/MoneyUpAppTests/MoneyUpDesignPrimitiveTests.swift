@@ -1,5 +1,7 @@
 @testable import MoneyUp
 import Foundation
+import SwiftUI
+import UIKit
 import XCTest
 
 final class MoneyUpDesignPrimitiveTests: XCTestCase {
@@ -22,6 +24,67 @@ final class MoneyUpDesignPrimitiveTests: XCTestCase {
                 .immediate
             )
         }
+    }
+
+    /// One headline figure per screen: only the hero has a display size, and
+    /// it is larger than the Large Title the rest of the scale tops out at.
+    func testOnlyTheHeroAmountUsesTheDisplaySize() {
+        for style in MoneyUpTypography.FinancialValueStyle.allCases {
+            let size = MoneyUpTypography.financialValuePolicy(for: style).displayPointSize
+            XCTAssertEqual(size != nil, style == .hero, "\(style)")
+        }
+        let largeTitle = UIFont.preferredFont(
+            forTextStyle: .largeTitle,
+            compatibleWith: UITraitCollection(preferredContentSizeCategory: .large)
+        ).pointSize
+        XCTAssertGreaterThan(MoneyUpTypography.heroPointSize, largeTitle)
+        XCTAssertLessThan(MoneyUpTypography.heroMinimumScaleFactor, 1)
+    }
+
+    /// The currency code or symbol steps down; digits, separators, signs and
+    /// the privacy mask keep the headline size, in any locale's order.
+    func testHeroAmountsStepDownOnlyTheCurrencyMarks() {
+        func marks(_ text: String) -> [String] {
+            MoneyUpHeroAmountRuns.split(text).filter(\.isCurrencyMark).map(\.text)
+        }
+        func figures(_ text: String) -> String {
+            MoneyUpHeroAmountRuns.split(text).filter { !$0.isCurrencyMark }.map(\.text).joined()
+        }
+        XCTAssertEqual(marks("SGD 1,730.30"), ["SGD"])
+        XCTAssertEqual(figures("SGD 1,730.30"), " 1,730.30")
+        XCTAssertEqual(marks("$1,250.00"), ["$"])
+        XCTAssertEqual(marks("1.730,30 €"), ["€"])
+        XCTAssertEqual(figures("1.730,30 €"), "1.730,30 ")
+        XCTAssertEqual(marks("-SGD 5.00"), ["SGD"])
+        XCTAssertEqual(figures("-SGD 5.00"), "- 5.00")
+        XCTAssertEqual(marks(MoneyAmountPrivacy.placeholder), [])
+        for text in ["SGD 1,730.30", "≈ SGD 9,951.50", "¥12,000", MoneyAmountPrivacy.placeholder] {
+            XCTAssertEqual(MoneyUpHeroAmountRuns.split(text).map(\.text).joined(), text)
+        }
+    }
+
+    /// Goals carry identity colour only; warning and danger stay reserved.
+    func testGoalIdentityColoursNeverUseStatusColours() {
+        XCTAssertFalse(MoneyUpChartPalette.identity.contains(.moneyUpWarning))
+        XCTAssertFalse(MoneyUpChartPalette.identity.contains(.moneyUpDanger))
+        for _ in 0..<64 {
+            let id = UUID()
+            let colour = MoneyUpChartPalette.identityColor(for: id)
+            XCTAssertEqual(colour, MoneyUpChartPalette.identityColor(for: id))
+            XCTAssertTrue(MoneyUpChartPalette.identity.contains(colour))
+        }
+    }
+
+    /// A press reads through scale; a deep fade would look disabled. The
+    /// style is main-actor isolated, so its values are read before XCTest's
+    /// nonisolated autoclosures see them.
+    @MainActor
+    func testPressFeedbackLeadsWithScaleNotFade() {
+        let scale = MoneyUpPressableButtonStyle.pressedScale
+        let opacity = MoneyUpPressableButtonStyle.pressedOpacity
+        XCTAssertLessThan(scale, 0.985)
+        XCTAssertGreaterThan(scale, 0.95)
+        XCTAssertGreaterThan(opacity, 0.9)
     }
 
     func testReduceMotionRemovesMoneyUpOwnedMotion() {

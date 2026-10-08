@@ -103,18 +103,22 @@ enum MoneyUpMotion {
     }
 }
 
-/// A restrained press response for custom card and capsule controls. Native
-/// buttons keep their own system feedback; this style is only for controls
-/// whose `.plain` style would otherwise feel inert.
+/// The press response for custom card and capsule controls. Native buttons
+/// keep their own system feedback; this style is only for controls whose
+/// `.plain` style would otherwise feel inert. Scale carries the feedback (a
+/// 3% press reads at a glance); a deep fade would look disabled instead.
 struct MoneyUpPressableButtonStyle: ButtonStyle {
+    static let pressedScale: CGFloat = 0.97
+    static let pressedOpacity = 0.94
+
     @Environment(\.moneyUpReduceMotion) private var reduceMotion
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .scaleEffect(
-                configuration.isPressed && !reduceMotion ? 0.985 : 1
+                configuration.isPressed && !reduceMotion ? Self.pressedScale : 1
             )
-            .opacity(configuration.isPressed ? 0.88 : 1)
+            .opacity(configuration.isPressed ? Self.pressedOpacity : 1)
             .animation(
                 MoneyUpMotion.animation(
                     for: .press,

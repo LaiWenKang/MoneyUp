@@ -128,6 +128,8 @@ struct BudgetPlanView: View {
                     currencyPicker(compact: false)
                 }
             }
+            // Controls, not content: they sit on the page instead of a card.
+            .listRowBackground(Color.clear)
         }
     }
 
@@ -169,6 +171,7 @@ struct BudgetPlanView: View {
                     limit: summary.limit, spent: summary.spent, remaining: summary.remaining,
                     elapsed: isCurrentMonth ? sharedSnapshot?.monthElapsed ?? 0 : isClosed ? 1 : 0
                 )
+                .listRowBackground(MoneyUpHeroSurface())
                 if !summary.unbudgetedSpent.isZero {
                     LabeledContent("budget.unbudgeted_spending", maskingAmounts: formattedMoney(summary.unbudgetedSpent))
                 }
@@ -191,6 +194,7 @@ struct BudgetPlanView: View {
                     pacingPicker.pickerStyle(.menu)
                 } else {
                     pacingPicker.pickerStyle(.segmented)
+                        .listRowBackground(Color.clear)
                 }
             }
         }

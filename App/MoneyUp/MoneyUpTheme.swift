@@ -38,6 +38,18 @@ enum MoneyUpChartPalette {
     static let income = Color.moneyUpChartSeries1
     static let expense = Color.moneyUpChartSeries2
 
+    /// Identity colours for things that carry no status, such as savings
+    /// goals: the palette without its warning (3) and danger (5) slots, so an
+    /// identity is never read as an alert. Stable per identifier.
+    static let identity: [Color] = [
+        .moneyUpChartSeries1, .moneyUpChartSeries2, .moneyUpChartSeries4, .moneyUpChartSeries6
+    ]
+
+    static func identityColor(for id: UUID) -> Color {
+        let hash = id.uuidString.unicodeScalars.reduce(0) { ($0 &* 31 &+ Int($1.value)) & 0xFFFF }
+        return identity[hash % identity.count]
+    }
+
     static func color(at index: Int) -> Color {
         ordered[index % ordered.count]
     }
@@ -250,14 +262,18 @@ struct MoneyUpCard<Content: View>: View {
     let content: Content
     let style: MoneyUpCardStyle
     let backgroundColor: Color?
+    let isHero: Bool
 
+    /// - Parameter isHero: The screen's lead card, on `MoneyUpHeroSurface`.
     init(
         style: MoneyUpCardStyle = MoneyUpCardPolicy.defaultStyle,
         backgroundColor: Color? = nil,
+        isHero: Bool = false,
         @ViewBuilder content: () -> Content
     ) {
         self.style = style
         self.backgroundColor = backgroundColor
+        self.isHero = isHero
         self.content = content()
     }
 
@@ -270,7 +286,13 @@ struct MoneyUpCard<Content: View>: View {
         content
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(MoneyUpLayout.cardPadding)
-            .background(backgroundColor ?? appearance.surface.color)
+            .background {
+                if isHero {
+                    MoneyUpHeroSurface()
+                } else {
+                    backgroundColor ?? appearance.surface.color
+                }
+            }
             .clipShape(
                 RoundedRectangle(
                     cornerRadius: MoneyUpLayout.cardRadius,
@@ -283,6 +305,22 @@ struct MoneyUpCard<Content: View>: View {
             }
             .modifier(MoneyUpCardShadowModifier(appearance: appearance))
             .accessibilityElement(children: .contain)
+    }
+}
+
+/// The lead card of a screen: the mist tint washes in from the top corner over
+/// the elevated surface. Its strength stays within the half-strength mist the
+/// release validator proves secondary text against.
+struct MoneyUpHeroSurface: View {
+    static let mistOpacity = 0.45
+
+    var body: some View {
+        LinearGradient(
+            colors: [Color.moneyUpMist.opacity(Self.mistOpacity), Color.moneyUpMist.opacity(0)],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+        .background(Color.moneyUpSurfaceElevated)
     }
 }
 
