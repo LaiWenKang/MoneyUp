@@ -22,69 +22,69 @@
     "en-US": [
       {
         "file": "screenshots/en-brand.png",
-        "sha256": "955994d7b757c597559fd7389ef137e44fbd9e3e72a6119891fbc0568b3bbdd8"
+        "sha256": "9929f8854f915bc4671a49435cb0dcfcaa62331fbc55f02a4e70dd63b60770b3"
       },
       {
         "file": "screenshots/en-today.png",
-        "sha256": "479021727ef961962c2075928e063892d4aaf98a3d8260dd26e33580a3f6b8ca"
+        "sha256": "35b2975c01231e8bdf2b39fb09aab5c65985cbafc1bd81621befd7c187d5109a"
       },
       {
         "file": "screenshots/en-plan.png",
-        "sha256": "4de97be11aecd80b573df65efe84f3f8fef270e6cde9cb7b3ad56a50282d8bca"
+        "sha256": "fc71d01091d51018bc71bc730011287552b47e73a08b5e20e3b5937505d55ecb"
       },
       {
         "file": "screenshots/en-history.png",
-        "sha256": "fdbf2f201789d38e853aba96d4b1d14e511977bede4f64a3828bcbd436a1ac21"
+        "sha256": "1a715e947100640b46a186125ae128c9473771b4543ea3176c9bc85e6681b83a"
       },
       {
         "file": "screenshots/en-assets.png",
-        "sha256": "716ee9cd67b67af67ccaef1fefb15b0f951a7c652803685ff7e3cc0ad74ec474"
+        "sha256": "30b3a2bf8836d9c992d615d67be9ce3d4d053e77ef0123e7feaaa8ccafecce72"
       },
       {
         "file": "screenshots/en-goals.png",
-        "sha256": "3f5af1b064a28cd73cdc052b7b44e12d6ca6151032cdb4587dcb2ad00e262c39"
+        "sha256": "cd7225c0dd3e4f1a6de43a33c357309f31c2a2f04bf5ee96778ca2678a1d0065"
       },
       {
         "file": "screenshots/en-log.png",
-        "sha256": "3333bfb149c82834339ddab283df83f8beaadab0b4435ecc8756cb06afa21973"
+        "sha256": "7db2132e36e156efbbf20d9337b3e38ae12d9df55026eac2f4574dff4882e12c"
       },
       {
         "file": "screenshots/en-calendar.png",
-        "sha256": "31a69a588469344991c460725bcabd99c80a8b94b9fc3f58f5901e5303bcd1e1"
+        "sha256": "d4ab6e8546618b113c9f557f34b21874e2dce9e07c5492d21d709c7fab269471"
       }
     ],
     "zh-Hans": [
       {
         "file": "screenshots/zh-brand.png",
-        "sha256": "b92e6fc5956800ff392f442cd98a66a2806aab0930394c1bc8072eafda8cfcea"
+        "sha256": "60790163cc540686461f2d264d5c6cfc55bd63ab8dbb9659fddf7261a5bdae8f"
       },
       {
         "file": "screenshots/zh-today.png",
-        "sha256": "f4823d5a8c8e0a0d1cc790daa567dd874fa12087062a80f8f86fe9adc79cd4cd"
+        "sha256": "cfe4883e470ec61c0e672f877a3027f4e1423a6cba03fd211a8e8d363a167cf1"
       },
       {
         "file": "screenshots/zh-plan.png",
-        "sha256": "6717dd2bbabfb3f374d5fa98e975c70fa69fb5a03b88ce6020c75a94afdac41b"
+        "sha256": "8ec8299a09803d85e4c1363527021efce7b986f41997dc78344dc19c72841de7"
       },
       {
         "file": "screenshots/zh-history.png",
-        "sha256": "dc79a2873079560846de5f5a20dc68f044fc77cfee811ea6a64bd768b18f8609"
+        "sha256": "e4be28ebe5b519c039feb5012470d23b83243e422cedce25e36a6450a9c64891"
       },
       {
         "file": "screenshots/zh-assets.png",
-        "sha256": "f15c42f99fa440679067988e58a73472a0acdd0a95847dedc54a0d6254e6c8dc"
+        "sha256": "9edde726a495dbfa17ee776f7e37df38f08a43bfc6e2c1768f3b9a9876783ee9"
       },
       {
         "file": "screenshots/zh-goals.png",
-        "sha256": "63554a86dc9f6a722bed2cb84b977e00e655e124e97609e68ab07e51682bcf99"
+        "sha256": "660b2097d32c91c91a3d232a3e2f704a6679626d820ac05ed00f2ca4bbaa5171"
       },
       {
         "file": "screenshots/zh-log.png",
-        "sha256": "a85242e82fc0bef78a81b7cc4619ec5e3e03bef006365c5e5399a046fffe89af"
+        "sha256": "5782d37fb0c1758ca5c149d760a49715aeb0b95ea031f70ae4ee9889984341b6"
       },
       {
         "file": "screenshots/zh-calendar.png",
-        "sha256": "60d1f6cf87eaa8b3682adb4caeacb382bbfa59f6abf4a256220c5c9de5f5b9ad"
+        "sha256": "129f94103dbc5bc23392f8dbedd5e866019f33d0b1b5bcc52ddafb1b89b186b7"
       }
     ]
   },
@@ -143,7 +143,7 @@
   "previews": {
     "en-US": {
       "file": "videos/preview-en.mp4",
-      "sha256": "ecd56f7373f5ecf78365e417f95efb6117e49bcaed70556cece96df227812dbc",
+      "sha256": "54b99eb29097e90edb09826f49c99a610ea7f9415b8ed3c063a48e8c3fff64e0",
       "dimensions": [
         886,
         1920
@@ -158,7 +158,7 @@
     },
     "zh-Hans": {
       "file": "videos/preview-zh.mp4",
-      "sha256": "51dcf11ac3a1099157bc80056dbae1359237b599bbdcf48f3db8d1747df3a065",
+      "sha256": "d44b575d5c87a44bd4a611ccf2548c68ea07b250c3760f323dcb98b2b89df3d8",
       "dimensions": [
         886,
         1920
