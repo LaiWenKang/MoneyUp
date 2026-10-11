@@ -49,5 +49,18 @@ acceptance, without publishing to TestFlight or the App Store yet.
 
 ## Validation and outstanding gates
 
-Results are recorded below as they are produced; nothing here is claimed
-before it ran.
+- Main 1163b61 (#125 and #126 merged): CI (Core tests, Release assets, iOS
+  Simulator build, performance baseline) and the iOS 26 interaction review
+  (native review 43m41s) passed; the seven validators pass locally.
+- This branch at 663bb97: the seven validators and their 225 tests pass; package
+  tests pass; the app unit suite passes 945/945 on iPhone 17 Pro (iOS 26.5) and
+  iPhone SE (iOS 27.0) (the four StoreKit tests run in the release gate); all 34
+  UI journeys pass on 17 Pro iOS 26.5, SE iOS 27.0, 17 Pro iOS 27.0 and SE iOS
+  26.5. The built app and widget report version 0.7.4. CI on the pull request
+  (#127) passed all required checks.
+- All 16 screenshots differ from 0.7.3 and were checked by eye in both
+  languages. One preview frame (about 10 s) shows History's brief loading row,
+  as the 0.7.3 preview did.
+- Not done yet, by the owner's instruction of 11 October: the TestFlight upload,
+  the owner's physical-iPhone check of that build, and App Store Connect
+  prepare and submit. This branch merges only after Apple approves 0.7.3.
