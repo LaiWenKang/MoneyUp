@@ -94,7 +94,9 @@ struct AssetsView: View {
                             HStack(spacing: 12) {
                                 MoneyUpSymbolBadge(
                                     systemImage: account.accountType?.systemImage
-                                        ?? "wallet.bifold"
+                                        ?? "wallet.bifold",
+                                    // A stable identity colour per account.
+                                    color: MoneyUpChartPalette.identityColor(for: account.id)
                                 )
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(account.name)

@@ -191,3 +191,30 @@ native compact hierarchy rather than squeezing a Home-screen grid.
 
 The widget surfaces still require the final physical Home/Lock Screen
 family, redacted, light, dark, and tinted matrix on the exact signed candidate.
+
+## 0.7.4 expressive pass
+
+Direction (owner, 9 October 2026): bolder and expressive, with one focal number
+per screen and nothing competing with it.
+
+- **Hero figure.** `.hero` financial values use a 44 pt display size scaled with
+  Dynamic Type relative to Large Title, rounded bold, monospaced digits, one
+  line, shrinking to half before a number would wrap. `Text(maskingHeroAmount:)`
+  steps the currency code or symbol down to Title 2 by size only, so colour
+  (an overspent figure stays red), contrast and the spoken text are unchanged;
+  `MoneyUpHeroAmountRuns` splits marks from figures in any locale order.
+- **Hero surface.** A screen's lead card (`MoneyUpCard(isHero:)`, or
+  `.listRowBackground(MoneyUpHeroSurface())` in lists) washes mist at 45% from
+  the top corner into the elevated surface. The release validator keeps it at or
+  below the 50% mist that secondary text is proven against.
+- **Identity colour.** Things without status (savings goals, accounts) take a
+  stable colour from `MoneyUpChartPalette.identity`, which omits the warning
+  and danger slots. Pace bars keep their status colours; categories keep
+  `MoneyUpCategorySymbol.tint(for:)`.
+- **Controls, not content.** Plan's month, currency and period controls sit on
+  the page rather than in cards.
+- **Motion.** Section chips that share a namespace share one selection highlight,
+  which slides under the `.selection` spring. Press feedback leads with a 3%
+  scale and a light fade. Amounts never animate; Reduce Motion removes all of it.
+- **Toolbar.** The amount-privacy action is an icon-only `Label` in outline,
+  tinted like every other toolbar action.

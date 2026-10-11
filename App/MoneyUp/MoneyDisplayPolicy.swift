@@ -77,6 +77,53 @@ extension Text {
     }
 }
 
+/// Splits a formatted amount into currency marks (codes and symbols) and the
+/// rest (digits, separators, signs, the privacy mask), in any locale's order:
+/// "SGD 1,730.30", "$1,250.00", "1.730,30 €".
+enum MoneyUpHeroAmountRuns {
+    static func split(_ content: String) -> [(text: String, isCurrencyMark: Bool)] {
+        var runs: [(text: String, isCurrencyMark: Bool)] = []
+        for character in content {
+            let isMark = character.isLetter || character.unicodeScalars.contains {
+                $0.properties.generalCategory == .currencySymbol
+            }
+            if let last = runs.last, last.isCurrencyMark == isMark {
+                runs[runs.count - 1].text.append(character)
+            } else {
+                runs.append((String(character), isMark))
+            }
+        }
+        return runs
+    }
+}
+
+extension Text {
+    /// A headline amount: the digits carry the weight and the currency code or
+    /// symbol steps down a size, so the eye reads the number first. Only the
+    /// size changes, so an overspent figure keeps its colour, VoiceOver reads
+    /// the same words, and a mask still speaks as "hidden amount".
+    init(maskingHeroAmount content: String) {
+        var styled = AttributedString()
+        for run in MoneyUpHeroAmountRuns.split(content) {
+            var part = AttributedString(run.text)
+            if run.isCurrencyMark {
+                part.font = .system(.title2, design: .rounded, weight: .semibold)
+            }
+            styled += part
+        }
+        let mask = MoneyAmountPrivacy.placeholder
+        guard content.contains(mask) else {
+            self.init(styled)
+            return
+        }
+        let spoken = content.replacingOccurrences(
+            of: mask,
+            with: AppLocalization.string("privacy.hidden_amount")
+        )
+        self = Text(styled).accessibilityLabel(Text(verbatim: spoken))
+    }
+}
+
 extension LabeledContent where Label == Text, Content == Text {
     /// A labelled amount whose masked value speaks as "hidden amount".
     /// Only a localized title: a plain-string overload would win for literals
@@ -104,12 +151,16 @@ struct MoneyUpAmountPrivacyButton: View {
                 hidesAmounts.toggle()
             }
         } label: {
-            Image(systemName: hidesAmounts ? "eye.slash.fill" : "eye.fill")
-                .foregroundStyle(Color.accentColor)
-                .contentTransition(.symbolEffect(.replace))
-                // A 44-pt target, not the glyph's own bounds.
-                .frame(minWidth: 44, minHeight: 44)
-                .contentShape(Rectangle())
+            // An icon-only Label, like every toolbar action beside it, so the
+            // toolbar tints it and gives it the standard target and press
+            // state; a bare Image would be drawn as custom, untinted content.
+            Label {
+                Text(hidesAmounts ? "privacy.show_amounts" : "privacy.hide_amounts")
+            } icon: {
+                Image(systemName: hidesAmounts ? "eye.slash" : "eye")
+                    .contentTransition(.symbolEffect(.replace))
+            }
+            .labelStyle(.iconOnly)
         }
         .accessibilityLabel(
             hidesAmounts
@@ -122,7 +173,6 @@ struct MoneyUpAmountPrivacyButton: View {
                 : LocalizedStringKey("privacy.amounts_visible")
         )
         .accessibilityHint("privacy.amount_visibility_hint")
-        .buttonStyle(MoneyUpPressableButtonStyle())
     }
 }
 

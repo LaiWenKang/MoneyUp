@@ -7,6 +7,8 @@ struct MoneyUpProgressDial: View {
     @Environment(\.moneyUpReduceMotion) private var reduceMotion
     let fraction: Double
     let systemImage: String
+    /// The goal's identity colour; the label beside the dial carries status.
+    var tint: Color = .moneyUpChartSeries1
 
     private var progress: Double { fraction.isFinite ? min(max(fraction, 0), 1) : 0 }
 
@@ -14,11 +16,11 @@ struct MoneyUpProgressDial: View {
         ZStack {
             Circle().stroke(Color.moneyUpMist, lineWidth: 7)
             Circle().trim(from: 0, to: progress)
-                .stroke(Color.moneyUpChartSeries1, style: StrokeStyle(lineWidth: 7, lineCap: .round))
+                .stroke(tint, style: StrokeStyle(lineWidth: 7, lineCap: .round))
                 .rotationEffect(.degrees(-90))
                 // Geometry only; the label beside the dial owns the value.
                 .animation(MoneyUpMotion.animation(for: .stateChange, reduceMotion: reduceMotion), value: progress)
-            Image(systemName: systemImage).font(.title3.weight(.semibold)).foregroundStyle(.tint)
+            Image(systemName: systemImage).font(.title3.weight(.semibold)).foregroundStyle(tint)
         }
         .padding(5)
         .frame(width: 64, height: 64)

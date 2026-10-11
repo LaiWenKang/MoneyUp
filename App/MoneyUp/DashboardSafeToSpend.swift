@@ -74,13 +74,7 @@ extension DashboardView {
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background {
-            LinearGradient(
-                colors: [Color.accentColor.opacity(0.16), Color.moneyUpSurfaceElevated],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        }
+        .background { MoneyUpHeroSurface() }
         .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 26, style: .continuous)
@@ -127,7 +121,7 @@ extension DashboardView {
             Label("dashboard.safe_to_spend", systemImage: "sun.max.fill")
                 .font(.headline)
                 .foregroundStyle(.tint)
-            Text(maskingAmounts: formattedMoney(isOver ? breakdown.availableForRemainingPeriod.negated : breakdown.amountPerDay))
+            Text(maskingHeroAmount: formattedMoney(isOver ? breakdown.availableForRemainingPeriod.negated : breakdown.amountPerDay))
                 .moneyUpFinancialValue(.hero)
                 .foregroundStyle(isOver ? Color.moneyUpDanger : Color.primary)
             Text(isOver ? LocalizedStringKey("dashboard.safe_to_spend.over_caption") : "dashboard.safe_to_spend.per_day")

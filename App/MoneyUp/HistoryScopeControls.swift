@@ -129,6 +129,7 @@ struct HistoryScopeSelector: View {
     @Binding private var selection: HistoryQuickRange?
     @Environment(\.moneyUpReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Namespace private var scopeSelection
 
     init(selection: Binding<HistoryQuickRange?>) {
         _selection = selection
@@ -212,7 +213,8 @@ struct HistoryScopeSelector: View {
         MoneyUpSectionChip(
             title: range.title,
             systemImage: range.systemImage,
-            isSelected: HistoryScopeSelectorPolicy.showsTitle(for: range, selection: selection)
+            isSelected: HistoryScopeSelectorPolicy.showsTitle(for: range, selection: selection),
+            selectionNamespace: scopeSelection
         ) { select(range) }
     }
 

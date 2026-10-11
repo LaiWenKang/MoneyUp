@@ -3575,6 +3575,17 @@ def validate_brand_palette() -> None:
     if contrast("#7F7F7F", "#FFFFFF") >= 4.5:
         fail("secondary-text mutation self-test no longer fails")
 
+    # The hero surface washes mist over the elevated canvas. Secondary text is
+    # proven above against half-strength mist, so the wash may not exceed it.
+    hero_wash = re.search(r"static let mistOpacity = ([0-9.]+)", theme)
+    if hero_wash is None or float(hero_wash.group(1)) > 0.5:
+        fail("MoneyUpHeroSurface mist must stay within the proven half strength")
+    # Identity colours (goals) carry no status, so they never use the warning
+    # or danger slots that the status tokens own.
+    identity = re.search(r"static let identity: \[Color\] = \[(.*?)\]", theme, re.S)
+    if identity is None or re.search(r"moneyUpChartSeries[35]\b", identity.group(1)):
+        fail("identity colours must exclude the warning and danger chart slots")
+
     # Replay the pre-fix dark action as an in-memory mutation. It must fail on
     # the actual elevated canvas or this guard no longer catches the regression.
     old_dark_action = "#34785F"

@@ -50,7 +50,8 @@ struct GoalDetailView: View {
         MoneyUpCard(style: .floating) {
             VStack(alignment: .leading, spacing: 16) {
                 HStack(spacing: 16) {
-                    MoneyUpProgressDial(fraction: NSDecimalNumber(decimal: summary.progress).doubleValue, systemImage: goal.kind.systemImage)
+                    MoneyUpProgressDial(fraction: NSDecimalNumber(decimal: summary.progress).doubleValue, systemImage: goal.kind.systemImage,
+                                        tint: MoneyUpChartPalette.identityColor(for: goal.id))
                     VStack(alignment: .leading, spacing: 4) {
                         Text(summary.isComplete ? "goal.complete" : "goal.remaining").font(.subheadline).foregroundStyle(.moneyUpSecondary)
                         Text(maskingAmounts: formattedMoney(summary.remaining)).moneyUpFinancialValue(.prominent)
