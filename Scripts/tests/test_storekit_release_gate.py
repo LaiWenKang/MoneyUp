@@ -22,6 +22,9 @@ class StoreKitReleaseGateTests(unittest.TestCase):
             source.replace("- name: Run required StoreKit purchase and finish test", "- name: Run required StoreKit purchase and finish test\n        continue-on-error: true"),
             source.replace("-only-testing:MoneyUpTests/DeveloperSupportTests/testStoreKitConsumableSupportCanBeRepeatedAndFinished", "-only-testing:MoneyUpTests/DeveloperSupportTests/testConcurrentTapsStartOnlyOnePurchase"),
             source.replace("com.apple.CoreSimulator.SimRuntime.iOS-18-5", "com.apple.CoreSimulator.SimRuntime.iOS-26-5"),
+            # Runner speed, not the code, decides a 600 s budget (runs 76 and 79).
+            source.replace("-maximum-test-execution-time-allowance 1200", "-maximum-test-execution-time-allowance 600"),
+            source.replace("timeout-minutes: 45", "timeout-minutes: 35"),
         ]
         for mutated in mutations:
             with self.subTest(mutation=mutations.index(mutated)), contextlib.redirect_stderr(io.StringIO()):
