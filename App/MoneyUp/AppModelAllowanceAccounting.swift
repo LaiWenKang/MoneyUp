@@ -786,3 +786,16 @@ extension AppModel {
         )
     }
 }
+
+extension AppModel {
+    /// Whether deleting this entry also deletes a reimbursement claim: the
+    /// claim's evidence and its status go with the expense they belong to.
+    func hasLinkedAllowanceClaim(entryID: UUID) -> Bool {
+        allowancePlans.contains { plan in
+            plan.fundingMode == .reimbursement
+                && plan.usages.contains { usage in
+                    usage.linkedJournalEntryID == entryID && usage.claimStatus != nil
+                }
+        }
+    }
+}

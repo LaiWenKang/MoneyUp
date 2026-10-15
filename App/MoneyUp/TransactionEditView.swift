@@ -282,16 +282,6 @@ struct TransactionEditView: View {
         model.receiptAttachmentMetadata.filter { $0.entryID == entry.id }
     }
 
-    var hasLinkedAllowanceClaim: Bool {
-        model.allowancePlans.contains { plan in
-            plan.fundingMode == .reimbursement
-                && plan.usages.contains { usage in
-                    usage.linkedJournalEntryID == entry.id
-                        && usage.claimStatus != nil
-                }
-        }
-    }
-
     @ViewBuilder
     var splitEditor: some View {
         Menu {
@@ -588,5 +578,22 @@ enum TransactionEditSavePolicy {
         // A word being composed is an edit the form does not hold yet.
         if hasMarkedText { return .finishComposition }
         return hasChanges ? .write : .close
+    }
+}
+
+/// What a delete confirmation says. Deleting an expense that carries a
+/// reimbursement claim deletes the claim's evidence and status with it, so
+/// every place that deletes a transaction (the editor, History, Calendar)
+/// names the claim rather than only the balances.
+@MainActor
+enum TransactionDeleteConfirmation {
+    static func detailKey(for entryID: UUID, in model: AppModel) -> String {
+        model.hasLinkedAllowanceClaim(entryID: entryID)
+            ? "allowance.claim.delete_confirmation_detail"
+            : "transaction.delete_detail"
+    }
+
+    static func detail(for entryID: UUID, in model: AppModel) -> Text {
+        Text(LocalizedStringKey(detailKey(for: entryID, in: model)))
     }
 }

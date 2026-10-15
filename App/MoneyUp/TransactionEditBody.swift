@@ -372,11 +372,7 @@ extension TransactionEditView {
                 }
                 Button("action.cancel", role: .cancel) {}
             } message: {
-                Text(
-                    hasLinkedAllowanceClaim
-                        ? "allowance.claim.delete_confirmation_detail"
-                        : "transaction.delete_detail"
-                )
+                TransactionDeleteConfirmation.detail(for: entry.id, in: model)
             }
             .confirmationDialog(
                 "receipt.delete_title",

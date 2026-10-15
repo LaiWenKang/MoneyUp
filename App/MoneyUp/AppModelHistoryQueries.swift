@@ -165,6 +165,37 @@ extension AppModel {
         }
     }
 
+    /// The query's first rows, read at least `depth` rows deep. A refresh of
+    /// the list on screen (after an edit or a delete) passes the number of
+    /// rows already loaded, so the person keeps their place instead of being
+    /// handed back the first page. Each read is an ordinary page; a book
+    /// replaced between them ends the refresh rather than mixing two books.
+    func historyPage(
+        query: HistoryQuery,
+        coveringAtLeast depth: Int
+    ) async throws -> HistoryPageResult {
+        let bookRevision = logicalBookRevision
+        let first = try await historyPage(query: query)
+        var entries = first.entries
+        var knownIDs = Set(entries.map(\.id))
+        var attachmentMatches = first.attachmentMatchesByEntryID
+        var cursor = first.nextCursor
+        while entries.count < depth, let after = cursor {
+            let page = try await historyPage(query: query, after: after)
+            guard logicalBookRevision == bookRevision else { throw CancellationError() }
+            for entry in page.entries where knownIDs.insert(entry.id).inserted {
+                entries.append(entry)
+            }
+            attachmentMatches.merge(page.attachmentMatchesByEntryID) { current, _ in current }
+            cursor = page.nextCursor
+        }
+        return HistoryPageResult(
+            entries: entries,
+            nextCursor: cursor,
+            attachmentMatchesByEntryID: attachmentMatches
+        )
+    }
+
     private func historyRelationshipIssues(
         in entries: [JournalEntry],
         validAccountIDs: Set<UUID>
