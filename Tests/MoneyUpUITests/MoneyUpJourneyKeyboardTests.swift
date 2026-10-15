@@ -58,7 +58,7 @@ extension MoneyUpJourneyTests {
             hideKeyboard(app)
         }
         let split = app.switches["Split across categories"].firstMatch
-        if !split.isHittable { bringIntoView(split, in: app) }
+        reveal(split, in: app)
         guard split.exists else { return problems + ["\(variant): the split switch is missing"] }
         split.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
         for label in ["Split 2 amount", "Split 2 note (optional)"] {
@@ -84,16 +84,26 @@ extension MoneyUpJourneyTests {
     /// keyboard, or the control `above` (Log's Save bar); nil when it is clear.
     private func coverage(of field: XCUIElement, named name: String, in app: XCUIApplication,
                           below navigation: XCUIElement?, above pinned: XCUIElement?) -> String? {
-        // A lazy form only holds rows near the screen: look for it, not wait.
-        if !field.waitForExistence(timeout: 3) || !field.isHittable { bringIntoView(field, in: app) }
+        reveal(field, in: app)
         guard field.exists else {
             printScreen(app)
             return "\(name): the field is missing"
         }
-        field.tap()
-        let focused = XCTNSPredicateExpectation(
-            predicate: NSPredicate(format: "hasKeyboardFocus == true"), object: field)
-        guard XCTWaiter().wait(for: [focused], timeout: 5) == .completed else {
+        // A tap during a scroll or keyboard animation can land before the
+        // field can take focus: hide the keyboard, reveal, and tap again.
+        let focused = NSPredicate(format: "hasKeyboardFocus == true")
+        var hasFocus = false
+        for attempt in 0..<3 where !hasFocus {
+            if attempt > 0 {
+                hideKeyboard(app)
+                reveal(field, in: app)
+            }
+            field.tap()
+            let wait = XCTNSPredicateExpectation(predicate: focused, object: field)
+            hasFocus = XCTWaiter().wait(for: [wait], timeout: 3) == .completed
+        }
+        guard hasFocus else {
+            printScreen(app)
             return "\(name): the field did not take focus"
         }
         let keyboard = app.keyboards.firstMatch
@@ -116,6 +126,20 @@ extension MoneyUpJourneyTests {
             return "\(name): field y \(Int(frame.minY))–\(Int(frame.maxY)), clear area y \(Int(ceiling))–\(Int(top))"
         }
         return nil
+    }
+
+    /// A lazy form only holds rows near the screen, and every field checked
+    /// here lies further down than the last: drag the form up in short, slow
+    /// steps until the field exists, then nudge it clear of the screen edges.
+    private func reveal(_ field: XCUIElement, in app: XCUIApplication) {
+        let window = app.windows.firstMatch
+        for _ in 0..<12 where !field.exists {
+            window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.7)).press(
+                forDuration: 0.05,
+                thenDragTo: window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45)),
+                withVelocity: .slow, thenHoldForDuration: 0.2)
+        }
+        if field.exists && !field.isHittable { bringIntoView(field, in: app) }
     }
 
     /// The editor's keyboard has a Done bar; Log has its own hide button.
