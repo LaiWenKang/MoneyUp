@@ -12,7 +12,9 @@ extension MoneyUpJourneyTests {
         expectEqual(save.value as? String, "Enter or confirm the amount.", "A dimmed Save must say why")
 
         type(".5", into: amount)
-        expectFalse(app.staticTexts["Enter a valid amount."].exists, "\".5\" is half of one, not an error")
+        let fieldError = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS %@", "Enter a valid amount.")).firstMatch
+        expectFalse(fieldError.exists, "\".5\" is half of one, not an error")
         eventually("isEnabled == true", save, "An amount typed from its separator did not become savable")
         save.tap()
         expectTrue(app.buttons["log-undo"].waitForExistence(timeout: timeout), "0.50 did not save")

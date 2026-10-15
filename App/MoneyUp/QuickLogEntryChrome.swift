@@ -173,9 +173,6 @@ struct PendingCaptureBanner: View {
     }
 }
 
-/// Save pinned above the keyboard, with a keyboard-dismiss control beside it
-/// while a field is focused. The system keyboard toolbar does not render in
-/// every configuration, so neither action may depend on it.
 /// Why Save is dimmed, said by VoiceOver with the button: a sighted person
 /// sees the empty field or the placeholder, a VoiceOver user otherwise hears
 /// only "dimmed".
@@ -197,6 +194,9 @@ enum QuickLogSaveBlocker: Equatable {
     }
 }
 
+/// Save pinned above the keyboard, with a keyboard-dismiss control beside it
+/// while a field is focused. The system keyboard toolbar does not render in
+/// every configuration, so neither action may depend on it.
 struct LogSaveBar: View {
     let canSave: Bool
     var blocker: QuickLogSaveBlocker?
