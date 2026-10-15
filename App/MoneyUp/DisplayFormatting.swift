@@ -130,13 +130,15 @@ func writtenAmount(from text: String, locale: Locale = .current) -> WrittenAmoun
     guard text.utf8.count <= maximumMoneyAmountTextByteCount else {
         return nil
     }
-    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmed.isEmpty else { return nil }
+    let written = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !written.isEmpty else { return nil }
+    let trimmed = ungroupedAmountText(written, locale: locale) ?? written
 
     let localSeparator = locale.decimalSeparator ?? "."
     let escapedLocal = NSRegularExpression.escapedPattern(for: localSeparator)
     let separatorPattern = localSeparator == "." ? "\\." : "(?:\(escapedLocal)|\\.)"
-    let pattern = "^[+-]?[0-9]+(?:\(separatorPattern)[0-9]+)?$"
+    // A leading separator (".5", ",5") is a fraction of one: nothing else reads it.
+    let pattern = "^[+-]?(?:[0-9]+(?:\(separatorPattern)[0-9]+)?|\(separatorPattern)[0-9]+)$"
     guard trimmed.range(of: pattern, options: .regularExpression) != nil else {
         return nil
     }
@@ -148,11 +150,38 @@ func writtenAmount(from text: String, locale: Locale = .current) -> WrittenAmoun
        localSeparator != ".", locale.groupingSeparator == "." {
         return nil
     }
-    let normalized = localSeparator == "."
+    var normalized = localSeparator == "."
         ? trimmed
         : trimmed.replacingOccurrences(of: localSeparator, with: ".")
+    let sign = normalized.first.map { "+-".contains($0) } == true ? String(normalized.prefix(1)) : ""
+    if normalized.dropFirst(sign.count).hasPrefix(".") {
+        normalized = sign + "0" + String(normalized.dropFirst(sign.count))
+    }
     return Decimal(string: normalized, locale: Locale(identifier: "en_US_POSIX"))
         .map { WrittenAmount(value: $0, fractionDigits: fractionDigits) }
+}
+
+/// The amount without its thousands separators, when it is written with them
+/// and has only one reading in `locale`: a decimal part ("1,234.50" in
+/// English, "1.234,50" in German) or two or more groups ("1,234,567"). One
+/// group alone ("1,234", "1.000") could be a decimal elsewhere and is left as
+/// written, which the caller refuses. Groups are of three digits; a space
+/// stands for the narrow or no-break space a locale groups with.
+func ungroupedAmountText(_ text: String, locale: Locale) -> String? {
+    let decimal = locale.decimalSeparator ?? "."
+    guard let grouping = locale.groupingSeparator, !grouping.isEmpty, grouping != decimal else {
+        return nil
+    }
+    let groupPattern = [" ", "\u{00A0}", "\u{202F}"].contains(grouping)
+        ? "[ \\u00A0\\u202F]"
+        : NSRegularExpression.escapedPattern(for: grouping)
+    let decimalPattern = NSRegularExpression.escapedPattern(for: decimal)
+    let pattern = "^[+-]?[0-9]{1,3}(?:\(groupPattern)[0-9]{3})+(?:\(decimalPattern)[0-9]+)?$"
+    guard text.range(of: pattern, options: .regularExpression) != nil else { return nil }
+    let ungrouped = text.replacingOccurrences(of: groupPattern, with: "", options: .regularExpression)
+    let groupCount = text.count - ungrouped.count
+    guard ungrouped.contains(decimal) || groupCount >= 2 else { return nil }
+    return ungrouped
 }
 
 /// True while `text` is a prefix of an amount rather than an amount:
@@ -162,7 +191,10 @@ func isIncompleteAmount(_ text: String, locale: Locale = .current) -> Bool {
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
     guard let last = trimmed.last else { return false }
     if Set((locale.decimalSeparator ?? ".") + ".").contains(last) {
-        return writtenAmount(from: String(trimmed.dropLast()), locale: locale) != nil
+        let head = String(trimmed.dropLast())
+        // "." alone, or after a sign, is the start of ".5".
+        if head.isEmpty || head == "+" || head == "-" { return true }
+        return writtenAmount(from: head, locale: locale) != nil
     }
     return writtenAmount(from: trimmed, locale: locale)?.value == .zero
 }

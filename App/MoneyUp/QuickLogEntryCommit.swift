@@ -264,9 +264,10 @@ extension QuickLogEntryView {
             try? await Task.sleep(for: .seconds(6))
             guard !isUndoing, !isSaving, !isNamingFavourite,
                   lastSavedEntryID == entryID else { return }
-            // VoiceOver users dismiss the persistent correction affordance
-            // explicitly, so it cannot vanish before they navigate to Undo.
-            guard !isVoiceOverEnabled else { return }
+            // VoiceOver and Switch Control users dismiss the persistent
+            // correction affordance explicitly, so it cannot vanish before
+            // they reach Undo. Voice Control has no public signal to read.
+            guard !isVoiceOverEnabled, !isSwitchControlEnabled else { return }
             updateSavedEntry(nil)
         }
     }
