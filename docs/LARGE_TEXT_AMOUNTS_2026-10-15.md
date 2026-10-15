@@ -43,13 +43,14 @@ digest-pinned Quick Log Chrome extension; it is re-pinned with a dated reason.
 | `safeToSpendSummary` (`DashboardSafeToSpend.swift`) put the title beside the figure. | "SGD 430…" and the title as "Fle / xi- / ble / to- / da / y". |
 | `TodayCashFlowStory` put the net figure on as many lines as it needed, and each flow's amount beside its label. | "SGD" above "122,222.22"; Income as "123,456. / 78". |
 
-**Change.** At accessibility sizes each figure gets a line of its own and the
-full width: the card title row (badge, title, chevron) sits above the summary,
-orbits move below their figure, the safe-to-spend title above its figure, and
-the hero share and each flow drop their amount beneath their label when the
-line does not fit (`ViewThatFits`). Figures stay on one line and may shrink to
-40 % (the net figure and flow amounts to 40 % and 50 %), which at these sizes
-is still larger than body text. Standard sizes keep their layout.
+**Change.** At accessibility sizes each title and each figure gets a line of
+its own and the full width: a card's badge and chevron sit above its title,
+the title above the summary, orbits below their figure, the safe-to-spend
+title above its figure; the hero share, each flow and the pinned rows' Day /
+Week / Month lines drop their amount beneath their label when the line does
+not fit (`ViewThatFits`). Figures stay on one line and may shrink to 40–50 %,
+hero figures to 35 %, which at these sizes is still larger than body text.
+Standard sizes keep their layout (see Guardrails for the one exception).
 
 ## P3 — Pinned rows and their heading broke mid-word and mid-number
 
@@ -63,8 +64,12 @@ heading puts the glyph and menu above the title, which gets the row's width.
 
 ## Guardrails kept
 
-- Layout only, at accessibility sizes only; standard sizes keep their layout.
-  No ledger, money, formatting, masking or storage change.
+- Layout only. Standard sizes keep their layout, with one exception: a Saved
+  confirmation too long for its line (a long amount beside the favourite
+  star on a narrow phone) now puts the amount on a second line instead of
+  cutting it. Hero figures may shrink to 35 % instead of 50 % at
+  accessibility sizes only. No ledger, money, formatting, masking or storage
+  change.
 - One reviewed Quick Log change (the Chrome extension's re-pin). No new
   strings, dependencies or permissions.
 

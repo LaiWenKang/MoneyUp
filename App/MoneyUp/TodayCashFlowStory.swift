@@ -12,10 +12,11 @@ struct TodayCashFlowStory: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(maskingAmounts: formattedMoneyWithCurrencyCode(report.baseFlow.net))
-                .moneyUpFinancialValue(.prominent)
-                // Code and figure stay together; a long figure shrinks.
+                // Code and figure stay together; a long figure shrinks. Set
+                // inside the typography modifier, which otherwise wins.
                 .lineLimit(1)
                 .minimumScaleFactor(0.4)
+                .moneyUpFinancialValue(.prominent)
             Text("dashboard.flow.net_to_date")
                 .font(.caption).foregroundStyle(.moneyUpSecondary)
             Chart(Array(report.monthlyFlows.suffix(6)), id: \.month) { flow in

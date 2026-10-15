@@ -64,6 +64,7 @@ struct PinnedBudgetBoard: View {
                 HStack(alignment: .center, spacing: 12) {
                     Image(systemName: "pin.fill")
                         .font(.headline)
+                        .accessibilityHidden(true)
                     Spacer(minLength: 8)
                     boardMenu
                 }
@@ -269,18 +270,47 @@ struct PinnedBudgetRow: View {
         }
     }
 
+    @ViewBuilder
     private func cadence(_ titleKey: LocalizedStringKey, _ money: Money) -> some View {
-        let layout = dynamicTypeSize.isAccessibilitySize || !showsDetail
-            ? AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: 8))
-            : AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
-        return layout {
-            Text(titleKey).font(.caption2).foregroundStyle(.moneyUpSecondary)
-            Text(maskingAmounts: formattedMoney(money))
-                .font(.caption.monospacedDigit().weight(.semibold))
-                .fixedSize(horizontal: false, vertical: true)
+        if dynamicTypeSize.isAccessibilitySize {
+            // The figure goes under its label when one line cannot hold both,
+            // instead of breaking mid-number.
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    cadenceTitle(titleKey)
+                    cadenceFigure(money)
+                }
+                .lineLimit(1)
+                VStack(alignment: .leading, spacing: 2) {
+                    cadenceTitle(titleKey)
+                    cadenceFigure(money)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.5)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
+        } else {
+            let layout = !showsDetail
+                ? AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: 8))
+                : AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
+            layout {
+                cadenceTitle(titleKey)
+                cadenceFigure(money)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .combine)
+    }
+
+    private func cadenceTitle(_ titleKey: LocalizedStringKey) -> some View {
+        Text(titleKey).font(.caption2).foregroundStyle(.moneyUpSecondary)
+    }
+
+    private func cadenceFigure(_ money: Money) -> some View {
+        Text(maskingAmounts: formattedMoney(money))
+            .font(.caption.monospacedDigit().weight(.semibold))
     }
 
     /// Names the category's purpose beside the spend so an even split shown for

@@ -136,15 +136,16 @@ struct MoneyUpDisclosureCard<Summary: View, Detail: View>: View {
         } label: {
             Group {
                 if dynamicTypeSize.isAccessibilitySize {
-                    // The figure takes the card's whole width: beside the badge
-                    // and the chevron it was cut to "…" at the largest sizes.
+                    // Title and figure each take the card's whole width: beside
+                    // the badge and the chevron the title broke mid-word and
+                    // the figure was cut to "…" at the largest sizes.
                     VStack(alignment: .leading, spacing: 8) {
                         HStack(alignment: .center, spacing: 12) {
                             MoneyUpSymbolBadge(systemImage: systemImage)
-                            titleText
                             Spacer(minLength: 8)
                             chevron
                         }
+                        titleText
                         summary
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
