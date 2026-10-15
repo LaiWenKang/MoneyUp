@@ -89,9 +89,12 @@ extension DashboardView {
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+                // Combined inside the card, as every other Today card does:
+                // combined around the card's own container, VoiceOver kept
+                // reading the shown figures after amounts were hidden.
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("today-pinned-hero")
             }
-            .accessibilityElement(children: .combine)
-            .accessibilityIdentifier("today-pinned-hero")
         }
     }
 }

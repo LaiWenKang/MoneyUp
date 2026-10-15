@@ -28,18 +28,20 @@ its own `body` is only masked when that body runs again. SwiftUI skips a
 child's body when its inputs are unchanged, and none of a row's inputs change
 when only the preference does.
 
-## P1 — Hiding amounts left figures on screen
+## P1 — Hiding amounts left figures on screen and in VoiceOver
 
 | Evidence on `main` | Effect |
 |---|---|
-| `PinnedBudgetBoard.swift:121` `PinnedBudgetRow`, `HistoryFilters.swift:6` `HistorySummaryView`, `PlanView.swift:189` `BudgetRow` and `:330` `BudgetSummaryCard` format amounts in their own bodies and do not observe `MoneyAmountPrivacy.storageKey`. | After tapping *Hide amounts* the pinned rows on Today, History's totals and Plan's rows and summary kept showing exact figures until something else redrew them (scrolling them off screen, a new entry, relaunch). |
+| `PinnedBudgetBoard.swift:121` `PinnedBudgetRow` formats its figures in its own body and does not observe `MoneyAmountPrivacy.storageKey`. Reproduced in the real app on iOS 26.5 (UI journey below): after *Hide amounts* the row still read `$551.50` and `Day, $32.44`. | The pinned row kept showing exact figures, on screen and to VoiceOver, until something else redrew it. |
+| `DashboardPinnedHero.swift:55,81` combined the hero for VoiceOver *around* `MoneyUpCard`, which is itself an accessibility container. Same run: the hero's own texts said *hidden amount*, but the combined element VoiceOver reads still said `Left this month, $551.50, … Today, $32.44`. Every other Today card combines *inside* its card and updated correctly. | VoiceOver users heard the exact figures the screen had just hidden. |
+| `HistoryFilters.swift:6` `HistorySummaryView`, `PlanView.swift:189` `BudgetRow` and `:330` `BudgetSummaryCard` have the same structure as the pinned row. **Not reproduced:** the iOS 18.5 render test below hid every figure on Today, History, Plan and Assets on `main`, and the journey covers Today only. | Same risk as the pinned row; changed for consistency, not on evidence of a leak. |
 
-**Change.** Each of the four observes the preference, the same pattern
-`DashboardView` already uses, so it redraws the moment amounts are hidden or
-shown.
+**Change.** The four views observe the preference, the pattern
+`DashboardView` already uses, so they redraw the moment amounts are hidden or
+shown. The hero combines its content inside the card, as the other cards do.
 
-**Acceptance.** Show amounts on each primary tab, hide them: no figure that was
-visible is still visible.
+**Acceptance.** On a budgeted Today, show amounts, then hide them: no figure
+that was shown remains anywhere in the accessibility tree.
 
 ## P2 — VoiceOver read the mask aloud
 
@@ -82,17 +84,21 @@ still says *Left this month*.
 ## Verification
 
 Reproduction first: commit `758bcba` adds the tests alone, against `main`'s
-app code, and its CI run is the *before* evidence; the fix follows as the
-next commit.
+app code. Its CI is the *before* evidence:
 
-- `AmountPrivacyRenderTests` (App target, iPhone 16 Pro iOS 18.5 in CI):
-  renders each primary tab with amounts shown, writes the preference on the
-  same live view and reads the pixels back with Vision; asserts no figure
-  survives. Also: the over-budget hero in words with amounts hidden (render),
-  the hero's title and amount at −150, 0, 0.01 and 551, and the spoken mask.
-- `testHidingAmountsOnABudgetedTodayHidesAndSilencesEveryFigure` (UI journey,
-  iPhone 17 Pro iOS 26.5 in CI): taps the real eye button on a budgeted Today
-  and checks the accessibility tree for surviving figures and for `*****`.
+| Test on `758bcba` (app code = `main`) | Result |
+|---|---|
+| `AmountPrivacyRenderTests.testHidingAmountsHidesEveryFigureAlreadyOnEachPrimaryTab` — hosted render, iPhone 16 Pro, iOS 18.5 ([run 38691196502](https://github.com/LaiWenKang/MoneyUp/actions/runs/38691196502)) | **Passed**: every figure masked after the toggle on all four tabs. The hosted render does not reproduce P1; kept as a guard. |
+| `testHidingAmountsOnABudgetedTodayHidesAndSilencesEveryFigure` — real app, real eye button, iPhone 17 Pro, iOS 26.5 ([run 38691196521](https://github.com/LaiWenKang/MoneyUp/actions/runs/38691196521)) | **Failed as expected**: `Still shown after hiding: 32.44, 551.50` (pinned row, and the hero's combined VoiceOver label). The attached tree also holds the next payment read as `*****` (P2); the second assertion never ran because the first stops the test. |
+
+Why the hosted render on iOS 18.5 redraws the rows while the app on iOS 26.5
+does not is not established; the fix does not depend on it.
+
+Tests that ship with the fix:
+
+- The two above, which must now both pass.
+- The over-budget hero in words with amounts hidden (render, English); the
+  hero's title and amount at −150, 0, 0.01 and 551; the spoken mask.
 - Swift was not compiled or run in the authoring environment (Linux); every
   `Scripts/validate_*.py` passes there. Compile, unit, render and UI evidence
   comes from the pull request's macOS CI.
