@@ -121,6 +121,10 @@ struct PinnedBudgetBoard: View {
 struct PinnedBudgetRow: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    /// Masking is decided while each figure is formatted; observing the
+    /// preference makes the row redraw the moment amounts are hidden.
+    @AppStorage(MoneyAmountPrivacy.storageKey)
+    private var hidesAmounts = MoneyAmountPrivacy.defaultHidesAmounts
     let summary: PinnedBudgetSummary
     let monthElapsed: Double
     /// Board-wide: the purpose chip and the spent-against-limit split are a
@@ -137,6 +141,7 @@ struct PinnedBudgetRow: View {
     }
 
     var body: some View {
+        let _ = hidesAmounts
         VStack(alignment: .leading, spacing: 7) {
             headline
             if case let .available(value)? = ratio {

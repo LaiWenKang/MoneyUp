@@ -188,6 +188,9 @@ struct PlanView: View {
 
 struct BudgetRow: View {
     @Environment(AppModel.self) private var model
+    /// Redraws the row's figures the moment amounts are hidden or shown.
+    @AppStorage(MoneyAmountPrivacy.storageKey)
+    private var hidesAmounts = MoneyAmountPrivacy.defaultHidesAmounts
     let node: BudgetNode
     let depth: Int
     let progress: BudgetProgress?
@@ -222,6 +225,7 @@ struct BudgetRow: View {
     }
 
     var body: some View {
+        let _ = hidesAmounts
         let ratioResult = ratio
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .center, spacing: 8) {
@@ -328,6 +332,9 @@ struct BudgetRow: View {
 }
 
 struct BudgetSummaryCard: View {
+    /// Redraws the totals the moment amounts are hidden or shown.
+    @AppStorage(MoneyAmountPrivacy.storageKey)
+    private var hidesAmounts = MoneyAmountPrivacy.defaultHidesAmounts
     let limit: Money
     let spent: Money
     let remaining: Money
@@ -344,6 +351,7 @@ struct BudgetSummaryCard: View {
     private var isOverspent: Bool { remaining.amount < .zero }
 
     var body: some View {
+        let _ = hidesAmounts
         let ratioResult = ratio
         VStack(alignment: .leading, spacing: 12) {
             // One progress graphic: the pace bar matches every category row
