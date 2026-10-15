@@ -1290,7 +1290,11 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(decimalAmount(from: "1,2,3", locale: french))
         XCTAssertNil(decimalAmount(from: "NaN", locale: french))
         XCTAssertNil(decimalAmount(from: "1e6", locale: french))
-        XCTAssertNil(decimalAmount(from: "1 000,50", locale: french))
+        // Grouped as French writes it, the whole string is read; one group
+        // without a decimal part, or groups not in threes, still are not.
+        XCTAssertEqual(decimalAmount(from: "1 000,50", locale: french), Decimal(string: "1000.50"))
+        XCTAssertNil(decimalAmount(from: "1 000", locale: french))
+        XCTAssertNil(decimalAmount(from: "1 00,50", locale: french))
         XCTAssertNil(decimalAmount(from: "１２,５０", locale: french))
         XCTAssertNil(decimalAmount(from: String(repeating: "1", count: 129)))
         XCTAssertEqual(

@@ -48,11 +48,12 @@ final class RoundTripReliabilityTests: XCTestCase {
         XCTAssertNil(issue("999999999999999.00", usd))
         XCTAssertEqual(issue("999999999999999.01", usd), .tooLarge)
         XCTAssertEqual(issue("1000000000000000", usd), .tooLarge)
-        for text in ["abc", "0", "0.00", "-5", "1e3", "12.", ".", "1,234.50", "$12"] {
+        // "1,234" alone could be a decimal elsewhere; "1,234.50" has one reading (LogInputAndSaveTests).
+        for text in ["abc", "0", "0.00", "-5", "1e3", "12.", ".", "1,234", "$12"] {
             XCTAssertEqual(issue(text, usd), .invalid, text)
         }
         // A prefix still being typed into the focused field is not an error yet.
-        for text in ["12.", "0", "0.", "0.0"] {
+        for text in ["12.", "0", "0.", "0.0", "."] {
             XCTAssertNil(issue(text, usd, editing: true), text)
         }
         // Before an account is chosen only the shape of the number is checked.
