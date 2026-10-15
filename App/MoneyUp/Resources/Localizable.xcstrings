@@ -587,6 +587,7 @@
     "fx.convert.waiting" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Enter the amount and rate"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"请输入金额与汇率"}}}},
     "fx.convert.note_format" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"%@ %@ @ %@"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"%@ %@ @ %@"}}}},
     "today.hero.left_month" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Left this month"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"本月剩余"}}}},
+    "today.hero.over_month" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Over this month"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"本月超支"}}}},
     "today.hero.today_share" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Today"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"今天"}}}},
     "recovery.issues_title" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Recovery notes"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"恢复记录"}}}},
     "recovery.issues_detail" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Redacted codes for anything MoneyUp could not finish, such as a locked capture that could not be handed to Log. Nothing here contains amounts or names."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"MoneyUp 未能完成事项的脱敏代码，例如未能交给记账页的锁定记录。此处不含金额或名称。"}}}},

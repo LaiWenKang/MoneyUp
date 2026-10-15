@@ -172,12 +172,12 @@ struct MoneyUpFigure: View {
             Label(title, systemImage: systemImage)
                 .font(.caption)
                 .foregroundStyle(tint)
-            Text(value)
+            Text(maskingAmounts: value)
                 .font(.subheadline.monospacedDigit().weight(.semibold))
                 .fixedSize(horizontal: false, vertical: true)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(title)
-        .accessibilityValue(value)
+        .accessibilityValue(MoneyAmountPrivacy.spoken(value))
     }
 }
