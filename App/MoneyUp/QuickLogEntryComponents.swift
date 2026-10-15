@@ -259,7 +259,8 @@ extension QuickLogEntryView {
                     text: trackedBinding(
                         $smartText,
                         \.smartText,
-                        refreshesOccurrenceDate: true
+                        refreshesOccurrenceDate: true,
+                        onUserEdit: { smartState.smartTextChanged() }
                     ),
                     axis: .vertical
                 )

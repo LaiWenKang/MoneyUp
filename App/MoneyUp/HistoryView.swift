@@ -548,8 +548,15 @@ struct HistoryView: View {
                                         .buttonStyle(.borderedProminent)
                                         .tint(.moneyUpAction)
                                 }
-                                Button("history.clear_filters") { clearHistoryFilters() }
-                                    .buttonStyle(.bordered)
+                                // An account or budget drill-in owns its scope;
+                                // only a search typed here is the person's to clear.
+                                if allowsFiltering {
+                                    Button("history.clear_filters") { clearHistoryFilters() }
+                                        .buttonStyle(.bordered)
+                                } else if !searchText.isEmpty {
+                                    Button("history.clear_search") { searchText = "" }
+                                        .buttonStyle(.bordered)
+                                }
                             }
                             .listRowBackground(Color.clear)
                         }
@@ -756,8 +763,12 @@ struct HistoryView: View {
                     calendar: model.reportingCalendar
                 ) { updatedFilters in
                     guard filters != updatedFilters else { return }
+                    let range = HistoryFilterScopePolicy.range(
+                        afterApplying: updatedFilters, over: filters,
+                        selected: quickRange, calendar: model.reportingCalendar
+                    )
                     filters = updatedFilters
-                    quickRange = nil
+                    quickRange = range
                 }
             }
             .sheet(item: $selectedEntry, onDismiss: {
@@ -797,7 +808,7 @@ extension HistoryView {
     /// there is something to clear.
     private var filterChips: some View {
         let activeCount = filters.advancedFilterCount(quickRange: quickRange)
-        let canClear = filters.hasActiveFilters || !searchText.isEmpty
+        let canClear = HistoryFilterScopePolicy.canClear(filters: filters, range: quickRange, searchText: searchText)
         return HStack(spacing: 6) {
             Button { showingFilters = true } label: {
                 HStack(spacing: 4) {
@@ -847,18 +858,21 @@ extension HistoryView {
             Button("history.clear_filters") { clearHistoryFilters() }
                 .fixedSize(horizontal: true, vertical: false)
                 .frame(minHeight: 44)
-                .disabled(!filters.hasActiveFilters && searchText.isEmpty)
+                .disabled(!HistoryFilterScopePolicy.canClear(filters: filters, range: quickRange, searchText: searchText))
         }
         .buttonStyle(.borderless)
     }
 
     private func clearHistoryFilters() {
         let snapshot = reportingSnapshot
+        let range = HistoryFilterScopePolicy.rangeAfterClearing(range: quickRange, rangeBeforeSearch: rangeBeforeSearch)
         filters = HistoryFilterDraft(now: snapshot.instant, calendar: snapshot.calendar)
-        quickRange = .all
         rangeBeforeSearch = nil
         searchText = ""
         appliedSearchText = ""
+        // An unchanged range fires no onChange, so its dates are applied here.
+        quickRange = range
+        applyQuickRange(range, snapshot: snapshot)
     }
 
     private func setCategoryFilter(_ categoryIDs: Set<UUID>?) {

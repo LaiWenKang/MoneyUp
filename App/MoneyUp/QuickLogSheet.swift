@@ -598,23 +598,8 @@ struct QuickLogEntryView: View {
         currency: CurrencyCode?,
         isEditing: Bool = false
     ) -> String? {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-        // "12." or "0.0" mid-typing is not an error yet; it would flash a row.
-        if isEditing, isIncompleteAmount(trimmed) { return nil }
-        guard let written = writtenAmount(from: trimmed), written.value > .zero else {
-            return AppLocalization.string("error.invalid_amount")
-        }
-        guard let currency else { return nil }
-        do {
-            guard written.fractionDigits <= currency.minorUnits else {
-                throw MoneyError.unsupportedPrecision(currency: currency)
-            }
-            try MonetaryInputPolicy.validate(written.value, currency: currency)
-            return nil
-        } catch {
-            return safeUserMessage(for: error, context: .save)
-        }
+        // The transaction editor applies the same rule and wording.
+        MoneyInputIssue.of(text, currency: currency, isEditing: isEditing)?.message
     }
 
     var splitRemainder: Decimal? {
@@ -675,7 +660,7 @@ struct QuickLogEntryView: View {
 
     var canSave: Bool {
         guard !isScanning, !isCheckingDuplicates, !isClearingDraft, !isParsingSmartEntry,
-              smartState.issues.isEmpty,
+              !smartState.blocksSave,
               let amount,
               let accountID,
               let sourceAccount = selectedSourceAccount else {
