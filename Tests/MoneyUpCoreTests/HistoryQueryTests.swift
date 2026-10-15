@@ -89,6 +89,81 @@ final class HistoryQueryTests: XCTestCase {
         )
     }
 
+    /// A row shows "SGD 1,234.50" or "$12.00"; typing what the row shows, with
+    /// or without grouping, symbol, code, trailing zero or sign, finds it.
+    func testSearchFindsAmountsWrittenAsTheirRowShowsThem() throws {
+        let fixture = try Fixture()
+        let rent = try fixture.expense(amount: try XCTUnwrap(Decimal(string: "1234.50")), payee: "Rent")
+        let coffee = try TransactionFactory.expense(
+            amount: Money(12, currency: fixture.usd), paidFrom: fixture.usAccount.id,
+            category: fixture.food.id, payee: "Kiosk"
+        )
+        let jpy = try CurrencyCode("JPY")
+        let yenWallet = LedgerAccount(name: "Travel wallet", kind: .asset, currency: jpy)
+        let yen = try TransactionFactory.expense(
+            amount: Money(1200, currency: jpy), paidFrom: yenWallet.id,
+            category: fixture.food.id, payee: "Ramen"
+        )
+        let entries = [rent, coffee, yen]
+        let accounts = fixture.accounts + [yenWallet]
+        func found(_ text: String, locale: String = "en_US") -> [String] {
+            HistoryQuery(searchText: text)
+                .filteredEntries(entries, accounts: accounts, locale: Locale(identifier: locale))
+                .compactMap(\.payee)
+        }
+        for written in [
+            "1,234.50", "1234.50", "1,234.5", "1234.5 SGD", "1,234.50 SGD", "SGD 1,234.50",
+            "SGD\u{00A0}1,234.50", "-1,234.50", "−1,234.50", " 1,234.50 "
+        ] {
+            XCTAssertEqual(found(written), ["Rent"], written)
+        }
+        for written in ["$12", "$12.00", "12.00", "USD 12.00", "-$12.00"] {
+            XCTAssertEqual(found(written), ["Kiosk"], written)
+        }
+        XCTAssertEqual(found("¥1,200"), ["Ramen"])
+        XCTAssertEqual(found("1,200"), ["Ramen"])
+        XCTAssertEqual(found("1.234,50", locale: "de_DE"), ["Rent"])
+        XCTAssertEqual(found("1.234,50 SGD", locale: "de_DE"), ["Rent"])
+        // Near misses and the currency code alone behave as before.
+        XCTAssertEqual(found("1,234.51"), [])
+        XCTAssertEqual(found("12.01"), [])
+        XCTAssertEqual(found("SGD"), ["Rent"])
+        XCTAssertEqual(found("USD"), ["Kiosk"])
+    }
+
+    /// Rows show a category's path ("Food › Groceries"), so the parent's name
+    /// finds the child's entries; a cycle in damaged data cannot hang search.
+    func testSearchFindsEntriesByTheirCategoryParentName() throws {
+        let fixture = try Fixture()
+        let groceries = LedgerAccount(name: "Groceries", kind: .expense, parentID: fixture.food.id)
+        let entry = try TransactionFactory.expense(
+            amount: Money(9, currency: fixture.sgd), paidFrom: fixture.wallet.id,
+            category: groceries.id, payee: "Market"
+        )
+        let accounts = fixture.accounts + [groceries]
+        for written in ["Food", "groceries", "Market"] {
+            XCTAssertEqual(
+                HistoryQuery(searchText: written).filteredEntries([entry], accounts: accounts).count, 1, written
+            )
+        }
+        XCTAssertEqual(HistoryQuery(searchText: "Transport").filteredEntries([entry], accounts: accounts).count, 0)
+
+        let loopA = UUID()
+        let loopB = UUID()
+        let cyclic = [
+            LedgerAccount(id: loopA, name: "Loop A", kind: .expense, parentID: loopB),
+            LedgerAccount(id: loopB, name: "Loop B", kind: .expense, parentID: loopA)
+        ]
+        let looped = try TransactionFactory.expense(
+            amount: Money(3, currency: fixture.sgd), paidFrom: fixture.wallet.id, category: loopA
+        )
+        XCTAssertEqual(
+            HistoryQuery(searchText: "Loop B")
+                .filteredEntries([looped], accounts: fixture.accounts + cyclic).count,
+            1
+        )
+    }
+
     func testAttachmentMatchSupplementsButDoesNotBypassOtherFilters() throws {
         let fixture = try Fixture()
         let matching = try fixture.expense(amount: 28.80, payee: "Structured title")
@@ -381,6 +456,31 @@ final class HistoryQueryTests: XCTestCase {
         )
         // CI is a broad algorithmic regression guard. The Golden PRD's
         // 300 ms p95 remains a physical oldest-device release measurement.
+        XCTAssertLessThan(elapsed, .seconds(2))
+    }
+
+    /// An amount query builds every form a row can show for every amount; no
+    /// two amounts here are equal, so nothing is served from the cache.
+    func testTenThousandEntryAmountSearchHasABoundedRegressionGuard() throws {
+        let fixture = try Fixture()
+        let entries = try (1...10_000).map { index in
+            try fixture.expense(
+                amount: Decimal(index) / 100,
+                occurredAt: Date(timeIntervalSince1970: TimeInterval(index)),
+                payee: "Cafe \(index)"
+            )
+        }
+        let clock = ContinuousClock()
+        let started = clock.now
+
+        let filtered = HistoryQuery(searchText: "SGD 12.34").filteredEntries(
+            entries,
+            accounts: fixture.accounts,
+            locale: Locale(identifier: "en_US")
+        )
+        let elapsed = started.duration(to: clock.now)
+
+        XCTAssertEqual(filtered.compactMap(\.payee), ["Cafe 1234"])
         XCTAssertLessThan(elapsed, .seconds(2))
     }
 }
