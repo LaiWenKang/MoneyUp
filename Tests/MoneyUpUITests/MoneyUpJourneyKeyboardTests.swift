@@ -33,8 +33,9 @@ extension MoneyUpJourneyTests {
         expectTrue(problems.isEmpty, "Covered while typing:\n" + problems.joined(separator: "\n"))
     }
 
-    /// Logs one expense, opens it from History and focuses each field below
-    /// the amount, ending with the last split line's amount and note.
+    /// Logs one expense, opens it from History, splits it, and focuses each
+    /// field below the amount: the last split line's amount and note, then
+    /// payee and note.
     private func editorFieldsCoveredByTheKeyboard(textSize: String?, variant: String) -> [String] {
         let app = launch(extra: textSize.map { ["-UIPreferredContentSizeCategoryName", $0] } ?? [])
         type("18", into: openLog(app))
@@ -49,19 +50,16 @@ extension MoneyUpJourneyTests {
         row.tap()
         let editor = app.navigationBars["Edit transaction"]
         expectTrue(editor.waitForExistence(timeout: timeout), "The editor did not open")
-        var problems: [String] = []
-        for label in ["Title or merchant (optional)", "Description or notes (optional)"] {
-            if let problem = coverage(of: textInput(label, in: app), named: "\(variant)-\(label)", in: app,
-                                      below: editor, above: nil) {
-                problems.append(problem)
-            }
-            hideKeyboard(app)
-        }
+        // Top to bottom, as the form lays them out: the split switch and its
+        // lines come before the date, payee and note.
         let split = app.switches["Split across categories"].firstMatch
         reveal(split, in: app)
-        guard split.exists else { return problems + ["\(variant): the split switch is missing"] }
+        guard split.exists else { return ["\(variant): the split switch is missing"] }
         split.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
-        for label in ["Split 2 amount", "Split 2 note (optional)"] {
+        var problems: [String] = []
+        let labels = ["Split 2 amount", "Split 2 note (optional)",
+                      "Title or merchant (optional)", "Description or notes (optional)"]
+        for label in labels {
             if let problem = coverage(of: textInput(label, in: app), named: "\(variant)-\(label)", in: app,
                                       below: editor, above: nil) {
                 problems.append(problem)
