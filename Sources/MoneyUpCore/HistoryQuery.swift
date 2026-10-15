@@ -140,13 +140,13 @@ public struct HistoryQuery: Equatable, Sendable {
             accounts.map { ($0.id, $0) },
             uniquingKeysWith: { first, _ in first }
         )
-        let amountForms = HistoryAmountSearchForms(locale: locale)
+        let search = HistorySearchPass(searchText: searchText, locale: locale)
         return entries.filter {
             matches(
                 $0,
                 accountsByID: accountsByID,
                 locale: locale,
-                amountForms: amountForms,
+                search: search,
                 calendar: calendar
             )
         }
@@ -235,7 +235,7 @@ public struct HistoryQuery: Equatable, Sendable {
         _ entry: JournalEntry,
         accountsByID: [UUID: LedgerAccount],
         locale: Locale,
-        amountForms: HistoryAmountSearchForms,
+        search: HistorySearchPass,
         calendar: Calendar
     ) -> Bool {
         if let requiredEntryIDs, !requiredEntryIDs.contains(entry.id) {
@@ -283,10 +283,7 @@ public struct HistoryQuery: Equatable, Sendable {
             guard hasAmountInRange else { return false }
         }
 
-        let query = HistoryAmountSearchForms.normalizedSpaces(
-            searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        )
-        guard !query.isEmpty else { return true }
+        guard !search.textQuery.isEmpty else { return true }
         func includes(_ value: String, _ text: String) -> Bool {
             value.range(
                 of: text,
@@ -296,11 +293,8 @@ public struct HistoryQuery: Equatable, Sendable {
         }
         let textValues = [entry.payee, entry.note].compactMap { $0 }
             + entry.postings.flatMap { pathNames(of: $0.accountID, accountsByID: accountsByID) }
-        // Amounts are matched without their sign, as they are stored: a row
-        // shows "−$28.80" for spending, and "-28.80" should still find it.
-        let amountQuery = HistoryAmountSearchForms.unsigned(query)
-        let structuredMatch = textValues.contains { includes($0, query) }
-            || amountForms.forms(for: entry, query: amountQuery).contains { includes($0, amountQuery) }
+        let structuredMatch = textValues.contains { includes($0, search.textQuery) }
+            || search.amountForms(of: entry).contains { includes($0, search.amountQuery) }
         return structuredMatch || attachmentMatchedEntryIDs?.contains(entry.id) == true
     }
 
@@ -364,23 +358,34 @@ public struct HistoryQuery: Equatable, Sendable {
     }
 }
 
-/// The ways a history row's amount can be written, so a search finds an entry
-/// by the figure its row shows ("$28.80", "SGD 1,234.50", "1234.50") as well
-/// as by the plain number with its code ("28.8 SGD"). One instance serves one
-/// search pass and is not shared across threads.
-final class HistoryAmountSearchForms {
+/// One search over History: the query prepared once, and the ways each
+/// amount can be written, so an entry is found by the figure its row shows
+/// ("$28.80", "SGD 1,234.50", "1234.50") as well as by the plain number with
+/// its code ("28.8 SGD"). Built per pass and never shared across threads.
+final class HistorySearchPass {
     private struct Key: Hashable {
         let amount: Decimal
         let currency: CurrencyCode
-        let includesDisplayForms: Bool
     }
 
+    /// The trimmed query, with no-break spaces read as spaces.
+    let textQuery: String
+    /// The query without one leading sign: amounts are stored unsigned, and a
+    /// row shows "−$28.80" for spending.
+    let amountQuery: String
+    /// The query's digits. The forms a row displays are built only when these
+    /// occur in the amount's own digits, the only case in which a displayed
+    /// form can match: a search scans the whole book for its totals.
+    private let queryDigits: String
     private let locale: Locale
     private let flexibleFormatter: NumberFormatter
     private var displayFormatters: [CurrencyCode: [NumberFormatter]] = [:]
     private var formsByKey: [Key: [String]] = [:]
 
-    init(locale: Locale) {
+    init(searchText: String, locale: Locale) {
+        textQuery = Self.normalizedSpaces(searchText.trimmingCharacters(in: .whitespacesAndNewlines))
+        amountQuery = Self.unsigned(textQuery)
+        queryDigits = String(amountQuery.filter(\.isNumber))
         self.locale = locale
         flexibleFormatter = NumberFormatter()
         flexibleFormatter.locale = locale
@@ -389,19 +394,12 @@ final class HistoryAmountSearchForms {
         flexibleFormatter.maximumFractionDigits = 16
     }
 
-    /// Every written form of the entry's amounts. The forms a row displays
-    /// are built only for a query with a digit, which is the only kind that
-    /// can match them: a search scans the whole book for its totals.
-    func forms(for entry: JournalEntry, query: String) -> [String] {
-        let includesDisplayForms = query.contains { $0.isNumber }
+    /// Every written form of the entry's amounts, each amount once.
+    func amountForms(of entry: JournalEntry) -> [String] {
         var forms: [String] = []
         var seen: Set<Key> = []
         for posting in entry.postings {
-            let key = Key(
-                amount: abs(posting.money.amount),
-                currency: posting.money.currency,
-                includesDisplayForms: includesDisplayForms
-            )
+            let key = Key(amount: abs(posting.money.amount), currency: posting.money.currency)
             guard seen.insert(key).inserted else { continue }
             forms += self.forms(for: key)
         }
@@ -416,11 +414,15 @@ final class HistoryAmountSearchForms {
         if let flexible = flexibleFormatter.string(from: number) {
             forms.append(flexible + " " + code)
         }
-        if key.includesDisplayForms {
+        if !queryDigits.isEmpty {
             let formatters = displayFormatters(for: key.currency)
-            forms += formatters.compactMap { $0.string(from: number) }
-            if let grouped = formatters.first?.string(from: number) {
-                forms.append(grouped + " " + code)
+            // Every displayed form carries the same digits as the plain one.
+            if let plain = formatters[1].string(from: number),
+               plain.filter(\.isNumber).contains(queryDigits) {
+                forms += formatters.compactMap { $0.string(from: number) }
+                if let grouped = formatters[0].string(from: number) {
+                    forms.append(grouped + " " + code)
+                }
             }
         }
         let normalized = forms.map(Self.normalizedSpaces)
@@ -428,8 +430,8 @@ final class HistoryAmountSearchForms {
         return normalized
     }
 
-    /// The fixed-scale number (grouped first, then plain) and the currency
-    /// forms a row uses, symbol or ISO code, at the currency's minor units.
+    /// Grouped and plain numbers (in that order), then the currency forms a
+    /// row uses, symbol or ISO code, all at the currency's minor units.
     private func displayFormatters(for currency: CurrencyCode) -> [NumberFormatter] {
         if let cached = displayFormatters[currency] { return cached }
         let styles: [(style: NumberFormatter.Style, groups: Bool)] = [

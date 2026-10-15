@@ -76,10 +76,11 @@ are searched with its own (a cycle in damaged data ends the walk).
   for matching and never parses the query into an amount.
 - No dependency, permission, telemetry, network or stored-format change; no
   new strings (the claim wording already existed).
-- A search scans the whole book for its totals, so the new amount forms are
-  built only for a query containing a digit, and cached per amount: a
-  10,000-entry amount search with no repeated amount is guarded at < 2 s in
-  CI, beside the existing 10,000-entry text search guard.
+- A search scans the whole book for its totals, so the query is prepared once
+  per search, the displayed forms of an amount are built only when the
+  query's digits occur in that amount's digits, and each amount's forms are
+  cached for the pass: a 10,000-entry amount search with no repeated amount is
+  guarded at < 2 s in CI, beside the existing 10,000-entry text search guard.
 
 ## Verification
 
