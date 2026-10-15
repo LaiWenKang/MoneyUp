@@ -93,9 +93,11 @@ pin is unchanged: the new code is outside it.
   `en_US`, `de_DE`, `fr_FR` (typed and narrow space) and `de_CH`, exact
   `Decimal` values and scales; currency scale after grouping; the ambiguous
   and malformed forms that stay refused (including M1's IDR and VND cases);
-  every Save reason worded in both languages. Two existing assertions change
-  deliberately: round 1's invalid list keeps "1,234" instead of "1,234.50",
-  and "." becomes an incomplete prefix while typing.
+  every Save reason worded in both languages. Three existing assertions
+  change deliberately: round 1's invalid list keeps "1,234" instead of
+  "1,234.50"; "." becomes an incomplete prefix while typing; and French
+  "1 000,50" is read as 1000.50 (the test guards against reading part of the
+  string, and now also refuses "1 000" and "1 00,50").
 - UI journey (+1, iOS 26.5): an empty Log's dimmed Save carries *Enter or
   confirm the amount.*; ".5" shows no error, enables Save and saves; a transfer
   without a destination carries *Choose the receiving account.*
