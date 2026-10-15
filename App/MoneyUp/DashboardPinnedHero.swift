@@ -76,13 +76,20 @@ extension DashboardView {
                         .font(.caption)
                         .foregroundStyle(.moneyUpSecondary)
                     if let today = hero.today {
-                        HStack(spacing: 6) {
-                            Image(systemName: "sun.max.fill")
-                                .foregroundStyle(.tint)
-                            Text("today.hero.today_share")
-                            Text(maskingAmounts: formattedMoney(today))
-                                .fontWeight(.semibold)
-                                .monospacedDigit()
+                        // One line where it fits; at the largest sizes the
+                        // amount takes its own line rather than breaking.
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: 6) {
+                                todayShareTitle
+                                todayShareAmount(today)
+                            }
+                            .lineLimit(1)
+                            VStack(alignment: .leading, spacing: 2) {
+                                todayShareTitle
+                                todayShareAmount(today)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.5)
+                            }
                         }
                         .font(.footnote)
                         .foregroundStyle(.moneyUpSecondary)
@@ -96,6 +103,20 @@ extension DashboardView {
                 .accessibilityIdentifier("today-pinned-hero")
             }
         }
+    }
+
+    private var todayShareTitle: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "sun.max.fill")
+                .foregroundStyle(.tint)
+            Text("today.hero.today_share")
+        }
+    }
+
+    private func todayShareAmount(_ today: Money) -> some View {
+        Text(maskingAmounts: formattedMoney(today))
+            .fontWeight(.semibold)
+            .monospacedDigit()
     }
 }
 

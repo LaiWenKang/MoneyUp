@@ -682,7 +682,9 @@ W3_PATH_TYPE_DIGESTS: tuple[tuple[str, str, str, str], ...] = (
     # Re-pinned 2026-09-29: the Saved banner confirms Undo, bounces its glyph per save, and speaks a
     # masked amount as "hidden amount"; amounts never animate.
     # Re-pinned 2026-10-07: secondary text uses the accessible BrandTextSecondary colour (0.7.3 design pass); no behaviour change.
-    ("App/MoneyUp/QuickLogEntryChrome.swift", "extension", "QuickLogEntryView", "2afedf9593e047468b09265bf97507f6444ebe5959daff6cc2ac73461920db1d"),
+    # Re-pinned 2026-10-15: at accessibility text sizes the Saved banner stacks its confirmation above
+    # Undo and Close, and its amount moves to a line of its own rather than being cut (QuickLogSavedSummary).
+    ("App/MoneyUp/QuickLogEntryChrome.swift", "extension", "QuickLogEntryView", "00482686e7e5c1aceaced5ea99f71106370d87b79b5c1694e046bca5294e12a2"),
     (
         "App/MoneyUp/QuickLogEntryBody.swift",
         "extension",

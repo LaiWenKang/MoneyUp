@@ -160,16 +160,24 @@ extension DashboardView {
             VStack(alignment: .leading, spacing: 10) {
                 switch model.flexibleTodayResult(asOf: reportingDate) {
                 case let .available(.available(breakdown)):
-                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    // At the largest sizes the title and the figure each take
+                    // the card's width: side by side both were cut.
+                    let stacked = dynamicTypeSize.isAccessibilitySize
+                    let layout = stacked
+                        ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6))
+                        : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: 10))
+                    layout {
                         Label("dashboard.safe_to_spend", systemImage: "sun.max.fill")
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(.tint)
-                        Spacer(minLength: 8)
+                        if !stacked { Spacer(minLength: 8) }
                         let isOver = breakdown.availableForRemainingPeriod.amount < .zero
-                        VStack(alignment: .trailing, spacing: 1) {
+                        VStack(alignment: stacked ? .leading : .trailing, spacing: 1) {
                             Text(maskingAmounts: formattedMoney(isOver ? breakdown.availableForRemainingPeriod.negated : breakdown.amountPerDay))
                                 .font(.title3.monospacedDigit().weight(.semibold))
                                 .foregroundStyle(isOver ? Color.moneyUpDanger : Color.primary)
+                                .lineLimit(stacked ? 1 : nil)
+                                .minimumScaleFactor(stacked ? 0.4 : 1)
                             Text(isOver ? LocalizedStringKey("dashboard.safe_to_spend.over_caption") : "dashboard.safe_to_spend.per_day")
                                 .font(.caption2)
                                 .foregroundStyle(.moneyUpSecondary)
@@ -180,11 +188,21 @@ extension DashboardView {
                     Button {
                         isShowingFlexibleTodayBreakdown = true
                     } label: {
-                        Label(
-                            "dashboard.safe_to_spend.show_math",
-                            systemImage: "function"
-                        )
-                        .font(.footnote.weight(.semibold))
+                        if stacked {
+                            // "calculation" alone is wider than a 320-pt card at
+                            // the largest sizes: one line that shrinks, never a
+                            // word broken in two; the glyph is decoration.
+                            Text("dashboard.safe_to_spend.show_math")
+                                .font(.footnote.weight(.semibold))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.5)
+                        } else {
+                            Label(
+                                "dashboard.safe_to_spend.show_math",
+                                systemImage: "function"
+                            )
+                            .font(.footnote.weight(.semibold))
+                        }
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.tint)
