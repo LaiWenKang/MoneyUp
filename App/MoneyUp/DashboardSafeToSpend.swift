@@ -188,11 +188,21 @@ extension DashboardView {
                     Button {
                         isShowingFlexibleTodayBreakdown = true
                     } label: {
-                        Label(
-                            "dashboard.safe_to_spend.show_math",
-                            systemImage: "function"
-                        )
-                        .font(.footnote.weight(.semibold))
+                        if stacked {
+                            // "calculation" alone is wider than a 320-pt card at
+                            // the largest sizes: one line that shrinks, never a
+                            // word broken in two; the glyph is decoration.
+                            Text("dashboard.safe_to_spend.show_math")
+                                .font(.footnote.weight(.semibold))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.5)
+                        } else {
+                            Label(
+                                "dashboard.safe_to_spend.show_math",
+                                systemImage: "function"
+                            )
+                            .font(.footnote.weight(.semibold))
+                        }
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.tint)
