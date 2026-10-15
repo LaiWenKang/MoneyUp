@@ -22,7 +22,13 @@ extension MoneyUpJourneyTests {
         hide.tap()
         expectTrue(show.waitForExistence(timeout: timeout), "Amounts did not hide")
         let tree = Self.settledTree(of: app)
-        add(XCTAttachment(string: tree))
+        // Kept on success too: the hidden Today and its tree are the review
+        // evidence that nothing stayed visible or audible.
+        attachScreenshot(app, "privacy-budgeted-today-after-hiding")
+        let treeAttachment = XCTAttachment(string: tree)
+        treeAttachment.name = "privacy-budgeted-today-after-hiding-tree"
+        treeAttachment.lifetime = .keepAlways
+        add(treeAttachment)
         let stillShown = shown.intersection(Self.amounts(in: tree))
         let readAloud = tree.split(separator: "\n").filter { $0.contains("*****") }
             .map { $0.trimmingCharacters(in: .whitespaces) }
