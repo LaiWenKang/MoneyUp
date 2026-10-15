@@ -1,6 +1,7 @@
 import Foundation
 @testable import MoneyUp
 import MoneyUpCore
+import MoneyUpPersistence
 import XCTest
 
 /// History, round 3: a delete says everything it deletes, and a refresh after
