@@ -37,17 +37,25 @@ final class LargeTextAmountRenderTests: XCTestCase {
                 .tint(.accentColor))
             let window = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
                 .map(UIWindow.init(windowScene:)) ?? UIWindow(frame: .zero)
-            // Tall enough for every Today card at this size to be laid out.
-            window.frame = CGRect(x: 0, y: 0, width: width, height: 3_200)
+            // Tall enough for every Today card at this size to be laid out,
+            // drawn at 2x so the image stays within the largest texture iOS
+            // renders (a 9,600-pixel render at 3x came back black).
+            window.frame = CGRect(x: 0, y: 0, width: width, height: 3_600)
             window.rootViewController = host
             window.isHidden = false
             host.view.frame = window.bounds
-            let image = await Self.settledImage(of: window, host: host)
+            let image = await Self.settledImage(of: window, host: host, scale: 2)
             let attachment = XCTAttachment(image: image)
             attachment.name = "large-text-today-ax5-\(width)"
             attachment.lifetime = .keepAlways
             add(attachment)
             let lines = Self.recognizedLines(in: image)
+            guard lines.contains(where: { $0.contains("Today") }) else {
+                problems.append("\(width) pt: the render is blank, so nothing could be read")
+                window.isHidden = true
+                window.rootViewController = nil
+                continue
+            }
             problems += Self.brokenAmounts(in: lines).map { "\(width) pt: \($0)" }
             if !lines.contains(where: { $0.contains("122,222.22") }) {
                 problems.append("\(width) pt: the cash position 122,222.22 is not shown whole")
@@ -88,13 +96,13 @@ final class LargeTextAmountRenderTests: XCTestCase {
     }
 
     @MainActor
-    static func settledImage(of window: UIWindow, host: UIViewController) async -> UIImage {
+    static func settledImage(of window: UIWindow, host: UIViewController, scale: CGFloat = 3) async -> UIImage {
         host.view.layoutIfNeeded()
         try? await Task.sleep(for: .milliseconds(900))
         host.view.layoutIfNeeded()
         let format = UIGraphicsImageRendererFormat()
         format.opaque = true
-        format.scale = 3
+        format.scale = scale
         return UIGraphicsImageRenderer(bounds: window.bounds, format: format).image { _ in
             window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
         }
