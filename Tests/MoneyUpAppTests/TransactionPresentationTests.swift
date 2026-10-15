@@ -441,6 +441,19 @@ final class TransactionPresentationTests: XCTestCase {
         XCTAssertNil(QuickLogFocusScrollPolicy.target(for: nil))
     }
 
+    /// The editor scrolls like Log: to the row that carries the id, with a
+    /// split line's note going to its line's row.
+    @MainActor
+    func testEditorKeyboardScrollTargetsTheRowOfEveryEditableField() {
+        let lineID = UUID()
+        let fields: [TransactionEditView.FieldFocus] = [.amount, .destinationAmount, .payee, .note, .splitAmount(lineID)]
+        for field in fields {
+            XCTAssertEqual(field.scrollTarget, field)
+        }
+        XCTAssertEqual(TransactionEditView.FieldFocus.splitMemo(lineID).scrollTarget, .splitAmount(lineID))
+        XCTAssertNotEqual(TransactionEditView.FieldFocus.splitMemo(UUID()).scrollTarget, .splitAmount(lineID))
+    }
+
     func testOccurrenceDateRefreshesOnlyForAnUntouchedNewDraft() {
         XCTAssertTrue(
             QuickLogOccurrencePolicy.shouldRefresh(
