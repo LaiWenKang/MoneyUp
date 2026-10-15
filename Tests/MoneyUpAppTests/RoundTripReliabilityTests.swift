@@ -86,7 +86,8 @@ final class RoundTripReliabilityTests: XCTestCase {
     // MARK: - Log: a refused Smart Entry reading never strands Save
 
     func testARefusedReadingNeverBlocksSaveAndClearsWhenTheTextChanges() {
-        for refused in [[SmartEntryIssue.multiple], [.inputLimit], [.amount, .multiple]] {
+        let refusals: [[SmartEntryIssue]] = [[.multiple], [.inputLimit], [.amount, .multiple]]
+        for refused in refusals {
             var state = QuickLogSmartState()
             state.hasPreview = true
             state.issues = refused
@@ -129,9 +130,11 @@ final class RoundTripReliabilityTests: XCTestCase {
         XCTAssertFalse(filled.smartState.blocksSave, "The typed entry must stay saveable")
     }
 
-    /// Log after a refused multi-line reading over typed fields: the notice
-    /// stays and Save is offered. Hosting-controller renders for review in
-    /// the CI attachments, not device screenshots.
+    /// Log after a refused multi-line reading over typed fields, rendered for
+    /// review in the CI attachments (hosting-controller renders, not device
+    /// screenshots). That Save is offered is asserted by `blocksSave` in
+    /// `testSeveralLinesFillNothingAndLeaveTypedFieldsSaveable`; this only
+    /// shows it and checks that rendering saves nothing.
     @MainActor
     func testRenderRefusedReadingOverTypedFields() async throws {
         let fixture = try AppModelFixture()
@@ -285,11 +288,22 @@ final class RoundTripReliabilityTests: XCTestCase {
             if point == .afterJournalProjectionInvalidationBeforeCommit { await gate.suspend() }
         })
         let first = Task { try await replaceExpense(original, in: model, fixture: fixture, amount: 20) }
-        await gate.waitUntilReached()
+        let reached = await gate.waitUntilReached(timeout: .seconds(20))
+        guard reached else {
+            await gate.release()
+            _ = try? await first.value
+            await fixture.store.close()
+            XCTFail("The first save never reached its commit")
+            return
+        }
         do {
             try await replaceExpense(original, in: model, fixture: fixture, amount: 30)
             XCTFail("A second save while the first is writing must not write")
-        } catch AppModelError.transactionInProgress {}
+        } catch AppModelError.transactionInProgress {
+        } catch {
+            XCTFail("A second save must be refused as in progress, not \(error)")
+        }
+        // Always let the held save finish, whatever the second one did.
         await gate.release()
         try await first.value
         let live = try await fixture.store.fetchAll(JournalEntry.self, from: .journalEntries)
@@ -352,18 +366,23 @@ private func replaceExpense(
 private actor RoundTripGate {
     private var reached = false
     private var released = false
-    private var reachedWaiters: [CheckedContinuation<Void, Never>] = []
     private var releaseWaiters: [CheckedContinuation<Void, Never>] = []
 
     func suspend() async {
         reached = true
-        reachedWaiters.forEach { $0.resume() }
-        reachedWaiters = []
         if !released { await withCheckedContinuation { releaseWaiters.append($0) } }
     }
 
-    func waitUntilReached() async {
-        if !reached { await withCheckedContinuation { reachedWaiters.append($0) } }
+    /// False if the held save never reached the checkpoint in time, so a
+    /// regression fails the test instead of hanging the job.
+    func waitUntilReached(timeout: Duration) async -> Bool {
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: timeout)
+        while !reached {
+            guard clock.now < deadline else { return false }
+            do { try await Task.sleep(for: .milliseconds(10)) } catch { return false }
+        }
+        return true
     }
 
     func release() {
