@@ -402,19 +402,7 @@ extension DashboardView {
                     InsightsView()
                 } label: {
                     VStack(alignment: .leading, spacing: 12) {
-                        HStack {
-                            Label(
-                                "dashboard.open_insights",
-                                systemImage: "chart.xyaxis.line"
-                            )
-                            .font(.headline)
-                            Spacer()
-                            Image(systemName: "arrow.up.right")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.tertiary)
-                                .accessibilityHidden(true)
-                        }
-
+                        insightsHeading
                         TodayCashFlowStory(report: report, calendar: reportingSnapshot.calendar)
                     }
                     .contentShape(Rectangle())
@@ -433,6 +421,36 @@ extension DashboardView {
                 }
                 .buttonStyle(MoneyUpPressableButtonStyle())
                 .padding(.vertical, 6)
+            }
+        }
+    }
+
+    /// At the largest sizes the glyphs share a line above the title, which
+    /// then has the card's width instead of breaking mid-word.
+    @ViewBuilder
+    private var insightsHeading: some View {
+        let arrow = Image(systemName: "arrow.up.right")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.tertiary)
+            .accessibilityHidden(true)
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Image(systemName: "chart.xyaxis.line")
+                        .font(.headline)
+                        .accessibilityHidden(true)
+                    Spacer()
+                    arrow
+                }
+                Text("dashboard.open_insights")
+                    .font(.headline)
+            }
+        } else {
+            HStack {
+                Label("dashboard.open_insights", systemImage: "chart.xyaxis.line")
+                    .font(.headline)
+                Spacer()
+                arrow
             }
         }
     }

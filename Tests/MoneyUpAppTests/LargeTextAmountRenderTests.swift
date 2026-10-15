@@ -103,18 +103,25 @@ final class LargeTextAmountRenderTests: XCTestCase {
 
     func testBrokenAmountDetectorSeesCutAndSplitFigures() {
         XCTAssertEqual(Self.brokenAmounts(in: ["SGD 10,765.44", "Left this month", "Day SGD 358.85"]), [])
+        XCTAssertEqual(Self.brokenAmounts(in: ["SCD 10,765.44", "Income SGD 123,456.78"]), [], "A misread code is a code")
         XCTAssertEqual(Self.brokenAmounts(in: ["SGD 122,2…"]), ["SGD 122,2…"])
         XCTAssertEqual(Self.brokenAmounts(in: ["Food...", "SGD 1,234.56"]), ["Food..."])
         XCTAssertEqual(Self.brokenAmounts(in: ["SGD 10,7", "65.44"]), ["65.44"])
+        XCTAssertEqual(Self.brokenAmounts(in: ["SGD", "122,222.22"]), ["122,222.22"])
+        XCTAssertEqual(Self.brokenAmounts(in: ["Pri-", "vate", "Income less spending · month"]), ["Pri-"])
     }
 
-    /// Lines cut with an ellipsis, and figures separated from their currency
-    /// code (a number broken across lines leaves its tail without "SGD").
+    /// Lines cut with an ellipsis, words broken across lines (a line ending in
+    /// a hyphen), and figures separated from their currency code: a number
+    /// broken across lines leaves its tail without the code. Any three
+    /// capitals before the figure count as its code, so a misread "SCD" for
+    /// "SGD" is not taken for a broken figure.
     static func brokenAmounts(in lines: [String]) -> [String] {
         lines.filter { line in
             if line.contains("…") || line.contains("...") { return true }
+            if line.trimmingCharacters(in: .whitespaces).hasSuffix("-") { return true }
             let hasFigure = line.contains(/[0-9]+\.[0-9]{2}/)
-            let hasCode = line.replacingOccurrences(of: " ", with: "").uppercased().contains("SGD")
+            let hasCode = line.contains(/[A-Z]{3}\s?[0-9]/)
             return hasFigure && !hasCode
         }
     }

@@ -6,6 +6,7 @@ import SwiftUI
 /// month or combines unconverted currencies into a claimed spending trend.
 struct TodayCashFlowStory: View {
     @AppStorage(MoneyAmountPrivacy.storageKey) private var hidesAmounts = MoneyAmountPrivacy.defaultHidesAmounts
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let report: PeriodReport
     let calendar: Calendar
 
@@ -48,8 +49,12 @@ struct TodayCashFlowStory: View {
                     }
                 }
             }
-            .chartYAxis(hidesAmounts ? .hidden : .automatic)
+            // At accessibility sizes the axis labels and legend overlap the bars
+            // and each other; the Income and Spent figures below say the same.
+            .chartXAxis(dynamicTypeSize.isAccessibilitySize ? .hidden : .automatic)
+            .chartYAxis(hidesAmounts || dynamicTypeSize.isAccessibilitySize ? .hidden : .automatic)
             .chartLegend(position: .bottom, alignment: .leading)
+            .chartLegend(dynamicTypeSize.isAccessibilitySize ? .hidden : .automatic)
             .frame(height: 130)
             .environment(\.calendar, calendar)
             .environment(\.timeZone, calendar.timeZone)

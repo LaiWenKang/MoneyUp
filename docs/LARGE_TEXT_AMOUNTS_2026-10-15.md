@@ -42,13 +42,17 @@ digest-pinned Quick Log Chrome extension; it is re-pinned with a dated reason.
 | The pinned hero's *Today* share (`DashboardPinnedHero.swift`) sat on one line with its glyph and label. | "SGD 430.6 / 1". |
 | `safeToSpendSummary` (`DashboardSafeToSpend.swift`) put the title beside the figure. | "SGD 430…" and the title as "Fle / xi- / ble / to- / da / y". |
 | `TodayCashFlowStory` put the net figure on as many lines as it needed, and each flow's amount beside its label. | "SGD" above "122,222.22"; Income as "123,456. / 78". |
+| The Reports heading and the Private insights link put their title between a badge or glyph and a chevron; the cash-flow chart kept its axis labels and legend at a fixed 130-pt height. | "Re- / port / s and / in- / sight / s", "Pri- / vate / in- / sight / s"; axis labels and the legend overlapping (render after the first fix, `5f224fb`). |
 
 **Change.** At accessibility sizes each title and each figure gets a line of
 its own and the full width: a card's badge and chevron sit above its title,
 the title above the summary, orbits below their figure, the safe-to-spend
 title above its figure; the hero share, each flow and the pinned rows' Day /
 Week / Month lines drop their amount beneath their label when the line does
-not fit (`ViewThatFits`). Figures stay on one line and may shrink to 40–50 %,
+not fit (`ViewThatFits`); the Reports heading and the Private insights rows
+put their glyphs on a line above the words, and the cash-flow chart drops its
+axis labels and legend (the Income and Spent figures under it carry the
+values). Figures stay on one line and may shrink to 40–50 %,
 hero figures to 35 %, which at these sizes is still larger than body text.
 Standard sizes keep their layout (see Guardrails for the one exception).
 
@@ -109,6 +113,6 @@ Swift was not compiled or run in the authoring environment (Linux); every
 - The arithmetic sheet and the foreign-currency notices stay readable but can
   break a long figure; the Log amount field is one line and may show a long
   amount's tail as "…" when not focused.
-- Today's cash-flow chart crowds its axis labels at the largest sizes (the
-  labels overlap; the figures beside the chart are whole).
+- The test reads lines from pixels: a word SwiftUI breaks without a hyphen
+  is not caught, and the screen was checked by eye in the attached renders.
 - Secondary sheets were not audited at accessibility sizes.
