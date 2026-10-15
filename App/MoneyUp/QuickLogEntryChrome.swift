@@ -30,60 +30,61 @@ extension QuickLogEntryView {
             }
     }
 
+    /// Where the saved entry went, as a glyph; nil once its category is gone.
+    var savedCategoryBadge: MoneyUpCategoryBadge? {
+        guard let lastSavedCategoryID, model.accountsByID[lastSavedCategoryID] != nil else { return nil }
+        return MoneyUpCategoryBadge(
+            systemImage: MoneyUpCategorySymbol.symbol(for: lastSavedCategoryID, accountsByID: model.accountsByID),
+            tint: MoneyUpCategorySymbol.tint(for: lastSavedCategoryID),
+            size: 24
+        )
+    }
+
     /// The confirmation names the money that was just posted and offers Undo.
     func savedEntryBanner(entryID lastSavedEntryID: UUID) -> some View {
-            HStack(spacing: 12) {
+        // At accessibility sizes the confirmation takes its own line and the
+        // actions follow beneath it: in one row the amount was cut to "…".
+        let stacked = dynamicTypeSize.isAccessibilitySize
+        let layout = stacked
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+            : AnyLayout(HStackLayout(spacing: 12))
+        return layout {
                 Label {
-                    HStack(spacing: 6) {
-                        Text(showsUndoneConfirmation ? LocalizedStringKey("quick_log.removed") : "quick_log.saved")
-                        if let lastSavedAmountLabel {
-                            Text(verbatim: "·").foregroundStyle(.moneyUpSecondary)
-                            // Amounts never animate: this is the exact figure posted.
-                            Text(maskingAmounts: lastSavedAmountLabel)
-                                .fontWeight(.semibold)
-                                .monospacedDigit()
-                        }
-                        // The glyph alone says where it went; a name here
-                        // would truncate the amount on a phone-width banner.
-                        if let lastSavedCategoryID,
-                           model.accountsByID[lastSavedCategoryID] != nil {
-                            MoneyUpCategoryBadge(
-                                systemImage: MoneyUpCategorySymbol.symbol(
-                                    for: lastSavedCategoryID, accountsByID: model.accountsByID
-                                ),
-                                tint: MoneyUpCategorySymbol.tint(for: lastSavedCategoryID),
-                                size: 24
-                            )
-                        }
-                    }
+                    QuickLogSavedSummary(
+                        title: showsUndoneConfirmation ? "quick_log.removed" : "quick_log.saved",
+                        amount: lastSavedAmountLabel,
+                        badge: savedCategoryBadge
+                    )
                 } icon: {
                     QuickLogSavedGlyph(entryID: lastSavedEntryID, isUndone: showsUndoneConfirmation)
                 }
                 .foregroundStyle(.primary)
-                .lineLimit(1)
-                Spacer(minLength: 8)
-                if !showsUndoneConfirmation, let lastSavedFavouriteCandidate {
-                    SaveAsFavouriteButton(
-                        candidate: lastSavedFavouriteCandidate,
-                        isPresenting: $isNamingFavourite
-                    )
+                if !stacked { Spacer(minLength: 8) }
+                HStack(spacing: 12) {
+                    if stacked { Spacer(minLength: 0) }
+                    if !showsUndoneConfirmation, let lastSavedFavouriteCandidate {
+                        SaveAsFavouriteButton(
+                            candidate: lastSavedFavouriteCandidate,
+                            isPresenting: $isNamingFavourite
+                        )
+                        .disabled(isUndoing)
+                    }
+                    Button("action.undo") {
+                        Task { await undo(entryID: lastSavedEntryID) }
+                    }
+                    .accessibilityIdentifier("log-undo")
+                    .fontWeight(.semibold)
+                    .disabled(isUndoing || showsUndoneConfirmation)
+                    Button {
+                        updateSavedEntry(nil)
+                    } label: {
+                        Image(systemName: "xmark")
+                            .frame(minWidth: 44, minHeight: 44)
+                    }
+                    .buttonStyle(MoneyUpPressableButtonStyle())
+                    .accessibilityLabel("action.close")
                     .disabled(isUndoing)
                 }
-                Button("action.undo") {
-                    Task { await undo(entryID: lastSavedEntryID) }
-                }
-                .accessibilityIdentifier("log-undo")
-                .fontWeight(.semibold)
-                .disabled(isUndoing || showsUndoneConfirmation)
-                Button {
-                    updateSavedEntry(nil)
-                } label: {
-                    Image(systemName: "xmark")
-                        .frame(minWidth: 44, minHeight: 44)
-                }
-                .buttonStyle(MoneyUpPressableButtonStyle())
-                .accessibilityLabel("action.close")
-                .disabled(isUndoing)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
@@ -207,6 +208,48 @@ struct LogSaveBar: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
         .background { Color.moneyUpBackground }
+    }
+}
+
+/// What the Saved banner confirms: "Saved", the amount posted, and the
+/// category glyph. One line where it fits; otherwise the amount takes a line
+/// of its own and shrinks before it would ever be cut. The glyph alone says
+/// where the money went: a name here would crowd out the amount.
+struct QuickLogSavedSummary: View {
+    let title: LocalizedStringKey
+    let amount: String?
+    let badge: MoneyUpCategoryBadge?
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 6) {
+                Text(title)
+                if let amount {
+                    Text(verbatim: "·").foregroundStyle(.moneyUpSecondary)
+                    amountText(amount)
+                }
+                badge
+            }
+            .lineLimit(1)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                HStack(spacing: 6) {
+                    if let amount {
+                        amountText(amount)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.4)
+                    }
+                    badge
+                }
+            }
+        }
+    }
+
+    private func amountText(_ amount: String) -> some View {
+        // Amounts never animate: this is the exact figure posted.
+        Text(maskingAmounts: amount)
+            .fontWeight(.semibold)
+            .monospacedDigit()
     }
 }
 

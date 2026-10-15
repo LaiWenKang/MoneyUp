@@ -128,15 +128,27 @@ extension DashboardView {
         }
     }
 
+    /// A card's figure with its orbit beside it; at accessibility sizes the
+    /// orbit moves below, so the figure has the whole width and stays whole.
+    var figureAndOrbitLayout: AnyLayout {
+        dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+            : AnyLayout(HStackLayout(spacing: 12))
+    }
+
+    /// How far a card's figure may shrink before it would be cut; at
+    /// accessibility sizes even the floor is larger than body text.
+    var figureScaleFloor: CGFloat { dynamicTypeSize.isAccessibilitySize ? 0.4 : 0.5 }
+
     @ViewBuilder
     private var positionSummary: some View {
         switch cashDebtPosition {
         case let .available(position):
-            HStack(spacing: 12) {
+            figureAndOrbitLayout {
                 Text(maskingAmounts: formattedMoney(position.netCash))
                     .font(.title3.monospacedDigit().weight(.semibold))
                     .lineLimit(1)
-                    .minimumScaleFactor(0.5)
+                    .minimumScaleFactor(figureScaleFloor)
                 MoneyUpPositionOrbit(
                     cashAmount: position.cash.amount,
                     debtAmount: position.debt.amount
@@ -235,7 +247,7 @@ extension DashboardView {
                 systemImage: "chart.pie.fill",
                 title: "dashboard.monthly_budget"
             ) {
-                HStack(spacing: 12) {
+                figureAndOrbitLayout {
                     Text(maskingAmounts: formattedMoney(summary.remaining))
                         .font(.title3.monospacedDigit().weight(.semibold))
                         .foregroundStyle(
@@ -244,7 +256,7 @@ extension DashboardView {
                                 : Color.primary
                         )
                         .lineLimit(1)
-                        .minimumScaleFactor(0.5)
+                        .minimumScaleFactor(figureScaleFloor)
                     if case let .available(ratio) = budgetRatio(summary) {
                         MoneyUpBudgetOrbit(
                             ratio: ratio,

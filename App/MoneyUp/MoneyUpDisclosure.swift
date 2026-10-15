@@ -78,6 +78,7 @@ struct MoneyUpExplainer: View {
 /// several subjects at once without any of them becoming a paragraph.
 struct MoneyUpDisclosureCard<Summary: View, Detail: View>: View {
     @Environment(\.moneyUpReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @AppStorage private var isExpanded: Bool
 
     private let systemImage: String
@@ -133,22 +134,32 @@ struct MoneyUpDisclosureCard<Summary: View, Detail: View>: View {
                 isExpanded.toggle()
             }
         } label: {
-            HStack(alignment: .center, spacing: 12) {
-                MoneyUpSymbolBadge(systemImage: systemImage)
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(title)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.moneyUpSecondary)
-                    summary
+            Group {
+                if dynamicTypeSize.isAccessibilitySize {
+                    // The figure takes the card's whole width: beside the badge
+                    // and the chevron it was cut to "…" at the largest sizes.
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(alignment: .center, spacing: 12) {
+                            MoneyUpSymbolBadge(systemImage: systemImage)
+                            titleText
+                            Spacer(minLength: 8)
+                            chevron
+                        }
+                        summary
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    HStack(alignment: .center, spacing: 12) {
+                        MoneyUpSymbolBadge(systemImage: systemImage)
+                        VStack(alignment: .leading, spacing: 5) {
+                            titleText
+                            summary
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        Spacer(minLength: 8)
+                        chevron
+                    }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                Spacer(minLength: 8)
-                Image(systemName: "chevron.down")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-                    .rotationEffect(.degrees(isExpanded ? 0 : -90))
-                    .contentTransition(.symbolEffect(.replace))
-                    .accessibilityHidden(true)
             }
             .contentShape(Rectangle())
         }
@@ -156,6 +167,21 @@ struct MoneyUpDisclosureCard<Summary: View, Detail: View>: View {
         .accessibilityElement(children: .combine)
         .accessibilityValue(isExpanded ? "state.expanded" : "state.collapsed")
         .accessibilityAddTraits(.isButton)
+    }
+
+    private var titleText: some View {
+        Text(title)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.moneyUpSecondary)
+    }
+
+    private var chevron: some View {
+        Image(systemName: "chevron.down")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.tertiary)
+            .rotationEffect(.degrees(isExpanded ? 0 : -90))
+            .contentTransition(.symbolEffect(.replace))
+            .accessibilityHidden(true)
     }
 }
 

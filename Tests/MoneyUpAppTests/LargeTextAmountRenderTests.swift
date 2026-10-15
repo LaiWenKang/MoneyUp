@@ -67,6 +67,40 @@ final class LargeTextAmountRenderTests: XCTestCase {
         await fixture.store.close()
     }
 
+    /// The Saved banner's confirmation at the widths it gets on a 320 and a
+    /// 390 pt phone at the largest text size: the amount is never cut.
+    @MainActor
+    func testSavedConfirmationKeepsTheAmountWholeAtTheLargestTextSize() async throws {
+        var problems: [String] = []
+        for width in [220, 290] {
+            let summary = QuickLogSavedSummary(title: "quick_log.saved", amount: "SGD 12,345.67", badge: nil)
+                .frame(width: CGFloat(width), alignment: .leading)
+                .padding(8)
+                .background(Color.white)
+                .environment(\.dynamicTypeSize, .accessibility5)
+                .environment(\.locale, Locale(identifier: "en"))
+            let host = UIHostingController(rootView: summary)
+            let window = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
+                .map(UIWindow.init(windowScene:)) ?? UIWindow(frame: .zero)
+            window.frame = CGRect(x: 0, y: 0, width: width + 16, height: 400)
+            window.rootViewController = host
+            window.isHidden = false
+            host.view.frame = window.bounds
+            let image = await Self.settledImage(of: window, host: host)
+            let attachment = XCTAttachment(image: image)
+            attachment.name = "large-text-saved-confirmation-\(width)"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+            let lines = Self.recognizedLines(in: image)
+            if !lines.contains(where: { $0.contains("12,345.67") }) || lines.contains(where: { $0.contains("…") }) {
+                problems.append("\(width) pt: \(lines)")
+            }
+            window.isHidden = true
+            window.rootViewController = nil
+        }
+        XCTAssertEqual(problems, [], "The saved amount was not shown whole")
+    }
+
     func testBrokenAmountDetectorSeesCutAndSplitFigures() {
         XCTAssertEqual(Self.brokenAmounts(in: ["SGD 10,765.44", "Left this month", "Day SGD 358.85"]), [])
         XCTAssertEqual(Self.brokenAmounts(in: ["SGD 122,2…"]), ["SGD 122,2…"])

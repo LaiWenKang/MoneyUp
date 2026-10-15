@@ -13,6 +13,9 @@ struct TodayCashFlowStory: View {
         VStack(alignment: .leading, spacing: 10) {
             Text(maskingAmounts: formattedMoneyWithCurrencyCode(report.baseFlow.net))
                 .moneyUpFinancialValue(.prominent)
+                // Code and figure stay together; a long figure shrinks.
+                .lineLimit(1)
+                .minimumScaleFactor(0.4)
             Text("dashboard.flow.net_to_date")
                 .font(.caption).foregroundStyle(.moneyUpSecondary)
             Chart(Array(report.monthlyFlows.suffix(6)), id: \.month) { flow in
@@ -50,19 +53,31 @@ struct TodayCashFlowStory: View {
             .environment(\.calendar, calendar)
             .environment(\.timeZone, calendar.timeZone)
             .accessibilityHidden(true)
-            HStack {
-                Text("history.income")
-                Spacer()
-                Text(maskingAmounts: formattedMoneyWithCurrencyCode(report.baseFlow.income)).monospacedDigit()
-            }.font(.caption)
-            HStack {
-                Text("history.spent")
-                Spacer()
-                Text(maskingAmounts: formattedMoneyWithCurrencyCode(report.baseFlow.expense)).monospacedDigit()
-            }.font(.caption)
+            flowRow("history.income", report.baseFlow.income)
+            flowRow("history.spent", report.baseFlow.expense)
             if !report.foreignFlows.isEmpty {
                 Text("dashboard.flow.other_currencies").font(.caption).foregroundStyle(.moneyUpSecondary)
             }
         }
+    }
+
+    /// A flow and its amount on one line where they fit; otherwise the amount
+    /// goes beneath, whole, instead of breaking mid-number.
+    private func flowRow(_ title: LocalizedStringKey, _ money: Money) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack {
+                Text(title)
+                Spacer()
+                Text(maskingAmounts: formattedMoneyWithCurrencyCode(money)).monospacedDigit()
+            }
+            .lineLimit(1)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                Text(maskingAmounts: formattedMoneyWithCurrencyCode(money)).monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
+            }
+        }
+        .font(.caption)
     }
 }
