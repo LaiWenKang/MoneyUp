@@ -37,14 +37,14 @@ final class LargeTextAmountRenderTests: XCTestCase {
                 .tint(.accentColor))
             let window = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
                 .map(UIWindow.init(windowScene:)) ?? UIWindow(frame: .zero)
-            // Tall enough for every Today card at this size to be laid out,
-            // drawn at 2x so the image stays within the largest texture iOS
-            // renders (a 9,600-pixel render at 3x came back black).
+            // Tall enough for every Today card at this size to be laid out.
+            // A window this far past the screen is not composited, so
+            // drawHierarchy returns black: the layer tree is drawn instead.
             window.frame = CGRect(x: 0, y: 0, width: width, height: 3_600)
             window.rootViewController = host
             window.isHidden = false
             host.view.frame = window.bounds
-            let image = await Self.settledImage(of: window, host: host, scale: 2)
+            let image = await Self.settledLayerImage(of: host, scale: 2)
             let attachment = XCTAttachment(image: image)
             attachment.name = "large-text-today-ax5-\(width)"
             attachment.lifetime = .keepAlways
@@ -93,6 +93,23 @@ final class LargeTextAmountRenderTests: XCTestCase {
         request.recognitionLanguages = ["en-US"]
         try? VNImageRequestHandler(cgImage: cgImage).perform([request])
         return (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }
+    }
+
+    /// The hosting view drawn from its layer tree, for content taller than
+    /// the screen; materials and blurs are not drawn, text and shapes are.
+    @MainActor
+    static func settledLayerImage(of host: UIViewController, scale: CGFloat) async -> UIImage {
+        host.view.layoutIfNeeded()
+        try? await Task.sleep(for: .milliseconds(900))
+        host.view.layoutIfNeeded()
+        let format = UIGraphicsImageRendererFormat()
+        format.opaque = true
+        format.scale = scale
+        return UIGraphicsImageRenderer(bounds: host.view.bounds, format: format).image { context in
+            UIColor.white.setFill()
+            context.fill(host.view.bounds)
+            host.view.layer.render(in: context.cgContext)
+        }
     }
 
     @MainActor
