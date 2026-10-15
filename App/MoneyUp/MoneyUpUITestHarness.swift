@@ -23,6 +23,10 @@ enum MoneyUpUITestHarness {
     /// Runs the words intent once the book is open, with the words that follow
     /// this argument: what Siri would pass after the person said them.
     static let wordsArgument = "-MoneyUpUITestWords"
+    /// Seeds a Today with figures on every card: a pinned Food limit with
+    /// spending, and a payment due in three days. Only journeys that need it
+    /// pass it; the default book stays as every other journey expects.
+    static let budgetedBookArgument = "-MoneyUpUITestBudgetedBook"
 
     private static var arguments: [String] { ProcessInfo.processInfo.arguments }
 
@@ -45,10 +49,11 @@ enum MoneyUpUITestHarness {
         let seeded = directory.appendingPathComponent("seeded.flag")
         let key = Data(repeating: 0x2a, count: 32)
         let withFavourites = arguments.contains(favouritesArgument)
+        let budgeted = arguments.contains(budgetedBookArgument)
         let opener: DatabaseStoreOpener = { _ in
             let store = try EncryptedRecordStore(databaseURL: databaseURL, key: key)
             if !FileManager.default.fileExists(atPath: seeded.path) {
-                try await store.write(try seedWrites(withFavourites: withFavourites))
+                try await store.write(try seedWrites(withFavourites: withFavourites, budgeted: budgeted))
                 FileManager.default.createFile(atPath: seeded.path, contents: Data())
             }
             return OpenedDatabaseStore(store: store, unlockToFirstUsefulContentInterval: nil)
@@ -102,7 +107,7 @@ enum MoneyUpUITestHarness {
             .appendingPathComponent(MoneyUpQuickActionIngressFileStore.storageDirectoryName, isDirectory: true))
     }
 
-    static func seedWrites(withFavourites: Bool) throws -> [RecordWrite] {
+    static func seedWrites(withFavourites: Bool, budgeted: Bool = false) throws -> [RecordWrite] {
         let sgd = try CurrencyCode("SGD")
         let wallet = LedgerAccount(name: "Wallet", kind: .asset, currency: sgd)
         let book = AppModel.defaultBook(mainAccount: wallet)
@@ -112,11 +117,33 @@ enum MoneyUpUITestHarness {
             QuickLogFavourite(name: "Coffee", kind: .expense, amount: Decimal(string: "3.2"),
                               accountID: wallet.id, categoryID: food?.id)
         ] : []
-        let profile = UserProfile(baseCurrency: sgd, quickLogFavourites: favourites)
+        // The first leaf category (Food under Essentials) carries the limit.
+        let pinned = budgeted ? book.accounts.first { $0.kind == .expense && $0.parentID != nil } : nil
+        let profile = UserProfile(
+            baseCurrency: sgd, pinnedBudgetNodeIDs: pinned.map { [$0.id] } ?? [], quickLogFavourites: favourites
+        )
+        var nodes = book.budgetNodes
+        var extras: [RecordWrite] = []
+        if let pinned, let index = nodes.firstIndex(where: { $0.id == pinned.id }) {
+            nodes[index] = BudgetNode(id: pinned.id, parentID: pinned.parentID, name: pinned.name,
+                                      limit: try Money(600, currency: sgd), purpose: .flexible)
+            let spent = try TransactionFactory.expense(
+                amount: Money(Decimal(string: "48.5") ?? 48, currency: sgd), paidFrom: wallet.id,
+                category: pinned.id, payee: "Fresh groceries"
+            )
+            let bill = try ScheduledTransaction(
+                kind: .expense, name: "Phone bill", amount: Money(35, currency: sgd), accountID: wallet.id,
+                categoryAccountID: pinned.id, nextOccurrence: Date().addingTimeInterval(3 * 86_400), frequency: .monthly
+            )
+            extras = [
+                try RecordWrite(spent, id: spent.id.uuidString, in: .journalEntries),
+                try RecordWrite(bill, id: bill.id.uuidString, in: .scheduledTransactions)
+            ]
+        }
         var writes = [try RecordWrite(profile, id: UserProfile.primaryRecordID, in: .profile)]
         writes += try book.accounts.map { try RecordWrite($0, id: $0.id.uuidString, in: .accounts) }
-        writes += try book.budgetNodes.map { try RecordWrite($0, id: $0.id.uuidString, in: .budgetNodes) }
-        return writes
+        writes += try nodes.map { try RecordWrite($0, id: $0.id.uuidString, in: .budgetNodes) }
+        return writes + extras
     }
 }
 
