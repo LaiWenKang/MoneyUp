@@ -103,7 +103,8 @@ final class AmountPrivacyRenderTests: XCTestCase {
         XCTAssertTrue(over.isOver)
         XCTAssertEqual(over.titleKeyString, "today.hero.over_month")
         XCTAssertEqual(over.shownAmount, try Money(150, currency: sgd))
-        for remaining in [Decimal(0), Decimal(string: "0.01") ?? 0, 551] {
+        let cent = try XCTUnwrap(Decimal(string: "0.01"))
+        for remaining in [Decimal.zero, cent, Decimal(551)] {
             let left = PinnedRemainingHero(remaining: try Money(remaining, currency: sgd), today: nil, categoryCount: 1)
             XCTAssertFalse(left.isOver, "\(remaining)")
             XCTAssertEqual(left.titleKeyString, "today.hero.left_month")
