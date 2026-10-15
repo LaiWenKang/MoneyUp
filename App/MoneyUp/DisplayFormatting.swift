@@ -167,6 +167,60 @@ func isIncompleteAmount(_ text: String, locale: Locale = .current) -> Bool {
     return writtenAmount(from: trimmed, locale: locale)?.value == .zero
 }
 
+/// Why typed text cannot be saved as an amount yet. Every field that posts
+/// money (Log and the transaction editor) refuses the same text for the same
+/// reason, worded by the matching `MoneyError`, so a dimmed Save always has a
+/// visible cause beside the field.
+enum MoneyInputIssue: Equatable {
+    case invalid
+    case precision(CurrencyCode)
+    case tooLarge
+
+    /// - Parameters:
+    ///   - isEditing: the field has focus, so a prefix such as "12." or "0.0"
+    ///     is still being typed and is not an error yet.
+    ///   - preservedAmounts: amounts already stored on the entry being edited.
+    ///     An untouched legacy value is kept as it is, even past today's limits.
+    static func of(
+        _ text: String,
+        currency: CurrencyCode?,
+        isEditing: Bool = false,
+        preservedAmounts: [Decimal] = [],
+        locale: Locale = .current
+    ) -> MoneyInputIssue? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        if isEditing, isIncompleteAmount(trimmed, locale: locale) { return nil }
+        guard let written = writtenAmount(from: trimmed, locale: locale), written.value > .zero else {
+            return .invalid
+        }
+        guard !preservedAmounts.contains(written.value), let currency else { return nil }
+        // "25.000" in a JPY or IDR account is never read as 25.
+        guard written.fractionDigits <= currency.minorUnits else { return .precision(currency) }
+        do {
+            try MonetaryInputPolicy.validate(written.value, currency: currency)
+            return nil
+        } catch let error as MoneyError {
+            switch error {
+            case .exceedsNewWriteMaximum: return .tooLarge
+            case .unsupportedPrecision: return .precision(currency)
+            case .notANumber, .currencyMismatch: return .invalid
+            }
+        } catch {
+            return .invalid
+        }
+    }
+
+    var message: String {
+        let error: MoneyError = switch self {
+        case .invalid: .notANumber
+        case let .precision(currency): .unsupportedPrecision(currency: currency)
+        case .tooLarge: .exceedsNewWriteMaximum(maximum: MonetaryInputPolicy.maximumAbsoluteNewWrite)
+        }
+        return error.errorDescription ?? AppLocalization.string("error.invalid_amount")
+    }
+}
+
 func editableAmount(_ value: Decimal, locale: Locale = .current) -> String {
     let formatter = NumberFormatter()
     formatter.numberStyle = .decimal

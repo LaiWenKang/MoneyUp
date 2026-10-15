@@ -3,8 +3,13 @@ import MoneyUpCore
 
 extension QuickLogEntryView {
     func attemptSave() async {
-        guard !isSaving, !isUndoing, !isCheckingDuplicates, isActive, canSave,
-              !MoneyUpKeyboard.hasMarkedText else { return }
+        guard !isSaving, !isUndoing, !isCheckingDuplicates, isActive, canSave else { return }
+        // A word still being composed (Pinyin, Kana, Hangul) is not final text
+        // yet; saving now would store the wrong text. Say so, never do nothing.
+        guard !MoneyUpKeyboard.hasMarkedText else {
+            errorMessage = AppLocalization.string("quick_log.finish_composition_save")
+            return
+        }
         pendingDuplicateReview = nil
         guard let query = duplicateQuery() else {
             await commitSave()
