@@ -81,7 +81,7 @@ states remain open.
 | ID | Acceptance summary | Source / test cases | State |
 |---|---|---|---|
 | R071-SPLIT | Equal, unlocked rebalance, and 50/50, 60/40, 70/30 split actions preserve exact Decimal totals and deterministic minor-unit residuals; user-locked rows remain exact. | `TransactionSplitCalculator`, Quick Log and transaction edit split editors; `LedgerPortabilityTests.smartSplitAllocationIsExactAndDeterministic`. | STATIC-PASS; AUTO-PENDING; MANUAL-OPEN |
-| R071-KEYBOARD | Every focused Quick Log and edit field scrolls above the settled keyboard inset; the private amount field remains mounted while masked, so first input such as `.`, `0`, or `0.` cannot replace the field and collapse the keyboard. A 200-point focused bottom margin, interactive dismissal, and visible Done action keep the final row reachable. | `MoneyUpPrivateAmountInputModifier`, `QuickLogEntryBody`, `TransactionEditBody`, `QuickLogFocusScrollPolicy`; `TransactionPresentationTests.testQuickLogKeyboardScrollTargetsEveryEditableDetailField`; MANUAL `R071-KEYBOARD-FIRST-INPUT`. | STATIC-PASS; AUTO-PENDING; MANUAL-OPEN |
+| R071-KEYBOARD | Every focused Quick Log and edit field scrolls above the settled keyboard inset; the private amount field remains mounted while masked, so first input such as `.`, `0`, or `0.` cannot replace the field and collapse the keyboard. A 200-point focused bottom margin, interactive dismissal, and visible Done action keep the final row reachable. | `MoneyUpPrivateAmountInputModifier`, `QuickLogEntryBody`, `TransactionEditBody`, `QuickLogFocusScrollPolicy`; `TransactionPresentationTests.testQuickLogKeyboardScrollTargetsEveryEditableDetailField`, `.testEditorKeyboardScrollTargetsTheRowOfEveryEditableField`; `MoneyUpJourneyTests.testEditingFromHistoryKeepsTheFieldAboveTheKeyboard`, `.testEditingFromHistoryAtALargeTextSizeKeepsTheFieldAboveTheKeyboard`, `.testLogAtALargeTextSizeKeepsTheFieldAboveTheKeyboard` (frames against the keyboard, its bars and the Save bar); MANUAL `R071-KEYBOARD-FIRST-INPUT`. | STATIC-PASS; AUTO-PENDING; MANUAL-OPEN |
 | R071-CATEGORY | Log exposes Add and Manage Categories together. Search uses full paths, every active row exposes add-subcategory, and arbitrary-depth reparenting retains cycle/kind and atomic budget-history checks. | `QuickLogEntryComponents`, `CategoryManagementList`, `AddCategorySheet`, lifecycle validators and tests. | STATIC-PASS; AUTO-PENDING; MANUAL-OPEN |
 | R071-SMART | New and legacy profiles default eligible Apple on-device ordinal matching on; explicit opt-out, deterministic parser authority, bounded closed-list input, cancellation, and fail-closed behavior remain unchanged. | `UserProfile`, `AppSettingsView`, W3 architecture gate; `UserProfileMigrationTests`, W3 coordinator tests. | STATIC-PASS; AUTO-PENDING; MANUAL-OPEN |
 | R071-HISTORY | The Today/7 days/Month/All row is joined by composable Needs Review, Split, Recurring, Allowance, and Has Notes filters. Multiple ID-backed filters intersect and empty sets fail closed. | `HistoryView`, `HistoryQuery`; `HistoryQueryTests.testSmartFiltersMatchExactIDsSplitsAndNotes`. | STATIC-PASS; AUTO-PENDING; MANUAL-OPEN |
@@ -409,10 +409,10 @@ exact-SHA CI before signed promotion.
 
 - Requirements traced: **97 / 97**.
 - Requirements with at least one named automated or manual case: **97 / 97**.
-- Declared automated tests in source after this review: **1623** (511 core, 80
-  persistence, 11 intelligence, 973 app-target, 11 performance-target, and 37 ui-target
+- Declared automated tests in source after this review: **1629** (511 core, 80
+  persistence, 11 intelligence, 976 app-target, 11 performance-target, and 40 ui-target
   declarations; XCTest methods plus Swift Testing `@Test` declarations). Of
-  those declarations, **1569** are XCTest functions named `test...`; the
+  those declarations, **1575** are XCTest functions named `test...`; the
   remaining 54 are Swift Testing `@Test` declarations in MoneyUpCore.
 - Tests executed on the prior build-10 0.7.1 candidate in GitHub Actions:
   **742 / 742 declared test sites** across the 376 package, 355 app-target, and
