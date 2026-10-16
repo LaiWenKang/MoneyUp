@@ -13,7 +13,7 @@ struct TodayCashFlowStory: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(maskingAmounts: formattedMoneyWithCurrencyCode(report.baseFlow.net))
+            Text(maskingAmounts: displayedAmount(report.baseFlow.net))
                 // Code and figure stay together; a long figure shrinks. Set
                 // inside the typography modifier, which otherwise wins.
                 .lineLimit(1)
@@ -95,6 +95,13 @@ struct TodayCashFlowStory: View {
         }
     }
 
+    /// Read the observed preference for every amount, including when the
+    /// chart is absent. Reading only the formatter's UserDefaults value does
+    /// not establish this view's live privacy dependency.
+    private func displayedAmount(_ money: Money) -> String {
+        hidesAmounts ? MoneyAmountPrivacy.placeholder : formattedMoneyWithCurrencyCode(money)
+    }
+
     /// A flow and its amount on one line where they fit; otherwise the amount
     /// goes beneath, whole, instead of breaking mid-number.
     private func flowRow(_ title: LocalizedStringKey, _ money: Money) -> some View {
@@ -102,12 +109,12 @@ struct TodayCashFlowStory: View {
             HStack {
                 Text(title)
                 Spacer()
-                Text(maskingAmounts: formattedMoneyWithCurrencyCode(money)).monospacedDigit()
+                Text(maskingAmounts: displayedAmount(money)).monospacedDigit()
             }
             .lineLimit(1)
             VStack(alignment: .leading, spacing: 1) {
                 Text(title)
-                Text(maskingAmounts: formattedMoneyWithCurrencyCode(money)).monospacedDigit()
+                Text(maskingAmounts: displayedAmount(money)).monospacedDigit()
                     .lineLimit(1)
                     .minimumScaleFactor(0.5)
             }

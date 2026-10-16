@@ -104,13 +104,16 @@ final class TodayCashFlowMonthlyRenderTests: XCTestCase {
 
         // Change the real privacy preference on this same mounted view.
         defaults.set(true, forKey: MoneyAmountPrivacy.storageKey)
-        let hidden = LargeTextAmountRenderTests.recognizedLines(
-            in: await LargeTextAmountRenderTests.settledLayerImage(of: host, scale: 2)
-        ).joined(separator: " ")
+        let hiddenImage = await LargeTextAmountRenderTests.settledLayerImage(of: host, scale: 2)
+        let hiddenAttachment = XCTAttachment(image: hiddenImage)
+        hiddenAttachment.name = "cash-flow-monthly-\(width)-ax5-hidden"
+        hiddenAttachment.lifetime = .keepAlways
+        add(hiddenAttachment)
+        let hidden = LargeTextAmountRenderTests.recognizedLines(in: hiddenImage).joined(separator: " ")
         XCTAssertTrue(hidden.contains("November"), "Do not accept a blank render as privacy evidence")
         for index in 1..<7 {
-            XCTAssertFalse(hidden.contains("10,\(101 + index * 100).00"))
-            XCTAssertFalse(hidden.contains("20,\(202 + index * 100).00"))
+            XCTAssertFalse(hidden.contains("10,\(101 + index * 100).00"), "\(width) pt hidden render: \(hidden)")
+            XCTAssertFalse(hidden.contains("20,\(202 + index * 100).00"), "\(width) pt hidden render: \(hidden)")
         }
     }
 }
