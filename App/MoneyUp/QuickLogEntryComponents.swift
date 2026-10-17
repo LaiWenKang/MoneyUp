@@ -869,8 +869,10 @@ struct QuickLogValuePicker<Selection: Hashable, Options: View>: View {
                 Picker(title, selection: selection) { options }
             } label: {
                 VStack(alignment: .leading, spacing: 4) {
+                    // A menu tints its label, and `.primary` there is the
+                    // tint; the name reads as text, the value as the control.
                     Text(title)
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(Color.primary)
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         Text(verbatim: value)
                         Image(systemName: "chevron.up.chevron.down")
