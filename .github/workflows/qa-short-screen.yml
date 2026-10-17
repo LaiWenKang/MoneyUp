@@ -1,0 +1,100 @@
+name: Release QA on a short screen
+
+# Release-candidate QA only: the whole UI journey suite and the release QA
+# renders on an iPhone SE (667 pt tall, Touch ID layout) running iOS 26. It
+# runs for qa/release-candidate-* branches and on request, never for main or
+# pull requests, and it signs nothing and publishes nothing.
+on:
+  push:
+    branches: ['qa/release-candidate-*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qa-short-screen-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  short-screen:
+    runs-on: macos-26
+    timeout-minutes: 120
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Install checksum-verified XcodeGen
+        run: |
+          curl --fail --location --silent --show-error -o "$RUNNER_TEMP/xcodegen.zip" https://github.com/yonaskolb/XcodeGen/releases/download/2.46.0/xcodegen.zip
+          printf '%s  %s\n' 4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806 "$RUNNER_TEMP/xcodegen.zip" | shasum -a 256 -c -
+          ditto -x -k "$RUNNER_TEMP/xcodegen.zip" "$RUNNER_TEMP/xcodegen-release"
+          echo "$RUNNER_TEMP/xcodegen-release/xcodegen/bin" >> "$GITHUB_PATH"
+      - name: Find or create an iPhone SE on iOS 26
+        id: device
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          xcrun simctl list -j > "$RUNNER_TEMP/simctl.json"
+          cat > "$RUNNER_TEMP/pick_se.py" <<'PY'
+          import json, sys
+          data = json.load(open(sys.argv[1]))
+          runtimes = sorted((r for r in data["runtimes"] if r.get("isAvailable") and r["name"].startswith("iOS 26")),
+                            key=lambda r: [int(p) for p in r["version"].split(".")])
+          types = [t for t in data["devicetypes"] if t["name"].startswith("iPhone SE")]
+          if not runtimes or not types:
+              sys.exit("No iOS 26 runtime or no iPhone SE device type on this runner")
+          runtime, kind = runtimes[-1], sorted(types, key=lambda t: t["name"])[-1]
+          existing = next((d["udid"] for d in data["devices"].get(runtime["identifier"], [])
+                           if d.get("deviceTypeIdentifier") == kind["identifier"] and d.get("isAvailable", True)), "-")
+          print(runtime["identifier"], kind["identifier"], existing)
+          PY
+          read -r RUNTIME TYPE EXISTING <<< "$(python3 "$RUNNER_TEMP/pick_se.py" "$RUNNER_TEMP/simctl.json")"
+          if [ "$EXISTING" = "-" ]; then
+            EXISTING="$(xcrun simctl create "Release QA iPhone SE" "$TYPE" "$RUNTIME")"
+          fi
+          xcrun simctl list devices | grep "$EXISTING"
+          echo "id=$EXISTING" >> "$GITHUB_OUTPUT"
+      - name: Release QA renders and every journey on the short screen
+        shell: bash
+        env:
+          SIMULATOR_ID: ${{ steps.device.outputs.id }}
+        run: |
+          set -euo pipefail
+          xcodegen generate
+          xcodebuild -project MoneyUp.xcodeproj -scheme MoneyUp -configuration Debug \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
+            -resultBundlePath "$RUNNER_TEMP/ReleaseQARenders.xcresult" \
+            -derivedDataPath "$RUNNER_TEMP/ReleaseQADerivedData" \
+            -parallel-testing-enabled NO \
+            -only-testing:MoneyUpTests/ReleaseQARenderTests \
+            -only-testing:MoneyUpTests/LargeTextAmountRenderTests \
+            -only-testing:MoneyUpTests/TodayCashFlowMonthlyRenderTests \
+            -only-testing:MoneyUpTests/AmountPrivacyRenderTests \
+            -only-testing:MoneyUpTests/QuickLogKeyboardJourneyTests \
+            -only-testing:MoneyUpTests/TransactionPresentationTests \
+            SWIFT_TREAT_WARNINGS_AS_ERRORS=YES CODE_SIGNING_ALLOWED=NO test
+          xcodebuild -project MoneyUp.xcodeproj -scheme MoneyUpColdLaunch -configuration Debug \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
+            -derivedDataPath "$RUNNER_TEMP/ReleaseQADerivedData" \
+            -resultBundlePath "$RUNNER_TEMP/ReleaseQAJourneys.xcresult" \
+            -parallel-testing-enabled NO \
+            SWIFT_TREAT_WARNINGS_AS_ERRORS=YES CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- test
+      - name: Export QA evidence
+        if: ${{ always() }}
+        run: |
+          for bundle in ReleaseQARenders ReleaseQAJourneys; do
+            if test -d "$RUNNER_TEMP/$bundle.xcresult"; then
+              xcrun xcresulttool export attachments --path "$RUNNER_TEMP/$bundle.xcresult" --output-path "$RUNNER_TEMP/qa/$bundle"
+              xcrun xcresulttool get test-results summary --path "$RUNNER_TEMP/$bundle.xcresult" --compact > "$RUNNER_TEMP/qa/$bundle-summary.json"
+            fi
+          done
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: ${{ always() }}
+        with:
+          name: release-qa-short-screen
+          path: ${{ runner.temp }}/qa
+          retention-days: 14
