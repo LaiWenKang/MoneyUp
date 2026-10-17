@@ -221,8 +221,8 @@ struct CalendarView: View {
                 Button("action.cancel", role: .cancel) {
                     entryPendingDeletion = nil
                 }
-            } message: { _ in
-                Text("transaction.delete_detail")
+            } message: { entry in
+                TransactionDeleteConfirmation.detail(for: entry.id, in: model)
             }
             .confirmationDialog(
                 schedulePendingChange?.title ?? "schedule.delete_title",

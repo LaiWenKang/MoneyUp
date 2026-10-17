@@ -793,8 +793,8 @@ struct HistoryView: View {
                     Task { await delete(entry) }
                 }
                 Button("action.cancel", role: .cancel) {}
-            } message: { _ in
-                Text("transaction.delete_detail")
+            } message: { entry in
+                TransactionDeleteConfirmation.detail(for: entry.id, in: model)
             }
             .moneyUpOperationErrorAlert(message: $errorMessage)
             .environment(\.calendar, model.reportingCalendar)
@@ -1068,8 +1068,13 @@ extension HistoryView {
 
     @MainActor
     private func initialPageOutcome(query: HistoryQuery) async -> InitialPageOutcome {
+        // A refresh of the same list (an edit or a delete) reads as deep as the person had scrolled.
+        let isSameList = shownIdentifier?.searchText == loadIdentifier.searchText
+            && shownIdentifier?.filters == loadIdentifier.filters
         do {
-            return .available(try await model.historyPage(query: query))
+            return .available(try await model.historyPage(
+                query: query, coveringAtLeast: isSameList ? loadedEntries.count : 0
+            ))
         } catch is CancellationError {
             return .cancelled
         } catch {
