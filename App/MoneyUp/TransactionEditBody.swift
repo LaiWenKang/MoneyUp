@@ -20,7 +20,12 @@ extension TransactionEditView {
 
                     Section {
                         let amountValidationMessage = amountIssue(amountText, currency: sourceCurrency, field: .amount)?.message
-                        HStack {
+                        // At accessibility sizes the code sits under the amount, as
+                        // in Log, so the amount being corrected is never cut to "…".
+                        let amountLayout = dynamicTypeSize.isAccessibilitySize
+                            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
+                            : AnyLayout(HStackLayout())
+                        amountLayout {
                             TextField("quick_log.amount", text: $amountText)
                                 .moneyAmountKeyboard(currency: sourceCurrency)
                                 .focused($focusedField, equals: .amount)
@@ -41,11 +46,12 @@ extension TransactionEditView {
                         if let amountValidationMessage {
                             MoneyUpFieldError(message: amountValidationMessage)
                         }
-                        Picker(
-                            kind == .transfer
+                        QuickLogValuePicker(
+                            title: kind == .transfer
                                 ? "transaction.from_account"
                                 : "transaction.account",
-                            selection: $accountID
+                            selection: $accountID,
+                            value: editorValue(for: accountID, in: editableSourceAccounts, empty: "quick_log.choose_account")
                         ) {
                             ForEach(editableSourceAccounts) { account in
                                 Text(verbatim: editorLabel(for: account))
@@ -54,7 +60,13 @@ extension TransactionEditView {
                         }
 
                         if kind == .transfer {
-                            Picker("transaction.to_account", selection: $destinationAccountID) {
+                            QuickLogValuePicker(
+                                title: "transaction.to_account",
+                                selection: $destinationAccountID,
+                                value: editorValue(
+                                    for: destinationAccountID, in: editableUserAccounts, empty: "quick_log.choose_account"
+                                )
+                            ) {
                                 ForEach(
                                     editableUserAccounts.filter { $0.id != accountID }
                                 ) { account in
@@ -66,7 +78,7 @@ extension TransactionEditView {
                                 let destinationAmountValidationMessage = amountIssue(
                                     destinationAmountText, currency: destinationCurrency, field: .destinationAmount
                                 )?.message
-                                HStack {
+                                amountLayout {
                                     TextField(
                                         "transaction.received_amount",
                                         text: $destinationAmountText
@@ -117,7 +129,11 @@ extension TransactionEditView {
                             if isSplitTransaction {
                                 splitEditor
                             } else {
-                                Picker("transaction.category", selection: $categoryID) {
+                                QuickLogValuePicker(
+                                    title: "transaction.category",
+                                    selection: $categoryID,
+                                    value: editorValue(for: categoryID, in: categories, empty: "quick_log.choose_category")
+                                ) {
                                     ForEach(categories) { category in
                                         Label(
                                             editorLabel(for: category),

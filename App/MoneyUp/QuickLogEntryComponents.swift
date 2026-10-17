@@ -840,6 +840,56 @@ struct QuickLogKindMenuPicker: View {
     }
 }
 
+/// A form picker whose chosen value is never cut to "…". At accessibility
+/// text sizes a standard picker row splits its width between the name and
+/// the value, so the name breaks and the value shrinks to an ellipsis; here
+/// the name takes one line and the value, wrapping if it must, the next.
+/// VoiceOver hears the name and the value, as from the standard picker.
+struct QuickLogValuePicker<Selection: Hashable, Options: View>: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    private let title: LocalizedStringKey
+    private let selection: Binding<Selection>
+    private let value: String
+    private let options: Options
+
+    /// `value` is the chosen option's words, as `options` list them.
+    init(
+        title: LocalizedStringKey, selection: Binding<Selection>, value: String,
+        @ViewBuilder options: () -> Options
+    ) {
+        self.title = title
+        self.selection = selection
+        self.value = value
+        self.options = options()
+    }
+
+    var body: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            Menu {
+                Picker(title, selection: selection) { options }
+            } label: {
+                VStack(alignment: .leading, spacing: 4) {
+                    // A menu tints its label, and `.primary` there is the
+                    // tint; the name reads as text, the value as the control.
+                    Text(title)
+                        .foregroundStyle(Color.primary)
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(verbatim: value)
+                        Image(systemName: "chevron.up.chevron.down")
+                            .imageScale(.small)
+                    }
+                }
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .accessibilityLabel(Text(title))
+            .accessibilityValue(Text(verbatim: value))
+        } else {
+            Picker(title, selection: selection) { options }
+        }
+    }
+}
+
 /// The two ways to read a receipt, both in plain sight beside the Smart Entry
 /// field: the camera scans a paper receipt, and Attach reads a photo,
 /// screenshot or PDF. A concrete view, so the Log form's type stays within its
