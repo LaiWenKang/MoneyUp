@@ -693,7 +693,9 @@ W3_PATH_TYPE_DIGESTS: tuple[tuple[str, str, str, str], ...] = (
         # leaving the sheet clears the file-picker flag with the photo-picker flag.
         # Re-pinned 2026-10-06: keeping the draft or cancelling discards the words held for that request.
         # Re-pinned 2026-10-07: secondary text uses the accessible BrandTextSecondary colour (0.7.3 design pass); no behaviour change.
-        "caab26eed6837dc02b88ac52ce8c6bdb6b1e21f446c0377fa912850bbaed4cb7",
+        # Re-pinned 2026-10-15: the Save bar is handed why Save is dimmed (QuickLogSaveBlocker) so VoiceOver
+        # can say it; canSave is unchanged (it is now "no blocker").
+        "77392777ba0d1625cd060bf1885164fd4daa011ccc11269f3cd1c3d7f5b1223e",
     ),
     (
         "App/MoneyUp/QuickLogEntryReceipt.swift",

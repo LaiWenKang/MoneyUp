@@ -516,13 +516,14 @@ final class Audit1074RegressionTests: XCTestCase {
 
     func testMidTypingPrefixesAreIncompleteRatherThanInvalid() {
         let us = Locale(identifier: "en_US"), de = Locale(identifier: "de_DE")
-        for text in ["12.", "0", "0.", "0.0", " 0.00 "] {
+        // "." is the start of ".5" now that a leading separator reads as a fraction of one.
+        for text in ["12.", "0", "0.", "0.0", " 0.00 ", ".", "-."] {
             XCTAssertTrue(isIncompleteAmount(text, locale: us), text)
         }
-        for text in ["12,", "0,", "12."] {
+        for text in ["12,", "0,", "12.", ","] {
             XCTAssertTrue(isIncompleteAmount(text, locale: de), text)
         }
-        for text in ["", "12", "12.5", "1.2.3", "abc", ".", "-", "12,", "25.000"] {
+        for text in ["", "12", "12.5", "1.2.3", "abc", "..", "-", "12,", "25.000"] {
             XCTAssertFalse(isIncompleteAmount(text, locale: us), text)
         }
     }

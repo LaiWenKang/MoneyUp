@@ -476,6 +476,7 @@ extension QuickLogEntryView {
             if let lastSavedEntryID { savedEntryBanner(entryID: lastSavedEntryID) }
                 LogSaveBar(
                     canSave: canSave && !isSaving && !isUndoing && !isPreparingEvidence && !isClearingDraft,
+                    blocker: saveBlocker,
                     showsKeyboardDismiss: focusedField != nil,
                     save: { Task { await attemptSave() } },
                     dismissKeyboard: dismissKeyboard
