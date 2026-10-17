@@ -36,6 +36,10 @@ enum MoneyUpTypography {
     /// screen leads, and it shrinks before it would ever wrap.
     static let heroPointSize: CGFloat = 44
     static let heroMinimumScaleFactor: CGFloat = 0.5
+    /// At accessibility sizes a hero figure starts so large that half of it
+    /// can still be wider than a 320-pt card; a third of it is still larger
+    /// than body text, so it may shrink that far before it would be cut.
+    static let heroAccessibilityMinimumScaleFactor: CGFloat = 0.35
 
     static func financialValuePolicy(
         for style: FinancialValueStyle
@@ -120,6 +124,7 @@ enum MoneyUpTypography {
 
 private struct MoneyUpFinancialValueModifier: ViewModifier {
     @Environment(\.moneyUpReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ScaledMetric(relativeTo: .largeTitle) private var heroSize = MoneyUpTypography.heroPointSize
     let style: MoneyUpTypography.FinancialValueStyle
 
@@ -135,7 +140,7 @@ private struct MoneyUpFinancialValueModifier: ViewModifier {
             // A headline amount stays on one line and shrinks instead of
             // breaking a number in two.
             .lineLimit(isDisplay ? 1 : nil)
-            .minimumScaleFactor(isDisplay ? MoneyUpTypography.heroMinimumScaleFactor : 1)
+            .minimumScaleFactor(isDisplay ? displayScaleFloor : 1)
             .modifier(
                 MoneyUpFinancialDigitModifier(
                     usesMonospacedDigits: policy.usesMonospacedDigits
@@ -144,6 +149,12 @@ private struct MoneyUpFinancialValueModifier: ViewModifier {
             .transaction { transaction in
                 if motion == .immediate { transaction.animation = nil }
             }
+    }
+
+    private var displayScaleFloor: CGFloat {
+        dynamicTypeSize.isAccessibilitySize
+            ? MoneyUpTypography.heroAccessibilityMinimumScaleFactor
+            : MoneyUpTypography.heroMinimumScaleFactor
     }
 }
 

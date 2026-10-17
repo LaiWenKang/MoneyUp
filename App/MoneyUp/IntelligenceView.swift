@@ -21,11 +21,12 @@ struct IntelligenceSummaryLink: View {
     private var quietRow: some View {
         MoneyUpCard(style: .flat) {
             NavigationLink { IntelligenceView() } label: {
-                HStack(spacing: 12) {
+                IntelligenceLinkLayout {
                     MoneyUpSymbolBadge(
                         systemImage: model.isIntelligenceRefreshing ? "sparkles" : "checkmark.seal.fill",
                         color: model.isIntelligenceRefreshing ? .accentColor : Color.moneyUpPositive
                     )
+                } words: {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("intelligence.title")
                             .font(.subheadline.weight(.semibold))
@@ -33,7 +34,7 @@ struct IntelligenceSummaryLink: View {
                             .font(.caption)
                             .foregroundStyle(.moneyUpSecondary)
                     }
-                    Spacer(minLength: 8)
+                } trailing: {
                     if model.isIntelligenceRefreshing {
                         ProgressView()
                     }
@@ -54,11 +55,12 @@ struct IntelligenceSummaryLink: View {
                 NavigationLink {
                     IntelligenceView()
                 } label: {
-                    HStack(spacing: 12) {
+                    IntelligenceLinkLayout {
                         MoneyUpSymbolBadge(
                             systemImage: "sparkles",
                             color: .accentColor
                         )
+                    } words: {
                         VStack(alignment: .leading, spacing: 3) {
                             Text("intelligence.title")
                                 .font(.headline)
@@ -66,7 +68,7 @@ struct IntelligenceSummaryLink: View {
                                 .font(.subheadline)
                                 .foregroundStyle(.moneyUpSecondary)
                         }
-                        Spacer(minLength: 8)
+                    } trailing: {
                         if model.isIntelligenceRefreshing {
                             ProgressView()
                         } else if !model.intelligenceFindings.isEmpty {
@@ -95,6 +97,46 @@ struct IntelligenceSummaryLink: View {
         return model.intelligenceFindings.isEmpty
             ? "intelligence.summary.clear"
             : "intelligence.summary.findings"
+    }
+}
+
+/// A badge, its words and the trailing glyphs in one row; at accessibility
+/// sizes the badge and glyphs share a line above the words, which then have
+/// the row's whole width instead of breaking mid-word.
+private struct IntelligenceLinkLayout<Badge: View, Words: View, Trailing: View>: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    private let badge: Badge
+    private let words: Words
+    private let trailing: Trailing
+
+    init(
+        @ViewBuilder badge: () -> Badge,
+        @ViewBuilder words: () -> Words,
+        @ViewBuilder trailing: () -> Trailing
+    ) {
+        self.badge = badge()
+        self.words = words()
+        self.trailing = trailing()
+    }
+
+    var body: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 12) {
+                    badge
+                    Spacer(minLength: 8)
+                    trailing
+                }
+                words
+            }
+        } else {
+            HStack(spacing: 12) {
+                badge
+                words
+                Spacer(minLength: 8)
+                trailing
+            }
+        }
     }
 }
 

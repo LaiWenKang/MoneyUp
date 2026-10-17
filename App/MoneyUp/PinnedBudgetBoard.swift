@@ -10,6 +10,7 @@ import SwiftUI
 struct PinnedBudgetBoard: View {
     @Environment(AppModel.self) private var model
     @Environment(\.moneyUpReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     /// One switch for the whole board rather than one per category: the
     /// question "how am I doing against the limit" is asked of every pinned
     /// row at once, or of none.
@@ -54,36 +55,59 @@ struct PinnedBudgetBoard: View {
         }
     }
 
+    @ViewBuilder
     private var header: some View {
-        HStack(alignment: .center, spacing: 12) {
-            Label("today.pinned.title", systemImage: "pin.fill")
-                .font(.headline)
-            Spacer(minLength: 8)
-            if !model.pinnedBudgetNodes.isEmpty {
-                // One control for the board's two occasional settings keeps
-                // the header to a title and a single glyph.
-                Menu {
-                    Toggle(isOn: $showsDetail.animation(
-                        MoneyUpMotion.animation(for: .disclosure, reduceMotion: reduceMotion)
-                    )) {
-                        Label("today.pinned.toggle_detail", systemImage: "text.alignleft")
-                    }
-                    Button {
-                        isEditingPins = true
-                    } label: {
-                        Label("today.pinned.edit", systemImage: "pin")
-                    }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                        .font(.title3)
-                        .frame(minWidth: 44, minHeight: 44)
-                        .contentShape(Rectangle())
+        if dynamicTypeSize.isAccessibilitySize {
+            // The title takes the row's width under the glyph and the menu:
+            // beside them it broke mid-word at the largest sizes.
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .center, spacing: 12) {
+                    Image(systemName: "pin.fill")
+                        .font(.headline)
+                        .accessibilityHidden(true)
+                    Spacer(minLength: 8)
+                    boardMenu
                 }
-                .foregroundStyle(.tint)
-                .accessibilityLabel("display.details")
+                Text("today.pinned.title")
+                    .font(.headline)
             }
+            .font(.subheadline)
+        } else {
+            HStack(alignment: .center, spacing: 12) {
+                Label("today.pinned.title", systemImage: "pin.fill")
+                    .font(.headline)
+                Spacer(minLength: 8)
+                boardMenu
+            }
+            .font(.subheadline)
         }
-        .font(.subheadline)
+    }
+
+    @ViewBuilder
+    private var boardMenu: some View {
+        if !model.pinnedBudgetNodes.isEmpty {
+            // One control for the board's two occasional settings keeps
+            // the header to a title and a single glyph.
+            Menu {
+                Toggle(isOn: $showsDetail.animation(
+                    MoneyUpMotion.animation(for: .disclosure, reduceMotion: reduceMotion)
+                )) {
+                    Label("today.pinned.toggle_detail", systemImage: "text.alignleft")
+                }
+                Button {
+                    isEditingPins = true
+                } label: {
+                    Label("today.pinned.edit", systemImage: "pin")
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .font(.title3)
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(Rectangle())
+            }
+            .foregroundStyle(.tint)
+            .accessibilityLabel("display.details")
+        }
     }
 
     @ViewBuilder
@@ -160,36 +184,64 @@ struct PinnedBudgetRow: View {
         .accessibilityElement(children: .combine)
     }
 
+    @ViewBuilder
     private var headline: some View {
-        HStack(alignment: .center, spacing: 10) {
-            MoneyUpCategoryBadge(
-                systemImage: MoneyUpCategorySymbol.symbol(
-                    for: summary.node.id, accountsByID: model.accountsByID
-                ),
-                tint: MoneyUpCategorySymbol.tint(for: summary.node.id),
-                size: 30
-            )
-            Text(summary.node.name)
-                .font(.subheadline.weight(.semibold))
-                .lineLimit(2)
-            Spacer(minLength: 8)
-            if let remaining = summary.remaining {
-                VStack(alignment: .trailing, spacing: 1) {
-                    Text(
-                        maskingAmounts: formattedMoney(
-                            summary.isOverspent ? remaining.negated : remaining
-                        )
-                    )
-                    .font(.title3.monospacedDigit().weight(.semibold))
-                    .foregroundStyle(summary.isOverspent ? Color.moneyUpDanger : Color.primary)
-                    Text(summary.isOverspent ? "plan.over" : "plan.left")
-                        .font(.caption2)
-                        .foregroundStyle(.moneyUpSecondary)
+        if dynamicTypeSize.isAccessibilitySize {
+            // Name and figure each take the row's width: side by side at the
+            // largest sizes the name was cut and the figure broke mid-number.
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .center, spacing: 10) {
+                    badge
+                    name
                 }
-            } else {
-                Text(maskingAmounts: formattedMoney(summary.spent))
-                    .font(.title3.monospacedDigit().weight(.semibold))
+                figure(alignment: .leading)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.4)
             }
+        } else {
+            HStack(alignment: .center, spacing: 10) {
+                badge
+                name
+                    .lineLimit(2)
+                Spacer(minLength: 8)
+                figure(alignment: .trailing)
+            }
+        }
+    }
+
+    private var badge: some View {
+        MoneyUpCategoryBadge(
+            systemImage: MoneyUpCategorySymbol.symbol(
+                for: summary.node.id, accountsByID: model.accountsByID
+            ),
+            tint: MoneyUpCategorySymbol.tint(for: summary.node.id),
+            size: 30
+        )
+    }
+
+    private var name: some View {
+        Text(summary.node.name)
+            .font(.subheadline.weight(.semibold))
+    }
+
+    @ViewBuilder
+    private func figure(alignment: HorizontalAlignment) -> some View {
+        if let remaining = summary.remaining {
+            VStack(alignment: alignment, spacing: 1) {
+                Text(
+                    maskingAmounts: formattedMoney(
+                        summary.isOverspent ? remaining.negated : remaining
+                    )
+                )
+                .font(.title3.monospacedDigit().weight(.semibold))
+                .foregroundStyle(summary.isOverspent ? Color.moneyUpDanger : Color.primary)
+                Text(summary.isOverspent ? "plan.over" : "plan.left")
+                    .font(.caption2)
+                    .foregroundStyle(.moneyUpSecondary)
+            }
+        } else {
+            Text(maskingAmounts: formattedMoney(summary.spent))
+                .font(.title3.monospacedDigit().weight(.semibold))
         }
     }
 
@@ -218,18 +270,47 @@ struct PinnedBudgetRow: View {
         }
     }
 
+    @ViewBuilder
     private func cadence(_ titleKey: LocalizedStringKey, _ money: Money) -> some View {
-        let layout = dynamicTypeSize.isAccessibilitySize || !showsDetail
-            ? AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: 8))
-            : AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
-        return layout {
-            Text(titleKey).font(.caption2).foregroundStyle(.moneyUpSecondary)
-            Text(maskingAmounts: formattedMoney(money))
-                .font(.caption.monospacedDigit().weight(.semibold))
-                .fixedSize(horizontal: false, vertical: true)
+        if dynamicTypeSize.isAccessibilitySize {
+            // The figure goes under its label when one line cannot hold both,
+            // instead of breaking mid-number.
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    cadenceTitle(titleKey)
+                    cadenceFigure(money)
+                }
+                .lineLimit(1)
+                VStack(alignment: .leading, spacing: 2) {
+                    cadenceTitle(titleKey)
+                    cadenceFigure(money)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.5)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
+        } else {
+            let layout = !showsDetail
+                ? AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: 8))
+                : AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
+            layout {
+                cadenceTitle(titleKey)
+                cadenceFigure(money)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .combine)
+    }
+
+    private func cadenceTitle(_ titleKey: LocalizedStringKey) -> some View {
+        Text(titleKey).font(.caption2).foregroundStyle(.moneyUpSecondary)
+    }
+
+    private func cadenceFigure(_ money: Money) -> some View {
+        Text(maskingAmounts: formattedMoney(money))
+            .font(.caption.monospacedDigit().weight(.semibold))
     }
 
     /// Names the category's purpose beside the spend so an even split shown for
