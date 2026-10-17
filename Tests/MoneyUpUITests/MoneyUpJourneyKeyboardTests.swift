@@ -33,33 +33,96 @@ extension MoneyUpJourneyTests {
         expectTrue(problems.isEmpty, "Covered while typing:\n" + problems.joined(separator: "\n"))
     }
 
+    /// Release QA in Simplified Chinese at a large text size, with amounts
+    /// hidden as the journeys ship them: an expense is logged, appears in
+    /// History without its amount, is found by search, and opens in the
+    /// editor with every field below the amount clear of the keyboard.
+    func testChineseCoreFlowAtALargeTextSizeKeepsAmountsHiddenAndFieldsClear() {
+        let app = launch(language: "zh-Hans", extra: [
+            "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXL"
+        ])
+        logBookshopExpense(in: app)
+        app.tabBars.buttons.element(boundBy: 1).tap()
+        savedEntry(in: app, missing: "The saved entry is missing from History")
+        let any = app.descendants(matching: .any)
+        expectTrue(any.matching(NSPredicate(format: "label CONTAINS %@", "隐藏的金额")).count > 0,
+                   "History does not say its amounts are hidden")
+        expectEqual(any.matching(NSPredicate(format: "label CONTAINS %@", "18.00")).count, 0,
+                    "History shows an amount while amounts are hidden")
+        attachScreenshot(app, "release-qa-zh-ax3-history-hidden")
+        let search = app.searchFields.firstMatch
+        expectTrue(search.waitForExistence(timeout: timeout), "History has no search field")
+        search.tap()
+        // Return submits the search and leaves the list to the found entry.
+        search.typeText("Book\n")
+        savedEntry(in: app, missing: "Search did not find the entry by name").tap()
+        let problems = editorFieldsCovered(in: app, labels: .chinese, variant: "zh-ax3")
+        expectTrue(problems.isEmpty, "Covered while typing:\n" + problems.joined(separator: "\n"))
+    }
+
+    /// The editor's labels in each language the journeys check.
+    private struct EditorLabels {
+        let title, split, splitAmount, splitNote, payee, note: String
+
+        static let english = EditorLabels(
+            title: "Edit transaction", split: "Split across categories",
+            splitAmount: "Split 2 amount", splitNote: "Split 2 note (optional)",
+            payee: "Title or merchant (optional)", note: "Description or notes (optional)")
+        static let chinese = EditorLabels(
+            title: "编辑交易", split: "拆分至多个分类",
+            splitAmount: "第 2 条拆分金额", splitNote: "第 2 条拆分备注（可选）",
+            payee: "标题或商户（可选）", note: "描述或备注（可选）")
+    }
+
+    /// Logs an expense of 18 at Bookshop from Log.
+    private func logBookshopExpense(in app: XCUIApplication) {
+        type("18", into: openLog(app))
+        // On a short screen at a large text size the payee row is below the
+        // fold, and the form builds only the rows it shows: hide the keypad
+        // and scroll to it, as a person would, before typing.
+        let payee = app.textFields["quick-log-payee"]
+        dismissKeyboard(app)
+        reveal(payee, in: app)
+        type("Bookshop", into: payee)
+        dismissKeyboard(app)
+        app.buttons["log-save"].tap()
+        expectTrue(app.buttons["log-undo"].waitForExistence(timeout: timeout), "The expense did not save")
+        dismissKeyboard(app)
+    }
+
     /// Logs one expense, opens it from History, splits it, and focuses each
     /// field below the amount: the last split line's amount and note, then
     /// payee and note.
     private func editorFieldsCoveredByTheKeyboard(textSize: String?, variant: String) -> [String] {
         let app = launch(extra: textSize.map { ["-UIPreferredContentSizeCategoryName", $0] } ?? [])
-        type("18", into: openLog(app))
-        type("Bookshop", into: app.textFields["quick-log-payee"])
-        dismissKeyboard(app)
-        app.buttons["log-save"].tap()
-        expectTrue(app.buttons["log-undo"].waitForExistence(timeout: timeout), "The expense did not save")
-        dismissKeyboard(app)
+        logBookshopExpense(in: app)
         app.tabBars.buttons.element(boundBy: 1).tap()
+        savedEntry(in: app, missing: "The saved entry is missing from History").tap()
+        return editorFieldsCovered(in: app, labels: .english, variant: variant)
+    }
+
+    /// History's row for the Bookshop expense. History lists it below its
+    /// search, range and summary; on a short screen at a large text size the
+    /// row starts below the fold, and the list builds only rows it shows.
+    @discardableResult
+    private func savedEntry(in app: XCUIApplication, missing: String) -> XCUIElement {
         let row = app.staticTexts["Bookshop"].firstMatch
-        expectTrue(row.waitForExistence(timeout: timeout), "The saved entry is missing from History")
-        row.tap()
-        let editor = app.navigationBars["Edit transaction"]
+        if !row.waitForExistence(timeout: 5) { reveal(row, in: app) }
+        expectTrue(row.waitForExistence(timeout: timeout), missing)
+        return row
+    }
+
+    /// In the editor just opened: turns on the split, then checks the split
+    /// line, payee and note top to bottom, as the form lays them out.
+    private func editorFieldsCovered(in app: XCUIApplication, labels: EditorLabels, variant: String) -> [String] {
+        let editor = app.navigationBars[labels.title]
         expectTrue(editor.waitForExistence(timeout: timeout), "The editor did not open")
-        // Top to bottom, as the form lays them out: the split switch and its
-        // lines come before the date, payee and note.
-        let split = app.switches["Split across categories"].firstMatch
+        let split = app.switches[labels.split].firstMatch
         reveal(split, in: app)
         guard split.exists else { return ["\(variant): the split switch is missing"] }
         split.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
         var problems: [String] = []
-        let labels = ["Split 2 amount", "Split 2 note (optional)",
-                      "Title or merchant (optional)", "Description or notes (optional)"]
-        for label in labels {
+        for label in [labels.splitAmount, labels.splitNote, labels.payee, labels.note] {
             if let problem = coverage(of: textInput(label, in: app), named: "\(variant)-\(label)", in: app,
                                       below: editor, above: nil) {
                 problems.append(problem)
@@ -132,9 +195,14 @@ extension MoneyUpJourneyTests {
     private func reveal(_ field: XCUIElement, in app: XCUIApplication) {
         let window = app.windows.firstMatch
         for _ in 0..<12 where !field.exists {
-            window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.7)).press(
+            // Drag in the part of the screen a keyboard leaves free.
+            let keyboard = app.keyboards.firstMatch
+            let free = keyboard.exists && window.frame.height > 0
+                ? keyboard.frame.minY / window.frame.height : 1
+            let from = min(0.7, free - 0.05), to = max(0.15, from - 0.25)
+            window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: from)).press(
                 forDuration: 0.05,
-                thenDragTo: window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45)),
+                thenDragTo: window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: to)),
                 withVelocity: .slow, thenHoldForDuration: 0.2)
         }
         if field.exists && !field.isHittable { bringIntoView(field, in: app) }
@@ -142,7 +210,7 @@ extension MoneyUpJourneyTests {
 
     /// The editor's keyboard has a Done bar; Log has its own hide button.
     private func hideKeyboard(_ app: XCUIApplication) {
-        let done = app.toolbars.buttons["Done"].firstMatch
+        let done = app.toolbars.buttons.matching(NSPredicate(format: "label IN %@", ["Done", "完成"])).firstMatch
         if done.exists { done.tap() } else { dismissKeyboard(app) }
         _ = app.keyboards.firstMatch.waitForNonExistence(timeout: 3)
     }
