@@ -105,10 +105,13 @@ final class ReleaseQARenderTests: XCTestCase {
         var problems: [String] = []
         let shownImage = await LargeTextAmountRenderTests.settledLayerImage(of: host, scale: 2)
         attach(shownImage, "release-qa-\(name)")
-        let shown = FormValuesLargeTextRenderTests.readTallRender(shownImage, language: language)
+        let reading = FormValuesLargeTextRenderTests.readTallRender(shownImage, language: language)
+        let shown = reading.lines
         guard shown.count >= 4 else { return ["\(name): the render is blank"] }
         if amountsCarryCodes {
-            problems += HistoryLargeTextRenderTests.amountsWithoutTheirCode(in: shown)
+            // By rows: a hero's code is a size smaller than its figure, and
+            // Vision reads the two as separate pieces of one line.
+            problems += HistoryLargeTextRenderTests.amountsWithoutTheirCode(in: reading.rows)
                 .map { "\(name): apart from its code: \($0)" }
         }
         // A field's own placeholder may end in "…" where it is narrow; a value may not.
@@ -133,7 +136,7 @@ final class ReleaseQARenderTests: XCTestCase {
         UserDefaults.standard.set(true, forKey: MoneyAmountPrivacy.storageKey)
         let hiddenImage = await LargeTextAmountRenderTests.settledLayerImage(of: host, scale: 2)
         attach(hiddenImage, "release-qa-\(name)-hidden")
-        let hidden = FormValuesLargeTextRenderTests.readTallRender(hiddenImage, language: language)
+        let hidden = FormValuesLargeTextRenderTests.readTallRender(hiddenImage, language: language).lines
         guard hidden.count >= 4 else { return problems + ["\(name), hidden: the render is blank"] }
         let leaked = Self.figures.filter { figure in hidden.contains { Self.digits($0).contains(figure) } }
         if !leaked.isEmpty { problems.append("\(name), hidden: still shows \(leaked.joined(separator: ", "))") }

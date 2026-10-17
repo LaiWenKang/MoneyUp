@@ -27,7 +27,9 @@ Vision. On iOS 26.5 such windows are not always composited (parts render
 black), so the renders run on iOS 18.5. Vision misses default-size text in
 one image that tall, so each render is read in overlapping screen-shaped
 strips (`FormValuesLargeTextRenderTests.readTallRender`). Amounts are matched
-by their digits because OCR can read a separator either way. A field's own
+by their digits because OCR can read a separator either way, and checked for
+their currency code row by row, because Vision reads a headline figure and
+its code a size smaller as two pieces of one line. A field's own
 placeholder may end in "…" in a narrow field and is not counted (the person
 sees what goes there once they type); a word hyphenated because it is wider
 than the screen (a long payee) is attached for review rather than counted as
