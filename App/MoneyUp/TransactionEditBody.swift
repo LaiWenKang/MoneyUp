@@ -349,8 +349,10 @@ extension TransactionEditView {
             }
             .onChange(of: focusedField) { _, field in
                 guard let field else { return }
+                // Log's anchor: the upper third stays clear of every keypad
+                // and the Done bar riding it; the centre does not.
                 withAnimation(MoneyUpMotion.animation(for: .stateChange, reduceMotion: reduceMotion)) {
-                    scrollProxy.scrollTo(field, anchor: .center)
+                    scrollProxy.scrollTo(field.scrollTarget, anchor: QuickLogFocusScrollPolicy.anchor)
                 }
                 Task { @MainActor in
                     try? await Task.sleep(
@@ -358,7 +360,7 @@ extension TransactionEditView {
                     )
                     guard focusedField == field else { return }
                     withAnimation(MoneyUpMotion.animation(for: .stateChange, reduceMotion: reduceMotion)) {
-                        scrollProxy.scrollTo(field, anchor: .center)
+                        scrollProxy.scrollTo(field.scrollTarget, anchor: QuickLogFocusScrollPolicy.anchor)
                     }
                 }
             }

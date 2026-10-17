@@ -102,6 +102,13 @@ struct TransactionEditView: View {
         case note
         case splitAmount(UUID)
         case splitMemo(UUID)
+
+        /// The row a focused field scrolls to. A Form resolves `scrollTo` by
+        /// row, so a split line's amount and note both go to that line's row.
+        var scrollTarget: Self {
+            if case let .splitMemo(lineID) = self { return .splitAmount(lineID) }
+            return self
+        }
     }
 
     @Environment(\.dismiss) var dismiss
@@ -358,7 +365,6 @@ struct TransactionEditView: View {
                     )
                     .moneyAmountKeyboard(currency: sourceCurrency)
                     .focused($focusedField, equals: .splitAmount(lineID))
-                    .id(FieldFocus.splitAmount(lineID))
                     .moneyUpFieldValidation(lineValidationMessage)
                     .accessibilityLabel(Text(amountAccessibilityLabel))
                     .moneyUpPrivateAmountInput(
@@ -419,7 +425,6 @@ struct TransactionEditView: View {
                 )
                 .font(.caption)
                 .focused($focusedField, equals: .splitMemo(lineID))
-                .id(FieldFocus.splitMemo(lineID))
                 .accessibilityLabel(
                     Text(
                         String(
@@ -430,6 +435,8 @@ struct TransactionEditView: View {
                 )
             }
             .padding(.vertical, 4)
+            // The row carries the scroll id for both its amount and note.
+            .id(FieldFocus.splitAmount(lineID))
         }
 
         Button {
