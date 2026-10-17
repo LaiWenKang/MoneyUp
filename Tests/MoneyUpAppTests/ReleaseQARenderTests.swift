@@ -3,7 +3,6 @@ import Foundation
 import MoneyUpCore
 import SwiftUI
 import UIKit
-import Vision
 import XCTest
 
 /// Release QA for settings a person combines: English and Simplified Chinese,
@@ -106,13 +105,16 @@ final class ReleaseQARenderTests: XCTestCase {
         var problems: [String] = []
         let shownImage = await LargeTextAmountRenderTests.settledLayerImage(of: host, scale: 2)
         attach(shownImage, "release-qa-\(name)")
-        let shown = Self.recognizedLines(in: shownImage, language: language)
+        let shown = FormValuesLargeTextRenderTests.readTallRender(shownImage, language: language)
         guard shown.count >= 4 else { return ["\(name): the render is blank"] }
         if amountsCarryCodes {
             problems += HistoryLargeTextRenderTests.amountsWithoutTheirCode(in: shown)
                 .map { "\(name): apart from its code: \($0)" }
         }
-        problems += shown.filter { $0.contains("…") || $0.contains("...") }.map { "\(name): cut: \($0)" }
+        // A field's own placeholder may end in "…" where it is narrow; a value may not.
+        problems += FormValuesLargeTextRenderTests.cutValues(
+            in: shown, hints: FormValuesLargeTextRenderTests.fieldHints()
+        ).map { "\(name): cut: \($0)" }
         if let required, !shown.contains(where: { Self.digits($0).contains(required) }) {
             problems.append("\(name): \(required) is not shown whole")
         }
@@ -131,7 +133,7 @@ final class ReleaseQARenderTests: XCTestCase {
         UserDefaults.standard.set(true, forKey: MoneyAmountPrivacy.storageKey)
         let hiddenImage = await LargeTextAmountRenderTests.settledLayerImage(of: host, scale: 2)
         attach(hiddenImage, "release-qa-\(name)-hidden")
-        let hidden = Self.recognizedLines(in: hiddenImage, language: language)
+        let hidden = FormValuesLargeTextRenderTests.readTallRender(hiddenImage, language: language)
         guard hidden.count >= 4 else { return problems + ["\(name), hidden: the render is blank"] }
         let leaked = Self.figures.filter { figure in hidden.contains { Self.digits($0).contains(figure) } }
         if !leaked.isEmpty { problems.append("\(name), hidden: still shows \(leaked.joined(separator: ", "))") }
@@ -158,16 +160,6 @@ final class ReleaseQARenderTests: XCTestCase {
             return trimmed.wholeMatch(of: /[a-z]+(?:\.[a-z0-9_]+)+/) != nil
                 || line.contains(/[a-z]+(?:_[a-z0-9]+)+\.[a-z0-9_]+|[a-z]+\.[a-z0-9]+(?:_[a-z0-9]+)+/)
         }
-    }
-
-    static func recognizedLines(in image: UIImage, language: AppLanguagePreference) -> [String] {
-        guard let cgImage = image.cgImage else { return [] }
-        let request = VNRecognizeTextRequest()
-        request.recognitionLevel = .accurate
-        request.usesLanguageCorrection = false
-        request.recognitionLanguages = language == .simplifiedChinese ? ["zh-Hans", "en-US"] : ["en-US"]
-        try? VNImageRequestHandler(cgImage: cgImage).perform([request])
-        return (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }
     }
 
     private static func preservePreferences() -> () -> Void {
