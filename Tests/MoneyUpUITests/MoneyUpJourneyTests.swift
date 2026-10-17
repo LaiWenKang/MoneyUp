@@ -57,6 +57,12 @@ final class MoneyUpJourneyTests: XCTestCase {
     func openLog(_ app: XCUIApplication) -> XCUIElement {
         app.tabBars.buttons.element(boundBy: 2).tap()
         let amount = app.textFields["quick-log-amount"]
+        // Just after launch the tab bar can exist before it takes taps (see
+        // openSettings): if Log has not opened, tap it again rather than wait
+        // out the whole timeout.
+        for _ in 0..<2 where !amount.waitForExistence(timeout: 5) {
+            app.tabBars.buttons.element(boundBy: 2).tap()
+        }
         expectTrue(amount.waitForExistence(timeout: timeout))
         return amount
     }
