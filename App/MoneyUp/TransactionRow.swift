@@ -262,6 +262,11 @@ struct TransactionRow: View {
                 ForEach(Array(amounts.prefix(2).enumerated()), id: \.offset) {
                     _, amount in
                     Text(maskingAmounts: rowFormattedAmount(amount))
+                        // Code and figure stay together at accessibility
+                        // sizes; set inside the typography modifier, which
+                        // otherwise wins.
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 1 : nil)
+                        .minimumScaleFactor(dynamicTypeSize.isAccessibilitySize ? 0.4 : 1)
                         .moneyUpFinancialValue(.compact)
                         .foregroundStyle(
                             amount.role == .income
@@ -270,8 +275,6 @@ struct TransactionRow: View {
                                 ? Color.moneyUpPositive
                                 : Color.primary
                         )
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.78)
                 }
             }
         } else if case let .unavailable(issue) = displayedAmountsResult {

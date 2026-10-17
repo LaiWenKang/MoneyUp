@@ -183,6 +183,35 @@ extension HistoryFilterDraft {
     }
 }
 
+/// History's range selector and its filter buttons share a row; at
+/// accessibility text sizes the selector takes the full width and the buttons
+/// sit beneath it, so the range's name is never squeezed to a letter a line.
+struct HistoryScopeHeader<Selector: View, Actions: View>: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    private let selector: Selector
+    private let actions: Actions
+
+    init(@ViewBuilder selector: () -> Selector, @ViewBuilder actions: () -> Actions) {
+        self.selector = selector()
+        self.actions = actions()
+    }
+
+    var body: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 8) {
+                selector
+                actions
+            }
+        } else {
+            HStack(alignment: .center, spacing: 8) {
+                selector
+                Spacer(minLength: 0)
+                actions
+            }
+        }
+    }
+}
+
 struct HistoryScopeSelector: View {
     @Binding private var selection: HistoryQuickRange?
     @Environment(\.moneyUpReduceMotion) private var reduceMotion
@@ -250,6 +279,10 @@ struct HistoryScopeSelector: View {
         } label: {
             HStack(spacing: 10) {
                 Label(selectedTitle, systemImage: selectedSystemImage).labelStyle(.titleAndIcon)
+                    // One word, whole: at accessibility sizes it shrinks
+                    // before it would break between letters.
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 1 : nil)
+                    .minimumScaleFactor(dynamicTypeSize.isAccessibilitySize ? 0.5 : 1)
                 Spacer(minLength: 8)
                 Image(systemName: "chevron.down").font(.caption).accessibilityHidden(true)
             }
