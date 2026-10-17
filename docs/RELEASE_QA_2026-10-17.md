@@ -10,10 +10,10 @@ CI for pull requests or main, or any release workflow.
 
 | Area | Check | Where it runs |
 |---|---|---|
-| Chinese and English, default and largest text size, 320 and 375 pt | Today and History rendered whole: every amount whole and with its currency code, no raw string key, and after hiding amounts on the same mounted screen no figure left (`ReleaseQARenderTests.testTodayAndHistoryStayWholeAndHideEveryFigureInBothLanguages`) | Every PR (iOS 18.5) and the short-screen lane |
-| Same languages and sizes, 375 pt | Log and the transaction editor show no raw string key; the editor's amount hides when amounts are hidden (`testLogAndTheEditorShowNoRawKeysAndTheEditorHidesItsAmount`) | Every PR and the short-screen lane |
+| Chinese and English, default and largest text size, 320 and 375 pt | Today and History rendered whole: every amount keeps its currency code on its line, nothing is cut with "…", no raw string key, and after hiding amounts on the same mounted screen no figure left (`ReleaseQARenderTests.testTodayAndHistoryStayWholeAndHideEveryFigureInBothLanguages`) | Every PR (iOS 18.5) |
+| Same languages and sizes, 375 pt | Log and the transaction editor show no raw string key; the editor's amount hides when amounts are hidden (`testLogAndTheEditorShowNoRawKeysAndTheEditorHidesItsAmount`) | Every PR (iOS 18.5) |
 | Chinese core flow at Accessibility XL, amounts hidden | Log an expense, see it in History without its amount, find it by search, open it, split it, and type in each field below the amount with the field clear of the keyboard and its Done bar (`MoneyUpJourneyTests.testChineseCoreFlowAtALargeTextSizeKeepsAmountsHiddenAndFieldsClear`) | Every PR (iOS 26.5) and the short-screen lane |
-| Short screen (iPhone SE, 667 pt, iOS 26) | The whole UI journey suite, including the keyboard, largest-text, hidden-amount, Chinese and Log-input journeys, plus the release QA renders | `.github/workflows/qa-short-screen.yml`, on `qa/release-candidate-*` pushes or on request |
+| Short screen (iPhone SE, 667 pt, iOS 26) | The whole UI journey suite, including the keyboard, largest-text, hidden-amount, Chinese and Log-input journeys, and the keyboard and focus unit tests | `.github/workflows/qa-short-screen.yml`, on `qa/release-candidate-*` pushes or on request |
 
 Already in the suite and kept: Today, History, Plan and Assets hide every
 figure when amounts are hidden (`AmountPrivacyRenderTests`); Today and the
@@ -21,6 +21,20 @@ Saved banner whole at the largest size (`LargeTextAmountRenderTests`, the AX5
 journey); the six monthly rows at AX5 and their live masking
 (`TodayCashFlowMonthlyRenderTests`); keyboard journeys in English at the
 default size and Accessibility XL.
+
+The renders draw a window far taller than the screen and read it with
+Vision. On iOS 26.5 such windows are not always composited (parts render
+black), so the renders run on iOS 18.5; amounts are matched by their digits
+because OCR can read a separator either way, and a word hyphenated because it
+is wider than the screen (a long payee) is attached for review rather than
+counted as a fault.
+
+## Found by this QA and fixed
+
+On the first short-screen run (iPhone SE, iOS 26.5), History at the largest
+text size broke the range name one letter a line ("T/o/d/a/y", "今/天"), put
+"Spent SGD" above "1,234.56", and set every row's currency code on one line and
+its figure on the next. Fixed in #139 (`HistoryLargeTextRenderTests`).
 
 ## What only a physical iPhone can show (owner)
 

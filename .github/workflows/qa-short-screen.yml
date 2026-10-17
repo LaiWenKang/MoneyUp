@@ -1,9 +1,12 @@
 name: Release QA on a short screen
 
-# Release-candidate QA only: the whole UI journey suite and the release QA
-# renders on an iPhone SE (667 pt tall, Touch ID layout) running iOS 26. It
-# runs for qa/release-candidate-* branches and on request, never for main or
-# pull requests, and it signs nothing and publishes nothing.
+# Release-candidate QA only: the whole UI journey suite on an iPhone SE
+# (667 pt tall, Touch ID layout) running iOS 26, with the keyboard and focus
+# unit tests. The release QA renders draw very tall windows, which iOS 26
+# does not always composite off screen; they run on iOS 18.5 in every pull
+# request's app tests instead. This runs for qa/release-candidate-* branches
+# and on request, never for main or pull requests, and signs and publishes
+# nothing.
 on:
   push:
     branches: ['qa/release-candidate-*']
@@ -58,35 +61,34 @@ jobs:
           fi
           xcrun simctl list devices | grep "$EXISTING"
           echo "id=$EXISTING" >> "$GITHUB_OUTPUT"
-      - name: Release QA renders and every journey on the short screen
+      - name: Every journey on the short screen
         shell: bash
         env:
           SIMULATOR_ID: ${{ steps.device.outputs.id }}
         run: |
-          set -euo pipefail
+          set -uo pipefail
           xcodegen generate
+          status=0
+          # Both runs always happen; the job fails at the end if either did.
           xcodebuild -project MoneyUp.xcodeproj -scheme MoneyUp -configuration Debug \
             -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
-            -resultBundlePath "$RUNNER_TEMP/ReleaseQARenders.xcresult" \
+            -resultBundlePath "$RUNNER_TEMP/ReleaseQAUnits.xcresult" \
             -derivedDataPath "$RUNNER_TEMP/ReleaseQADerivedData" \
             -parallel-testing-enabled NO \
-            -only-testing:MoneyUpTests/ReleaseQARenderTests \
-            -only-testing:MoneyUpTests/LargeTextAmountRenderTests \
-            -only-testing:MoneyUpTests/TodayCashFlowMonthlyRenderTests \
-            -only-testing:MoneyUpTests/AmountPrivacyRenderTests \
             -only-testing:MoneyUpTests/QuickLogKeyboardJourneyTests \
             -only-testing:MoneyUpTests/TransactionPresentationTests \
-            SWIFT_TREAT_WARNINGS_AS_ERRORS=YES CODE_SIGNING_ALLOWED=NO test
+            SWIFT_TREAT_WARNINGS_AS_ERRORS=YES CODE_SIGNING_ALLOWED=NO test || status=1
           xcodebuild -project MoneyUp.xcodeproj -scheme MoneyUpColdLaunch -configuration Debug \
             -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
             -derivedDataPath "$RUNNER_TEMP/ReleaseQADerivedData" \
             -resultBundlePath "$RUNNER_TEMP/ReleaseQAJourneys.xcresult" \
             -parallel-testing-enabled NO \
-            SWIFT_TREAT_WARNINGS_AS_ERRORS=YES CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- test
+            SWIFT_TREAT_WARNINGS_AS_ERRORS=YES CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- test || status=1
+          exit "$status"
       - name: Export QA evidence
         if: ${{ always() }}
         run: |
-          for bundle in ReleaseQARenders ReleaseQAJourneys; do
+          for bundle in ReleaseQAUnits ReleaseQAJourneys; do
             if test -d "$RUNNER_TEMP/$bundle.xcresult"; then
               xcrun xcresulttool export attachments --path "$RUNNER_TEMP/$bundle.xcresult" --output-path "$RUNNER_TEMP/qa/$bundle"
               xcrun xcresulttool get test-results summary --path "$RUNNER_TEMP/$bundle.xcresult" --compact > "$RUNNER_TEMP/qa/$bundle-summary.json"

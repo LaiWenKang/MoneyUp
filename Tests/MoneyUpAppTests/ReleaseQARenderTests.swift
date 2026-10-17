@@ -14,9 +14,10 @@ import XCTest
 final class ReleaseQARenderTests: XCTestCase {
     private static let languages: [AppLanguagePreference] = [.english, .simplifiedChinese]
     private static let sizes: [DynamicTypeSize] = [.large, .accessibility5]
-    /// Every figure the fixture puts on Today or History; none may show once
-    /// amounts are hidden.
-    private static let figures = ["122,222.22", "123,456.78", "10,765.44", "1,234.56", "1234.56"]
+    /// The digits of every figure the fixture puts on Today, History or the
+    /// editor; none may show once amounts are hidden. Matched by digits, as
+    /// OCR can read a separator as either a comma or a stop.
+    private static let figures = ["12222222", "12345678", "1076544", "123456"]
 
     /// Today and History: every amount whole and with its currency, no raw
     /// string key, and nothing left showing after hiding amounts.
@@ -31,7 +32,7 @@ final class ReleaseQARenderTests: XCTestCase {
             AppLanguagePreference.defaults?.set(language.rawValue, forKey: AppLanguagePreference.storageKey)
             for size in Self.sizes {
                 for width in [320, 375] {
-                    for (section, required) in [(MoneyUpSection.today, "122,222.22"), (.history, "1,234.56")] {
+                    for (section, required) in [(MoneyUpSection.today, "12222222"), (.history, "123456")] {
                         let name = "\(section)-\(language.rawValue)-\(size)-\(width)"
                         UserDefaults.standard.set(false, forKey: MoneyAmountPrivacy.storageKey)
                         let screen = MainTabView(initialReportingSnapshot: snapshot, initialSection: section)
@@ -66,7 +67,7 @@ final class ReleaseQARenderTests: XCTestCase {
                 UserDefaults.standard.set(false, forKey: MoneyAmountPrivacy.storageKey)
                 let editor = TransactionEditView(entry: expense).environment(model)
                 problems += await check(editor, name: "editor-\(language.rawValue)-\(size)", language: language,
-                                        size: size, width: 375, shownMustInclude: "1234.56", amountsCarryCodes: false)
+                                        size: size, width: 375, shownMustInclude: "123456", amountsCarryCodes: false)
             }
         }
         XCTAssertEqual(problems, [], "Release QA, Log and editor:\n" + problems.joined(separator: "\n"))
@@ -108,19 +109,31 @@ final class ReleaseQARenderTests: XCTestCase {
         let shown = Self.recognizedLines(in: shownImage, language: language)
         guard shown.count >= 4 else { return ["\(name): the render is blank"] }
         if amountsCarryCodes {
-            problems += LargeTextAmountRenderTests.brokenAmounts(in: shown).map { "\(name): not whole: \($0)" }
+            problems += HistoryLargeTextRenderTests.amountsWithoutTheirCode(in: shown)
+                .map { "\(name): apart from its code: \($0)" }
         }
-        if let required, !shown.contains(where: { $0.contains(required) }) {
+        problems += shown.filter { $0.contains("…") || $0.contains("...") }.map { "\(name): cut: \($0)" }
+        if let required, !shown.contains(where: { Self.digits($0).contains(required) }) {
             problems.append("\(name): \(required) is not shown whole")
         }
         problems += Self.rawKeys(in: shown).map { "\(name): raw key \($0)" }
+        // A long word broken with a hyphen is how text wraps when one word is
+        // wider than the screen (a long payee at the largest size); kept for
+        // review, not counted as a fault.
+        let hyphenated = shown.filter { $0.trimmingCharacters(in: .whitespaces).hasSuffix("-") }
+        if !hyphenated.isEmpty {
+            let note = XCTAttachment(string: hyphenated.joined(separator: "\n"))
+            note.name = "release-qa-\(name)-hyphenated"
+            note.lifetime = .keepAlways
+            add(note)
+        }
         // The same write the eye button and a Focus filter make.
         UserDefaults.standard.set(true, forKey: MoneyAmountPrivacy.storageKey)
         let hiddenImage = await LargeTextAmountRenderTests.settledLayerImage(of: host, scale: 2)
         attach(hiddenImage, "release-qa-\(name)-hidden")
         let hidden = Self.recognizedLines(in: hiddenImage, language: language)
         guard hidden.count >= 4 else { return problems + ["\(name), hidden: the render is blank"] }
-        let leaked = Self.figures.filter { figure in hidden.contains { $0.contains(figure) } }
+        let leaked = Self.figures.filter { figure in hidden.contains { Self.digits($0).contains(figure) } }
         if !leaked.isEmpty { problems.append("\(name), hidden: still shows \(leaked.joined(separator: ", "))") }
         return problems
     }
@@ -130,6 +143,10 @@ final class ReleaseQARenderTests: XCTestCase {
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
+    }
+
+    static func digits(_ line: String) -> String {
+        String(line.filter(\.isNumber))
     }
 
     /// A string-catalog key shown instead of its words: a whole line of
