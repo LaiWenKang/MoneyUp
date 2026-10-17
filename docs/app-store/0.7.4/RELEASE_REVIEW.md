@@ -40,7 +40,8 @@ acceptance, without publishing to TestFlight or the App Store yet.
 
 - What's New is rewritten for 0.7.4 in English and Simplified Chinese; the
   description, keywords and promotional text are unchanged from 0.7.3.
-- The review notes say the update is visual only and keep the camera,
+- The review notes say the update is visual and usability only (the core-flow
+  rounds #129–#140 were folded in on 2026-10-17) and keep the camera,
   notification, Siri and lock-cover explanations.
 - The 16 screenshots and both App Previews are rendered from this source; the
   previews get their silent stereo AAC track from
