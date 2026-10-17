@@ -22,6 +22,7 @@ final class ReleaseQARenderTests: XCTestCase {
     /// string key, and nothing left showing after hiding amounts.
     @MainActor
     func testTodayAndHistoryStayWholeAndHideEveryFigureInBothLanguages() async throws {
+        try FormValuesLargeTextRenderTests.skipTallRenderWhereNotComposited()
         let (fixture, model, snapshot, _) = try await makeFixture()
         defer { fixture.removeFiles() }
         let restore = Self.preservePreferences()
@@ -50,6 +51,7 @@ final class ReleaseQARenderTests: XCTestCase {
     /// key in either language at either size, and the editor's amount hides.
     @MainActor
     func testLogAndTheEditorShowNoRawKeysAndTheEditorHidesItsAmount() async throws {
+        try FormValuesLargeTextRenderTests.skipTallRenderWhereNotComposited()
         let (fixture, model, _, expense) = try await makeFixture()
         defer { fixture.removeFiles() }
         let restore = Self.preservePreferences()
