@@ -1,13 +1,18 @@
 # App Store Submission Working Copy
 
-The current 0.7.3 public-update metadata and reviewed screenshot manifest are
-in `docs/app-store/0.7.3/release.json`; its screenshots, previews and support
-review capture are the reviewed 0.7.2 set. The 0.7.1 material below is
-historical. Since 0.7.2 the app offers optional consumable developer-support tips
+The current 0.7.4 public-update metadata and reviewed screenshot manifest are
+in `docs/app-store/0.7.4/release.json`; its screenshots and previews are
+rendered from the 0.7.4 source, and the support review capture is the reviewed
+0.7.2 file. 0.7.3 (build 1079.5) was submitted on 11 October 2026 with its own
+set in `docs/app-store/0.7.3/`. The 0.7.1 material below is historical. Since 0.7.2 the app offers optional consumable developer-support tips
 through Apple StoreKit; all core functionality stays free. Public review must
 include the initial consumable products and requires the Account Holder's active
 Paid Apps Agreement, tax and banking setup. No agreement is accepted by the
 release tooling.
+
+0.7.4 is a visual update: one larger headline figure per screen, a stable
+colour per savings goal and account, page-level Plan controls and sliding
+selection. It adds no permission, data use, purchase or privacy answer.
 
 0.7.3 adds paper-receipt scanning with the system document camera (camera
 permission is requested on first use; images are read on the device), local

@@ -37,6 +37,8 @@ enum AppVersion {
 enum ReleaseNotes {
     static func highlights(for version: String = AppVersion.marketing) -> [LocalizedStringKey] {
         switch version {
+        case "0.7.4":
+            version074Highlights
         case "0.7.3":
             version073Highlights
         case "0.7.2":
@@ -58,6 +60,14 @@ enum ReleaseNotes {
                 "whats_new.0_7_0.details",
                 "whats_new.0_7_0.privacy"
             ]
+        default:
+            earlierHighlights(for: version)
+        }
+    }
+
+    /// Notes for 0.6.0 and earlier, kept so an old build's update still reads.
+    private static func earlierHighlights(for version: String) -> [LocalizedStringKey] {
+        switch version {
         case "0.6.0":
             [
                 "whats_new.0_6_0.history",
@@ -115,6 +125,11 @@ enum ReleaseNotes {
         default:
             []
         }
+    }
+
+    private static var version074Highlights: [LocalizedStringKey] {
+        ["whats_new.0_7_4.figure", "whats_new.0_7_4.colour",
+         "whats_new.0_7_4.calm", "whats_new.0_7_4.motion"]
     }
 
     private static var version073Highlights: [LocalizedStringKey] {
