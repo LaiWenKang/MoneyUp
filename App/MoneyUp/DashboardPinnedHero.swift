@@ -35,6 +35,18 @@ struct PinnedRemainingHero: Equatable {
         )
     }
 
+    /// Over budget is said in words, as the rows below and Plan say it: with
+    /// amounts hidden the figure is only a mask, so the title alone must tell
+    /// which side of the limit the month is on.
+    var isOver: Bool { remaining.amount < .zero }
+
+    var titleKeyString: String { isOver ? "today.hero.over_month" : "today.hero.left_month" }
+
+    var title: LocalizedStringKey { LocalizedStringKey(titleKeyString) }
+
+    /// How far under or over, never a negative "left".
+    var shownAmount: Money { isOver ? remaining.negated : remaining }
+
     /// Names the figure's scope: Plan's total spans every budget category,
     /// so an unqualified "Left this month" here read as a second answer.
     static func scopeText(categoryCount: Int, language: AppLanguagePreference = .current) -> String {
@@ -54,33 +66,57 @@ extension DashboardView {
            let hero = PinnedRemainingHero.make(summaries) {
             MoneyUpCard(isHero: true) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Label("today.hero.left_month", systemImage: "leaf.fill")
+                    Label(hero.title, systemImage: hero.isOver ? "exclamationmark.circle.fill" : "leaf.fill")
                         .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.moneyUpSecondary)
-                    Text(maskingHeroAmount: formattedMoney(hero.remaining))
+                        .foregroundStyle(hero.isOver ? Color.moneyUpDanger : .moneyUpSecondary)
+                    Text(maskingHeroAmount: formattedMoney(hero.shownAmount))
                         .moneyUpFinancialValue(.hero)
-                        .foregroundStyle(hero.remaining.amount < .zero ? Color.moneyUpWarning : .primary)
+                        .foregroundStyle(hero.isOver ? Color.moneyUpDanger : .primary)
                     Text(PinnedRemainingHero.scopeText(categoryCount: hero.categoryCount))
                         .font(.caption)
                         .foregroundStyle(.moneyUpSecondary)
                     if let today = hero.today {
-                        HStack(spacing: 6) {
-                            Image(systemName: "sun.max.fill")
-                                .foregroundStyle(.tint)
-                            Text("today.hero.today_share")
-                            Text(maskingAmounts: formattedMoney(today))
-                                .fontWeight(.semibold)
-                                .monospacedDigit()
+                        // One line where it fits; at the largest sizes the
+                        // amount takes its own line rather than breaking.
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: 6) {
+                                todayShareTitle
+                                todayShareAmount(today)
+                            }
+                            .lineLimit(1)
+                            VStack(alignment: .leading, spacing: 2) {
+                                todayShareTitle
+                                todayShareAmount(today)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.5)
+                            }
                         }
                         .font(.footnote)
                         .foregroundStyle(.moneyUpSecondary)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+                // Combined inside the card, as every other Today card does:
+                // combined around the card's own container, VoiceOver kept
+                // reading the shown figures after amounts were hidden.
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("today-pinned-hero")
             }
-            .accessibilityElement(children: .combine)
-            .accessibilityIdentifier("today-pinned-hero")
         }
+    }
+
+    private var todayShareTitle: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "sun.max.fill")
+                .foregroundStyle(.tint)
+            Text("today.hero.today_share")
+        }
+    }
+
+    private func todayShareAmount(_ today: Money) -> some View {
+        Text(maskingAmounts: formattedMoney(today))
+            .fontWeight(.semibold)
+            .monospacedDigit()
     }
 }
 

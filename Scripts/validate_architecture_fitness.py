@@ -682,7 +682,9 @@ W3_PATH_TYPE_DIGESTS: tuple[tuple[str, str, str, str], ...] = (
     # Re-pinned 2026-09-29: the Saved banner confirms Undo, bounces its glyph per save, and speaks a
     # masked amount as "hidden amount"; amounts never animate.
     # Re-pinned 2026-10-07: secondary text uses the accessible BrandTextSecondary colour (0.7.3 design pass); no behaviour change.
-    ("App/MoneyUp/QuickLogEntryChrome.swift", "extension", "QuickLogEntryView", "2afedf9593e047468b09265bf97507f6444ebe5959daff6cc2ac73461920db1d"),
+    # Re-pinned 2026-10-15: at accessibility text sizes the Saved banner stacks its confirmation above
+    # Undo and Close, and its amount moves to a line of its own rather than being cut (QuickLogSavedSummary).
+    ("App/MoneyUp/QuickLogEntryChrome.swift", "extension", "QuickLogEntryView", "00482686e7e5c1aceaced5ea99f71106370d87b79b5c1694e046bca5294e12a2"),
     (
         "App/MoneyUp/QuickLogEntryBody.swift",
         "extension",
@@ -693,7 +695,9 @@ W3_PATH_TYPE_DIGESTS: tuple[tuple[str, str, str, str], ...] = (
         # leaving the sheet clears the file-picker flag with the photo-picker flag.
         # Re-pinned 2026-10-06: keeping the draft or cancelling discards the words held for that request.
         # Re-pinned 2026-10-07: secondary text uses the accessible BrandTextSecondary colour (0.7.3 design pass); no behaviour change.
-        "caab26eed6837dc02b88ac52ce8c6bdb6b1e21f446c0377fa912850bbaed4cb7",
+        # Re-pinned 2026-10-15: the Save bar is handed why Save is dimmed (QuickLogSaveBlocker) so VoiceOver
+        # can say it; canSave is unchanged (it is now "no blocker").
+        "77392777ba0d1625cd060bf1885164fd4daa011ccc11269f3cd1c3d7f5b1223e",
     ),
     (
         "App/MoneyUp/QuickLogEntryReceipt.swift",
