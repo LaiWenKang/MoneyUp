@@ -1,4 +1,5 @@
 import Foundation
+import MoneyUpCore
 import SwiftUI
 
 enum HistoryQuickRange: String, CaseIterable, Hashable {
@@ -61,6 +62,63 @@ enum HistorySearchScopePolicy {
             if state.range == .all { next.range = previous }
         }
         return next
+    }
+}
+
+/// Filters and the range row share one draft, so each must leave the other
+/// alone. Applying the filter sheet keeps Today, 7 days, Month or All selected
+/// unless the sheet's own dates changed: a category or kind filter then still
+/// rolls over at midnight, and a later search still looks through every date.
+/// Clear removes the search and the filters, never the range the person chose.
+enum HistoryFilterScopePolicy {
+    /// The calendar days a draft's date predicates cover; the time of day a
+    /// date picker happens to carry is not a change of scope.
+    struct DateScope: Equatable {
+        let start: Date?
+        let end: Date?
+    }
+
+    static func dateScope(of filters: HistoryFilterDraft, calendar: Calendar) -> DateScope {
+        DateScope(
+            start: filters.includesStartDate
+                ? FinancialPeriodBoundary.startOfDay(containing: filters.startDate, calendar: calendar) : nil,
+            end: filters.includesEndDate
+                ? FinancialPeriodBoundary.startOfDay(containing: filters.endDate, calendar: calendar) : nil
+        )
+    }
+
+    static func range(
+        afterApplying updated: HistoryFilterDraft,
+        over current: HistoryFilterDraft,
+        selected range: HistoryQuickRange?,
+        calendar: Calendar
+    ) -> HistoryQuickRange? {
+        if dateScope(of: updated, calendar: calendar) == dateScope(of: current, calendar: calendar) {
+            return range
+        }
+        // Removing both dates is every date, not a custom range.
+        return updated.includesStartDate || updated.includesEndDate ? nil : .all
+    }
+
+    /// Clear is offered only when it would remove something the person set:
+    /// a search, or a filter the range row does not already show.
+    static func canClear(
+        filters: HistoryFilterDraft,
+        range: HistoryQuickRange?,
+        searchText: String
+    ) -> Bool {
+        !searchText.isEmpty || filters.advancedFilterCount(quickRange: range) > 0
+    }
+
+    /// The range shown after Clear, as ending the search would leave it: the
+    /// range a search widened to All comes back, a range chosen during the
+    /// search stays, and a custom date range clears to every date.
+    static func rangeAfterClearing(
+        range: HistoryQuickRange?,
+        rangeBeforeSearch: HistoryQuickRange?
+    ) -> HistoryQuickRange {
+        if range == .all, let rangeBeforeSearch { return rangeBeforeSearch }
+        return range ?? .all
     }
 }
 
