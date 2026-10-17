@@ -393,6 +393,7 @@ struct QuickLogEntryView: View {
     @Environment(\.dismiss) var dismiss
     @Environment(\.moneyUpReduceMotion) var accessibilityReduceMotion
     @Environment(\.accessibilityVoiceOverEnabled) var isVoiceOverEnabled
+    @Environment(\.accessibilitySwitchControlEnabled) var isSwitchControlEnabled
     @Environment(\.dynamicTypeSize) var dynamicTypeSize
     @Environment(AppModel.self) var model
     @AppStorage(MoneyAmountPrivacy.storageKey)
@@ -598,23 +599,8 @@ struct QuickLogEntryView: View {
         currency: CurrencyCode?,
         isEditing: Bool = false
     ) -> String? {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-        // "12." or "0.0" mid-typing is not an error yet; it would flash a row.
-        if isEditing, isIncompleteAmount(trimmed) { return nil }
-        guard let written = writtenAmount(from: trimmed), written.value > .zero else {
-            return AppLocalization.string("error.invalid_amount")
-        }
-        guard let currency else { return nil }
-        do {
-            guard written.fractionDigits <= currency.minorUnits else {
-                throw MoneyError.unsupportedPrecision(currency: currency)
-            }
-            try MonetaryInputPolicy.validate(written.value, currency: currency)
-            return nil
-        } catch {
-            return safeUserMessage(for: error, context: .save)
-        }
+        // The transaction editor applies the same rule and wording.
+        MoneyInputIssue.of(text, currency: currency, isEditing: isEditing)?.message
     }
 
     var splitRemainder: Decimal? {
@@ -673,37 +659,41 @@ struct QuickLogEntryView: View {
         }
     }
 
-    var canSave: Bool {
-        guard !isScanning, !isCheckingDuplicates, !isClearingDraft, !isParsingSmartEntry,
-              smartState.issues.isEmpty,
-              let amount,
-              let accountID,
-              let sourceAccount = selectedSourceAccount else {
-            return false
+    var canSave: Bool { saveBlocker == nil }
+
+    /// What still stands between this entry and Save, in the order the form
+    /// is filled. Save is enabled exactly when there is nothing, and a dimmed
+    /// Save tells VoiceOver which one it is.
+    var saveBlocker: QuickLogSaveBlocker? {
+        guard !isScanning, !isCheckingDuplicates, !isClearingDraft, !isParsingSmartEntry else {
+            return .busy
         }
+        guard !smartState.blocksSave else { return .smartEntry }
+        guard let amount else { return .amount }
+        guard let accountID, let sourceAccount = selectedSourceAccount else { return .account }
         switch kind {
         case .expense, .income, .refund:
-            let transactionIsValid = splitLines.isEmpty
-                ? categories.contains { $0.id == categoryID }
-                : splitLinesAreValid
-            guard transactionIsValid else { return false }
-            guard kind == .expense else { return true }
+            if splitLines.isEmpty {
+                guard categories.contains(where: { $0.id == categoryID }) else { return .category }
+            } else {
+                guard splitLinesAreValid else { return .split }
+            }
+            guard kind == .expense else { return nil }
             guard let currency = sourceAccount.currency,
                   let total = try? Money(
                 amount,
                 currency: currency
-            ) else { return false }
+            ) else { return .amount }
             return QuickLogAllowanceSourcePolicy.canCommitExpense(
                 sourceAccount: sourceAccount,
                 hasAllowanceSelection: selectedAllowanceID != nil,
                 selectedPlan: selectedAllowancePlan,
                 total: total,
                 application: selectedAllowanceApplication
-            )
+            ) ? nil : .allowance
         case .transfer:
-            return destinationAccountID != nil
-                && destinationAccountID != accountID
-                && (!isForeignCurrencyTransfer || destinationAmount != nil)
+            guard let destinationAccountID, destinationAccountID != accountID else { return .destination }
+            return !isForeignCurrencyTransfer || destinationAmount != nil ? nil : .receivedAmount
         }
     }
 

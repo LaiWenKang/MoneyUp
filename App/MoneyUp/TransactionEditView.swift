@@ -257,6 +257,7 @@ struct TransactionEditView: View {
     var canSave: Bool {
         guard isEditable,
               editedAmount(amountText, currency: sourceCurrency).map({ $0 > .zero }) == true,
+              MoneyInputIssue.of(amountText, currency: sourceCurrency, preservedAmounts: preservedAmounts) == nil,
               let accountID,
               editableSourceAccounts.contains(where: { $0.id == accountID }) else {
             return false
@@ -268,7 +269,10 @@ struct TransactionEditView: View {
                       $0.id == destinationAccountID
                   }) else { return false }
             return !needsDestinationAmount
-                || editedAmount(destinationAmountText, currency: destinationCurrency).map { $0 > .zero } == true
+                || (editedAmount(destinationAmountText, currency: destinationCurrency).map { $0 > .zero } == true
+                    && MoneyInputIssue.of(
+                        destinationAmountText, currency: destinationCurrency, preservedAmounts: preservedAmounts
+                    ) == nil)
         }
         if isSplitTransaction { return splitLinesAreValid }
         return categories.contains { $0.id == categoryID }
@@ -276,16 +280,6 @@ struct TransactionEditView: View {
 
     var attachmentMetadata: [ReceiptAttachmentMetadata] {
         model.receiptAttachmentMetadata.filter { $0.entryID == entry.id }
-    }
-
-    var hasLinkedAllowanceClaim: Bool {
-        model.allowancePlans.contains { plan in
-            plan.fundingMode == .reimbursement
-                && plan.usages.contains { usage in
-                    usage.linkedJournalEntryID == entry.id
-                        && usage.claimStatus != nil
-                }
-        }
     }
 
     @ViewBuilder
@@ -313,6 +307,9 @@ struct TransactionEditView: View {
 
         ForEach(Array(splitLines.enumerated()), id: \.element.id) { index, line in
             let lineID = line.id
+            let lineValidationMessage = amountIssue(
+                line.amountText, currency: sourceCurrency, field: .splitAmount(lineID)
+            )?.message
             let masksLineAmount = hidesAmounts
                 && focusedField != .splitAmount(lineID)
                 && !line.amountText.isEmpty
@@ -362,6 +359,7 @@ struct TransactionEditView: View {
                     .moneyAmountKeyboard(currency: sourceCurrency)
                     .focused($focusedField, equals: .splitAmount(lineID))
                     .id(FieldFocus.splitAmount(lineID))
+                    .moneyUpFieldValidation(lineValidationMessage)
                     .accessibilityLabel(Text(amountAccessibilityLabel))
                     .moneyUpPrivateAmountInput(
                         masked: masksLineAmount,
@@ -403,6 +401,9 @@ struct TransactionEditView: View {
                             )
                         )
                     }
+                }
+                if let lineValidationMessage {
+                    MoneyUpFieldError(message: lineValidationMessage)
                 }
 
                 TextField(
@@ -536,7 +537,63 @@ extension TransactionEditView {
     func editedAmount(_ text: String, currency: CurrencyCode?) -> Decimal? {
         if let value = moneyAmount(from: text, currency: currency) { return value }
         return decimalAmount(from: text).flatMap { value in
-            entry.postings.contains { abs($0.money.amount) == value } ? value : nil
+            preservedAmounts.contains(value) ? value : nil
         }
+    }
+
+    /// This entry's stored amounts, which save unchanged even if written
+    /// under older limits. Compared with `==`, never hashed: "1.50" and "1.5"
+    /// are the same amount in different decimal representations.
+    var preservedAmounts: [Decimal] {
+        entry.postings.map { abs($0.money.amount) }
+    }
+
+    /// Why an amount field cannot be saved, by the rule Log uses. A prefix
+    /// still being typed in the focused field is not an error yet.
+    func amountIssue(_ text: String, currency: CurrencyCode?, field: FieldFocus) -> MoneyInputIssue? {
+        MoneyInputIssue.of(
+            text, currency: currency, isEditing: focusedField == field, preservedAmounts: preservedAmounts
+        )
+    }
+
+    var hasUnsavedChanges: Bool {
+        initialDraftSignature.map { $0 != draftSignature } ?? false
+    }
+}
+
+/// What a tap on the editor's Save does. Saving rewrites the entry under a new
+/// identity with a revision record and a "Last edited" date, so an unchanged
+/// form only closes; a second tap while a save runs, or a tap while an input
+/// method is still composing a word, never writes.
+enum TransactionEditSaveAction: Equatable {
+    case ignore
+    case finishComposition
+    case close
+    case write
+}
+
+enum TransactionEditSavePolicy {
+    static func action(isSaving: Bool, hasMarkedText: Bool, hasChanges: Bool) -> TransactionEditSaveAction {
+        if isSaving { return .ignore }
+        // A word being composed is an edit the form does not hold yet.
+        if hasMarkedText { return .finishComposition }
+        return hasChanges ? .write : .close
+    }
+}
+
+/// What a delete confirmation says. Deleting an expense that carries a
+/// reimbursement claim deletes the claim's evidence and status with it, so
+/// every place that deletes a transaction (the editor, History, Calendar)
+/// names the claim rather than only the balances.
+@MainActor
+enum TransactionDeleteConfirmation {
+    static func detailKey(for entryID: UUID, in model: AppModel) -> String {
+        model.hasLinkedAllowanceClaim(entryID: entryID)
+            ? "allowance.claim.delete_confirmation_detail"
+            : "transaction.delete_detail"
+    }
+
+    static func detail(for entryID: UUID, in model: AppModel) -> Text {
+        Text(LocalizedStringKey(detailKey(for: entryID, in: model)))
     }
 }

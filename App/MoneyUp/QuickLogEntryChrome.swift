@@ -174,14 +174,42 @@ struct PendingCaptureBanner: View {
     }
 }
 
+/// Why Save is dimmed, said by VoiceOver with the button: a sighted person
+/// sees the empty field or the placeholder, a VoiceOver user otherwise hears
+/// only "dimmed".
+enum QuickLogSaveBlocker: Equatable {
+    case busy, smartEntry, amount, account, category, split, allowance, destination, receivedAmount
+
+    var messageKey: String {
+        switch self {
+        case .busy: "quick_log.save_blocked.busy"
+        case .smartEntry: "quick_log.save_blocked.smart_entry"
+        case .amount: "quick_log.resolve.amount"
+        case .account: "quick_log.save_blocked.account"
+        case .category: "quick_log.save_blocked.category"
+        case .split: "quick_log.resolve.split"
+        case .allowance: "quick_log.restricted_source_rule"
+        case .destination: "quick_log.resolve.destination"
+        case .receivedAmount: "quick_log.resolve.receivedAmount"
+        }
+    }
+}
+
 /// Save pinned above the keyboard, with a keyboard-dismiss control beside it
 /// while a field is focused. The system keyboard toolbar does not render in
 /// every configuration, so neither action may depend on it.
 struct LogSaveBar: View {
     let canSave: Bool
+    var blocker: QuickLogSaveBlocker?
     let showsKeyboardDismiss: Bool
     let save: () -> Void
     let dismissKeyboard: () -> Void
+
+    /// Spoken with the dimmed button; empty while Save is available.
+    private var blockedValue: Text {
+        guard !canSave, let blocker else { return Text(verbatim: "") }
+        return Text(LocalizedStringKey(blocker.messageKey))
+    }
 
     var body: some View {
         HStack(spacing: 10) {
@@ -193,6 +221,7 @@ struct LogSaveBar: View {
             .controlSize(.large)
             .tint(.moneyUpAction)
             .disabled(!canSave)
+            .accessibilityValue(blockedValue)
             .accessibilityIdentifier("log-save")
             if showsKeyboardDismiss {
                 Button(action: dismissKeyboard) {

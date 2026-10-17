@@ -130,13 +130,15 @@ func writtenAmount(from text: String, locale: Locale = .current) -> WrittenAmoun
     guard text.utf8.count <= maximumMoneyAmountTextByteCount else {
         return nil
     }
-    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmed.isEmpty else { return nil }
+    let written = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !written.isEmpty else { return nil }
+    let trimmed = ungroupedAmountText(written, locale: locale) ?? written
 
     let localSeparator = locale.decimalSeparator ?? "."
     let escapedLocal = NSRegularExpression.escapedPattern(for: localSeparator)
     let separatorPattern = localSeparator == "." ? "\\." : "(?:\(escapedLocal)|\\.)"
-    let pattern = "^[+-]?[0-9]+(?:\(separatorPattern)[0-9]+)?$"
+    // A leading separator (".5", ",5") is a fraction of one: nothing else reads it.
+    let pattern = "^[+-]?(?:[0-9]+(?:\(separatorPattern)[0-9]+)?|\(separatorPattern)[0-9]+)$"
     guard trimmed.range(of: pattern, options: .regularExpression) != nil else {
         return nil
     }
@@ -148,11 +150,38 @@ func writtenAmount(from text: String, locale: Locale = .current) -> WrittenAmoun
        localSeparator != ".", locale.groupingSeparator == "." {
         return nil
     }
-    let normalized = localSeparator == "."
+    var normalized = localSeparator == "."
         ? trimmed
         : trimmed.replacingOccurrences(of: localSeparator, with: ".")
+    let sign = normalized.first.map { "+-".contains($0) } == true ? String(normalized.prefix(1)) : ""
+    if normalized.dropFirst(sign.count).hasPrefix(".") {
+        normalized = sign + "0" + String(normalized.dropFirst(sign.count))
+    }
     return Decimal(string: normalized, locale: Locale(identifier: "en_US_POSIX"))
         .map { WrittenAmount(value: $0, fractionDigits: fractionDigits) }
+}
+
+/// The amount without its thousands separators, when it is written with them
+/// and has only one reading in `locale`: a decimal part ("1,234.50" in
+/// English, "1.234,50" in German) or two or more groups ("1,234,567"). One
+/// group alone ("1,234", "1.000") could be a decimal elsewhere and is left as
+/// written, which the caller refuses. Groups are of three digits; a space
+/// stands for the narrow or no-break space a locale groups with.
+func ungroupedAmountText(_ text: String, locale: Locale) -> String? {
+    let decimal = locale.decimalSeparator ?? "."
+    guard let grouping = locale.groupingSeparator, !grouping.isEmpty, grouping != decimal else {
+        return nil
+    }
+    let groupPattern = [" ", "\u{00A0}", "\u{202F}"].contains(grouping)
+        ? "[ \\u00A0\\u202F]"
+        : NSRegularExpression.escapedPattern(for: grouping)
+    let decimalPattern = NSRegularExpression.escapedPattern(for: decimal)
+    let pattern = "^[+-]?[0-9]{1,3}(?:\(groupPattern)[0-9]{3})+(?:\(decimalPattern)[0-9]+)?$"
+    guard text.range(of: pattern, options: .regularExpression) != nil else { return nil }
+    let ungrouped = text.replacingOccurrences(of: groupPattern, with: "", options: .regularExpression)
+    let groupCount = text.count - ungrouped.count
+    guard ungrouped.contains(decimal) || groupCount >= 2 else { return nil }
+    return ungrouped
 }
 
 /// True while `text` is a prefix of an amount rather than an amount:
@@ -162,9 +191,66 @@ func isIncompleteAmount(_ text: String, locale: Locale = .current) -> Bool {
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
     guard let last = trimmed.last else { return false }
     if Set((locale.decimalSeparator ?? ".") + ".").contains(last) {
-        return writtenAmount(from: String(trimmed.dropLast()), locale: locale) != nil
+        let head = String(trimmed.dropLast())
+        // "." alone, or after a sign, is the start of ".5".
+        if head.isEmpty || head == "+" || head == "-" { return true }
+        return writtenAmount(from: head, locale: locale) != nil
     }
     return writtenAmount(from: trimmed, locale: locale)?.value == .zero
+}
+
+/// Why typed text cannot be saved as an amount yet. Every field that posts
+/// money (Log and the transaction editor) refuses the same text for the same
+/// reason, worded by the matching `MoneyError`, so a dimmed Save always has a
+/// visible cause beside the field.
+enum MoneyInputIssue: Equatable {
+    case invalid
+    case precision(CurrencyCode)
+    case tooLarge
+
+    /// - Parameters:
+    ///   - isEditing: the field has focus, so a prefix such as "12." or "0.0"
+    ///     is still being typed and is not an error yet.
+    ///   - preservedAmounts: amounts already stored on the entry being edited.
+    ///     An untouched legacy value is kept as it is, even past today's limits.
+    static func of(
+        _ text: String,
+        currency: CurrencyCode?,
+        isEditing: Bool = false,
+        preservedAmounts: [Decimal] = [],
+        locale: Locale = .current
+    ) -> MoneyInputIssue? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        if isEditing, isIncompleteAmount(trimmed, locale: locale) { return nil }
+        guard let written = writtenAmount(from: trimmed, locale: locale), written.value > .zero else {
+            return .invalid
+        }
+        guard !preservedAmounts.contains(written.value), let currency else { return nil }
+        // "25.000" in a JPY or IDR account is never read as 25.
+        guard written.fractionDigits <= currency.minorUnits else { return .precision(currency) }
+        do {
+            try MonetaryInputPolicy.validate(written.value, currency: currency)
+            return nil
+        } catch let error as MoneyError {
+            switch error {
+            case .exceedsNewWriteMaximum: return .tooLarge
+            case .unsupportedPrecision: return .precision(currency)
+            case .notANumber, .currencyMismatch: return .invalid
+            }
+        } catch {
+            return .invalid
+        }
+    }
+
+    var message: String {
+        let error: MoneyError = switch self {
+        case .invalid: .notANumber
+        case let .precision(currency): .unsupportedPrecision(currency: currency)
+        case .tooLarge: .exceedsNewWriteMaximum(maximum: MonetaryInputPolicy.maximumAbsoluteNewWrite)
+        }
+        return error.errorDescription ?? AppLocalization.string("error.invalid_amount")
+    }
 }
 
 func editableAmount(_ value: Decimal, locale: Locale = .current) -> String {
