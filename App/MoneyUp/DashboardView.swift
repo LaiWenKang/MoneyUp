@@ -338,7 +338,7 @@ struct FlexibleTodayBreakdownSheet: View {
             Text(title)
                 .font(.subheadline)
             Spacer(minLength: 12)
-            Text(value)
+            Text(maskingAmounts: value)
                 .font(.subheadline.monospacedDigit().weight(.semibold))
         }
         .padding(.vertical, 8)

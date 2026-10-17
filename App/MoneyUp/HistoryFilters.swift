@@ -6,6 +6,9 @@ import UIKit
 struct HistorySummaryView: View {
     let summary: HistorySummary
     @State private var showsDetails = false
+    /// Redraws the totals the moment amounts are hidden or shown.
+    @AppStorage(MoneyAmountPrivacy.storageKey)
+    private var hidesAmounts = MoneyAmountPrivacy.defaultHidesAmounts
 
     private var currencies: [CurrencyCode] {
         Set(
@@ -17,6 +20,7 @@ struct HistorySummaryView: View {
     }
 
     var body: some View {
+        let _ = hidesAmounts
         if summary.transactionCount == 0 {
             summaryLabel
         } else {

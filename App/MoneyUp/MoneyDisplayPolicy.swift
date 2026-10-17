@@ -64,16 +64,21 @@ extension Text {
     /// stars aloud. Amounts are hidden by default, so this is what most
     /// VoiceOver users hear first.
     init(maskingAmounts content: String) {
-        let mask = MoneyAmountPrivacy.placeholder
-        guard content.contains(mask) else {
+        guard content.contains(MoneyAmountPrivacy.placeholder) else {
             self.init(verbatim: content)
             return
         }
-        let spoken = content.replacingOccurrences(
-            of: mask,
-            with: AppLocalization.string("privacy.hidden_amount")
-        )
-        self = Text(verbatim: content).accessibilityLabel(Text(verbatim: spoken))
+        self = Text(verbatim: content)
+            .accessibilityLabel(Text(verbatim: MoneyAmountPrivacy.spoken(content)))
+    }
+}
+
+extension MoneyAmountPrivacy {
+    /// What VoiceOver says for text that may hold masked amounts: each mask
+    /// becomes "hidden amount". For an accessibility value or label built
+    /// from formatted figures, where `Text(maskingAmounts:)` cannot apply.
+    static func spoken(_ content: String) -> String {
+        content.replacingOccurrences(of: placeholder, with: AppLocalization.string("privacy.hidden_amount"))
     }
 }
 
