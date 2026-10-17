@@ -71,8 +71,8 @@ extension QuickLogEntryView {
                 }
 
                 Section {
-                    Picker(
-                        kind == .transfer ? "transaction.from_account" : "transaction.account",
+                    QuickLogValuePicker(
+                        title: kind == .transfer ? "transaction.from_account" : "transaction.account",
                         selection: trackedBinding(
                             $accountID,
                             \.accountID,
@@ -81,7 +81,8 @@ extension QuickLogEntryView {
                                 autoAppliedAccountSuggestionID = nil
                                 invalidateCaptureSuggestions(preservingAccount: true)
                             }
-                        )
+                        ),
+                        value: accountChoiceLabel(for: accountID, in: sourceAccounts)
                     ) {
                         Text("quick_log.choose_account").tag(UUID?.none)
                         ForEach(sourceAccounts) { account in
@@ -90,13 +91,14 @@ extension QuickLogEntryView {
                     }
 
                     if kind == .transfer {
-                        Picker(
-                            "transaction.to_account",
+                        QuickLogValuePicker(
+                            title: "transaction.to_account",
                             selection: trackedBinding(
                                 $destinationAccountID,
                                 \.destinationAccountID,
                                 onUserEdit: { accountWasEdited = true }
-                            )
+                            ),
+                            value: accountChoiceLabel(for: destinationAccountID, in: recordingAccounts)
                         ) {
                             Text("quick_log.choose_account").tag(UUID?.none)
                             ForEach(recordingAccounts.filter { $0.id != accountID }) { account in
@@ -173,8 +175,8 @@ extension QuickLogEntryView {
                         )
 
                         if splitLines.isEmpty {
-                            Picker(
-                                "transaction.category",
+                            QuickLogValuePicker(
+                                title: "transaction.category",
                                 selection: trackedBinding(
                                     $categoryID,
                                     \.categoryID,
@@ -182,7 +184,8 @@ extension QuickLogEntryView {
                                         categoryWasEdited = true
                                         autoAppliedCategorySuggestionID = nil
                                     }
-                                )
+                                ),
+                                value: categoryChoiceLabel(for: categoryID)
                             ) {
                                 Text("quick_log.choose_category").tag(UUID?.none)
                                 ForEach(categories) { category in

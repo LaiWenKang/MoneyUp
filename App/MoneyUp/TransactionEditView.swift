@@ -216,6 +216,11 @@ struct TransactionEditView: View {
         return "\(named) (\(AppLocalization.string("lifecycle.archived")))"
     }
 
+    /// The chosen account's or category's words, as its picker lists them.
+    func editorValue(for id: UUID?, in choices: [LedgerAccount], empty emptyKey: String) -> String {
+        choices.first { $0.id == id }.map { editorLabel(for: $0) } ?? AppLocalization.string(emptyKey)
+    }
+
     var sourceCurrency: CurrencyCode? {
         editableSourceAccounts.first(where: { $0.id == accountID })?.currency
     }
