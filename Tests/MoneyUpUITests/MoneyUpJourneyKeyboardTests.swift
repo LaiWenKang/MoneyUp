@@ -78,7 +78,13 @@ extension MoneyUpJourneyTests {
     /// Logs an expense of 18 at Bookshop from Log.
     private func logBookshopExpense(in app: XCUIApplication) {
         type("18", into: openLog(app))
-        type("Bookshop", into: app.textFields["quick-log-payee"])
+        // On a short screen at a large text size the payee row is below the
+        // fold, and the form builds only the rows it shows: hide the keypad
+        // and scroll to it, as a person would, before typing.
+        let payee = app.textFields["quick-log-payee"]
+        dismissKeyboard(app)
+        reveal(payee, in: app)
+        type("Bookshop", into: payee)
         dismissKeyboard(app)
         app.buttons["log-save"].tap()
         expectTrue(app.buttons["log-undo"].waitForExistence(timeout: timeout), "The expense did not save")
