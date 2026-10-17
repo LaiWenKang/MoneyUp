@@ -198,7 +198,7 @@ extension DashboardView {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("dashboard.other_currencies")
             .accessibilityValue(
-                balances.map(formattedMoneyWithCurrencyCode).joined(separator: ", ")
+                MoneyAmountPrivacy.spoken(balances.map(formattedMoneyWithCurrencyCode).joined(separator: ", "))
             )
         case .available:
             EmptyView()
@@ -359,7 +359,7 @@ extension DashboardView {
                             .foregroundStyle(.moneyUpSecondary)
                         }
                         Spacer(minLength: 8)
-                        Text(upcoming.signedAmount)
+                        Text(maskingAmounts: upcoming.signedAmount)
                             .font(.subheadline.monospacedDigit().weight(.semibold))
                             .foregroundStyle(
                                 upcoming.transaction.kind == .income
