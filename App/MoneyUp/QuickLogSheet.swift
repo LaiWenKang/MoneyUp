@@ -545,6 +545,17 @@ struct QuickLogEntryView: View {
         kind == .income ? recordingIncomeCategories : recordingExpenseCategories
     }
 
+    /// The chosen account's words, as the account picker lists them.
+    func accountChoiceLabel(for id: UUID?, in choices: [LedgerAccount]) -> String {
+        choices.first { $0.id == id }.map(accountCurrencyLabel) ?? AppLocalization.string("quick_log.choose_account")
+    }
+
+    /// The chosen category's words, as the category picker lists them.
+    func categoryChoiceLabel(for id: UUID?) -> String {
+        categories.first { $0.id == id }.map { model.categoryPathName(for: $0.id) }
+            ?? AppLocalization.string("quick_log.choose_category")
+    }
+
     /// A restricted allowance account may receive a top-up, but it is never a
     /// generic transfer source. Allowance expenses authorize their own debit
     /// later in the model layer, so non-transfer entry keeps the full list.

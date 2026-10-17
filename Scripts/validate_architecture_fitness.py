@@ -697,7 +697,10 @@ W3_PATH_TYPE_DIGESTS: tuple[tuple[str, str, str, str], ...] = (
         # Re-pinned 2026-10-07: secondary text uses the accessible BrandTextSecondary colour (0.7.3 design pass); no behaviour change.
         # Re-pinned 2026-10-15: the Save bar is handed why Save is dimmed (QuickLogSaveBlocker) so VoiceOver
         # can say it; canSave is unchanged (it is now "no blocker").
-        "77392777ba0d1625cd060bf1885164fd4daa011ccc11269f3cd1c3d7f5b1223e",
+        # Re-pinned 2026-10-17: the account and category pickers are QuickLogValuePicker, which at
+        # accessibility text sizes puts the chosen value on its own line rather than cutting it to "…";
+        # same bindings, options and edit marks.
+        "251c4c7cb862870d3d9599416737320f7e51c7a2adb49f9939922f99b4477733",
     ),
     (
         "App/MoneyUp/QuickLogEntryReceipt.swift",
