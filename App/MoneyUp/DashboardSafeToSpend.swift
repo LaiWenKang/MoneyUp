@@ -128,14 +128,15 @@ extension DashboardView {
                 .font(.subheadline)
                 .foregroundStyle(.moneyUpSecondary)
             if !isOver {
-                Label(
-                    String(
+                Label {
+                    Text(maskingAmounts: String(
                         format: AppLocalization.string("dashboard.safe_to_spend.weekly_format"),
                         formattedMoney(breakdown.amountForNextSevenDays),
                         min(7, breakdown.remainingDayCount)
-                    ),
-                    systemImage: "calendar.day.timeline.left"
-                )
+                    ))
+                } icon: {
+                    Image(systemName: "calendar.day.timeline.left")
+                }
                 .font(.footnote.weight(.semibold))
             }
             if isOver {
