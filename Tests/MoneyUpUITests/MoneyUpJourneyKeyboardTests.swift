@@ -43,8 +43,7 @@ extension MoneyUpJourneyTests {
         ])
         logBookshopExpense(in: app)
         app.tabBars.buttons.element(boundBy: 1).tap()
-        let row = app.staticTexts["Bookshop"].firstMatch
-        expectTrue(row.waitForExistence(timeout: timeout), "The saved entry is missing from History")
+        savedEntry(in: app, missing: "The saved entry is missing from History")
         let any = app.descendants(matching: .any)
         expectTrue(any.matching(NSPredicate(format: "label CONTAINS %@", "隐藏的金额")).count > 0,
                    "History does not say its amounts are hidden")
@@ -54,9 +53,9 @@ extension MoneyUpJourneyTests {
         let search = app.searchFields.firstMatch
         expectTrue(search.waitForExistence(timeout: timeout), "History has no search field")
         search.tap()
-        search.typeText("Book")
-        expectTrue(row.waitForExistence(timeout: timeout), "Search did not find the entry by name")
-        row.tap()
+        // Return submits the search and leaves the list to the found entry.
+        search.typeText("Book\n")
+        savedEntry(in: app, missing: "Search did not find the entry by name").tap()
         let problems = editorFieldsCovered(in: app, labels: .chinese, variant: "zh-ax3")
         expectTrue(problems.isEmpty, "Covered while typing:\n" + problems.joined(separator: "\n"))
     }
@@ -98,10 +97,19 @@ extension MoneyUpJourneyTests {
         let app = launch(extra: textSize.map { ["-UIPreferredContentSizeCategoryName", $0] } ?? [])
         logBookshopExpense(in: app)
         app.tabBars.buttons.element(boundBy: 1).tap()
-        let row = app.staticTexts["Bookshop"].firstMatch
-        expectTrue(row.waitForExistence(timeout: timeout), "The saved entry is missing from History")
-        row.tap()
+        savedEntry(in: app, missing: "The saved entry is missing from History").tap()
         return editorFieldsCovered(in: app, labels: .english, variant: variant)
+    }
+
+    /// History's row for the Bookshop expense. History lists it below its
+    /// search, range and summary; on a short screen at a large text size the
+    /// row starts below the fold, and the list builds only rows it shows.
+    @discardableResult
+    private func savedEntry(in app: XCUIApplication, missing: String) -> XCUIElement {
+        let row = app.staticTexts["Bookshop"].firstMatch
+        if !row.waitForExistence(timeout: 5) { reveal(row, in: app) }
+        expectTrue(row.waitForExistence(timeout: timeout), missing)
+        return row
     }
 
     /// In the editor just opened: turns on the split, then checks the split
@@ -187,9 +195,14 @@ extension MoneyUpJourneyTests {
     private func reveal(_ field: XCUIElement, in app: XCUIApplication) {
         let window = app.windows.firstMatch
         for _ in 0..<12 where !field.exists {
-            window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.7)).press(
+            // Drag in the part of the screen a keyboard leaves free.
+            let keyboard = app.keyboards.firstMatch
+            let free = keyboard.exists && window.frame.height > 0
+                ? keyboard.frame.minY / window.frame.height : 1
+            let from = min(0.7, free - 0.05), to = max(0.15, from - 0.25)
+            window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: from)).press(
                 forDuration: 0.05,
-                thenDragTo: window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45)),
+                thenDragTo: window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: to)),
                 withVelocity: .slow, thenHoldForDuration: 0.2)
         }
         if field.exists && !field.isHittable { bringIntoView(field, in: app) }
