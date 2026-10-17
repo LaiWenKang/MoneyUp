@@ -438,9 +438,9 @@ struct HistoryView: View {
         return List {
             if allowsFiltering {
             Section {
-                HStack(alignment: .center, spacing: 8) {
+                HistoryScopeHeader {
                     HistoryScopeSelector(selection: $quickRange)
-                    Spacer(minLength: 0)
+                } actions: {
                     filterChips
                 }
                 .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))

@@ -6,6 +6,7 @@ import UIKit
 struct HistorySummaryView: View {
     let summary: HistorySummary
     @State private var showsDetails = false
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     /// Redraws the totals the moment amounts are hidden or shown.
     @AppStorage(MoneyAmountPrivacy.storageKey)
     private var hidesAmounts = MoneyAmountPrivacy.defaultHidesAmounts
@@ -35,14 +36,35 @@ struct HistorySummaryView: View {
             Text(summary.transactionCount, format: .number).monospacedDigit()
         } label: {
             Text("history.transactions")
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 1 : nil)
+                .minimumScaleFactor(dynamicTypeSize.isAccessibilitySize ? 0.6 : 1)
             if let spent = HistorySummaryHeadline.spending(summary) {
-                Text(maskingAmounts: String(format: AppLocalization.string("history.spent_headline_format"), formattedMoney(spent)))
-                    .monospacedDigit()
+                spentHeadline(spent)
+                    .accessibilityElement(children: .ignore)
                     .accessibilityLabel(String(
                         format: AppLocalization.string("history.spent_headline_format"),
                         accessibleFormattedMoney(spent)
                     ))
             }
+        }
+    }
+
+    /// "Spent SGD 48.50" on one line; at accessibility sizes the amount takes
+    /// a line of its own and shrinks rather than parting the code from the
+    /// figure.
+    @ViewBuilder
+    private func spentHeadline(_ spent: Money) -> some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("history.spent")
+                Text(maskingAmounts: formattedMoney(spent))
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.4)
+            }
+        } else {
+            Text(maskingAmounts: String(format: AppLocalization.string("history.spent_headline_format"), formattedMoney(spent)))
+                .monospacedDigit()
         }
     }
 

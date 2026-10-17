@@ -409,10 +409,10 @@ exact-SHA CI before signed promotion.
 
 - Requirements traced: **97 / 97**.
 - Requirements with at least one named automated or manual case: **97 / 97**.
-- Declared automated tests in source after this review: **1629** (511 core, 80
-  persistence, 11 intelligence, 976 app-target, 11 performance-target, and 40 ui-target
+- Declared automated tests in source after this review: **1631** (511 core, 80
+  persistence, 11 intelligence, 978 app-target, 11 performance-target, and 40 ui-target
   declarations; XCTest methods plus Swift Testing `@Test` declarations). Of
-  those declarations, **1575** are XCTest functions named `test...`; the
+  those declarations, **1577** are XCTest functions named `test...`; the
   remaining 54 are Swift Testing `@Test` declarations in MoneyUpCore.
 - Tests executed on the prior build-10 0.7.1 candidate in GitHub Actions:
   **742 / 742 declared test sites** across the 376 package, 355 app-target, and
