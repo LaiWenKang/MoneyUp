@@ -14,6 +14,7 @@ import XCTest
 final class FormValuesLargeTextRenderTests: XCTestCase {
     @MainActor
     func testLogAndTheEditorShowEveryChosenValueWholeAtTheLargestTextSize() async throws {
+        try FormValuesLargeTextRenderTests.skipTallRenderWhereNotComposited()
         let (fixture, model, expense) = try await makeFixture()
         defer { fixture.removeFiles() }
         let defaults = UserDefaults.standard
@@ -104,6 +105,18 @@ final class FormValuesLargeTextRenderTests: XCTestCase {
     struct TallReading {
         let lines: [String]
         let rows: [String]
+    }
+
+    /// A window far taller than a screen is not composited on iOS 26 and later
+    /// (parts render blank), so these renders run on the iOS 18.5 lane of every
+    /// pull request and main run. On iOS 26 the same screens are driven for
+    /// real by the native-review journeys.
+    static func skipTallRenderWhereNotComposited() throws {
+        let iOS26 = OperatingSystemVersion(majorVersion: 26, minorVersion: 0, patchVersion: 0)
+        try XCTSkipIf(
+            ProcessInfo.processInfo.isOperatingSystemAtLeast(iOS26),
+            "Tall-window renders are not composited on iOS 26+; this check runs on the iOS 18.5 CI lane."
+        )
     }
 
     /// Reads a render far taller than a screen. Vision misses ordinary-size

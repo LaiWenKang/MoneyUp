@@ -14,6 +14,7 @@ import XCTest
 final class LargeTextAmountRenderTests: XCTestCase {
     @MainActor
     func testTodayKeepsEveryAmountWholeAtTheLargestTextSize() async throws {
+        try FormValuesLargeTextRenderTests.skipTallRenderWhereNotComposited()
         let (fixture, model, snapshot) = try await makeFixture()
         defer { fixture.removeFiles() }
         let defaults = UserDefaults.standard
