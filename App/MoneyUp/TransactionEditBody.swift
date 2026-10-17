@@ -19,11 +19,13 @@ extension TransactionEditView {
                     }
 
                     Section {
+                        let amountValidationMessage = amountIssue(amountText, currency: sourceCurrency, field: .amount)?.message
                         HStack {
                             TextField("quick_log.amount", text: $amountText)
                                 .moneyAmountKeyboard(currency: sourceCurrency)
                                 .focused($focusedField, equals: .amount)
                                 .id(TransactionEditView.FieldFocus.amount)
+                                .moneyUpFieldValidation(amountValidationMessage)
                                 .moneyUpPrivateAmountInput(
                                     masked: hidesAmounts
                                         && focusedField != .amount
@@ -35,6 +37,9 @@ extension TransactionEditView {
                             if let sourceCurrency {
                                 Text(sourceCurrency.value).foregroundStyle(.moneyUpSecondary)
                             }
+                        }
+                        if let amountValidationMessage {
+                            MoneyUpFieldError(message: amountValidationMessage)
                         }
                         Picker(
                             kind == .transfer
@@ -58,6 +63,9 @@ extension TransactionEditView {
                                 }
                             }
                             if needsDestinationAmount {
+                                let destinationAmountValidationMessage = amountIssue(
+                                    destinationAmountText, currency: destinationCurrency, field: .destinationAmount
+                                )?.message
                                 HStack {
                                     TextField(
                                         "transaction.received_amount",
@@ -66,6 +74,7 @@ extension TransactionEditView {
                                     .moneyAmountKeyboard(currency: destinationCurrency)
                                     .focused($focusedField, equals: .destinationAmount)
                                     .id(TransactionEditView.FieldFocus.destinationAmount)
+                                    .moneyUpFieldValidation(destinationAmountValidationMessage)
                                     .moneyUpPrivateAmountInput(
                                         masked: hidesAmounts
                                             && focusedField != .destinationAmount
@@ -80,6 +89,9 @@ extension TransactionEditView {
                                         Text(destinationCurrency.value)
                                             .foregroundStyle(.moneyUpSecondary)
                                     }
+                                }
+                                if let destinationAmountValidationMessage {
+                                    MoneyUpFieldError(message: destinationAmountValidationMessage)
                                 }
                             }
                         } else {
@@ -291,7 +303,7 @@ extension TransactionEditView {
                 MoneyUpKeyboardDoneToolbar()
             }
             .moneyUpProtectDraft(
-                hasChanges: initialDraftSignature.map { $0 != draftSignature } ?? false,
+                hasChanges: hasUnsavedChanges,
                 isSaving: isSaving || isPreparingEvidence
             )
             .task {
@@ -402,7 +414,11 @@ extension TransactionEditView {
         .environment(\.calendar, captureCalendar)
         .environment(\.timeZone, captureCalendar.timeZone)
     }
+}
 
+// MARK: - Loading, saving and deleting
+
+extension TransactionEditView {
     func kindPicker<Style: PickerStyle>(style: Style) -> some View {
         Picker("transaction.kind", selection: $kind) {
             ForEach(QuickLogKind.allCases) { option in
@@ -448,6 +464,22 @@ extension TransactionEditView {
     }
 
     func save(confirmingClaimInvalidation: Bool = false) async {
+        switch TransactionEditSavePolicy.action(
+            isSaving: isSaving,
+            hasMarkedText: MoneyUpKeyboard.hasMarkedText,
+            hasChanges: hasUnsavedChanges
+        ) {
+        case .ignore:
+            return
+        case .finishComposition:
+            errorMessage = AppLocalization.string("quick_log.finish_composition_save")
+            return
+        case .close:
+            dismiss()
+            return
+        case .write:
+            break
+        }
         guard let amount = editedAmount(amountText, currency: sourceCurrency),
               let accountID else { return }
         isSaving = true

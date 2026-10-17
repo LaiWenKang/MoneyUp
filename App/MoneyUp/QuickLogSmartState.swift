@@ -44,6 +44,28 @@ struct QuickLogSmartState: Codable, Equatable, Sendable {
         }
         issues.removeAll { resolved.contains($0) }
     }
+
+    /// "Several transactions" and "too long" describe the Smart Entry text: a
+    /// reading refused for them fills no field, so the form holds only what
+    /// the person entered and no field edit could ever clear them.
+    var isRefusedReading: Bool {
+        issues.contains { $0 == .multiple || $0 == .inputLimit }
+    }
+
+    /// Save waits only on issues that name a field to resolve. A refused
+    /// reading names none; its notice stays while the text is unchanged.
+    var blocksSave: Bool {
+        !issues.isEmpty && !isRefusedReading
+    }
+
+    /// Changing the Smart Entry text retires a refused reading's notice.
+    /// Issues from a reading that did fill fields stay until those fields
+    /// are resolved or the text is read again.
+    mutating func smartTextChanged() {
+        guard isRefusedReading else { return }
+        issues = []
+        hasPreview = false
+    }
 }
 
 struct QuickLogClearRecovery: Codable, Equatable, Sendable {
