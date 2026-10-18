@@ -13,6 +13,7 @@ import XCTest
 final class HistoryLargeTextRenderTests: XCTestCase {
     @MainActor
     func testHistoryKeepsTheRangeNameAndEveryAmountWholeAtTheLargestTextSize() async throws {
+        try FormValuesLargeTextRenderTests.skipTallRenderWhereNotComposited()
         let (fixture, model, snapshot) = try await makeFixture()
         defer { fixture.removeFiles() }
         let defaults = UserDefaults.standard
