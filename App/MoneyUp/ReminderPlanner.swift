@@ -96,10 +96,20 @@ enum ReminderPlanner {
     ) -> [PlannedReminder] {
         let leads = preferences.billLeadDays.sorted()
         guard let horizon = calendar.date(byAdding: .day, value: billHorizonDays, to: now),
-              let searchEnd = calendar.date(byAdding: .day, value: leads.last ?? 0, to: horizon) else { return [] }
+              let lastSearchDay = calendar.date(byAdding: .day, value: leads.last ?? 0, to: horizon),
+              let searchEnd = calendar.dateInterval(of: .day, for: lastSearchDay)?.end else { return [] }
         var reminders: [PlannedReminder] = []
         for schedule in schedules where schedule.isActive && (preferences.includesIncome || schedule.kind != .income) {
-            for occurrence in schedule.occurrences(through: searchEnd, calendar: calendar, maximumCount: 40) {
+            // Search from today, not the first unresolved occurrence. An old
+            // backlog must not consume the bounded forecast window. Start at
+            // midnight so a due-today reminder can still fire later today.
+            var reference = max(schedule.nextOccurrence, calendar.startOfDay(for: now))
+            var occurrenceCount = 0
+            while occurrenceCount < 40,
+                  let occurrence = schedule.occurrence(onOrAfter: reference, calendar: calendar),
+                  occurrence < searchEnd {
+                occurrenceCount += 1
+                reference = occurrence.addingTimeInterval(1)
                 for lead in leads {
                     guard let day = calendar.date(byAdding: .day, value: -lead, to: occurrence),
                           let fireDate = time(preferences.billMinute, onDayOf: day, calendar: calendar),
@@ -179,3 +189,4 @@ enum ReminderPlanner {
         return String(format: "%04d%02d%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
     }
 }
+

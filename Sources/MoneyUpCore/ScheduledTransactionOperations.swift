@@ -233,6 +233,7 @@ extension ScheduledTransaction {
         guard isActive, maximumCount > 0, nextOccurrence <= endDate else {
             return []
         }
+        let calendar = recurrenceCalendar(nil) ?? calendar
         var dates: [Date] = []
         var offset = 0
         while dates.count < maximumCount,
@@ -250,11 +251,17 @@ extension ScheduledTransaction {
     ) -> Date? {
         guard isActive else { return nil }
         guard referenceDate > nextOccurrence else { return nextOccurrence }
+        let calendar = recurrenceCalendar(nil) ?? calendar
+        // The stored current occurrence is authoritative, including accepted
+        // historical timezone-rule drift. Once it has passed, never generate
+        // that same occurrence index again under a recomputed anchor.
+        let nextIndex = currentOccurrenceIndex.addingReportingOverflow(1)
+        guard !nextIndex.overflow else { return nil }
         let absoluteOffset = estimatedAnchorOffset(
             onOrAfter: referenceDate,
             calendar: calendar
         )
-        let candidateIndex = max(currentOccurrenceIndex, absoluteOffset)
+        let candidateIndex = max(nextIndex.partialValue, absoluteOffset)
         guard let candidate = anchoredOccurrence(index: candidateIndex, calendar: calendar) else {
             return nil
         }
@@ -268,45 +275,12 @@ extension ScheduledTransaction {
     }
 
     public func occurs(on date: Date, calendar: Calendar = .current) -> Bool {
-        guard isActive,
-              calendar.startOfDay(for: date) >= calendar.startOfDay(for: nextOccurrence)
+        // Recurrence arithmetic uses the series zone, but membership belongs
+        // to the day the caller is displaying, including DST-length days.
+        guard let day = calendar.dateInterval(of: .day, for: date),
+              let candidate = occurrence(onOrAfter: day.start, calendar: calendar)
         else { return false }
-
-        let absoluteOffset: Int
-        switch frequency {
-        case .weekly:
-            let days = FinancialPeriodBoundary.civilDayDistance(
-                from: recurrenceAnchor,
-                to: date,
-                calendar: calendar
-            ) ?? -1
-            guard days >= 0, days.isMultiple(of: 7) else { return false }
-            absoluteOffset = days / 7
-        case .monthly, .yearly:
-            guard let anchorMonth = calendar.dateInterval(
-                of: .month,
-                for: recurrenceAnchor
-            )?.start,
-            let targetMonth = calendar.dateInterval(of: .month, for: date)?.start else {
-                return false
-            }
-            let months = calendar.dateComponents(
-                [.month],
-                from: anchorMonth,
-                to: targetMonth
-            ).month ?? -1
-            guard months >= 0 else { return false }
-            if frequency == .yearly {
-                guard months.isMultiple(of: 12) else { return false }
-                absoluteOffset = months / 12
-            } else {
-                absoluteOffset = months
-            }
-        }
-        guard absoluteOffset >= currentOccurrenceIndex,
-              let candidate = anchoredOccurrence(index: absoluteOffset, calendar: calendar)
-        else { return false }
-        return calendar.isDate(candidate, inSameDayAs: date)
+        return candidate < day.end
     }
 
     func requireCurrentActiveOccurrence(
@@ -351,6 +325,7 @@ extension ScheduledTransaction {
 
     func occurrence(offset: Int, calendar: Calendar) -> Date? {
         guard offset >= 0 else { return nil }
+        if offset == 0 { return nextOccurrence }
         let index = currentOccurrenceIndex.addingReportingOverflow(offset)
         guard !index.overflow else { return nil }
         return anchoredOccurrence(index: index.partialValue, calendar: calendar)
@@ -408,3 +383,4 @@ extension ScheduledTransaction {
         return calendar.date(from: target)
     }
 }
+
