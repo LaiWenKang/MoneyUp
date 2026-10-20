@@ -158,6 +158,79 @@ final class ReminderPlannerTests: XCTestCase {
 
     // MARK: Daily logging
 
+    func testOldWeeklyBacklogDoesNotSuppressUpcomingBillReminders() throws {
+        // 1 January 2020 and 7 October 2026 are both Wednesdays. The
+        // unresolved history exceeds the old 40-occurrence search limit.
+        let old = try schedule("Weekly", next: date(2020, 1, 1), frequency: .weekly)
+        let recent = try schedule("Weekly", next: date(2026, 10, 7), frequency: .weekly)
+        var preferences = ReminderPreferences()
+        preferences.billsEnabled = true
+        preferences.billLeadDays = [0, 1, 7]
+        let now = date(2026, 10, 1, 8)
+        let oldPlan = plan(preferences, schedules: [old], now: now)
+        let recentPlan = plan(preferences, schedules: [recent], now: now)
+        XCTAssertFalse(recentPlan.isEmpty)
+        XCTAssertEqual(oldPlan.map(\.fireDate), recentPlan.map(\.fireDate))
+        XCTAssertEqual(oldPlan.map(\.message), recentPlan.map(\.message))
+        XCTAssertEqual(old.currentOccurrenceIndex, 0)
+        XCTAssertTrue(old.resolutions.isEmpty)
+        expectSoonestFirst(oldPlan)
+    }
+
+    func testOldBacklogStillIncludesDueTodayBeforeReminderTime() throws {
+        let old = try schedule("Weekly", next: date(2020, 1, 1), frequency: .weekly)
+        var preferences = ReminderPreferences()
+        preferences.billsEnabled = true
+        let reminders = plan(preferences, schedules: [old], now: date(2026, 10, 7, 8))
+        XCTAssertEqual(reminders.first?.fireDate, date(2026, 10, 7, 9))
+        XCTAssertEqual(reminders.first?.message, .due(.expense, leadDays: 0))
+    }
+
+    func testAdvancedSingaporeMonthlyScheduleDoesNotRepeatAnIndexInUTC() throws {
+        var utc = Calendar(identifier: .gregorian)
+        utc.timeZone = try XCTUnwrap(TimeZone(identifier: "UTC"))
+        let iso = ISO8601DateFormatter()
+        var item = try schedule("Month end", next: date(2026, 1, 31, 0, 30))
+        try item.resolveCurrent(
+            occurrenceID: item.currentOccurrenceID, as: .skipped,
+            at: item.nextOccurrence, calendar: calendar
+        )
+        var preferences = ReminderPreferences()
+        preferences.billsEnabled = true
+        let reminders = ReminderPlanner.plan(
+            preferences: preferences, schedules: [item], loggedToday: false,
+            now: try XCTUnwrap(iso.date(from: "2026-02-27T08:00:00Z")), calendar: utc
+        )
+        XCTAssertEqual(reminders.map(\.fireDate), [
+            try XCTUnwrap(iso.date(from: "2026-02-27T09:00:00Z")),
+            try XCTUnwrap(iso.date(from: "2026-03-30T09:00:00Z"))
+        ])
+        expectSoonestFirst(reminders)
+    }
+
+    func testDueTimeAfterHorizonStillAllowsEarlierReminderOnFinalDay() throws {
+        let item = try schedule("Annual", next: date(2026, 11, 5, 18), frequency: .yearly)
+        var preferences = ReminderPreferences()
+        preferences.billsEnabled = true
+        XCTAssertEqual(
+            plan(preferences, schedules: [item], now: date(2026, 10, 1, 10)).map(\.fireDate),
+            [date(2026, 11, 5, 9)]
+        )
+        preferences.billMinute = 11 * 60
+        XCTAssertTrue(plan(preferences, schedules: [item], now: date(2026, 10, 1, 10)).isEmpty)
+    }
+
+    func testLeadTimeAfterSearchHorizonStillAllowsFinalDayReminder() throws {
+        let item = try schedule("Annual", next: date(2026, 11, 12, 18), frequency: .yearly)
+        var preferences = ReminderPreferences()
+        preferences.billsEnabled = true
+        preferences.billLeadDays = [7]
+        XCTAssertEqual(
+            plan(preferences, schedules: [item], now: date(2026, 10, 1, 10)).map(\.fireDate),
+            [date(2026, 11, 5, 9)]
+        )
+    }
+
     func testDailyReminderCoversAWeekAndSkipsATodayAlreadyLogged() {
         var preferences = ReminderPreferences()
         preferences.dailyEnabled = true
@@ -323,3 +396,4 @@ final class ReminderPlannerTests: XCTestCase {
         await center.refreshAuthorization()
     }
 }
+
