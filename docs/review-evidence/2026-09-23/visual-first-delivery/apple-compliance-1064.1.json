@@ -1,0 +1,11 @@
+{
+  "uses_non_exempt_encryption": false,
+  "declaration": null,
+  "reference_build": "1063.1",
+  "availability": {
+    "france_available": false,
+    "future_countries_enabled": false
+  },
+  "version": "0.7.2",
+  "build": "1064.1"
+}
