@@ -110,7 +110,7 @@ jobs:
             SWIFT_TREAT_WARNINGS_AS_ERRORS=YES CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- test
       - name: Preserve StoreKit integration evidence
         if: ${{ always() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: storekit-purchase-integration
           path: ${{ runner.temp }}/MoneyUpStoreKitTests.xcresult
@@ -979,7 +979,7 @@ jobs:
 
       - name: Retain the encrypted exact release recovery bundle
         if: ${{ inputs.operation == 'upload' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: MoneyUp-encrypted-release-recovery-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/MoneyUp-Release-Recovery-${{ github.run_id }}-${{ github.run_attempt }}.tar.gz.enc

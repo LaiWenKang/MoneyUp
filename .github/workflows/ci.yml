@@ -116,7 +116,7 @@ jobs:
           PY
       - name: Preserve domain test evidence
         if: ${{ always() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: core-persistence-test-evidence
           path: |
@@ -197,7 +197,7 @@ jobs:
             > app-model-coverage.json
       - name: Preserve app-model test evidence
         if: ${{ always() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: app-model-test-evidence
           path: |
@@ -217,7 +217,7 @@ jobs:
           fi
       - name: Preserve native UI review images
         if: ${{ always() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: native-ui-review-images
           path: ${{ runner.temp }}/MoneyUpUIPreviews
@@ -458,7 +458,7 @@ jobs:
           python3 -m json.tool performance-evidence-manifest.json >/dev/null
       - name: Preserve performance baseline evidence
         if: ${{ always() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: iphone-simulator-performance-baseline
           path: |

@@ -65,7 +65,7 @@ jobs:
             --config docs/app-store/0.7.4/release.json --receipt public-release-receipt.json
       - name: Preserve sanitized release receipt
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: public-release-receipt
           path: public-release-receipt.json
