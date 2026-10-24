@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import MoneyUpCore
 import OSLog
@@ -58,21 +59,30 @@ struct UserActionTimeContext: Equatable, Sendable {
     }
 }
 
+/// A clock or time-zone change, delivered on the main queue. NotificationCenter
+/// delivers on the posting thread, and `onReceive` runs its action there; the
+/// refresh is main-actor code, which Swift 6 traps anywhere else.
+enum UserActionTimeChange {
+    typealias Notifications = Publishers.ReceiveOn<
+        Publishers.Merge<NotificationCenter.Publisher, NotificationCenter.Publisher>,
+        DispatchQueue
+    >
+
+    @MainActor
+    static func notifications(
+        from center: NotificationCenter = .default
+    ) -> Notifications {
+        center.publisher(for: UIApplication.significantTimeChangeNotification)
+            .merge(with: center.publisher(for: NSNotification.Name.NSSystemTimeZoneDidChange))
+            .receive(on: DispatchQueue.main)
+    }
+}
+
 private struct UserActionTimeChangeModifier: ViewModifier {
     let perform: @MainActor () -> Void
 
     func body(content: Content) -> some View {
-        content
-            .onReceive(
-                NotificationCenter.default.publisher(
-                    for: UIApplication.significantTimeChangeNotification
-                )
-            ) { _ in perform() }
-            .onReceive(
-                NotificationCenter.default.publisher(
-                    for: NSNotification.Name.NSSystemTimeZoneDidChange
-                )
-            ) { _ in perform() }
+        content.onReceive(UserActionTimeChange.notifications()) { _ in perform() }
     }
 }
 
