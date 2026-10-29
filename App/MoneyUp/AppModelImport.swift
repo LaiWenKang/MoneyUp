@@ -283,10 +283,15 @@ extension AppModel {
         destinationAmount: Decimal? = nil,
         destinationCurrency: CurrencyCode? = nil,
         payee: String?
-    ) -> String {
+    ) -> String? {
+        // ImportedTransaction accepts arbitrary Dates. Reject unsafe seconds
+        // before integer conversion, without clamping or changing valid keys.
+        guard let seconds = Int64(exactly:
+            occurredAt.timeIntervalSince1970.rounded(.down)
+        ) else { return nil }
         let components = [
             kind.rawValue,
-            String(Int64(occurredAt.timeIntervalSince1970.rounded(.down))),
+            String(seconds),
             NSDecimalNumber(decimal: amount).stringValue,
             currency.value,
             sourceID.uuidString.lowercased(),
@@ -641,7 +646,7 @@ extension AppModel {
         destinationAmount: Decimal?,
         state: inout AppModelTransactionImportState
     ) -> AppModelTransactionImportSemantics? {
-        let duplicateKey = transactionImportDuplicateKey(
+        guard let duplicateKey = transactionImportDuplicateKey(
             kind: row.kind,
             occurredAt: row.occurredAt,
             amount: row.amount,
@@ -653,7 +658,10 @@ extension AppModel {
             // Every entry kind now persists its optional title/payee, so the
             // in-batch key must match the key reconstructed after reopening.
             payee: row.payee
-        )
+        ) else {
+            skipTransactionImportIdentity(identity, state: &state)
+            return nil
+        }
         let matchesEarlierEntry = state.unmatchedDuplicateKeys[
             duplicateKey,
             default: 0

@@ -1,5 +1,7 @@
+import Combine
 @testable import MoneyUp
 import MoneyUpCore
+import UIKit
 import XCTest
 
 final class TransactionPresentationTests: XCTestCase {
@@ -496,6 +498,28 @@ final class TransactionPresentationTests: XCTestCase {
         XCTAssertEqual(losAngeles.calendar.component(.hour, from: instant), 20)
         XCTAssertTrue(singapore.displayName(at: instant).hasSuffix("GMT+8"))
         XCTAssertTrue(losAngeles.displayName(at: instant).hasSuffix("GMT-7"))
+    }
+
+    /// NotificationCenter delivers on the posting thread, and iOS does not
+    /// promise the main thread for clock and time-zone changes. Log and the
+    /// editor refresh main-actor state from them, which Swift 6 traps off the
+    /// main thread, so every change must arrive on the main queue.
+    @MainActor
+    func testTimeChangesPostedOffTheMainThreadArriveOnIt() async throws {
+        let changes = TimeChangeDeliveryRecorder(names: [
+            UIApplication.significantTimeChangeNotification,
+            NSNotification.Name.NSSystemTimeZoneDidChange
+        ])
+        let subscription = UserActionTimeChange.notifications(from: changes.center)
+            .sink { @Sendable _ in changes.record(onMainThread: Thread.isMainThread) }
+        defer { subscription.cancel() }
+
+        await Task.detached { changes.postAll() }.value
+        for _ in 0..<200 where changes.snapshot().count < 2 {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+
+        XCTAssertEqual(changes.snapshot(), [true, true])
     }
 
     func testSuggestionPolicyRequiresReviewForLowConfidenceOrEditedFields() {
@@ -1020,5 +1044,32 @@ final class TransactionPresentationTests: XCTestCase {
             startsAt: Date(timeIntervalSince1970: 1_700_000_000),
             timeZoneIdentifier: "UTC"
         )
+    }
+}
+
+/// Posts each change from whichever thread calls it, on a private centre, and
+/// records whether each delivery ran on the main thread.
+private final class TimeChangeDeliveryRecorder: @unchecked Sendable {
+    let center = NotificationCenter()
+    private let names: [Notification.Name]
+    private let lock = NSLock()
+    private var mainThreadFlags: [Bool] = []
+
+    init(names: [Notification.Name]) {
+        self.names = names
+    }
+
+    func postAll() {
+        for name in names {
+            center.post(name: name, object: nil)
+        }
+    }
+
+    func record(onMainThread: Bool) {
+        lock.withLock { mainThreadFlags.append(onMainThread) }
+    }
+
+    func snapshot() -> [Bool] {
+        lock.withLock { mainThreadFlags }
     }
 }
