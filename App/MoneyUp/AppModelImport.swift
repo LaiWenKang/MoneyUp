@@ -34,6 +34,9 @@ struct AppModelTransactionImportState: Sendable {
     /// semantic key. Each match uses one up, so N matching statement rows
     /// import beside M such entries only when N > M.
     var unmatchedDuplicateKeys: [String: Int]
+    /// One pending-copy slot per distinct authoritative identity recognized
+    /// in this batch. Never used to match collision-prone legacy identities.
+    var identifiedDuplicateKeys: [String: Int] = [:]
     /// The semantic key of each earlier entry by stored fingerprint, so a
     /// fingerprint match uses up that entry's semantic match as well.
     var duplicateKeysByFingerprint: [String: String]
@@ -48,14 +51,31 @@ struct AppModelTransactionImportState: Sendable {
     }
 
     /// The earlier entry stored under one of these fingerprints is this row.
-    mutating func useEarlierMatch(storedAs fingerprints: [String]) {
+    mutating func useEarlierMatch(storedAs fingerprints: [String]) -> String? {
         for fingerprint in fingerprints {
             guard let key = duplicateKeysByFingerprint.removeValue(
                 forKey: fingerprint
             ) else { continue }
-            _ = useEarlierMatch(for: key)
-            return
+            return useEarlierMatch(for: key) ? key : nil
         }
+        return nil
+    }
+
+    mutating func useLegacyMatch(for key: String, candidates: Set<String>) -> Bool {
+        for fingerprint in candidates.sorted()
+        where duplicateKeysByFingerprint[fingerprint] == key {
+            duplicateKeysByFingerprint.removeValue(forKey: fingerprint)
+            return useEarlierMatch(for: key)
+        }
+        return false
+    }
+
+    mutating func usePendingCopyMatch(for key: String) -> Bool {
+        if let count = identifiedDuplicateKeys[key], count > 0 {
+            identifiedDuplicateKeys[key] = count - 1
+            return true
+        }
+        return useEarlierMatch(for: key)
     }
 }
 
@@ -130,12 +150,12 @@ extension AppModel {
             existing: existing,
             context: context
         )
-        for row in rows {
-            planTransactionImportRow(
-                row,
-                context: context,
-                state: &importState
-            )
+        // Resolve authoritative identities before their ID-less pending copies,
+        // independent of statement order; retain order within each group.
+        for hasExternalID in [true, false] {
+            for row in rows where row.hasExternalID == hasExternalID {
+                planTransactionImportRow(row, context: context, state: &importState)
+            }
         }
         guard !importState.importedEntries.isEmpty else {
             return transactionImportResult(
@@ -518,7 +538,7 @@ extension AppModel {
             // later row without an ID and the same meaning (such as a pending
             // copy) is a duplicate of it.
             if row.hasExternalID {
-                state.unmatchedDuplicateKeys[semantics.duplicateKey, default: 0] += 1
+                state.identifiedDuplicateKeys[semantics.duplicateKey, default: 0] += 1
             }
         } catch {
             state.candidateAccounts.removeSubrange(accountCheckpoint...)
@@ -545,7 +565,10 @@ extension AppModel {
             .isDisjoint(with: context.sameSourceLegacyFingerprints)
         guard inserted, !matchesUnscopedIdentity else {
             if inserted { state.fingerprints.remove(persistedFingerprint) }
-            state.useEarlierMatch(storedAs: [persistedFingerprint, row.id])
+            let key = state.useEarlierMatch(storedAs: [persistedFingerprint, row.id])
+            if row.hasExternalID, let key {
+                state.identifiedDuplicateKeys[key, default: 0] += 1
+            }
             state.duplicates += 1
             return nil
         }
@@ -662,21 +685,25 @@ extension AppModel {
             skipTransactionImportIdentity(identity, state: &state)
             return nil
         }
-        let matchesEarlierEntry = state.unmatchedDuplicateKeys[
-            duplicateKey,
-            default: 0
-        ] > 0
-        // FNV-era candidates are collision-prone and interim SHA candidates
-        // contain mutable fields. Accept a legacy duplicate only when the
-        // reconstructed ledger semantics also match.
-        let matchesSafeLegacyDuplicate = identity.matchesLegacyCandidate
-            && matchesEarlierEntry
-        // Rows earlier in this file never count: a statement lists each
-        // transaction once, so its identical rows are separate transactions.
-        guard !matchesSafeLegacyDuplicate,
-              row.hasExternalID || !matchesEarlierEntry else {
-            _ = state.useEarlierMatch(for: duplicateKey)
-            state.fingerprints.remove(identity.persistedFingerprint)
+        // Legacy candidates are collision-prone. Match the actual candidate's
+        // saved semantics, not a different entry with the same semantic key.
+        let matchesSafeLegacyDuplicate = row.hasExternalID
+            && identity.matchesLegacyCandidate
+            && state.useLegacyMatch(
+                for: duplicateKey, candidates: row.legacyFingerprintCandidates
+            )
+        // Anonymous rows use each earlier entry or authoritative identity once;
+        // newly imported anonymous rows never cover another identical purchase.
+        let matchesPendingCopy = !row.hasExternalID
+            && state.usePendingCopyMatch(for: duplicateKey)
+        if matchesSafeLegacyDuplicate || matchesPendingCopy {
+            if row.hasExternalID {
+                state.identifiedDuplicateKeys[duplicateKey, default: 0] += 1
+                // Keep this in-batch identity so repeated rows cannot consume
+                // another legacy entry. The saved legacy fingerprint is untouched.
+            } else {
+                state.fingerprints.remove(identity.persistedFingerprint)
+            }
             state.duplicates += 1
             return nil
         }
