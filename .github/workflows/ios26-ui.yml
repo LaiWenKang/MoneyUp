@@ -5,16 +5,24 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      suite:
+        description: 'Full review or isolated original favourite test (diagnostic only)'
+        type: choice
+        required: true
+        default: full
+        options: [full, favourite]
 
 permissions:
   contents: read
 
 concurrency:
-  group: ios26-ui-${{ github.ref }}
+  group: ios26-ui-${{ github.ref }}-${{ inputs.suite || 'full' }}
   cancel-in-progress: true
 
 jobs:
   native-review:
+    name: ${{ inputs.suite == 'favourite' && 'Favourite diagnostic (not full review)' || 'native-review' }}
     runs-on: macos-26
     # Includes the end-to-end journeys (MoneyUpJourneyTests), which need an
     # ad-hoc signature for the App Group the widget-route queue uses.
@@ -31,7 +39,7 @@ jobs:
           printf '%s  %s\n' 4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806 "$RUNNER_TEMP/xcodegen.zip" | shasum -a 256 -c -
           ditto -x -k "$RUNNER_TEMP/xcodegen.zip" "$RUNNER_TEMP/xcodegen-release"
           echo "$RUNNER_TEMP/xcodegen-release/xcodegen/bin" >> "$GITHUB_PATH"
-      - name: Render and test on iOS 26
+      - name: Prepare iOS 26 simulator
         shell: bash
         run: |
           set -euo pipefail
@@ -39,6 +47,12 @@ jobs:
           xcodegen generate
           xcrun simctl list devices available -j > "$RUNNER_TEMP/devices.json"
           SIMULATOR_ID="$(python3 -c 'import json,os; data=json.load(open(os.environ["RUNNER_TEMP"]+"/devices.json")); print(next(d["udid"] for r,ds in sorted(data["devices"].items(),reverse=True) if ".iOS-26-" in r for d in ds if d["name"].startswith("iPhone") and d.get("isAvailable",True)))')"
+          echo "SIMULATOR_ID=$SIMULATOR_ID" >> "$GITHUB_ENV"
+      - name: Run native render tests
+        if: ${{ inputs.suite != 'favourite' }}
+        shell: bash
+        run: |
+          set -euo pipefail
           xcodebuild -project MoneyUp.xcodeproj -scheme MoneyUp -configuration Debug \
             -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
             -resultBundlePath "$RUNNER_TEMP/MoneyUpUI26.xcresult" \
@@ -64,31 +78,46 @@ jobs:
             -only-testing:MoneyUpTests/NavigationPresentationTests \
             -only-testing:MoneyUpTests/RedesignRenderEvidenceTests \
             -only-testing:MoneyUpTests/PlatformQuickLogActionTests \
-            SWIFT_TREAT_WARNINGS_AS_ERRORS=YES CODE_SIGNING_ALLOWED=NO test
+            SWIFT_TREAT_WARNINGS_AS_ERRORS=YES CODE_SIGNING_ALLOWED=NO test 2>&1 | tee "$RUNNER_TEMP/ui26-native.log"
+      - name: Run UI journeys
+        # The focused run has its own bound and cannot cancel a full review.
+        timeout-minutes: ${{ inputs.suite == 'favourite' && 15 || 60 }}
+        shell: bash
+        env:
+          REVIEW_SUITE: ${{ inputs.suite || 'full' }}
+        run: |
+          set -euo pipefail
+          set --
+          case "$REVIEW_SUITE" in
+            full) ;;
+            favourite) set -- -only-testing:MoneyUpUITests/MoneyUpJourneyTests/testSaveAsFavouriteFromTheSavedBanner ;;
+            *) echo "Unknown review suite" >&2; exit 2 ;;
+          esac
+          printf 'Review suite: %s\n' "$REVIEW_SUITE" | tee "$RUNNER_TEMP/ui26-scope.txt"
           xcodebuild -project MoneyUp.xcodeproj -scheme MoneyUpColdLaunch -configuration Debug \
             -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
             -derivedDataPath "$RUNNER_TEMP/MoneyUpUI26DerivedData" \
             -resultBundlePath "$RUNNER_TEMP/MoneyUpColdLaunch.xcresult" \
             -parallel-testing-enabled NO \
-            SWIFT_TREAT_WARNINGS_AS_ERRORS=YES CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- test
+            "$@" \
+            SWIFT_TREAT_WARNINGS_AS_ERRORS=YES CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- test 2>&1 | tee "$RUNNER_TEMP/ui26-journeys.log"
       - name: Export review evidence
         if: ${{ always() }}
-        run: |
-          if test -d "$RUNNER_TEMP/MoneyUpUI26.xcresult"; then
-            xcrun xcresulttool export attachments --path "$RUNNER_TEMP/MoneyUpUI26.xcresult" --output-path "$RUNNER_TEMP/ui26-images"
-            xcrun xcresulttool get test-results summary --path "$RUNNER_TEMP/MoneyUpUI26.xcresult" --compact > "$RUNNER_TEMP/ui26-summary.json"
-          fi
-          if test -d "$RUNNER_TEMP/MoneyUpColdLaunch.xcresult"; then
-            xcrun xcresulttool export attachments --path "$RUNNER_TEMP/MoneyUpColdLaunch.xcresult" --output-path "$RUNNER_TEMP/ui26-cold-images"
-            xcrun xcresulttool get test-results summary --path "$RUNNER_TEMP/MoneyUpColdLaunch.xcresult" --compact > "$RUNNER_TEMP/ui26-cold-summary.json"
-          fi
+        env:
+          REVIEW_SUITE: ${{ inputs.suite || 'full' }}
+        run: bash scripts/export_ios26_review.sh
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: ${{ always() }}
         with:
-          name: native-ios26-review
+          name: ${{ inputs.suite == 'favourite' && 'favourite-ios26-diagnostic' || 'native-ios26-review' }}
           path: |
             ${{ runner.temp }}/ui26-images
             ${{ runner.temp }}/ui26-summary.json
             ${{ runner.temp }}/ui26-cold-images
             ${{ runner.temp }}/ui26-cold-summary.json
+            ${{ runner.temp }}/ui26-export-errors.log
+            ${{ runner.temp }}/ui26-native.log
+            ${{ runner.temp }}/ui26-journeys.log
+            ${{ runner.temp }}/ui26-scope.txt
           retention-days: 14
+
