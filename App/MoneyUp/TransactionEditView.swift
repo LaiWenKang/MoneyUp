@@ -256,8 +256,11 @@ struct TransactionEditView: View {
               lines.allSatisfy({ line in
                   categories.contains(where: {
                       $0.id == line.categoryAccountID
-                  }) && currency.supports(line.amount.amount)
-              }) else { return false }
+                  })
+              }),
+              TransactionEditSplitAmountPolicy.accepts(
+                  lines, currency: currency, preserving: entry
+              ) else { return false }
         do {
             try TransactionSplitCalculator.validate(total: total, lines: lines)
             return true
