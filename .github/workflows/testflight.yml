@@ -27,6 +27,11 @@ on:
         options:
           - 'off'
           - internal-beta
+      testflight_internal_only:
+        description: Restrict this build to internal TestFlight (independent of iCloud)
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -48,6 +53,7 @@ env:
   WIDGET_BUNDLE_ID: com.laiwenkang.MoneyUp.Widget
   APP_GROUP_ID: group.com.laiwenkang.MoneyUp
   CLOUD_BACKUP_MODE: ${{ inputs.cloud_backup || 'off' }}
+  TESTFLIGHT_INTERNAL_ONLY: ${{ inputs.testflight_internal_only && 'true' || 'false' }}
 
 jobs:
   # iOS 26.5's CLI StoreKit Test service can fail to install configurations
@@ -135,6 +141,10 @@ jobs:
           set -euo pipefail
           if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
             echo "::error::TestFlight runs are allowed only from the main branch."
+            exit 1
+          fi
+          if [[ "$TESTFLIGHT_INTERNAL_ONLY" == "true" && -z "$EXPECTED_SHA" ]]; then
+            echo "::error::The explicit TestFlight Internal Only option requires an exact reviewed main SHA."
             exit 1
           fi
           if [[ -n "$EXPECTED_SHA" && ! "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]; then
@@ -530,6 +540,11 @@ jobs:
             echo "- Version: $MARKETING_VERSION ($BUILD_NUMBER)"
             echo "- Operation: ${{ inputs.operation }}"
             echo "- Cloud backup: $CLOUD_BACKUP_MODE"
+            if [[ "$TESTFLIGHT_INTERNAL_ONLY" == "true" || "$CLOUD_BACKUP_MODE" == "internal-beta" ]]; then
+              echo "- Export audience: TestFlight Internal Only"
+            else
+              echo "- Export audience: standard TestFlight / App Store Connect"
+            fi
             if [[ "$CLOUD_BACKUP_MODE" == "internal-beta" ]]; then
               echo "- Device sign-in/recovery acceptance: pending; internal TestFlight only"
             fi
@@ -647,12 +662,13 @@ jobs:
           plutil -insert manageAppVersionAndBuildNumber -bool false "$EXPORT_OPTIONS_PATH"
           plutil -insert stripSwiftSymbols -bool true "$EXPORT_OPTIONS_PATH"
           plutil -insert uploadSymbols -bool true "$EXPORT_OPTIONS_PATH"
-          if [[ "$CLOUD_BACKUP_MODE" == "internal-beta" ]]; then
+          if [[ "$TESTFLIGHT_INTERNAL_ONLY" == "true" || "$CLOUD_BACKUP_MODE" == "internal-beta" ]]; then
             plutil -insert testFlightInternalTestingOnly -bool true "$EXPORT_OPTIONS_PATH"
           fi
           python3 Scripts/validate_cloud_release.py \
             --info "$ARCHIVE_PATH/Products/Applications/MoneyUp.app/Info.plist" \
-            --mode "$CLOUD_BACKUP_MODE" --export-options "$EXPORT_OPTIONS_PATH"
+            --mode "$CLOUD_BACKUP_MODE" --internal-only "$TESTFLIGHT_INTERNAL_ONLY" \
+            --export-options "$EXPORT_OPTIONS_PATH"
           xcodebuild \
             -exportArchive \
             -archivePath "$ARCHIVE_PATH" \
@@ -738,7 +754,7 @@ jobs:
               python3 Scripts/validate_cloud_release.py \
                 --info "$APP_PATH/Info.plist" --mode "$CLOUD_BACKUP_MODE" \
                 --signed-entitlements "$SIGNED_ENTITLEMENTS" --profile "$PROFILE_PLIST" \
-                --export-options "$EXPORT_OPTIONS_PATH"
+                --internal-only "$TESTFLIGHT_INTERNAL_ONLY" --export-options "$EXPORT_OPTIONS_PATH"
             fi
             SIGNED_APPLICATION_IDENTIFIER="$(/usr/libexec/PlistBuddy -c 'Print :application-identifier' "$SIGNED_ENTITLEMENTS")"
             SIGNED_TEAM="$(/usr/libexec/PlistBuddy -c 'Print :com.apple.developer.team-identifier' "$SIGNED_ENTITLEMENTS")"

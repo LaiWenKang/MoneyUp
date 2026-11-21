@@ -39,7 +39,9 @@ final class AmountPrivacyRenderTests: XCTestCase {
             window.rootViewController = host
             window.isHidden = false
             host.view.frame = window.bounds
-            let shown = Self.amounts(in: await Self.settledImage(of: window, host: host))
+            let shownImage = await Self.settledImage(of: window, host: host)
+            let shownReading = Self.readText(in: shownImage)
+            let shown = Self.amounts(in: shownReading.lines)
             XCTAssertFalse(shown.isEmpty, "\(name): the fixture shows no amounts to hide")
             // The same write the eye button and a Focus filter make, to the
             // same live view.
@@ -49,7 +51,27 @@ final class AmountPrivacyRenderTests: XCTestCase {
             attachment.name = "privacy-hidden-after-toggle-\(name)"
             attachment.lifetime = .keepAlways
             add(attachment)
-            let stillShown = shown.intersection(Self.amounts(in: hidden))
+            let hiddenReading = Self.readText(in: hidden)
+            let hiddenAmounts = Self.amounts(in: hiddenReading.lines)
+            let stillShown = shown.intersection(hiddenAmounts)
+            if shown.isEmpty || !stillShown.isEmpty {
+                let beforeAttachment = XCTAttachment(image: shownImage)
+                beforeAttachment.name = "privacy-shown-before-toggle-\(name)"
+                beforeAttachment.lifetime = .keepAlways
+                add(beforeAttachment)
+                let evidence = XCTAttachment(string: """
+                    Synthetic fixture, tab: \(name)
+                    Before OCR error: \(shownReading.failure ?? "none")
+                    Before OCR lines: \(shownReading.lines)
+                    Before extracted amounts: \(shown.sorted())
+                    After OCR error: \(hiddenReading.failure ?? "none")
+                    After OCR lines: \(hiddenReading.lines)
+                    After extracted amounts: \(hiddenAmounts.sorted())
+                    """)
+                evidence.name = "privacy-ocr-diagnostic-\(name)"
+                evidence.lifetime = .keepAlways
+                add(evidence)
+            }
             if !stillShown.isEmpty { leaks.append("\(name): \(stillShown.sorted().joined(separator: ", "))") }
             window.isHidden = true
             window.rootViewController = nil
@@ -126,20 +148,30 @@ final class AmountPrivacyRenderTests: XCTestCase {
 
     /// Figures written with a decimal part, such as 551.50 or 9,951.50. Axis
     /// labels and dates have none, so they are not mistaken for amounts.
-    private static func amounts(in image: UIImage) -> Set<String> {
-        Set(recognizedLines(in: image).flatMap { line in
+    private static func amounts(in lines: [String]) -> Set<String> {
+        Set(lines.flatMap { line in
             line.matches(of: /[0-9]{1,3}(?:,[0-9]{3})*\.[0-9]{2}/).map { String(line[$0.range]) }
         })
     }
 
     private static func recognizedLines(in image: UIImage) -> [String] {
-        guard let cgImage = image.cgImage else { return [] }
+        readText(in: image).lines
+    }
+
+    private static func readText(in image: UIImage) -> (lines: [String], failure: String?) {
+        guard let cgImage = image.cgImage else { return ([], "Image has no CGImage") }
         let request = VNRecognizeTextRequest()
         request.recognitionLevel = .accurate
         request.usesLanguageCorrection = false
         request.recognitionLanguages = ["en-US"]
-        try? VNImageRequestHandler(cgImage: cgImage).perform([request])
-        return (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }
+        var failure: String?
+        do {
+            try VNImageRequestHandler(cgImage: cgImage).perform([request])
+        } catch {
+            let diagnostic = error as NSError
+            failure = "\(diagnostic.domain) (\(diagnostic.code))"
+        }
+        return ((request.results ?? []).compactMap { $0.topCandidates(1).first?.string }, failure)
     }
 
     @MainActor

@@ -41,6 +41,21 @@ class CloudReleaseTests(unittest.TestCase):
         self.assertTrue(cloud_release_errors(self.info, "off"))
         self.assertEqual(cloud_release_errors({}, "off"), [])
 
+    def test_cloud_off_accepts_explicit_internal_only_export_without_cloud_metadata(self):
+        self.assertEqual(cloud_release_errors({}, "off", export_options=self.options,
+                                              internal_only=True), [])
+        for options in ({"method": "app-store-connect"}, self.options | {"method": "development"},
+                        self.options | {"testFlightInternalTestingOnly": False},
+                        self.options | {"testFlightInternalTestingOnly": 1}):
+            self.assertTrue(cloud_release_errors({}, "off", export_options=options, internal_only=True))
+        self.assertTrue(cloud_release_errors(self.info, "off", export_options=self.options,
+                                             internal_only=True))
+
+    def test_cloud_off_default_stays_standard_and_rejects_unexpected_internal_marking(self):
+        standard = {"method": "app-store-connect"}
+        self.assertEqual(cloud_release_errors({}, "off", export_options=standard), [])
+        self.assertTrue(cloud_release_errors({}, "off", export_options=self.options))
+
     def test_profile_scalar_wildcard_does_not_relax_the_apps_exact_domain(self):
         profile = {"Entitlements": {self.key: "*"}}
         self.assertEqual(self.check(profile=profile), [])

@@ -5496,18 +5496,31 @@ def validate_testflight_workflow() -> None:
     ):
         if declaration not in cloud_generation:
             fail(f"configured internal cloud beta generation is missing {declaration}")
+    internal_only_input = re.search(
+        r"(?ms)^      testflight_internal_only:\n(.*?)(?=^      \w+:|^\S)", workflow
+    )
+    if not internal_only_input or not all(
+        line in internal_only_input.group(1)
+        for line in ("default: false", "type: boolean")
+    ):
+        fail("explicit TestFlight Internal Only must be a default-off boolean input")
+    audience_gate = workflow_step(workflow, "Require main and explicit upload confirmation")
+    if '"$TESTFLIGHT_INTERNAL_ONLY" == "true" && -z "$EXPECTED_SHA"' not in audience_gate:
+        fail("explicit TestFlight Internal Only must require the reviewed SHA")
     cloud_export = workflow_step(workflow, "Export an App Store Connect IPA")
     for declaration in (
-        'if [[ "$CLOUD_BACKUP_MODE" == "internal-beta" ]]; then',
+        'if [[ "$TESTFLIGHT_INTERNAL_ONLY" == "true" || "$CLOUD_BACKUP_MODE" == "internal-beta" ]]; then',
         'testFlightInternalTestingOnly -bool true "$EXPORT_OPTIONS_PATH"',
         "Scripts/validate_cloud_release.py",
-        '--mode "$CLOUD_BACKUP_MODE" --export-options "$EXPORT_OPTIONS_PATH"',
+        '--mode "$CLOUD_BACKUP_MODE" --internal-only "$TESTFLIGHT_INTERNAL_ONLY"',
+        '--export-options "$EXPORT_OPTIONS_PATH"',
     ):
         if declaration not in cloud_export:
             fail(f"cloud beta internal-only export boundary is missing {declaration}")
     cloud_signed = workflow_step(workflow, "Inspect distribution signing and contents")
     for declaration in ("Scripts/validate_cloud_release.py", '--mode "$CLOUD_BACKUP_MODE"',
-                        '--signed-entitlements "$SIGNED_ENTITLEMENTS" --profile "$PROFILE_PLIST"'):
+                        '--signed-entitlements "$SIGNED_ENTITLEMENTS" --profile "$PROFILE_PLIST"',
+                        '--internal-only "$TESTFLIGHT_INTERNAL_ONLY" --export-options "$EXPORT_OPTIONS_PATH"'):
         if declaration not in cloud_signed:
             fail(f"signed cloud callback validation is missing {declaration}")
 
