@@ -10,10 +10,17 @@ from urllib.parse import urlsplit
 
 
 def cloud_release_errors(info: dict, mode: str, *, signed: dict | None = None,
-                         profile: dict | None = None, export_options: dict | None = None) -> list[str]:
+                         profile: dict | None = None, export_options: dict | None = None,
+                         internal_only: bool = False) -> list[str]:
     enabled = info.get("MoneyUpCloudBackupEnabled") is True
     if mode == "off":
-        return ["Cloud backup unexpectedly enabled in a local-only candidate"] if enabled else []
+        errors = ["Cloud backup unexpectedly enabled in a local-only candidate"] if enabled else []
+        if export_options is not None:
+            internal_flag = export_options.get("testFlightInternalTestingOnly", False)
+            if (export_options.get("method") != "app-store-connect"
+                    or internal_flag is not internal_only):
+                errors.append("Local-only export does not match the requested TestFlight audience")
+        return errors
     if mode != "internal-beta":
         return ["Unknown cloud release mode"]
     errors = []
@@ -75,6 +82,7 @@ def main() -> int:
     parser.add_argument("--signed-entitlements", type=Path)
     parser.add_argument("--profile", type=Path)
     parser.add_argument("--export-options", type=Path)
+    parser.add_argument("--internal-only", choices=("true", "false"), default="false")
     args = parser.parse_args()
     try:
         def read(path):
@@ -86,7 +94,8 @@ def main() -> int:
             return value
         profile = read(args.profile)
         errors = cloud_release_errors(read(args.info), args.mode, signed=read(args.signed_entitlements),
-                                      profile=profile, export_options=read(args.export_options))
+                                      profile=profile, export_options=read(args.export_options),
+                                      internal_only=args.internal_only == "true")
     except (OSError, ValueError, plistlib.InvalidFileException):
         errors = ["Could not read cloud release metadata"]
     if errors:

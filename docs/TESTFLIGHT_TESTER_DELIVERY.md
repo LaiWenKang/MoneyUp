@@ -30,3 +30,18 @@ Official API references:
 `inherit-compliance` is a separate, explicitly confirmed operation. Supply a reference build of the same app, iOS platform and marketing version, confirm `INHERIT_COMPLIANCE`, and explicitly affirm that app encryption and dependencies were compared and are unchanged. The operator must compare the actual source and dependency revisions first. For 1052.1, the comparison between the 1051.1 source `8a4b3d7` and the 1052.1 source `e8929fc` contains only UI, localization, support and tests; no encryption implementation or dependency changes.
 
 The operation requires live verification that France is unavailable and future-country inclusion is disabled. It may copy a prior explicitly recorded exempt answer, or attach the same approved non-exempt encryption declaration. It never invents an answer, creates a legal declaration, or overwrites a conflicting existing answer/document. Unknown, expired, unprocessed or unapproved references fail closed. Read-only inspection can report the target/reference compliance metadata and territory flags without making changes. This does not replace the account holder's legal assessment when encryption or distribution changes.
+
+## Uploading a local-only build marked TestFlight Internal Only
+
+Use the direct **TestFlight** workflow on main with reviewed `expected_sha`,
+`cloud_backup=off`, and `testflight_internal_only=true`. First use
+`operation=validate` if validating the new route without uploading. Then use
+`operation=upload` and confirm `UPLOAD` only when approved. The upload run
+builds and validates its own new IPA before transferring it. The issue-comment
+shortcuts retain their previous defaults and cannot request this option.
+
+The default flag remains off for standard local-only export. A CloudKit internal
+beta is still always restricted to TestFlight Internal Only; this new flag
+does not enable CloudKit. The build audience marking is not a tester assignment.
+Verify Apple processing, marking and existing internal group access separately;
+existing automatic internal distribution may apply.
